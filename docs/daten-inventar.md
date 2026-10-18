@@ -154,7 +154,7 @@ vereinfachtes/traditionelles Chinesisch (Vermutung).
 
 ## 7. Offene Fragen
 
-- Was genau ist `Dpr.bin` (Manifest als BinaryFormatter?). Struktur und Zusammenhang mit `Temp/AssetAssistant/Manifest/Manifest.bin`.
+- ~~Was genau ist `Dpr.bin`?~~ Geklärt: Bundle-Katalog (`AssetBundleDownloadManifest`, .NET-BinaryFormatter, Version 6), siehe `docs/bundle-katalog.md`.
 - Welche Assets (Pfade) stecken in den Bundles? Dafür müssen die Blockdaten entpackt und die Serialisierung gelesen werden (Typbaum, TypeTree).
 - Wie `Message/Message` und `common_msbt` zusammenspielen, welches Format die Texte im Bundle haben (MSBT?).
 - In welchen Bundles liegen Items, Moves, Karten, Trainer genau (vermutlich `Dpr/masterdatas`, aber nicht verifiziert)?

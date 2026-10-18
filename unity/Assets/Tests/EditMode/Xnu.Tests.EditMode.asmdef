@@ -1,7 +1,7 @@
 {
   "name": "Xnu.Tests.EditMode",
   "rootNamespace": "Xnu.Tests",
-  "references": ["Xnu.Core", "Xnu.Data", "Xnu.Save", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "references": ["Xnu.Core", "Xnu.Data", "Xnu.Save", "Xnu.Boot", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
   "includePlatforms": ["Editor"],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
