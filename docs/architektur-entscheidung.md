@@ -62,3 +62,11 @@ Rekonstruierter Code aus Decompilation kann urheberrechtlich heikel sein, sobald
 - **Plattformübergreifend** (z. B. Windows/Linux) wird mitgedacht, ist aber erst später wichtig: keine Architekturentscheidung darf macOS-/iPadOS-Spezifisches verbauen, aber es wird noch nichts dafür gebaut.
 - Meilensteine: M0 Durchstich (Unity 6.3 LTS, macOS), M1 macOS-MVP (1080p 16:9, Metal, Save-Import), M2 iPadOS-Build (Speicherbudget, Touch/Controller), danach plattformübergreifend.
 - **Beobachtet:** `/Applications/Xcode.app` ist vorhanden, `xcode-select` zeigt aber auf `/Library/Developer/CommandLineTools`, ein iPhoneOS-SDK wird darüber nicht gefunden. Für iOS-Builds muss die Xcode-Developer-Umgebung gewählt werden (z. B. per `DEVELOPER_DIR` oder `xcode-select -s`, Letzteres braucht Admin). Das iOS-Build-Support-Modul von Unity ist noch nicht installiert.
+
+## Entscheidung 2 (Autopilot, 2026-10-18 23:55): Rekompilation zurückgestellt
+Grundlage: `docs/recomp-machbarkeit.md` (Spike, gemessen).
+- **Weiter mit Option D** (Unity 6.3 LTS, Logik rekonstruieren, Shader per Maxwell-Übersetzer treu portieren).
+- **Gründe gegen R als Hauptweg:** C++-Exceptions in 2.917 Funktionen brechen das LAS-Modell „Host-Stack = Gast-Stack“ (Forschungsaufwand ohne Schätzung), Thread-Anhalten für den Boehm-GC fehlt in LAS (8 von 50 SVCs), 32-Bit-Rebasing wegen iPadOS-Adressraum (3–6 Wochen geschätzt), Leistung ungemessen, 1,01 GB erzeugtes C.
+- **Was für R sprach:** 1:1-Logik automatisch, sehr gute CPU-Abdeckung (58 von 14,1 Mio. Wörtern nicht abgedeckt), Repo ohne abgeleiteten Code.
+- **Offen gehalten:** R als Referenzimplementierung für Treuevergleiche (Hybrid). Spike-Phase 2 beginnt mit dem Exception-Test als Ausschlusskriterium; nur wenn Zeit bleibt.
+- Der Nutzer hat die Entscheidung dem Autopiloten überlassen („weiseste Entscheidung“). Revidierbar.
