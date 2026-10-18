@@ -44,3 +44,5 @@ python3 -m unittest discover -s scripts/tests -v
   wurden sie in einem Wegwerf-Projekt mit `dotnet test` ausgeführt (21 Tests grün); zusätzlich stimmen Version, Größe, Hash-Status und
   `FixHash`-Ergebnis auf synthetischen Fällen mit der Python-Implementierung überein, und die lokalen `SaveData.bin`/`Backup.bin` werden
   lesend als gültig erkannt (Version 0x34, 979108 Byte). Der Lauf im Unity-Editor (`run_tests`) steht noch aus.
+
+Schreibpfad (`SaveData`, `SaveFileIO`), Ordnerkonventionen und Export: siehe `docs/save-kompatibilitaet.md`.

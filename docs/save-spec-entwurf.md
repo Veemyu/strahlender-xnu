@@ -162,3 +162,7 @@ Das verwaltete `PlayerWork.SaveData` ist 0x7B8 Byte groß (letztes Feld 0x7A8 + 
 ## 8. Nachtrag: Pokémon-Slots
 Slotlayout (344 Byte), Kodierung (LCG-XOR, 16-Bit-Prüfsumme, Blockmischung), alle Felder und die Berechnung der Statuswerte stehen in `docs/pokepara-spezifikation.md`
 (C#: `unity/Assets/Scripts/PokePara`); damit sind die in Abschnitt 4 („Pokémon-Slots“) und 6 als offen markierten Punkte zur Pokémon-Kodierung geklärt. Am lokalen Save stimmen alle 1206 Slot-Prüfsummen.
+
+## 9. Nachtrag: Spieler-Basisdaten, Items, Schreibpfad
+Native Offsets in `PLAYER_DATA` (Name 0x79BB4, Trainer-ID 0x79BD0, Geld 0x79BD4, Spielzeit 0x79C04), das 16-Byte-Layout von `SaveItem` und der Schreibpfad (`SaveData`, atomares Schreiben, Ordnerkonventionen)
+stehen mit Belegen in `docs/save-kompatibilitaet.md` (C#: `SavePlayerLayout`, `SaveData`).
