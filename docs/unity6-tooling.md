@@ -14,3 +14,10 @@
 ## Offen für iOS/iPadOS
 - iOS-Build-Support-Modul in Unity noch nicht installiert.
 - `xcode-select` zeigt auf die Command Line Tools, das iPhoneOS-SDK wird nicht gefunden (Xcode.app ist vorhanden).
+
+## Erster Build (macOS, 2026-10-18)
+- Module `ios` (471 MB) und `mac-il2cpp` (713 MB) per `unity install-modules -e 6000.3.26f1 -a arm64 -m ios mac-il2cpp --non-interactive` installiert (ohne `--accept-eula`).
+- Leerer Test-Build `StandaloneOSX` mit IL2CPP über das MCP-Tool `build` (der offene Editor hält das Projekt, daher kein Batch-Build): **Succeeded**, 134 s, 0 Fehler, 1 Warnung. Das Binary ist **universell (arm64 + x86_64)**, ca. 132 MB App.
+- Start der App: Engine 6000.3.26f1, Metal-Gerät Apple M1 Pro, läuft stabil.
+- Xcode 26.0.1 liegt in `/Applications/Xcode.app`, das iPhoneOS-26.0-SDK wird mit `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` gefunden. `xcode-select` zeigt weiter auf die Command Line Tools (Umstellen braucht Admin).
+- iOS: Apple-ID (kostenloses Team) muss noch in Xcode hinzugefügt werden (`security find-identity -v -p codesigning` zeigt bisher 0 Identitäten). Ohne bezahltes Team: Profil 7 Tage, kein `.ipa` für andere; ob der Entitlement „Increased Memory Limit“ verfügbar ist, ist offen.
