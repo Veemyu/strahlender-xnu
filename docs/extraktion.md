@@ -50,3 +50,16 @@ Hinweis: hactool gibt bei unbekannten Schlüsselnamen Warnungen mit Schlüsselwe
 - Bestätigt: Il2CppDumper-Adresse + 0x100000 ergibt Funktionsanfänge (`PlayerWork$$SaveAsync` 0x2ded680, `AutoSave` 0x2df60f0, `LoadBytes<SaveData>` 0x1b8bf60). `LoadBytes` kopiert ein 0x7b8-Byte-Struct (Save-Daten).
 - Lücke: `PlayerWork$$LoadAsync` (0x2ded780) hat keine Funktion, weil Ghidra ohne eingehende Referenzen keine anlegt. IL2CPP-Methoden werden über Funktionszeiger-Tabellen aufgerufen. Ein Skript müsste Funktionen an allen Adressen aus `script.json` anlegen.
 - REA-Sitzungs-Annotationen (Namen) sind nur in der Sitzung und im Evidence-Bundle, nicht dauerhaft.
+
+## Ghidra-Projekt und Pseudocode-Export (erledigt)
+- Persistentes Projekt `work/ghidra/bdsp` (Import `main.patched.elf`, ohne Autoanalyse; `scripts/ghidra/SeedIl2Cpp.java` legt Funktionen aus `script.json` an, Analyse danach).
+  Ergebnis: 166.095 Funktionen, Seeding 43 s (100.685 neu angelegt), Analyse 1692 s, 0 Fehler. Heap 8G über `GHIDRA_HEADLESS_MAXMEM`.
+- `scripts/ghidra/ExportDecompiled.java`: 394 Funktionen in 15 Klassen nach `work/decomp/<Klasse>.c` (PlayerWork, Dpr.NX.SaveSystem, SaveData-Typen). Größte Datei `PlayerWork.c` (250 KB).
+- Kernfunktionen: `PlayerWork$$SaveAsync` ruft `PlayerWork$$DataSave`, `LoadAsync` ruft `PlayerPrefsProvider<PlayerWork>.Load`, `LoadBytes<PlayerWork.SaveData>` kopiert das 0x7b8-Byte-Struct. `VerifySaveData` (0x2deba00) ist der nächste Anknüpfungspunkt für Prüfsumme/Validierung.
+- Ein `SaveManager` existiert nicht.
+
+## AssetRipper-Export (erledigt)
+- `scripts/assetripper_export.py --input work/ripper/in` (Symlinks nur auf `exefs` und `romfs`), Ausgabe `work/ripper/out/ExportedProject/Assets`.
+
+## Unity-Editor
+- `brew install --cask unity-hub`; Editor per Hub-CLI: `Unity Hub -- --headless install --version 2019.4.27f1 --changeset 23dc10685eb4 --architecture x86_64` (Intel, Rosetta). Beim Start der Hub-GUI erscheint ein Login-Fenster; der CLI-Download braucht es nicht. Lizenzaktivierung folgt erst beim Öffnen des Editors.
