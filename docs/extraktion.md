@@ -34,3 +34,9 @@ Hinweis: hactool gibt bei unbekannten Schlüsselnamen Warnungen mit Schlüsselwe
 ## Ghidra
 - Import von `main.elf` mit 2G Heap schlug fehl (OutOfMemoryError). Jetzt 8G, Analyzer "GCC Exception Handlers" aus, Timeout 60 min (`~/.copilot/mcp-config.json`).
 - Ghidra-/REA-Läufe laufen künftig über einen Hintergrund-Subagenten.
+
+## Ghidra-Import (erledigt, via REA-Subagent)
+- `work/elf/main.elf`: Image Base `0x100000`, 30 Segmente, 55.357 Prozeduren, 31.224 Strings. Unity IL2CPP (Mar 1 2022), Editor 2019.4.27f1, Assembly-CSharp 1.6.28.12450.
+- Evidence-Bundle: `work/rea/main.elf.evidence.json`.
+- **Adressen:** Il2CppDumper-Adressen sind relativ zu 0, in Ghidra `+0x100000`.
+- Ein Massen-Rename über MCP ist unpraktisch (~100.000 Methoden). Stattdessen: `scripts/il2cpp_lookup.py '<regex>'` liefert Ghidra-Adressen, REA benennt gezielt.
