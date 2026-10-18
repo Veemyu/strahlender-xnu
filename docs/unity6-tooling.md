@@ -21,3 +21,10 @@
 - Start der App: Engine 6000.3.26f1, Metal-Gerät Apple M1 Pro, läuft stabil.
 - Xcode 26.0.1 liegt in `/Applications/Xcode.app`, das iPhoneOS-26.0-SDK wird mit `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` gefunden. `xcode-select` zeigt weiter auf die Command Line Tools (Umstellen braucht Admin).
 - iOS: Apple-ID (kostenloses Team) muss noch in Xcode hinzugefügt werden (`security find-identity -v -p codesigning` zeigt bisher 0 Identitäten). Ohne bezahltes Team: Profil 7 Tage, kein `.ipa` für andere; ob der Entitlement „Increased Memory Limit“ verfügbar ist, ist offen.
+
+## Erster iOS/iPadOS-Build (2026-10-18)
+- Leerer iOS-Build (IL2CPP, Xcode-Projekt) über das MCP-Tool `build`: **Succeeded**, 24,5 s, 0 Fehler. Das Projekt ist auf „Automatically manage signing“ gestellt.
+- In Xcode 26 gebaut, signiert und auf ein **iPad Pro 12,9" (6. Generation, M2, iPadOS 26.4.2)** installiert, mit kostenlosem Team. `devicectl` listet die App (`xnu-m0`). Entwicklermodus aktiv, Entwicklerprofil am Gerät vertraut.
+- Bauwarnungen (Unity-generierter Code, ignorierbar): veraltete lproj-Ordner, „Update to recommended settings“, deprecated APIs (`useCVTextureCache`, `SecTrustGetCertificateAtIndex`, Sensoren, `controllerPausedHandler`). Das Xcode-Projekt wird bei jedem Unity-Build neu erzeugt, Änderungen daran gehen verloren.
+- Signaturablauf: Xcode legt das Zertifikat selbst an (Apple Development, Schlüsselbund). `security find-identity -v -p codesigning` zeigt danach 1 gültige Identität. Der Zugriff von `codesign` auf den Schlüssel wurde freigegeben. Die Team-ID gehört nicht ins Repo.
+- Wiederholung per CLI (Idee, ungetestet): `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -destination 'id=<UDID>' -allowProvisioningUpdates` und `xcrun devicectl device install app`. 
