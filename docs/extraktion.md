@@ -44,3 +44,9 @@ Hinweis: hactool gibt bei unbekannten Schlüsselnamen Warnungen mit Schlüsselwe
 ## nx2elf-Patch (Section-Header)
 - nx2elf setzt `.text` nur bis `.plt` (0x1732f98). Der IL2CPP-Spielcode liegt dahinter, aber noch im `R E`-Segment (bis 0x2cf6a30). Ghidra legte dort einen nicht ausführbaren Block an, die Funktionen fehlten (z. B. `PlayerWork$$SaveAsync`).
 - Workaround: Kopie `work/elf/main.patched.elf`, in der nur `.plt` `sh_size` auf `0x15c3a98` verlängert ist (4 Byte Unterschied zu `main.elf`). Das Original bleibt erhalten.
+
+## Ghidra mit gepatchtem ELF (erledigt)
+- `work/elf/main.patched.elf`: 96.450 Prozeduren (vorher 55.357), 31.280 Strings. Evidence: `work/rea/main.patched.evidence.json`.
+- Bestätigt: Il2CppDumper-Adresse + 0x100000 ergibt Funktionsanfänge (`PlayerWork$$SaveAsync` 0x2ded680, `AutoSave` 0x2df60f0, `LoadBytes<SaveData>` 0x1b8bf60). `LoadBytes` kopiert ein 0x7b8-Byte-Struct (Save-Daten).
+- Lücke: `PlayerWork$$LoadAsync` (0x2ded780) hat keine Funktion, weil Ghidra ohne eingehende Referenzen keine anlegt. IL2CPP-Methoden werden über Funktionszeiger-Tabellen aufgerufen. Ein Skript müsste Funktionen an allen Adressen aus `script.json` anlegen.
+- REA-Sitzungs-Annotationen (Namen) sind nur in der Sitzung und im Evidence-Bundle, nicht dauerhaft.
