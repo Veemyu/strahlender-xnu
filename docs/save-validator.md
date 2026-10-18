@@ -32,3 +32,15 @@ python3 -m unittest discover -s scripts/tests -v
 |---|---|---|---|---|
 | `SaveData.bin` | 52 (0x34) | 979108 (0xEF0A4) | ja | ja |
 | `Backup.bin` | 52 (0x34) | 979108 (0xEF0A4) | ja | ja |
+
+## C#-Portierung (`unity/Assets/Scripts/Save`, Assembly `Xnu.Save`)
+- Gleiche Logik als reine C#-Klassen ohne UnityEngine-Abhängigkeit (netstandard2.1, `System.Security.Cryptography.MD5`):
+  `SaveLayout` (Konstanten, Größentabelle, Feldtabelle mit Name/Offset/Größe/Typ), `SaveValidator` (`ReadHeader`, `ExpectedSize`,
+  `ComputeHash`, `StoredHash`, `VerifyHash`, `Validate` mit `SaveValidationResult` inkl. Fehlerliste) und `SaveWriter.FixHash`.
+- `FixHash` arbeitet auf Byte-Arrays und gibt eine neue Kopie zurück; Eingaben werden nie verändert. Datei-I/O ist bewusst nicht enthalten.
+- Fehlerverhalten wie in Python: `SaveFormatException` bei zu kurzer, abgeschnittener oder unbekannter Version; `Validate` wirft nie,
+  sondern sammelt Befunde (`HashValid`/`SizeOk` sind `null`, wenn nicht prüfbar).
+- Tests: `unity/Assets/Tests/EditMode/SaveValidatorTests.cs` (NUnit, nur synthetische Bytes, spiegelt die Python-Tests). Außerhalb von Unity
+  wurden sie in einem Wegwerf-Projekt mit `dotnet test` ausgeführt (21 Tests grün); zusätzlich stimmen Version, Größe, Hash-Status und
+  `FixHash`-Ergebnis auf synthetischen Fällen mit der Python-Implementierung überein, und die lokalen `SaveData.bin`/`Backup.bin` werden
+  lesend als gültig erkannt (Version 0x34, 979108 Byte). Der Lauf im Unity-Editor (`run_tests`) steht noch aus.
