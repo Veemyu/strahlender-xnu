@@ -40,3 +40,7 @@ Hinweis: hactool gibt bei unbekannten Schlüsselnamen Warnungen mit Schlüsselwe
 - Evidence-Bundle: `work/rea/main.elf.evidence.json`.
 - **Adressen:** Il2CppDumper-Adressen sind relativ zu 0, in Ghidra `+0x100000`.
 - Ein Massen-Rename über MCP ist unpraktisch (~100.000 Methoden). Stattdessen: `scripts/il2cpp_lookup.py '<regex>'` liefert Ghidra-Adressen, REA benennt gezielt.
+
+## nx2elf-Patch (Section-Header)
+- nx2elf setzt `.text` nur bis `.plt` (0x1732f98). Der IL2CPP-Spielcode liegt dahinter, aber noch im `R E`-Segment (bis 0x2cf6a30). Ghidra legte dort einen nicht ausführbaren Block an, die Funktionen fehlten (z. B. `PlayerWork$$SaveAsync`).
+- Workaround: Kopie `work/elf/main.patched.elf`, in der nur `.plt` `sh_size` auf `0x15c3a98` verlängert ist (4 Byte Unterschied zu `main.elf`). Das Original bleibt erhalten.
