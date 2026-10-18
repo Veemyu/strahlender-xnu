@@ -24,7 +24,7 @@ Einstiegspunkt (geplant): `scripts/build_all.sh --xci <Datei> --nsp <Datei> --ke
 
 ## Videos (Entscheidungsvorschlag)
 - 18 Dateien, VP8 in WebM (`docs/daten-inventar.md`). Ob Unitys VideoPlayer auf macOS und iOS VP8 abspielt, ist **ungeprüft**. Falls nicht, wandelt der Build sie um.
-- Zielformat: H.265 (HEVC) oder H.264, so verlustarm wie sinnvoll. Eine Neukodierung einer bereits verlustbehafteten VP8-Quelle ist nie ganz verlustfrei. Ein echter Lossless-Modus wäre sehr groß. Praktisch: sehr hohe Qualität (CRF-Bereich), danach Größe und Bildvergleich messen.
+- Zielformat: **H.265 (HEVC, `hvc1`, `.mp4`)**, ausdrücklich ohne H.264-Fallback (Nutzerentscheidung: alle Zielgeräte dekodieren HEVC in Hardware, das ist hier eine Annahme und nicht gemessen). Eine Neukodierung einer bereits verlustbehafteten VP8-Quelle ist nie ganz verlustfrei. Ein echter Lossless-Modus wäre sehr groß. Praktisch: sehr hohe Qualität (CRF-Bereich), danach Größe und Bildvergleich messen.
 - `ffmpeg 9.0.2` ist per Homebrew vorhanden.
 
 ## Auslieferungsform (Nutzervorgabe 2026-10-18)
