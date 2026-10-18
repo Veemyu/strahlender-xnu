@@ -27,5 +27,10 @@ Einstiegspunkt (geplant): `scripts/build_all.sh --xci <Datei> --nsp <Datei> --ke
 - Zielformat: H.265 (HEVC) oder H.264, so verlustarm wie sinnvoll. Eine Neukodierung einer bereits verlustbehafteten VP8-Quelle ist nie ganz verlustfrei. Ein echter Lossless-Modus wäre sehr groß. Praktisch: sehr hohe Qualität (CRF-Bereich), danach Größe und Bildvergleich messen.
 - `ffmpeg 9.0.2` ist per Homebrew vorhanden.
 
+## Auslieferungsform (Nutzervorgabe 2026-10-18)
+- **Primär: vorgepacktes Binary.** Alles wird auf dem Entwicklungsrechner mit Unity und Xcode vorgebaut. Auf dem Zielgerät (iPad/Mac) muss nichts mehr importiert oder ausgewählt werden. Die Spieldaten (umgewandelte Bundles, Videos, Audio) liegen fertig in der App. Das passt zum Modell „selbst gebaut, nichts wird weitergegeben“.
+- **Optional später: Core-App plus Import** (Erststart-Assistent, der eine XCI/NSP verarbeitet). Das spart Build-Zeit und App-Größe, ist aber mehr Arbeit auf dem Gerät (Entschlüsseln, Entpacken, Speicher).
+- **Zu prüfen beim vorgepackten Weg** (nicht belegt): App-Größe von mehreren GB bei der Installation auf dem iPad per Xcode, Ladezeiten der Bundles aus dem App-Paket, Speicherplatz auf dem Gerät, Verhalten mit einem kostenlosen Team (Profil 7 Tage). Die Lesepfade im Code (`GameDataPaths`) bleiben konfigurierbar, damit beide Formen möglich sind.
+
 ## Rechtliche Einordnung
 Das ist keine Rechtsberatung. Das Muster „Repo plus eigener Dump“ vermeidet die Weitergabe fremder Inhalte durch uns. Die gebauten Binaries sind ausdrücklich nicht zur Weitergabe bestimmt. Vor einer öffentlichen Veröffentlichung sollte die Rechtslage geklärt werden.
