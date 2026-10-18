@@ -4,6 +4,8 @@ Ryujinx/
 work/
 tools/
 research/
+shader_translator/build/
+shader_translator/__pycache__/
 *.keys
 *.xci
 *.nsp
