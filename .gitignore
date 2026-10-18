@@ -3,6 +3,7 @@ nsp/
 Ryujinx/
 work/
 tools/
+research/
 *.keys
 *.xci
 *.nsp
