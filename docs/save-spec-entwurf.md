@@ -158,3 +158,7 @@ Das verwaltete `PlayerWork.SaveData` ist 0x7B8 Byte groß (letztes Feld 0x7A8 + 
 - `scripts/ghidra/ExportDecompiled.java` (Regex → .c je Klasse), `ScanScalars.java` (Skalar-Operanden suchen), `DumpRange.java` (Listing eines Bereichs),
   `DecompAt.java` (Funktion im Speicher anlegen und dekompilieren; mit `-readOnly` ändert es das Projekt nicht).
 - `scripts/save_layout.py` (dump.cs ↔ Metadaten-Felder, 105 088 Felder stimmen überein), `scripts/save_toplevel.py` (native Top-Level-Offsets aus der dekompilierten Marshal-Routine).
+
+## 8. Nachtrag: Pokémon-Slots
+Slotlayout (344 Byte), Kodierung (LCG-XOR, 16-Bit-Prüfsumme, Blockmischung), alle Felder und die Berechnung der Statuswerte stehen in `docs/pokepara-spezifikation.md`
+(C#: `unity/Assets/Scripts/PokePara`); damit sind die in Abschnitt 4 („Pokémon-Slots“) und 6 als offen markierten Punkte zur Pokémon-Kodierung geklärt. Am lokalen Save stimmen alle 1206 Slot-Prüfsummen.

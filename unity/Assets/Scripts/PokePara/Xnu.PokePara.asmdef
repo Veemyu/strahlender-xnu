@@ -1,0 +1,10 @@
+{
+  "name": "Xnu.PokePara",
+  "rootNamespace": "Xnu.PokePara",
+  "references": ["Xnu.Save", "Xnu.Battle", "Xnu.Data"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "noEngineReferences": true,
+  "autoReferenced": true
+}
