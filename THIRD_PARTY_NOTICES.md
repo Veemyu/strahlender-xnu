@@ -9,6 +9,7 @@ Dieses Repository enthält eigenen Code und folgende übernommene Teile. Das Rep
 - **Urheber/Lizenz:** Copyright (c) 2026 Peiikai, MIT-Lizenz. Der Lizenztext liegt unverändert in `shader_translator/LICENSE-LASRecomp`.
 - **Hinweis des Originals:** Das README nennt den Code „almost exclusively“ KI-erstellt (Claude über Claude Code), von einem Menschen gelenkt und geprüft.
 - **Weitere Quellen darin (nur Kommentare des Originals, keine Dateien von dort):** Feldlayouts nach den Decodern des Ryujinx-Projekts und der envytools-Dokumentation (Lizenzen dieser Projekte hier nicht geprüft). Welche Teile des Originals daraus stammen, ist nicht geklärt.
+- **Eigene Ergänzungen (Teil 2, kein Fremdcode):** TEX.B, HSETP2 (cbuf/imm), Ressourcenkarte, Fast-Math-Pragmas. Die Feldlage von TEX.B und HSETP2 habe ich aus dem Gedächtnis nach dem Aufbau der Ryujinx-Decoder-Tabellen angesetzt und ausschließlich numerisch gegen die Ryujinx-Referenz geprüft (`scripts/shader_fidelity.py`); es wurde kein Ryujinx-Quelltext kopiert oder gelesen.
 
 ## Nicht übernommen
 

@@ -15,8 +15,10 @@ SCHED = 0x001f8000fc0007ff
 MOV = 0x5c9807800ff70003
 EXIT = 0xe30000000007000f
 BRA_SELF = 0xe2400fffff87000f
-HSETP2_CBUF = 0x7e85038c0457ff07
+UNKNOWN_OP = 0xfee0000000070001
 BINDLESS = 0xdeb80001a0b70008
+MOV_C2_168_R11 = 0x4c98078805a7000b
+LOP_OR_C2_568_R11 = 0x4c47020815a70b0b
 
 
 def blob(words, graphics=True):
@@ -38,7 +40,9 @@ def unity_program(stage, payload):
 
 
 OK_CODE = [SCHED, MOV, EXIT, BRA_SELF]
-BAD_CODE = [SCHED, HSETP2_CBUF, BINDLESS, EXIT, SCHED, BRA_SELF, 0, 0]
+BAD_CODE = [SCHED, UNKNOWN_OP, BINDLESS, EXIT, SCHED, BRA_SELF, 0, 0]  # an unknown opcode and a TEX.B without handle
+TEX_CODE = [SCHED, MOV_C2_168_R11, LOP_OR_C2_568_R11, BINDLESS, SCHED, EXIT, 0, BRA_SELF]
+CONSTANTS = struct.pack("<4f", 1.0, 2.0, 3.0, 4.0)
 
 
 def run(*args, **kw):
@@ -55,6 +59,8 @@ class Cli(unittest.TestCase):
         cls.dir = Path(cls.tmp.name)
         (cls.dir / "ok.bin").write_bytes(blob(OK_CODE))
         (cls.dir / "bad.bin").write_bytes(blob(BAD_CODE))
+        tex = blob(TEX_CODE)
+        (cls.dir / "tex.bin").write_bytes(tex + b"\0" * (0x100 - len(tex)) + CONSTANTS)  # compiler constants behind the code
         (cls.dir / "ok_cs.bin").write_bytes(blob(OK_CODE, graphics=False))
         (cls.dir / "unity_vs.bin").write_bytes(unity_program(0, blob(OK_CODE)))
         (cls.dir / "unity_fs_bad.bin").write_bytes(unity_program(1, blob(BAD_CODE)))
@@ -129,10 +135,10 @@ class Cli(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         data = json.loads(r.stdout)
         self.assertFalse(data["translatable"])
-        self.assertEqual([i["name"] for i in data["unknownOpcodes"]], ["op7e8"])
-        self.assertEqual(data["unknownOpcodes"][0]["bits"], "0x7e8")
-        self.assertEqual(data["unknownOpcodes"][0]["example"], "0x7e85038c0457ff07")
-        self.assertEqual([i["name"] for i in data["unsupportedForms"]], ["bindless tex"])
+        self.assertEqual([i["name"] for i in data["unknownOpcodes"]], ["opfee"])
+        self.assertEqual(data["unknownOpcodes"][0]["bits"], "0xfee")
+        self.assertEqual(data["unknownOpcodes"][0]["example"], "0xfee0000000070001")
+        self.assertEqual([i["name"] for i in data["unsupportedForms"]], ["bindless handle not from cbuf words"])
         self.assertGreaterEqual(data["us"], 0)
 
     def test_survey_clean(self):
@@ -171,6 +177,36 @@ class Cli(unittest.TestCase):
         self.assertIn("out.pos.y = -out.pos.y;", r.stdout)
         self.assertIn("out.pos.z = (out.pos.z + out.pos.w) * 0.5f;", r.stdout)
         self.assertIn("// pc ", r.stdout)
+
+    def test_math_pragmas(self):
+        r = run("--stage", "vs", self.p("ok.bin"))
+        self.assertTrue(r.stdout.startswith("#pragma METAL fp math_mode(safe)\n#pragma METAL fp contract(off)\n"))
+        r = run("--stage", "vs", "--fast-math", self.p("ok.bin"))
+        self.assertNotIn("#pragma", r.stdout)
+
+    def test_resource_map(self):
+        info = self.p("tex.json")
+        cbuf1 = self.p("tex.cbuf1")
+        r = run("--stage", "fs", "--info", info, "--cbuf1", cbuf1, "-o", self.p("tex.metal"), self.p("tex.bin"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        data = json.loads(info.read_text())
+        self.assertEqual(data["metal"]["entry"], "main0")
+        tex = data["textures"]
+        self.assertEqual(len(tex), 1)
+        self.assertEqual({k: tex[0][k] for k in ("slot", "metalTexture", "metalSampler", "bindless", "handleCbuf", "textureWordOffset",
+                                                 "samplerWordOffset", "textureTableIndex", "samplerTableIndex", "typeName")},
+                         {"slot": 0, "metalTexture": 0, "metalSampler": 0, "bindless": True, "handleCbuf": 2, "textureWordOffset": 0x568,
+                          "samplerWordOffset": 0x168, "textureTableIndex": 0, "samplerTableIndex": 0, "typeName": "2d"})
+        cb = {c["index"]: c for c in data["constantBuffers"]}
+        self.assertEqual(list(cb), [2])
+        self.assertEqual((cb[2]["metalBuffer"], cb[2]["staticMinOffset"], cb[2]["staticEndOffset"]), (2, 0x168, 0x56C))
+        self.assertFalse(cb[2]["dynamic"])
+        self.assertEqual(data["compilerConstants"]["blobOffset"], 0x100)
+        self.assertEqual(data["compilerConstants"]["bytesAvailable"], len(CONSTANTS))
+        self.assertEqual(cbuf1.read_bytes(), CONSTANTS)
+        self.assertIn("texture2d<float> t0 [[texture(0)]]", self.p("tex.metal").read_text())
+        for key in ("inputs", "outputs", "cbufSize", "attrMask", "outMask"):  # earlier keys stay
+            self.assertIn(key, data)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,8 @@ typedef struct {
     uint8_t glsl;           // emit Vulkan GLSL (see the contract above) instead of MSL
     bool no_rscale;         // XNU: plain window coordinates / texture sizes, never read the resolution-scale table
     bool annotate;          // XNU: comment every instruction with its pc and 64-bit word (was LARECOMP_SAVE_MSL)
+    bool fast_math;         // XNU: MSL without the pragmas that disable fast math and FMA contraction (original behaviour)
+    bool half_compat;       // XNU: Ryujinx-compatible half precision: no rounding to fp16 between half operations (see translate.c hstore)
 } ShaderKey;
 
 typedef struct {
@@ -56,6 +58,12 @@ typedef struct {
     uint8_t type;            // TEXTYPE_*
     bool shadow, is_array, is_image, bindless;
     uint32_t bindless_cbuf, bindless_offset;
+    // XNU: TEX.B. The handle register is built from one or two words of a constant buffer (handle = word0 | word1,
+    // NVN: texture id in the low 20 bits, sampler id in the upper 12). bindless_cbuf is the buffer, bindless_offset
+    // the byte offset of the word that is OR-ed in last (texture table), bindless_sampler_offset the word it is
+    // combined with (sampler table). bindless_has_sampler is false when the handle is a single word.
+    bool bindless_has_sampler;
+    uint32_t bindless_sampler_offset;
 } ShaderTexture;
 
 typedef struct {
@@ -77,6 +85,13 @@ typedef struct {
     bool uses_gmem_store;   // writes global memory (STG)
     bool uses_rscale;       // reads the resolution-scale table (fragment/compute buffer 18): float4 [0] = render
                             // target scale, [1 + i] = allocation scale of texture i
+    // XNU: data for the resource map (maxwell2msl --info): statically addressed byte range of each cbuf (end = one past
+    // the last byte read; min > end when only register-indexed reads exist), component masks (bit i = .xyzw) of the
+    // stage inputs / outputs per generic attribute, and the fragment inputs with flat interpolation.
+    uint32_t cbuf_min_off[18], cbuf_end_off[18];
+    uint32_t cbuf1_blob_offset;  // XNU: where the compiler constants (cbuf 1) start in the blob passed to the translator
+    uint8_t in_comp[32], out_comp[32];
+    uint32_t flat_mask, noperspective_mask;
     uint32_t local_mem;     // bytes of local memory
     uint32_t num_insts;
     char error[256];        // set when translation fails

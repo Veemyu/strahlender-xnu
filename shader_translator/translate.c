@@ -52,6 +52,9 @@ static void sp(Str *s, const char *fmt, ...) {
     s->len += n;
 }
 
+typedef struct { uint8_t kind; uint8_t cb[2]; uint32_t off[2]; } Prov;  // XNU: see prov_track()
+enum { PV_UNKNOWN = 0, PV_ONE = 1, PV_PAIR = 2, PV_ZERO = 3 };
+
 typedef struct {
     const uint8_t *code;   // first instruction group
     size_t ninsts;         // number of 8-byte words to scan
@@ -72,6 +75,9 @@ typedef struct {
     uint32_t omap_target, omap_depth;
     int tex_slot[8192];           // texture index -> Metal slot + 1
     bool tex_weak[64];            // slot type only guessed (from a size query): the next sample decides
+    // XNU: provenance of register values that are built from constant buffer words (bindless texture handles, TEX.B)
+    Prov prov[256];  // kind: 0 unknown, 1 one word, 2 word0 | word1, 3 zero
+    uint8_t hs_used[256];  // XNU: registers with an unrounded half shadow (key->half_compat)
     bool fail;
     bool branchy;  // program uses the pc state machine
     int ipa_mode;  // interpolation mode of the IPA being translated (-1 for plain loads)
@@ -164,6 +170,12 @@ static const char *pred(Ctx *c, int p, bool neg, char *buf) {
 #define P(p, n) pred(c, (p), (n), alloca(16))
 
 static const char *cbuf_ref(Ctx *c, int idx, int64_t off, const char *dyn, char *buf) {
+    // XNU: record the statically addressed byte range of each cbuf for the resource map
+    if (!dyn && idx >= 0 && idx < 18 && off >= 0) {
+        uint32_t o = (uint32_t)off;
+        if (c->info->cbuf_end_off[idx] == 0 || o < c->info->cbuf_min_off[idx]) c->info->cbuf_min_off[idx] = o;
+        if (o + 4 > c->info->cbuf_end_off[idx]) c->info->cbuf_end_off[idx] = o + 4;
+    }
     c->info->cbuf_mask |= 1u << idx;
     if (off + 16 > (int64_t)c->info->cbuf_size[idx]) c->info->cbuf_size[idx] = (uint32_t)((off + 16 + 255) & ~255);
     if (dyn) c->info->cbuf_dynamic |= 1u << idx;
@@ -271,6 +283,7 @@ static void attr_load(Ctx *c, int dst, uint32_t addr, const char *idx) {
             int a = (addr - 0x80) >> 4, comp = (addr >> 2) & 3;
             c->in_attr_mask |= 1u << a;
             c->vs_in_comp[a] |= 1u << comp;
+            c->info->in_comp[a] |= (uint8_t)(1u << comp);  // XNU
             int kind = c->key ? c->key->attr_kind[a] : 0;
             if (kind == 0) sprintf(e, "as_type<uint>(in.a%d[%d])", a, comp);
             else sprintf(e, "as_type<uint>(in.a%d[%d])", a, comp);
@@ -300,6 +313,7 @@ static void attr_load(Ctx *c, int dst, uint32_t addr, const char *idx) {
                 strcpy(e, comp == 3 ? "0x3f800000u" : "0u");  // not provided by the vertex shader
             } else {
                 c->in_attr_mask |= 1u << a;
+                c->info->in_comp[a] |= (uint8_t)(1u << comp);  // XNU
                 // IPA "pass" yields attr/w (the shader multiplies by w itself); Metal gives attr. "multiply" is the
                 // pass value times a register - usually w (from the pass of position w: Metal's attr again), but a
                 // shader may pass its own (the Mysterious Woods mist: 1/(v4.w * pos.w), a projective screen lookup)
@@ -333,6 +347,7 @@ static void attr_store(Ctx *c, int src, uint32_t addr) {
     } else if (addr >= 0x80 && addr < 0x280) {
         int a = (addr - 0x80) >> 4;
         c->out_attr_mask |= 1u << a;
+        c->info->out_comp[a] |= (uint8_t)(1u << ((addr >> 2) & 3));  // XNU
         sp(&c->body, "    out.v%d[%d] = as_type<float>(%s);\n", a, (addr >> 2) & 3, v);
     } else if (addr == 0x6C) {
         c->info->writes_point_size = true;
@@ -348,9 +363,17 @@ static void attr_store(Ctx *c, int src, uint32_t addr) {
 // Swizzle: 0 H1_H0 (both halves), 1 F32 (one f32 used for both lanes), 2 H0_H0, 3 H1_H1.
 // Merge: 0 H1_H0 (pack both), 1 F32 (lane 0 as f32), 2 MRG_H0 (replace low half), 3 MRG_H1 (replace high half).
 static const char *hsrc(Ctx *c, const char *v, int swz, bool neg, bool abs_, char *buf) {
-    (void)c;
     char t[300];
-    sprintf(t, "hx(%s, %du)", v, swz);
+    int n = 0;
+    const char *p = v + 1;
+    bool is_reg = v[0] == 'r' && *p >= '0' && *p <= '9';
+    for (; is_reg && *p; p++) { if (*p < '0' || *p > '9') is_reg = false; else n = n * 10 + (*p - '0'); }
+    if (c->key && c->key->half_compat && is_reg && n < 255 && swz != 1) {  // XNU: unrounded shadow, see hstore()
+        c->hs_used[n] = 1;
+        sprintf(t, "hxs(%s, hs%d, hvf%d, %du)", v, n, n, swz);
+    } else {
+        sprintf(t, "hx(%s, %du)", v, swz);
+    }
     if (abs_ && neg) sprintf(buf, "(-abs(%s))", t);
     else if (abs_) sprintf(buf, "abs(%s)", t);
     else if (neg) sprintf(buf, "(-%s)", t);
@@ -364,8 +387,48 @@ static void hstore(Ctx *c, int d, const char *expr, int merge, bool sat) {
     if (sat) sprintf(e, "saturate(%s)", expr); else strcpy(e, expr);
     if (d == RZ) return;
     c->reg_used[d] = 1;
+    if (c->key && c->key->half_compat && merge != 1) {
+        // XNU: Ryujinx-compatible mode. Ryujinx removes the pack/unpack pair between two half operations, so the value
+        // is never rounded to fp16 in between. A float2 shadow (hs<d>, valid flag hvf<d>) keeps the unrounded lanes for
+        // later half reads of the register; the packed (rounded) register stays authoritative for every other reader.
+        // Any other write to the register resets the flag (pass in finish_half_compat()).
+        c->hs_used[d] = 1;
+        sp(&c->body, "    { float2 hv_ = %s; hs%d = hmerge(hs%d, hv_, %du, hvf%d, r%d); hvf%d = true; r%d = hpack(hv_, %du, r%d); }\n",
+           e, d, d, merge, d, d, d, d, merge, d);
+        return;
+    }
     sprintf(t, "hpack(%s, %du, r%d)", e, merge, d);
     set_reg(c, d, t);
+}
+
+// XNU: half_compat: every statement `rN = ...;` of the body (except the shadow updates above, which start with a
+// brace) writes the register without a half shadow, so its shadow becomes invalid.
+static void finish_half_compat(Ctx *c) {
+    if (!c->body.buf) return;
+    Str out = {0};
+    const char *p = c->body.buf;
+    while (*p) {
+        const char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+        const char *q = p;
+        while (q < p + len && *q == ' ') q++;
+        int n = -1;
+        if (q < p + len && *q == 'r' && q + 1 < p + len && q[1] >= '0' && q[1] <= '9') {
+            const char *r = q + 1;
+            n = 0;
+            while (r < p + len && *r >= '0' && *r <= '9') n = n * 10 + (*r++ - '0');
+            if (!(r + 2 < p + len && r[0] == ' ' && r[1] == '=' && r[2] == ' ')) n = -1;
+        }
+        if (n >= 0 && n < 255 && c->hs_used[n] && len > 0 && p[len - 1] == ';') {
+            sp(&out, "%.*s hvf%d = false;\n", (int)len, p, n);
+        } else {
+            sp(&out, "%.*s\n", (int)len, p);
+        }
+        if (!nl) break;
+        p = nl + 1;
+    }
+    free(c->body.buf);
+    c->body = out;
 }
 
 // immediate halves: 9 bits of each half's top (the low 6 mantissa bits are zero) plus separate signs
@@ -460,12 +523,35 @@ static bool emit_half(Ctx *c, uint64_t w) {
         hstore(c, d, t, merge, sat);
         return true;
     }
-    // ---- HSETP2 / HSET2 (reg forms)
-    if ((op & 0xfff8) == 0x5d20 || (op & 0xfff8) == 0x5d18) {
-        bool setp = (op & 0xfff8) == 0x5d20;
+    // ---- HSETP2 / HSET2 (reg forms) and HSETP2 with a constant buffer / immediate operand B
+    // XNU: the cbuf (0x7e80/0x7f80) and immediate (0x7e00/0x7f00) forms of HSETP2 were missing. Their fields sit higher
+    // than in the register form because bits 20..38 carry the operand: compare 49..52, HAND 53 (reg form: 35..38, 49),
+    // B negate 56 / abs 54 (cbuf form only; the immediate carries its own signs, see himm()), B read as one f32 (cbuf)
+    // or as two packed halves (imm), like HADD2/HMUL2. Field positions follow the layout of the HADD2/HMUL2 forms of the
+    // same encoding family and were confirmed numerically against the Ryujinx reference (scripts/shader_fidelity.py:
+    // 437 + 179 shaders use these forms).
+    int sform = -1;  // 0 reg, 1 cbuf, 2 imm
+    bool setp = false;
+    if ((op & 0xfff8) == 0x5d20) { setp = true; sform = 0; }
+    else if ((op & 0xfff8) == 0x5d18) sform = 0;
+    else if ((op & 0xfe80) == 0x7e80) { setp = true; sform = 1; }
+    else if ((op & 0xfe80) == 0x7e00) { setp = true; sform = 2; }
+    if (sform >= 0) {
         const char *x = HS(R(a), (int)bits(w, 47, 2), bits(w, 43, 1), bits(w, 44, 1));
-        const char *y = HS(R((int)bits(w, 20, 8)), (int)bits(w, 28, 2), bits(w, 31, 1), bits(w, 30, 1));
-        int cop = (int)bits(w, 35, 4), bop = (int)bits(w, 45, 2);
+        const char *y;
+        int cop, hand_bit;
+        if (sform == 0) {
+            y = HS(R((int)bits(w, 20, 8)), (int)bits(w, 28, 2), bits(w, 31, 1), bits(w, 30, 1));
+            cop = (int)bits(w, 35, 4); hand_bit = 49;
+        } else if (sform == 1) {
+            y = HS(cbuf_ref(c, (int)bits(w, 34, 5), bits(w, 20, 14) * 4, NULL, cb), 1, bits(w, 56, 1), bits(w, 54, 1));
+            cop = (int)bits(w, 49, 4); hand_bit = 53;
+        } else {
+            sprintf(ib, "0x%08xu", himm(w));
+            y = HS(ib, 0, false, false);
+            cop = (int)bits(w, 49, 4); hand_bit = 53;
+        }
+        int bop = (int)bits(w, 45, 2);
         const char *pp = P((int)bits(w, 39, 3), bits(w, 42, 1));
         char lx[512], ly[512];
         sp(&c->body, "    { float2 hx_ = %s, hy_ = %s; bool pp = %s;\n", x, y, pp);
@@ -474,7 +560,7 @@ static bool emit_half(Ctx *c, uint64_t w) {
         sp(&c->body, "      bool l = %s, h = %s;\n", lx, ly);
         if (setp) {
             int pa = (int)bits(w, 3, 3), pb = (int)bits(w, 0, 3);
-            bool hand = bits(w, 49, 1);
+            bool hand = bits(w, hand_bit, 1);
             if (hand) sp(&c->body, "      l = l && h; h = !l;\n");
             if (pa != PT) { c->pred_used[pa] = 1; sp(&c->body, "      p%d = l %s pp;\n", pa, bool_op(bop)); }
             if (pb != PT) { c->pred_used[pb] = 1; sp(&c->body, "      p%d = h %s pp;\n", pb, bool_op(bop)); }
@@ -494,6 +580,83 @@ static bool emit_half(Ctx *c, uint64_t w) {
 }
 
 // ------------------------------------------------------------------ textures
+// XNU: provenance of register values built from constant buffer words. Unity's NVN compiler builds the TEX.B handle as
+//   MOV   Rh, c[2][sampler word];   (...)   LOP.OR Rh, Rh, c[2][texture word];
+// so the texture is a fixed pair of cbuf words, known at translation time. prov_track() follows MOV / LOP / LDC forms
+// in translation order; every other write to a register (found in the text emitted for the instruction) resets it.
+static Prov prov_or(Prov a, Prov b) {
+    Prov u = {0};
+    if (a.kind == PV_ZERO) return b;
+    if (b.kind == PV_ZERO) return a;
+    if (a.kind == PV_ONE && b.kind == PV_ONE) {
+        u.kind = PV_PAIR;
+        u.cb[0] = a.cb[0]; u.off[0] = a.off[0];
+        u.cb[1] = b.cb[0]; u.off[1] = b.off[0];
+    }
+    return u;
+}
+
+static void prov_track(Ctx *c, uint64_t w, size_t from) {
+    // new provenance of the destination, computed from the state before this instruction
+    int d = (int)bits(w, 0, 8);
+    Prov np = {0};
+    uint64_t top13 = w & 0xfff8000000000000ull;
+    int a = (int)bits(w, 8, 8), bsrc = (int)bits(w, 20, 8);
+    Prov zero = {.kind = PV_ZERO};
+    Prov pa = a == RZ ? zero : c->prov[a];
+    Prov cbw = {.kind = PV_ONE, .cb = {(uint8_t)bits(w, 34, 5), 0}, .off = {(uint32_t)bits(w, 20, 14) * 4, 0}};
+    if (top13 == 0x4c98000000000000ull) np = cbw;                                       // MOV c[][]
+    else if (top13 == 0x5c98000000000000ull) np = bsrc == RZ ? zero : c->prov[bsrc];       // MOV Rb
+    else if (top13 == 0x4c40000000000000ull || top13 == 0x5c40000000000000ull) {          // LOP (cbuf / reg)
+        int op = (int)bits(w, 41, 2);
+        Prov pb = top13 == 0x4c40000000000000ull ? cbw : (bsrc == RZ ? zero : c->prov[bsrc]);
+        if (!bits(w, 39, 1) && !bits(w, 40, 1)) {
+            if (op == 1) np = prov_or(pa, pb);
+            else if (op == 3) np = pb;
+        }
+    } else if (top13 == 0xef90000000000000ull && a == RZ && bits(w, 48, 3) != 5) {       // LDC c[][imm]
+        np.kind = PV_ONE; np.cb[0] = (uint8_t)bits(w, 36, 5); np.off[0] = (uint32_t)bits(w, 20, 16);
+    }
+    const char *b = c->body.buf;
+    for (size_t i = from; b && i < c->body.len; i++) {  // statements of the form "r<N> = ..." write register N
+        if (b[i] != 'r' || (i > from && b[i - 1] != ' ')) continue;
+        size_t j = i + 1;
+        int n = 0;
+        while (b[j] >= '0' && b[j] <= '9' && n < 1000) n = n * 10 + (b[j++] - '0');
+        if (j == i + 1 || n > 254) continue;
+        while (b[j] == ' ') j++;
+        if (b[j] == '=' && b[j + 1] != '=') c->prov[n].kind = PV_UNKNOWN;
+    }
+    if (d != RZ && np.kind != PV_UNKNOWN && bits(w, 16, 4) == PT) c->prov[d] = np;  // a guarded write leaves no usable provenance
+}
+
+// XNU: slot of a bindless texture, identified by the constant buffer words of its handle (see prov_track()).
+static int bindless_slot(Ctx *c, const Prov *pv, int type, bool shadow, bool array) {
+    uint32_t cb = pv->kind == PV_PAIR ? pv->cb[1] : pv->cb[0];
+    uint32_t off = pv->kind == PV_PAIR ? pv->off[1] : pv->off[0];
+    bool smp = pv->kind == PV_PAIR;
+    uint32_t smp_off = smp ? pv->off[0] : 0;
+    if (smp && pv->cb[0] != pv->cb[1]) { fail(c, "bindless handle from two cbufs"); return 0; }
+    for (int s = 0; s < c->info->ntex; s++) {
+        const ShaderTexture *t = &c->info->tex[s];
+        if (t->bindless && t->bindless_cbuf == cb && t->bindless_offset == off && t->bindless_has_sampler == smp &&
+            t->bindless_sampler_offset == smp_off && t->type == type && t->shadow == shadow && t->is_array == array) return s;
+    }
+    if (c->info->ntex >= 31) { fail(c, "too many textures"); return 0; }
+    int s = c->info->ntex++;
+    ShaderTexture *t = &c->info->tex[s];
+    t->bindless = true;
+    t->bindless_cbuf = cb;
+    t->bindless_offset = off;
+    t->bindless_has_sampler = smp;
+    t->bindless_sampler_offset = smp_off;
+    t->handle_offset = off;
+    t->type = (uint8_t)type;
+    t->shadow = shadow;
+    t->is_array = array;
+    return s;
+}
+
 static int tex_slot(Ctx *c, uint32_t index, int type, bool shadow, bool array) {
     if (index >= 8192) return 0;
     if (c->tex_slot[index]) {
@@ -803,13 +966,21 @@ static void emit_tex(Ctx *c, uint64_t w, bool bindless) {
     bool array = bits(w, 28, 1), dc = bits(w, 50, 1), aoffi = bindless ? bits(w, 36, 1) : bits(w, 54, 1);
     uint32_t mask = (uint32_t)bits(w, 31, 4);
     int lod_mode = bindless ? (int)bits(w, 37, 3) : (int)bits(w, 55, 3);  // 0 none, 1 lz, 2 lb, 3 ll, 6 lba, 7 lla
-    if (bindless) { fail(c, "bindless tex"); return; }
+    // XNU: TEX.B. Register b holds the handle (its cbuf words are resolved by prov_track()); the lod / offset /
+    // depth-reference registers follow it. Fields as Ryujinx's InstTexB: dim 28..30, mask 31..34, aoffi 36, lod 37..39,
+    // dc 50.
+    Prov hp = {0};
+    if (bindless) {
+        hp = b == RZ ? hp : c->prov[b];
+        if (hp.kind != PV_ONE && hp.kind != PV_PAIR) { fail(c, "bindless handle not from cbuf words"); return; }
+        b = b + 1;
+    }
     int type = target == 0 ? (array ? TEXTYPE_1D_ARRAY : TEXTYPE_1D)
              : target == 1 ? (array ? TEXTYPE_2D_ARRAY : TEXTYPE_2D)
              : target == 2 ? TEXTYPE_3D
                            : (array ? TEXTYPE_CUBE_ARRAY : TEXTYPE_CUBE);
     int ncoord = target == 0 ? 1 : target == 1 ? 2 : 3;
-    int slot = tex_slot(c, index, type, dc, array);
+    int slot = bindless ? bindless_slot(c, &hp, type, dc, array) : tex_slot(c, index, type, dc, array);
     if (c->glsl) {  // same register layout as below
         char cs[3][40], lay[96], lodv[48], offv[96], drv[48], gcall[4096];
         const char *co[3], *layp = NULL, *lodp = NULL, *offp = NULL, *drp = NULL;
@@ -2038,15 +2209,25 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
         uint32_t pc = (uint32_t)(i * 8);
         if (any_branch && label[i]) sp(&c->body, "  case %uu:\n", pc);
         if (annotate) sp(&c->body, "    // pc %x: %016llx\n", pc, (unsigned long long)((const uint64_t *)code)[i]);
+        size_t body_from = c->body.len;  // XNU: register provenance (TEX.B handles)
         emit_insn(c, ((const uint64_t *)code)[i], pc);
+        prov_track(c, ((const uint64_t *)code)[i], body_from);
         info->num_insts++;
     }
     free(label);
+    // XNU: the compiler constants (hardware cbuf 1) follow the code section, aligned to 0x100 (checked: all 934 shaders
+    // that read cbuf 1 with static offsets have non-zero data there). Reported for the resource map.
+    info->cbuf1_blob_offset = (uint32_t)((((size_t)(code - blob)) + end * 8 + 0xff) & ~(size_t)0xff);
     if (c->fail) { free(c->body.buf); free(c); return info; }
+    if (c->key && c->key->half_compat && !c->glsl) finish_half_compat(c);  // XNU
     if (c->glsl) return glsl_finish(c, any_branch);
 
     // ---------------------------------------------------------- MSL source
     Str s = {0};
+    // XNU: exact arithmetic. Metal's default (fast math, FMA contraction) changes results compared with the original
+    // GPU, which rounds every FMUL and FADD separately; the pragmas are accepted by the Metal compiler of macOS 26 also
+    // with language version 2.3 (see docs/shader-translator.md). key->fast_math restores the original behaviour.
+    if (!(key && key->fast_math)) sp(&s, "#pragma METAL fp math_mode(safe)\n#pragma METAL fp contract(off)\n");
     sp(&s, "#include <metal_stdlib>\nusing namespace metal;\n");
     sp(&s, "static inline uint cbr(constant uint4 *cb, uint off) { return cb[off >> 4][(off >> 2) & 3]; }\n");
     sp(&s, "static inline uint bfe_u(uint v, uint ctl) { uint pos = ctl & 0xFFu, len = (ctl >> 8) & 0xFFu; if (len == 0u) return 0u; if (pos >= 32u) return 0u; return extract_bits(v, pos, min(len, 32u - pos)); }\n");
@@ -2055,6 +2236,8 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
     sp(&s, "static inline float fswzadd(float a, float b, uint swz, uint lane) { uint m = (swz >> ((lane & 3u) * 2u)) & 3u; float ma = m == 1u ? -1.0f : (m == 3u ? 0.0f : 1.0f); float mb = m == 2u ? -1.0f : 1.0f; return a * ma + b * mb; }\n");
     sp(&s, "static inline uint2 rsc(uint2 c, float4 s) { return (s.x == 1.0f && s.y == 1.0f) ? c : uint2(floor((float2(c) + 0.5f) * s.xy)); }\n");
     sp(&s, "static inline float2 hx(uint v, uint swz) { if (swz == 1u) return float2(as_type<float>(v)); float2 h = float2(as_type<half2>(v)); return swz == 2u ? h.xx : swz == 3u ? h.yy : h; }\n");
+    sp(&s, "static inline float2 hxs(uint v, float2 s, bool valid, uint swz) { float2 h = valid ? s : float2(as_type<half2>(v)); return swz == 2u ? h.xx : swz == 3u ? h.yy : h; }\n");
+    sp(&s, "static inline float2 hmerge(float2 s, float2 n, uint merge, bool valid, uint old) { if (merge == 0u) return n; float2 b = valid ? s : float2(as_type<half2>(old)); if (merge == 2u) b.x = n.x; else b.y = n.y; return b; }\n");
     // merges on half2 lanes rather than with integer masks: on an M1 (macOS 15.0.1) the Metal compiler miscompiled
     // (old & 0xFFFF0000u) | lo in Link's body shader - the merged low half read back as a constant 512.0 and Link
     // rendered white. Same bits either way.
@@ -2131,6 +2314,8 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
     free(args.buf);
     for (int i = 0; i < 256; i++)
         if (c->reg_used[i]) sp(&s, "  uint r%d = 0;\n", i);
+    for (int i = 0; i < 255; i++)
+        if (c->hs_used[i]) sp(&s, "  float2 hs%d = float2(0.0f); bool hvf%d = false;\n", i, i);
     for (int i = 0; i < 7; i++)
         if (c->pred_used[i]) sp(&s, "  bool p%d = false;\n", i);
     if (c->uses_cc) sp(&s, "  uint cc = 0; bool ccz = false, ccs = false;\n");
@@ -2176,6 +2361,8 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
         sp(&s, "  return;\n}\n");
     }
     info->msl = s.buf;
+    info->flat_mask = c->flat_mask;  // XNU: for the resource map
+    info->noperspective_mask = c->noperspective_mask;
     info->attr_mask = c->in_attr_mask;
     info->out_mask = stage == STAGE_FRAGMENT ? c->omap_target : c->out_attr_mask;
     free(c->body.buf);

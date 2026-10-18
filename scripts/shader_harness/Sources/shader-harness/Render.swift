@@ -52,11 +52,29 @@ func loadTexturePixels(_ src: TextureSource) throws -> (w: Int, h: Int, rgba: [U
     }
 }
 
+// XNU: Metal's default compiles with fast math (reassociation, FMA contraction, relaxed NaN/Inf, approximate functions),
+// which changes results compared with the original GPU. For 1:1 comparisons everything is compiled with safe math
+// (MTLCompileOptions.mathMode = .safe, precise functions; fastMathEnabled = false on older systems) unless
+// `--fast-math` is given.
+var useFastMath = false
+
 func compile(_ device: MTLDevice, _ msl: String, entry: String, label: String) throws -> MTLFunction {
     let opts = MTLCompileOptions()
     opts.languageVersion = .version2_3
+    if useFastMath {
+        opts.fastMathEnabled = true
+    } else if #available(macOS 15.0, *) {
+        opts.mathMode = .safe
+        opts.mathFloatingPointFunctions = .precise
+    } else {
+        opts.fastMathEnabled = false
+    }
     let lib: MTLLibrary
-    do { lib = try device.makeLibrary(source: msl, options: opts) } catch {
+    // mathMode = .safe does not stop the compiler from fusing a*b+c into an FMA (measured: still fused). Without
+    // contraction every multiply and add rounds separately, as on the original GPU; sources that set the pragma
+    // themselves (maxwell2msl output) are left alone.
+    let source = useFastMath || msl.contains("fp contract") ? msl : "#pragma METAL fp contract(off)\n" + msl
+    do { lib = try device.makeLibrary(source: source, options: opts) } catch {
         throw HarnessError("Metal-Compiler (\(label)): \(error.localizedDescription)")
     }
     guard let fn = lib.makeFunction(name: entry) else {
@@ -80,7 +98,7 @@ func describe(_ args: [MTLArgument]) -> [String] {
 
 func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -> RenderResult {
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { throw HarnessError("kein Metal-Geraet") }
-    var info = ["device=\(device.name)"]
+    var info = ["device=\(device.name) math=\(useFastMath ? "fast" : "safe")"]
     let vfn = try compile(device, vsMSL, entry: spec.vertex.entry, label: "Vertex")
     let ffn = try compile(device, fsMSL, entry: spec.fragment.entry, label: "Fragment")
     info.append("vertex-attribute: " + vfn.vertexAttributes!.map { "\($0.attributeIndex)\($0.isActive ? "" : "(inaktiv)")" }.joined(separator: ","))

@@ -4,13 +4,14 @@ import CryptoKit
 let usage = """
 shader-harness - Offscreen-Referenzrenderer (SPIR-V/MSL -> Metal -> PNG)
 
-  shader-harness render <spec.json> --out <bild.png> [--dump-msl <ordner>] [--xcrun-check]
+  shader-harness render <spec.json> --out <bild.png> [--dump-msl <ordner>] [--xcrun-check] [--fast-math]
   shader-harness info   <spec.json> [--dump-msl <ordner>]
 
 render  uebersetzt (spirv-cross), kompiliert (Metal-Laufzeit), rendert offscreen und schreibt ein PNG (RGBA8).
 info    uebersetzt und kompiliert, gibt die Bindings (Buffer/Textur/Sampler/Attribute) aus und rendert nicht.
 --dump-msl   schreibt die erzeugte MSL als <ordner>/vertex.metal und fragment.metal.
 --xcrun-check  ruft zusaetzlich `xcrun metal -c` auf (nur mit installierter Metal-Toolchain).
+--fast-math  Metals Fast-Math zulassen (Standard: aus, mathMode = safe, genaue Funktionen).
 Umgebungsvariable SPIRV_CROSS ueberschreibt den spirv-cross-Pfad.
 """
 
@@ -36,6 +37,7 @@ func run() throws {
         case "--out": i += 1; guard i < args.count else { fail("--out braucht einen Pfad", code: 2) }; out = args[i]
         case "--dump-msl": i += 1; guard i < args.count else { fail("--dump-msl braucht einen Ordner", code: 2) }; dump = args[i]
         case "--xcrun-check": xcrun = true
+        case "--fast-math": useFastMath = true  // XNU: default is safe math (see Render.swift)
         default:
             guard specPath == nil, !args[i].hasPrefix("--") else { fail("unbekannte Option \(args[i])\n\(usage)", code: 2) }
             specPath = args[i]

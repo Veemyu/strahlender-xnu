@@ -35,14 +35,22 @@ Alle Änderungen in den übernommenen Dateien sind mit `XNU:` kommentiert.
 5. **`LARECOMP_SAVE_MSL` → `ShaderKey.annotate`.** Die Kommentierung der Instruktionen (pc und Wort) kommt aus dem Schlüssel statt aus einer Umgebungsvariablen.
 6. **`ShaderKey.no_rscale`.** Mit diesem Schalter liest der Übersetzer die Auflösungsskalierungs-Tabelle (Puffer 18) nicht: Fensterkoordinaten, Texel-Abrufe (TLD/TLDS) und Größenabfragen (TXQ) bleiben unskaliert. Das Werkzeug `maxwell2msl` setzt ihn standardmäßig; `--rscale` stellt das Original-Verhalten wieder her.
 
+Teil 2 (2026-10-18):
+
+7. **TEX.B (bindlose Textur).** Das Original brach bei diesem Befehl mit „bindless tex“ ab. Jetzt verfolgt `prov_track()` für jedes Register, ob sein Wert aus Konstantenpuffer-Wörtern aufgebaut wurde (MOV c[][], LOP.OR mit c[][], LDC, MOV Rb; jeder andere Schreibzugriff setzt zurück, erkannt am erzeugten Text). `emit_tex()` liest damit das Handle-Register von TEX.B; die Textur ist durch das Wortpaar (Samplerwort | Texturwort) bestimmt und bekommt einen Slot (`bindless_slot()`, Reihenfolge der ersten Benutzung). Die Register hinter dem Handle liefern LOD, Offset und Tiefenvergleich. Fehlt die Herkunft, bleibt der Befehl ein Fehler („bindless handle not from cbuf words“). `ShaderTexture` bekam `bindless_has_sampler` und `bindless_sampler_offset`.
+8. **HSETP2 mit Konstantenpuffer- und Immediate-Operand** (0x7e80/0x7f80 und 0x7e00/0x7f00). Die Registerform war im Original vorhanden und wurde verallgemeinert: Vergleichsfeld Bit 49..52 statt 35..38, HAND Bit 53 statt 49, Operand B als ein f32 (cbuf) bzw. zwei Halbwerte (imm).
+9. **Daten für die Ressourcenkarte:** statisch adressierter Bereich je Konstantenpuffer (`cbuf_min_off`/`cbuf_end_off`, gesetzt in `cbuf_ref()`), Komponentenmasken der Ein- und Ausgaben (`in_comp`/`out_comp`), `flat_mask`/`noperspective_mask`, Beginn der Compiler-Konstanten im Blob (`cbuf1_blob_offset`: auf 0x100 aufgerundetes Codeende).
+10. **Exakte Arithmetik.** Die MSL beginnt jetzt mit `#pragma METAL fp math_mode(safe)` und `#pragma METAL fp contract(off)` (Schlüssel `fast_math` schaltet das ab). Das Original ließ Fast-Math und die FMA-Verschmelzung von Metal an.
+11. **`ShaderKey.half_compat`** (nur als Testorakel): hält zu Registern, die Halb-Befehle schreiben, einen ungerundeten `float2`-Schatten, wie Ryujinx es durch das Entfernen von Pack/Unpack-Paaren tut. Standard ist die Rundung auf fp16 wie auf der Hardware.
+
 ### `shader.h`
 
-`Survey`/`SurveyItem` und `maxwell_translate_ex()` ergänzt; `ShaderKey.no_rscale`, `ShaderKey.annotate` ergänzt; `uses_tint`, die `maxwell_dbg_*`-Deklarationen und der Tint-Eintrag im Schnittstellenkommentar entfernt; Herkunftskommentar ergänzt.
+`Survey`/`SurveyItem` und `maxwell_translate_ex()` ergänzt; `ShaderKey.no_rscale`, `ShaderKey.annotate` ergänzt; `uses_tint`, die `maxwell_dbg_*`-Deklarationen und der Tint-Eintrag im Schnittstellenkommentar entfernt; Herkunftskommentar ergänzt. Teil 2: `ShaderKey.fast_math`, `ShaderKey.half_compat`; `ShaderTexture.bindless_has_sampler`/`bindless_sampler_offset`; `ShaderInfo.cbuf_min_off`, `cbuf_end_off`, `cbuf1_blob_offset`, `in_comp`, `out_comp`, `flat_mask`, `noperspective_mask`.
 
 ### Bewusst (noch) unverändert
 
-Globale Variablen `maxwell_gmem_base/size`, `flip_x`, der GLSL-Zweig, statische Puffer in `RSC2` (nicht threadsicher; die Übersetzung läuft in einem Thread), `sprintf` ohne Längenprüfung. Siehe `docs/shader-translator.md`, Aufgabenliste für Teil 2.
+Globale Variablen `maxwell_gmem_base/size`, `flip_x`, der GLSL-Zweig (TEX.B und `half_compat` gelten nur für MSL; der GLSL-Zweig wurde nicht getestet), statische Puffer in `RSC2` (nicht threadsicher; die Übersetzung läuft in einem Thread), `sprintf` ohne Längenprüfung. Siehe `docs/shader-translator.md`, Aufgabenliste für Teil 3.
 
 ## Eigener Code in diesem Verzeichnis (kein Fremdcode)
 
-`main.c` (Werkzeug `maxwell2msl`), `container.c`/`container.h` (Leser für Unity-Shaderprogramme), `Makefile`, `survey_report.py`, `tests/`.
+`main.c` (Werkzeug `maxwell2msl`; Teil 2: Ressourcenkarte in `--info`, `--cbuf1`, `--fast-math`, `--half-compat`), `container.c`/`container.h` (Leser für Unity-Shaderprogramme), `Makefile`, `survey_report.py`, `tests/`. Außerhalb des Verzeichnisses: `scripts/shader_fidelity.py` (Treue-Test), `scripts/tests/test_shader_fidelity.py`.

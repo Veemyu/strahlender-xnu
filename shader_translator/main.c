@@ -25,7 +25,8 @@ static void usage(FILE *f) {
         "  <input>               Maxwell blob (0x12345678 ...) or Unity shader program (0x0C07513C ...)\n"
         "  --stage vs|fs|cs      shader stage; required for raw blobs, optional for Unity programs\n"
         "  -o <file>             write the MSL there (default: stdout)\n"
-        "  --info <file>         write metadata (cbufs, textures, masks) as JSON ('-' = stdout)\n"
+        "  --info <file>         write metadata (resource map: cbufs, textures, inputs/outputs) as JSON ('-' = stdout)\n"
+        "  --cbuf1 <file>        write the compiler constants (hardware cbuf 1) found behind the code, up to 64 KB\n"
         "  --survey              coverage mode: do not stop at the first unsupported instruction, print every\n"
         "                        unknown opcode / unsupported form of the shader as JSON (no MSL)\n"
         "  --batch <list>        (with --survey) list file with one '<vs|fs|cs> <path>' per line, JSON lines out\n"
@@ -37,6 +38,9 @@ static void usage(FILE *f) {
         "  --rscale              keep the resolution-scale table of the original (default: plain coordinates)\n"
         "  --glsl                emit Vulkan GLSL instead of MSL\n"
         "  --annotate            comment each instruction with its pc and word\n"
+        "  --fast-math           do not emit the pragmas that disable Metal's fast math and FMA contraction\n"
+        "  --half-compat         Ryujinx-compatible fp16: no rounding to half between half operations (test oracle only;\n"
+        "                        the default rounds like the hardware)\n"
         "  -h, --help            this text\n",
         f);
 }
@@ -97,7 +101,32 @@ static void json_str(FILE *f, const char *s) {
     fputc('"', f);
 }
 
+static const char *tex_type_str(int t) {
+    static const char *const n[] = {"1d", "2d", "3d", "cube", "2d_array", "cube_array", "1d_array", "buffer", "2d_ms"};
+    return t >= 0 && t < 9 ? n[t] : "2d";
+}
+
+static const char *comp_str(unsigned m, char *buf) {
+    int n = 0;
+    for (int i = 0; i < 4; i++) if (m & (1u << i)) buf[n++] = "xyzw"[i];
+    buf[n] = 0;
+    return buf;
+}
+
+// XNU: texture / sampler handle tables of the driver's constant buffer 2 as observed in the Unity NVN shaders of the
+// game (texture words from 0x568, sampler words from 0x168, 8 bytes per entry). An assumption, see docs/shader-translator.md.
+#define HANDLE_CBUF 2
+#define TEXTURE_TABLE_BASE 0x568
+#define SAMPLER_TABLE_BASE 0x168
+#define HANDLE_STRIDE 8
+
+static long table_index(uint32_t off, uint32_t base) {
+    return off >= base && (off - base) % HANDLE_STRIDE == 0 ? (long)((off - base) / HANDLE_STRIDE) : -1;
+}
+
+// Machine readable resource map: what a driver (Unity integration, harness) has to bind for this translation.
 static void write_info_json(FILE *f, const ShaderInfo *s, size_t blob_bytes) {
+    char cs[8];
     fprintf(f, "{\n  \"stage\": \"%s\",\n  \"blobBytes\": %zu,\n  \"instructions\": %u,\n", stage_name(s->stage), blob_bytes, s->num_insts);
     fprintf(f, "  \"cbufMask\": \"0x%x\",\n  \"cbufDynamic\": \"0x%x\",\n  \"cbufSize\": {", s->cbuf_mask, s->cbuf_dynamic);
     int first = 1;
@@ -106,11 +135,63 @@ static void write_info_json(FILE *f, const ShaderInfo *s, size_t blob_bytes) {
         fprintf(f, "%s\"%d\": %u", first ? "" : ", ", i, s->cbuf_size[i]);
         first = 0;
     }
-    fprintf(f, "},\n  \"textures\": [");
+    fprintf(f, "},\n  \"metal\": {\"entry\": \"main0\", \"constantBufferSlot\": \"cbuf k -> [[buffer(k)]], constant uint4*\", "
+               "\"textureSlot\": \"texture i -> [[texture(i)]] and [[sampler(i)]]\", \"vertexAttribute\": \"location i -> [[attribute(i)]], float4\", "
+               "\"stageInterface\": \"vertex out / fragment in: [[user(locn i)]], float4\", \"rscaleBuffer\": %s, \"globalMemoryBuffer\": %s},\n",
+            s->uses_rscale ? "18" : "null", s->uses_gmem ? "17" : "null");
+    fprintf(f, "  \"compilerConstants\": {\"cbuf\": 1, \"blobOffset\": %u, \"bytesAvailable\": %zu, \"note\": \"data section behind the code, aligned to 0x100; write it with --cbuf1\"},\n",
+            s->cbuf1_blob_offset, s->cbuf1_blob_offset < blob_bytes ? blob_bytes - s->cbuf1_blob_offset : 0);
+    fprintf(f, "  \"constantBuffers\": [");
+    first = 1;
+    for (int i = 0; i < 18; i++) {
+        if (!(s->cbuf_mask & (1u << i))) continue;
+        bool dyn = s->cbuf_dynamic & (1u << i);
+        fprintf(f, "%s\n    {\"index\": %d, \"metalBuffer\": %d, \"size\": %u, \"dynamic\": %s, \"staticMinOffset\": %d, \"staticEndOffset\": %d}",
+                first ? "" : ",", i, i, s->cbuf_size[i], dyn ? "true" : "false", s->cbuf_end_off[i] ? (int)s->cbuf_min_off[i] : -1,
+                s->cbuf_end_off[i] ? (int)s->cbuf_end_off[i] : -1);
+        first = 0;
+    }
+    fprintf(f, "%s],\n  \"textures\": [", first ? "" : "\n  ");
     for (int i = 0; i < s->ntex; i++) {
         const ShaderTexture *t = &s->tex[i];
-        fprintf(f, "%s{\"slot\": %d, \"handleOffset\": %u, \"type\": %d, \"shadow\": %s, \"array\": %s}", i ? ", " : "", i,
-                t->handle_offset, t->type, t->shadow ? "true" : "false", t->is_array ? "true" : "false");
+        fprintf(f, "%s\n    {\"slot\": %d, \"metalTexture\": %d, \"metalSampler\": %d, \"handleOffset\": %u, \"type\": %d, \"typeName\": \"%s\", "
+                   "\"shadow\": %s, \"array\": %s, \"bindless\": %s",
+                i ? "," : "", i, i, i, t->handle_offset, t->type, tex_type_str(t->type), t->shadow ? "true" : "false",
+                t->is_array ? "true" : "false", t->bindless ? "true" : "false");
+        if (t->bindless) {
+            fprintf(f, ", \"handleCbuf\": %u, \"textureWordOffset\": %u, \"textureTableIndex\": %ld, \"hasSamplerWord\": %s",
+                    t->bindless_cbuf, t->bindless_offset,
+                    t->bindless_cbuf == HANDLE_CBUF ? table_index(t->bindless_offset, TEXTURE_TABLE_BASE) : -1,
+                    t->bindless_has_sampler ? "true" : "false");
+            if (t->bindless_has_sampler)
+                fprintf(f, ", \"samplerWordOffset\": %u, \"samplerTableIndex\": %ld", t->bindless_sampler_offset,
+                        t->bindless_cbuf == HANDLE_CBUF ? table_index(t->bindless_sampler_offset, SAMPLER_TABLE_BASE) : -1);
+        }
+        fputc('}', f);
+    }
+    fprintf(f, "%s],\n  \"inputs\": [", s->ntex ? "\n  " : "");
+    first = 1;
+    for (int i = 0; i < 32; i++) {
+        if (!(s->attr_mask & (1u << i))) continue;
+        fprintf(f, "%s{\"location\": %d, \"components\": \"%s\"%s}", first ? "" : ", ", i, comp_str(s->in_comp[i], cs),
+                s->stage == STAGE_FRAGMENT ? ((s->flat_mask >> i) & 1 ? ", \"interpolation\": \"flat\"" : ", \"interpolation\": \"perspective\"") : "");
+        first = 0;
+    }
+    fprintf(f, "],\n  \"outputs\": [");
+    first = 1;
+    if (s->stage == STAGE_FRAGMENT) {
+        for (int rt = 0; rt < 8; rt++) {
+            unsigned m = (s->out_mask >> (rt * 4)) & 0xF;
+            if (!m) continue;
+            fprintf(f, "%s{\"renderTarget\": %d, \"components\": \"%s\"}", first ? "" : ", ", rt, comp_str(m, cs));
+            first = 0;
+        }
+    } else {
+        for (int i = 0; i < 32; i++) {
+            if (!(s->out_mask & (1u << i))) continue;
+            fprintf(f, "%s{\"location\": %d, \"components\": \"%s\"}", first ? "" : ", ", i, comp_str(s->out_comp[i], cs));
+            first = 0;
+        }
     }
     fprintf(f, "],\n  \"attrMask\": \"0x%x\",\n  \"outMask\": \"0x%x\",\n", s->attr_mask, s->out_mask);
     fprintf(f, "  \"writesDepth\": %s,\n  \"usesDiscard\": %s,\n  \"writesPointSize\": %s,\n  \"usesGlobalMemory\": %s,\n  \"localMemBytes\": %u\n}\n",
@@ -198,7 +279,7 @@ static int parse_kind(const char *arg, uint8_t *table, int max) {
 int main(int argc, char **argv) {
     Opts o = {0};
     o.key.no_rscale = true;
-    const char *input = NULL, *out_path = NULL, *info_path = NULL, *batch = NULL;
+    const char *input = NULL, *out_path = NULL, *info_path = NULL, *batch = NULL, *cbuf1_path = NULL;
     int survey = 0;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -207,6 +288,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--stage")) o.stage_arg = NEED_ARG();
         else if (!strcmp(a, "-o")) out_path = NEED_ARG();
         else if (!strcmp(a, "--info")) info_path = NEED_ARG();
+        else if (!strcmp(a, "--cbuf1")) cbuf1_path = NEED_ARG();
         else if (!strcmp(a, "--survey")) survey = 1;
         else if (!strcmp(a, "--batch")) batch = NEED_ARG();
         else if (!strcmp(a, "--attr-kind")) { if (!parse_kind(NEED_ARG(), o.key.attr_kind, 32)) { fprintf(stderr, "maxwell2msl: bad --attr-kind\n"); return EXIT_USAGE; } }
@@ -217,6 +299,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--rscale")) o.key.no_rscale = false;
         else if (!strcmp(a, "--glsl")) o.key.glsl = 1;
         else if (!strcmp(a, "--annotate")) o.key.annotate = true;
+        else if (!strcmp(a, "--fast-math")) o.key.fast_math = true;
+        else if (!strcmp(a, "--half-compat")) o.key.half_compat = true;
         else if (a[0] == '-' && a[1]) { fprintf(stderr, "maxwell2msl: unknown option %s\n", a); usage(stderr); return EXIT_USAGE; }
         else if (!input) input = a;
         else { fprintf(stderr, "maxwell2msl: more than one input file\n"); return EXIT_USAGE; }
@@ -300,6 +384,15 @@ int main(int argc, char **argv) {
                 FILE *jf = !strcmp(info_path, "-") ? stdout : fopen(info_path, "wb");
                 if (!jf) { fprintf(stderr, "maxwell2msl: cannot write %s: %s\n", info_path, strerror(errno)); rc = EXIT_INPUT; }
                 else { write_info_json(jf, info, blob_n); if (jf != stdout) fclose(jf); }
+            }
+            if (cbuf1_path) {  // XNU: compiler constants (hardware cbuf 1), at most 64 KB, zero-padded to the bound size
+                FILE *cf = fopen(cbuf1_path, "wb");
+                size_t off = info->cbuf1_blob_offset, avail = off < blob_n ? blob_n - off : 0;
+                if (!cf) { fprintf(stderr, "maxwell2msl: cannot write %s: %s\n", cbuf1_path, strerror(errno)); rc = EXIT_INPUT; }
+                else {
+                    if (fwrite(blob + off, 1, avail > 65536 ? 65536 : avail, cf) != (avail > 65536 ? 65536 : avail)) rc = EXIT_INPUT;
+                    if (fclose(cf) != 0) rc = EXIT_INPUT;
+                }
             }
         }
         maxwell_free(info);
