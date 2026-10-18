@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.Input",
+  "rootNamespace": "Xnu.Input",
+  "references": ["Xnu.Core", "Unity.InputSystem", "UnityEngine.UI"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}
