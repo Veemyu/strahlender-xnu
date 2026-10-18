@@ -1,0 +1,10 @@
+{
+  "name": "Xnu.Battle",
+  "rootNamespace": "Xnu.Battle",
+  "references": ["Xnu.Core", "Xnu.Data"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "noEngineReferences": true,
+  "autoReferenced": true
+}
