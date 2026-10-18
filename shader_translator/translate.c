@@ -12,6 +12,11 @@
 // half-float packing, subgroup shuffles, barriers, discard, declarations and entry point) are emitted per dialect.
 // The MSL text is byte-identical to the MSL-only translator (tools/test_translate.c checks it).
 //
+// XNU: HLSL (key->hlsl; contract in shader.h) follows the GLSL scheme: the body is generated in the MSL spelling and
+// converted by hlsl_rewrite() (as_type -> asfloat/asuint, rint -> round, fma -> mad, in/out -> i_/o_, cbN -> mx_cbN, ...);
+// helpers are defined in hlsl_prelude; texture lookups, 16-bit float packing, 64-bit carry/funnel-shift math, size queries,
+// discard and the declarations/entry points are emitted per dialect. The MSL and GLSL output are unchanged by this.
+//
 // Derived from LASRecomp (https://github.com/peiikai/LASRecomp, commit 09f8e5e), MIT License, Copyright (c) 2026 Peiikai.
 // See ../LICENSE-LASRecomp and ../NOTICE.md. Modifications for the strahlender-xnu project are marked "XNU:".
 #if defined(_WIN32)
@@ -86,6 +91,7 @@ typedef struct {
     bool glsl;               // emit Vulkan GLSL: dialect-specific constructs here, the rest via glsl_rewrite()
     bool uses_gmem_store;    // STG present: the gmem buffer is not readonly
     uint32_t cbuf_need[18];  // highest constant vec4 index + 1 per cbuf (array size of the GLSL block)
+    bool hlsl;               // XNU: emit HLSL (see hlsl_rewrite()); the body is still generated in the MSL spelling
 } Ctx;
 
 static uint64_t bits(uint64_t w, int lo, int n) { return (w >> lo) & ((n == 64) ? ~0ull : ((1ull << n) - 1)); }
@@ -324,7 +330,10 @@ static void attr_load(Ctx *c, int dst, uint32_t addr, const char *idx) {
                 } else sprintf(e, "as_type<uint>(in.v%d[%d])", a, comp);
             }
         } else if (addr == 0x3FC) { c->uses_front_facing = true; strcpy(e, "(front_facing ? 0xFFFFFFFFu : 0u)"); }
-        else if (addr == 0x2E0 || addr == 0x2E4) { sprintf(e, "as_type<uint>(point_coord[%d])", (addr >> 2) & 1); }
+        else if (addr == 0x2E0 || addr == 0x2E4) {
+            if (c->hlsl) fail(c, "hlsl: point coordinate");  // XNU
+            sprintf(e, "as_type<uint>(point_coord[%d])", (addr >> 2) & 1);
+        }
         else { approx(c, "approx: fs load attr %#x", addr); sprintf(e, "0u /* attr %#x */", addr); }
     } else {
         approx(c, "approx: stage %d load attr %#x", c->stage, addr);
@@ -667,7 +676,7 @@ static int tex_slot(Ctx *c, uint32_t index, int type, bool shadow, bool array) {
             t->shadow = shadow;
             t->is_array = array;
             c->tex_weak[s] = false;
-        } else if (c->glsl && type >= 0 && (c->info->tex[s].type != type || c->info->tex[s].shadow != shadow)) {
+        } else if ((c->glsl || c->hlsl) && type >= 0 && (c->info->tex[s].type != type || c->info->tex[s].shadow != shadow)) {
             fail(c, "texture %u used as two types", index);  // one GLSL sampler type per binding
         }
         return s;
@@ -708,7 +717,9 @@ static void write_tex_result(Ctx *c, int slot, const char *call, uint32_t mask, 
         for (int comp = 0; comp < 4; comp++) if (mask & (1u << comp)) comps[n++] = comp;
         char v[4][16];
         for (int i = 0; i < 4; i++) { if (i < n) sprintf(v[i], "t[%d]", comps[i]); else strcpy(v[i], "0.0f"); }
-        const char *pk = c->glsl ? "      r%d = packHalf2x16(vec2(%s, %s));\n" : "      r%d = as_type<uint>(half2(half(%s), half(%s)));\n";
+        const char *pk = c->glsl ? "      r%d = packHalf2x16(vec2(%s, %s));\n"
+                       : c->hlsl ? "      r%d = f32tof16(%s) | (f32tof16(%s) << 16);\n"  // XNU
+                                 : "      r%d = as_type<uint>(half2(half(%s), half(%s)));\n";
         if (d0 != RZ) { c->reg_used[d0] = 1; sp(&c->body, pk, d0, v[0], v[1]); }
         if (d1 != RZ) { c->reg_used[d1] = 1; sp(&c->body, pk, d1, v[2], v[3]); }
         sp(&c->body, "    }\n");
@@ -748,11 +759,60 @@ static const char *RSC2(Ctx *c, int slot, const char *fmt, ...) {
 
 // TEXS / TLDS: texture_info selects target and coordinate layout
 static const char *alayer(Ctx *c, const char *r, int slot, char *buf) {
-    if (c->glsl) sprintf(buf, "min(%s, uint(tsize%d(0).z) - 1u)", r, slot);
+    if (c->glsl || c->hlsl) sprintf(buf, "min(%s, uint(tsize%d(0).z) - 1u)", r, slot);
     else sprintf(buf, "min(%s, t%d.get_array_size() - 1u)", r, slot);
     return buf;
 }
 #define ALAYER(r, slot) alayer(c, (r), (slot), alloca(96))
+
+// XNU: HLSL texture lookup on slot `slot`, the counterpart of glsl_sample() with the same arguments. Texture offsets must
+// be literals in HLSL, so register offsets move the coordinates by offset / size of the level (tsize<slot>(), emitted with
+// the slot's declaration). Shadow lookups use SampleCmp (explicit levels: SampleCmpLevelZero, level 0 only). Texture
+// objects are mx_t<slot> and samplers mx_s<slot> (see the contract in shader.h).
+static void hlsl_sample(Ctx *c, char *out, int slot, const char *const *co, const char *layer, const char *dref,
+                        int lod_kind, const char *lod, const char *off) {
+    if (c->fail) { strcpy(out, "float4(0, 0, 0, 0)"); return; }
+    const ShaderTexture *t = &c->info->tex[slot];
+    int type = t->type;
+    bool cube = type == TEXTYPE_CUBE || type == TEXTYPE_CUBE_ARRAY;
+    int n = (type == TEXTYPE_1D || type == TEXTYPE_1D_ARRAY) ? 1 : (type == TEXTYPE_2D || type == TEXTYPE_2D_ARRAY) ? 2 : 3;
+    if (c->stage != STAGE_FRAGMENT && lod_kind != 1) {
+        if (lod_kind == 0) lod = "0.0f";
+        lod_kind = 1;
+    }
+    if (t->shadow && type == TEXTYPE_3D) { fail(c, "hlsl: 3d shadow texture"); strcpy(out, "float4(0, 0, 0, 0)"); return; }
+    if (layer && type != TEXTYPE_1D_ARRAY && type != TEXTYPE_2D_ARRAY && type != TEXTYPE_CUBE_ARRAY) {
+        fail(c, "hlsl: array lookup on a 3d texture");
+        strcpy(out, "float4(0, 0, 0, 0)");
+        return;
+    }
+    char L[600], xs[1600], P[2000];
+    if (lod_kind == 1) snprintf(L, sizeof L, "int(%s)", lod); else strcpy(L, "0");
+    if (n == 1) {
+        if (off) snprintf(xs, sizeof xs, "(%s + float((%s).x) / float(tsize%d(%s).x))", co[0], off, slot, L);
+        else snprintf(xs, sizeof xs, "%s", co[0]);
+    } else if (n == 2) {
+        if (off) snprintf(xs, sizeof xs, "(float2(%s, %s) + float2(%s) / float2(tsize%d(%s).xy))", co[0], co[1], off, slot, L);
+        else snprintf(xs, sizeof xs, "float2(%s, %s)", co[0], co[1]);
+    } else {
+        if (off && !cube) snprintf(xs, sizeof xs, "float3(float2(%s, %s) + float2(%s) / float2(tsize%d(%s).xy), %s)", co[0], co[1], off, slot, L, co[2]);
+        else snprintf(xs, sizeof xs, "float3(%s, %s, %s)", co[0], co[1], co[2]);
+    }
+    if (layer) snprintf(P, sizeof P, "float%d(%s, float(%s))", n + 1, xs, layer);
+    else snprintf(P, sizeof P, "%s", xs);
+    char e[2000];
+    if (t->shadow) {
+        if (lod_kind == 1) snprintf(e, sizeof e, "(float4)mx_t%d.SampleCmpLevelZero(mx_s%d, %s, %s)", slot, slot, P, dref);
+        else snprintf(e, sizeof e, "(float4)mx_t%d.SampleCmp(mx_s%d, %s, %s)", slot, slot, P, dref);
+        if (lod_kind == 1) approx(c, "approx: hlsl shadow lod");  // only level 0 exists
+        strcpy(out, e);
+        return;
+    }
+    if (lod_kind == 0) snprintf(e, sizeof e, "mx_t%d.Sample(mx_s%d, %s)", slot, slot, P);
+    else if (lod_kind == 1) snprintf(e, sizeof e, "mx_t%d.SampleLevel(mx_s%d, %s, %s)", slot, slot, P, lod);
+    else snprintf(e, sizeof e, "mx_t%d.SampleBias(mx_s%d, %s, %s)", slot, slot, P, lod);
+    strcpy(out, e);
+}
 
 // GLSL texture lookup on slot `slot` (its type is final here: a conflicting use fails in tex_slot).
 // co: coordinate expressions (1 for 1D, 2 for 2D, 3 for 3D / cube), layer: uint expression or NULL, dref: depth
@@ -761,6 +821,7 @@ static const char *alayer(Ctx *c, const char *r, int slot, char *buf) {
 // (level 0 for implicit-LOD lookups). Non-fragment stages have no implicit LOD: level 0 (+ bias).
 static void glsl_sample(Ctx *c, char *out, int slot, const char *const *co, const char *layer, const char *dref,
                         int lod_kind, const char *lod, const char *off) {
+    if (c->hlsl) { hlsl_sample(c, out, slot, co, layer, dref, lod_kind, lod, off); return; }  // XNU
     if (c->fail) { strcpy(out, "vec4(0.0f)"); return; }  // e.g. a type conflict: tex[slot] is not this lookup's type
     const ShaderTexture *t = &c->info->tex[slot];
     int type = t->type;
@@ -853,6 +914,26 @@ static bool glsl_texs(Ctx *c, uint64_t w, bool fetch, int *slot_out, char *call,
             glsl_sample(c, call, slot, co, NULL, NULL, 1, fb1, NULL); break;
         default: fail(c, "texs info %d", info); return false;
         }
+    } else if (c->hlsl) {  // XNU: texel fetches as Load(int<n>(coordinates, mip level)), same forms as below
+        switch (info) {
+        case 0: slot = tex_slot(c, index, TEXTYPE_1D, false, false);
+            sprintf(call, "mx_t%d.Load(int2(int(%s), 0))", slot, A); break;
+        case 1: slot = tex_slot(c, index, TEXTYPE_1D, false, false);
+            sprintf(call, "mx_t%d.Load(int2(int(%s), int(%s)))", slot, A, Bv); break;
+        case 2: slot = tex_slot(c, index, TEXTYPE_2D, false, false);
+            sprintf(call, "mx_t%d.Load(int3(int2(%s), 0))", slot, RSC2(c, slot, "uint2(%s, %s)", A, Bv)); break;
+        case 4: slot = tex_slot(c, index, TEXTYPE_2D, false, false);
+            sprintf(call, "mx_t%d.Load(int3(int2(%s), 0))", slot, RSC2(c, slot, "uint2(int2(%s, %s) + int2(int(%s << 28) >> 28, int(%s << 24) >> 28))", A, A1, Bv, Bv)); break;
+        case 5: slot = tex_slot(c, index, TEXTYPE_2D, false, false);
+            sprintf(call, "mx_t%d.Load(int3(int2(%s), int(%s)))", slot, RSC2(c, slot, "uint2(%s, %s)", A, A1), Bv); break;
+        case 7: slot = tex_slot(c, index, TEXTYPE_3D, false, false);
+            sprintf(call, "mx_t%d.Load(int4(int(%s), int(%s), int(%s), 0))", slot, A, A1, Bv); break;
+        case 8: slot = tex_slot(c, index, TEXTYPE_2D_ARRAY, false, true);
+            sprintf(call, "mx_t%d.Load(int4(int2(%s), int(%s), 0))", slot, RSC2(c, slot, "uint2(%s, %s)", A1, Bv), A); break;
+        case 12: slot = tex_slot(c, index, TEXTYPE_2D, false, false);
+            sprintf(call, "mx_t%d.Load(int3(int2(%s), int(%s)))", slot, RSC2(c, slot, "uint2(int2(%s, %s) + int2(int(%s << 28) >> 28, int(%s << 24) >> 28))", A, A1, B1, B1), Bv); break;
+        default: fail(c, "tlds info %d", info); return false;
+        }
     } else {
         switch (info) {
         case 0: slot = tex_slot(c, index, TEXTYPE_1D, false, false);
@@ -896,7 +977,7 @@ static void emit_texs(Ctx *c, uint64_t w, bool fetch) {
                *B1 = reg(c, b == RZ ? RZ : b + 1, rb1);
     char call[1024];
     int slot;
-    if (c->glsl) {
+    if (c->glsl || c->hlsl) {
         char gcall[4096];
         if (!glsl_texs(c, w, fetch, &slot, gcall, A, A1, Bv, B1)) return;
         write_tex_result(c, slot, gcall, mask, d0, d1, true, !bits(w, 59, 1));
@@ -981,7 +1062,7 @@ static void emit_tex(Ctx *c, uint64_t w, bool bindless) {
                            : (array ? TEXTYPE_CUBE_ARRAY : TEXTYPE_CUBE);
     int ncoord = target == 0 ? 1 : target == 1 ? 2 : 3;
     int slot = bindless ? bindless_slot(c, &hp, type, dc, array) : tex_slot(c, index, type, dc, array);
-    if (c->glsl) {  // same register layout as below
+    if (c->glsl || c->hlsl) {  // same register layout as below
         char cs[3][40], lay[96], lodv[48], offv[96], drv[48], gcall[4096];
         const char *co[3], *layp = NULL, *lodp = NULL, *offp = NULL, *drp = NULL;
         int ar2 = a, p2 = b, lk = 0;
@@ -1062,7 +1143,7 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         sp(&c->body, c->branchy ? "    exit_now = true; break;\n" : "    break;\n");
     } else if (OPM(0xe330000000000000ull, 0xfff0000000000000ull)) {  // KIL
         c->info->uses_discard = true;
-        if (!c->glsl) sp(&c->body, "    discard_fragment();\n");
+        if (!c->glsl && !c->hlsl) sp(&c->body, "    discard_fragment();\n");
         else if (c->stage == STAGE_FRAGMENT) sp(&c->body, "    discard;\n");
         else sp(&c->body, "    /* kil */\n");  // GLSL has discard in fragment shaders only
     } else if (OPM(0xe240000000000000ull, 0xfff0000000000020ull)) {  // BRA
@@ -1139,7 +1220,14 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         int qt = (int)bits(w, 22, 6);
         uint32_t mask = (uint32_t)bits(w, 31, 4);
         int slot = tex_slot(c, index, -1, false, false);  // the type comes from a sample, if any
-        if (qt == 1 && c->glsl) {  // tsize<slot>() is emitted with the slot's final type
+        if (qt == 1 && c->hlsl) {  // XNU: size and level count through tsize<slot>() / tlevels<slot>() (declared per slot)
+            sp(&c->body, "    { uint lv = %s; uint4 q = uint4(uint(tsize%d(int(lv)).x), uint(tsize%d(int(lv)).y), 1u, tlevels%d());\n",
+               R(a), slot, slot, slot);
+            int n = 0;
+            for (int i = 0; i < 4; i++)
+                if (mask & (1u << i)) { c->reg_used[d + n] = 1; sp(&c->body, "      r%d = q[%d];\n", d + n, i); n++; }
+            sp(&c->body, "    }\n");
+        } else if (qt == 1 && c->glsl) {  // tsize<slot>() is emitted with the slot's final type
             if (c->stage != STAGE_VERTEX && !(c->key && c->key->no_rscale)) {
                 c->uses_rscale = true;
                 sp(&c->body, "    { uint lv = %s; uvec4 q = uvec4(uint(floor(float(tsize%d(int(lv)).x) / rscale[%d].x + 0.5f)), "
@@ -1266,7 +1354,7 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
     } else if (OPM(0x5cb0000000000000ull, 0xfff8000000000000ull) || OPM(0x4cb0000000000000ull, 0xfff8000000000000ull) ||
                OPM(0x38b0000000000000ull, 0xfef8000000000000ull)) {  // F2I (src fmt bits 10-11: 1 F16; dst size bits 8-9)
         char srcv[512];
-        if (bits(w, 10, 2) == 1 && c->glsl) sprintf(srcv, "h2f((%s >> %du) & 0xFFFFu)", B(false), 16 * (int)bits(w, 41, 1));
+        if (bits(w, 10, 2) == 1 && (c->glsl || c->hlsl)) sprintf(srcv, "h2f((%s >> %du) & 0xFFFFu)", B(false), 16 * (int)bits(w, 41, 1));
         else if (bits(w, 10, 2) == 1) sprintf(srcv, "float(as_type<half2>(%s)[%d])", B(false), (int)bits(w, 41, 1));
         else strcpy(srcv, F(B(true)));
         const char *x = NA(srcv, bits(w, 45, 1), bits(w, 49, 1));
@@ -1290,7 +1378,7 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         sprintf(u, "float(%s)", src);
         if (bits(w, 8, 2) == 1) {  // F16 result in the low half
             char h[700];
-            snprintf(h, sizeof h, c->glsl ? "(packHalf2x16(vec2(%s, 0.0f)))" : "(uint(as_type<ushort>(half(%s))))",
+            snprintf(h, sizeof h, c->glsl ? "(packHalf2x16(vec2(%s, 0.0f)))" : c->hlsl ? "(f32tof16(%s))" : "(uint(as_type<ushort>(half(%s))))",
                      NA(u, bits(w, 45, 1), bits(w, 49, 1)));
             set_reg(c, d, h);
         } else {
@@ -1300,7 +1388,7 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
                OPM(0x38a8000000000000ull, 0xfef8000000000000ull)) {  // F2F (formats: 1 F16, 2 F32; bit 41 = high half)
         int dfmt = (int)bits(w, 8, 2), sfmt = (int)bits(w, 10, 2);
         char srcv[512];
-        if (sfmt == 1 && c->glsl) sprintf(srcv, "h2f((%s >> %du) & 0xFFFFu)", B(false), 16 * (int)bits(w, 41, 1));
+        if (sfmt == 1 && (c->glsl || c->hlsl)) sprintf(srcv, "h2f((%s >> %du) & 0xFFFFu)", B(false), 16 * (int)bits(w, 41, 1));
         else if (sfmt == 1) sprintf(srcv, "float(as_type<half2>(%s)[%d])", B(false), (int)bits(w, 41, 1));
         else strcpy(srcv, F(B(true)));
         const char *x = NA(srcv, bits(w, 45, 1), bits(w, 49, 1));
@@ -1314,7 +1402,7 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         }
         if (dfmt == 1) {  // F16 result in the low half, high half zero
             char h[1100];
-            snprintf(h, sizeof h, c->glsl ? "(packHalf2x16(vec2(%s, 0.0f)))" : "(uint(as_type<ushort>(half(%s))))",
+            snprintf(h, sizeof h, c->glsl ? "(packHalf2x16(vec2(%s, 0.0f)))" : c->hlsl ? "(f32tof16(%s))" : "(uint(as_type<ushort>(half(%s))))",
                      bits(w, 50, 1) ? (sprintf(u, "saturate(%s)", t), u) : t);
             set_reg(c, d, h);
         } else {
@@ -1336,20 +1424,36 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
     } else if (OPM(0x1c00000000000000ull, 0xfe00000000000000ull)) {  // IADD32I (CC bit 52, X bit 53)
         bool wcc = bits(w, 52, 1), x = bits(w, 53, 1);
         if (wcc || x) c->uses_cc = true;
+        if (c->hlsl) {  // XNU: no 64-bit integers: the carry out is bit 32 of the sum = parity of the wraps (mx_adc3 in the prelude)
+            sp(&c->body, "    { uint co_; uint sum = mx_adc3(%s%s, 0x%08xu, 0u, %s, co_);%s\n", bits(w, 56, 1) ? "-" : "", R(a),
+               (uint32_t)bits(w, 20, 32), x ? "cc" : "0u", wcc ? " cc = co_;" : "");
+            if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = sum;\n", d); }
+            sp(&c->body, "    }\n");
+            goto iadd32i_done;
+        }
         sp(&c->body, "    { ulong sum = ulong(%s%s) + ulong(0x%08xu)%s;%s\n", bits(w, 56, 1) ? "-" : "", R(a), (uint32_t)bits(w, 20, 32),
            x ? " + ulong(cc)" : "", wcc ? " cc = uint(sum >> 32) & 1u;" : "");
         if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = uint(sum);\n", d); }
         sp(&c->body, "    }\n");
+    iadd32i_done:;
     } else if (OPM(0x5cc0000000000000ull, 0xfff0000000000000ull) || OPM(0x4cc0000000000000ull, 0xfff0000000000000ull) ||
                OPM(0x38c0000000000000ull, 0xfef0000000000000ull)) {  // IADD3
         bool wcc3 = bits(w, 47, 1), x3 = bits(w, 48, 1);
         if (wcc3 || x3) {  // carry in/out (64-bit address math)
             c->uses_cc = true;
+            if (c->hlsl) {  // XNU: see IADD32I
+                sp(&c->body, "    { uint co_; uint sum = mx_adc3(%s%s, %s%s, %s%s, %s, co_);\n", bits(w, 51, 1) ? "-" : "", R(a),
+                   bits(w, 50, 1) ? "-" : "", B(false), bits(w, 49, 1) ? "-" : "", R((int)bits(w, 39, 8)), x3 ? "cc" : "0u");
+                if (wcc3) sp(&c->body, "      cc = co_;\n");
+                if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = sum;\n", d); }
+                sp(&c->body, "    }\n");
+            } else {
             sp(&c->body, "    { ulong sum = ulong(%s%s) + ulong(%s%s) + ulong(%s%s)%s;\n", bits(w, 51, 1) ? "-" : "", R(a),
                bits(w, 50, 1) ? "-" : "", B(false), bits(w, 49, 1) ? "-" : "", R((int)bits(w, 39, 8)), x3 ? " + ulong(cc)" : "");
             if (wcc3) sp(&c->body, "      cc = uint(sum >> 32) & 1u;\n");
             if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = uint(sum);\n", d); }
             sp(&c->body, "    }\n");
+            }
         } else {
             sprintf(t, "(%s%s + %s%s + %s%s)", bits(w, 51, 1) ? "-" : "", R(a), bits(w, 50, 1) ? "-" : "", B(false),
                     bits(w, 49, 1) ? "-" : "", R((int)bits(w, 39, 8)));
@@ -1599,7 +1703,8 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         bool right = (w >> 56) == 0x5c || (w >> 57) == (0x38 >> 1);
         const char *sh = ((w >> 60) == 3) ? B(false) : R((int)bits(w, 20, 8));
         const char *hi = R((int)bits(w, 39, 8));
-        if (right) sprintf(t, "uint((((ulong(%s) << 32) | ulong(%s)) >> (%s & 31u)))", hi, R(a), sh);
+        if (c->hlsl) sprintf(t, right ? "mx_shf_r(%s, %s, %s)" : "mx_shf_l(%s, %s, %s)", hi, R(a), sh);  // XNU: no 64-bit integers
+        else if (right) sprintf(t, "uint((((ulong(%s) << 32) | ulong(%s)) >> (%s & 31u)))", hi, R(a), sh);
         else sprintf(t, "uint((((ulong(%s) << 32) | ulong(%s)) << (%s & 31u)) >> 32)", hi, R(a), sh);
         set_reg(c, d, t);
     } else if (OPM(0xeed0000000000000ull, 0xfff8000000000000ull) || OPM(0xeed8000000000000ull, 0xfff8000000000000ull)) {  // LDG / STG
@@ -1608,6 +1713,7 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         int size = (int)bits(w, 48, 3);
         int64_t off = sbits(w, 20, 24);
         c->info->uses_gmem = true;
+        if (c->hlsl) fail(c, "hlsl: global memory");  // XNU
         char addr[256];
         if (a == RZ) sprintf(addr, "ulong(%lld)", (long long)off);
         else if (wide) sprintf(addr, "((ulong(%s) << 32 | ulong(%s)) + ulong(%lld))", R(a + 1), R(a), (long long)off);
@@ -1764,6 +1870,8 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         int pd = (int)bits(w, 48, 3);
         if (c->stage == STAGE_VERTEX) {
             set_reg(c, d, R(a));  // no SIMD-group functions in vertex functions: lane-local value
+        } else if (c->hlsl) {
+            fail(c, "hlsl: subgroup shuffle");  // XNU: no quad/lane exchange in Shader Model 5
         } else if (c->glsl) {  // a quad xor (lane mask < 4) is the subgroup xor within the quad
             static const char *const fn[] = {"subgroupShuffle", "subgroupShuffleUp", "subgroupShuffleDown", "subgroupShuffleXor"};
             sprintf(t, "%s(%s, uint(%s))", fn[mode], R(a), bv);
@@ -2135,6 +2243,276 @@ static ShaderInfo *glsl_finish(Ctx *c, bool any_branch) {
     return info;
 }
 
+// ------------------------------------------------------------------ HLSL output (XNU)
+// MSL-spelled instruction body -> HLSL (token-aware, like glsl_rewrite). Identifiers that exist in HLSL under the same
+// name (float4, uint2, saturate, abs, sqrt, exp2, log2, sin, cos, floor, trunc, isnan, ...) pass through unchanged.
+static void hlsl_rewrite(Ctx *c, Str *o, const char *src) {
+    static const char *const map[][2] = {
+        {"fmin", "min"}, {"fmax", "max"}, {"rint", "round"}, {"fma", "mx_fma"}, {"popcount", "countbits"},
+        {"isnan", "mx_isnan"}, {"in", "i_"}, {"out", "o_"},
+    };
+    static const char *const bad[] = {"ulong", "long", "half", "half2", "ushort", "uchar", "gmem", "rscale", "rsc", "tid",
+                                      "ctaid", "point_coord", "simd_shuffle", "simd_shuffle_up", "simd_shuffle_down",
+                                      "simd_shuffle_xor", "quad_shuffle_xor"};
+    const char *p = src;
+    while (*p) {
+        if (p[0] == '/' && p[1] == '*') {
+            const char *e = strstr(p + 2, "*/");
+            e = e ? e + 2 : p + strlen(p);
+            sp(o, "%.*s", (int)(e - p), p);
+            p = e;
+            continue;
+        }
+        if (p[0] == '/' && p[1] == '/') {
+            const char *e = strchr(p, '\n');
+            if (!e) e = p + strlen(p);
+            sp(o, "%.*s", (int)(e - p), p);
+            p = e;
+            continue;
+        }
+        if (*p >= '0' && *p <= '9') {  // number (0x..u, 1.0f, ...)
+            const char *e = p;
+            while (id_char(*e) || *e == '.') e++;
+            sp(o, "%.*s", (int)(e - p), p);
+            p = e;
+            continue;
+        }
+        if (!id_start(*p)) { sp(o, "%c", *p); p++; continue; }
+        const char *e = p;
+        while (id_char(*e)) e++;
+        int n = (int)(e - p);
+        char id[64];
+        if (n >= (int)sizeof id || (p > src && p[-1] == '.')) {  // member / swizzle
+            sp(o, "%.*s", n, p);
+            p = e;
+            continue;
+        }
+        memcpy(id, p, n);
+        id[n] = 0;
+        p = e;
+        if (!strcmp(id, "as_type") && *p == '<') {
+            const char *gt = strchr(p, '>');
+            if (!gt) { fail(c, "hlsl: bad as_type"); return; }
+            int tn = (int)(gt - p - 1);
+            if (tn == 5 && !strncmp(p + 1, "float", 5)) sp(o, "asfloat");
+            else if (tn == 4 && !strncmp(p + 1, "uint", 4)) sp(o, "asuint");
+            else if (tn == 3 && !strncmp(p + 1, "int", 3)) sp(o, "asint");
+            else { fail(c, "hlsl: as_type<%.*s>", tn, p + 1); return; }
+            p = gt + 1;
+            continue;
+        }
+        if ((!strcmp(id, "char") || !strcmp(id, "short")) && *p == '(') { sp(o, id[0] == 'c' ? "sx8" : "sx16"); continue; }
+        bool is_bad = false;
+        for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++)
+            if (!strcmp(id, bad[i])) { fail(c, "hlsl: unsupported construct '%s'", id); is_bad = true; }
+        if (is_bad) return;
+        if (id[0] == 'c' && id[1] == 'b' && n > 2) {  // hardware constant buffer cb<k> -> mx_cb<k>
+            bool num = true;
+            for (int i = 2; i < n; i++) num = num && id[i] >= '0' && id[i] <= '9';
+            if (num) { sp(o, "mx_%s", id); continue; }
+        }
+        if (id[0] == 'r' && n > 1 && n < 6) {  // registers beyond r255 (RZ) come from out-of-range encodings
+            bool num = true;
+            for (int i = 1; i < n; i++) num = num && id[i] >= '0' && id[i] <= '9';
+            if (num && atoi(id + 1) > 255) { fail(c, "register %s out of range", id); return; }
+        }
+        const char *rep = id;
+        for (size_t i = 0; i < sizeof map / sizeof map[0]; i++)
+            if (!strcmp(id, map[i][0])) { rep = map[i][1]; break; }
+        sp(o, "%s", rep);
+    }
+}
+
+// Helpers with MSL names or semantics that HLSL lacks. Integer and bit helpers use only 32-bit operations (Shader Model 5
+// has no 64-bit integers); f16tof32 / f32tof16 replace the half type.
+static const char hlsl_prelude[] =
+    "#define cbr(cb, off) cb[(off) >> 4][((off) >> 2) & 3u]\n"
+    "#define mx_fma(a, b, c) mad(a, b, c)\n"
+    // isnan() as a bit test: the HLSL compiler (FXC) folds x != x / isnan(x) to false when it optimises
+    "bool mx_isnan(float x) { return (asuint(x) & 0x7FFFFFFFu) > 0x7F800000u; }\n"
+    "int sx8(uint v) { return ((int)(v << 24)) >> 24; }\n"
+    "int sx8(int v) { return (v << 24) >> 24; }\n"
+    "int sx16(uint v) { return ((int)(v << 16)) >> 16; }\n"
+    "int sx16(int v) { return (v << 16) >> 16; }\n"
+    "uint clz(uint v) { return v == 0u ? 32u : 31u - firstbithigh(v); }\n"
+    "uint mulhi(uint a, uint b) { uint al = a & 0xFFFFu, ah = a >> 16, bl = b & 0xFFFFu, bh = b >> 16;"
+    " uint ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh; uint mid = (ll >> 16) + (lh & 0xFFFFu) + (hl & 0xFFFFu);"
+    " return hh + (lh >> 16) + (hl >> 16) + (mid >> 16); }\n"
+    "int mulhi(int a, int b) { uint hi = mulhi((uint)a, (uint)b); if (a < 0) hi -= (uint)b; if (b < 0) hi -= (uint)a; return (int)hi; }\n"
+    "uint mx_mask(uint len) { return len >= 32u ? 0xFFFFFFFFu : ((1u << len) - 1u); }\n"
+    "uint bfe_u(uint v, uint ctl) { uint pos = ctl & 0xFFu, len = (ctl >> 8) & 0xFFu; if (len == 0u || pos >= 32u) return 0u;"
+    " return (v >> pos) & mx_mask(min(len, 32u - pos)); }\n"
+    "uint bfe_s(uint v, uint ctl) { uint pos = ctl & 0xFFu, len = (ctl >> 8) & 0xFFu; if (len == 0u) return 0u;"
+    " if (pos >= 32u) return ((int)v < 0) ? 0xFFFFFFFFu : 0u; len = min(len, 32u - pos); uint m = mx_mask(len); uint r = (v >> pos) & m;"
+    " if (len < 32u && ((r >> (len - 1u)) & 1u) != 0u) r |= ~m; return r; }\n"
+    "uint bfi(uint ins, uint ctl, uint base) { uint pos = ctl & 0xFFu, len = (ctl >> 8) & 0xFFu; if (len == 0u || pos >= 32u) return base;"
+    " uint m = mx_mask(min(len, 32u - pos)) << pos; return (base & ~m) | ((ins << pos) & m); }\n"
+    "uint mx_adc3(uint a, uint b, uint c, uint cin, out uint cout_) { uint s = a + b; uint k = (s < a) ? 1u : 0u; uint s2 = s + c;"
+    " k += (s2 < s) ? 1u : 0u; uint s3 = s2 + cin; k += (s3 < s2) ? 1u : 0u; cout_ = k & 1u; return s3; }\n"
+    "uint mx_shf_r(uint hi, uint lo, uint sh) { sh &= 31u; return sh == 0u ? lo : ((lo >> sh) | (hi << (32u - sh))); }\n"
+    "uint mx_shf_l(uint hi, uint lo, uint sh) { sh &= 31u; return sh == 0u ? hi : ((hi << sh) | (lo >> (32u - sh))); }\n"
+    "float fswzadd(float a, float b, uint swz, uint lane) { uint m = (swz >> ((lane & 3u) * 2u)) & 3u;"
+    " float ma = m == 1u ? -1.0f : (m == 3u ? 0.0f : 1.0f); float mb = m == 2u ? -1.0f : 1.0f; return a * ma + b * mb; }\n"
+    "float h2f(uint h) { return f16tof32(h & 0xFFFFu); }\n"
+    "float2 hx(uint v, uint swz) { if (swz == 1u) return (float2)asfloat(v); float2 h = float2(f16tof32(v & 0xFFFFu), f16tof32(v >> 16));"
+    " if (swz == 2u) return h.xx; if (swz == 3u) return h.yy; return h; }\n"
+    "uint hpack(float2 r, uint merge, uint old) { if (merge == 1u) return asuint(r.x); uint lo = f32tof16(r.x), hi = f32tof16(r.y);"
+    " if (merge == 2u) return (old & 0xFFFF0000u) | lo; if (merge == 3u) return (old & 0xFFFFu) | (hi << 16); return lo | (hi << 16); }\n"
+    "uint prmt(uint a, uint b, uint sel) { uint r = 0u; for (uint i = 0u; i < 4u; i++) { uint s = (sel >> (i * 4u)) & 7u;"
+    " uint bt = s < 4u ? (a >> (s * 8u)) & 0xFFu : (b >> ((s - 4u) * 8u)) & 0xFFu; r |= bt << (i * 8u); } return r; }\n";
+
+static const char *hlsl_texture_type(const ShaderTexture *t) {
+    static const char *const names[] = {"Texture1D", "Texture2D", "Texture3D", "TextureCube", "Texture2DArray",
+                                        "TextureCubeArray", "Texture1DArray"};
+    return names[t->type <= TEXTYPE_1D_ARRAY ? t->type : TEXTYPE_2D];
+}
+
+// Declarations + entry point around the (rewritten) body; mirrors the MSL assembly in maxwell_translate_ex().
+static ShaderInfo *hlsl_finish(Ctx *c, bool any_branch) {
+    ShaderInfo *info = c->info;
+    const ShaderKey *key = c->key;
+    int stage = c->stage;
+    Str body = {0};
+    hlsl_rewrite(c, &body, c->body.buf ? c->body.buf : "");
+    if (info->uses_gmem) fail(c, "hlsl: global memory");
+    if (c->uses_rscale) fail(c, "hlsl: resolution scale (translate with no_rscale)");
+    if (info->cbuf_mask >> 18) fail(c, "cbuf index out of range");
+    for (int i = 0; i < info->ntex; i++)
+        if (info->tex[i].shadow && info->tex[i].type == TEXTYPE_3D) fail(c, "hlsl: 3d shadow texture");
+    if (c->fail) { free(body.buf); free(c->body.buf); free(c); return info; }
+    Str s = {0};
+    sp(&s, "// HLSL (Shader Model 5 subset) generated by maxwell2msl --lang hlsl; contract: shader_translator/shader.h\n");
+    sp(&s, "#ifndef MX_PRELUDE_DEFINED\n#define MX_PRELUDE_DEFINED\n%s#endif\n", hlsl_prelude);  // (vertex and fragment snippet in one program)
+    sp(&s, "#ifndef MX_EXTERNAL_RESOURCES\n");
+    for (int i = 0; i < 18; i++) {
+        if (!(info->cbuf_mask & (1u << i))) continue;
+        uint32_t n = info->cbuf_size[i] / 16;
+        if (c->cbuf_need[i] > n) n = c->cbuf_need[i];
+        if ((info->cbuf_dynamic & (1u << i)) && n < 4096) n = 4096;
+        if (!n) n = 1;
+        sp(&s, "cbuffer MxCB%d : register(b%d) { uint4 mx_cb%d[%u]; };\n", i, i, i, n);
+    }
+    for (int i = 0; i < info->ntex; i++) {
+        const ShaderTexture *t = &info->tex[i];
+        sp(&s, "%s<%s> mx_t%d : register(t%d);\n%s mx_s%d : register(s%d);\n", hlsl_texture_type(t), t->shadow ? "float" : "float4", i, i,
+           t->shadow ? "SamplerComparisonState" : "SamplerState", i, i);
+    }
+    sp(&s, "#endif\n");
+    for (int i = 0; i < info->ntex; i++) {  // (width, height, depth or layers) of a level, and the level count
+        const ShaderTexture *t = &info->tex[i];
+        switch (t->type) {
+        case TEXTYPE_1D:
+            sp(&s, "int3 tsize%d(int l) { uint w, m; mx_t%d.GetDimensions((uint)l, w, m); return int3(w, 1, 1); }\n", i, i);
+            sp(&s, "uint tlevels%d() { uint w, m; mx_t%d.GetDimensions(0u, w, m); return m; }\n", i, i); break;
+        case TEXTYPE_1D_ARRAY:
+            sp(&s, "int3 tsize%d(int l) { uint w, e, m; mx_t%d.GetDimensions((uint)l, w, e, m); return int3(w, 1, e); }\n", i, i);
+            sp(&s, "uint tlevels%d() { uint w, e, m; mx_t%d.GetDimensions(0u, w, e, m); return m; }\n", i, i); break;
+        case TEXTYPE_3D:
+            sp(&s, "int3 tsize%d(int l) { uint w, h, d, m; mx_t%d.GetDimensions((uint)l, w, h, d, m); return int3(w, h, d); }\n", i, i);
+            sp(&s, "uint tlevels%d() { uint w, h, d, m; mx_t%d.GetDimensions(0u, w, h, d, m); return m; }\n", i, i); break;
+        case TEXTYPE_2D_ARRAY: case TEXTYPE_CUBE_ARRAY:
+            sp(&s, "int3 tsize%d(int l) { uint w, h, e, m; mx_t%d.GetDimensions((uint)l, w, h, e, m); return int3(w, h, e); }\n", i, i);
+            sp(&s, "uint tlevels%d() { uint w, h, e, m; mx_t%d.GetDimensions(0u, w, h, e, m); return m; }\n", i, i); break;
+        default:
+            sp(&s, "int3 tsize%d(int l) { uint w, h, m; mx_t%d.GetDimensions((uint)l, w, h, m); return int3(w, h, 1); }\n", i, i);
+            sp(&s, "uint tlevels%d() { uint w, h, m; mx_t%d.GetDimensions(0u, w, h, m); return m; }\n", i, i);
+        }
+    }
+    if (stage == STAGE_VERTEX) {
+        sp(&s, "struct MxVIn {\n");
+        for (int i = 0; i < 32; i++) {
+            if (!(c->in_attr_mask & (1u << i))) continue;
+            int kind = key ? key->attr_kind[i] : 0;
+            sp(&s, "  %s4 a%d;\n", kind == 1 ? "int" : kind == 2 ? "uint" : "float", i);
+        }
+        sp(&s, "  float4 unused_;\n};\n");  // (HLSL structs may not be empty)
+        sp(&s, "struct MxVOut {\n  float4 pos;\n");
+        for (int i = 0; i < 32; i++)
+            if (c->out_attr_mask & (1u << i)) sp(&s, "  float4 v%d;\n", i);
+        if (info->writes_point_size) sp(&s, "  float psize;\n");
+        sp(&s, "};\n");
+        sp(&s, "#define MX_VS_IN_MASK 0x%08xu\n#define MX_VS_OUT_MASK 0x%08xu\n", c->in_attr_mask, c->out_attr_mask);
+    } else {
+        sp(&s, "struct MxFIn {\n  float4 pos;\n");
+        for (int i = 0; i < 32; i++)
+            if (c->in_attr_mask & (1u << i)) sp(&s, "  float4 v%d;\n", i);
+        sp(&s, "};\n");
+        sp(&s, "struct MxFOut {\n  float4 c_unused_;\n");
+        for (int rt = 0; rt < 8; rt++) {
+            if (!((c->omap_target >> (rt * 4)) & 0xF)) continue;
+            int kind = key ? key->rt_kind[rt] : 0;
+            sp(&s, "  %s4 c%d;\n", kind == 1 ? "int" : kind == 2 ? "uint" : "float", rt);
+        }
+        if (c->omap_depth) { sp(&s, "  float depth;\n"); info->writes_depth = true; }
+        sp(&s, "};\n");
+        sp(&s, "#define MX_FS_IN_MASK 0x%08xu\n#define MX_FLAT_MASK 0x%08xu\n#define MX_NOPERSPECTIVE_MASK 0x%08xu\n",
+           c->in_attr_mask, c->flat_mask, c->noperspective_mask);
+    }
+    if (stage == STAGE_VERTEX) {
+        sp(&s, "MxVOut mx_vs(MxVIn i_, uint vid, uint iid)\n{\n  MxVOut o_ = (MxVOut)0;\n  o_.pos = float4(0, 0, 0, 1);\n");
+        for (int i = 0; i < 32; i++)
+            if (c->out_attr_mask & (1u << i)) sp(&s, "  o_.v%d = float4(0, 0, 0, 1);\n", i);
+    } else {
+        sp(&s, "MxFOut mx_fs(MxFIn i_, bool front_facing)\n{\n");
+        // quad lane of the pixel (Maxwell: lane = x + 2 * y within the 2x2 quad), only FSWZADD reads it
+        if (c->uses_lane) sp(&s, "  uint lane = ((uint)i_.pos.x & 1u) | (((uint)i_.pos.y & 1u) << 1);\n");
+    }
+    for (int i = 0; i < 256; i++)
+        if (c->reg_used[i]) sp(&s, "  uint r%d = 0u;\n", i);
+    for (int i = 0; i < 7; i++)
+        if (c->pred_used[i]) sp(&s, "  bool p%d = false;\n", i);
+    if (c->uses_cc) sp(&s, "  uint cc = 0u; bool ccz = false, ccs = false;\n");
+    if (c->uses_local) sp(&s, "  uint lmem[%d]; for (int li_ = 0; li_ < %d; li_++) lmem[li_] = 0u;\n", LMEM_WORDS, LMEM_WORDS);
+    if (any_branch) {
+        sp(&s, "  uint pc = 8u; uint ssy[16]; uint ssy_n = 0u; uint pbk[16]; uint pbk_n = 0u; uint pcnt[16]; uint pcnt_n = 0u;\n");
+        sp(&s, "  bool exit_now = false;\n");
+        sp(&s, "  [loop] for (uint guard = 0u; guard < 100000u; guard++) {\n");
+        sp(&s, "%s", body.buf ? body.buf : "");
+        sp(&s, "    break;\n  }\n  break;\n  }\n");  // end of the code: leave; (second break: no block matched)
+    } else {
+        sp(&s, "  do {\n%s  } while (false);\n", body.buf ? body.buf : "");
+    }
+    free(body.buf);
+    if (stage == STAGE_VERTEX) {
+        if (key && key->flip_y) sp(&s, "  o_.pos.y = -o_.pos.y;\n");
+        if (key && key->flip_x) sp(&s, "  o_.pos.x = -o_.pos.x;\n");
+        if (key && key->depth_minus_one) sp(&s, "  o_.pos.z = (o_.pos.z + o_.pos.w) * 0.5f;\n");
+        sp(&s, "  return o_;\n}\n");
+    } else {
+        sp(&s, "  MxFOut o_ = (MxFOut)0;\n");
+        int r = 0;
+        for (int rt = 0; rt < 8; rt++) {
+            uint32_t m = (c->omap_target >> (rt * 4)) & 0xF;
+            if (!m) continue;
+            int kind = key ? key->rt_kind[rt] : 0;
+            for (int comp = 0; comp < 4; comp++) {
+                if (!(m & (1u << comp))) continue;
+                if (r < 256 && c->reg_used[r]) {
+                    if (kind == 0) sp(&s, "  o_.c%d[%d] = asfloat(r%d);\n", rt, comp, r);
+                    else if (kind == 1) sp(&s, "  o_.c%d[%d] = (int)r%d;\n", rt, comp, r);
+                    else sp(&s, "  o_.c%d[%d] = r%d;\n", rt, comp, r);
+                } else {
+                    sp(&s, "  o_.c%d[%d] = 0;\n", rt, comp);
+                }
+                r++;
+            }
+        }
+        if (c->omap_depth) {
+            if (c->reg_used[r + 1]) sp(&s, "  o_.depth = asfloat(r%d);\n", r + 1);
+            else sp(&s, "  o_.depth = i_.pos.z;\n");
+        }
+        sp(&s, "  return o_;\n}\n");
+    }
+    info->msl = s.buf;
+    info->flat_mask = c->flat_mask;
+    info->noperspective_mask = c->noperspective_mask;
+    info->attr_mask = c->in_attr_mask;
+    info->out_mask = stage == STAGE_FRAGMENT ? c->omap_target : c->out_attr_mask;
+    free(c->body.buf);
+    free(c);
+    return info;
+}
+
 // XNU: the survey-capable entry point; maxwell_translate() below keeps the original signature and behaviour.
 ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage, const ShaderKey *key, Survey *sv) {
     ShaderInfo *info = calloc(1, sizeof *info);
@@ -2151,6 +2529,18 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
     c->sv = sv;
     c->ipa_mode = -1;
     c->glsl = key && key->glsl;
+    c->hlsl = key && key->hlsl;  // XNU
+    if (c->glsl && c->hlsl) { snprintf(info->error, sizeof info->error, "glsl and hlsl are exclusive"); free(c); return info; }
+    if (c->hlsl && (stage == STAGE_COMPUTE || stage > STAGE_FRAGMENT)) {
+        snprintf(info->error, sizeof info->error, "hlsl: only vertex and fragment stages");
+        free(c);
+        return info;
+    }
+    if (c->hlsl && key->half_compat) {
+        snprintf(info->error, sizeof info->error, "hlsl: half_compat is not supported");
+        free(c);
+        return info;
+    }
     const uint8_t *sph = blob + 0x30;
     const uint8_t *code = blob + 0x80;
     // compute programs have neither the 0x30-byte NVN header nor an SPH: code starts at the blob
@@ -2207,7 +2597,15 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
     for (size_t i = 0; i < end && !c->fail; i++) {
         if (i % 4 == 0) continue;
         uint32_t pc = (uint32_t)(i * 8);
-        if (any_branch && label[i]) sp(&c->body, "  case %uu:\n", pc);
+        if (any_branch && label[i]) {
+            // XNU: HLSL (FXC) fails on assignments to the switch variable inside a switch in a loop ("l-value expected"), so
+            // the pc state machine is a chain of `if (pc == N)` blocks instead of a switch. A block ends by setting pc to the
+            // next label, which also makes it fall through into the next block; jumps are `pc = X; continue;`.
+            if (c->hlsl) {
+                if (c->body.len > 0) sp(&c->body, "    pc = %uu;\n  }\n", pc);
+                sp(&c->body, "  if (pc == %uu) {\n", pc);
+            } else sp(&c->body, "  case %uu:\n", pc);
+        }
         if (annotate) sp(&c->body, "    // pc %x: %016llx\n", pc, (unsigned long long)((const uint64_t *)code)[i]);
         size_t body_from = c->body.len;  // XNU: register provenance (TEX.B handles)
         emit_insn(c, ((const uint64_t *)code)[i], pc);
@@ -2219,7 +2617,8 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
     // that read cbuf 1 with static offsets have non-zero data there). Reported for the resource map.
     info->cbuf1_blob_offset = (uint32_t)((((size_t)(code - blob)) + end * 8 + 0xff) & ~(size_t)0xff);
     if (c->fail) { free(c->body.buf); free(c); return info; }
-    if (c->key && c->key->half_compat && !c->glsl) finish_half_compat(c);  // XNU
+    if (c->key && c->key->half_compat && !c->glsl && !c->hlsl) finish_half_compat(c);  // XNU
+    if (c->hlsl) return hlsl_finish(c, any_branch);  // XNU
     if (c->glsl) return glsl_finish(c, any_branch);
 
     // ---------------------------------------------------------- MSL source

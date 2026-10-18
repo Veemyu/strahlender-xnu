@@ -184,6 +184,22 @@ class Cli(unittest.TestCase):
         r = run("--stage", "vs", "--fast-math", self.p("ok.bin"))
         self.assertNotIn("#pragma", r.stdout)
 
+    def test_hlsl_language(self):
+        r = run("--lang", "hlsl", "--stage", "vs", self.p("ok.bin"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("MxVOut mx_vs(MxVIn i_, uint vid, uint iid)", r.stdout)
+        self.assertNotIn("#pragma METAL", r.stdout)
+        r = run("--hlsl", "--stage", "fs", "--info", self.p("tex_hlsl.json"), "-o", self.p("tex.hlsl"), self.p("tex.bin"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        src = self.p("tex.hlsl").read_text()
+        self.assertIn("mx_t0.Sample(mx_s0,", src)
+        self.assertIn("#define MX_FLAT_MASK 0x00000000u", src)
+        self.assertEqual(json.loads(self.p("tex_hlsl.json").read_text())["language"], "hlsl")
+        r = run("--lang", "hlsl", "--stage", "cs", self.p("ok_cs.bin"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("hlsl:", r.stderr)
+        self.assertEqual(run("--lang", "wgsl", "--stage", "vs", self.p("ok.bin")).returncode, 2)
+
     def test_resource_map(self):
         info = self.p("tex.json")
         cbuf1 = self.p("tex.cbuf1")

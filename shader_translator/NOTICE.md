@@ -47,10 +47,22 @@ Teil 2 (2026-10-18):
 
 `Survey`/`SurveyItem` und `maxwell_translate_ex()` ergänzt; `ShaderKey.no_rscale`, `ShaderKey.annotate` ergänzt; `uses_tint`, die `maxwell_dbg_*`-Deklarationen und der Tint-Eintrag im Schnittstellenkommentar entfernt; Herkunftskommentar ergänzt. Teil 2: `ShaderKey.fast_math`, `ShaderKey.half_compat`; `ShaderTexture.bindless_has_sampler`/`bindless_sampler_offset`; `ShaderInfo.cbuf_min_off`, `cbuf_end_off`, `cbuf1_blob_offset`, `in_comp`, `out_comp`, `flat_mask`, `noperspective_mask`.
 
+Teil 3 (2026-10-19): `ShaderKey.hlsl` und der Schnittstellenkommentar „HLSL contract“ (Strukturen, Namen der Konstantenpuffer/Texturen, Grenzen).
+
+### `translate.c`, Teil 3: HLSL-Ausgabe für Unity (`ShaderKey.hlsl`, Werkzeug: `--lang hlsl`)
+
+Alle Stellen sind mit `XNU:` oder im Kopfkommentar der Datei markiert. Die MSL- und GLSL-Ausgabe bleibt byteidentisch (an 500 zufälligen Blobs mit je drei Optionssätzen gegen die Vorversion geprüft).
+
+12. **Neuer Zweig `hlsl_rewrite()` / `hlsl_prelude` / `hlsl_finish()`** nach dem Muster des GLSL-Zweigs: Der Befehlsrumpf entsteht weiter in der MSL-Schreibweise und wird tokenweise umgeschrieben (`as_type<float/uint/int>` → `asfloat/asuint/asint`, `fmin/fmax` → `min/max`, `rint` → `round`, `fma` → `mx_fma` (= `mad`), `isnan` → `mx_isnan` (Bittest, weil FXC `isnan` wegfaltet), `popcount` → `countbits`, `char()/short()` → `sx8/sx16`, `in`/`out` → `i_`/`o_`, `cb<k>` → `mx_cb<k>`; nicht abbildbare Bezeichner wie `ulong`, `half`, `gmem`, `simd_shuffle*` brechen mit einer „hlsl:“-Meldung ab). Die Hilfsfunktionen (Bitfelder, `mulhi`, `clz`, `prmt`, `hx`/`hpack` über `f16tof32`/`f32tof16`, 32-Bit-Übertrag `mx_adc3`, Trichterverschiebung `mx_shf_*`, `fswzadd` mit Lane aus der Pixelposition) liegen im Prelude, das eine Include-Wache trägt (Vertex und Fragment teilen ein Programm).
+13. **Pro Dialekt neu erzeugt:** Texturabrufe (`hlsl_sample()`: `Sample/SampleLevel/SampleBias/SampleCmp(LevelZero)`, Register-Offsets über Koordinatenverschiebung, weil HLSL nur Literal-Offsets kennt), `TLDS` als `Load`, `TXQ` über `tsize<i>()`/`tlevels<i>()` (GetDimensions), 16-Bit-Packen in `TEXS.F16`/`F2F`/`F2I`/`I2F`, `IADD32I`/`IADD3` mit Übertrag und `SHF` ohne 64-Bit-Ganzzahlen, `KIL` → `discard`, Deklarationen und Einstiegspunkte (`mx_vs`, `mx_fs`, Strukturen ohne Semantik; die Semantik setzt der Wrapper).
+14. **Zustandsautomat für Sprünge:** HLSL (FXC) verträgt weder `continue` im `switch` noch Zuweisungen an die `switch`-Variable in einer Schleife („l-value expected“). Der `switch (pc)` wird daher als Kette `if (pc == N) { … pc = nächste; }` erzeugt (Durchfall = Setzen von `pc`, Sprung = `pc = X; continue;`).
+15. **`ShaderKey.hlsl`** schließt sich mit `glsl` aus; Compute, `half_compat`, globaler Speicher, Auflösungsskalierung, Punktkoordinate und Subgroup-Befehle werden mit einer Meldung abgelehnt.
+16. **`main.c`** (eigener Code): `--lang msl|glsl|hlsl`, `--hlsl`, Schlüssel `language` in der Ressourcenkarte. Tests: 16 neue C-Prüfungen (`test_hlsl_backend`) und ein CLI-Test.
+
 ### Bewusst (noch) unverändert
 
 Globale Variablen `maxwell_gmem_base/size`, `flip_x`, der GLSL-Zweig (TEX.B und `half_compat` gelten nur für MSL; der GLSL-Zweig wurde nicht getestet), statische Puffer in `RSC2` (nicht threadsicher; die Übersetzung läuft in einem Thread), `sprintf` ohne Längenprüfung. Siehe `docs/shader-translator.md`, Aufgabenliste für Teil 3.
 
 ## Eigener Code in diesem Verzeichnis (kein Fremdcode)
 
-`main.c` (Werkzeug `maxwell2msl`; Teil 2: Ressourcenkarte in `--info`, `--cbuf1`, `--fast-math`, `--half-compat`), `container.c`/`container.h` (Leser für Unity-Shaderprogramme), `Makefile`, `survey_report.py`, `tests/`. Außerhalb des Verzeichnisses: `scripts/shader_fidelity.py` (Treue-Test), `scripts/tests/test_shader_fidelity.py`.
+`main.c` (Werkzeug `maxwell2msl`; Teil 2: Ressourcenkarte in `--info`, `--cbuf1`, `--fast-math`, `--half-compat`; Teil 3: `--lang`), `container.c`/`container.h` (Leser für Unity-Shaderprogramme), `Makefile`, `survey_report.py`, `tests/`. Außerhalb des Verzeichnisses: `scripts/shader_fidelity.py` (Treue-Test), `scripts/tests/test_shader_fidelity.py`; Teil 3: `scripts/shader_wrap.py` (ShaderLab-Wrapper-Generator), `scripts/tests/test_shader_wrap.py`, `docs/shader-unity-integration.md`.

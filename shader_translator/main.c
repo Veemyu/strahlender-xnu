@@ -37,6 +37,8 @@ static void usage(FILE *f) {
         "  --depth-minus-one     remap clip z from [-1,1] to [0,1]\n"
         "  --rscale              keep the resolution-scale table of the original (default: plain coordinates)\n"
         "  --glsl                emit Vulkan GLSL instead of MSL\n"
+        "  --lang msl|glsl|hlsl  output language (default msl); hlsl = Unity ShaderLab snippet, contract in shader.h\n"
+        "                        (also --hlsl; vertex and fragment only)\n"
         "  --annotate            comment each instruction with its pc and word\n"
         "  --fast-math           do not emit the pragmas that disable Metal's fast math and FMA contraction\n"
         "  --half-compat         Ryujinx-compatible fp16: no rounding to half between half operations (test oracle only;\n"
@@ -125,9 +127,10 @@ static long table_index(uint32_t off, uint32_t base) {
 }
 
 // Machine readable resource map: what a driver (Unity integration, harness) has to bind for this translation.
-static void write_info_json(FILE *f, const ShaderInfo *s, size_t blob_bytes) {
+static void write_info_json(FILE *f, const ShaderInfo *s, size_t blob_bytes, const ShaderKey *key) {
     char cs[8];
-    fprintf(f, "{\n  \"stage\": \"%s\",\n  \"blobBytes\": %zu,\n  \"instructions\": %u,\n", stage_name(s->stage), blob_bytes, s->num_insts);
+    fprintf(f, "{\n  \"stage\": \"%s\",\n  \"language\": \"%s\",\n  \"blobBytes\": %zu,\n  \"instructions\": %u,\n", stage_name(s->stage),
+            key->hlsl ? "hlsl" : key->glsl ? "glsl" : "msl", blob_bytes, s->num_insts);
     fprintf(f, "  \"cbufMask\": \"0x%x\",\n  \"cbufDynamic\": \"0x%x\",\n  \"cbufSize\": {", s->cbuf_mask, s->cbuf_dynamic);
     int first = 1;
     for (int i = 0; i < 18; i++) {
@@ -298,6 +301,13 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--depth-minus-one")) o.key.depth_minus_one = true;
         else if (!strcmp(a, "--rscale")) o.key.no_rscale = false;
         else if (!strcmp(a, "--glsl")) o.key.glsl = 1;
+        else if (!strcmp(a, "--hlsl")) o.key.hlsl = 1;
+        else if (!strcmp(a, "--lang")) {
+            const char *l = NEED_ARG();
+            o.key.glsl = !strcmp(l, "glsl");
+            o.key.hlsl = !strcmp(l, "hlsl");
+            if (strcmp(l, "msl") && !o.key.glsl && !o.key.hlsl) { fprintf(stderr, "maxwell2msl: unknown language '%s' (msl, glsl, hlsl)\n", l); return EXIT_USAGE; }
+        }
         else if (!strcmp(a, "--annotate")) o.key.annotate = true;
         else if (!strcmp(a, "--fast-math")) o.key.fast_math = true;
         else if (!strcmp(a, "--half-compat")) o.key.half_compat = true;
@@ -383,7 +393,7 @@ int main(int argc, char **argv) {
             if (info_path) {
                 FILE *jf = !strcmp(info_path, "-") ? stdout : fopen(info_path, "wb");
                 if (!jf) { fprintf(stderr, "maxwell2msl: cannot write %s: %s\n", info_path, strerror(errno)); rc = EXIT_INPUT; }
-                else { write_info_json(jf, info, blob_n); if (jf != stdout) fclose(jf); }
+                else { write_info_json(jf, info, blob_n, &o.key); if (jf != stdout) fclose(jf); }
             }
             if (cbuf1_path) {  // XNU: compiler constants (hardware cbuf 1), at most 64 KB, zero-padded to the bound size
                 FILE *cf = fopen(cbuf1_path, "wb");

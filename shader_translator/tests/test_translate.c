@@ -341,6 +341,70 @@ static void test_container(void) {
     CHECK(unity_program_parse(buf, sizeof buf, &up) != NULL);
 }
 
+// XNU: HLSL backend (key->hlsl): output structure and the constructs that differ from MSL
+static ShaderInfo *translate_hlsl(const uint64_t *code, size_t n, int stage) {
+    size_t size;
+    uint8_t *b = make_blob(code, n, &size, stage != STAGE_COMPUTE);
+    ShaderKey key = {0};
+    key.no_rscale = true;
+    key.hlsl = 1;
+    ShaderInfo *s = maxwell_translate(b, size, stage, &key);
+    free(b);
+    return s;
+}
+
+static void test_hlsl_backend(void) {
+    const uint64_t vcode[] = {W_SCHED, W_MOV_R3_RZ, W_EXIT, W_BRA_SELF_8};
+    ShaderInfo *s = translate_hlsl(vcode, 4, STAGE_VERTEX);
+    CHECK(s->msl != NULL);
+    CHECK(s->msl && strstr(s->msl, "MxVOut mx_vs(MxVIn i_, uint vid, uint iid)") != NULL);
+    CHECK(s->msl && strstr(s->msl, "uint r3 = 0u;") != NULL);
+    CHECK(s->msl && strstr(s->msl, "#ifndef MX_PRELUDE_DEFINED") != NULL);
+    CHECK(s->msl && strstr(s->msl, "as_type") == NULL && strstr(s->msl, "ulong") == NULL);
+    maxwell_free(s);
+    const uint64_t fcode[] = {W_SCHED, W_MOV_R3_RZ, W_EXIT, W_BRA_SELF_8};
+    s = translate_hlsl(fcode, 4, STAGE_FRAGMENT);
+    CHECK(s->msl && strstr(s->msl, "MxFOut mx_fs(MxFIn i_, bool front_facing)") != NULL);
+    maxwell_free(s);
+
+    // TEX.B: Unity-style declarations (replaceable with MX_EXTERNAL_RESOURCES), Sample on the mx_ names
+    const uint64_t tex[] = {W_SCHED, W_MOV_C2_168_R11, W_LOP_OR_C2_568_R11, W_BINDLESS_TEX, W_SCHED, W_EXIT, W_BRA_SELF_8, W_NOP};
+    s = translate_hlsl(tex, 8, STAGE_FRAGMENT);
+    CHECK(s->msl != NULL);
+    CHECK(s->msl && strstr(s->msl, "#ifndef MX_EXTERNAL_RESOURCES") != NULL);
+    CHECK(s->msl && strstr(s->msl, "Texture2D<float4> mx_t0 : register(t0);") != NULL);
+    CHECK(s->msl && strstr(s->msl, "cbuffer MxCB2 : register(b2)") != NULL);
+    CHECK(s->msl && strstr(s->msl, "mx_t0.Sample(mx_s0, float2(asfloat(r0), asfloat(r1)))") != NULL);
+    CHECK(s->msl && strstr(s->msl, "mx_cb2[") != NULL && strstr(s->msl, " cb2[") == NULL);
+    maxwell_free(s);
+
+    // half arithmetic goes through f16tof32 / f32tof16 (no half type)
+    const uint64_t half[] = {W_SCHED, W_HMUL2_R7_R14, W_HMUL2_R7_R7, W_EXIT, W_SCHED, W_BRA_SELF_8, W_NOP, W_NOP};
+    s = translate_hlsl(half, 8, STAGE_FRAGMENT);
+    CHECK(s->msl && strstr(s->msl, "hpack(") != NULL && strstr(s->msl, "f16tof32") != NULL && strstr(s->msl, "half2") == NULL);
+    maxwell_free(s);
+
+    // compute and the exclusive/unsupported keys fail with a message
+    const uint64_t ccode[] = {W_MOV_R3_RZ, W_EXIT, W_BRA_SELF_8, W_NOP};
+    s = translate_hlsl(ccode, 4, STAGE_COMPUTE);
+    CHECK(s->msl == NULL && strstr(s->error, "hlsl:") != NULL);
+    maxwell_free(s);
+    size_t size;
+    uint8_t *b = make_blob(vcode, 4, &size, 1);
+    ShaderKey key = {0};
+    key.hlsl = 1;
+    key.glsl = 1;
+    s = maxwell_translate(b, size, STAGE_VERTEX, &key);
+    CHECK(s->msl == NULL && strstr(s->error, "exclusive") != NULL);
+    maxwell_free(s);
+    key.glsl = 0;
+    key.half_compat = true;
+    s = maxwell_translate(b, size, STAGE_VERTEX, &key);
+    CHECK(s->msl == NULL && strstr(s->error, "half_compat") != NULL);
+    maxwell_free(s);
+    free(b);
+}
+
 int main(void) {
     test_minimal_vertex();
     test_minimal_fragment_and_compute();
@@ -354,6 +418,7 @@ int main(void) {
     test_code_end_detection();
     test_input_checks();
     test_no_rscale_flag();
+    test_hlsl_backend();
     test_container();
     printf("test_translate: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
