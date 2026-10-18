@@ -43,6 +43,17 @@ namespace Xnu.Battle.Events
 
         // calc.ITEM_GetParam(item, 6): der "Angriffswert" des Items (Prozent), Eingabe aus den Spieldaten.
         int GetItemAttackValue(ushort itemId);
+
+        // Common.GetWeather / GetLocalWeather(pokeId): Wetter-ID (0 keins, 1 Sonne, 2 Regen, 3 Schnee, 4 Sand, 5 Starkregen, 6 Extremsonne, 7 Turbulenz);
+        // die lokale Variante beruecksichtigt Wetter-Aufheber (Section_FromEvent_GetWeather).
+        int GetWeather();
+        int GetLocalWeather(int pokeId);
+
+        // WAZADATA.GetFlag(wazaId, flag): Attacken-Flag aus den Stammdaten (z. B. 7 Schlag, 8 Schall, 12 Heilung).
+        bool WazaHasFlag(ushort wazaId, int flag);
+
+        // Common.IsFriendPokeID(a, b): gleiche Seite (auch dasselbe Pokemon).
+        bool IsFriend(int pokeIdA, int pokeIdB);
     }
 
     // Kampfwerte eines Pokemon (BTL_POKEPARAM, Spezifikation Abschnitt 6), beschraenkt auf die Teile, die das
@@ -53,10 +64,12 @@ namespace Xnu.Battle.Events
         public const int NeutralRank = 6;         // Stufen liegen im Bereich 0..12 (6 = unveraendert)
         public const int SickCount = 64;
         public const int TurnFlagCount = 27;
+        public const int ContFlagCount = 32;
 
         readonly byte[] _rank = { 6, 6, 6, 6, 6, 6, 6 };
         readonly byte[] _sickType = new byte[SickCount];
         readonly bool[] _turnFlags = new bool[TurnFlagCount];
+        readonly bool[] _contFlags = new bool[ContFlagCount];
 
         public BattlePoke(byte id) => Id = id;
 
@@ -66,6 +79,8 @@ namespace Xnu.Battle.Events
         public ushort MaxHp { get; set; }
         public ushort Item { get; set; }
         public ushort Tokusei { get; set; }
+        public ushort MonsNo { get; set; }
+        public byte Sex { get; set; }
 
         // Typ-IDs wie PokeType (18 = kein Typ).
         public byte Type1 { get; set; } = 18;
@@ -95,6 +110,14 @@ namespace Xnu.Battle.Events
         public void SetSick(int sickId, byte contType) => _sickType[sickId] = contType;
 
         public bool GetTurnFlag(int flag) => _turnFlags[flag];
+
+        // BTL_POKEPARAM.CONTFLAG_Get: Dauerflags (3 Fliegen/Wirbelsturm-Ziel, 4 Tauchen, 5 Graben, 8 Winzling u. a.).
+        public bool GetContFlag(int flag) => _contFlags[flag];
+
+        public void SetContFlag(int flag, bool value) => _contFlags[flag] = value;
+
+        // IsHPFull: aktuelle HP gleich der maximalen.
+        public bool IsHpFull => Hp == MaxHp;
 
         public void SetTurnFlag(int flag, bool value) => _turnFlags[flag] = value;
 
@@ -141,6 +164,7 @@ namespace Xnu.Battle.Events
                     return MaxHp;
                 case PokeValueId.LEVEL: return Level;
                 case PokeValueId.TOKUSEI: return Tokusei;
+                case PokeValueId.SEX: return Sex;
                 case PokeValueId.TOKUSEI_EFFECTIVE:
                     return CheckSick(WazaSickIds.IEKI) || TokuseiDisabledByGas ? 0 : Tokusei;
                 default: return 0;

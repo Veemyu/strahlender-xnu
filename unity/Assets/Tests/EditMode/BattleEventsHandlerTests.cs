@@ -75,7 +75,7 @@ namespace Xnu.Tests
         [Test]
         public void TokuseiWithoutHandlerRegistersNothing()
         {
-            var p = Poke(0, tokusei: 1);
+            var p = Poke(0, tokusei: 22);
             var (es, _) = World(p);
             Assert.IsNull(TokuseiHandlers.Add(es, p));
             Assert.IsNull(es.Container.First);

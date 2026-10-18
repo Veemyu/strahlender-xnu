@@ -7,8 +7,10 @@ namespace Xnu.Battle.Events
 
     // Fahigkeits-Handler (Handler.Tokusei, Spezifikation Abschnitt 5.1). Registriert ist ein Minimalsatz als Beweis des
     // Konzepts; die uebrigen 218 Tokusei-Handlerklassen des Originals folgen nach demselben Muster.
-    public static class TokuseiHandlers
+    public static partial class TokuseiHandlers
     {
+        static TokuseiHandlers() => RegisterSlice3(Funcs);
+
         // TokuseiNo-Werte des Originals.
         public const ushort Fukugan = 14;       // Facettenauge: Genauigkeit x1,3
         public const ushort Tikaramoti = 37;    // Kraftkoloss: physischer Angriff x2
@@ -93,8 +95,10 @@ namespace Xnu.Battle.Events
 
     // Item-Handler (Handler.Item, Spezifikation Abschnitt 5.2). Minimalsatz; die Sperr-Logik der Kodawari-Items und der
     // Rueckstoss des Lebensorbs (weitere Tabelleneintraege) sind noch nicht umgesetzt.
-    public static class ItemHandlers
+    public static partial class ItemHandlers
     {
+        static ItemHandlers() => RegisterSlice3(Funcs);
+
         // ItemNo-Werte des Originals.
         public const ushort KodawariHachimaki = 220;  // Wahlband: physischer Angriff x1,5
         public const ushort KoukakuLens = 265;        // Weitwinkellinse: Genauigkeit gemaess Item-Wert

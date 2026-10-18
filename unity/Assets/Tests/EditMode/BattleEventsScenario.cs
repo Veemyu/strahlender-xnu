@@ -14,11 +14,17 @@ namespace Xnu.Tests
         readonly HashSet<ushort> _ommitG = new HashSet<ushort>();
 
         public int ItemAttackValue;
+        public int Weather;
+        public int LocalWeather;
+        public readonly HashSet<int> WazaFlags = new HashSet<int>();
 
         public static BattleEventsTestEnv FromJson(Dictionary<string, object> env)
         {
             var e = new BattleEventsTestEnv();
             if (env.TryGetValue("itemParam", out var ip)) e.ItemAttackValue = Convert.ToInt32(ip);
+            if (env.TryGetValue("weather", out var w)) e.Weather = Convert.ToInt32(w);
+            if (env.TryGetValue("localWeather", out var lw)) e.LocalWeather = Convert.ToInt32(lw);
+            if (env.TryGetValue("wazaFlags", out var wf)) foreach (var v in (List<object>)wf) e.WazaFlags.Add(Convert.ToInt32(v));
             if (env.TryGetValue("fieldEffects", out var fe)) foreach (var v in (List<object>)fe) e._fieldEffects.Add(Convert.ToInt32(v));
             if (env.TryGetValue("ommitHensin", out var oh)) foreach (var v in (List<object>)oh) e._ommitTransform.Add(Convert.ToUInt16(v));
             if (env.TryGetValue("ommitG", out var og)) foreach (var v in (List<object>)og) e._ommitG.Add(Convert.ToUInt16(v));
@@ -33,6 +39,23 @@ namespace Xnu.Tests
                     p.TokuseiDisabledByGas = Convert.ToInt32(cfg["gas"]) != 0;
                     p.IsTransformed = Convert.ToInt32(cfg["hensin"]) != 0;
                     p.IsGMode = Convert.ToInt32(cfg["gmode"]) != 0;
+                    if (cfg.ContainsKey("maxHp"))
+                    {
+                        p.MaxHp = Convert.ToUInt16(cfg["maxHp"]);
+                        p.Hp = Convert.ToUInt16(cfg["hp"]);
+                        p.Level = Convert.ToByte(cfg["level"]);
+                        p.Sex = Convert.ToByte(cfg["sex"]);
+                        p.Tokusei = Convert.ToUInt16(cfg["tokusei"]);
+                        p.Item = Convert.ToUInt16(cfg["item"]);
+                        p.MonsNo = Convert.ToUInt16(cfg["monsNo"]);
+                        foreach (var cf in (List<object>)cfg["contFlags"]) p.SetContFlag(Convert.ToInt32(cf), true);
+                        p.Type1 = 18;
+                        p.Type2 = 18;
+                        p.TypeEx = 18;
+                        var types = (List<object>)cfg["types"];
+                        if (types.Count > 0) p.Type1 = Convert.ToByte(types[0]);
+                        if (types.Count > 1) p.Type2 = Convert.ToByte(types[1]);
+                    }
                     e._pokes[p.Id] = p;
                 }
             }
@@ -45,6 +68,10 @@ namespace Xnu.Tests
         public bool OmmitAfterTransform(ushort tokuseiId) => _ommitTransform.Contains(tokuseiId);
         public bool OmmitOnGMode(ushort tokuseiId) => _ommitG.Contains(tokuseiId);
         public int GetItemAttackValue(ushort itemId) => ItemAttackValue;
+        public int GetWeather() => Weather;
+        public int GetLocalWeather(int pokeId) => LocalWeather;
+        public bool WazaHasFlag(ushort wazaId, int flag) => WazaFlags.Contains(flag);
+        public bool IsFriend(int pokeIdA, int pokeIdB) => (pokeIdA & 0xFF) % 2 == (pokeIdB & 0xFF) % 2;
     }
 
     // Fuehrt die Szenario-Schritte der Fixtures (gleiche Operationen wie scripts/battle_oracle_heap.py) gegen die C#-Umsetzung aus.
