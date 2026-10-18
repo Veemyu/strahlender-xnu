@@ -7,8 +7,9 @@
 #   DEVICE_NAME  Teil des Gerätenamens (Standard: erstes verbundenes iPad)
 #   BUNDLE_ID    Bundle-ID der App (Standard: dev.local.xnum0)
 #   CONFIG       Xcode-Konfiguration (Standard: Release)
+#   TEAM_ID      Apple-Team-ID; sonst aus work/local.env (gitignored) oder aus dem Projekt
 # Voraussetzung: Gerät entsperrt, gekoppelt, Entwicklermodus an. Die Team-ID
-# steht im Xcode-Projekt (Unity setzt sie), sie gehört nicht ins Repo.
+# gehört nicht ins Repo und nicht in ProjectSettings.
 set -euo pipefail
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
@@ -21,6 +22,8 @@ BUNDLE_ID="${BUNDLE_ID:-dev.local.xnum0}"
 CONFIG="${CONFIG:-Release}"
 DD="$ROOT/work/builds/ios-derived"
 LOG="$ROOT/work/builds/ios-deploy.log"
+# Lokale, nicht getrackte Einstellungen (z. B. TEAM_ID=...) einlesen.
+[[ -f "$ROOT/work/local.env" ]] && source "$ROOT/work/local.env"
 
 [[ -d "$PROJECT_DIR/Unity-iPhone.xcodeproj" ]] || { echo "Xcode-Projekt fehlt: $PROJECT_DIR" >&2; exit 2; }
 mkdir -p "$DD"
@@ -45,6 +48,7 @@ echo "Gerät: ${NAME//_/ }"
 echo "Build ($CONFIG) ... Log: $LOG"
 xcodebuild -project "$PROJECT_DIR/Unity-iPhone.xcodeproj" -scheme Unity-iPhone \
   -configuration "$CONFIG" -destination "id=$UDID" -derivedDataPath "$DD" \
+  ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} \
   -allowProvisioningUpdates build > "$LOG" 2>&1 || { tail -n 25 "$LOG" >&2; exit 4; }
 
 APP="$(find "$DD/Build/Products" -maxdepth 2 -name '*.app' -path "*iphoneos*" | head -1)"

@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.Data",
+  "rootNamespace": "Xnu.Data",
+  "references": ["Xnu.Core"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}
