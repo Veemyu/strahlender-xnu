@@ -11,3 +11,4 @@ tools/
 *.nro
 *.romfs
 .DS_Store
+__pycache__/
