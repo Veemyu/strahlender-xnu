@@ -58,3 +58,11 @@ open -n /Applications/Unity/Hub/Editor/2019.4.27f1/Unity.app --args -projectPath
 ```
 
 Danach `Assets/level0.unity` von Hand öffnen (keine Szene in den Build-Einstellungen).
+
+## Testergebnis im Unity-Editor (2019.4.27f1, Rosetta, 2026-10-18)
+- Das Projekt öffnet, kompiliert fehlerfrei (`Assembly-CSharp.dll` in ca. 12 s) und löst die Pakete auf.
+- `level0.unity` zeigt beim Start nur Schwarz. Der Log zeigt zwei Abbrüche beim Boot:
+  1. `NullReferenceException` in `GameManager.OnetimeInitializeOperation` (`GameManager.cs:249`): `UIManager.Instance` ist `null`. Ursache offen.
+  2. Das Bundle `shaders` fehlt in `AssetBundles/Editor` (Blocker B1): `AssetBundle.LoadFromFile` liefert `null`, danach `NullReferenceException` in `AssetManager.LoadAssetBundle`.
+- Offen: Ob die Switch-Bundles aus dem Dump im Mac-Editor ladbar sind, und warum `UIManager.Instance` fehlt.
+- Einschätzung: opendpr taugt als Referenz (Klassen, Boot-Ablauf), ist aber auf dem Mac nicht ohne Weiteres lauffähig.
