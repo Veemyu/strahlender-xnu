@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.Build.Editor",
+  "rootNamespace": "Xnu.Build.Editor",
+  "references": [],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}
