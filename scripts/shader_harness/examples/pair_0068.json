@@ -1,0 +1,38 @@
+{
+  "size": [256, 256],
+  "clearColor": [0.1, 0.1, 0.2, 1],
+  "vertex": { "spirv": "../../../work/shaders/spirv/68_vert.spv" },
+  "fragment": { "spirv": "../../../work/shaders/spirv/68_frag.spv" },
+  "topology": "triangle",
+  "vertexCount": 6,
+  "vertexBuffers": [
+    {
+      "slot": 30,
+      "floats": [
+        -1, -1, 0, 0,
+         1, -1, 1, 0,
+         1,  1, 1, 1,
+        -1, -1, 0, 0,
+         1,  1, 1, 1,
+        -1,  1, 0, 1
+      ]
+    }
+  ],
+  "attributes": [
+    { "location": 0, "buffer": 30, "offset": 0, "format": "float2" },
+    { "location": 1, "buffer": 30, "offset": 8, "format": "float2" }
+  ],
+  "buffers": [
+    { "stage": "vertex", "slot": 0, "size": 65536,
+      "writes": [
+        { "offsetFloats": 0, "floats": [0.5, 0, 0, 0] },
+        { "offsetFloats": 4, "floats": [0.8, 0.8, 0.0, 0] }
+      ] },
+    { "stage": "fragment", "slot": 0, "size": 65536, "floats": [0.75, 0, 0, 0] }
+  ],
+  "textures": [
+    { "stage": "fragment", "slot": 0, "generate": { "kind": "gradient", "size": 64 },
+      "sampler": { "min": "linear", "mag": "linear", "address": "clamp" } }
+  ],
+  "state": { "cull": "none" }
+}

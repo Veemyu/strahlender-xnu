@@ -1,0 +1,48 @@
+{
+  "size": [256, 256],
+  "clearColor": [0.15, 0.15, 0.15, 1],
+  "vertex": { "spirv": "../../../work/shaders/spirv/136_vert.spv" },
+  "fragment": { "spirv": "../../../work/shaders/spirv/136_frag.spv" },
+  "topology": "triangleStrip",
+  "vertexCount": 4,
+  "vertexBuffers": [
+    {
+      "slot": 30,
+      "floats": [
+        -0.9, -0.9, 0.0,  0, 0,
+         0.9, -0.9, 0.0,  1, 0,
+        -0.9,  0.9, 0.0,  0, 1,
+         0.9,  0.9, 0.0,  1, 1
+      ]
+    }
+  ],
+  "attributes": [
+    { "location": 0, "buffer": 30, "offset": 0, "format": "float3" },
+    { "location": 1, "buffer": 30, "offset": 12, "format": "float2" }
+  ],
+  "buffers": [
+    { "stage": "vertex", "slot": 0, "size": 65536,
+      "writes": [
+        { "offsetFloats": 0,  "floats": [1, 0, 0, 0] },
+        { "offsetFloats": 4,  "floats": [0, 1, 0, 0] },
+        { "offsetFloats": 8,  "floats": [0, 0, 1, 0] },
+        { "offsetFloats": 12, "floats": [0, 0, 0, 1] },
+        { "offsetFloats": 16, "floats": [1, 0, 0, 0] },
+        { "offsetFloats": 20, "floats": [0, 1, 0, 0] },
+        { "offsetFloats": 24, "floats": [0, 0, 1, 0] },
+        { "offsetFloats": 28, "floats": [0, 0, 0, 1] }
+      ] },
+    { "stage": "fragment", "slot": 0, "size": 65536,
+      "writes": [
+        { "offsetFloats": 0, "floats": [1.0, 0.6, 0.1, 1.0] },
+        { "offsetFloats": 4, "floats": [0.5, 0, 0, 0] }
+      ] }
+  ],
+  "textures": [
+    { "stage": "fragment", "slot": 0,
+      "generate": { "kind": "checker", "size": 64, "cells": 8,
+                    "colorA": [1, 1, 1, 1], "colorB": [0, 0, 0, 0] },
+      "sampler": { "min": "nearest", "mag": "nearest", "address": "clamp" } }
+  ],
+  "state": { "cull": "none" }
+}
