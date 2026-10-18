@@ -28,3 +28,8 @@
 - Bauwarnungen (Unity-generierter Code, ignorierbar): veraltete lproj-Ordner, „Update to recommended settings“, deprecated APIs (`useCVTextureCache`, `SecTrustGetCertificateAtIndex`, Sensoren, `controllerPausedHandler`). Das Xcode-Projekt wird bei jedem Unity-Build neu erzeugt, Änderungen daran gehen verloren.
 - Signaturablauf: Xcode legt das Zertifikat selbst an (Apple Development, Schlüsselbund). `security find-identity -v -p codesigning` zeigt danach 1 gültige Identität. Der Zugriff von `codesign` auf den Schlüssel wurde freigegeben. Die Team-ID gehört nicht ins Repo.
 - Wiederholung per CLI (Idee, ungetestet): `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -destination 'id=<UDID>' -allowProvisioningUpdates` und `xcrun devicectl device install app`. 
+
+## Deploy-Skript für das iPad
+- `scripts/ios_deploy.sh [Projektordner] [--no-launch]`: findet das verbundene iPad über `devicectl` (JSON), baut das Unity-Xcode-Projekt mit `xcodebuild -allowProvisioningUpdates`, installiert per `devicectl device install app` und startet per `devicectl device process launch`. Optionale Variablen `DEVICE_NAME`, `BUNDLE_ID`, `CONFIG`. Log: `work/builds/ios-deploy.log`.
+- Getestet: Erstlauf 3 min 20 s (macOS prüfte gleichzeitig die Simulator-Runtime, XProtect belastete die CPU), inkrementeller Lauf mit Start 6 s. Die App läuft auf dem iPad.
+- Voraussetzung: iPad per USB, entsperrt, Entwicklermodus an, Profil vertraut.
