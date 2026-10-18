@@ -1,0 +1,13 @@
+# Nie committen: Keys, Dumps, Saves, extrahierte Inhalte
+nsp/
+Ryujinx/
+work/
+tools/
+*.keys
+*.xci
+*.nsp
+*.nca
+*.nso
+*.nro
+*.romfs
+.DS_Store
