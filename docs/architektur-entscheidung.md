@@ -49,3 +49,9 @@ Rekonstruierter Code aus Decompilation kann urheberrechtlich heikel sein, sobald
 4. Wie viel manuelle Rekonstruktion der Spiellogik ist akzeptabel, und wo beginnen wir (Save-nahe Klassen, Kampf, Feld)?
 5. Wwise: eigene Wiedergabe über konvertierte WEMs oder Wwise-SDK-Laufzeit?
 6. Rolle des Ryzen und des M2 mini (nur noch Batch-Analysen)?
+
+## Entscheidung des Nutzers (2026-10-18)
+- **Richtung D:** Durchstich in einer neueren Unity-LTS, danach A, B oder C wählen.
+- **Ziel:** vollständig spielbares Spiel.
+- **Verbreitung:** später öffentlich, nur Code ohne Spielinhalte. Damit wird die rechtliche Trennung wichtig: keine Spieldateien, Keys oder extrahierten Inhalte im Repo, Spezifikationen in eigenen Worten, Implementierung getrennt davon. Das ist keine Rechtsberatung. Vor einer Veröffentlichung sollte die Rechtslage geklärt werden.
+- **Unity-Version für den Durchstich:** 6.3 LTS (6000.3.26f1, native Apple-silicon-Variante), weil das die aktuelle LTS ist. Neben dieser Wahl steht 6.0 LTS (6000.0.85f1) als Alternative.
