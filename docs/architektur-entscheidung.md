@@ -55,3 +55,10 @@ Rekonstruierter Code aus Decompilation kann urheberrechtlich heikel sein, sobald
 - **Ziel:** vollständig spielbares Spiel.
 - **Verbreitung:** später öffentlich, nur Code ohne Spielinhalte. Damit wird die rechtliche Trennung wichtig: keine Spieldateien, Keys oder extrahierten Inhalte im Repo, Spezifikationen in eigenen Worten, Implementierung getrennt davon. Das ist keine Rechtsberatung. Vor einer Veröffentlichung sollte die Rechtslage geklärt werden.
 - **Unity-Version für den Durchstich:** 6.3 LTS (6000.3.26f1, native Apple-silicon-Variante), weil das die aktuelle LTS ist. Neben dieser Wahl steht 6.0 LTS (6000.0.85f1) als Alternative.
+
+## Zielplattformen und Reihenfolge (Nutzervorgabe 2026-10-18)
+- **Endziel:** native Metal-Anwendung auf ARM für iOS/iPadOS (ohne JIT, AOT/IL2CPP).
+- **Vorstufe:** macOS-Port (Apple Silicon), darf als MVP einfacher sein.
+- **Plattformübergreifend** (z. B. Windows/Linux) wird mitgedacht, ist aber erst später wichtig: keine Architekturentscheidung darf macOS-/iPadOS-Spezifisches verbauen, aber es wird noch nichts dafür gebaut.
+- Meilensteine: M0 Durchstich (Unity 6.3 LTS, macOS), M1 macOS-MVP (1080p 16:9, Metal, Save-Import), M2 iPadOS-Build (Speicherbudget, Touch/Controller), danach plattformübergreifend.
+- **Beobachtet:** `/Applications/Xcode.app` ist vorhanden, `xcode-select` zeigt aber auf `/Library/Developer/CommandLineTools`, ein iPhoneOS-SDK wird darüber nicht gefunden. Für iOS-Builds muss die Xcode-Developer-Umgebung gewählt werden (z. B. per `DEVELOPER_DIR` oder `xcode-select -s`, Letzteres braucht Admin). Das iOS-Build-Support-Modul von Unity ist noch nicht installiert.
