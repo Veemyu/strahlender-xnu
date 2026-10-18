@@ -177,5 +177,116 @@ class TestExport(unittest.TestCase):
             self.assertEqual(json.loads(raw.decode("utf-8"))["instances"][0]["data"]["Thing"][0]["label"], "Übung\n\"q\"")
 
 
+class TestPart2(unittest.TestCase):
+    def rec(self, cls, ns, name, path_id=None, data=None):
+        r = {"class": cls, "namespace": ns, "assembly": "Assembly-CSharp.dll", "name": name, "schema": [], "data": data or {}}
+        if path_id is not None:
+            r["path_id"] = path_id
+        return r
+
+    def test_want_class_default_namespace_and_allow_list(self):
+        self.assertTrue(md.want_class("XLSXContent", "ZoneTable"))
+        self.assertFalse(md.want_class("UnityEngine.UI", "Image"))
+        self.assertFalse(md.want_class("XLSXContent", None))
+        self.assertTrue(md.want_class("", "EvData", {"EvData"}))
+        self.assertFalse(md.want_class("XLSXContent", "ZoneTable", {"EvData"}))
+
+    def test_filter_records(self):
+        recs = [self.rec("A", "XLSXContent", "a"), self.rec("B", "Other", "b"), self.rec(None, "", "c")]
+        self.assertEqual([r["name"] for r in md.filter_records(recs)], ["a"])
+        self.assertEqual([r["name"] for r in md.filter_records(recs, {"B"})], ["b"])
+
+    def test_resolve_pptr_names_in_place(self):
+        target = self.rec("AttributeBlock", "XLSXContent", "block_a", path_id=42)
+        owner = self.rec("Matrix", "XLSXContent", "m", path_id=1, data={
+            "Blocks": [{"m_FileID": 0, "m_PathID": 42}, {"m_FileID": 0, "m_PathID": 0}, {"m_FileID": 0, "m_PathID": 99}],
+            "Nested": {"Ref": {"m_FileID": 0, "m_PathID": 42}},
+            "Foreign": {"m_FileID": 2, "m_PathID": 42},
+            "Plain": {"m_FileID": 0, "m_PathID": 42, "extra": 1},
+        })
+        resolved, open_ = md.resolve_pptr_names([target, owner])
+        self.assertEqual((resolved, open_), (2, 3))
+        blocks = owner["data"]["Blocks"]
+        self.assertEqual(blocks[0]["target_name"], "block_a")
+        self.assertEqual(blocks[0]["target_class"], "AttributeBlock")
+        self.assertNotIn("target_name", blocks[1])   # PathID 0 = leer
+        self.assertNotIn("target_name", blocks[2])   # unbekanntes Objekt
+        self.assertEqual(owner["data"]["Nested"]["Ref"]["target_name"], "block_a")
+        self.assertNotIn("target_name", owner["data"]["Foreign"])   # andere Datei
+        self.assertNotIn("target_name", owner["data"]["Plain"])     # kein reines PPtr-Objekt
+
+    def test_export_records_writes_path_id_only_when_present(self):
+        recs = [self.rec("Thing", "XLSXContent", "a", path_id=7, data={"Data": []}),
+                self.rec("Other", "XLSXContent", "b", data={"Data": []})]
+        with tempfile.TemporaryDirectory() as out:
+            md.export_records(recs, "Synthetic/b", out)
+            with open(os.path.join(out, "Thing.json"), encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["instances"][0]["path_id"], 7)
+            with open(os.path.join(out, "Other.json"), encoding="utf-8") as f:
+                self.assertNotIn("path_id", json.load(f)["instances"][0])
+
+    def test_table_counts_sums_rows_over_instances(self):
+        doc = {"class": "MapWarp", "bundle": "b", "instances": [
+            {"name": "a", "data": {"Data": [1, 2], "Scale": 1.5}}, {"name": "b", "data": {"Data": [3]}}, {"name": "c", "data": {}}]}
+        self.assertEqual(md.table_counts(doc), {"class": "MapWarp", "bundle": "b", "instances": 3, "rows": {"Data": 3}})
+
+    def test_ev_stats_counts_structure_only(self):
+        def cmd(*args):
+            return {"Arg": [{"argType": t, "data": d} for t, d in args]}
+        instances = [
+            {"name": "x", "data": {"StrList": ["a", "b"], "Scripts": [
+                {"Label": "l1", "Commands": [cmd((0, 4), (1, 1065353216), (5, 0)), cmd((0, 4)), {"Arg": []}]},
+                {"Label": "l2", "Commands": [cmd((0, 9), (2, 3))]}]}},
+            {"name": "y", "data": {"StrList": [], "Scripts": []}},
+        ]
+        s = md.ev_stats(instances)
+        self.assertEqual(s["files"], 2)
+        self.assertEqual(s["scripts"], 2)
+        self.assertEqual(s["commands"], 4)
+        self.assertEqual(s["args"], 6)
+        self.assertEqual(s["arg_types"], {0: 3, 1: 1, 2: 1, 5: 1})
+        self.assertEqual(s["distinct_opcodes"], 2)
+        self.assertEqual(s["strings"], 2)
+
+    def test_scan_wanted(self):
+        self.assertTrue(md.scan_wanted("XLSXContent", "AnyTable"))
+        self.assertTrue(md.scan_wanted("Dpr.Message", "MsbtData"))
+        self.assertTrue(md.scan_wanted("", "EvData"))
+        self.assertFalse(md.scan_wanted("UnityEngine", "Image"))
+
+    def test_targets_default_is_part_one_only(self):
+        args = NS(set="base", messages=False)
+        targets = md._targets(args)
+        self.assertEqual({t[0] for t in targets}, set(md.DATA_BUNDLES))
+        self.assertTrue(all(allow is None and not extra for _, _, allow, extra in targets))
+        extra = md._targets(NS(set="extra", messages=False))
+        self.assertEqual({t[0] for t in extra}, set(md.EXTRA_BUNDLES))
+        self.assertTrue(all(e for _, _, _, e in extra))
+        both = md._targets(NS(set="all", messages=True))
+        self.assertEqual(len(both), len(md.DATA_BUNDLES) + len(md.MESSAGE_BUNDLES) + len(md.EXTRA_BUNDLES))
+
+    def test_extra_bundles_do_not_collide_with_base_output_folders(self):
+        base = set(md.DATA_BUNDLES.values()) | set(md.MESSAGE_BUNDLES.values())
+        extra = [short for short, _ in md.EXTRA_BUNDLES.values()]
+        self.assertFalse(base & set(extra))
+        self.assertEqual(len(extra), len(set(extra)))
+        self.assertFalse(set(md.EXTRA_BUNDLES) & set(md.DATA_BUNDLES))
+
+    def test_audio_bundles_are_never_targets(self):
+        for rel in list(md.DATA_BUNDLES) + list(md.MESSAGE_BUNDLES) + list(md.EXTRA_BUNDLES):
+            self.assertNotIn("audio", rel.lower())
+            self.assertNotIn("sound", rel.lower())
+
+    def test_counts_command_writes_numbers_only(self):
+        with tempfile.TemporaryDirectory() as out:
+            md.write_json(os.path.join(out, "grp", "T.json"), {"class": "T", "bundle": "b", "instances": [{"name": "t", "data": {"Rows": [1, 2, 3]}}]})
+            md.write_json(os.path.join(out, "_survey.json"), {"ignored": True})
+            md.cmd_counts(NS(out=out))
+            with open(os.path.join(out, "_counts.json"), encoding="utf-8") as f:
+                counts = json.load(f)
+            self.assertEqual(list(counts), [os.path.join("grp", "T.json")])
+            self.assertEqual(counts[os.path.join("grp", "T.json")]["rows"], {"Rows": 3})
+
+
 if __name__ == "__main__":
     unittest.main()

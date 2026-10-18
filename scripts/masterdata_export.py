@@ -10,6 +10,12 @@ Unterbefehle:
     survey   Bundles untersuchen: Klassen, Instanzen, Feldschema; Abgleich mit work/il2cpp/dump.cs
              -> work/masterdata/_survey.json (+ Tabelle auf stdout)
     export   Alle MonoBehaviour-Instanzen der Daten-Bundles als JSON nach work/masterdata/<bundle>/<Klasse>.json
+    counts   Instanz- und Zeilenzahlen aller exportierten Dateien -> work/masterdata/_counts.json
+    scan     Bundles ausserhalb von Environments/Pokemon Database nach Tabellenklassen durchsuchen -> _scan.json
+
+Mit --set extra (oder all) kommen die weiteren Bundles aus EXTRA_BUNDLES dazu (Zonen, Begegnungen, Event-Skripte,
+Untergrund usw.); Instanzen tragen dort zusaetzlich "path_id", PPtr-Verweise innerhalb des Bundles sind um
+"target_class"/"target_name" ergaenzt. Ohne --set bleibt alles wie in Teil 1.
 
 Ausgaben liegen nur unter work/ (gitignored). Audio-Assets werden nie gelesen: es werden ausschliesslich
 MonoScript- und MonoBehaviour-Objekte angefasst.
@@ -40,6 +46,27 @@ DATA_BUNDLES = {
 }
 # Texte: pro Sprache ein Bundle mit MsbtData-Objekten (nur mit --messages exportiert)
 MESSAGE_BUNDLES = {"Message/english": "msg_english", "Message/german": "msg_german", "Message/common_msbt": "msg_common"}
+
+# Weitere Daten-Bundles (Teil 2, Option --set extra|all): Bundle -> (Kurzname, Klassenfilter).
+# Klassenfilter: None = alle Klassen im Namespace XLSXContent; sonst Menge erlaubter Klassennamen.
+# Die Bundles enthalten teils auch Texturen/Prefabs; gelesen werden wie immer nur MonoScript/MonoBehaviour.
+EXTRA_BUNDLES = {
+    "Dpr/scriptableobjects/gamesettings": ("gamesettings", None),
+    "Dpr/ev_script": ("ev_script", {"EvData"}),
+    "UnderGround/data/ugdata": ("ug_data", None),
+    "LightStone/uglightstonedata": ("lightstone", None),  # Schema weicht vom Dump ab (neuere Variante)
+    "UnderGround/lightstone/prefabs/lightstonemanager": ("lightstone_ug", None),  # Schema wie im Dump
+    "Dpr/spfishing": ("spfishing", None),
+    "Dpr/statueeffectdata": ("statueeffect", None),
+    "StatuePlacementEdit/sb/sbcontroller": ("secretbase", None),
+    "DigFossil/dig/digfossilcontroller": ("digfossil", None),
+    "FureaiHiroba/fieldwalking": ("fieldwalking", None),
+    "Dpr/scenes/title": ("title", {"TitleSettings"}),
+}
+
+# Bundles/Ordner, die der Scan (Befehl scan) nicht oeffnet: riesige Modell-/Umgebungsdaten ohne Tabellen.
+SCAN_SKIP_TOP = {"Environments", "Pokemon Database"}
+SCAN_MAX_BYTES = 120 * 1024 * 1024
 
 BOILERPLATE = ("m_GameObject", "m_Enabled", "m_Script", "m_Name")
 
@@ -216,10 +243,11 @@ def load_unitypy():
     return UnityPy
 
 
-def read_bundle(unitypy, path):
+def read_bundle(unitypy, path, with_ids=False):
     """Liefert Instanz-Records [{class, namespace, assembly, name, schema, data}] eines Bundles.
 
     Es werden nur MonoScript und MonoBehaviour gelesen (keine Audio-/Textur-/Mesh-Objekte).
+    with_ids=True haengt jedem Record die Objekt-ID des Bundles (path_id) an, damit PPtr-Verweise aufgeloest werden koennen.
     """
     env = unitypy.load(path)
     scripts = {}
@@ -235,12 +263,15 @@ def read_bundle(unitypy, path):
         script = data.get("m_Script") or {}
         cls, ns, asm = scripts.get((o.assets_file.name, script.get("m_PathID")), (None, "", ""))
         root = o.serialized_type.node
-        records.append({
+        rec = {
             "class": cls, "namespace": ns, "assembly": asm,
             "name": data.get("m_Name", ""),
             "schema": class_schema(root),
             "data": {k: v for k, v in data.items() if k not in BOILERPLATE},
-        })
+        }
+        if with_ids:
+            rec["path_id"] = o.path_id
+        records.append(rec)
     return records
 
 
@@ -285,20 +316,115 @@ def write_json(path, obj):
 
 
 def export_records(records, bundle_key, out_dir):
-    """Schreibt pro Klasse <out_dir>/<Klasse>.json: {class, namespace, assembly, bundle, instances:[{name, data}]}."""
+    """Schreibt pro Klasse <out_dir>/<Klasse>.json: {class, namespace, assembly, bundle, instances:[{name, data}]}.
+
+    Hat ein Record eine path_id (read_bundle(with_ids=True)), steht sie als "path_id" in der Instanz.
+    """
     written = []
     for cls, recs in group_by_class(records).items():
         if not cls:
             continue
+        instances = []
+        for r in recs:
+            inst = {"name": r["name"], "data": r["data"]}
+            if "path_id" in r:
+                inst["path_id"] = r["path_id"]
+            instances.append(inst)
         doc = {
             "class": cls, "namespace": recs[0]["namespace"], "assembly": recs[0]["assembly"],
             "bundle": bundle_key,
-            "instances": [{"name": r["name"], "data": r["data"]} for r in recs],
+            "instances": instances,
         }
         path = os.path.join(out_dir, cls + ".json")
         write_json(path, doc)
         written.append(path)
     return written
+
+
+# --- Teil 2: Filter, PPtr-Aufloesung, Zaehler, Skript-Statistik ---------------------------------
+
+def want_class(namespace, cls, allow=None):
+    """Klassenfilter fuer EXTRA_BUNDLES: allow=None -> nur Namespace XLSXContent, sonst Klassennamen aus allow."""
+    if not cls:
+        return False
+    if allow is None:
+        return namespace == "XLSXContent"
+    return cls in allow
+
+
+def filter_records(records, allow=None):
+    return [r for r in records if want_class(r["namespace"], r["class"], allow)]
+
+
+def is_pptr(value):
+    return isinstance(value, dict) and set(value) >= {"m_FileID", "m_PathID"} and len(value) == 2
+
+
+def resolve_pptr_names(records):
+    """Ergaenzt PPtr-Verweise auf Objekte desselben Bundles um 'target_class' und 'target_name' (in place).
+
+    Verweise auf andere Dateien (m_FileID != 0) oder nicht vorhandene Objekte bleiben unveraendert.
+    Rueckgabe: (aufgeloest, offen).
+    """
+    index = {r["path_id"]: (r["class"], r["name"]) for r in records if "path_id" in r}
+    counts = [0, 0]
+
+    def walk(v):
+        if isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif isinstance(v, dict):
+            if is_pptr(v):
+                hit = index.get(v["m_PathID"]) if v["m_FileID"] == 0 and v["m_PathID"] != 0 else None
+                if hit:
+                    v["target_class"], v["target_name"] = hit
+                    counts[0] += 1
+                else:
+                    counts[1] += 1
+                return
+            for x in v.values():
+                walk(x)
+
+    for r in records:
+        walk(r["data"])
+    return counts[0], counts[1]
+
+
+def table_counts(doc):
+    """Kennzahlen einer exportierten Klassendatei: Instanzzahl und Zeilen je Sheet (Summe ueber Instanzen)."""
+    rows = {}
+    for inst in doc.get("instances", []):
+        for k, v in (inst.get("data") or {}).items():
+            if isinstance(v, list):
+                rows[k] = rows.get(k, 0) + len(v)
+    return {"class": doc.get("class"), "bundle": doc.get("bundle"), "instances": len(doc.get("instances", [])), "rows": rows}
+
+
+def ev_stats(instances):
+    """Struktur-Kennzahlen exportierter EvData-Instanzen (Skript-Bytecode wird nicht interpretiert).
+
+    Ein Skript hat Label + Commands; ein Command ist eine Liste von Argumenten {argType, data}.
+    Rueckgabe: Dateien, Skripte, Befehle, Argumente, Histogramm der argType-Werte, Zahl verschiedener
+    Befehlskennungen (erstes Argument mit argType 0), Zahl Stringtabellen-Eintraege.
+    """
+    scripts = commands = args = strings = 0
+    arg_types = {}
+    opcodes = set()
+    for inst in instances:
+        data = inst.get("data") or {}
+        strings += len(data.get("StrList") or [])
+        for sc in data.get("Scripts") or []:
+            scripts += 1
+            for cmd in sc.get("Commands") or []:
+                commands += 1
+                for i, a in enumerate(cmd.get("Arg") or []):
+                    args += 1
+                    t = a.get("argType")
+                    arg_types[t] = arg_types.get(t, 0) + 1
+                    if i == 0 and t == 0:
+                        opcodes.add(a.get("data"))
+    return {"files": len(instances), "scripts": scripts, "commands": commands, "args": args,
+            "arg_types": dict(sorted(arg_types.items())), "distinct_opcodes": len(opcodes), "strings": strings}
 
 
 def _bundles(args):
@@ -308,6 +434,25 @@ def _bundles(args):
     return sel
 
 
+def _targets(args):
+    """Liste (Bundle, Kurzname, Klassenfilter, extra) gemaess --set; extra=False: unveraendertes Verhalten von Teil 1."""
+    which = getattr(args, "set", "base")
+    targets = []
+    if which in ("base", "all"):
+        targets += [(rel, short, None, False) for rel, short in _bundles(args).items()]
+    if which in ("extra", "all"):
+        targets += [(rel, short, allow, True) for rel, (short, allow) in EXTRA_BUNDLES.items()]
+    return targets
+
+
+def _load_records(unitypy, path, allow, extra):
+    if not extra:
+        return read_bundle(unitypy, path)
+    records = read_bundle(unitypy, path, with_ids=True)
+    resolve_pptr_names(records)  # vor dem Filtern, damit auch Verweise auf nicht exportierte Klassen einen Namen bekommen
+    return filter_records(records, allow)
+
+
 def cmd_survey(args):
     unitypy = load_unitypy()
     dump = None
@@ -315,45 +460,104 @@ def cmd_survey(args):
         with open(args.dump, encoding="utf-8", errors="replace") as f:
             dump = parse_dump(f)
     result = {}
-    for rel, short in _bundles(args).items():
+    result_extra = {}
+    for rel, short, allow, extra in _targets(args):
         path = os.path.join(args.assets, rel)
         if not os.path.exists(path):
             print("fehlt:", rel, file=sys.stderr)
             continue
-        info = survey_bundle(read_bundle(unitypy, path), dump)
-        result[rel] = info
+        info = survey_bundle(_load_records(unitypy, path, allow, extra), dump)
+        (result_extra if extra else result)[rel] = info
         print("%-42s %5d Objekte, %3d Klassen" % (rel, info["objects"], len(info["classes"])))
         for c in info["classes"]:
             d = c.get("dump", {})
             print("   %-28s x%-4d Felder:%-3d dump:%s" % (c["class"], c["instances"], len(c["schema"]),
                   "ok" if d.get("match") else "ABWEICHUNG"))
-    write_json(os.path.join(args.out, "_survey.json"), result)
-    print("->", os.path.join(args.out, "_survey.json"))
+    for data, name in ((result, "_survey.json"), (result_extra, "_survey_extra.json")):
+        if data:
+            write_json(os.path.join(args.out, name), data)
+            print("->", os.path.join(args.out, name))
 
 
 def cmd_export(args):
     unitypy = load_unitypy()
     total = 0
-    for rel, short in _bundles(args).items():
+    for rel, short, allow, extra in _targets(args):
         path = os.path.join(args.assets, rel)
         if not os.path.exists(path):
             print("fehlt:", rel, file=sys.stderr)
             continue
-        written = export_records(read_bundle(unitypy, path), rel, os.path.join(args.out, short))
+        written = export_records(_load_records(unitypy, path, allow, extra), rel, os.path.join(args.out, short))
         total += len(written)
         print("%-42s -> %d Dateien" % (rel, len(written)))
     print("fertig:", total, "Dateien in", args.out)
 
 
+def cmd_counts(args):
+    """Zaehlt Instanzen und Zeilen aller exportierten JSON-Dateien -> <out>/_counts.json (nur Zahlen)."""
+    result = {}
+    for dp, dn, fn in os.walk(args.out):
+        dn.sort()
+        for f in sorted(fn):
+            if not f.endswith(".json") or f.startswith("_"):
+                continue
+            with open(os.path.join(dp, f), encoding="utf-8") as fh:
+                doc = json.load(fh)
+            result[os.path.relpath(os.path.join(dp, f), args.out)] = table_counts(doc)
+    write_json(os.path.join(args.out, "_counts.json"), result)
+    for k, v in result.items():
+        print("%-58s inst=%-5d %s" % (k, v["instances"], v["rows"]))
+    print("->", os.path.join(args.out, "_counts.json"))
+
+
+def cmd_scan(args):
+    """Listet je Bundle (ausser SCAN_SKIP_TOP) die enthaltenen Tabellenklassen (XLSXContent, Dpr.Message, EvData).
+
+    Es werden nur MonoScript-Objekte gelesen. Ergebnis: <out>/_scan.json.
+    """
+    unitypy = load_unitypy()
+    result = {}
+    for top in sorted(os.listdir(args.assets)):
+        if top in SCAN_SKIP_TOP or not os.path.isdir(os.path.join(args.assets, top)):
+            continue
+        for dp, dn, fn in os.walk(os.path.join(args.assets, top)):
+            dn.sort()
+            for f in sorted(fn):
+                path = os.path.join(dp, f)
+                if os.path.getsize(path) > SCAN_MAX_BYTES:
+                    continue
+                try:
+                    env = unitypy.load(path)
+                    names = set()
+                    for o in env.objects:
+                        if o.type.name == "MonoScript":
+                            s = o.read()
+                            if scan_wanted(s.m_Namespace, s.m_ClassName):
+                                names.add(s.m_Namespace + "." + s.m_ClassName)
+                except Exception as exc:  # noqa: BLE001 - kaputte/andere Dateien einfach auslassen
+                    print("uebersprungen:", path, exc, file=sys.stderr)
+                    continue
+                if names:
+                    result[os.path.relpath(path, args.assets)] = sorted(names)
+    write_json(os.path.join(args.out, "_scan.json"), result)
+    print(len(result), "Bundles mit Tabellenklassen ->", os.path.join(args.out, "_scan.json"))
+
+
+def scan_wanted(namespace, cls):
+    return namespace in ("XLSXContent", "Dpr.Message") or cls in ("EvData", "TagPlaceData")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["survey", "export"])
+    p.add_argument("command", choices=["survey", "export", "counts", "scan"])
     p.add_argument("--assets", default=DEFAULT_ASSETS, help="AssetAssistant-Ordner")
     p.add_argument("--out", default=DEFAULT_OUT, help="Ausgabeordner (unter work/)")
     p.add_argument("--dump", default=DEFAULT_DUMP, help="il2cpp dump.cs fuer den Abgleich")
     p.add_argument("--messages", action="store_true", help="auch Message-Bundles (MsbtData) einbeziehen")
+    p.add_argument("--set", choices=["base", "extra", "all"], default="base",
+                   help="base = Teil 1 (Standard), extra = weitere Bundles (EXTRA_BUNDLES), all = beides")
     args = p.parse_args(argv)
-    {"survey": cmd_survey, "export": cmd_export}[args.command](args)
+    {"survey": cmd_survey, "export": cmd_export, "counts": cmd_counts, "scan": cmd_scan}[args.command](args)
 
 
 if __name__ == "__main__":
