@@ -1,3 +1,5 @@
+using System;
+
 namespace Xnu.Battle
 {
     // Eingaben der Schadensformel (Spezifikation Abschnitt 5). Kraft, Angriff, Abwehr, STAB-Verhaeltnis und Endfaktor sind
@@ -33,6 +35,10 @@ namespace Xnu.Battle
 
         // Endfaktor aus den Handlern der letzten Schadensstufe (0x1000 = keiner).
         public uint FinalRatio { get; set; } = 0x1000;
+
+        // Optional: liefert den Endfaktor erst zur Laufzeit aus dem Schaden vor der letzten Stufe (Ereignissystem, Scheibe 2);
+        // hat Vorrang vor FinalRatio.
+        public Func<uint, uint> FinalRatioFunc { get; set; }
     }
 
     public struct DamageResult
@@ -67,7 +73,7 @@ namespace Xnu.Battle
             if (input.Category == DamageCategory.Physical && input.AttackerBurned && !input.IgnoreBurn)
                 s = unchecked(s * 50) / 100;
 
-            s = BattleMath.MulRatio(s, input.FinalRatio);
+            s = BattleMath.MulRatio(s, input.FinalRatioFunc != null ? input.FinalRatioFunc(s) : input.FinalRatio);
             if (s == 0) s = 1;
 
             return new DamageResult { Damage = unchecked((ushort)s), Roll = roll };

@@ -1,0 +1,10 @@
+{
+  "name": "Xnu.Battle.Events",
+  "rootNamespace": "Xnu.Battle.Events",
+  "references": ["Xnu.Battle"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "noEngineReferences": true,
+  "autoReferenced": true
+}
