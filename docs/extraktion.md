@@ -25,3 +25,12 @@ Hinweis: hactool gibt bei unbekannten Schlüsselnamen Warnungen mit Schlüsselwe
 1. REA/Ghidra: `work/elf/main.elf` öffnen (Autoanalyse dauert lange, ggf. RAM beachten).
 2. Il2CppDumper bauen und `global-metadata.dat` + ELF auswerten, `script.json` in Ghidra importieren.
 3. Assets (AssetRipper) und Save-Format.
+
+## IL2CPP-Dump (erledigt)
+- `tools/Il2CppDumper` (Perfare, `dotnet build -f net8.0 -o ../il2cppdumper-bin`), Start mit `DOTNET_ROLL_FORWARD=Major dotnet ... <NSO main> <global-metadata.dat> <outdir>`. Das NSO `work/exefs/main` wird direkt gelesen. Die Taste-drücken-Abfrage am Ende erzeugt eine harmlose Exception.
+- Metadata v24.4 (als 24.5 erkannt), CodeRegistration `0x4aeb238`, MetadataRegistration `0x4aebed8`.
+- Ergebnis in `work/il2cpp/`: `dump.cs` (~11800 Namespaces, ~6200 Klassen), `DummyDll/` (u. a. Assembly-CSharp), `il2cpp.h`, `script.json`, `stringliteral.json`. Klassen u. a. `SaveData`, `PlayerWork`.
+
+## Ghidra
+- Import von `main.elf` mit 2G Heap schlug fehl (OutOfMemoryError). Jetzt 8G, Analyzer "GCC Exception Handlers" aus, Timeout 60 min (`~/.copilot/mcp-config.json`).
+- Ghidra-/REA-Läufe laufen künftig über einen Hintergrund-Subagenten.
