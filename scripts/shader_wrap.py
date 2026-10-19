@@ -3,7 +3,8 @@
 
 Eigener Code des strahlender-xnu-Projekts. Eingaben (alle lokal unter work/shaders/, nicht im Repo):
   inventory.json   Properties, Tags, Render-States, Parameter-Layouts je Pass und Stufe (scripts/shader_inventory.py)
-  mapping.json     Programm-Id je (Bundle, Shader, SubShader, Pass, Stufe, SubProgram)
+  mapping.json     (optional) Programm-Id je (Bundle, Shader, SubShader, Pass, Stufe, SubProgram); ohne die Datei zaehlt
+                   das Inventar die Programme in derselben Reihenfolge auf
   prog_blob.json   Programm-Id -> Blob-Hash (scripts/shader_fidelity.py index)
   blobs/<hash>.bin Maxwell-Blobs (scripts/shader_extract_blobs.py)
 und das Werkzeug shader_translator/build/maxwell2msl (--lang hlsl).
@@ -99,9 +100,27 @@ def program_index_cached(mapping_path):
     return program_index(load_json(mapping_path))
 
 
+@functools.lru_cache(maxsize=None)
+def program_index_from_inventory(inventory_path):
+    """Programm-Id = Aufzaehlungsreihenfolge im Inventar (Shader, SubShader, Pass, Vertex vor Fragment, SubProgram);
+    identisch zu mapping.json (an allen 14.342 Programmen geprueft), ohne den Ryujinx-Cache zu brauchen."""
+    inv = load_json(inventory_path)
+    out, pid = {}, 0
+    for s in inv["shaders"] + inv.get("extraShaders", []):
+        for si_, ss in enumerate(s["subShaders"]):
+            for pi, p in enumerate(ss["passes"]):
+                for st in ("vertex", "fragment"):
+                    for k, _e in enumerate(p["stages"][st]):
+                        out[(s.get("bundle"), s["name"], si_, pi, st, k)] = pid
+                        pid += 1
+    return out
+
+
 # --------------------------------------------------------------------------- Layouts
 def hlsl_member_type(m):
     n, kind = m["components"], m["kind"]
+    if m["name"] in RAW_UINT_EXPRS and n == 1:
+        return "uint"
     if kind == "matrix":
         if n == 16:
             base = "float4x4"
@@ -183,8 +202,55 @@ def rows_for_block(cb, rows):
 
 
 def uint4_row(cells):
-    parts = [f"asuint({c})" if c else "0u" for c in cells]
+    parts = [c if c and c in RAW_UINT_EXPRS else (f"asuint({c})" if c else "0u") for c in cells]
     return f"uint4({', '.join(parts)})"
+
+
+# Uniforms, die Unity als Ganzzahl schreibt (die Bits stehen unveraendert im Block)
+RAW_UINT_EXPRS = {"unity_BaseInstanceID"}
+INSTANCING_ARRAY_SIZE = 500  # UNITY_INSTANCED_ARRAY_SIZE des Built-in-Pfads (500 * 128 Byte < 64 KB)
+
+
+def instancing_struct(cb):
+    """Erste Struktur des Unity-Instancing-Blocks (z. B. unity_Builtins0Array) oder None."""
+    structs = cb.get("structs") or []
+    return structs[0] if structs else None
+
+
+def instancing_decl(cb, st):
+    """cbuffer-Text mit dem Strukturfeld; Luecken zwischen den Mitgliedern werden aufgefuellt (Schrittweite = structSize)."""
+    mems, cur, pad = [], 0, 0
+
+    def fill(upto):
+        nonlocal cur, pad
+        while cur < upto:
+            n = min((upto - cur) // 4, 4 - (cur // 4) % 4)
+            mems.append(f"float{'' if n == 1 else n} mx_pad{pad};")
+            pad += 1
+            cur += n * 4
+
+    for m in st["members"]:
+        fill(m["offset"])
+        mems.append(f"{declaration(m)};")
+        cur = m["offset"] + member_words(m) * 4
+    fill(st["structSize"])
+    body = " ".join(mems)
+    return f"cbuffer {cb['name']} {{ struct {{ {body} }} {st['name']}[{INSTANCING_ARRAY_SIZE}]; }}"
+
+
+def instancing_reader(fname, st):
+    """HLSL-Funktion: Wort an Byte-Offset off des (Instanz-)Feldes, wie die Maxwell-Befehle es lesen."""
+    lines = [f"uint {fname}(uint off)", "{",
+             f"    uint e = min(off / {st['structSize']}u, {INSTANCING_ARRAY_SIZE - 1}u);",
+             f"    switch ((off % {st['structSize']}u) >> 2)", "    {"]
+    for m in st["members"]:
+        mm = dict(m, name=f"{st['name']}[e].{m['name']}", arraySize=m.get("arraySize", 0))
+        for e in range(member_words(m)):
+            ex = word_expr(mm, e)
+            if ex is not None:
+                lines.append(f"        case {m['offset'] // 4 + e}: return asuint({ex});")
+    lines += ["        default: return 0u;", "    }", "}"]
+    return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- Properties und Zustand
@@ -331,8 +397,11 @@ def cbuf_rows(info_cb):
     return max((info_cb["size"] + 15) // 16, 1)
 
 
-def build_stage_block(st, mode, uniforms, arrays, warnings):
-    """Quelltext von Fuellfunktion und Makros der Stufe. uniforms: name -> Deklaration (gemeinsam), arrays: Feldnamen."""
+def build_stage_block(st, mode, uniforms, arrays, warnings, extras=None, manifest_inst=None):
+    """Quelltext von Fuellfunktion und Makros der Stufe. uniforms: name -> Deklaration (gemeinsam), arrays: Feldnamen,
+    extras: Name -> stufenuebergreifende Deklaration (Instancing-cbuffer), manifest_inst: Instancing-Bloecke fuers Manifest."""
+    extras = {} if extras is None else extras
+    manifest_inst = [] if manifest_inst is None else manifest_inst
     p = st.prefix
     decl, fill, defs, undefs = [], [], [], []
     cbs = st.cbufs()
@@ -346,6 +415,17 @@ def build_stage_block(st, mode, uniforms, arrays, warnings):
             decl.append(f"static uint4 {name}[{rows}];  // cbuf {k}: {'Treiberdaten' if k == 0 else 'Handle-Tabellen'}, nie ausgewertet: Nullen")
             if k == 0:
                 warnings.append(f"{st.kind}: cbuf 0 (Treiberdaten) wird gelesen und mit Nullen belegt")
+                if st.info.get("usesGlobalMemory"):
+                    # Zeile 17 (0x110) = Adresse des Speicherpuffers 0; mit Nullen ist die Gast-Adresse der Byte-Offset
+                    if icb.get("staticMinOffset", -1) != 0x110 or icb.get("staticEndOffset", 0) > 0x118:
+                        raise WrapError(f"{st.kind}: mehr als ein Speicherpuffer (cbuf 0 Bereich {icb.get('staticMinOffset')}..{icb.get('staticEndOffset')})")
+                    bufs = st.entry.get("buffers", [])
+                    if len(bufs) != 1:
+                        raise WrapError(f"{st.kind}: {len(bufs)} Speicherpuffer im Inventar (erwartet 1)")
+                    extras["buf:" + bufs[0]["name"]] = f"ByteAddressBuffer {bufs[0]['name']};"
+                    defs.append(f"#define mx_gmem {bufs[0]['name']}")
+                    undefs.append("#undef mx_gmem")
+                    manifest_inst.append({"buffer": bufs[0]["name"]})
         elif k == 1:
             data = st.cbuf1
             nrows = min(rows, (len(data) + 15) // 16)
@@ -353,9 +433,22 @@ def build_stage_block(st, mode, uniforms, arrays, warnings):
                      for i in range(nrows) for j in range(4)]
             body = ",\n    ".join("uint4(" + ", ".join(f"0x{w:08x}u" for w in words[i * 4:(i + 1) * 4]) + ")" for i in range(nrows))
             decl.append(f"static const uint4 {name}[{max(nrows, 1)}] = {{\n    {body}\n}};  // cbuf 1: Compiler-Konstanten (Blob hinter dem Code)")
+        elif icb["dynamic"] and mode != "array":
+            cb = block_layout(st.entry, k - 3)
+            stt = instancing_struct(cb) if cb else None
+            if stt is None:
+                raise WrapError(f"{st.kind}: cbuf {k} wird mit Register-Index gelesen, aber ohne Instancing-Struktur im Inventar")
+            fname = f"{p}_cbr{k}"
+            extras[cb["name"]] = instancing_decl(cb, stt)
+            decl.append(instancing_reader(fname, stt))
+            defs.append(f"#define mx_cbr{k} {fname}")
+            undefs.append(f"#undef mx_cbr{k}")
+            srows = max((icb["staticEndOffset"] + 15) // 16, 1) if icb.get("staticEndOffset", -1) > 0 else 1
+            decl.append(f"static uint4 {name}[{srows}];")
+            if icb.get("staticEndOffset", -1) > 0:
+                warnings.append(f"{st.kind}: cbuf {k} (Instancing) wird auch mit festem Offset gelesen: Nullen")
+            manifest_inst.append({"cbuf": k, "block": cb["name"], "struct": stt["name"], "stride": stt["structSize"]})
         else:
-            if icb["dynamic"] and mode != "array":
-                raise WrapError(f"{st.kind}: cbuf {k} wird mit Register-Index gelesen (Instancing): Modus 'array' noetig")
             decl.append(f"static uint4 {name}[{rows}];")
             binding = k - 3
             if mode == "array":
@@ -384,7 +477,9 @@ def build_stage_block(st, mode, uniforms, arrays, warnings):
 def texture_bindings(st, warnings):
     """[(slot, property_name, dim, shadow)] aus Ressourcenkarte und Stufeneintrag."""
     out = []
-    by_index = {t["index"]: t for t in st.entry.get("textures", [])}
+    # Der Texturwort-Index im Maxwell-Code entspricht dem Feld "sampler" des Inventars (m_SamplerIndex), das Samplerwort
+    # dem Feld "index" (an 31.000 Texturabrufen belegt, scripts/tests: test_texture_table_uses_sampler_field).
+    by_index = {t["sampler"]: t for t in st.entry.get("textures", [])}
     for t in st.info["textures"]:
         if not t.get("bindless") or t.get("textureTableIndex", -1) < 0:
             raise WrapError(f"{st.kind}: Textur-Slot {t['slot']} ohne Tabellenindex (nicht bindlos)")
@@ -411,15 +506,15 @@ def vertex_inputs(st):
 
 
 def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", renderers="metal", extra_pragmas=(),
-                 shader_name=None, color_mask=None):
+                 shader_name=None, color_mask=None, no_cull=False):
     """-> (shader_text, manifest, warnings). vs/fs sind Stage-Objekte."""
     ss = shader["subShaders"][sub_idx]
     pas = ss["passes"][pass_idx]
     warnings = []
-    uniforms, arrays = {}, {}
+    uniforms, arrays, extras, inst = {}, {}, {}, []
     sdecl = {}
     for st in (vs, fs):
-        sdecl[st.kind] = build_stage_block(st, mode, uniforms, arrays, warnings)
+        sdecl[st.kind] = build_stage_block(st, mode, uniforms, arrays, warnings, extras, inst)
     vs_in = vertex_inputs(vs)
     vs_out = {o["location"] for o in vs.info["outputs"]}
     fs_in = [i for i in fs.info["inputs"] if i["location"] in vs_out]
@@ -461,6 +556,10 @@ def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", rend
     for ln in render_state_lines(pas["state"]):
         if color_mask and ln.startswith("ColorMask"):
             continue
+        if color_mask and ln.startswith("Blend "):  # Testhilfe: undurchsichtig, damit auch Alpha 0 sichtbar bleibt
+            ln = "Blend Off"
+        if no_cull and ln.startswith("Cull"):
+            ln = "Cull Off"
         L.append("            " + ln)
     if color_mask:  # Testhilfe: z. B. Tiefen-Vorpass-Shader mit ColorMask 0 sichtbar machen
         L.append(f"            ColorMask {color_mask}")
@@ -471,10 +570,20 @@ def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", rend
         L.append(f"            #pragma only_renderers {renderers}")
     for pr in extra_pragmas:
         L.append(f"            #pragma {pr}")
+    kwset = set(keywords)
+    procedural = "PROCEDURAL_INSTANCING_ON" in kwset
+    if "INSTANCING_ON" in kwset or procedural:
+        L.append("            #pragma multi_compile_instancing")
+        if procedural:
+            L.append("            #pragma instancing_options procedural:mx_proc_setup")
     L.append("            #pragma vertex mx_vert")
     L.append("            #pragma fragment mx_frag")
     L.append("            #define MX_EXTERNAL_RESOURCES")
     L.append("")
+    if procedural:
+        L.append("            void mx_proc_setup() {}")
+    for d in extras.values():
+        L.append("            " + d)
     # Uniforms
     if mode == "named":
         for d in uniforms.values():
@@ -579,7 +688,7 @@ def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", rend
         "uniforms": sorted(uniforms), "renderTargets": [o["renderTarget"] for o in outs],
         "writesDepth": fs.info["writesDepth"], "usesDiscard": fs.info["usesDiscard"],
         "cbufs": {k: sorted(st.cbufs()) for k, st in (("vertex", vs), ("fragment", fs))},
-        "warnings": warnings,
+        "instancing": inst, "warnings": warnings,
     }
     return "\n".join(L) + "\n", manifest, warnings
 
@@ -592,11 +701,10 @@ def load_json(path):
 
 def wrap(args):
     inv = load_json(str(args.inventory))
-    mapping = load_json(str(args.mapping))
     prog_blob = load_json(str(args.prog_blob))
     shader = find_shader(inv, args.shader, args.bundle)
     pas = shader["subShaders"][args.sub]["passes"][args.pass_index]
-    pidx = program_index_cached(str(args.mapping))
+    pidx = program_index_cached(str(args.mapping)) if args.mapping else program_index_from_inventory(str(args.inventory))
     stages = {}
     work = Path(args.workdir)
     tag0 = f"{ident(shader['name'])}_s{args.sub}_p{args.pass_index}"
@@ -620,7 +728,7 @@ def wrap(args):
     text, manifest, warnings = build_shader(shader, args.sub, args.pass_index, args.keywords, stages["vertex"],
                                             stages["fragment"], args.mode, args.renderers,
                                             ([] if args.fast_math else list(EXACT_PRAGMAS)) + list(args.pragma), args.name,
-                                            args.color_mask)
+                                            args.color_mask, getattr(args, "no_cull", False))
     manifest["blobs"] = {k: s.blob for k, s in stages.items()}
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -647,9 +755,10 @@ def main(argv=None):
     ap.add_argument("--fast-math", action="store_true",
                     help="ohne die Pragmas fuer exakte Arithmetik (Standard: disable_fastmath + skip_optimizations <renderer>)")
     ap.add_argument("--translator-args", nargs="*", default=[], help="weitere Optionen fuer maxwell2msl")
-    ap.add_argument("--color-mask", help="Testhilfe: ersetzt den ColorMask des Passes (z. B. RGBA)")
+    ap.add_argument("--color-mask", help="Testhilfe: ersetzt den ColorMask des Passes (z. B. RGBA) und schaltet Blend aus")
+    ap.add_argument("--no-cull", action="store_true", help="Testhilfe: Cull Off")
     ap.add_argument("--inventory", default=str(WORK / "inventory.json"))
-    ap.add_argument("--mapping", default=str(WORK / "mapping.json"))
+    ap.add_argument("--mapping", default=None, help="optional: mapping.json statt der Aufzaehlung aus dem Inventar")
     ap.add_argument("--prog-blob", default=str(WORK / "prog_blob.json"))
     ap.add_argument("--blobs", default=str(WORK / "blobs"))
     ap.add_argument("--workdir", default=str(WORK / "unity-lab" / "wrap"))

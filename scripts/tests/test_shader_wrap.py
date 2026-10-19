@@ -308,6 +308,71 @@ class Build(unittest.TestCase):
         self.assertIn("uint4(0x3f800000u, 0x40000000u, 0x00000000u, 0x00000000u)", text)
         self.assertIn("uint4(0xdeadbeefu, 0x00000000u, 0x00000000u, 0x00000000u)", text)
 
+    def instanced(self):
+        vs, fs = stages(vs_extra={"constantBuffers": [{"index": 3, "size": 256, "dynamic": False},
+                                                       {"index": 4, "size": 65536, "dynamic": True,
+                                                        "staticMinOffset": -1, "staticEndOffset": -1}]})
+        st = {"name": "unity_Builtins0Array", "offset": 0, "arraySize": 2, "structSize": 128,
+              "members": [mat("unity_ObjectToWorldArray", 0), mat("unity_WorldToObjectArray", 64)]}
+        vs.entry = dict(VS_ENTRY, cbBindings=VS_ENTRY["cbBindings"] + [{"name": "UnityInstancing_PerDraw0", "index": 1}],
+                        constantBuffers=VS_ENTRY["constantBuffers"] + [
+                            {"name": "UnityInstancing_PerDraw0", "size": 256, "members": [], "structs": [st]}])
+        return vs, fs
+
+    def test_instancing_named_mode(self):
+        vs, fs = self.instanced()
+        text, man, _ = sw.build_shader(SHADER, 0, 0, ["INSTANCING_ON"], vs, fs, "named")
+        self.assertIn("#pragma multi_compile_instancing", text)
+        self.assertNotIn("instancing_options", text)
+        self.assertIn("cbuffer UnityInstancing_PerDraw0 { struct { float4x4 unity_ObjectToWorldArray;", text)
+        self.assertIn("float4x4 unity_WorldToObjectArray; } unity_Builtins0Array[500]; }", text)
+        self.assertIn("uint mxv_cbr4(uint off)", text)
+        self.assertIn("uint e = min(off / 128u, 499u);", text)
+        # Wort 0 = M[0][0], Wort 1 = M[1][0] (Zeile des Blocks = Spalte der Matrix), zweite Matrix ab Wort 16
+        self.assertIn("case 0: return asuint(unity_Builtins0Array[e].unity_ObjectToWorldArray[0][0]);", text)
+        self.assertIn("case 1: return asuint(unity_Builtins0Array[e].unity_ObjectToWorldArray[1][0]);", text)
+        self.assertIn("case 16: return asuint(unity_Builtins0Array[e].unity_WorldToObjectArray[0][0]);", text)
+        self.assertIn("#define mx_cbr4 mxv_cbr4", text)
+        self.assertIn("#undef mx_cbr4", text)
+        self.assertEqual(man["instancing"], [{"cbuf": 4, "block": "UnityInstancing_PerDraw0", "struct": "unity_Builtins0Array", "stride": 128}])
+
+    def test_instancing_struct_padding(self):
+        cb = {"name": "UnityInstancing_PerDraw2"}
+        st = {"name": "unity_Builtins2Array", "structSize": 112, "members": [vec("unity_SHBrArray", 48, 4)]}
+        decl = sw.instancing_decl(cb, st)
+        self.assertIn("float4 mx_pad0; float4 mx_pad1; float4 mx_pad2; float4 unity_SHBrArray;", decl)
+        self.assertIn("float4 mx_pad3; float4 mx_pad4; float4 mx_pad5; } unity_Builtins2Array[500]", decl)
+
+    def test_base_instance_id_is_uint(self):
+        vs, fs = stages()
+        vs.entry = dict(VS_ENTRY, constantBuffers=[{"name": "VGlobals", "size": 96, "members": [vec("unity_BaseInstanceID", 0, 1)]}])
+        text, _, _ = sw.build_shader(SHADER, 0, 0, [], vs, fs, "named")
+        self.assertIn("uint unity_BaseInstanceID;", text)
+        self.assertNotIn("asuint(unity_BaseInstanceID)", text)
+
+    def test_storage_buffer_and_procedural_instancing(self):
+        vs, fs = stages(vs_extra={"usesGlobalMemory": True, "constantBuffers": [
+            {"index": 0, "size": 512, "dynamic": False, "staticMinOffset": 272, "staticEndOffset": 280},
+            {"index": 3, "size": 256, "dynamic": False}]})
+        vs.entry = dict(VS_ENTRY, buffers=[{"name": "unity_ParticleInstanceData", "index": 512}])
+        text, man, _ = sw.build_shader(SHADER, 0, 0, ["PROCEDURAL_INSTANCING_ON"], vs, fs, "named")
+        self.assertIn("ByteAddressBuffer unity_ParticleInstanceData;", text)
+        self.assertIn("#define mx_gmem unity_ParticleInstanceData", text)
+        self.assertIn("#pragma instancing_options procedural:mx_proc_setup", text)
+        self.assertIn("void mx_proc_setup() {}", text)
+        self.assertEqual(man["instancing"], [{"buffer": "unity_ParticleInstanceData"}])
+        vs.info["constantBuffers"][0]["staticEndOffset"] = 296  # zweiter Speicherpuffer
+        with self.assertRaises(sw.WrapError):
+            sw.build_shader(SHADER, 0, 0, [], vs, fs, "named")
+
+    def test_texture_table_uses_sampler_field(self):
+        # Maxwell-Texturindex 1 gehoert zum Eintrag mit sampler == 1 (hier _MainTex), nicht zu dem mit index == 1
+        vs, fs = stages(fs_extra={"textures": [{"slot": 0, "bindless": True, "textureTableIndex": 1, "typeName": "2d", "shadow": False}]})
+        fs.entry = dict(FS_ENTRY, textures=[{"name": "_Other", "index": 1, "sampler": 0, "dim": "2D"},
+                                            {"name": "_MainTex", "index": 0, "sampler": 1, "dim": "2D"}])
+        _, man, _ = sw.build_shader(SHADER, 0, 0, [], vs, fs, "named")
+        self.assertEqual(man["textures"]["fragment"][0]["property"], "_MainTex")
+
     def test_dynamic_cbuf_needs_array_mode(self):
         dyn = {"constantBuffers": [{"index": 4, "size": 65536, "dynamic": True}]}
         with self.assertRaises(sw.WrapError) as cm:

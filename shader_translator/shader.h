@@ -33,9 +33,13 @@
 //    wrapper maps them to semantics and interpolation modifiers (#define MX_FLAT_MASK, a bit per varying).
 //  - hardware cbuf k is read as `mx_cb<k>[row][component]` (uint4 array; dynamic reads: cbr(mx_cb<k>, byte offset));
 //    texture slot i as `mx_t<i>` / `mx_s<i>` (Texture1D/2D/3D/Cube/...Array<float4>, SamplerState or, for shadow
-//    lookups, Texture<float> + SamplerComparisonState). Without `#define MX_EXTERNAL_RESOURCES` the snippet declares
+//    lookups, Texture<float> + SamplerComparisonState). Register-indexed cbuf reads are `mx_cbr<k>(byte offset)`, a macro
+//    the wrapper may replace (instancing arrays). Without `#define MX_EXTERNAL_RESOURCES` the snippet declares
 //    them itself (cbuffer b<k>, register t<i> / s<i>); with it the including shader must provide all of them.
-//  - registers stay `uint` with asfloat/asuint; no resolution scale, no global memory, no 64-bit integers, no subgroup
+//  - global memory (LDG, 32/64/128 bit and sub-word loads) is read from the ByteAddressBuffer `mx_gmem` (storage buffer 0).
+//    Hardware cbuf 0 row 17 holds that buffer's address; the wrapper keeps cbuf 0 at zero, so the guest address is the byte
+//    offset (a non-zero high word reads 0). Stores (STG) and a second storage buffer are not supported.
+//  - registers stay `uint` with asfloat/asuint; no resolution scale, no 64-bit integers, no subgroup
 //    operations, no compute (these fail with an "hlsl:" message). Clip space is the guest's (flip_y / depth_minus_one
 //    as in MSL).
 //

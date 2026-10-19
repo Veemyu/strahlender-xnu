@@ -43,6 +43,9 @@ static void usage(FILE *f) {
         "  --fast-math           do not emit the pragmas that disable Metal's fast math and FMA contraction\n"
         "  --half-compat         Ryujinx-compatible fp16: no rounding to half between half operations (test oracle only;\n"
         "                        the default rounds like the hardware)\n"
+        "  --gmem-base N         MSL/GLSL: guest address of the global-memory buffer (default 0)\n"
+        "  --gmem-size N         MSL/GLSL: size of the global-memory buffer in bytes (default 0: every access is out of range;\n"
+        "                        HLSL maps global memory to the ByteAddressBuffer mx_gmem instead)\n"
         "  -h, --help            this text\n",
         f);
 }
@@ -311,6 +314,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--annotate")) o.key.annotate = true;
         else if (!strcmp(a, "--fast-math")) o.key.fast_math = true;
         else if (!strcmp(a, "--half-compat")) o.key.half_compat = true;
+        else if (!strcmp(a, "--gmem-size")) maxwell_gmem_size = strtoull(NEED_ARG(), NULL, 0);
+        else if (!strcmp(a, "--gmem-base")) maxwell_gmem_base = strtoull(NEED_ARG(), NULL, 0);
         else if (a[0] == '-' && a[1]) { fprintf(stderr, "maxwell2msl: unknown option %s\n", a); usage(stderr); return EXIT_USAGE; }
         else if (!input) input = a;
         else { fprintf(stderr, "maxwell2msl: more than one input file\n"); return EXIT_USAGE; }

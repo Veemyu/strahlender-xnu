@@ -384,6 +384,21 @@ static void test_hlsl_backend(void) {
     CHECK(s->msl && strstr(s->msl, "hpack(") != NULL && strstr(s->msl, "f16tof32") != NULL && strstr(s->msl, "half2") == NULL);
     maxwell_free(s);
 
+    // global memory: loads become ByteAddressBuffer mx_gmem reads (cbuf 0 base zeroed by the wrapper), stores are rejected
+    const uint64_t w_ldg = 0xeed0000000000000ull | (4ull << 48) | (0x10ull << 20) | (2ull << 8) | 5;
+    const uint64_t gcode[] = {W_SCHED, w_ldg, W_EXIT, W_BRA_SELF_8};
+    s = translate_hlsl(gcode, 4, STAGE_VERTEX);
+    CHECK(s->msl != NULL);
+    CHECK(s->msl && strstr(s->msl, "ByteAddressBuffer mx_gmem") != NULL);
+    CHECK(s->msl && strstr(s->msl, "mx_gmem.Load(ga + 0u)") != NULL && strstr(s->msl, "+ 16u") != NULL);
+    CHECK(s->uses_gmem);
+    maxwell_free(s);
+    const uint64_t w_stg = w_ldg | (1ull << 51);
+    const uint64_t scode[] = {W_SCHED, w_stg, W_EXIT, W_BRA_SELF_8};
+    s = translate_hlsl(scode, 4, STAGE_VERTEX);
+    CHECK(s->msl == NULL && strstr(s->error, "global memory store") != NULL);
+    maxwell_free(s);
+
     // compute and the exclusive/unsupported keys fail with a message
     const uint64_t ccode[] = {W_MOV_R3_RZ, W_EXIT, W_BRA_SELF_8, W_NOP};
     s = translate_hlsl(ccode, 4, STAGE_COMPUTE);

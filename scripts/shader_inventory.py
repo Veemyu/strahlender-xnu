@@ -142,6 +142,18 @@ class Blob:
         return self.segments[seg][off:off + ln]
 
 
+def struct_info(s, names_by_idx):
+    """Struktur-Feld eines Konstantenpuffers (Instancing: Array von Strukturen, z. B. unity_Builtins0Array)."""
+    def members(ms, kind):
+        return [{"name": names_by_idx.get(m["m_NameIndex"], f"#{m['m_NameIndex']}"), "offset": m["m_Index"],
+                 "arraySize": m["m_ArraySize"], "kind": kind,
+                 "components": m["m_RowCount"] * 4 if kind == "matrix" else m["m_Dim"]} for m in ms]
+    mem = members(s["m_MatrixMembers"], "matrix") + members(s["m_VectorMembers"], "vector")
+    mem.sort(key=lambda m: m["offset"])
+    return {"name": names_by_idx.get(s["m_NameIndex"], f"#{s['m_NameIndex']}"), "offset": s["m_Index"],
+            "arraySize": s["m_ArraySize"], "structSize": s["m_StructSize"], "members": mem}
+
+
 def stage_info(prog, names_by_idx, blob):
     subs = []
     for sp in prog["m_SubPrograms"]:
@@ -152,7 +164,8 @@ def stage_info(prog, names_by_idx, blob):
             members.sort(key=lambda m: m[1])
             cbs.append({"name": names_by_idx.get(cb["m_NameIndex"], f"#{cb['m_NameIndex']}"), "size": cb["m_Size"],
                         "members": [{"name": a, "offset": b, "components": c, "arraySize": d, "kind": e} for a, b, c, d, e in members],
-                        "structParams": len(cb["m_StructParams"])})
+                        "structParams": len(cb["m_StructParams"]),
+                        "structs": [struct_info(s, names_by_idx) for s in cb["m_StructParams"]]})
         bindings = [{"name": names_by_idx.get(b["m_NameIndex"], f"#{b['m_NameIndex']}"), "index": b["m_Index"]}
                     for b in sp["m_ConstantBufferBindings"]]
         tex = [{"name": names_by_idx.get(t["m_NameIndex"], f"#{t['m_NameIndex']}"), "index": t["m_Index"],
@@ -171,6 +184,8 @@ def stage_info(prog, names_by_idx, blob):
             "constantBuffers": cbs, "cbBindings": bindings, "textures": tex,
             "looseVectorParams": len(sp["m_VectorParams"]), "looseMatrixParams": len(sp["m_MatrixParams"]),
             "bufferParams": len(sp["m_BufferParams"]), "uavParams": len(sp["m_UAVParams"]),
+            "buffers": [{"name": names_by_idx.get(b["m_NameIndex"], f"#{b['m_NameIndex']}"), "index": b["m_Index"]}
+                        for b in sp["m_BufferParams"]],
             "samplerCount": len(sp["m_Samplers"]),
         })
     return subs

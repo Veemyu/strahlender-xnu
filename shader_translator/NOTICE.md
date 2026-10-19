@@ -59,6 +59,12 @@ Alle Stellen sind mit `XNU:` oder im Kopfkommentar der Datei markiert. Die MSL- 
 15. **`ShaderKey.hlsl`** schließt sich mit `glsl` aus; Compute, `half_compat`, globaler Speicher, Auflösungsskalierung, Punktkoordinate und Subgroup-Befehle werden mit einer Meldung abgelehnt.
 16. **`main.c`** (eigener Code): `--lang msl|glsl|hlsl`, `--hlsl`, Schlüssel `language` in der Ressourcenkarte. Tests: 16 neue C-Prüfungen (`test_hlsl_backend`) und ein CLI-Test.
 
+Teil 4 (2026-10-19, Instancing und Speicherpuffer):
+
+17. **Registerindizierte Konstantenpuffer-Lesezugriffe** erscheinen in HLSL als `mx_cbr<k>(Offset)` statt `cbr(mx_cb<k>, Offset)`. `hlsl_finish()` legt je Puffer eine ersetzbare Standard-Definition (`#ifndef mx_cbr<k>`) an; der Wrapper ersetzt sie bei Instancing-Feldern (`cbuf_ref()`, `hlsl_finish()`). MSL und GLSL unverändert.
+18. **Globaler Speicher (LDG) in HLSL.** Der Zweig „hlsl: global memory“ wurde durch einen eigenen Pfad ersetzt: 32-, 64-, 128-Bit- und Teilwort-Lesezugriffe über `ByteAddressBuffer mx_gmem` (Adresse = Byte-Offset, weil der Wrapper die Puffer-Adresse in Treiber-cbuf 0 auf Null lässt; hohes Adresswort ≠ 0 liest 0). STG und mehrere Speicherpuffer bleiben abgelehnt („hlsl: global memory store“). Ein Sprungziel `insn_done:` am Ende von `emit_insn()` lässt den HLSL-Pfad die gemeinsame Nachbehandlung (Prädikat) durchlaufen.
+19. **`main.c`:** `--gmem-base`/`--gmem-size` für die MSL-/GLSL-Ausgabe (Testbank des Harness; Standard unverändert 0/0). Tests: fünf neue C-Prüfungen (LDG, STG-Ablehnung).
+
 ### Bewusst (noch) unverändert
 
 Globale Variablen `maxwell_gmem_base/size`, `flip_x`, der GLSL-Zweig (TEX.B und `half_compat` gelten nur für MSL; der GLSL-Zweig wurde nicht getestet), statische Puffer in `RSC2` (nicht threadsicher; die Übersetzung läuft in einem Thread), `sprintf` ohne Längenprüfung. Siehe `docs/shader-translator.md`, Aufgabenliste für Teil 3.

@@ -12,7 +12,7 @@ Markierung: **belegt** = gemessen oder im Quelltext gelesen, *Schätzung/vermute
 | Nimmt Unity die Ausgabe an? | **Ja.** Zwei überlappende Stichproben (183 und 272 Varianten aus den 6.820, alle 64 Shader) kompilierten in Unity 6.3 für Metal ohne Fehler (Mittel 260 bis 340 ms je Shader). |
 | Stimmt das Bild? | **Ja, bitgleich.** 7 Fälle, Unity gegen Harness (unsere MSL, Metal Safe-Math): größte Abweichung **0 von 255** in 13 von 13 Vergleichen (7 × `array`, 6 × `named`), auch mit Perspektiv-Matrix, mit und ohne die Pragmas für exakte Arithmetik. Ziel war ≤ 1/255. |
 | Verändert Unitys Pfad die Rechengenauigkeit? | **Ja, wenn man ihn lässt.** Mikrotests: Standardeinstellung stimmt nur in 11 von 16 Fällen mit Metal Safe-Math überein (FMA-Verschmelzung, Division, `sin`/`cos`, `isnan`). Mit `#pragma disable_fastmath` und `#pragma skip_optimizations metal` sind es **16 von 16**. Der Wrapper schreibt beide Pragmas standardmäßig. |
-| Wie viel der 6.820 Varianten verpackt der Wrapper heute? | 3.521 (51,6 %). Der Rest: 1.994 Partikel-Varianten (globaler Speicher), 1.288 Varianten mit Instancing-Feldern (Konstantenpuffer 4/5 mit Register-Index), 16 mit Shuffle, 1 mit fehlendem Tabelleneintrag. |
+| Wie viel der 6.820 Varianten verpackt der Wrapper heute? | **6.804 (99,8 %)** (vorher 3.521 = 51,6 %): Instancing (1.288) und Partikel/Speicherpuffer (1.994) sind jetzt verpackbar; offen bleiben 16 Varianten mit Subgroup-Shuffle (`Mitake/MitakeStandardPetrify`). Abschnitt 13. |
 | Empfehlung | **Pfad A (HLSL/ShaderLab).** Pfad B (Metal-Plugin) nur als Reserve für Dinge, die HLSL nicht ausdrücken kann; bisher ist keine gefunden. Abschnitt 8. |
 
 ## 2. Aufbau der Lösung
@@ -48,7 +48,7 @@ Ressourcenkarte (--info), Compiler-Konstanten (--cbuf1)┘
 | Prädikate | `bool p0..p6` | belegt |
 | Sprünge/Schleifen | `switch (pc)` scheitert in FXC (`continue` im `switch`; „l-value expected“ bei Zuweisung an die Schaltvariable): jetzt Kette `if (pc == N)`, Durchfall setzt `pc` | belegt (Fall `p2804`, Schleife mit 6 Durchläufen bitgleich) |
 | `isnan` | als Bittest (`mx_isnan`): FXC faltet `isnan(x)` und `x != x` sonst weg | belegt (Mikrotest) |
-| Globaler Speicher (LDG/STG) | nicht unterstützt (Fehlermeldung); Plan: `ByteAddressBuffer` | 180 Blobs |
+| Globaler Speicher (LDG/STG) | `ByteAddressBuffer mx_gmem` (Lesen; Speichern und mehrere Puffer abgelehnt), Abschnitt 13.2 | 180 Blobs übersetzt, in Unity kompiliert, Bild nicht verglichen |
 | Compute, `half_compat`, Auflösungsskalierung, Punktkoordinate | abgelehnt | – |
 
 **Vertrag** (Kopfkommentar `shader.h`): Strukturen ohne Semantik (`MxVIn`, `MxVOut`, `MxFIn`, `MxFOut`), Funktionen `mx_vs(MxVIn, vid, iid)` und `mx_fs(MxFIn, front_facing)`; Konstantenpuffer k als `mx_cb<k>[Zeile][Komponente]` (uint4-Feld), Texturen `mx_t<i>`/`mx_s<i>`. Ohne `#define MX_EXTERNAL_RESOURCES` deklariert das Snippet alles selbst (`cbuffer`, `register`), mit dem Schalter stellt der Wrapper die Namen. Fragment-Position: `pos.w` ist **1/w** (wie Maxwell und Metal).
@@ -70,7 +70,7 @@ Die Hardware-Puffer der Switch heißen im Maxwell-Code `c[k][Byte-Offset]`; der 
 |---|---|---|
 | 0 | Treiberdaten (gelesen in 180 Blobs, Inhalt unbekannt) | `static uint4`-Feld mit Nullen, Warnung im Manifest |
 | 1 | Compiler-Konstanten: die Bytes hinter dem Code des Blobs (auf 0x100 aufgerundet, `--cbuf1`) | `static const uint4 mxf_cb1[n] = {…}` als Literal (Zahl der Zeilen aus dem Blob, höchstens 64 KB) |
-| 2 | Handle-Tabellen der bindlosen Texturen: Texturwort `0x568 + 8·i`, Samplerwort `0x168 + 8·i` | Nullen (der Shader liest die Wörter, benutzt sie aber nicht); die Textur kommt über den Namen: Tabellenindex `i` ↔ `textures[].index` des Inventars ↔ Material-Eigenschaft |
+| 2 | Handle-Tabellen der bindlosen Texturen: Texturwort `0x568 + 8·i`, Samplerwort `0x168 + 8·i` | Nullen (der Shader liest die Wörter, benutzt sie aber nicht); die Textur kommt über den Namen: Tabellenindex `i` ↔ `textures[].sampler` des Inventars (nicht `index`, siehe unten) ↔ Material-Eigenschaft |
 | **3 + k** | Unity-Block mit Bindungsnummer `k` (`cbBindings`): `VGlobals` (Vertex, meist `k = 1`), `PGlobals` (Fragment, `k = 0`), `UnityInstancing_PerDraw*` | Modus `named`: je Wort der Wert des Unity-Uniforms, das dort liegt (Name, Offset, Komponenten aus `constantBuffers` des Inventars). Modus `array`: ein `float4`-Feld `mxav_cb<n>` (Vertex) / `mxaf_cb<n>` (Fragment), das ein Test exakt füllt |
 
 Regeln (**belegt** an der Vertex-Arithmetik von `Mitake/MitakeDepthOnlyShader` und durch bitgleiche Bilder):
@@ -80,7 +80,8 @@ Regeln (**belegt** an der Vertex-Arithmetik von `Mitake/MitakeDepthOnlyShader` u
 - Arrays: jedes Element beginnt auf 16 Byte (`float x[4]` belegt 16 Wörter, `float3x3` drei Zeilen).
 - Namen, die nicht in den `Properties` stehen, sind Spiel-Globals (`_CloudParam`, `_PokeLightColor`, …): Unity bindet sie nach Namen aus `Shader.SetGlobalVector/Float`, der Wrapper deklariert sie nur. Engine-Werte (`unity_*`, `_Time`, `_WorldSpaceCameraPos`, `_ProjectionParams`, …) setzt Unity selbst; `<Textur>_TexelSize` setzt Unity ebenfalls selbst, auch für global gesetzte Texturen (belegt: Fall `p2801`).
 - Vertex- und Fragmentstufe haben getrennte Puffer gleicher Nummer. Der Wrapper trennt sie mit stufenbezogenen Makros (`#define mx_cb3 mxv_cb3` … `#undef`), ebenso `mx_t<i>`, `mx_s<i>`, `tsize<i>`.
-- Puffer, die der Shader liest, aber das Inventar nicht kennt (z. B. Vertex-Bindung 0, wenn `VGlobals` auf 1 liegt), werden mit Nullen belegt und als Warnung gemeldet. Puffer mit Register-Index (Instancing, cbuf 4/5): nur im Modus `array` (siehe Abschnitt 9).
+- Puffer, die der Shader liest, aber das Inventar nicht kennt (z. B. Vertex-Bindung 0, wenn `VGlobals` auf 1 liegt), werden mit Nullen belegt und als Warnung gemeldet. Puffer mit Register-Index (Instancing, cbuf 4/5): Abschnitt 13.1.
+- **Textur-Tabellenindex (Korrektur 2026-10-19):** Der Texturwort-Index `i` im Maxwell-Code gehört zum Inventar-Eintrag mit `sampler == i` (Feld `m_SamplerIndex`), das Samplerwort zum Feld `index`. Bis dahin las der Wrapper `textures[].index`; bei 18.451 von 31.319 Texturabrufen der 14.342 Programme (Eintrag mit `index ≠ sampler`) wäre damit die falsche Textur gebunden worden (Dimensionen fielen nur bei `POINT_COOKIE` auf). Gegenprobe über alle Programme: die Zuordnung über `sampler` ist in 31.319 von 31.319 Fällen auch in der Gegenrichtung (Samplerwort = `index`) stimmig (`work/shaders/unity-lab/texmap_check.py`; Test `test_texture_table_uses_sampler_field`). Die Treue-Fälle der Abschnitte 6 und 13 verwenden Texturen mit gleichem Inhalt je Slot und hätten den Fehler nicht gezeigt.
 
 ### 4.2 Eingaben, Ausgaben, Texturen
 
@@ -183,7 +184,7 @@ Zahlen: 14.342 Programme → 4.276 eindeutige Blobs → 6.820 Varianten (SubShad
 
 1. **Variantentabelle:** (Shader, Pass, Keyword-Menge) → Blob-Hashes (`prog_blob.json`, `mapping.json`); Wrapper je Variante (rund 60 Varianten je Sekunde in einem Prozess: alle 6.820 in unter zwei Minuten gemessen).
 2. **Keywords:** Unitys Engine setzt Keywords je Zeichnung (Lichtart, Lightprobes, Instancing …). Die Einzelvariante eines Passes ist deshalb nur der Baustein; für den Einsatz entsteht je Pass **ein** Pass-Block mit `#pragma multi_compile`/`multi_compile_local` (Gruppen aus den Keyword-Mengen abgeleitet: Keywords, die nie zusammen vorkommen, bilden eine Gruppe) und einer `#if`-Kette, die den Rumpf der passenden Variante wählt. Fallstrick: Unity erlaubt höchstens 64 lokale Keywords je Shader; `FxSystem/Particle` hat 102, dort bleibt es bei einem Shader je Keyword-Menge (oder einer Aufteilung nach Gruppen). Gestrichen werden nur Kombinationen, die das Original nie erzeugt hat (`#pragma skip_variants`, Variantensammlungen aus den Bundles).
-3. **Ausschuss in drei Gruppen beheben:** (a) Instancing: Puffer mit Register-Index auf Unitys `UNITY_INSTANCING_BUFFER`-Arrays abbilden (1.288 Varianten, `Delphis/Map/Standard`); (b) globaler Speicher: `ByteAddressBuffer`, bereitgestellt vom Partikelsystem (1.994 Varianten); (c) FSWZADD/SHFL-Ableitungen durch `ddx`/`ddy` ersetzen (16 Varianten).
+3. **Ausschuss in drei Gruppen beheben:** (a) Instancing und (b) globaler Speicher: erledigt, Abschnitt 13.1/13.2; (c) FSWZADD/SHFL-Ableitungen durch `ddx`/`ddy` ersetzen (16 Varianten): offen, Abschnitt 13.4.
 4. **Material-Zuordnung:** Material-Keywords und Eigenschaften aus den Bundles der Spielmaterialien lesen (nicht Teil dieses Auftrags).
 5. **Prüfung in Stufen:** (i) Kompilierung aller erzeugten Shader in Unity (Mittel 260 bis 340 ms je Shader: 6.820 Varianten ≈ 30 bis 40 Minuten, *Schätzung* linear); (ii) Treue-Test aus `docs/shader-translator.md` Abschnitt 11 auf Unity-Seite ausdehnen: dieselben 500 Paare, Harness-Bild gegen Unity-Bild (Modus `array`), Schwelle ≤ 1/255; (iii) Pixelvergleich an echten Szenen gegen Referenzbilder.
 6. **Pragmas:** `disable_fastmath` und `skip_optimizations metal` bleiben Standard; Verfeinerung auf `precise`-Zwischenwerte nach Laufzeitmessung.
@@ -191,8 +192,8 @@ Zahlen: 14.342 Programme → 4.276 eindeutige Blobs → 6.820 Varianten (SubShad
 ## 10. Offene Punkte und Grenzen
 
 1. **Clip-Raum, Y-Richtung und Windungsrichtung gegenüber der Switch.** Die Tests geben die Bytes der Konstantenpuffer vor (Modus `array`) und beweisen damit nur, dass der HLSL-Pfad dasselbe rechnet wie unsere MSL. Ob Unitys Metal-Matrizen zu den Erwartungen der Switch-Shader passen (Abschnitt 5, erste Zeile), zeigt nur ein Referenzbild einer echten Szene (Ryujinx oder Gerät).
-2. **Instancing-Puffer, globaler Speicher, Shuffle:** Abschnitt 9, Punkt 3.
-3. **Nicht in Unity gerendert:** Cube-, Array-, 3D-Texturen, Vergleichssampler (Schatten), `TXQ`, mehrere Farbziele, `SV_Depth`, `nointerpolation`, Instancing. Der Wrapper erzeugt sie, die Unity-Kompilierung der Stichprobe war fehlerfrei, die Bilder wurden nicht verglichen.
+2. **Instancing-Puffer, globaler Speicher:** Wrapper und Kompilierung fertig (Abschnitt 13), **Bildvergleich offen** (13.1, 13.2). Shuffle: Abschnitt 13.4.
+3. **Nicht in Unity gerendert:** Array-, 3D-Texturen, Vergleichssampler (Schatten), `TXQ`, mehrere Farbziele, `SV_Depth`, `nointerpolation`. **Diese Typen kommen in keinem der 6.804 verpackbaren Varianten vor** (Zählung über die `.wrap.json` aller Varianten: 30.863 Abrufe `2D`, 4 `Cube`, keiner `3D`/Array/Schatten); die Schatten sind Bildschirmraum-Schatten (`_ShadowMapTexture` als `2D`). Der Wrapper erzeugt sie trotzdem, die Bilder wurden nicht verglichen; Cube-Abruf: 4 Varianten nur kompiliert (13.3).
 4. **Metal-Bibliothek:** Die Stichprobenvarianten wurden bis zum MSL-Text kompiliert; nur die 7 Fälle liefen bis zur GPU. Ein Lauf, der jede Variante zeichnet, steht aus.
 5. **Andere GPU/Player:** Alle Messungen laufen im macOS-Editor auf einem Apple M1 Pro. Bitgleichheit mit dem Harness gilt für diese Kombination; ein iOS- oder Player-Build wurde nicht gemessen. Die Spielgerät-Abweichungen bei Funktionen wie `sin` sind offen.
 6. **cbuf 0** (Treiberdaten, 180 Blobs) und die Belegung der Vertex-Bindung 0 sind unbekannt (Nullen mit Warnung).
@@ -204,8 +205,8 @@ Zahlen: 14.342 Programme → 4.276 eindeutige Blobs → 6.820 Varianten (SubShad
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-make -C shader_translator test                                   # 88 + 15 + 6 Prüfungen
-python3 -m unittest scripts/tests/test_shader_wrap.py            # 29 Tests
+make -C shader_translator test                                   # 93 + 15 + 6 Prüfungen
+python3 -m unittest scripts/tests/test_shader_wrap.py            # 34 Tests
 shader_translator/build/maxwell2msl --lang hlsl --stage fs work/shaders/blobs/<hash>.bin --info x.json --cbuf1 c1.bin -o x.hlsl
 python3 scripts/shader_wrap.py '<Shader>' --bundle shaders --pass 0 --out work/unity-shader-lab/Assets/XnuGen/x.shader [--mode array] [--keywords K ...]
 
@@ -225,3 +226,75 @@ Die Labor-Skripte und der Editor-Code (`Assets/Editor/XnuLab.cs`: `Check`, `Rend
 - Native Plugins: `…/Manual/native-plugin-interface-introduction.html`, `…/Manual/low-level-native-plugin-rendering-extensions.html`, `…/Manual/low-level-native-plugin-shader-compiler-access.html` (nur D3D11); Header `IUnityGraphicsMetal.h`, `IUnityRenderingExtensions.h` im Ordner `Contents/PluginAPI` der Editor-Installation.
 - Mesh-Zeiger: `https://docs.unity3d.com/6000.3/Documentation/ScriptReference/Mesh.GetNativeVertexBufferPtr.html`.
 - Apple: `MTLCompileOptions` (`fastMathEnabled`, `mathMode`) `https://developer.apple.com/documentation/metal/mtlcompileoptions`.
+
+## 13. Vollständige Abdeckung: Instancing, Speicherpuffer, Massenlauf, Build-Stufe (Stand 2026-10-19)
+
+Alle Zahlen: Apple M1 Pro, Unity 6000.3.26f1, Lab-Editor im Hintergrund. Das Labor (`work/unity-shader-lab`, `work/shaders/unity-lab/`) liegt unter `work/` und ist nicht eingecheckt.
+
+### 13.1 Instancing (1.288 Varianten, `Delphis/Map/Standard`, `Custom/StencilMask`, `UI/UI-Multiply`, `TextMeshPro/…`)
+
+**Konvention (belegt aus den Bundle-Daten, nicht geraten):** `m_ConstantBuffers[].m_StructParams` des Inventars (neu: `constantBuffers[].structs`, `scripts/shader_inventory.py`) enthält Unitys `UNITY_INSTANCING_BUFFER`: Block `UnityInstancing_PerDraw0` = Array `unity_Builtins0Array` von Strukturen mit `unity_ObjectToWorldArray` (Offset 0) und `unity_WorldToObjectArray` (Offset 64), Schrittweite 128 Byte; `…PerDraw2` (`unity_Builtins2Array`, 112 Byte: `unity_SHAr…SHC`) und `…PerDrawSprite` (`PerDrawSpriteArray`, 32 Byte: `unity_SpriteRendererColorArray`, `unity_SpriteFlipArray`). Der Maxwell-Code liest `c[k][r27 + Offset]` mit `r27 = (iid + unity_BaseInstanceID) · 128` (belegt am Code von Blob `01e04f372b4f3067`: Multiplikation mit `0x60`/Verschiebung um 7); `unity_BaseInstanceID` liegt in `VGlobals` und ist eine Ganzzahl.
+
+**Umsetzung:** Der Übersetzer erzeugt registerindizierte Zugriffe als `mx_cbr<k>(Offset)` (ersetzbare Makros, `NOTICE.md` Punkt 17). Der Wrapper (Modus `named`) deklariert den Unity-Block unverändert (`cbuffer UnityInstancing_PerDraw0 { struct { … } unity_Builtins0Array[500]; }`, Lücken der Struktur mit `float4 mx_pad…` aufgefüllt, 500 = `UNITY_INSTANCED_ARRAY_SIZE`) und liefert `mxv_cbr<k>(off)`, das aus `Offset / Schrittweite` und dem Wort den Ausdruck `unity_Builtins0Array[e].<Mitglied>[Zeile][Spalte]` wählt (Matrizen spaltenweise wie in 4.1). `unity_BaseInstanceID` wird als `uint` deklariert und ohne `asuint` gelesen. Bei Varianten mit `INSTANCING_ON` schreibt der Wrapper `#pragma multi_compile_instancing`, bei `PROCEDURAL_INSTANCING_ON` zusätzlich `#pragma instancing_options procedural:mx_proc_setup` und eine leere Funktion dieses Namens. Der Modus `array` bleibt für Tests (Harness füllt das Feld selbst).
+
+**Ergebnis:** alle 1.288 Varianten werden verpackt (vorher 0); Unity übersetzt Stichproben (12 Varianten aller Gruppen) und die Varianten des Massenlaufs (13.5) ohne Fehler. **Bildvergleich: nicht bestanden / offen.** Der Instancing-Test (`Custom/StencilMask`, `DIRECTIONAL INSTANCING_ON`, zwei Instanzen mit verschiedenen Matrizen über `CommandBuffer.DrawMeshInstanced`) zeigt in Unity beide Instanzen mit **Einheitsmatrix** (Fläche wie ohne Instancing: x 26…228 statt 38…206 im Harness): Unity füllt `unity_Builtins0Array` mit den übergebenen Matrizen nicht so, wie unser Block es erwartet, oder wählt für diesen Aufruf nicht die `INSTANCING_ON`-Variante. Ursache nicht geklärt (Kandidaten: Zeichenaufruf im Lab; Name/Layout des Blocks in Unity 6 anders als in der Switch-Übersetzung von 2019.4; Matrizen im Block nach `unity_ObjectToWorldArray` + `unity_WorldToObjectArray` + `unity_LODFadeArray`). Bis das geklärt ist, gilt für Instancing **nur „kompiliert“**, nicht „bildgleich“.
+
+### 13.2 Partikel und globaler Speicher (180 Vertex-Blobs, 1.994 Varianten `FxSystem/Particle`, Keyword `PROCEDURAL_INSTANCING_ON`)
+
+**Konvention (belegt):** Das Inventar führt je Variante genau einen Speicherpuffer: `m_BufferParams` = `unity_ParticleInstanceData` (Index 512), also Unitys `StructuredBuffer` für Partikel-GPU-Instancing. Der Maxwell-Code liest Treiber-cbuf 0 Zeile 17 (Byte 0x110, 64-Bit-Adresse des Speicherpuffers 0 = NVN-Treiberkonvention), rechnet `Adresse = Basis + Instanz · 0x60 + Feldoffset` (Schrittweite 96 Byte) und lädt per LDG 32 Bit. **Umsetzung:** `ByteAddressBuffer`; da der Wrapper cbuf 0 auf Null lässt, ist die Gast-Adresse gleich dem Byte-Offset (`mx_gmem.Load(ga)`, hohes Wort ≠ 0 liest 0). Der Wrapper prüft, dass cbuf 0 nur Zeile 17 (Bytes 0x110 bis 0x118) liest und das Inventar genau einen Puffer führt, sonst Abbruch („mehr als ein Speicherpuffer“); `ByteAddressBuffer unity_ParticleInstanceData;` bindet Unity über den Namen (`Material.SetBuffer`/Partikelsystem, Raw-Puffer). STG (Schreiben) bleibt abgelehnt; in den 180 Blobs kommt es nicht vor.
+
+**Ergebnis:** 1.994 von 1.994 Varianten verpackt (vorher 0); Stichproben (zwei Partikel-Varianten) kompilieren in Unity. **Bildvergleich offen:** der Fall `part` (zwei Partikel aus synthetischen Instanzdaten, Schrittweite 96 Byte, ungefähre Struktur) liefert im Harness kein sichtbares Bild (`nonclear_pixels = 0`), ist also nicht aussagekräftig; die genaue Struktur von `ParticleInstanceData` (Offset von Transform, Farbe, Animationsbild) ist nicht bewiesen, nur die Schrittweite. Der Bildtest braucht Daten, die das Vertex-Programm in sichtbare Geometrie umsetzt.
+
+### 13.3 Textur-Dimensionen
+
+Über alle 6.804 verpackbaren Varianten: 30.863 `2D`-Abrufe, 4 `Cube` (`Mitake/MitakeStandardShader1st` u. a., Punktlicht mit Cookie), **keine** `3D`-, Array- oder Vergleichssampler-Abrufe (Abschnitt 10, Punkt 3). Das HLSL-Backend erzeugt sie (C-Tests), ein Unity-Rendertest mit synthetischen Würfel-/Array-Texturen ist deshalb nur für `Cube` sinnvoll und steht aus; die 4 Cube-Varianten kompilieren in Unity. Dabei fiel der Fehler der Texturzuordnung auf (4.1, „Korrektur“).
+
+### 13.4 Subgroup-Shuffle (16 Varianten, 4 Fragment-Blobs `Mitake/MitakeStandardPetrify`)
+
+Nicht umgesetzt. SM5 hat keinen Quad-/Lane-Austausch; `SHFL` im Fragment-Shader dient *vermutlich* (nicht am Code geprüft) der Ableitungsbildung innerhalb des 2×2-Quads und ließe sich durch `ddx`/`ddy` ersetzen, aber nicht **bitgleich** (Ableitungen in Unity/Metal rechnen anders als der Austausch plus Subtraktion). Ohne Referenzbild entschieden wir uns gegen eine ungenaue Ersetzung. Folge: 16 von 6.820 Varianten (0,2 %) bleiben ohne HLSL; Alternative Pfad B (MSL-Plugin) nur für sie wäre unverhältnismäßig.
+
+### 13.5 Massenlauf in Unity (Import, Kompilierung, Zeit, Speicher)
+
+Messung: `work/shaders/unity-lab/mass_unity.py` (jede 3. erzeugte Variante, in Blöcken nach `Assets/XnuMass/c<N>/` im Lab-Projekt, Import mit `ForceSynchronousImport`, Fehler aus `ShaderUtil.GetShaderMessages`).
+
+| Messgröße | Wert |
+|---|---|
+| Erzeugen aller 6.804 Varianten (Python, ein Prozess) | etwa 110 s; Quelltext 381 MB (Ø 56 KB je Variante; `Delphis/Map/Standard` Ø 60 bis 80 KB) |
+| Blöcke 0 und 1 (1.520 Varianten = jede 3. der erzeugten Dateien; `Custom/…` und `Delphis/Map/Standard`, davon **720 mit Instancing-Block**) | **1.520 von 1.520 ohne Fehler**; Block 0: 760 in 415 s (Ø 547 ms, Maximum 2,8 s), Block 1: 760 in 526 s (Ø 692 ms) |
+| Kompilierzeit | Ø 0,3 s (kleine Shader) bis 2,5 s (`Delphis/Map/Standard`, 60 bis 80 KB Quelltext) je Variante |
+| Hochrechnung alle 6.804 | Größenordnung 1,5 bis 2,5 Stunden Editor-Zeit (`Delphis/Map/Standard` 2.570 × ~0,7 bis 2,5 s allein 0,5 bis 1,8 h): *Schätzung*, nicht gemessen |
+| Editor-Hauptspeicher (RSS) | 790 MB nach 760, 817 MB nach 1.520 Varianten (Start ≈ 0,75 GB); Shader-Cache 164 MB auf der Platte nach rund 1.000 Varianten |
+| Treue-Stichprobe (Unity gegen Harness) | die 7 Fälle aus 6.1 (alle 0/255); **neu: Instancing- und Partikelfälle ohne gültigen Vergleich** (13.1, 13.2) |
+
+Nicht importiert (Zeitrahmen): die Partikel-Varianten (`FxSystem/Particle`, alphabetisch hinter den Blöcken 0 und 1) bis auf zwei Stichproben, und die übrigen Shader ab `Delphis/Map/Standard`-Ende. Die Bilanz für diese Varianten ist **nicht gemessen**.
+
+**Folgerung für das iPad-Budget (Schätzung, nicht gemessen):** Alle 6.804 Varianten in den Player zu nehmen ist weder in der Kompilierzeit (Stunden je Plattform) noch in der Größe sinnvoll; die Varianten sind nach den Keywords der echten Materialien zu **strippen**. `scripts/shader_wrap_all.py --used used.json` erzeugt nur die gelisteten (Shader, Keyword-Menge)-Paare; `used.json` entsteht aus den Materialien der Bundles (nicht Teil dieses Auftrags: `m_ShaderKeywords` der Material-Objekte lesen). Danach: je Pass ein Block mit `multi_compile` (Abschnitt 9, Punkt 2) statt einer Datei je Variante.
+
+### 13.6 Build-Stufe `shaders` (`scripts/shader_build.sh`)
+
+```sh
+scripts/shader_build.sh [--out DIR] [--used FILE] [--shader NAME] [--force]
+```
+
+Kette: `make shader_translator` → `shader_extract_blobs.py --extra` (Blobs aus den eigenen Bundles) → `shader_inventory.py` (Inventar, jetzt mit `structs`/`buffers`) → `shader_fidelity.py index` (Programm → Blob-Hash) → `shader_wrap_all.py` (je Variante `maxwell2msl --lang hlsl` + `shader_wrap.py`, Ausgabe `.shader`, `.wrap.json`, `variants.json`). Programm-Ids zählt `shader_wrap.py` jetzt selbst aus dem Inventar auf (an allen 14.342 Programmen identisch zu `mapping.json`); der **Ryujinx-Cache wird nicht gelesen** (`shader_map.py` ist nur noch Messbank). Deterministisch: Dateinamen aus SHA-1 der Keyword-Menge (statt `hash()`), sortierte Aufzählung; zwei Läufe über `Delphis/Map/Standard` (2.570 Dateien) ergeben denselben Gesamt-MD5. Ausgabeordner: `work/build/shaders` (Standard) oder ein gitignorierter Ordner, z. B. `unity/Assets/GameData/Shaders` (`.gitignore`); `shader_wrap_all.py` bricht sonst ab (Spieldaten gehören nicht ins Repo). Exit-Codes: 0 ok, 2 Aufruf, 3 Bundle fehlt, 4 Werkzeug, 9 nicht alle Varianten verpackbar (derzeit 16).
+
+**Integration in `scripts/build_all.sh` (nicht umgebaut):** `ALL_STAGES="tools extract"` um `shaders` erweitern (nach `extract`), in `FUTURE_STAGES` streichen, und in `run_stage` einen Zweig `shaders) stage_shaders ;;` ergänzen mit
+
+```sh
+stage_shaders() {
+  log "Stufe shaders"
+  "$ROOT/scripts/shader_build.sh" --out "${SHADER_OUT:-$ROOT/unity/Assets/GameData/Shaders}" ${SHADER_USED:+--used "$SHADER_USED"} \
+    $( [ "$FORCE" = 1 ] && echo --force ) || { [ $? = 9 ] && log "16 Varianten ohne HLSL (Shuffle), weiter" || die 9 "shaders"; }
+}
+```
+
+(Exit 9 ist ein Warnzustand, kein Abbruch.) Voraussetzung: Stufe `extract` hat `work/romfs` erzeugt, Stufe `tools` hat `tools/pydeps` (UnityPy, lz4) bereitgestellt. Das Unity-Projekt importiert die Dateien beim nächsten Öffnen; ohne `--used` entstehen Tausende Dateien, daher im Normalfall mit `--used`.
+
+### 13.7 Offene Lücken (Stand dieses Abschnitts)
+
+1. Instancing-Bild: Unity zeichnet im Lab Einheitsmatrizen (13.1) — Ursache offen.
+2. Partikel-Bild: kein gültiger Vergleichsfall (13.2).
+3. Subgroup-Shuffle: 16 Varianten (13.4).
+4. Massenlauf: nur ein Teil importiert (13.5); Kompilierzeit der großen Shader hoch; Strippen nach Materialdaten fehlt (`used.json`).
+5. Cube-Rendertest, `TXQ`, mehrere Farbziele, `SV_Depth`, `nointerpolation`: weiterhin ohne Bildvergleich.
+6. cbuf 0 (außer Speicherpuffer-Adresse) und Vertex-Bindung 0 bleiben unbekannt (Nullen mit Warnung).

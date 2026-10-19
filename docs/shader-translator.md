@@ -307,6 +307,8 @@ Der Lauf legt je Paar unter `work/shaders/fidelity/<index>/` Spezifikationen, MS
 
 ## 14. Teil 3 (Vorschlag)
 
+**Stand Teil 4 (2026-10-19):** HLSL-Pfad umgesetzt (`docs/shader-unity-integration.md`); das HLSL-Backend liest jetzt globalen Speicher über `ByteAddressBuffer mx_gmem` (180 Partikel-Blobs; 4.272 von 4.276 Blobs übersetzbar, offen: 4 Fragment-Blobs mit Subgroup-Shuffle) und macht registerindizierte cbuf-Zugriffe als `mx_cbr<k>` ersetzbar (Instancing). Der Texturindex der Maxwell-Tabelle entspricht dem Inventar-Feld `sampler`, nicht `index` (Abschnitt 4.1 dort). MSL-Option `--gmem-base`/`--gmem-size` für den Harness.
+
 **Unity-Integration**
 
 - Ausgabeform entscheiden (`referenz-las-shader.md`, Abschnitt 9): HLSL-Backend für ShaderLab oder MSL als natives Plugin. Die Ressourcenkarte ist so gebaut, dass beides sie nutzen kann.
