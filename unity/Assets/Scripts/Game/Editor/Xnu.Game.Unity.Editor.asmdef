@@ -1,9 +1,0 @@
-{
-  "name": "Xnu.Game.Unity.Editor",
-  "rootNamespace": "Xnu.Game.Unity.Editor",
-  "references": ["Xnu.Game.Unity", "Xnu.Core", "Xnu.Input"],
-  "includePlatforms": ["Editor"],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "autoReferenced": true
-}

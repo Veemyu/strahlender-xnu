@@ -26,4 +26,4 @@ Stand 2026-10-19. Zum Weitermachen: `../todo/neustart.md` (Todos, Kurzstand, Fun
 Kampf: `kampf-spezifikation-1…7.md`, `kampf-handler-liste.md`. Pokémon: `pokepara-spezifikation.md`. Events: `evscript-spezifikation.md`, `spielkern-1…2.md`. UI/Text: `ui-spezifikation-1…3.md`, `lokalisierung.md`. Eingabe: `eingabe.md`.
 
 ## Deprecated (Unity-Rebuild, Entscheidung 4)
-`m0-bundle-kompatibilitaet.md`, `unity6-tooling.md`, `unity-autopilot.md`, `player-build-1.md`, `feld-szene-1…2.md`, `vertikaler-durchstich-1.md`, `material-remap.md`, `shader-unity-integration.md`, `stubs-1.md`, `opendpr-*.md`, `arbeitsplan.md`, `nachtbericht.md`, `nachtbericht-2.md`. Nicht mehr gepflegt; siehe `unity/DEPRECATED.md`.
+`m0-bundle-kompatibilitaet.md`, `player-build-1.md`, `feld-szene-1…2.md`, `vertikaler-durchstich-1.md`, `stubs-1.md`, `opendpr-*.md`, `arbeitsplan.md`, `nachtbericht.md`, `nachtbericht-2.md`. Nicht mehr gepflegt; siehe Branch `unity`. Auf `unity` zusätzlich: `unity6-tooling.md`, `unity-autopilot.md`, `material-remap.md`, `shader-unity-integration.md`.

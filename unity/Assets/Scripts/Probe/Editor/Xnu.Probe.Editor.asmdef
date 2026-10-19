@@ -1,9 +1,0 @@
-{
-  "name": "Xnu.Probe.Editor",
-  "rootNamespace": "Xnu.Probe.Editor",
-  "references": ["Xnu.Probe"],
-  "includePlatforms": ["Editor"],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "autoReferenced": false
-}

@@ -4,6 +4,10 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 ## 2026-10-19
 
+- **Unity auf Branch `unity`:** Das Unity-Projekt `unity/` (810 Dateien), `scripts/unity_safe.sh`, `docs/unity6-tooling.md`, `docs/unity-autopilot.md`, `docs/feld-szene-2.md`, `docs/material-remap.md`, `docs/shader-unity-integration.md` und der Test `scripts/tests/test_material_variants.py` (Fixture aus `unity/`) sind aus `main` entfernt. Branch `unity` ist auf origin (Stand 13b3977, vollständig). README, Architekturentscheidung und Doku-Index verweisen darauf.
+- **Noch auf main, bewusst:** Build-Stufen `stubs`, `assets`, `unity-build`, `deploy` in `build_all.sh` und `build_stages.py` (Folgeschritt), die Shader-Stufe (liest Unity-Bundles des Spiels per UnityPy) und `stub_*`, `visual_*`, `bundle_retarget.py`, `material_*.py`.
+- **Lokal unverändert:** der ignorierte Ordner `unity/` (3,6 GB, u. a. `Library`) bleibt auf der Festplatte, wird nicht versioniert.
+
 - **Lizenz:** `LICENSE` im Root (MIT, Copyright (c) 2026 Veemyu). README-Abschnitt „Lizenz des eigenen Codes“ ergänzt. Fremdcode behält seine Lizenz.
 
 - **Alles vendort:** `scripts/recomp/upstream/runtime/` ist eine unveränderte Kopie der vollständigen Laufzeit des Klons (einschließlich `nvn/`, `nvn/vulkan/`, `hle/`, `services/`, `platform/`, `ui/`), `scripts/recomp/upstream/generator/` die des Werkzeugordners (einschließlich `rando/`). Beide byte-identisch mit `09f8e5e`. Nicht übernommen: `third_party/` des Originals (eigene Lizenzen, Nintendo-Ausschluss), `fonts/`, Klon-Metadaten.

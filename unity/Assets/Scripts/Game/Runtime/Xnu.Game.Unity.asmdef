@@ -1,9 +1,0 @@
-{
-  "name": "Xnu.Game.Unity",
-  "rootNamespace": "Xnu.Game.Unity",
-  "references": ["Xnu.Core", "Xnu.Data", "Xnu.Save", "Xnu.Boot", "Xnu.PokePara", "Xnu.Battle", "Xnu.Battle.Events", "Xnu.Battle.Flow", "Xnu.EvScript", "Xnu.Text", "Xnu.Game", "Xnu.Field", "Xnu.UI", "Xnu.Input", "Xnu.Probe", "Unity.TextMeshPro", "UnityEngine.UI", "Unity.InputSystem"],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "autoReferenced": true
-}

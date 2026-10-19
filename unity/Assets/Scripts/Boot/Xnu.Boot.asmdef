@@ -1,9 +1,0 @@
-{
-  "name": "Xnu.Boot",
-  "rootNamespace": "Xnu.Boot",
-  "references": ["Xnu.Core", "Xnu.Data", "Xnu.Save"],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "autoReferenced": true
-}

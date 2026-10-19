@@ -10,7 +10,7 @@ Das Repository enthält **keine Spieldaten**, keine Schlüssel, keine Speicherst
 - Bauen: `docs/bauen.md`, `docs/build-pipeline.md`, `docs/recomp-macapp.md`, `docs/recomp-ios.md`
 - Änderungen: `docs/changelog.md`
 
-Der Unity-Nachbau in `unity/` ist eingestellt (`unity/DEPRECATED.md`).
+Der Unity-Nachbau ist eingestellt und liegt vollständig auf dem Branch `unity` (`unity/DEPRECATED.md` dort). `main` enthält ihn nicht mehr.
 
 ## Fremdcode und Attribution
 

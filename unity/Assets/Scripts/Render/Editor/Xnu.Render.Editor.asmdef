@@ -1,9 +1,0 @@
-{
-  "name": "Xnu.Render.Editor",
-  "rootNamespace": "Xnu.Render.Editor",
-  "references": ["Xnu.Render", "Xnu.Core", "Xnu.Data"],
-  "includePlatforms": ["Editor"],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "autoReferenced": true
-}

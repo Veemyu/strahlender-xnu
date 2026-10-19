@@ -1,9 +1,0 @@
-{
-  "name": "Xnu.UI.Editor",
-  "rootNamespace": "Xnu.UI.Editor",
-  "references": ["Xnu.UI", "Xnu.Text", "Xnu.Input", "Xnu.Core"],
-  "includePlatforms": ["Editor"],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "autoReferenced": true
-}

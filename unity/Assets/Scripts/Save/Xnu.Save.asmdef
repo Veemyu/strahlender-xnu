@@ -1,9 +1,0 @@
-{
-  "name": "Xnu.Save",
-  "rootNamespace": "Xnu.Save",
-  "references": ["Xnu.Core"],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "autoReferenced": true
-}
