@@ -6,6 +6,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 SRC=research/LASRecomp/runtime
+# Pin: nur der dokumentierte Upstream-Stand (Commit ist unveränderlich, siehe NOTICE.md)
+PIN=09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5
+[ "$(git -C research/LASRecomp rev-parse HEAD 2>/dev/null)" = "$PIN" ] || { echo "research/LASRecomp muss auf Commit $PIN stehen" >&2; exit 1; }
 DST=${NVN_SRC:-work/recomp/nvn-src}
 HERE=scripts/recomp/rt-bdsp/nvn
 rm -rf "$DST"
