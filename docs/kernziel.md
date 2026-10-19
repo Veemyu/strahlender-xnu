@@ -9,18 +9,18 @@
 - Alle Umwandlungen (z. B. Videoformat) sind **zusätzliche Build-Schritte** und ändern die Quelldaten nicht.
 
 ## Build-Pipeline (Ziel)
-Einstiegspunkt (geplant): `scripts/build_all.sh --xci <Datei> --nsp <Datei> --keys <Ordner> --target macos|ios|all`.
+Einstiegspunkt: `scripts/build_all.sh all --xci <Datei> --nsp <Datei> --keys <Ordner> --target macos|ios|all` (Anleitung: `docs/bauen.md`, Technik: `docs/build-pipeline.md`; `--dry-run` zeigt vorab den Plan).
 
 | Schritt | Inhalt | Stand |
 |---|---|---|
-| 1 Werkzeuge | hactool, Ghidra-freie Basis: nur was der Build braucht (hactool aus Quellcode, ffmpeg, Unity 6.3 LTS, Xcode) | Teile vorhanden (`tools/`, Hub) |
-| 2 Entschlüsseln | XCI/NSP entpacken, Update anwenden: `work/exefs`, `work/romfs` | manuell erledigt (docs/extraktion.md) |
-| 3 Stammdaten | Bundles lesen, typisierte Daten erzeugen | in Arbeit (`ap-masterdata`) |
-| 4 Assets | Bundles in das Unity-Projekt einbinden, Shader durch eigene ersetzen | geplant |
-| 5 Video | VP8-WebM nach H.264 oder H.265 umwandeln (`ffmpeg`), nur falls VP8 auf Apple-Plattformen nicht abspielbar ist | geplant (`ap-cutscenes-video`) |
-| 6 Audio | Wwise-Banks/WEM offline in ein Format für Unity wandeln (vgmstream) | geplant (`ap-audio`) |
-| 7 Unity-Build | IL2CPP-Player für macOS (universell) und iOS/iPadOS (Xcode-Projekt) | Leerbuild getestet |
-| 8 Signieren/Installieren | Xcode mit eigenem Team, `scripts/ios_deploy.sh` | getestet |
+| 1 Werkzeuge | hactool, Ghidra-freie Basis: nur was der Build braucht (hactool aus Quellcode, ffmpeg, Unity 6.3 LTS, Xcode) | Stufe `tools` und Preflight (Installationsliste ohne sudo) |
+| 2 Entschlüsseln | XCI/NSP entpacken, Update anwenden: `work/exefs`, `work/romfs` | Stufe `extract` (getestet) |
+| 3 Stammdaten | Bundles lesen, typisierte Daten erzeugen | Stufen `il2cpp`, `masterdata` (getestet) |
+| 4 Assets | Bundles in das Unity-Projekt einbinden, Shader durch eigene ersetzen | Stufen `shaders` (Stichprobe), `assets` (getestet) |
+| 5 Video | VP8-WebM nach H.265 (`ffmpeg`) umwandeln | Stufe `video` (Stichprobe getestet) |
+| 6 Audio | Wwise-Banks/WEM offline in ein Format für Unity wandeln (vgmstream) | Platzhalter „nicht implementiert“ (`ap-audio`) |
+| 7 Unity-Build | IL2CPP-Player für macOS (arm64) und iOS/iPadOS (Xcode-Projekt) | Stufe `unity-build`, Buildskript vorhanden; Dry-run, noch kein Vollbuild mit Bundles |
+| 8 Signieren/Installieren | Xcode mit eigenem Team, `scripts/ios_deploy.sh` | Stufe `deploy` (Team-ID aus `work/local.env`; ohne ID nur Build) |
 
 ## Videos (Entscheidungsvorschlag)
 - 18 Dateien, VP8 in WebM (`docs/daten-inventar.md`). Ob Unitys VideoPlayer auf macOS und iOS VP8 abspielt, ist **ungeprüft**. Falls nicht, wandelt der Build sie um.

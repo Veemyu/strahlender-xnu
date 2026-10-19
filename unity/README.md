@@ -9,4 +9,5 @@ Hier liegt nur **eigener Code und Projekteinstellung**. Spieldaten, Dumps, Keys 
 - `Assets/Tests/EditMode` – Unit-Tests (nur synthetische Daten)
 
 Team-ID und Signatur gehören nicht in `ProjectSettings`; `scripts/ios_deploy.sh` liest sie aus `work/local.env`.
+Der Gesamtbau läuft über `scripts/build_all.sh` (`docs/bauen.md`); `Assets/Scripts/Build/Editor/BuildScript.cs` ist dessen Einstieg im Batchmodus und im Menü Xnu > Build. `Assets/StreamingAssets/` ist gitignoriert und wird von der Stufe `assets` gefüllt.
 Editor: `unity open unity` (Unity 6000.3.26f1, arm64, Metal).

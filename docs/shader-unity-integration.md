@@ -278,17 +278,7 @@ scripts/shader_build.sh [--out DIR] [--used FILE] [--shader NAME] [--force]
 
 Kette: `make shader_translator` → `shader_extract_blobs.py --extra` (Blobs aus den eigenen Bundles) → `shader_inventory.py` (Inventar, jetzt mit `structs`/`buffers`) → `shader_fidelity.py index` (Programm → Blob-Hash) → `shader_wrap_all.py` (je Variante `maxwell2msl --lang hlsl` + `shader_wrap.py`, Ausgabe `.shader`, `.wrap.json`, `variants.json`). Programm-Ids zählt `shader_wrap.py` jetzt selbst aus dem Inventar auf (an allen 14.342 Programmen identisch zu `mapping.json`); der **Ryujinx-Cache wird nicht gelesen** (`shader_map.py` ist nur noch Messbank). Deterministisch: Dateinamen aus SHA-1 der Keyword-Menge (statt `hash()`), sortierte Aufzählung; zwei Läufe über `Delphis/Map/Standard` (2.570 Dateien) ergeben denselben Gesamt-MD5. Ausgabeordner: `work/build/shaders` (Standard) oder ein gitignorierter Ordner, z. B. `unity/Assets/GameData/Shaders` (`.gitignore`); `shader_wrap_all.py` bricht sonst ab (Spieldaten gehören nicht ins Repo). Exit-Codes: 0 ok, 2 Aufruf, 3 Bundle fehlt, 4 Werkzeug, 9 nicht alle Varianten verpackbar (derzeit 16).
 
-**Integration in `scripts/build_all.sh` (nicht umgebaut):** `ALL_STAGES="tools extract"` um `shaders` erweitern (nach `extract`), in `FUTURE_STAGES` streichen, und in `run_stage` einen Zweig `shaders) stage_shaders ;;` ergänzen mit
-
-```sh
-stage_shaders() {
-  log "Stufe shaders"
-  "$ROOT/scripts/shader_build.sh" --out "${SHADER_OUT:-$ROOT/unity/Assets/GameData/Shaders}" ${SHADER_USED:+--used "$SHADER_USED"} \
-    $( [ "$FORCE" = 1 ] && echo --force ) || { [ $? = 9 ] && log "16 Varianten ohne HLSL (Shuffle), weiter" || die 9 "shaders"; }
-}
-```
-
-(Exit 9 ist ein Warnzustand, kein Abbruch.) Voraussetzung: Stufe `extract` hat `work/romfs` erzeugt, Stufe `tools` hat `tools/pydeps` (UnityPy, lz4) bereitgestellt. Das Unity-Projekt importiert die Dateien beim nächsten Öffnen; ohne `--used` entstehen Tausende Dateien, daher im Normalfall mit `--used`.
+**Integration in `scripts/build_all.sh` (umgesetzt, `docs/build-pipeline.md`):** Die Stufe `shaders` (nach `masterdata`) ruft `shader_build.sh` mit `--out work/build/shaders` (Standard) bzw. mit `--shaders-into-unity` `unity/Assets/GameData/Shaders`, reicht `SHADER_USED` als `--used`, `--force` und für Tests `--shader-only NAME` weiter und behandelt Exit 9 als Warnung („16 Varianten ohne HLSL, weiter“). Bei einem anderen `--work` verknüpft sie `work/romfs` dorthin, weil die Hilfsskripte den Pfad fest lesen. Voraussetzung: Stufe `extract` hat `work/romfs` erzeugt, `tools/pydeps` (UnityPy, lz4) ist vorhanden (Preflight prüft das). Stichprobenlauf (`Custom/EffectCopyTexture`) in 1,3 s. Das Unity-Projekt importiert die Dateien beim nächsten Öffnen; ohne `--used` entstehen Tausende Dateien, deshalb liegt die Standardausgabe außerhalb des Projekts (Strippen anhand der Materialdaten fehlt noch, 13.7 Punkt 4).
 
 ### 13.7 Offene Lücken (Stand dieses Abschnitts)
 
