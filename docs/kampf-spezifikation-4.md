@@ -1,6 +1,6 @@
 # Kampfablauf, Scheibe 4: Spezifikation
 
-Stand: Zwischenstand Scheibe 4 (headless lauffähiger 1:1-Einzelkampf, Wild und Trainer, reine C#-Logik ohne UnityEngine, ohne Rendering, ohne Sound).
+Stand: Zwischenstand Scheibe 4 (headless lauffähiger 1:1-Einzelkampf, Wild und Trainer, reine C#-Logik ohne UnityEngine, ohne Rendering, ohne Sound). Fortsetzung: `docs/kampf-spezifikation-5.md` (Handler-Wirkungen, Seiten-/Feldeffekte, Preisgeld; die Lücken 1–3 und 5 unten sind dort teilweise geschlossen).
 Die Umsetzung (`unity/Assets/Scripts/BattleFlow`, Assembly `Xnu.Battle.Flow`) baut auf Scheibe 1 (Rechner, `Xnu.Battle`), Scheibe 2/3
 (Ereignissystem und Handler, `Xnu.Battle.Events`) und dem Pokémon-Modell (`Xnu.PokePara`) auf. Belegkonvention, Adressen (Ghidra-Adresse =
 Il2CppDumper-RVA + 0x100000) und Prüfstufen **[O]**, **[OK]**, **[P]** wie in `docs/kampf-spezifikation-2.md` Abschnitt 0.

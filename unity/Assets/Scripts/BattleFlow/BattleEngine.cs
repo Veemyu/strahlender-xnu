@@ -20,6 +20,12 @@ namespace Xnu.Battle.Flow
         public bool SameLanguage = true;
         public bool GiveEffort = true;
 
+        // Preisgeld-Faktor des Gegner-Trainers (TrainerData.Gold) sowie Spieler-Daten fuer den Niederlage-Abzug.
+        public int TrainerGold;
+        public int PlayerBadges;
+        public uint PlayerMoney;
+        public int[] PenaltyTable;
+
         // Beutel des Spielers: Item-Nr. -> Anzahl.
         public Dictionary<int, int> Bag = new Dictionary<int, int>();
 
@@ -125,6 +131,10 @@ namespace Xnu.Battle.Flow
         public BattleResult Result { get; private set; } = BattleResult.None;
         public int Turn { get; private set; }
 
+        // Preisgeld bei Sieg gegen Trainer bzw. Verlust-Abzug bei Niederlage (calc.CalcWinMoney / CalcLoseMoney).
+        public int PrizeMoney { get; private set; }
+        public uint PenaltyMoney { get; private set; }
+
         // ESCAPE_TRIED_COUNT: Fluchtversuche (nur Fehlversuche zaehlen hoch).
         public int EscapeTries { get; private set; }
 
@@ -184,7 +194,18 @@ namespace Xnu.Battle.Flow
                 _active[side] = first;
             }
             for (int side = 0; side < 2; side++) EnterField(side, _active[side]);
+            LeadsMemberIn();
             Phase = BattlePhase.AwaitCommands;
+        }
+
+        static bool HasMemberInEffect(BattleMon m) =>
+            m.Poke.Tokusei == 22 || m.Poke.Tokusei == 2 || m.Poke.Tokusei == 45 || m.Poke.Tokusei == 70 || m.Poke.Tokusei == 117 || m.Poke.Item == 155 || m.Poke.Item == 158;
+
+        // Section_Root_FirstPokeIn: Eintrittsereignisse der Spitzenpokemon in Initiative-Reihenfolge (Gleichstand zieht; ohne Wirkung kein Zug).
+        void LeadsMemberIn()
+        {
+            if (!HasMemberInEffect(Active(0)) && !HasMemberInEffect(Active(1))) return;
+            foreach (var m in FrontByAgility()) if (!m.IsFainted) CallMemberIn(m);
         }
 
         int FirstAlive(int side)
@@ -199,8 +220,8 @@ namespace Xnu.Battle.Flow
             _active[side] = index;
             var mon = Parties[side][index];
             var foe = Active(1 - side);
-            TokuseiHandlers.Add(Events, mon.Poke);
-            ItemHandlers.Add(Events, mon.Poke);
+            RegisterAbility(mon);
+            RegisterItem(mon);
             mon.SpecialPri = 1;
             if (!foe.IsFainted)
             {
@@ -213,8 +234,8 @@ namespace Xnu.Battle.Flow
         void LeaveField(int side)
         {
             var mon = Active(side);
-            TokuseiHandlers.Remove(Events, mon.Poke);
-            ItemHandlers.Remove(Events, mon.Poke);
+            UnregisterAbility(mon);
+            UnregisterItem(mon);
             mon.ClearOnSwitchOut();
         }
 
@@ -284,6 +305,9 @@ namespace Xnu.Battle.Flow
 
         void AfterReplacement()
         {
+            if (Phase == BattlePhase.Finished) return;
+            if (CheckShowdown()) return;
+            if (Active(PlayerSide).IsFainted) return;      // vom Eintrittsschaden besiegt: erneut Ersatz noetig
             Phase = BattlePhase.AwaitCommands;
             if (_turnEndPending) FinishTurn();
         }
@@ -292,6 +316,18 @@ namespace Xnu.Battle.Flow
         {
             Result = result;
             Phase = BattlePhase.Finished;
+            if (result == BattleResult.Win && !IsWild)
+            {
+                PrizeMoney = PrizeFormula.Win(Setup.TrainerGold, Parties[EnemySide][Parties[EnemySide].Count - 1].Level);
+                Add(LogKind.PrizeMoney, value: PrizeMoney);
+            }
+            else if (result == BattleResult.Lose)
+            {
+                int maxLevel = 0;
+                foreach (var m in Parties[PlayerSide]) maxLevel = Math.Max(maxLevel, m.Level);
+                PenaltyMoney = PrizeFormula.Penalty(maxLevel, Setup.PlayerBadges, Setup.PlayerMoney, Setup.PenaltyTable);
+                Add(LogKind.MoneyLost, value: (int)PenaltyMoney);
+            }
             Add(LogKind.BattleEnd, value: (int)result);
             foreach (var side in Parties) foreach (var m in side) m.WriteBack();
         }
@@ -464,23 +500,26 @@ namespace Xnu.Battle.Flow
             if (!replacement || !old.IsFainted) LeaveField(side);
             else
             {
-                TokuseiHandlers.Remove(Events, old.Poke);
-                ItemHandlers.Remove(Events, old.Poke);
+                UnregisterAbility(old);
+                UnregisterItem(old);
                 old.ClearOnSwitchOut();
             }
             EnterField(side, partyIndex);
             Add(LogKind.Switch, old.PokeId, Active(side).PokeId);
+            CallMemberIn(Active(side));
         }
 
         // Section_CoverCheck: besiegte Pokemon auf dem Feld werden ersetzt. Die Gegnerseite waehlt die KI, der Spieler wird gefragt.
         void CoverCheck()
         {
             if (CheckShowdown()) return;
-            if (Active(EnemySide).IsFainted)
+            while (Active(EnemySide).IsFainted)
             {
                 int idx = _brain.ChooseReplacement(this);
-                if (idx >= 0) SwapIn(EnemySide, idx, replacement: true);
+                if (idx < 0) break;
+                SwapIn(EnemySide, idx, replacement: true);     // Eintrittsschaden kann das Pokemon erneut besiegen
             }
+            if (CheckShowdown()) return;
             if (Active(PlayerSide).IsFainted)
             {
                 _turnEndPending = true;
@@ -496,7 +535,11 @@ namespace Xnu.Battle.Flow
             _turnEndPending = false;
             foreach (var side in Parties)
                 foreach (var m in side)
+                {
                     for (int f = 0; f < BattlePoke.TurnFlagCount; f++) m.Poke.SetTurnFlag(f, false);
+                    m.Protected = false;
+                    m.Enduring = false;
+                }
             Events.RemoveIsolateFactors();
             Add(LogKind.TurnEnd, value: Turn);
             Phase = BattlePhase.AwaitCommands;
@@ -554,6 +597,19 @@ namespace Xnu.Battle.Flow
             bool forbidden = Events.GetValue(EventVarLabel.FAIL_FLAG) != 0;
             Events.VarPop();
             return forbidden;
+        }
+
+        // Durchhalter (Ausdauer, Robustheit, Fokusband/-schaerpe): tödlicher Schaden laesst 1 KP uebrig (Events Koraeru 143/144 des Originals).
+        uint SurviveCheck(BattleMon foe, uint dmg)
+        {
+            if (dmg < foe.Poke.Hp || foe.Poke.Hp == 0) return dmg;
+            ushort ab = (ushort)foe.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE);
+            bool full = foe.Poke.IsHpFull;
+            if (foe.Enduring) { Add(LogKind.AbilityActivated, foe.PokeId, id: 0); return (uint)foe.Poke.Hp - 1; }
+            if (full && ab == 5) { Add(LogKind.AbilityActivated, foe.PokeId, id: 5); return (uint)foe.Poke.Hp - 1; }
+            if (full && foe.Poke.Item == 275) { Add(LogKind.ItemActivated, foe.PokeId, id: 275); ConsumeItem(foe); return (uint)foe.Poke.Hp - 1; }
+            if (foe.Poke.Item == 230 && Random.IsOccurPercent((uint)(Data.GetItem(230)?.HoldPower ?? 10))) { Add(LogKind.ItemActivated, foe.PokeId, id: 230); return (uint)foe.Poke.Hp - 1; }
+            return dmg;
         }
 
         // KP-Heilung eines Items (wk_prm_hp_rcv); 0 = kein Heil-Item. 255 = volle KP.

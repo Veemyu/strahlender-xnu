@@ -41,6 +41,19 @@ namespace Xnu.Battle.Flow
 
         public ushort LastMove { get; set; }
 
+        // Zustand der Slice-5-Wirkungen (verfaellt beim Auswechseln).
+        public int CriticalBonus { get; set; }        // Fokusenergie: +2
+        public int ProtectCount { get; set; }         // aufeinanderfolgende erfolgreiche Schutz-Attacken
+        public bool Protected { get; set; }           // diese Runde geschuetzt
+        public bool Enduring { get; set; }            // Ausdauer: bleibt mit 1 KP
+        public ushort ChoiceLock { get; set; }        // Wahl-Item: gesperrte Attacke
+        public int Stockpile { get; set; }            // Vorrat 0..3
+        public bool Floating { get; set; }            // Magnetflug / Schwebe-Zustand
+        public bool DestinyBond { get; set; }         // Abgangsbund bis zur naechsten Attacke
+        public bool ItemConsumed { get; set; }        // Beere verbraucht
+        public bool ActedThisTurn { get; set; }
+        public ushort OriginalItem { get; set; }
+
         public int Level => Poke.Level;
 
         public bool IsFainted => Poke.Hp == 0;
@@ -147,6 +160,13 @@ namespace Xnu.Battle.Flow
             for (int r = 1; r <= BattlePoke.RankCount; r++) Poke.SetRank((PokeValueId)r, BattlePoke.NeutralRank);
             for (int f = 0; f < BattlePoke.TurnFlagCount; f++) Poke.SetTurnFlag(f, false);
             SpecialPri = SpecialPri_Default;
+            CriticalBonus = 0;
+            ProtectCount = 0;
+            Protected = false;
+            Enduring = false;
+            ChoiceLock = 0;
+            Stockpile = 0;
+            Floating = false;
         }
 
         public int FindMove(ushort moveNo)

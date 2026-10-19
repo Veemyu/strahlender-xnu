@@ -54,6 +54,15 @@ namespace Xnu.Battle.Flow
         {
             bool struggle = !AnyPp(att);
             ushort moveNo = struggle ? StruggleNo : att.Moves[slot];
+            // Zugabe (Zustand 23) und Wahl-Items (Wahlband/-brille/-schal) erzwingen die gewaehlte Attacke.
+            if (!struggle)
+            {
+                ushort forced = 0;
+                if (att.HasSick(23)) forced = SickCont.GetParam(att.SickContents[23]);
+                else if (att.ChoiceLock != 0) forced = att.ChoiceLock;
+                int fs = forced != 0 ? att.FindMove(forced) : BattleMon.MoveCount;
+                if (fs < BattleMon.MoveCount && att.Pp[fs] > 0) { slot = fs; moveNo = forced; }
+            }
             var rec = struggle ? StruggleRecord() : Data.GetMove(moveNo);
             if (rec == null)
             {
@@ -72,6 +81,10 @@ namespace Xnu.Battle.Flow
             // Erst nach der ersten Pruefung werden PP abgezogen (Section_WazaExecStart.decrementPP).
             if (!struggle && att.Pp[slot] > 0) att.Pp[slot]--;
             att.LastMove = moveNo;
+            _lastMoveAny = moveNo;
+            if (!IsProtectMove(moveNo)) att.ProtectCount = 0;
+            if (!struggle && IsChoiceItem(att.Poke.Item)) att.ChoiceLock = moveNo;
+            att.DestinyBond = false;
             Add(LogKind.MoveUsed, att.PokeId, id: moveNo);
 
             var factor = WazaHandlers.Add(Events, moveNo, att.Poke.Id, (uint)att.Poke.GetValueBase(PokeValueId.AGILITY));
@@ -101,6 +114,10 @@ namespace Xnu.Battle.Flow
             if (att.PokeSick == Sick.Freeze) return FailCause.Freeze;
 
             if (att.Poke.GetTurnFlag(TurnFlagShrink)) return FailCause.Flinch;
+
+            // Aussetzer (13): die gesperrte Attacke; Verhoehner (11): Status-Attacken gesperrt (CheckFail_1st: Ursachen 9 und 10).
+            if (att.HasSick(13) && SickCont.GetParam(att.SickContents[13]) == rec.MoveNo) return FailCause.Disabled;
+            if (att.HasSick(11) && rec.DamageType == 0 && rec.Category != 0 && rec.Power == 0) return FailCause.Taunted;
 
             if (att.HasSick(Sick.Confusion))
             {
@@ -148,7 +165,7 @@ namespace Xnu.Battle.Flow
             {
                 case Cat.FieldEffect:
                     if (WeatherMoves.TryGetValue(rec.MoveNo, out var weather)) ChangeWeather(att, moveNo, weather, DefaultWeatherTurns);
-                    else Add(LogKind.MoveFailed, att.PokeId, id: moveNo, value: FailCause.NotImplemented);
+                    else if (!ResolveSpecialMove(att, foe, rec, mi)) Add(LogKind.MoveFailed, att.PokeId, id: moveNo, value: FailCause.NotImplemented);
                     return;
                 case Cat.SimpleRecover:
                     ResolveRecover(att, rec);
@@ -169,24 +186,38 @@ namespace Xnu.Battle.Flow
                     ResolveDamageMove(att, foe, rec, mi, struggle);
                     return;
                 default:
-                    Add(LogKind.MoveFailed, att.PokeId, id: moveNo, value: FailCause.NotImplemented);
+                    if (!ResolveSpecialMove(att, foe, rec, mi)) Add(LogKind.MoveFailed, att.PokeId, id: moveNo, value: FailCause.NotImplemented);
                     return;
             }
         }
 
+        static bool IsProtectMove(ushort no) => no == 197 || no == 182 || no == 596 || no == 673 || no == 203;
+
+        static bool IsChoiceItem(ushort item) => item == 220 || item == 297 || item == 287;
+
         // Treffer: Handler (Ereignisse 62-64), Stufen, ein Zug. Immunitaet wird vorher geprueft.
         bool CheckHit(BattleMon att, BattleMon foe, MoveRecord rec, MoveInfo mi)
         {
+            if (att.HasSick(29)) { CureSick(att, 29); return true; }          // Erkennen/Gedankenleser
+            if (att.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE) == 99 || foe.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE) == 99) return true;   // Tuerschloss-Faehigkeit (Keine Abwehr)
             if (IsAlwaysHit(rec)) return true;
             var input = Launcher.BuildHitInput(att.Poke, foe.Poke, mi);
             return AccuracyCalculator.Check(input, Random).Hit;
         }
 
+        void CureSick(BattleMon m, int id) => m.CureSick(id);
+
         void ResolveDamageMove(BattleMon att, BattleMon foe, MoveRecord rec, MoveInfo mi, bool struggle)
         {
             ushort moveNo = (ushort)rec.MoveNo;
+            if (foe.Protected)
+            {
+                Add(LogKind.Protected, foe.PokeId, att.PokeId, moveNo);
+                return;
+            }
             int aff = struggle ? AffinityId.Normal : TypeAffinity.CalcPair(rec.Type, foe.Poke.Type1, foe.Poke.Type2, foe.Poke.TypeEx, Setup.Inverse);
-            if (aff == AffinityId.Zero)
+            bool groundImmune = rec.Type == (int)PokeType.Ground && !struggle && (foe.Floating || foe.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE) == 26);   // Schwebe / Magnetflug
+            if (aff == AffinityId.Zero || groundImmune)
             {
                 Add(LogKind.NoEffect, foe.PokeId, att.PokeId, moveNo);
                 return;
@@ -203,9 +234,10 @@ namespace Xnu.Battle.Flow
             uint total = 0;
             for (int h = 0; h < hits && !foe.IsFainted; h++)
             {
-                var crit = CriticalHit.Check(new CriticalInput { MoveStage = rec.CriticalRank, AttackerStage = 0 }, Random);
+                var crit = CriticalHit.Check(new CriticalInput { MoveStage = rec.CriticalRank, AttackerStage = Math.Min(3, att.CriticalBonus) }, Random);
                 var input = Launcher.BuildDamageInput(att.Poke, foe.Poke, mi, crit.Critical, aff, Weather.Weather, att.PokeSick == Sick.Burn);
                 uint dmg = DamageCalculator.ClampToHp(DamageCalculator.Calc(input, Random).Damage, foe.Poke.Hp);
+                dmg = SurviveCheck(foe, dmg);
                 foe.Poke.Hp = (ushort)(foe.Poke.Hp - dmg);
                 landed++;
                 total += dmg;
@@ -215,14 +247,39 @@ namespace Xnu.Battle.Flow
                 if (foe.IsFainted) OnFaint(foe);
             }
             if (landed > 1) Add(LogKind.HitCount, att.PokeId, foe.PokeId, moveNo, landed);
+            if (!foe.IsFainted) CheckBerry(foe);
+            if (foe.IsFainted && foe.DestinyBond && !att.IsFainted) { att.Poke.Hp = 0; Add(LogKind.Damage, att.PokeId, foe.PokeId, moveNo, 0, 0); OnFaint(att); }
 
-            // Verzweifler: Rueckstoss 1/4 der Max-KP; sonst Entzug (positiv) bzw. Rueckstoss (negativ) in Prozent des Schadens.
+            // Verzweifler: Rueckstoss 1/4 der Max-KP; sonst Entzug (positiv) bzw. Rueckstoss (negativ, Steinschaedel verhindert ihn) in Prozent des Schadens.
             if (struggle)
                 ApplyRecoil(att, FlowRules.QuotMaxHp(att.Poke.MaxHp, 4));
             else if (rec.DamageRecoverRatio > 0)
-                ApplyDrain(att, foe, Math.Max(1u, total * (uint)rec.DamageRecoverRatio / 100));
-            else if (rec.DamageRecoverRatio < 0)
+            {
+                uint drain = Math.Max(1u, total * (uint)rec.DamageRecoverRatio / 100);
+                if (att.Poke.Item == 296) drain = BattleMath.MulRatio(drain, 5324);     // Grosse Wurzel
+                ApplyDrain(att, foe, drain);
+            }
+            else if (rec.DamageRecoverRatio < 0 && att.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE) != 69)
                 ApplyRecoil(att, Math.Max(1u, total * (uint)(-rec.DamageRecoverRatio) / 100));
+
+            // Kontaktfaehigkeiten des Ziels (Statik 9, Giftdorn 38, Flammkoerper 49): 30 % (WAZA_DMG_REACTION).
+            if (mi.TouchFlag && total > 0 && !foe.IsFainted && !att.IsFainted)
+            {
+                ushort ft = (ushort)foe.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE);
+                int s = ft == 9 ? Sick.Paralysis : ft == 38 ? Sick.Poison : ft == 49 ? Sick.Burn : 0;
+                if (s != 0 && Random.IsOccurPercent(30) && CanInflict(att, s, foe))
+                {
+                    att.AddSick(s, SickCont.MakePermanent((uint)(foe.PokeId & 0x1F)));
+                    Add(LogKind.AbilityActivated, foe.PokeId, att.PokeId, ft);
+                    Add(LogKind.SickAdded, att.PokeId, foe.PokeId, s);
+                }
+            }
+            // Item-Wirkungen nach dem Schlag: Lebens-Orb (Rueckstoss 1/10), Muschelglocke (1/8 des Schadens).
+            if (total > 0 && !att.IsFainted)
+            {
+                if (att.Poke.Item == 270) { Add(LogKind.ItemActivated, att.PokeId, id: 270); ApplyRecoil(att, FlowRules.QuotMaxHp(att.Poke.MaxHp, 10)); }
+                else if (att.Poke.Item == 253) Recover(att, Math.Max(1u, total / 8), LogKind.Recover);
+            }
 
             // Zusatzwirkungen (WazaAdditionalEffect): Zurueckschrecken, Entzug, Zustand/Statuswert des Ziels, Statuswert des Anwenders.
             if (!foe.IsFainted && rec.FlinchChance > 0 && !foe.Poke.GetTurnFlag(0))
@@ -262,7 +319,7 @@ namespace Xnu.Battle.Flow
         {
             ushort moveNo = (ushort)rec.MoveNo;
             int aff = TypeAffinity.CalcPair(rec.Type, foe.Poke.Type1, foe.Poke.Type2, foe.Poke.TypeEx, Setup.Inverse);
-            if (aff == AffinityId.Zero || att.Level < foe.Level)
+            if (aff == AffinityId.Zero || att.Level < foe.Level || foe.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE) == 5)    // Robustheit (5) blockt K.-o.-Attacken
             {
                 Add(LogKind.NoEffect, foe.PokeId, att.PokeId, moveNo);
                 return;
@@ -332,14 +389,24 @@ namespace Xnu.Battle.Flow
                 if (stat <= 0 || delta == 0) continue;
                 if (target.IsFainted) return;
                 if (!RollChance(rec.StatStageChances[i])) continue;
-                ChangeRank(target, stat, delta);
+                ChangeRank(target, stat, delta, att);
             }
         }
 
         // 1 Angriff .. 7 Fluchtwert; Stufen liegen im Bereich 0..12 (6 = neutral).
-        public void ChangeRank(BattleMon mon, int stat, int delta)
+        public void ChangeRank(BattleMon mon, int stat, int delta, BattleMon source = null)
         {
             if (stat < 1 || stat > BattlePoke.RankCount) return;
+            // Senkungen durch den Gegner: Weisser Nebel (Seiteneffekt 3), Klärkörper 29, Weißrauch 73, Scherenmacht 52 (Angriff), Adlerauge 51 (Genauigkeit).
+            if (delta < 0 && source != null && source.Side != mon.Side)
+            {
+                ushort ab = (ushort)mon.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE);
+                if (Sides[mon.Side].Mist > 0 || ab == 29 || ab == 73 || ab == 52 && stat == 1 || ab == 51 && stat == 6)
+                {
+                    Add(LogKind.StatChangeBlocked, mon.PokeId, id: stat, value: -1);
+                    return;
+                }
+            }
             var id = (PokeValueId)stat;
             int cur = mon.Poke.GetRank(id);
             int next = Math.Max(0, Math.Min(12, cur + delta));
@@ -353,10 +420,22 @@ namespace Xnu.Battle.Flow
         }
 
         // Section_AddSickCheckFail.checkFail_byBasicRules @0x21dc0a0 (Auswahl): bereits aktiv, Hauptzustand vorhanden, Typenimmunitaeten, Sonne verhindert Frost.
-        bool CanInflict(BattleMon target, int sickId)
+        bool CanInflict(BattleMon target, int sickId, BattleMon cause = null)
         {
             if (target.IsFainted || target.HasSick(sickId)) return false;
             if (sickId < Sick.Confusion && target.PokeSick != 0) return false;
+            // Heiligtum (Seiteneffekt 2): schuetzt vor Hauptzustaenden und Verwirrung (IsBasicSickID), ausser eigene Zustaende.
+            if (cause != null && cause.Side != target.Side && Sides[target.Side].Safeguard > 0 && sickId >= Sick.Paralysis && sickId <= Sick.Confusion) return false;
+            ushort ab = (ushort)target.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE);
+            switch (sickId)
+            {
+                case Sick.Sleep: if (ab == 15 || ab == 72) return false; break;
+                case Sick.Paralysis: if (ab == 7) return false; break;
+                case Sick.Poison: if (ab == 17) return false; break;
+                case Sick.Burn: if (ab == 41) return false; break;
+                case Sick.Freeze: if (ab == 40) return false; break;
+                case Sick.Confusion: if (ab == 20) return false; break;
+            }
             var p = target.Poke;
             bool Has(PokeType t) => p.IsMatchType((int)t);
             switch (sickId)
@@ -402,13 +481,21 @@ namespace Xnu.Battle.Flow
                 if (notifyFailure) Add(LogKind.SickFailed, target.PokeId, id: sickId);
                 return false;
             }
-            if (sickId <= 0 || sickId >= Sick.Count || !CanInflict(target, sickId))
+            if (sickId <= 0 || sickId >= Sick.Count || !CanInflict(target, sickId, cause))
             {
                 if (notifyFailure) Add(LogKind.SickFailed, target.PokeId, id: sickId);
                 return false;
             }
             target.AddSick(sickId, MakeSickCont(cause, rec, sickId));
             Add(LogKind.SickAdded, target.PokeId, cause.PokeId, sickId);
+            // Synchro (28): Paralyse, Brand und Gift gehen auf den Verursacher zurueck.
+            if (target.Poke.GetValue(PokeValueId.TOKUSEI_EFFECTIVE) == 28 && cause != target && (sickId == Sick.Paralysis || sickId == Sick.Burn || sickId == Sick.Poison)
+                && CanInflict(cause, sickId))
+            {
+                cause.AddSick(sickId, SickCont.MakePermanent((uint)(target.PokeId & 0x1F)));
+                Add(LogKind.AbilityActivated, target.PokeId, cause.PokeId, 28);
+                Add(LogKind.SickAdded, cause.PokeId, target.PokeId, sickId);
+            }
             return true;
         }
 

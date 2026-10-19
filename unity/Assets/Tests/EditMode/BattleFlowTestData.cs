@@ -18,7 +18,8 @@ namespace Xnu.Tests
 
         public const int Tackle = 33, QuickAttack = 98, Ember = 52, ThunderWave = 86, Sing = 47, Toxic = 92, Growl = 45, Recover = 105,
             RainDance = 240, SunnyDay = 241, Sandstorm = 201, Hail = 258, DoubleEdge = 38, GigaDrain = 202, FuryAttack = 31, DoubleKick = 24,
-            Fissure = 90, SwordsDance = 14, Wrap = 35, ConfuseRay = 109, Flamethrower = 53, IceBeam = 58, Splash = 150, Struggle = 165, Pound = 1;
+            Fissure = 90, SwordsDance = 14, Wrap = 35, ConfuseRay = 109, Flamethrower = 53, IceBeam = 58, Splash = 150, Struggle = 165, Pound = 1,
+            Reflect = 115, StealthRock = 446, Spikes = 191, Protect = 197, TrickRoom = 433, Tailwind = 366;
 
         static SpeciesRecord Species(int id, int hp, int atk, int def, int spa, int spd, int spe, int t1, int t2, int giveExp, int evBits, int grow = 0)
             => new SpeciesRecord
@@ -67,7 +68,17 @@ namespace Xnu.Tests
                 Move(IceBeam, 14, 4, 2, 90, 100, 10),
                 Move(Splash, 0, 13, 0, 0, 101, 40),
                 Move(Struggle, 18, 0, 1, 50, 0, 1),
+                Move(Reflect, 14 - 4, 11, 0, 0, 101, 20),
+                Move(StealthRock, 5, 11, 0, 0, 101, 20),
+                Move(Spikes, 4, 11, 0, 0, 101, 20),
+                Move(Protect, 0, 12, 0, 0, 101, 10, 4),
+                Move(TrickRoom, 14, 11, 0, 0, 101, 5, -7),
+                Move(Tailwind, 2, 11, 0, 0, 101, 15),
             };
+            Set(moves, Reflect, m => m.Target = 7);
+            Set(moves, Protect, m => m.Target = 7);
+            Set(moves, TrickRoom, m => m.Target = 10);
+            Set(moves, Tailwind, m => m.Target = 7);
             Set(moves, ThunderWave, m => { m.StatusId = Sick.Paralysis; m.StatusContinuation = 1; });
             Set(moves, Sing, m => { m.StatusId = Sick.Sleep; m.StatusContinuation = 2; m.StatusTurnMin = 2; m.StatusTurnMax = 4; });
             Set(moves, Toxic, m => { m.StatusId = Sick.Poison; m.StatusContinuation = 1; m.StatusTurnMin = 15; m.StatusTurnMax = 15; });

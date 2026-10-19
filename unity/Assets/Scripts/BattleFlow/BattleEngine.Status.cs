@@ -14,8 +14,17 @@ namespace Xnu.Battle.Flow
         {
             TurnCheckWeather();
             if (CheckShowdown()) return;
+            TurnCheckEvent(EventId.TURNCHECK_BEGIN);       // Ereignis 0x91: Resteverwertung, Wunschtraum, Zukunftsschuss, Abgestreift ...
+            if (Phase == BattlePhase.Finished) return;
             TurnCheckSick();
             if (CheckShowdown()) return;
+            TurnCheckSide();
+            TurnCheckField();
+            TurnCheckEvent(EventId.TURNCHECK_END);         // Ereignis 0x92: Toxik-/Heiss-Orb
+            if (Phase == BattlePhase.Finished) return;
+            TurnCheckEvent(EventId.TURNCHECK_DONE);        // Ereignis 0x93
+            if (Phase == BattlePhase.Finished) return;
+            CheckShowdown();
         }
 
         List<BattleMon> FrontByAgility()
@@ -50,7 +59,8 @@ namespace Xnu.Battle.Flow
                 var p = mon.Poke;
                 uint dmg = WeatherChip.Damage(Weather.Weather, p.MaxHp, p.IsMatchType((int)PokeType.Ice), p.IsMatchType((int)PokeType.Rock),
                     p.IsMatchType((int)PokeType.Steel), p.IsMatchType((int)PokeType.Ground));
-                if (dmg == 0) continue;
+                dmg = WeatherReaction(mon, Weather.Weather, dmg);       // Ereignis 155: Faehigkeiten heilen, verhindern oder verstaerken
+                if (dmg == 0 || mon.IsFainted) continue;
                 dmg = Math.Min(dmg, p.Hp);
                 p.Hp = (ushort)(p.Hp - dmg);
                 Add(LogKind.WeatherDamage, mon.PokeId, id: (int)Weather.Weather, value: (int)dmg, value2: p.Hp);
@@ -84,6 +94,7 @@ namespace Xnu.Battle.Flow
         // Section_TurnCheck_Sick.sickDamage @0x22716b0 / cont_Bind.
         void SickDamage(BattleMon mon, int sickId)
         {
+            if (sickId == 36) { Recover(mon, FlowRules.QuotMaxHp(mon.Poke.MaxHp, 16), LogKind.Recover); return; }       // Wasserring (cont_AquaRing)
             uint dmg;
             if (sickId == Sick.Bind) dmg = FlowRules.QuotMaxHp(mon.Poke.MaxHp, 8);
             else dmg = FlowRules.CalcSickDamage(sickId, mon.SickContents[sickId], mon.SickCounters[sickId], mon.Poke.MaxHp,

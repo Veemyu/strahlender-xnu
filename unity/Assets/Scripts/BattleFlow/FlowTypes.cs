@@ -93,6 +93,40 @@ namespace Xnu.Battle.Flow
         RunFailed,          // Poke
         TurnEnd,            // Value = Rundennummer
         BattleEnd,          // Value = BattleResult
+        PrizeMoney,         // Value = Preisgeld (Sieg gegen Trainer)
+        MoneyLost,          // Value = Abzug bei Niederlage
+        AbilityActivated,   // Poke, Id = Faehigkeit
+        ItemActivated,      // Poke, Id = Item (Value = Wirkung, z. B. geheilte KP)
+        ItemConsumed,       // Poke, Id = Item
+        SideEffectStart,    // Poke = Anwender, Id = Seiteneffekt (SideEffect), Value = Seite, Value2 = Dauer
+        SideEffectEnd,      // Id = Seiteneffekt, Value = Seite
+        HazardDamage,       // Poke, Id = Seiteneffekt, Value = Schaden, Value2 = Rest-KP
+        Protected,          // Poke = Ziel, Target = Angreifer, Id = Attacke
+        Forced,             // Poke = Ziel: Wechsel erzwungen (Id = Attacke); bei Wildkampf-Gegner endet der Kampf
+        FieldEffectStart,   // Id = Feldeffekt (FieldEffect), Value = Runden
+        FieldEffectEnd,     // Id = Feldeffekt
+        Fainted,            // reserviert
+    }
+
+    // Seiteneffekte (Handler.Side-Nummern des Originals).
+    public static class SideEffect
+    {
+        public const int Reflect = 0;
+        public const int LightScreen = 1;
+        public const int Safeguard = 2;
+        public const int Mist = 3;
+        public const int Tailwind = 4;
+        public const int Spikes = 6;
+        public const int ToxicSpikes = 7;
+        public const int StealthRock = 8;
+        public const int StickyWeb = 14;
+        public const int AuroraVeil = 17;
+    }
+
+    public static class FieldEffectNo
+    {
+        public const int TrickRoom = 1;
+        public const int Gravity = 2;
     }
 
     // Ursachen eines Attacken-Fehlschlags in der ersten Pruefung (CheckFail_1st des Originals).
@@ -108,6 +142,10 @@ namespace Xnu.Battle.Flow
         public const int Missed = 100;       // nicht im Original: Genauigkeit (zweite Pruefung)
         public const int NotImplemented = 101;   // Attacke braucht Handler/Sections, die noch fehlen (Seiteneffekte, Sonderattacken)
         public const int NothingHappened = 102;  // z. B. Heilung bei vollen KP, gleiches Wetter
+        public const int NoTarget = 103;         // Attacke braucht ein Ziel/Partner, den es im Einzelkampf nicht gibt
+        public const int Disabled = 9;           // Aussetzer (Zustand 13)
+        public const int Taunted = 10;           // Verhoehner (Zustand 11): Status-Attacke gesperrt
+        public const int Unsupported = NotImplemented;
     }
 
     // Strukturiertes Ereignis des Ablaufprotokolls (statt Text).
