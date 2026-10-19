@@ -82,3 +82,11 @@ Grundlage: `docs/recomp-gate2.md`, `docs/recomp-diff.md`, `docs/recomp-spike-2.m
 - **Unity-Rebuild (D):** läuft weiter als Referenz und Fallback (Orakel, Spezifikationen, Daten-/Save-Werkzeuge, Bildprüfung); keine neuen Großblöcke.
 - **Offen/Risiken:** iPadOS (Metal-Puffer 5 GiB-Fenster, rebase32 auf Gerät ungemessen, Build-Zeit des Generats in Xcode), Touch-/Controller-Eingabe, Audio bleibt stumm, Online-Dienste als Stubs, Rechtslage vor öffentlicher Weitergabe klären.
 - Der Nutzer hat die Strategie dem Autopiloten überlassen; revidierbar.
+
+## Entscheidung 4 (Nutzer, 2026-10-19 16:57): Unity-Rebuild ist deprecated
+- **Wortlaut des Nutzers:** „unity rebuild somit komplett deprecaten! keine weitere arbeit mehr damit verschwenden!“
+- **Folge:** Der Unity-Rebuild (`unity/`, Stubs, UI-Fenster, Feld-/Kampf-/Event-Nachbau, Unity-Shader-Wrapper) wird **nicht mehr weiterentwickelt**. Keine neuen Aufgaben, keine Fehlerbehebung dort, außer wenn ein Werkzeug daraus die Rekompilation direkt braucht. Der Code bleibt im Repo als Referenz (Orakel-Fixtures, Spezifikationen `docs/kampf-spezifikation-*.md`, `docs/pokepara-spezifikation.md`, `docs/evscript-spezifikation.md`), wird aber nicht mehr gebaut oder getestet.
+- **Hauptweg und einziger Entwicklungsstrang:** die Rekompilation (`scripts/recomp/`, macOS `BDSP.app`, iPadOS `dev.local.xnubdsp`, Linux/Vulkan). Build: `scripts/build_all.sh` mit der Stufe `recomp`.
+- **Weiter genutzt (gemeinsame Werkzeuge):** Extraktion (`tools`, `extract`, `il2cpp`), Maxwell→MSL/GLSL-Übersetzer (`shader_translator/`), Video-Umwandlung, ASTC-Transcode, Save-Werkzeuge (`scripts/bdsp_save.py`, `ryujinx_sync_save.sh`, `ios_push_save.sh`), Bildprüfung (`visual_*`, Ryujinx-Referenz), Ryzen-Farm (`scripts/recomp/ryzen/`).
+- **Stillgelegt (nicht löschen):** Build-Stufen `shaders` (Unity-Wrapper), `assets`-Anteile für Unity, `stubs`, `unity-build`, Skripte `unity_safe.sh`, `shader_wrap*.py`, `stub_gen.py`, `material_*.py` sowie `ap-*`-Todos zu Unity. Details: `unity/DEPRECATED.md`.
+- Revidierbar nur durch den Nutzer.

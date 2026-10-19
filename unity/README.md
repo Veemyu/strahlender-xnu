@@ -1,5 +1,7 @@
 # unity/ – Unity-6.3-Projekt (eigener Code)
 
+> **DEPRECATED seit 2026-10-19 (Entscheidung 4).** Der Unity-Rebuild wird nicht mehr weiterentwickelt; Hauptweg ist die Rekompilation (`scripts/recomp/`). Siehe `DEPRECATED.md` in diesem Ordner.
+
 Hier liegt nur **eigener Code und Projekteinstellung**. Spieldaten, Dumps, Keys und extrahierte Inhalte gehören nicht ins Repo (`.gitignore`).
 
 - `Assets/Scripts/Core` – gemeinsame Hilfen (z. B. `GameDataPaths`: Ort des Nutzer-Dumps, Variable `XNU_GAMEDATA`)
