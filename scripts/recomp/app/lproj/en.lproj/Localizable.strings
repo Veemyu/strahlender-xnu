@@ -1,0 +1,8 @@
+/* Englische Menüs der Mac-App. Die deutschen Texte sind die Schlüssel (Entwicklungssprache de). */
+"Ansicht" = "View";
+"Vollbild" = "Full Screen";
+"Bildrate" = "Frame Rate";
+"Fenstergröße %d × %d" = "Window Size %d × %d";
+"Debug" = "Debug";
+"Metal-HUD anzeigen" = "Show Metal HUD";
+"Wirkt nach einem Neustart von BDSP." = "Takes effect after restarting BDSP.";
