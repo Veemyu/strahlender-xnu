@@ -277,7 +277,7 @@ Format (Dump und TypeTree stimmen überein): `EvData { List<Script> Scripts; Lis
   `Work`/`Flag`/`SysFlag` sind Indizes in die Ereignis-Variablen.
 - 856 Dateien, 13 139 Skripte (1 bis 952 je Datei), 64 745 Befehle, 17 328 Stringtabellen-Einträge, rund 5,4 MB JSON.
   Dateinamen sind Kartenkürzel (238 passen auf Kartenbundle-Namen) und `sp_*` (300; Sonderereignisse).
-- Nicht interpretiert: die Bedeutung der Befehle und das Variablenmodell. Das ist Aufgabe des Skriptinterpreters (Dump: `EvDataManager`, `EvCmdID`).
+- Nicht interpretiert: die Bedeutung der Befehle und das Variablenmodell. Das ist Aufgabe des Skriptinterpreters (Dump: `EvDataManager`, `EvCmdID`); Stand siehe `docs/evscript-spezifikation.md`.
 - Verknüpfungen aus anderen Tabellen: `PlaceData.TalkLabel` (3868 gesetzt, 3849 treffen ein `Script.Label`, groß/klein ignoriert)
   und `StopData.ContactLabel` (106 von 106) sind Skript-Labels; `PlaceData.ContactLabel` ist überall leer.
   `MapWarp.ScriptLabel`/`ExitLabel` sind Zahlen (Label-/Ausgangsindex). Es gibt 12 985 verschiedene Labels.

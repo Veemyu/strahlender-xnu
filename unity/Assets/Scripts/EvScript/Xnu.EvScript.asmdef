@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.EvScript",
+  "rootNamespace": "Xnu.EvScript",
+  "references": ["Xnu.Core", "Xnu.Data", "Xnu.Save"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}
