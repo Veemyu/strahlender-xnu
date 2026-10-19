@@ -182,7 +182,7 @@ namespace Xnu.Tests
             var textures = GameGlobals.Specs.Where(s => s.Kind == GlobalKind.Texture).Select(s => s.Name).OrderBy(x => x).ToArray();
             CollectionAssert.AreEqual(textures, g.Unset.OrderBy(x => x).ToArray());
             Assert.AreEqual(GameGlobals.Specs.Count - textures.Length, sink.Values.Count);
-            Assert.AreEqual(1f, (float)sink.Values["_GlobalLightPower"]);
+            Assert.AreEqual(0f, (float)sink.Values["_GlobalLightPower"]);   // wie das Original im Ruhezustand: 1 − 1
             CollectionAssert.AreEqual(GameGlobals.Identity(), (float[])sink.Values["_ReflectionVP"]);
         }
 

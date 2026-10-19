@@ -194,6 +194,19 @@ Die Fallliste `unity/Assets/Tests/EditMode/Fixtures/variant_resolution_cases.jso
 10. **Instancing-Bild über Renderer-Batching** nicht gemessen (Abschnitt 8); Partikelbild (`FxSystem/Particle`) weiterhin offen (`docs/shader-unity-integration.md`, 13.2).
 11. **Zeitabhängigkeit:** Bildvergleiche der Karte sind wegen `_Time` nicht deterministisch; der Harness-Vergleich (7.2) friert die Konstanten ein.
 
+### 10a. Nachtrag 2026-10-19 (`ap-effects-fidelity`, Teil 1): Stand der Lücken 1, 2, 4, 5
+
+Ausführlich in `docs/shader-globals.md`.
+
+| Lücke | Neuer Stand |
+|---|---|
+| 1 Schatten | **Geschlossen** (Lab gemessen). Der erzeugte `SHADOWCASTER`-Pass wirft Schatten, Unitys Bildschirmschatten erreicht unseren Forward-Pass ohne `multi_compile_fwdbase`. Die Annahme „ein weißer Ersatz ändert das Bild nicht“ (7.1) hatte eine andere Ursache: der Platzhalter `_CloudShadowBase` = 0 setzt den Wolkenterm im Shader auf 0, und `min(Schatten, Wolkenterm)` ist dann immer 0 — die ganze Karte lag „im Schatten“, egal was in `_ShadowMapTexture` stand. Mit `_CloudShadowBase` = 1 − Szenenwert erscheint der Würfelschatten. **Ein Material = ein Shader mit mehreren Pässen:** `shader_wrap.py --also`, `shader_wrap_all.py --combine-shadow` (61 benutzte Varianten, 48 mit Schattenpass, 61 von 61 kompilieren); `RemapResult.ShadowEmbedded` ersetzt das getrennte Schattenmaterial; `UsePass` der Mitake-Shader wird übernommen. |
+| 2 Mehrpass-Shader / Grab | **Geschlossen für GrabPass.** Das Original benutzt Unitys `GrabPass` (kein eigener CommandBuffer); der Wrapper schreibt ihn jetzt vor den Pass (`Delphis/Map/Water` im Lab: Hintergrund scheint durch). `FlowmapWater` hat keinen Grab-Pass, sondern liest `_OpaqueDepthTexture`/`_ReflectionTex`/`_ReflectionVP`: `DepthCaptureDriver`, `ReflectionCameraDriver`. |
+| 4 Spielwerte der Globals | **Quellen geklärt**, 26 von 35 umgesetzt (`EnvironmentState`): Werte aus `EnvironmentSettings` (175 Assets, je Zone über `MapInfo.RenderSettings`) und aus dem Szenenobjekt `EnvironmentController`. Offen: Szenenobjekt-Werte nicht ausgelesen, Nachbearbeitungs-Globals. Zone 422 mit den abgeleiteten Globals: Bildmittel (83, 104, 62) am Tag statt (26, 34, 20) mit Platzhaltern. `_GlobalLightPower` im Ruhezustand ist 0, nicht 1 (Platzhalter korrigiert). |
+| 5 Texturen aus Nachbar-Bundles | **Geschlossen:** `material_export.py --resolve-external` löst alle 52 Verweise auf (5 Bundles, alle `Dpr/common_resources`), `MaterialTextureRef.ExternalBundle`. |
+
+Neu bei den Dateien: `scripts/environment_export.py`, `scripts/ghidra/{StringXrefs,CallersOf}.java`, `scripts/ghidra/run_headless.sh`; geändert: `shader_wrap.py` (`--also`, `--no-aux`, GrabPass/UsePass), `shader_wrap_all.py` (`--combine-shadow`), `material_export.py` (`--resolve-external`, `export_bundle` liefert `(Materialien, externe Pfade)`), `GameGlobals.cs` (`_GlobalLightPower`-Platzhalter 0), `MaterialCatalog.cs`, `ShaderVariantIndex.cs`, `Runtime/MaterialRemapper.cs`, `Runtime/UnityGlobalSink.cs` (Textur-Platzhalter).
+
 ## 11. Änderungen an bestehenden Dateien
 
 - `scripts/shader_inventory.py`: Pass-Tags aus `m_State.m_Tags` übernehmen (`LIGHTMODE`). Vorher stand dort immer `{}` (der Pass-eigene `m_Tags` ist leer), die erzeugten Shader hatten kein `LightMode`. Im Inventar jetzt: 23 × `FORWARDBASE`, 7 × `SHADOWCASTER`, 3 × `FORWARDADD`; sonst bleibt das Inventar gleich (geprüft: alle anderen Felder identisch). `work/shaders/inventory.json` wurde neu erzeugt (2 s).

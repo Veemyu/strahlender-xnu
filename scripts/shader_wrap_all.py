@@ -47,10 +47,35 @@ def variant_name(sh, si, pi, k):
     return f"{sw.ident(sh['name'])}_s{si}_p{pi}_{h}"
 
 
+def pass_keysets(p):
+    """Keyword-Mengen, die in Vertex- und Fragmentstufe des Passes vorkommen."""
+    def sets(stage):
+        return {tuple(sorted(set(e.get("globalKeywords", [])) | set(e.get("localKeywords", [])))) for e in p["stages"].get(stage, [])}
+    return sets("vertex") & sets("fragment")
+
+
+def shadow_partner(ss, forward_pass, k):
+    """Schattenwurf-Pass (Index, Keywords) zu einer Forward-Variante k oder None.
+
+    Regel wie ShaderVariantResolver: angefordert = (k geschnitten mit allen Keywords des Wurf-Passes) plus SHADOWS_DEPTH;
+    exakte Variante, sonst ohne INSTANCING_ON."""
+    for ci, cp in enumerate(ss["passes"]):
+        if ci == forward_pass or cp["type"] != "Normal" or cp.get("tags", {}).get("LIGHTMODE") != "SHADOWCASTER":
+            continue
+        have = pass_keysets(cp)
+        universe = {x for t in have for x in t}
+        want = (set(k) & universe) | {"SHADOWS_DEPTH"}
+        for cand in (want, want - {"INSTANCING_ON"}):
+            if tuple(sorted(cand)) in have:
+                return ci, sorted(cand)
+        return None
+    return None
+
+
 def namespace(args, **kw):
     d = dict(shader=None, bundle=None, sub=0, pass_index=0, keywords=[], mode="named", out=None, name=None, renderers="metal",
              pragma=[], fast_math=False, translator_args=[], color_mask=None, no_cull=False, inventory=str(args.inventory),
-             mapping=None, prog_blob=str(args.prog_blob), blobs=str(args.blobs), workdir=str(args.workdir))
+             mapping=None, prog_blob=str(args.prog_blob), blobs=str(args.blobs), workdir=str(args.workdir), also=[], no_aux=False)
     d.update(kw)
     return argparse.Namespace(**d)
 
@@ -61,6 +86,9 @@ def main(argv=None):
     ap.add_argument("--used", help="JSON-Liste gebrauchter Keyword-Mengen (Strippen)")
     ap.add_argument("--shader", help="nur dieser Shadername")
     ap.add_argument("--all-subshaders", action="store_true")
+    ap.add_argument("--combine-shadow", action="store_true",
+                    help="Forward-Varianten mit dem passenden Schattenwurf-Pass im selben Shader erzeugen "
+                         "(Unity nimmt den Schattenwurf aus dem Shader des Materials; variants.json: Feld 'shadow')")
     ap.add_argument("--mode", choices=("named", "array"), default="named")
     ap.add_argument("--inventory", default=str(sw.WORK / "inventory.json"))
     ap.add_argument("--prog-blob", default=str(sw.WORK / "prog_blob.json"))
@@ -91,9 +119,27 @@ def main(argv=None):
                       out=str(out / f"{name}.shader"), name=f"XNU/Generated/{name}", mode=args.mode)
         entry = {"file": f"{name}.shader", "shader": sh["name"], "sub": si, "pass": pi, "keywords": list(k),
                  "lightMode": sh["subShaders"][si]["passes"][pi].get("tags", {}).get("LIGHTMODE")}
+        if args.combine_shadow and entry["lightMode"] == "FORWARDBASE":
+            sp = shadow_partner(sh["subShaders"][si], pi, k)
+            if sp:
+                a.also = [f"{sp[0]}:{','.join(sp[1])}"]
+                entry["shadow"] = {"pass": sp[0], "keywords": sp[1]}
+        aux = sw.aux_blocks(sh["subShaders"][si], pi)
+        if aux[0] or aux[1]:
+            entry["aux"] = {"grab": [x.strip() for x in aux[0]], "use": [x.strip() for x in aux[1]]}
         try:
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                sw.wrap(a)
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    sw.wrap(a)
+            except sw.WrapError as e:
+                if not a.also:
+                    raise
+                # Schattenwurf nicht uebersetzbar: Forward-Variante trotzdem erzeugen, ohne Schattenwurf
+                entry["shadowError"] = str(e).split("translation failed: ")[-1][:80]
+                entry.pop("shadow", None)
+                a.also = []
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    sw.wrap(a)
             stats["ok"] += 1
             entry["status"] = "ok"
         except sw.WrapError as e:

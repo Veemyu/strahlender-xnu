@@ -36,11 +36,11 @@ namespace Xnu.Render
         public static readonly IReadOnlyList<GlobalSpec> Specs = new[]
         {
             new GlobalSpec("_CloudParam", GlobalKind.Vector, 0, "Delphis/Map/Standard"),
-            new GlobalSpec("_CloudShadowBase", GlobalKind.Float, 0, "Delphis/Map/Standard"),
+            new GlobalSpec("_CloudShadowBase", GlobalKind.Float, 1, "Delphis/Map/Standard"),   // Original: 1 − Szenenwert (Szenenwert 0 → 1); 0 würde die ganze Karte in den Schatten legen
             new GlobalSpec("_CloudShadowScale", GlobalKind.Float, 1, "Delphis/Map/Standard"),
             new GlobalSpec("_CloudShadowTex", GlobalKind.Texture, 0, "Delphis/Map/Standard"),
             new GlobalSpec("_ShadowColor", GlobalKind.Vector, 0, "Delphis/Map/Standard"),
-            new GlobalSpec("_GlobalLightPower", GlobalKind.Float, 1, "Delphis/Map/Standard"),
+            new GlobalSpec("_GlobalLightPower", GlobalKind.Float, 0, "Delphis/Map/Standard"),   // Original: globalLightPower (Standard 1) − 1 = 0
             new GlobalSpec("_GlobalBumpScale", GlobalKind.Float, 1, "Delphis/Map/Standard"),
             new GlobalSpec("_EmissionScale", GlobalKind.Float, 1, "Delphis/Map/Standard"),
             new GlobalSpec("_EmissionThreshold", GlobalKind.Float, 0, "Delphis/Map/Standard"),

@@ -288,3 +288,7 @@ Kette: `make shader_translator` → `shader_extract_blobs.py --extra` (Blobs aus
 4. Massenlauf: nur ein Teil importiert (13.5); Kompilierzeit der großen Shader hoch; Strippen nach Materialdaten fehlt (`used.json`).
 5. Cube-Rendertest, `TXQ`, mehrere Farbziele, `SV_Depth`, `nointerpolation`: weiterhin ohne Bildvergleich.
 6. cbuf 0 (außer Speicherpuffer-Adresse) und Vertex-Bindung 0 bleiben unbekannt (Nullen mit Warnung).
+
+### 13.8 Nachtrag 2026-10-19: Mehrpass-Shader, GrabPass, Schatten
+
+`shader_wrap.py` erzeugt jetzt auch **mehrere Pässe in einem SubShader** (`--also PASS[:KW,KW]`, typisch der Schattenwurf) sowie **GrabPass** vor und **UsePass** hinter dem Hauptpass (Originalreihenfolge, `--no-aux` schaltet ab); `shader_wrap_all.py --combine-shadow` setzt zu jeder Forward-Variante den passenden `SHADOWCASTER`-Pass dazu (`variants.json`: `shadow`, `aux`). Im Lab gemessen: Schattenwurf und Bildschirmschatten laufen, GrabPass-Wasser zeigt den Hintergrund, 61 von 61 kombinierten benutzten Varianten kompilieren. Einzelheiten, Messaufbau und Zahlen: `docs/shader-globals.md`, Abschnitte 6 und 7.

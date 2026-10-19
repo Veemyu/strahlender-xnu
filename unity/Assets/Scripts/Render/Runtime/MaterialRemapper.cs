@@ -12,6 +12,8 @@ namespace Xnu.Render
         public List<Material> Forward = new List<Material>();
         // Material mit dem Schatten-Pass (nur für den Schattenwurf; nie als sichtbares Material zuweisen).
         public Material ShadowCaster;
+        // Der Forward-Shader trägt den Schattenwurf-Pass selbst (ShadowCaster bleibt dann null).
+        public bool ShadowEmbedded;
         // Materialien mit ForwardAdd-Pass (zusätzliche Lichter), ebenfalls nicht sichtbar zuweisen.
         public List<Material> Additional = new List<Material>();
         public List<string> Notes = new List<string>();
@@ -56,8 +58,12 @@ namespace Xnu.Render
             if (res.Passes.Count == 0) { res.Notes.Add("keine erzeugte Variante für " + rec.Shader); return res; }
 
             var complete = true;
+            // Enthält der gewählte Forward-Shader den Schattenwurf-Pass selbst (--combine-shadow), entfällt das getrennte Material.
+            foreach (var p in res.Passes)
+                if (p.Role == PassRole.Forward && p.Entry != null && p.Entry.EmbeddedShadowKeywords != null) res.ShadowEmbedded = true;
             foreach (var p in res.Passes)
             {
+                if (p.Role == PassRole.ShadowCaster && res.ShadowEmbedded) continue;
                 if (p.Entry == null) { complete = false; res.Notes.Add("Pass " + p.Pass + ": keine Variante"); continue; }
                 var shader = _find(p.Entry.UnityName);
                 if (shader == null) { complete = false; res.Notes.Add("Pass " + p.Pass + ": Shader fehlt: " + p.Entry.UnityName); continue; }

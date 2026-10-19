@@ -11,6 +11,7 @@ namespace Xnu.Render
         public bool IsNull;          // Eigenschaft ohne Textur
         public string TextureName;   // Name der Textur im Bundle (Auflösung zur Laufzeit über Name + Größe)
         public int Width, Height, Format;
+        public string ExternalBundle;  // Bundle der Textur, wenn sie in einer Abhängigkeit liegt (z. B. Dpr/common_resources), sonst null
         public float ScaleX = 1, ScaleY = 1, OffsetX, OffsetY;
     }
 
@@ -103,6 +104,7 @@ namespace Xnu.Render
                     var t = (Dictionary<string, object>)kv.Value;
                     var tr = new MaterialTextureRef { Property = kv.Key, IsNull = !t.ContainsKey("pathId") };
                     if (t.TryGetValue("texName", out var tn)) tr.TextureName = tn as string;
+                    if (t.TryGetValue("extBundle", out var eb)) tr.ExternalBundle = eb as string;
                     if (t.TryGetValue("width", out var w)) tr.Width = Convert.ToInt32(w);
                     if (t.TryGetValue("height", out var h)) tr.Height = Convert.ToInt32(h);
                     if (t.TryGetValue("format", out var f)) tr.Format = Convert.ToInt32(f);

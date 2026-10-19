@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xnu.Data;
 
 namespace Xnu.Render
@@ -13,6 +14,7 @@ namespace Xnu.Render
         public string[] Keywords;    // sortiert, ordinal
         public string UnityName;     // Name für Shader.Find
         public string LightMode;     // LIGHTMODE-Tag des Passes oder null
+        public string[] EmbeddedShadowKeywords;   // Schattenwurf-Pass im selben Shader (variants.json: "shadow"), sonst null
 
         public override string ToString() => UnityName;
     }
@@ -34,8 +36,9 @@ namespace Xnu.Render
 
         public int Count { get; private set; }
 
-        public void Add(VariantEntry e)
-        {
+        public IEnumerable<string> ShaderNames => _byShader.Keys;
+
+        public void Add(VariantEntry e)        {
             if (!_byShader.TryGetValue(e.Shader, out var passes))
                 _byShader[e.Shader] = passes = new SortedDictionary<int, PassData>();
             if (!passes.TryGetValue(e.Pass, out var pd)) passes[e.Pass] = pd = new PassData();
@@ -99,6 +102,9 @@ namespace Xnu.Render
                     Keywords = kw.ToArray(),
                     UnityName = namePrefix + file,
                     LightMode = d.TryGetValue("lightMode", out var lm) ? lm as string : null,
+                    EmbeddedShadowKeywords = d.TryGetValue("shadow", out var sho) && sho is Dictionary<string, object> shd
+                                             && shd.TryGetValue("keywords", out var shk) && shk is List<object> shl
+                        ? shl.Select(x => (string)x).ToArray() : null,
                 });
             }
             return idx;

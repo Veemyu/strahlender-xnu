@@ -115,7 +115,74 @@ def texture_table(env):
     return t
 
 
+def external_cab(path):
+    """'archive:/CAB-x/CAB-x' -> 'CAB-x'; Pfade ohne CAB-Name (eingebaute Ressourcen) -> None."""
+    base = path.rstrip("/").split("/")[-1]
+    return base if base.startswith("CAB-") else None
+
+
+def fill_external_textures(mats, externals, lookup):
+    """Texturverweise auf Nachbar-Bundles (FileID != 0) ueber lookup(cab, path_id) -> Info-Dict|None aufloesen.
+
+    Ergaenzt texName/width/height/format/texType und 'extBundle' (Name des Bundles, das die Textur enthaelt).
+    -> (aufgeloest, offen)."""
+    done = open_ = 0
+    for m in mats:
+        for t in m.get("textures", {}).values():
+            if "pathId" not in t or not t.get("file") or "texName" in t:
+                continue
+            fid = t["file"]
+            cab = external_cab(externals[fid - 1]) if 0 < fid <= len(externals) else None
+            info = lookup(cab, t["pathId"]) if cab else None
+            if info:
+                t.update(info)
+                done += 1
+            else:
+                open_ += 1
+    return done, open_
+
+
+class ExternalTextures:
+    """Findet Texturen in den Abhaengigkeiten eines Bundles (Katalog Dpr.bin, work/dpr_catalog.json: deps).
+
+    Die Abhaengigkeitsnamen tragen keinen Ordner (z. B. 'common_resources' liegt unter Dpr/): jeder Ordner von
+    AssetAssistant kommt als Kandidat in Frage; entscheidend ist der CAB-Name im Bundle."""
+
+    def __init__(self, assets=ASSETS, catalog=None):
+        self.assets = Path(assets)
+        cat = json.loads(Path(catalog or (REPO / "work" / "dpr_catalog.json")).read_text())
+        self.deps = {f'{r["p"]}/{r["n"]}': r.get("deps", []) for r in cat["recs"]}
+        self.prefixes = sorted(p.name for p in self.assets.iterdir() if p.is_dir())
+        self.cache = {}   # Bundle -> (CAB-Namen, Texturtabelle)
+
+    def _load(self, rel):
+        if rel not in self.cache:
+            import UnityPy
+            env = UnityPy.load(str(self.assets / rel))
+            cabs = {fn for bf in env.files.values() for fn in getattr(bf, "files", {}) if fn.startswith("CAB-") and not fn.endswith(".resS")}
+            self.cache[rel] = (cabs, texture_table(env))
+        return self.cache[rel]
+
+    def for_bundle(self, rel):
+        """lookup(cab, path_id) fuer die Abhaengigkeiten des Bundles rel."""
+        cands = []
+        for d in self.deps.get(rel, []):
+            for p in self.prefixes:
+                if (self.assets / p / d).is_file():
+                    cands.append(f"{p}/{d}")
+
+        def lookup(cab, path_id):
+            for c in cands:
+                cabs, table = self._load(c)
+                if cab in cabs:
+                    info = table.get((0, path_id))
+                    return dict(info, extBundle=c) if info else None
+            return None
+        return lookup
+
+
 def export_bundle(path, resolver):
+    """-> (Materialeintraege, externe Dateipfade des Bundles)"""
     import UnityPy
     env = UnityPy.load(str(path))
     tex = texture_table(env)
@@ -138,7 +205,7 @@ def export_bundle(path, resolver):
         m = convert_material(tr, ext, resolver, tex)
         m["pathId"] = o.path_id
         mats.append(m)
-    return mats
+    return mats, ext
 
 
 def check_ignored(out):
@@ -157,6 +224,8 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--used", help="Liste gebrauchter (Shader, Keywords) schreiben")
     ap.add_argument("--inventory", default=str(INVENTORY))
+    ap.add_argument("--resolve-external", action="store_true",
+                    help="Texturen in Nachbar-Bundles (Abhaengigkeiten laut work/dpr_catalog.json) aufloesen (langsamer: laedt diese Bundles)")
     a = ap.parse_args(argv)
     check_ignored(a.out)
     out = Path(a.out)
@@ -168,8 +237,13 @@ def main(argv=None):
         todo += sorted(str(p.relative_to(ASSETS)) for p in (ASSETS / d).rglob("*") if p.is_file() and p.suffix == "")
     used = set()
     stat = Counter()
+    externals_resolver = ExternalTextures() if a.resolve_external else None
     for rel in todo:
-        mats = export_bundle(ASSETS / rel, resolver)
+        mats, externals = export_bundle(ASSETS / rel, resolver)
+        if mats and externals_resolver is not None:
+            ok, rest = fill_external_textures(mats, externals, externals_resolver.for_bundle(rel))
+            stat["externe_texturen_aufgeloest"] += ok
+            stat["externe_texturen_offen"] += rest
         if not mats:
             stat["bundles_ohne_material"] += 1
             continue

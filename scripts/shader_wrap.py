@@ -9,9 +9,12 @@ Eigener Code des strahlender-xnu-Projekts. Eingaben (alle lokal unter work/shade
   blobs/<hash>.bin Maxwell-Blobs (scripts/shader_extract_blobs.py)
 und das Werkzeug shader_translator/build/maxwell2msl (--lang hlsl).
 
-Ausgabe: <name>.shader (ein SubShader mit einem Pass, eine feste Keyword-Variante) und <name>.wrap.json (Zuordnungen
-fuer Tests und die Massenfertigung). Die Abbildung der Hardware-Konstantenpuffer ist in docs/shader-unity-integration.md
-beschrieben:
+Ausgabe: <name>.shader (ein SubShader, eine feste Keyword-Variante je Pass) und <name>.wrap.json (Zuordnungen
+fuer Tests und die Massenfertigung). Ohne --also steht ein Pass im Shader; davor steht der GrabPass des Originals
+(Inventar-Pass vom Typ Grab, z. B. _BackgroundTexture beim Wasser) und dahinter ein UsePass (z. B. der Legacy-Schattenwurf
+der Mitake-Shader), beides in Originalreihenfolge. --also PASS[:KW,KW] setzt weitere Normal-Paesse (typisch den
+SHADOWCASTER-Pass) in denselben SubShader: Unity nimmt den Schattenwurf aus dem Shader des Materials. Die Abbildung der
+Hardware-Konstantenpuffer ist in docs/shader-unity-integration.md beschrieben:
   cbuf 0  Treiberdaten              -> Nullen (static uint4-Feld)
   cbuf 1  Compiler-Konstanten       -> static const uint4-Feld mit den Bytes hinter dem Code des Blobs
   cbuf 2  Handle-Tabellen           -> Nullen (die Werte werden nie benutzt; Texturen laufen ueber Namen)
@@ -506,8 +509,11 @@ def vertex_inputs(st):
 
 
 def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", renderers="metal", extra_pragmas=(),
-                 shader_name=None, color_mask=None, no_cull=False):
-    """-> (shader_text, manifest, warnings). vs/fs sind Stage-Objekte."""
+                 shader_name=None, color_mask=None, no_cull=False, parts=None, before=(), after=()):
+    """-> (shader_text, manifest, warnings). vs/fs sind Stage-Objekte.
+
+    before/after: fertige Zeilen (GrabPass-/UsePass-Bloecke), die vor bzw. hinter dem erzeugten Pass stehen.
+    parts: wird mit head/block/tail (Zeilenlisten) gefuellt, damit combine_passes mehrere Paesse in einen SubShader setzt."""
     ss = shader["subShaders"][sub_idx]
     pas = ss["passes"][pass_idx]
     warnings = []
@@ -546,6 +552,8 @@ def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", rend
         L.append("        Tags { " + " ".join(f'"{k}"="{v}"' for k, v in tags.items()) + " }")
     if ss.get("lod"):
         L.append(f"        LOD {ss['lod']}")
+    head_end = len(L)
+    L.extend(before)
     L.append("        Pass")
     L.append("        {")
     if pas.get("name"):
@@ -677,6 +685,8 @@ def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", rend
     L.append("            }")
     L.append("            ENDHLSL")
     L.append("        }")
+    block_end = len(L)
+    L.extend(after)
     L.append("    }")
     L.append("}")
     manifest = {
@@ -690,7 +700,41 @@ def build_shader(shader, sub_idx, pass_idx, keywords, vs, fs, mode="named", rend
         "cbufs": {k: sorted(st.cbufs()) for k, st in (("vertex", vs), ("fragment", fs))},
         "instancing": inst, "warnings": warnings,
     }
+    if parts is not None:
+        parts.update(head=L[:head_end], block=L[head_end:block_end + len(after)], tail=L[block_end + len(after):])
     return "\n".join(L) + "\n", manifest, warnings
+
+
+def grab_lines(p):
+    """GrabPass-Block eines Inventar-Passes (benannte Textur oder Standard _GrabTexture)."""
+    return ["        GrabPass { " + (f'"{p["textureName"]}" ' if p.get("textureName") else "") + "}"]
+
+
+def use_lines(p):
+    return [f'        UsePass "{p["useName"]}"']
+
+
+def aux_blocks(ss, pass_idx):
+    """(before, after): Grab-Pass unmittelbar vor und UsePass-Paesse unmittelbar nach dem Pass (Reihenfolge wie im Original)."""
+    passes = ss["passes"]
+    before, after = [], []
+    if pass_idx > 0 and passes[pass_idx - 1]["type"] == "Grab":
+        before = grab_lines(passes[pass_idx - 1])
+    j = pass_idx + 1
+    while j < len(passes) and passes[j]["type"] == "Use":
+        after += use_lines(passes[j])
+        j += 1
+    return before, after
+
+
+def combine_passes(results):
+    """results: Liste (parts, manifest) in Pass-Reihenfolge -> ein Shader mit mehreren Paessen (Kopf des ersten)."""
+    head = results[0][0]["head"]
+    tail = results[0][0]["tail"]
+    body = []
+    for parts, _m in results:
+        body += parts["block"]
+    return "\n".join(head + body + tail) + "\n"
 
 
 # --------------------------------------------------------------------------- Kommandozeile
@@ -699,19 +743,16 @@ def load_json(path):
     return json.loads(Path(path).read_text())
 
 
-def wrap(args):
-    inv = load_json(str(args.inventory))
-    prog_blob = load_json(str(args.prog_blob))
-    shader = find_shader(inv, args.shader, args.bundle)
-    pas = shader["subShaders"][args.sub]["passes"][args.pass_index]
-    pidx = program_index_cached(str(args.mapping)) if args.mapping else program_index_from_inventory(str(args.inventory))
+def translate_pass(args, shader, sub, pass_index, keywords, pidx, prog_blob):
+    """Uebersetzt Vertex- und Fragmentstufe eines Passes -> {'vertex': Stage, 'fragment': Stage}."""
+    pas = shader["subShaders"][sub]["passes"][pass_index]
     stages = {}
     work = Path(args.workdir)
-    tag0 = f"{ident(shader['name'])}_s{args.sub}_p{args.pass_index}"
+    tag0 = f"{ident(shader['name'])}_s{sub}_p{pass_index}"
     vs_mask = None
-    for kind, st_name in (("vertex", "vertex"), ("fragment", "fragment")):
-        i, entry = select_entry(pas, st_name, args.keywords)
-        pid = pidx.get((shader.get("bundle"), shader["name"], args.sub, args.pass_index, st_name, i))
+    for kind in ("vertex", "fragment"):
+        i, entry = select_entry(pas, kind, keywords)
+        pid = pidx.get((shader.get("bundle"), shader["name"], sub, pass_index, kind, i))
         if pid is None:
             raise WrapError(f"kein Programm fuer {kind} {i} in mapping.json")
         h = prog_blob[pid]
@@ -725,18 +766,56 @@ def wrap(args):
             vs_mask = int(info["outMask"], 16)
         stages[kind] = Stage(kind, entry, hlsl, info, c1)
         stages[kind].blob = h
-    text, manifest, warnings = build_shader(shader, args.sub, args.pass_index, args.keywords, stages["vertex"],
-                                            stages["fragment"], args.mode, args.renderers,
-                                            ([] if args.fast_math else list(EXACT_PRAGMAS)) + list(args.pragma), args.name,
-                                            args.color_mask, getattr(args, "no_cull", False))
-    manifest["blobs"] = {k: s.blob for k, s in stages.items()}
+    return stages
+
+
+def parse_also(spec):
+    """'3:SHADOWS_DEPTH,_SWING_ON' -> (3, ['SHADOWS_DEPTH', '_SWING_ON'])"""
+    idx, _, kws = spec.partition(":")
+    return int(idx), [k for k in kws.split(",") if k]
+
+
+def wrap(args):
+    inv = load_json(str(args.inventory))
+    prog_blob = load_json(str(args.prog_blob))
+    shader = find_shader(inv, args.shader, args.bundle)
+    ss = shader["subShaders"][args.sub]
+    pidx = program_index_cached(str(args.mapping)) if args.mapping else program_index_from_inventory(str(args.inventory))
+    pragmas = ([] if args.fast_math else list(EXACT_PRAGMAS)) + list(args.pragma)
+    also = [parse_also(a) for a in (getattr(args, "also", None) or [])]
+    use_aux = not getattr(args, "no_aux", False)
+    # Hauptpass (mit Grab davor/UsePass danach), dann die zusaetzlichen Normal-Paesse in der angegebenen Reihenfolge
+    todo = [(args.pass_index, list(args.keywords), True)] + [(i, k, False) for i, k in also]
+    results, blobs, manifest0 = [], {}, None
+    text = None
+    for n, (pi, kws, main) in enumerate(todo):
+        if ss["passes"][pi]["type"] != "Normal":
+            raise WrapError(f"Pass {pi} ist kein Normal-Pass ({ss['passes'][pi]['type']})")
+        stages = translate_pass(args, shader, args.sub, pi, kws, pidx, prog_blob)
+        before, after = aux_blocks(ss, pi) if (main and use_aux) else ([], [])
+        parts = {}
+        t, manifest, warnings = build_shader(shader, args.sub, pi, kws, stages["vertex"], stages["fragment"], args.mode,
+                                             args.renderers, pragmas, args.name, args.color_mask,
+                                             getattr(args, "no_cull", False), parts, before, after)
+        manifest["blobs"] = {k: s.blob for k, s in stages.items()}
+        if before or after:
+            manifest["auxPasses"] = {"grab": [l.strip() for l in before], "use": [l.strip() for l in after]}
+        results.append((parts, manifest, warnings))
+        if n == 0:
+            text, manifest0 = t, manifest
+    if len(results) > 1:
+        text = combine_passes([(r[0], r[1]) for r in results])
+        manifest0 = dict(manifest0)
+        manifest0["passes"] = [r[1] for r in results]
+        manifest0["warnings"] = [w for r in results for w in r[2]]
+    warnings = manifest0["warnings"]
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
-    out.with_suffix(".wrap.json").write_text(json.dumps(manifest, indent=1))
+    out.with_suffix(".wrap.json").write_text(json.dumps(manifest0, indent=1))
     for w in warnings:
         print("WARNUNG:", w, file=sys.stderr)
-    print(f"{out} ({len(text)} Zeichen, Modus {args.mode})")
+    print(f"{out} ({len(text)} Zeichen, Modus {args.mode}, {len(results)} Pass/Paesse)")
     return 0
 
 
@@ -757,6 +836,11 @@ def main(argv=None):
     ap.add_argument("--translator-args", nargs="*", default=[], help="weitere Optionen fuer maxwell2msl")
     ap.add_argument("--color-mask", help="Testhilfe: ersetzt den ColorMask des Passes (z. B. RGBA) und schaltet Blend aus")
     ap.add_argument("--no-cull", action="store_true", help="Testhilfe: Cull Off")
+    ap.add_argument("--also", action="append", default=[], metavar="PASS[:KW,KW]",
+                    help="weiterer Normal-Pass mit eigener Keyword-Menge im selben SubShader (z. B. Schattenwurf '3:SHADOWS_DEPTH'); "
+                         "ein Material = ein Shader mit mehreren Paessen")
+    ap.add_argument("--no-aux", action="store_true",
+                    help="GrabPass vor und UsePass hinter dem Hauptpass nicht uebernehmen (Standard: uebernehmen)")
     ap.add_argument("--inventory", default=str(WORK / "inventory.json"))
     ap.add_argument("--mapping", default=None, help="optional: mapping.json statt der Aufzaehlung aus dem Inventar")
     ap.add_argument("--prog-blob", default=str(WORK / "prog_blob.json"))

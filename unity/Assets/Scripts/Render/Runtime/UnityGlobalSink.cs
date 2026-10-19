@@ -16,6 +16,19 @@ namespace Xnu.Render
             Shader.SetGlobalMatrix(name, mat);
         }
 
-        public void SetTexture(string name, object texture) => Shader.SetGlobalTexture(name, (Texture)texture);
+        public void SetTexture(string name, object texture) => Shader.SetGlobalTexture(name, texture as Texture ?? DefaultTexture(texture as string));
+
+        // Ersatztexturen, die das Spiel bei leeren Verweisen setzt (EnvironmentController.OnUpdate)
+        static Texture DefaultTexture(string token)
+        {
+            switch (token)
+            {
+                case DefaultTextures.Black: return Texture2D.blackTexture;
+                case DefaultTextures.White: return Texture2D.whiteTexture;
+                case DefaultTextures.Gray: return Texture2D.grayTexture;
+                case DefaultTextures.Bump: return Texture2D.normalTexture;
+                default: return null;
+            }
+        }
     }
 }

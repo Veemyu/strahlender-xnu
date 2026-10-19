@@ -157,5 +157,17 @@ namespace Xnu.Tests
             g.SetTexture("_CloudShadowTex", t);
             Assert.AreSame(t, Shader.GetGlobalTexture("_CloudShadowTex"));
         }
+
+        [Test]
+        public void GameGlobals_UnitySinkMapsDefaultTextureTokens()
+        {
+            var g = new GameGlobals(new UnityGlobalSink());
+            g.SetTexture("_NoiseTex", DefaultTextures.Gray);
+            g.SetTexture("_SnowNormalTex", DefaultTextures.Bump);
+            g.SetTexture("_CloudShadowTex", DefaultTextures.Black);
+            Assert.AreSame(Texture2D.grayTexture, Shader.GetGlobalTexture("_NoiseTex"));
+            Assert.AreSame(Texture2D.normalTexture, Shader.GetGlobalTexture("_SnowNormalTex"));
+            Assert.AreSame(Texture2D.blackTexture, Shader.GetGlobalTexture("_CloudShadowTex"));
+        }
     }
 }

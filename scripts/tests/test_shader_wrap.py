@@ -504,5 +504,68 @@ class EndToEnd(unittest.TestCase):
             sw.wrap(self.args(keywords=["NOPE"]))
 
 
+class AuxAndCombine(unittest.TestCase):
+    SS = {"passes": [{"type": "Grab", "textureName": "_BackgroundTexture"}, {"type": "Normal"},
+                     {"type": "Use", "useName": "Legacy Shaders/VertexLit/SHADOWCASTER"}, {"type": "Grab", "textureName": ""},
+                     {"type": "Normal"}]}
+
+    def test_aux_blocks(self):
+        before, after = sw.aux_blocks(self.SS, 1)
+        self.assertEqual(['        GrabPass { "_BackgroundTexture" }'], before)
+        self.assertEqual(['        UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"'], after)
+        before, after = sw.aux_blocks(self.SS, 4)
+        self.assertEqual(["        GrabPass { }"], before)   # unbenannt: Unity-Standard _GrabTexture
+        self.assertEqual([], after)
+        self.assertEqual(([], []), sw.aux_blocks({"passes": [{"type": "Normal"}]}, 0))
+
+    def test_parse_also(self):
+        self.assertEqual((3, ["SHADOWS_DEPTH", "_SWING_ON"]), sw.parse_also("3:SHADOWS_DEPTH,_SWING_ON"))
+        self.assertEqual((1, []), sw.parse_also("1"))
+
+    def test_grab_before_and_use_after_pass(self):
+        vs, fs = stages()
+        before, after = sw.aux_blocks(self.SS, 1)
+        text, _m, _w = sw.build_shader(SHADER, 0, 0, ["KW_A"], vs, fs, before=before, after=after)
+        i_grab, i_pass, i_use = text.index("GrabPass"), text.index("        Pass\n"), text.index("UsePass")
+        self.assertLess(i_grab, i_pass)
+        self.assertLess(i_pass, i_use)
+        plain, _m, _w = sw.build_shader(SHADER, 0, 0, ["KW_A"], vs, fs)
+        self.assertNotIn("GrabPass", plain)
+        self.assertEqual(1, plain.count("        Pass\n"))
+
+    def test_combine_two_passes_into_one_subshader(self):
+        vs, fs = stages()
+        p1, p2 = {}, {}
+        sw.build_shader(SHADER, 0, 0, ["KW_A"], vs, fs, parts=p1)
+        sw.build_shader(SHADER, 0, 0, ["SHADOWS_DEPTH"], vs, fs, parts=p2)
+        text = sw.combine_passes([(p1, {}), (p2, {})])
+        self.assertEqual(2, text.count("        Pass\n"))
+        self.assertEqual(1, text.count("    SubShader\n"))
+        self.assertEqual(1, text.count('Shader "XNU/Generated/'))
+        self.assertEqual(1, text.count("    Properties\n"))
+        self.assertTrue(text.rstrip().endswith("}"))
+        self.assertEqual(text.count("{"), text.count("}"))
+
+
+class ShadowPartner(unittest.TestCase):
+    @staticmethod
+    def pass_(tag, keysets):
+        ent = [{"globalKeywords": list(k), "localKeywords": []} for k in keysets]
+        return {"type": "Normal", "tags": {"LIGHTMODE": tag}, "stages": {"vertex": ent, "fragment": ent}}
+
+    def test_partner_selection(self):
+        import shader_wrap_all as wa
+        ss = {"passes": [
+            self.pass_("FORWARDBASE", [("DIRECTIONAL",)]),
+            self.pass_("SHADOWCASTER", [("SHADOWS_DEPTH",), ("INSTANCING_ON", "SHADOWS_DEPTH"), ("SHADOWS_DEPTH", "_ALPHATEST_ON")])]}
+        self.assertEqual((1, ["SHADOWS_DEPTH"]), wa.shadow_partner(ss, 0, ("DIRECTIONAL", "SHADOWS_SCREEN")))
+        self.assertEqual((1, ["INSTANCING_ON", "SHADOWS_DEPTH"]), wa.shadow_partner(ss, 0, ("DIRECTIONAL", "INSTANCING_ON")))
+        self.assertEqual((1, ["SHADOWS_DEPTH", "_ALPHATEST_ON"]), wa.shadow_partner(ss, 0, ("DIRECTIONAL", "_ALPHATEST_ON", "_CASCADE_SINGLE")))
+        # INSTANCING_ON ohne passende Wurf-Variante: ohne Instancing zurueckfallen
+        self.assertEqual((1, ["SHADOWS_DEPTH", "_ALPHATEST_ON"]),
+                         wa.shadow_partner(ss, 0, ("INSTANCING_ON", "_ALPHATEST_ON")))
+        self.assertIsNone(wa.shadow_partner({"passes": [self.pass_("FORWARDBASE", [("DIRECTIONAL",)])]}, 0, ("DIRECTIONAL",)))
+
+
 if __name__ == "__main__":
     unittest.main()
