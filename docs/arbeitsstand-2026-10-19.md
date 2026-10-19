@@ -1,6 +1,6 @@
 # Arbeitsstand 2026-10-19 (17:10)
 
-Zweck: ein Dokument, das ohne Vorwissen erklärt, wo wir stehen, was belegt ist, was fehlt und wo man nachliest. Zahlen sind gemessen oder als Annahme gekennzeichnet. Index aller Dokumente: `docs/README.md`.
+Zweck: ein Dokument, das ohne Vorwissen erklärt, wo wir stehen, was belegt ist, was fehlt und wo man nachliest. Zahlen sind gemessen oder als Annahme gekennzeichnet. Index aller Dokumente: `docs/README.md`. Arbeitsregeln, Befehle, Spielstand-Verteilung, Agenten-/Todo-Stand und unbelegte Annahmen: `docs/betriebshandbuch.md`.
 
 ## 1. Ziel und Regeln
 
@@ -32,7 +32,7 @@ Es gibt heute **einen** Entwicklungsstrang: die Rekompilation.
 - **Bitgenauigkeit (`recomp-diff.md`):** x86-`c`-Modus gegen ARM64: 0 Abweichungen (93,5 Mio. Fälle je Variante, 44 Befehle erschöpfend über 2^32 Eingaben). Pflicht: `rt_fp_guest_mode()` im Gast-Thread (sonst weichen FTZ/DAZ-Fälle ab), Flags `-O1 -ffp-contract=off -fno-fast-math`.
 - **Lauf auf dem Mac (Metal):** rtld → Eröffnungsfilm (VP8, FFmpeg) → Titel nach 21,9 s → „Weiter“ → Spielstand → 3D-Stadt (Zone 24) bei 45 Bildern/s, RSS 1,0–1,5 GiB, 24–37 Threads, 135 s ohne Absturz.
 - **Lauf unter Linux (Vulkan, RTX 2080 Ti):** Sprachauswahl mit korrektem Text bei 60 Bildern/s; alle 4.276 eindeutigen Spielprogramme gehen durch Übersetzer + `glslc`, deterministisch (1.206 SPIR-V-Dateien byte-identisch).
-- **iPad (App `dev.local.xnubdsp`):** läuft, ca. 41 FPS, Footprint 1,5–2,1 GiB (Limit 8 GiB mit Increased-Memory-Limit), 37 Threads. Details in `ipad-durchstich-1.md` (Save-Weg) und `recomp-ios.md` (entsteht).
+- **iPad (App `dev.local.xnubdsp`):** läuft, 50–52 Bilder/s (frühere Messung 41), Footprint 1,6–2,1 GiB (Limit 8 GiB mit Increased-Memory-Limit), 37–39 Threads, Speichermodell B (alle Gastadressen unter 4 GiB, 1,98 GiB Anwendungsspeicher). Details in `recomp-ios.md` und `ipad-durchstich-1.md` (Save-Weg).
 - **Referenzvergleich:** Sprachauswahl Rekompilation gegen Ryujinx pixelgleich (SSIM 0,999). Stadtbild: Farben nah (Abweichung 15–17 je Kanal), Wasser fehlt (weiß statt blau).
 
 ### 3.2 Komponenten (wo liegt was)
