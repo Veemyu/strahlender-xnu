@@ -37,6 +37,7 @@ namespace Xnu.Game.Unity
         public FieldHostAdapter Adapter { get; private set; }
         public SaveSlotService Saves { get; private set; }
         public TextboxView Textbox { get; private set; }
+        public UiWindowManager Windows { get; private set; }
         public BattleView Battle { get; private set; }
         public InputScriptRunner Runner { get; private set; }
         public string ErrorText { get; private set; } = "";
@@ -58,7 +59,8 @@ namespace Xnu.Game.Unity
         InputOverride _override;
         float _accumulator;
         bool _latchConfirm, _latchCancel, _latchMenu, _latchHeld;
-        int _latchMove;
+        int _latchMove, _latchMoveX;
+        GameUiData _uiData;
         FieldSignal? _pendingStep;
         int _dialogToken = -1;
         bool _choiceShown;
@@ -118,6 +120,12 @@ namespace Xnu.Game.Unity
             bv.transform.SetParent(transform, false);
             Battle = bv.AddComponent<BattleView>();
             Battle.Build(_camera);
+
+            var wm = new GameObject("Windows");
+            wm.transform.SetParent(transform, false);
+            Windows = wm.AddComponent<UiWindowManager>();
+            Windows.Configure(_camera, null);
+            Windows.SaveHandler = SaveForMenu;
 
             BuildTitle();
 
@@ -199,6 +207,8 @@ namespace Xnu.Game.Unity
                 var save = Saves.Load();
                 Log(Saves.Note);
                 Session = new GameSession(save, Bundle.Data, (ulong)DateTime.UtcNow.Ticks);
+                _uiData = new GameUiData(Session);
+                Windows.Configure(_camera, _uiData);
                 var pos = SavedPosition.Read(save);
                 Session.ZoneId = pos.Zone;
                 Log("Spielstand: Zone " + pos.Zone + (pos.Valid ? ", Zelle (" + pos.GridX + ", " + pos.GridY + "), Richtung " + pos.Direction : ", keine gültige Position") +
@@ -216,7 +226,7 @@ namespace Xnu.Game.Unity
                 if (pos.Valid) Field.SetStartCell(pos.GridX, pos.GridY, SavedPosition.ToFacing(pos.Direction));
                 Adapter = new FieldHostAdapter(Field, Session);
                 Loop = new GameLoop(Session, Bundle.Book, Adapter);
-                Adapter.LoopBusy = () => Loop.State != GameState.Field || Battle.Active || Textbox.IsOpen || Textbox.IsChoosing;
+                Adapter.LoopBusy = () => Loop.State != GameState.Field || Battle.Active || Textbox.IsOpen || Textbox.IsChoosing || Windows.IsOpen;
                 go.SetActive(true);
                 _titleRoot.SetActive(false);
                 CurrentPhase = Phase.Playing;
@@ -257,6 +267,7 @@ namespace Xnu.Game.Unity
             _latchCancel |= s.CancelPressed;
             _latchHeld |= s.ConfirmHeld;
             if (s.MoveY != 0) _latchMove = s.MoveY;
+            if (s.MoveX != 0) _latchMoveX = s.MoveX;
             var gi = PadInput.Instance;
             if (gi != null && gi.WasPressedThisFrame(GameButton.Plus)) _latchMenu = true;
         }
@@ -271,11 +282,11 @@ namespace Xnu.Game.Unity
 
             // Eingabe des Ticks: Skript oder Zwischenspeicher der echten Geräte.
             var ui = scripted
-                ? new UiInputState(sf.A, sf.B, sf.A, sf.B, sf.Down ? 1 : sf.Up ? -1 : 0)
-                : new UiInputState(_latchConfirm, _latchCancel, _latchHeld, false, _latchMove);
+                ? new UiInputState(sf.A, sf.B, sf.A, sf.B, sf.Down ? 1 : sf.Up ? -1 : 0, sf.Right ? 1 : sf.Left ? -1 : 0, sf.Plus)
+                : new UiInputState(_latchConfirm, _latchCancel, _latchHeld, false, _latchMove, _latchMoveX, _latchMenu);
             var menuKey = scripted ? sf.Plus : _latchMenu;
             _latchConfirm = _latchCancel = _latchMenu = _latchHeld = false;
-            _latchMove = 0;
+            _latchMove = _latchMoveX = 0;
             if (scripted) FeedScriptToDevices(sf);
             _override.Enabled = scripted;
 
@@ -304,6 +315,8 @@ namespace Xnu.Game.Unity
             if (sf.B) _manual.PressCancel();
             if (sf.Down) _manual.MoveDown();
             if (sf.Up) _manual.MoveUp();
+            if (sf.Left) _manual.MoveLeft();
+            if (sf.Right) _manual.MoveRight();
         }
 
         void TickPlaying(float dt, UiInputState ui, ScriptFrame sf, bool menuKey)
@@ -314,12 +327,14 @@ namespace Xnu.Game.Unity
             StateTicks[name] = n + 1;
             if (name != _lastLoopState) { Log("Zustand " + _lastLoopState + " -> " + name + " (Tick " + Ticks + ")"); _lastLoopState = name; }
 
+            var windowActive = Windows.IsOpen;
             Adapter.Tick();
             BridgeText();
             BridgeMenu(ui);
+            if (windowActive && Windows.IsOpen) Windows.Tick(ui);
 
             var gi = GameFrame.None;
-            if (!Textbox.IsOpen && !Textbox.IsChoosing)
+            if (!Textbox.IsOpen && !Textbox.IsChoosing && !windowActive && !Windows.IsOpen)
             {
                 gi.Confirm = ui.ConfirmPressed;
                 gi.Cancel = ui.CancelPressed || _menuCancel;
@@ -327,6 +342,7 @@ namespace Xnu.Game.Unity
                 gi.Up = ui.MoveY < 0;
                 gi.Down = ui.MoveY > 0;
             }
+            else if (_menuCancel) gi.Cancel = true;
             _menuCancel = false;
             if (sf.Starter >= 0) gi.StarterChoice = sf.Starter;
 
@@ -348,7 +364,7 @@ namespace Xnu.Game.Unity
                 Loop.Tick(dt, gi, sig);
                 if (Loop.State == GameState.Battle && !Battle.Active && Loop.Battle?.Engine != null)
                 {
-                    Battle.Begin(Loop.Battle, new GameBattleTexts(Session.Data, Session.Language));
+                    BeginBattleView();
                     Log("Kampf beginnt: " + Loop.Battle.Request.Kind + (Loop.Battle.Request.Kind == BattleRequestKind.Wild ? " Art " + Loop.Battle.Request.MonsNo + " Stufe " + Loop.Battle.Request.Level : " Trainer " + Loop.Battle.Request.TrainerId));
                 }
             }
@@ -413,27 +429,33 @@ namespace Xnu.Game.Unity
 
             var c = host.Choice;
             if (!c.IsOpen) _choiceShown = false;
-            else if (!_choiceShown && c.Result < 0 && !Textbox.IsOpen && !Textbox.IsChoosing)
+            else if (!_choiceShown && c.Result < 0 && !Textbox.IsOpen && !Textbox.IsChoosing && !Windows.IsOpen)
             {
                 _choiceShown = true;
                 var labels = new string[c.Labels.Count];
                 for (var i = 0; i < labels.Length; i++) labels[i] = c.Labels[i] == "yes" ? "Ja" : c.Labels[i] == "no" ? "Nein" : c.Labels[i];
-                Textbox.Choose(labels, c.CancelIndex, idx => host.Choice.Force(idx));
+                var cancel = c.CancelIndex;
+                // Auswahlfenster: Original-Kontextmenü, sonst die eigene Auswahl der Textbox.
+                if (!Windows.IsAvailable || !Windows.OpenChoice(labels, cancel, idx => host.Choice.Force(idx)))
+                    Textbox.Choose(labels, cancel, idx => host.Choice.Force(idx));
             }
         }
 
-        // Menü-Taste: kleines Menü mit „Speichern“ (die übrigen Menüinhalte sind Lücke).
+        // Menü-Taste: Hauptmenü aus dem Original-Prefab (Party, Beutel, Bericht); ohne Original-Fenster das kleine eigene Menü.
         void BridgeMenu(UiInputState ui)
         {
             if (Loop.State != GameState.Menu) { _menuAsked = false; return; }
-            if (_menuAsked || Textbox.IsOpen || Textbox.IsChoosing) return;
+            if (_menuAsked || Textbox.IsOpen || Textbox.IsChoosing || Windows.IsOpen) return;
             _menuAsked = true;
+            if (Windows.IsAvailable && Windows.OpenMainMenu(() => _menuCancel = true)) return;
             Textbox.Ask("Menü", new[] { "Speichern", "Zurück" }, 1, a =>
             {
                 if (a == 0) SaveNow();
                 _menuCancel = true;
             });
         }
+
+        string SaveForMenu() => SaveNow();
 
         // ---- Speichern ----
 
@@ -467,6 +489,7 @@ namespace Xnu.Game.Unity
                 if (Field.InTransition) return "Transition";
                 if (Battle.Active)
                     return Battle.CurrentMode == BattleView.Mode.Command ? "BattleCommand" : Battle.CurrentMode == BattleView.Mode.Moves ? "BattleMoves" : "BattleBeats";
+                if (Windows != null && Windows.IsOpen) return "Ui" + Windows.Screen;
                 if (Textbox.IsChoosing) return "Choice";
                 if (Textbox.IsOpen) return "Textbox";
                 return Loop.State.ToString();
@@ -593,7 +616,13 @@ namespace Xnu.Game.Unity
             Log("Begegnung erzwungen: Art " + req.MonsNo + " Stufe " + req.Level + " (Zone " + zone + ")");
             _pendingStep = null;
             if (Loop.BeginBattle(req))
-                Battle.Begin(Loop.Battle, new GameBattleTexts(Session.Data, Session.Language));
+                BeginBattleView();
+        }
+
+        void BeginBattleView()
+        {
+            if (!Battle.SkinActive && Windows.IsAvailable && _uiData != null) Battle.UseOriginalSkin(_uiData, _camera);
+            Battle.Begin(Loop.Battle, new GameBattleTexts(Session.Data, Session.Language));
         }
 
         // Bild der Hauptkamera (mit Kamera-Canvas) als PNG; Ziel: -xnuShotDir, sonst persistentDataPath/Shots.

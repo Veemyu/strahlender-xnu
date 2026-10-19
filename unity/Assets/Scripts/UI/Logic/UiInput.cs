@@ -9,14 +9,20 @@ namespace Xnu.UI
         public readonly bool CancelHeld;
         // -1 = nach oben, +1 = nach unten, nur im Bild der Flanke (Wiederholung noch nicht umgesetzt).
         public readonly int MoveY;
+        // -1 = nach links, +1 = nach rechts (Flanke).
+        public readonly int MoveX;
+        // Plus-Taste (Menü öffnen/schließen) im Bild der Flanke.
+        public readonly bool MenuPressed;
 
-        public UiInputState(bool confirmPressed, bool cancelPressed, bool confirmHeld, bool cancelHeld, int moveY = 0)
+        public UiInputState(bool confirmPressed, bool cancelPressed, bool confirmHeld, bool cancelHeld, int moveY = 0, int moveX = 0, bool menuPressed = false)
         {
             ConfirmPressed = confirmPressed;
             CancelPressed = cancelPressed;
             ConfirmHeld = confirmHeld;
             CancelHeld = cancelHeld;
             MoveY = moveY;
+            MoveX = moveX;
+            MenuPressed = menuPressed;
         }
 
         public static UiInputState None => default;
@@ -45,28 +51,32 @@ namespace Xnu.UI
             var x = _a.Poll();
             var y = _b.Poll();
             return new UiInputState(x.ConfirmPressed || y.ConfirmPressed, x.CancelPressed || y.CancelPressed,
-                x.ConfirmHeld || y.ConfirmHeld, x.CancelHeld || y.CancelHeld, x.MoveY != 0 ? x.MoveY : y.MoveY);
+                x.ConfirmHeld || y.ConfirmHeld, x.CancelHeld || y.CancelHeld, x.MoveY != 0 ? x.MoveY : y.MoveY,
+                x.MoveX != 0 ? x.MoveX : y.MoveX, x.MenuPressed || y.MenuPressed);
         }
     }
 
     // Eingabe von Hand (Tests, Skriptsteuerung): Tasten werden für genau ein Poll() gemeldet.
     public sealed class ManualUiInput : IUiInputSource
     {
-        bool _confirm, _cancel, _held, _heldCancel;
-        int _moveY;
+        bool _confirm, _cancel, _held, _heldCancel, _menu;
+        int _moveY, _moveX;
 
         public void PressConfirm() => _confirm = true;
         public void PressCancel() => _cancel = true;
+        public void PressMenu() => _menu = true;
         public void MoveUp() => _moveY = -1;
         public void MoveDown() => _moveY = 1;
+        public void MoveLeft() => _moveX = -1;
+        public void MoveRight() => _moveX = 1;
         public void HoldConfirm(bool held) => _held = held;
         public void HoldCancel(bool held) => _heldCancel = held;
 
         public UiInputState Poll()
         {
-            var s = new UiInputState(_confirm, _cancel, _held || _confirm, _heldCancel || _cancel, _moveY);
-            _confirm = _cancel = false;
-            _moveY = 0;
+            var s = new UiInputState(_confirm, _cancel, _held || _confirm, _heldCancel || _cancel, _moveY, _moveX, _menu);
+            _confirm = _cancel = _menu = false;
+            _moveY = _moveX = 0;
             return s;
         }
     }

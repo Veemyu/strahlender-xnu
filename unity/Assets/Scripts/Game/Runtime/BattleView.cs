@@ -182,6 +182,8 @@ namespace Xnu.Game.Unity
             _enemyTag.color = _playerTag.color = Color.white;
             _enemy.Set(_log.NameOf(enemy.PokeId), enemy.Level, enemy.Poke.Hp, enemy.Poke.MaxHp, true);
             _player.Set(_log.NameOf(me.PokeId), me.Level, me.Poke.Hp, me.Poke.MaxHp, true);
+            PushSkinStatus(false, enemy, _log.NameOf(enemy.PokeId), enemy.Poke.Hp, enemy.Poke.MaxHp);
+            PushSkinStatus(true, me, _log.NameOf(me.PokeId), me.Poke.Hp, me.Poke.MaxHp);
             _log.Pump();
         }
 
@@ -191,6 +193,45 @@ namespace Xnu.Game.Unity
             CurrentMode = Mode.Idle;
             _current = null;
             if (_root != null) _root.gameObject.SetActive(false);
+            if (SkinActive) _skin.SetVisible(false);
+        }
+
+        // ---- Original-Kampf-UI (Prefab battleviewuisystem) ----
+
+        BattleUiSkin _skin;
+        public bool SkinActive => _skin != null && _skin.Root != null;
+        public BattleUiSkin Skin => _skin;
+
+        // Ersetzt Infotafeln, Befehls- und Attackenliste durch das Original-Prefab. false: Prefab/Stubs nicht verfügbar (die eigenen Kästen bleiben).
+        public bool UseOriginalSkin(IUiLabelSource labels, Camera camera)
+        {
+            if (_canvas == null || SkinActive) return SkinActive;
+            var skin = BattleUiSkin.Create(camera, transform, labels, SortingOrder + 1);
+            if (skin.Root == null || skin.Error != null)
+            {
+                Debug.LogWarning("[UI] Kampf-UI-Prefab nicht verfügbar: " + skin.Error);
+                skin.Destroy();
+                return false;
+            }
+            _skin = skin;
+            _skin.SetVisible(false);
+            _enemy.Root.gameObject.SetActive(false);
+            _player.Root.gameObject.SetActive(false);
+            return true;
+        }
+
+        void PushSkinStatus(bool player, BattleMon mon, string name, int hp, int maxHp)
+        {
+            if (!SkinActive) return;
+            _skin.SetVisible(true);
+            _skin.SetStatus(player, name, mon.Level, hp, maxHp, mon.Source != null ? mon.Source.Core.Sex : 2);
+        }
+
+        void HideSkinMenus()
+        {
+            if (!SkinActive) return;
+            _skin.HideCommands();
+            _skin.HideMoves();
         }
 
         // Ein Schritt der Ansicht (30 Hz oder je Bild). Gibt einen Befehl zurück, wenn der Spieler gewählt hat.
@@ -200,6 +241,7 @@ namespace Xnu.Game.Unity
             if (!Active) return result;
             _enemy.Tick(dt);
             _player.Tick(dt);
+            if (SkinActive) { _skin.SetHpRatio(false, _enemy.Ratio); _skin.SetHpRatio(true, _player.Ratio); }
             _log.Pump();
 
             if (CurrentMode == Mode.Notice)
@@ -251,6 +293,7 @@ namespace Xnu.Game.Unity
             BeatsShown++;
             _log.Apply(b);
             _menuPanel.gameObject.SetActive(false);
+            HideSkinMenus();
             CurrentMode = Mode.Beats;
             if (b.Text.Length > 0) _message.text = b.Text;
             var e = _session.Engine;
@@ -276,6 +319,7 @@ namespace Xnu.Game.Unity
                 tag.text = newTag;
                 if (fresh || hp > 0) sprite.gameObject.SetActive(true);
                 panel.Set(_log.NameOf(id), mon.Level, hp, mon.Poke.MaxHp, instant || fresh);
+                PushSkinStatus(side == BattleEngine.PlayerSide, mon, _log.NameOf(id), hp, mon.Poke.MaxHp);
             }
         }
 
@@ -288,6 +332,7 @@ namespace Xnu.Game.Unity
 
         void ShowMenu(string[] rows)
         {
+            HideSkinMenus();
             _menuPanel.gameObject.SetActive(true);
             var sb = new StringBuilder();
             for (var i = 0; i < rows.Length; i++)
@@ -309,6 +354,7 @@ namespace Xnu.Game.Unity
         void TickCommand(UiInputState input, ref Result r)
         {
             Move(input, CommandRows.Length);
+            // Befehlsliste des Originals (BUIActionList) steht im Prefab an der Ausblendposition (SlideInOut, Position nur im Code); bis dahin das eigene Menü.
             ShowMenu(CommandRows);
             if (!input.ConfirmPressed) return;
             switch (_cursor)
@@ -324,15 +370,19 @@ namespace Xnu.Game.Unity
         {
             var mon = _session.Engine.Active(BattleEngine.PlayerSide);
             var rows = new List<string>();
+            var skinMoves = new List<SkinMove>();
             for (var i = 0; i < BattleMon.MoveCount; i++)
             {
                 if (mon.Moves[i] == 0) continue;
                 var n = _log.MoveName(mon.Moves[i]);
                 rows.Add(n + "  " + mon.Pp[i] + "/" + mon.MaxPp[i]);
+                var rec = _session.Engine.Data.GetMove(mon.Moves[i]);
+                skinMoves.Add(new SkinMove(n, mon.Pp[i], mon.MaxPp[i], rec != null ? rec.Type : -1));
             }
             if (rows.Count == 0) { Issue(BattleCommand.Fight(0), ref r); return; }
             Move(input, rows.Count);
-            ShowMenu(rows.ToArray());
+            if (SkinActive) { _menuPanel.gameObject.SetActive(false); _skin.HideCommands(); _skin.ShowMoves(skinMoves, _cursor); }
+            else ShowMenu(rows.ToArray());
             if (input.CancelPressed) { CurrentMode = Mode.Command; _cursor = 0; return; }
             if (input.ConfirmPressed) Issue(BattleCommand.Fight(_cursor), ref r);
         }
@@ -365,6 +415,7 @@ namespace Xnu.Game.Unity
             CommandsIssued++;
             r.Command = cmd;
             _menuPanel.gameObject.SetActive(false);
+            HideSkinMenus();
             CurrentMode = Mode.Beats;
         }
 
@@ -374,6 +425,7 @@ namespace Xnu.Game.Unity
             _noticeTimer = 1.5f;
             CurrentMode = Mode.Notice;
             _menuPanel.gameObject.SetActive(false);
+            HideSkinMenus();
         }
     }
 }
