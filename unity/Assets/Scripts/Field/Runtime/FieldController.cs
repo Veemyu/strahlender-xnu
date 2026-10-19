@@ -183,8 +183,21 @@ namespace Xnu.Field
 
         void Start()
         {
+            ApplyStartEnvironment();
             if (Interaction == null) EnsureInteraction();
             StartCoroutine(Load());
+        }
+
+        // Prüf-/Entwicklerhaken: XNU_FIELD_START="Zone,gx,gy[,Blick 1..4]" startet an dieser Zelle (wie ein Spielstand), nur vor dem ersten Laden.
+        void ApplyStartEnvironment()
+        {
+            var v = Environment.GetEnvironmentVariable("XNU_FIELD_START");
+            if (string.IsNullOrEmpty(v) || Loaded || _spawn.HasValue) return;
+            var p = v.Split(',');
+            if (p.Length < 3 || !int.TryParse(p[0], out var z) || !int.TryParse(p[1], out var gx) || !int.TryParse(p[2], out var gy)) return;
+            var dir = p.Length > 3 && int.TryParse(p[3], out var d) && d >= 1 && d <= 4 ? (MoveDir)d : MoveDir.Up;
+            zoneId = z;
+            _spawn = new SpawnPoint(z, gx, gy, dir, -1);
         }
 
         void OnDestroy() => Unload();

@@ -94,6 +94,14 @@ namespace Xnu.Tests
         }
 
         [Test]
+        public void IosStufenSchaltenCascadedShadowsFuerDenBildschirmschattenEin()
+        {
+            foreach (var g in new[] { UnityEditor.BuildTargetGroup.iOS, UnityEditor.BuildTargetGroup.Standalone })
+                foreach (var t in new[] { UnityEngine.Rendering.GraphicsTier.Tier1, UnityEngine.Rendering.GraphicsTier.Tier2, UnityEngine.Rendering.GraphicsTier.Tier3 })
+                    Assert.IsTrue(UnityEditor.Rendering.EditorGraphicsSettings.GetTierSettings(g, t).cascadedShadowMaps, g + " " + t);
+        }
+
+        [Test]
         public void KameraAusstattungIstIdempotentUndEntferntNurEigenes()
         {
             var go = new GameObject("rigtest", typeof(Camera));

@@ -41,6 +41,26 @@ namespace Xnu.Field.Editor
             return sb.ToString();
         }
 
+        // Wie Capture, aber am Bildende (WaitForEndOfFrame) im Spielmodus: so entsteht auch die Aufnahme im Labor; Capture per eval läuft
+        // außerhalb der Bildschleife und zeigt mit Schatten abweichende Helligkeit. Ergebnis in LastResult.
+        public static string LastResult = "";
+
+        public static string CaptureAtFrameEnd(string path, int width = 1280, int height = 720)
+        {
+            var f = Find();
+            if (f == null) return "kein FieldController";
+            LastResult = "läuft";
+            f.StartCoroutine(CaptureRoutine(path, width, height));
+            return "gestartet";
+        }
+
+        static System.Collections.IEnumerator CaptureRoutine(string path, int width, int height)
+        {
+            yield return null;
+            yield return new WaitForEndOfFrame();
+            LastResult = Capture(path, width, height);
+        }
+
         // Rendert die Hauptkamera (volles Rechteck) in eine RenderTexture, schreibt PNG (Alpha 255) und liefert "Mittel R,G,B".
         public static string Capture(string path, int width = 1280, int height = 720)
         {

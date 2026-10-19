@@ -6,20 +6,32 @@ using Xnu.Save;
 
 namespace Xnu.Game.Unity
 {
-    // Ort des Spielers im Spielstand (PLAYER_SAVE_DATA.TownMapLocation, Native-Layout: bool = 4 Byte) [A: dass SetPlayerPosData hierhin schreibt, ist nur aus dem Strukturnamen erschlossen].
+    // Ort des Spielers im Spielstand. Maßgeblich ist PLAYER_DATA (Rasterzelle gx, gy als Int32 bei 0x79BF4/0x79BF8, danach die Höhe als Float)
+    // zusammen mit der Zone bei 0x5634; TownMapLocation (PLAYER_SAVE_DATA, Zone/x/z/Richtung) ist nur ein Rückfall. Belege: Der Stadt-Spielstand
+    // (zoneID 24, PLAYER_DATA (57, 729), Höhe 1,0) hat eine veraltete TownMapLocation (Zone 416, 789/355); beim alten Stand (zoneID 167) steht in
+    // PLAYER_DATA (852, 599) mit Höhe 6,0, was zur Höhe 6,00 im Bild der Zone 167 an Zeile 599 passt, TownMapLocation hat (842, 597).
+    // [A: Bedeutung der PLAYER_DATA-Felder aus den Werten erschlossen, eine Richtung ist dort nicht gefunden: Richtung aus TownMapLocation, nur wenn deren Zone passt.]
     public readonly struct SavedPosition
     {
         public readonly int Zone;
         public readonly int GridX, GridY;
         public readonly int Direction;
         public readonly bool Valid;
+        public readonly bool FromPlayerData;
 
-        public SavedPosition(int zone, int gx, int gy, int dir, bool valid) { Zone = zone; GridX = gx; GridY = gy; Direction = dir; Valid = valid; }
+        public SavedPosition(int zone, int gx, int gy, int dir, bool valid, bool fromPlayerData = false)
+        {
+            Zone = zone; GridX = gx; GridY = gy; Direction = dir; Valid = valid; FromPlayerData = fromPlayerData;
+        }
 
         // Feldlage im Puffer: player_save_data bei 0x8FB04, TownMapLocation bei +0x54 (zone int, x/y/z float, dir int).
         public const int PlayerSaveDataOffset = 0x8FB04;
         public const int LocationOffset = PlayerSaveDataOffset + 0x54;
         public const int ZoneIdOffset = 0x5634;
+        public const int PlayerDataGridXOffset = 0x79BF4;
+        public const int PlayerDataGridYOffset = 0x79BF8;
+        public const int PlayerDataHeightOffset = 0x79BFC;
+        public const int MaxGrid = 4096;
 
         public static SavedPosition Read(SaveData save)
         {
@@ -29,11 +41,20 @@ namespace Xnu.Game.Unity
             var x = BitConverter.ToSingle(b, LocationOffset + 4);
             var z = BitConverter.ToSingle(b, LocationOffset + 12);
             var dir = BitConverter.ToInt32(b, LocationOffset + 16);
-            var ok = locZone == zone && !float.IsNaN(x) && !float.IsNaN(z) && Math.Abs(x) < 4000f && Math.Abs(z) < 4000f && (x != 0f || z != 0f);
-            return new SavedPosition(zone, FieldCoords.GridX(x), FieldCoords.GridY(z), dir, ok);
+            var locOk = !float.IsNaN(x) && !float.IsNaN(z) && Math.Abs(x) < 4000f && Math.Abs(z) < 4000f && (x != 0f || z != 0f);
+
+            if (b.Length > PlayerDataHeightOffset)
+            {
+                var gx = BitConverter.ToInt32(b, PlayerDataGridXOffset);
+                var gy = BitConverter.ToInt32(b, PlayerDataGridYOffset);
+                if (zone > 0 && gx > 0 && gy > 0 && gx < MaxGrid && gy < MaxGrid)
+                    return new SavedPosition(zone, gx, gy, locOk && locZone == zone ? dir : 0, true, true);
+            }
+            return new SavedPosition(zone, FieldCoords.GridX(x), FieldCoords.GridY(z), dir, locOk && locZone == zone);
         }
 
-        // Schreibt Zone und Ort (Welt-Koordinaten wie im Original: x = -gx, z = gy) in den Puffer; die Höhe bleibt.
+        // Schreibt Zone und Ort (Welt-Koordinaten wie im Original: x = -gx, z = gy) in beide Ablagen, damit Lesen die geschriebene Zelle zurückgibt;
+        // die Höhe bleibt.
         public static void Write(SaveData save, int zone, int gx, int gy, MoveDir facing)
         {
             var b = save.Buffer;
@@ -42,6 +63,8 @@ namespace Xnu.Game.Unity
             Put(b, LocationOffset + 4, FieldCoords.WorldX(gx));
             Put(b, LocationOffset + 12, FieldCoords.WorldZ(gy));
             Put(b, LocationOffset + 16, (int)facing);
+            Put(b, PlayerDataGridXOffset, gx);
+            Put(b, PlayerDataGridYOffset, gy);
         }
 
         static void Put(byte[] b, int offset, int v) => Buffer.BlockCopy(BitConverter.GetBytes(v), 0, b, offset, 4);
