@@ -1,6 +1,6 @@
 # NOTICE: Entwurf und einzelne Teile nach LASRecomp
 
-Die Laufzeit in diesem Ordner ist **Eigenbau**, folgt aber im Entwurf der Laufzeit des Projekts LASRecomp und enthält an einigen Stellen dessen Logik in eigener Schreibweise (keine Datei wurde kopiert; der Klon `research/LASRecomp` bleibt unverändert).
+Die Laufzeit in diesem Ordner folgt dem Entwurf von LASRecomp und enthält **Teile des Originals wörtlich**. Ein Abgleich (Stand 2026-10-19; Zeilen mit mindestens 25 Zeichen, Leerraum normalisiert) ergibt identische Zeilen: `kernel.c` 45 %, `ipc.c` 47 %, `services.c` 42 %, `services_fs.c` 37 %, `dispatch.c` 17 %, `bdsp.h` 19 %, `main.c` 10 %, `loader.c` 8 %. Ein Teil davon sind Konstanten und Standardmuster, der Rest ist übernommener Code. Er steht unter der MIT-Lizenz des Originals (Lizenztext in `LICENSE-LASRecomp`, bei jeder Kopie mitführen). Der Klon `research/LASRecomp` bleibt unverändert. Die Header `cpu.h`, `simd.h`, `simd_fp.h` liegen unverändert in `scripts/recomp/upstream/runtime/` (Lizenz `scripts/recomp/upstream/LICENSE`).
 
 | | |
 |---|---|

@@ -4,6 +4,9 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 ## 2026-10-19
 
+- **Header vendored:** `cpu.h`, `simd.h`, `simd_fp.h` unverändert unter `scripts/recomp/upstream/runtime/`. Die App-Build-Skripte (`rt-bdsp/build.sh`, `nvn/build_nvn.sh`, `nvn/vulkan/build_vk.sh`, `ios/build_rt32.sh`, `ios/compile_chunk_ios.sh`) nutzen diesen Pfad. Geprüft: iPad-Build und Mac-Laufzeit gelinkt.
+- **Provenienz korrigiert:** Abgleich zeigt wörtlich übernommene Zeilen in `kernel.c`, `ipc.c`, `services*.c` und weiteren Dateien (8 bis 47 %). Die bisherige Aussage „keine Datei wurde kopiert“ war falsch und ist in NOTICE, THIRD_PARTY_NOTICES und README korrigiert.
+
 - **Vendoring NVN:** Die Upstream-Quellen der NVN-Schicht (Metal und Vulkan, ohne `imgui_glue.cpp`, `texpatch.c`, `output_scale.c`, `smaa_data.c`) liegen jetzt unverändert unter `scripts/recomp/rt-bdsp/nvn/upstream/`, mit `LICENSE`. `prepare.sh` und `prepare_vk.sh` kopieren von dort. Der Commit-Pin entfällt, weil das Repo den Stand festhält. Geprüft: byte-identisch mit dem Klon, iPad-Build ohne `.rej`.
 - **Pin (überholt):** Der zwischenzeitliche Commit-Pin in `prepare.sh` bleibt nur als Vorstufe in der Historie.
 - **Attribution:** Neue Root-`README.md` mit Fremdcode-Abschnitt (LASRecomp, MIT). `THIRD_PARTY_NOTICES.md` korrigiert: der NVN-Renderer wird zur Bauzeit kopiert, widersprach dem bisherigen Text. Ergänzt um FFmpeg und Build-Werkzeuge.

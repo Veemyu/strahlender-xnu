@@ -11,7 +11,7 @@ TARGET=${1:-mac}
 SRC=scripts/recomp/rt-bdsp
 NVN32=work/recomp/nvn-src32
 OBJ=${OBJ:-work/recomp/obj32}
-BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I research/LASRecomp/runtime -I $SRC"
+BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
 [ -d work/recomp/nvn-src/nvn ] || scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null
 if [ ! -d "$NVN32/nvn" ] || [ -n "$(find work/recomp/nvn-src scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c" -newer "$NVN32/nvn/nvn.h" -type f -print -quit)" ]; then
   python3 scripts/recomp/ios/nvn_rebase32.py work/recomp/nvn-src "$NVN32" > /dev/null

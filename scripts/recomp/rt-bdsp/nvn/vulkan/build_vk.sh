@@ -20,7 +20,7 @@ if [ -z "${VK_INC:-}" ]; then
 fi
 INCV=""
 for d in $VK_INC; do case "$d" in -I) ;; *) INCV="$INCV -I $d";; esac; done
-INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I research/LASRecomp/runtime -I scripts/recomp/rt-bdsp $INCV"
+INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/rt-bdsp $INCV"
 if [ "$(uname -s)" = Linux ]; then INC="$INC -I scripts/recomp/ryzen/compat"; fi
 CC=${CC:-clang}
 [ "$(uname -s)" = Linux ] && ARCHF="-march=x86-64-v3" || ARCHF=""

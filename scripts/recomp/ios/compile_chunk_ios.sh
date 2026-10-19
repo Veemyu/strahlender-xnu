@@ -9,6 +9,6 @@ o="$OBJ/$(basename "$(dirname "$src")")_$(basename "$src" .c).o"
 t0=$(date +%s)
 # -ffp-contract=off und -fno-fast-math: bitgenaue Gleitkomma-Semantik (docs/recomp-diff.md)
 clang -target arm64-apple-ios17.0 -isysroot "$sdk" ${OPT:--O1} -fno-strict-aliasing -fvisibility=hidden -fno-fast-math -ffp-contract=off -w \
-  -DREBASE32 -DRT32_GEN -I scripts/recomp/rt32 -I scripts/recomp/rt -I research/LASRecomp/runtime -c "$src" -o "$o.tmp" || { echo "FEHLER $src"; rm -f "$o.tmp"; exit 1; }
+  -DREBASE32 -DRT32_GEN -I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c "$src" -o "$o.tmp" || { echo "FEHLER $src"; rm -f "$o.tmp"; exit 1; }
 mv "$o.tmp" "$o"
 echo "$(basename "$o") $(( $(date +%s) - t0 ))s" >> "$OBJ/compile_times.txt"
