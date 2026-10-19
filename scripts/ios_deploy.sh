@@ -6,6 +6,7 @@
 # Umgebungsvariablen (alle optional):
 #   DEVICE_NAME  Teil des Gerätenamens (Standard: erstes verbundenes iPad)
 #   BUNDLE_ID    Bundle-ID der App (Standard: dev.local.xnum0)
+#   DERIVED_DATA Ablage für Xcode-Build (Standard: work/builds/ios-derived), DEPLOY_LOG Logdatei
 #   CONFIG       Xcode-Konfiguration (Standard: Release)
 #   TEAM_ID      Apple-Team-ID; sonst aus work/local.env (gitignored) oder aus dem Projekt
 # Voraussetzung: Gerät entsperrt, gekoppelt, Entwicklermodus an. Die Team-ID
@@ -20,8 +21,8 @@ LAUNCH=1
 [[ "${1:-}" == "--no-launch" ]] && PROJECT_DIR="$ROOT/work/builds/ios/xnu-m0"
 BUNDLE_ID="${BUNDLE_ID:-dev.local.xnum0}"
 CONFIG="${CONFIG:-Release}"
-DD="$ROOT/work/builds/ios-derived"
-LOG="$ROOT/work/builds/ios-deploy.log"
+DD="${DERIVED_DATA:-$ROOT/work/builds/ios-derived}"
+LOG="${DEPLOY_LOG:-$ROOT/work/builds/ios-deploy.log}"
 # Lokale, nicht getrackte Einstellungen (z. B. TEAM_ID=...) einlesen.
 [[ -f "$ROOT/work/local.env" ]] && source "$ROOT/work/local.env"
 

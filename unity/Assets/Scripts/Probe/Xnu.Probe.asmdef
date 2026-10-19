@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.Probe",
+  "rootNamespace": "Xnu.Probe",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "autoReferenced": true
+}

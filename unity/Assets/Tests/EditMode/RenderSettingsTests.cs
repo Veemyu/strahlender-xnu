@@ -47,6 +47,24 @@ namespace Xnu.Tests
         }
 
         [Test]
+        public void AllePlattformenNutzenDieOriginalStufe()
+        {
+            var path = System.IO.Path.Combine(Application.dataPath, "..", "ProjectSettings", "QualitySettings.asset");
+            var last = (QualitySettings.names.Length - 1).ToString();
+            var inDefaults = false;
+            var checkedPlatforms = 0;
+            foreach (var raw in System.IO.File.ReadAllLines(path))
+            {
+                if (raw.StartsWith("  m_PerPlatformDefaultQuality:")) { inDefaults = true; continue; }
+                if (!inDefaults) continue;
+                if (!raw.StartsWith("    ")) break;
+                Assert.AreEqual(last, raw.Substring(raw.LastIndexOf(':') + 1).Trim(), raw);
+                checkedPlatforms++;
+            }
+            Assert.Greater(checkedPlatforms, 5);
+        }
+
+        [Test]
         public void HdrDisplayAus()
         {
             Assert.IsFalse(PlayerSettings.useHDRDisplay);
