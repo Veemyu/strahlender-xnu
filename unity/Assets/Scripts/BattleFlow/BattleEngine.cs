@@ -29,8 +29,12 @@ namespace Xnu.Battle.Flow
         // Beutel des Spielers: Item-Nr. -> Anzahl.
         public Dictionary<int, int> Bag = new Dictionary<int, int>();
 
-        // null = RandomEnemyBrain.
+        // Items des Gegner-Trainers (TrainerData.UseItem1..4); nur die KI (EnemyAi) benutzt sie.
+        public int[] EnemyItems;
+
+        // null = RandomEnemyBrain. EnemyBrain hat Vorrang vor EnemyAi; EnemyAi ist die Trainer-KI (TrainerAi), optional pro Trainer.
         public IEnemyBrain EnemyBrain;
+        public IBattleAi EnemyAi;
     }
 
     // Entscheidet fuer die Gegnerseite. Die Original-KI (BtlAiExpert, Trainer-KI-Bits) ist nicht umgesetzt.
@@ -117,6 +121,7 @@ namespace Xnu.Battle.Flow
         readonly IEnemyBrain _brain;
         readonly int[] _active = new int[2];
         readonly Dictionary<int, int> _bag;
+        readonly Dictionary<int, int> _enemyBag = new Dictionary<int, int>();
         bool _turnEndPending;
 
         public BattleSetup Setup { get; }
@@ -146,8 +151,10 @@ namespace Xnu.Battle.Flow
             Data = setup.Data ?? throw new ArgumentException("Data fehlt", nameof(setup));
             if (setup.PlayerParty.Count == 0 || setup.EnemyParty.Count == 0) throw new ArgumentException("Beide Seiten brauchen mindestens ein Pokemon");
             Random = new BattleRandom(setup.Seed);
-            _brain = setup.EnemyBrain ?? new RandomEnemyBrain(setup.Seed);
+            _brain = setup.EnemyBrain ?? (setup.EnemyAi != null ? new BattleAiBrain(setup.EnemyAi) : (IEnemyBrain)new RandomEnemyBrain(setup.Seed));
             _bag = new Dictionary<int, int>(setup.Bag);
+            if (setup.EnemyItems != null)
+                foreach (int it in setup.EnemyItems) if (it != 0) _enemyBag[it] = _enemyBag.TryGetValue(it, out int n) ? n + 1 : 1;
             _env = new FlowEnv(this);
             Events = new EventSystem(_env);
             Launcher = new BattleEventLauncher(Events);
@@ -261,8 +268,7 @@ namespace Xnu.Battle.Flow
                     if (!IsWild) { reason = "Flucht im Trainerkampf nicht erlaubt"; return false; }
                     return side == PlayerSide;
                 case CommandKind.Item:
-                    if (side != PlayerSide) { reason = "Nur der Spieler benutzt Items"; return false; }
-                    if (!_bag.TryGetValue(cmd.ItemId, out int count) || count <= 0) { reason = "Item nicht im Beutel"; return false; }
+                    if (!(side == PlayerSide ? _bag : _enemyBag).TryGetValue(cmd.ItemId, out int count) || count <= 0) { reason = "Item nicht im Beutel"; return false; }
                     if (ItemHealAmount(cmd.ItemId) <= 0) { reason = "Item hier ohne Wirkung"; return false; }
                     return true;
                 default:
@@ -287,7 +293,7 @@ namespace Xnu.Battle.Flow
         {
             if (Phase != BattlePhase.AwaitCommands) throw new InvalidOperationException("Keine Befehle erwartet (Phase " + Phase + ")");
             if (!IsCommandValid(PlayerSide, player, out string r1)) throw new ArgumentException("Spielerbefehl ungueltig: " + r1);
-            if (enemy.Kind == CommandKind.Run || enemy.Kind == CommandKind.Item) throw new ArgumentException("Gegnerbefehl ungueltig: Flucht/Item nicht unterstuetzt");
+            if (enemy.Kind == CommandKind.Run) throw new ArgumentException("Gegnerbefehl ungueltig: Flucht nicht unterstuetzt");
             if (!IsCommandValid(EnemySide, enemy, out string r2) && AnyPp(Active(EnemySide))) throw new ArgumentException("Gegnerbefehl ungueltig: " + r2);
             RunTurn(player, enemy);
         }
@@ -622,15 +628,16 @@ namespace Xnu.Battle.Flow
 
         void ExecuteItem(BattleMon actor, BattleCommand cmd)
         {
-            if (!_bag.TryGetValue(cmd.ItemId, out int count) || count <= 0) return;
+            var bag = actor.Side == PlayerSide ? _bag : _enemyBag;
+            if (!bag.TryGetValue(cmd.ItemId, out int count) || count <= 0) return;
             int heal = ItemHealAmount(cmd.ItemId);
             if (heal <= 0) return;
-            var target = cmd.ItemTarget >= 0 && cmd.ItemTarget < Parties[PlayerSide].Count ? Parties[PlayerSide][cmd.ItemTarget] : actor;
+            var target = cmd.ItemTarget >= 0 && cmd.ItemTarget < Parties[actor.Side].Count ? Parties[actor.Side][cmd.ItemTarget] : actor;
             if (target.IsFainted || target.Poke.IsHpFull) return;
             int amount = heal >= 255 ? target.Poke.MaxHp : heal;
             int before = target.Poke.Hp;
             target.Poke.Hp = (ushort)Math.Min(target.Poke.MaxHp, before + amount);
-            _bag[cmd.ItemId] = count - 1;
+            bag[cmd.ItemId] = count - 1;
             Add(LogKind.ItemUsed, target.PokeId, id: cmd.ItemId, value: target.Poke.Hp - before, value2: target.Poke.Hp);
         }
     }

@@ -75,7 +75,7 @@ Die Tabelle ist ein statisch initialisiertes Byte-Feld (`RuntimeHelpers.Initiali
 Die Trainer-KI ist **kein Bytecode**, sondern kompilierter C#-Code: `AiScript.CreateScriptBase` (0x1bc08d0) erzeugt je nach Bit eine der Klassen `BtlAiBasic`, `BtlAiStrong`, `BtlAiExpert`, `BtlAiDouble`, `BtlAiAllowance`, `BtlAiItem`, `BtlAiPokeChange`.
 Umfang des Pseudocodes: Basic 541 KB, Expert 996 KB, Double 306 KB, Strong/Item/PokeChange je 20–31 KB; dazu `BattleAiCommand` (310 KB) und `AiWazaJudge` (47 KB).
 Ableitbar ist damit prinzipiell alles, aber nicht „klar und klein“: Es ist ein Punktesystem (Skript-Befehle erhöhen/senken die Wertung je Attacke, Auswahl nach Höchstwert mit Zufall bei Gleichstand) mit rund einhundert Befehlen und Dutzenden Abfragen (Typen-Effektivität, Schaden aus `BattleSimulator`, Wetter, Zustände).
-Das ist hier **nicht umgesetzt**; `RandomEnemyBrain` bleibt der Standard, `IEnemyBrain` ist die Schnittstelle. Schätzung: Basic/Strong ca. 2 Tage, Expert + Double ca. 3–4 Tage, Item-/Wechsel-KI (`AiItemJudge`, `AiPokeChangeJudge`) ca. 1 Tag; Orakel nur für einzelne Rechenbefehle sinnvoll.
+Das war in Scheibe 5 **nicht umgesetzt**; ab Scheibe 6 siehe `docs/kampf-spezifikation-6.md` (Struktur, Wertung, Basic/Strong/Allowance/Item/PokeChange umgesetzt und per Orakel geprüft; Expert und Double offen). `RandomEnemyBrain` bleibt der Standard, `IEnemyBrain` ist die Schnittstelle. Schätzung: Basic/Strong ca. 2 Tage, Expert + Double ca. 3–4 Tage, Item-/Wechsel-KI (`AiItemJudge`, `AiPokeChangeJudge`) ca. 1 Tag; Orakel nur für einzelne Rechenbefehle sinnvoll.
 
 ## 6. Prüfung
 
