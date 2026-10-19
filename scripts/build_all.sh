@@ -553,8 +553,8 @@ stage_video() {
 # ---------- Stufe audio ----------
 stage_audio() {
   log "Stufe audio"
-  echo "  NICHT IMPLEMENTIERT: geplant ist eine reine Offline-Konvertierung der Wwise-Banks in Dateien (docs/shader-audio-machbarkeit.md)."
-  echo "  Das Spiel läuft bis dahin stumm; es wird nie Ton abgespielt, auch nicht zum Testen."
+  echo "  NICHT IMPLEMENTIERT: Ton wird erforscht (docs/shader-audio-machbarkeit.md, todo/neustart.md Todo rc-audio)."
+  echo "  Das Spiel läuft bis dahin stumm."
   NOT_IMPL="$NOT_IMPL audio"
   stage_result audio "nicht implementiert"
 }

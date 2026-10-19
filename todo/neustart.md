@@ -4,7 +4,7 @@ Stand: 2026-10-19 17:30. Zweck: an einem anderen Zeitpunkt ohne Gesprächsverlau
 
 ## 1. Kurzstand
 
-- **Ziel:** Mit diesem Repo, einer eigenen NSP/XCI von Pokémon Brilliant Diamond und eigenen Keys lässt sich ein natives Spiel für macOS und iPadOS bauen (später Linux/Windows mit Vulkan). Das Repo enthält keine Spieldaten, Keys, Saves, Screenshots oder erzeugten Code. Ton bleibt aus.
+- **Ziel:** Mit diesem Repo, einer eigenen NSP/XCI von Pokémon Brilliant Diamond und eigenen Keys lässt sich ein natives Spiel für macOS und iPadOS bauen (später Linux/Windows mit Vulkan). Das Repo enthält keine Spieldaten, Keys, Saves, Screenshots oder erzeugten Code. Ton ist derzeit stumm und wird erforscht (Todo 13).
 - **Strategie:** Ein Strang, die **statische Rekompilation** des Original-ARM64-Codes (LAS-Methode) mit eigener Laufzeit `scripts/recomp/rt-bdsp/`. Der Unity-Rebuild ist deprecated (Entscheidung 4, `unity/DEPRECATED.md`) und wird nicht weiterentwickelt.
 - **Läuft:** Mac (Metal) mit Film, Titel, Spielstand und 3D-Stadt bei ca. 46 Bildern/s; iPad (`dev.local.xnubdsp`) bei 50–52 Bildern/s, 1,6–2,1 GiB Footprint; Linux/Vulkan bis zur Sprachauswahl. Der Eröffnungsfilm (VP8 über FFmpeg) läuft stabil.
 - **Falsch oder offen:** Wasser (weiß statt blau), Spielbetrieb auf dem iPad ungetestet (Menü, Kampf, Speichern, Dauerlauf), Touch/Controller nur gebaut.
@@ -29,12 +29,13 @@ Auch in der Session-SQL mit Präfix `rc-`; bei Verlust gilt diese Liste.
 | 10 | `rc-user-refs` | **Mehr Ryujinx-Referenzen** (Nutzer): F8 am Titelbild und im X-Menü; Freigabe für Bewegungs-/Menütasten über `ryzen_keys.py`. | Neue Bilder unter `~/.config/Ryujinx/screenshots/` auf dem Ryzen |
 | 11 | `rc-legal` | **Rechtslage** vor einer öffentlichen Weitergabe klären. | Entscheidung des Nutzers |
 | 12 | `rc-signature` | iPad-Signatur des kostenlosen Teams läuft nach **7 Tagen** ab: neu signieren und installieren. | App startet |
+| 13 | `rc-audio` | **Ton erforschen (vom Nutzer freigegeben, 2026-10-19).** Heute sind `audout:u`, `audren:u`, `hwopus`, `audin:u` stumme Stummel (`scripts/recomp/rt-bdsp/services_audio.c`), der Film läuft ohne Tonspur. Fragen: (1) Welche Audio-Dienste und Befehle nutzt das Spiel über Wwise tatsächlich (Zähler aus den IPC-Logs, `audren:u` Stimmen/Mischer, `hwopus` Dekodieranfragen)? (2) Format der Audiodaten (Opus/ADPCM/PCM, Wwise-Banks im RomFS)? (3) `hwopus` per Opus-Decoder, `audren:u` als eigener Mischer (CPU) mit Ausgabe über CoreAudio/AVAudioEngine auf macOS und iPadOS, SDL-Audio oder PulseAudio/PipeWire auf Linux? (4) Echtzeit-Takt der Puffer beibehalten (nicht wieder die Wwise-Sperre-Endlosschleife auslösen, siehe `docs/recomp-qa.md`). (5) Tonspur des Eröffnungsfilms (FFmpeg-Audio). Referenzverhalten nur lesen und in eigenen Worten umsetzen (Ryujinx-Audio, LAS-Klon in `research/`). | Machbarkeitsbericht `docs/recomp-audio.md` (Messwerte, Plan, Aufwand), danach Umsetzung; Gerätelautstärke beim Testen vorsichtig wählen |
 
 Niedrige Priorität: Startstillstand (siehe oben), HEVC/VideoToolbox (nur falls der Software-Decoder je die Bildrate drückt, `docs/recomp-ios.md` 4.4), 3,14 GiB statt 1,98 GiB Gastspeicher (erst nach Dauer- und Kampftest relevant), MetalFX.
 
 ## 3. Arbeitsweise (Kurzfassung, vollständig im Betriebshandbuch)
 
-Kein sudo, kein Plattenscan, kein Ton. Repo-Dateien nur mit `edit`/`create`. Prozesse nur mit `kill <PID>`. Kein Spiel-/Key-/Save-Inhalt im Repo. Commit nur als Veemyu, ohne Co-Author, danach pushen; `scripts/repo_check.py` läuft als Hook. Kleine Aufgaben an `claude-haiku-5.5`/`gpt-6-luna`, Code und Fehlersuche an Sonnet, höchstens zwei große Agenten, Agenten committen nie.
+Kein sudo, kein Plattenscan. Repo-Dateien nur mit `edit`/`create`. Prozesse nur mit `kill <PID>`. Kein Spiel-/Key-/Save-Inhalt im Repo. Commit nur als Veemyu, ohne Co-Author, danach pushen; `scripts/repo_check.py` läuft als Hook. Kleine Aufgaben an `claude-haiku-5.5`/`gpt-6-luna`, Code und Fehlersuche an Sonnet, höchstens zwei große Agenten, Agenten committen nie.
 
 ## 4. Fundstellen
 

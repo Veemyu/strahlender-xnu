@@ -56,7 +56,7 @@ Jede Stufe schreibt nach Erfolg einen Marker `work/.stages/<Stufe>.json` mit dem
 
 ## macOS-App aus der Rekompilation (Stufe `recomp`)
 
-Seit Entscheidung 3 (`docs/architektur-entscheidung.md`) ist die Rekompilation der Hauptweg: aus **deinem** Dump entsteht das Spiel als native arm64-App mit Metal, **ohne Ton**, ohne Netz. Die Stufe läuft nach `extract` (und `il2cpp`); Technik, Tastenbelegung, Spielstand und Messwerte stehen in `docs/recomp-macapp.md`.
+Seit Entscheidung 3 (`docs/architektur-entscheidung.md`) ist die Rekompilation der Hauptweg: aus **deinem** Dump entsteht das Spiel als native arm64-App mit Metal, derzeit **ohne Ton** (Ton wird erforscht), ohne Netz. Die Stufe läuft nach `extract` (und `il2cpp`); Technik, Tastenbelegung, Spielstand und Messwerte stehen in `docs/recomp-macapp.md`.
 
 ```sh
 scripts/build_all.sh --only recomp                  # nach extract; ohne --xci wird das vorhandene work/exefs, work/romfs benutzt
@@ -81,7 +81,7 @@ Hält ein Unity-Editor das Projekt `unity/`, kann kein Batch-Build laufen (Proje
 
 1. iPad per USB anschließen, entsperren, Entwicklermodus an, Entwicklerprofil vertrauen.
 2. Team-ID bereitstellen: als Umgebungsvariable `TEAM_ID` oder als Zeile `TEAM_ID=<deine ID>` in `work/local.env` (gitignoriert). Die ID steht nie in `ProjectSettings`, Logs oder Markern (nur ein Hash).
-3. `scripts/build_all.sh --only deploy --target ios` baut mit Xcode und installiert. Mit `--launch` startet die App danach (sie ist standardmäßig stumm).
+3. `scripts/build_all.sh --only deploy --target ios` baut mit Xcode und installiert. Mit `--launch` startet die App danach (sie ist derzeit stumm).
 4. Spielstand aufs iPad: `scripts/ios_push_save.sh` (Datei nach `Documents/SaveData.bin`, Prüfsumme vor und nach, Import beim nächsten „Weiter“; `--pull` holt den Stand zurück). Der Build trägt `UIFileSharingEnabled` ein, der Documents-Ordner erscheint damit in der Dateien-App. Verfahren, Ursachen und Messwerte: `docs/ipad-durchstich-1.md`.
 
 Ohne Team-ID bleibt es beim Xcode-Projekt unter `work/builds/ios/xnu/`; du kannst es in Xcode mit deinem eigenen Team öffnen. Ohne angeschlossenes iPad wird die Installation übersprungen. Ein kostenloses Apple-Team reicht; das Profil läuft nach 7 Tagen ab.
@@ -113,7 +113,7 @@ Die App sucht ihre Daten zuerst über die Umgebungsvariable `XNU_GAMEDATA`, dann
 
 ## Bekannte Lücken
 
-- `audio` ist nicht umgesetzt: die gebaute App enthält keinen Ton und bleibt stumm.
+- `audio` ist nicht umgesetzt: die gebaute App enthält derzeit keinen Ton und bleibt stumm; Ton wird erforscht (Todo `rc-audio`).
 - Die Shader-Wrapper landen standardmäßig nur in `work/build/shaders/`; ins Unity-Projekt (`--shaders-into-unity`) sollten sie erst nach dem Strippen auf die tatsächlich benutzten Varianten, sonst entstehen tausende Dateien (Stand: `docs/shader-unity-integration.md`, Abschnitt 13).
 - Platz: 60 GB sind der Mindestwert des Preflights. Auf knapperen Laufwerken lässt er sich mit `--min-free-gb N` bewusst senken.
 - Der erste echte Player-Build lief am 2026-10-19 im offenen Editor (Menü `Xnu/Build/…`) durch: macOS 202 s (kalt) bzw. 44 s, iOS 19 s, Installation 2 min 40 s; die Zone 422 lädt in beiden Apps in rund 1 s mit 30 FPS (`docs/player-build-1.md`). **Neu:** Umwandlung der BC-Texturen nach ASTC (`scripts/texture_transcode.py`, `docs/ios-texturen.md`), auf macOS mit geladenem Bundle geprüft, **auf dem iPad noch nicht**. **Offen:** Lauf der umgewandelten Texturen auf dem iPad, Bild-Sichtprüfung, volle Bundle-Menge auf dem iPad, Lauf des Batch-Treibers bei geschlossenem Editor.

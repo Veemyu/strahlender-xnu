@@ -5,7 +5,7 @@ Zweck: ein Dokument, das ohne Vorwissen erklärt, wo wir stehen, was belegt ist,
 ## 1. Ziel und Regeln
 
 - **Ziel (Nutzer):** Mit diesem Repo und einer eigenen NSP/XCI von Pokémon Brilliant Diamond (BDSP) lässt sich ein natives, getestetes Spiel für **macOS, iPadOS** (später Linux/Windows mit Vulkan) bauen. Das Repo enthält **keine** Spieldaten, Keys, Dumps, erzeugten Code, Saves oder Screenshots. Gebaute Apps sind nur für den persönlichen Gebrauch.
-- **Kein Ton**, nie: Audio ist stumm, keine Lautstärkeänderungen an Mac oder iPad.
+- **Ton:** derzeit stumm (die Audiodienste sind Stummel). Die frühere Vorgabe „kein Ton“ ist aufgehoben; Ton wird jetzt erforscht und darf umgesetzt werden (`todo/neustart.md`, Todo `rc-audio`).
 - **Saves** bleiben kompatibel mit Ryujinx/Switch (`SaveData.bin` 979.108 Byte, Version 0x34, MD5 bei 0xE9818).
 - **Arbeitsregeln:** kein sudo, keine Scans der ganzen Platte, Commits nur mit der Identität des Nutzers (kein Co-Author-Trailer), Repo-Dateien nur mit `edit`/`create`, vor jedem Commit läuft `scripts/repo_check.py` (Hook).
 
@@ -55,7 +55,7 @@ Es gibt heute **einen** Entwicklungsstrang: die Rekompilation.
 4. Kameraversatz 28 px gegen Ryujinx (Zeitpunkt der Kamerafahrt, vermutlich nur Timing).
 5. Titelbild: Ryujinx-Referenz fehlt (F8 am Titel nötig).
 6. Speicherpuffer/Compute lesen den umhüllten Gastspeicher; 32-Bit-Modell (`rebase32`) auf dem Gerät noch nicht belegt; SDK verlangt 3,14 GB am Stück.
-7. Nicht umgesetzt: MetalFX, Controller-Test mit Hardware, Touch-Steuerung auf dem iPad, Vulkan unter Windows, Ton (bleibt aus).
+7. Nicht umgesetzt: MetalFX, Controller-Test mit Hardware, Touch-Steuerung auf dem iPad, Vulkan unter Windows, Ton (derzeit stumm, wird erforscht: Todo `rc-audio`).
 
 ## 4. Gemeinsame Werkzeuge (bleiben in Betrieb)
 - **Extraktion:** hactool-Bau, XCI/NSP → `work/exefs`, `work/romfs` (`scripts/build_all.sh` Stufen `tools`, `extract`); Il2CppDumper → `work/il2cpp`; Ghidra-Projekt `work/ghidra/bdsp` (166.095 Funktionen).

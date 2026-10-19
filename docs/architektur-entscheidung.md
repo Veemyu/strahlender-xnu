@@ -80,7 +80,7 @@ Grundlage: `docs/recomp-gate2.md`, `docs/recomp-diff.md`, `docs/recomp-spike-2.m
 - **Gründe:** Exceptions, GC-Anhalten und 32-Bit-Rebasing sind gemessen lösbar; der c-Modus ist bitgenau (0 Abweichungen, `docs/recomp-diff.md`); Shader laufen durch unseren Maxwell-Übersetzer (0 Fehler bei 5.959 Programmen). Aufwandsschätzung R 18–35 Wochen gegen D 40–80 Wochen (±50 %), seither deutlich vorgezogen.
 - **Hauptweg:** (R) Rekompilation → macOS-App (arm64, Metal), danach iPadOS (rebase32, Speicherfenster ≤ 4 GiB), Linux/Windows (Vulkan, x86-`c`-Modus) als Zusatz. Repo enthält nur Recompiler, Runtime, Skripte und Doku; der erzeugte Code entsteht beim Bauen aus dem eigenen Dump.
 - **Unity-Rebuild (D):** läuft weiter als Referenz und Fallback (Orakel, Spezifikationen, Daten-/Save-Werkzeuge, Bildprüfung); keine neuen Großblöcke.
-- **Offen/Risiken:** iPadOS (Metal-Puffer 5 GiB-Fenster, rebase32 auf Gerät ungemessen, Build-Zeit des Generats in Xcode), Touch-/Controller-Eingabe, Audio bleibt stumm, Online-Dienste als Stubs, Rechtslage vor öffentlicher Weitergabe klären.
+- **Offen/Risiken:** iPadOS (Metal-Puffer 5 GiB-Fenster, rebase32 auf Gerät ungemessen, Build-Zeit des Generats in Xcode), Touch-/Controller-Eingabe, Audio derzeit stumm (wird erforscht, Todo `rc-audio`), Online-Dienste als Stubs, Rechtslage vor öffentlicher Weitergabe klären.
 - Der Nutzer hat die Strategie dem Autopiloten überlassen; revidierbar.
 
 ## Entscheidung 4 (Nutzer, 2026-10-19 16:57): Unity-Rebuild ist deprecated

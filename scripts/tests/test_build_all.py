@@ -100,7 +100,7 @@ class DryRunTests(unittest.TestCase):
         rc, out, _ = run(["--only", "audio", "--no-preflight", "--work", self.work])
         self.assertEqual(rc, 0)
         self.assertIn("NICHT IMPLEMENTIERT", out)
-        self.assertIn("nie Ton", out)
+        self.assertIn("stumm", out)
         self.assertFalse(os.path.exists(os.path.join(self.work, ".stages", "audio.json")))
 
     def test_usage_errors(self):

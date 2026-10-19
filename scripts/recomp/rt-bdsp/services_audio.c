@@ -1,4 +1,4 @@
-// Stumme Audiodienste der BDSP-Laufzeit (kein Ton, auch später nicht): audout:u (IAudioOut), audren:u (IAudioRenderer, IAudioDevice),
+// Stumme Audiodienste der BDSP-Laufzeit (derzeit kein Ton; Ton wird erforscht): audout:u (IAudioOut), audren:u (IAudioRenderer, IAudioDevice),
 // hwopus und audin:u. Die Dienste melden dem SDK ein funktionierendes Gerät, geben jeden angehängten Puffer sofort zurück und
 // liefern leere Rendering-Antworten. Eigener Code.
 #include "bdsp.h"

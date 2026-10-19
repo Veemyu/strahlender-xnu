@@ -7,7 +7,7 @@ Stand: 2026-10-19 17:20. Ergänzt `docs/arbeitsstand-2026-10-19.md` (Technik, Me
 | Bereich | Regel |
 |---|---|
 | Rechte | Kein `sudo`, keine Umgehungen. Was Admin-Rechte braucht, wird als Installationsliste an den Nutzer gegeben. Plattenscan verboten (nur Repo und bekannte Ordner anfassen). |
-| Ton | Nie Ton testen, nie Lautstärke ändern (Mac, iPad). Audio nur offline als Datei prüfen. |
+| Ton | Früher verboten, jetzt freigegeben (Nutzer, 2026-10-19): Ton wird erforscht und darf umgesetzt und getestet werden (Todo `rc-audio`). Bis dahin sind die Audiodienste stumme Stummel. |
 | Git | Commit nur mit der Identität des Nutzers (`Veemyu`), **kein Co-Author-Trailer**, nach jedem Commit `git push` (origin/main). Der Pre-Commit-Hook führt `scripts/repo_check.py` aus. Nur gezielt `git add <Datei>`, nie `-A`. |
 | Repo-Inhalt | Nie Spieldaten, Keys, Dumps, erzeugten Code, Saves, Screenshots, Team-ID. Erzeugtes C und Binaries bleiben unter `work/`. Fremdprojekte nur als Klon in `research/` (gitignored), Zusammenfassungen in eigenen Worten, maschinell übersetzter Spielcode wird nie committet. Team-ID nur in `work/local.env`. |
 | Dateien ändern | Repo-Dateien nur mit `edit`/`create`, nicht per `sed -i`, Heredoc oder Python-Schreibskript. Prozesse nur mit `kill <PID>` beenden, kein `pkill`/`killall`. Lange Läufe: `nohup`/`setsid` mit Logdatei. |
