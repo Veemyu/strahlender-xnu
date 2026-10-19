@@ -10,7 +10,8 @@ OUT=${OUT:-work/recomp/bdsp_boot}
 mkdir -p "$RT"
 SRC=scripts/recomp/rt-bdsp
 INC="-I scripts/recomp/rt -I research/LASRecomp/runtime -I $SRC"
-# Grafik-Backend zur Bauzeit: metal (macOS, Standard), vulkan (Linux/Windows, noch nicht umgesetzt), none (keine Grafik: der NVN-Treiber des SDK bleibt,
+# Grafik-Backend zur Bauzeit: metal (macOS, Standard), vulkan (Linux/Windows: nvn/vulkan/, Ausgabe work/recomp/bdsp_boot_vk, Objekte rt-bdsp-vk; siehe
+# docs/recomp-vulkan.md), none (keine Grafik: der NVN-Treiber des SDK bleibt,
 # Verhalten wie Gate 1; Standard unter Linux bis das Vulkan-Backend steht). Linux: Mach-Ersatz aus scripts/recomp/ryzen/compat.
 NVN_BACKEND=${NVN_BACKEND:-$([ "$(uname -s)" = Darwin ] && echo metal || echo none)}
 EXTRA=""
@@ -22,7 +23,10 @@ case "$NVN_BACKEND" in
     nvnobjs=("$RT"/nvn/*.o)
     FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3)" ;;
   none) EXTRA="-DBDSP_NVN_NONE"; RT="${RT}-none"; mkdir -p "$RT" ;;
-  vulkan) echo "NVN_BACKEND=vulkan ist noch nicht umgesetzt (siehe docs/recomp-gate2.md, Abschnitt Vulkan-Pfad)" >&2; exit 2 ;;
+  vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/), Laufzeitbibliotheken per Vollpfad
+    RT="$RT" scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh "$@"
+    nvnobjs=("$RT"/nvnvk/*.o)
+    FW="-l:libvulkan.so.1 -l:libSDL3.so.0 -l:libshaderc_shared.so.1 -lstdc++ -lm -lpthread -ldl" ;;
   *) echo "unbekanntes NVN_BACKEND=$NVN_BACKEND (metal|vulkan|none)" >&2; exit 2 ;;
 esac
 if [ "$(uname -s)" = Linux ]; then INC="$INC -I scripts/recomp/ryzen/compat"; fi
