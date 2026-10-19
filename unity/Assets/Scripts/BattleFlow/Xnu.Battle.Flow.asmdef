@@ -1,0 +1,10 @@
+{
+  "name": "Xnu.Battle.Flow",
+  "rootNamespace": "Xnu.Battle.Flow",
+  "references": ["Xnu.Battle", "Xnu.Battle.Events", "Xnu.Data", "Xnu.PokePara"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "noEngineReferences": true,
+  "autoReferenced": true
+}
