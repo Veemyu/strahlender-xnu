@@ -193,6 +193,7 @@ C#: `MaterialTextureRef.ExternalBundle` trägt das Bundle; `LoadedTextureIndex` 
 | `Scripts/Render/Runtime/EnvironmentDriver.cs` | `EnvironmentDriver` (setzt Licht, Qualität, Globals je Bild), `OriginalQuality` |
 | `Scripts/Render/Runtime/CameraRigs.cs` | `ReflectionCameraDriver`, `DepthCaptureDriver` |
 | `Scripts/Render/Runtime/UnityGlobalSink.cs` | Textur-Platzhalter `black`/`white`/`gray`/`bump` → Unity-Standardtexturen |
+| `Scripts/Render/RenderChecks.cs`, `Runtime/SunLight.cs` | Regeln gegen schwarzes Bild (kein Licht, Licht ohne Intensität, Globals ungesetzt, mehrere Lichter), `SunLight.Ensure/FindActive/Collect`, `RenderHealthWatch` (Abschnitt 10a) |
 | `scripts/environment_export.py` | exportiert die Settings und die Zonenzuordnung nach `work/masterdata/` |
 
 Konstanten (Faktor 0,5, 1 − Basis, −1, 0,2, 60, 0,0001/0,9999, 10 Minuten, `k` = 0,024) sind im Test festgelegt (`RenderEnvironmentTests`, 18 Tests: Abschnittsgrenzen, Gewicht, Ticks, Überblendung inklusive Winkel und Nebel, alle Formeln von `Apply`, Schnee, Wolkenschatten, FixedTime, Katalog, Quellentabelle). Die Konstruktor-Vorgaben der Szenenfelder (Wolkengeschwindigkeit, -kachelung, Schattenfarben) stehen **nicht** im Repo: serialisierte Werte überschreiben sie ohnehin.
@@ -207,6 +208,20 @@ Konstanten (Faktor 0,5, 1 − Basis, −1, 0,2, 60, 0,0001/0,9999, 10 Minuten, `
 6. **Schatten-Treue** nur strukturell geprüft (kein Referenzbild); Spiel-Licht (Schattenstärke, Auflösung je Szene) liegt im Prefab.
 7. **`UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"`** setzt voraus, dass Unitys eingebauter Shader im Player enthalten ist (Build-Schritt für `Always Included Shaders`, nicht geprüft).
 8. **`multi_compile_fwdbase`** ist nicht nötig (gemessen), alle Lab-Ergebnisse mit Unity 6000.3.26f1 auf Apple M1 Pro; andere GPUs nicht geprüft.
+
+### 10a. Nachtrag 2026-10-19 (`ap-effects-fidelity`, Teil 2): Globals gegen Licht, Bild schwarz, „Hänger“
+
+Ausführlich mit Methode und Logbelegen: `docs/material-remap.md`, Abschnitt 10b. Was für die Globals daraus folgt (Lab, Zone 422, 34 Materialien, Gamma, Bildmittel RGB aus `RenderTexture`; `FieldController` echt: „Umbau (Shader 61/61, 124 Materialeinträge)“):
+
+| Zustand | Bildmittel | Lehre |
+|---|---|---|
+| kein Richtungslicht, Globals egal (Platzhalter oder null) | **(0, 0, 0)** | Die Forward-Shader multiplizieren mit `_LightColor0`; ohne Licht ist alles schwarz, auch wenn alle 35 Globals gesetzt sind. `SunLight.Ensure` (Render/Runtime) stellt ein Licht sicher, `EnvironmentDriver` setzt danach Farbe/Intensität/Drehung aus den Spielwerten. |
+| Richtungslicht, alle Globals null | (31, 39, 23) | Nicht schwarz: ohne Globals nur dunkler (`_ShadowColor`, `_GlobalLightPower`, Wolkenterm 0). |
+| Richtungslicht, Platzhalter (`SetDefaults`) | (37, 49, 28) | Der Platzhalter ändert gegenüber „alle null“ nur wenig (+6, +10, +5). |
+| Richtungslicht, Spielwerte Zone 422, Stunde 12 | (83, 104, 63) | wie Abschnitt 6.4; derselbe Wert mit weichen Schatten (4 Kaskaden, Distanz 20): im Mittel unverändert. |
+
+Folgerungen: (1) „Globals ungesetzt“ erklärt nie ein schwarzes Bild, sondern ein zu dunkles; ein **schwarzes** Bild ist in dieser Kette immer „kein/dunkles Licht“ (Regeln in `Render/RenderChecks.cs`, geprüft von `RenderChecksTests`). (2) Die Platzhalter taugen für Sichttests nur grob; Bildmessungen immer mit `EnvironmentDriver` und den Zonenwerten (Stunde wählbar). (3) Zeitbedarf der Globals: ein `Tick` ist reine Rechnung plus 21 `Shader.SetGlobal*`; keine Kompilierung, keine Variantenwahl – der Editor-Hänger der Haupt-Sitzung hatte mit Globals und Shadern nichts zu tun (Ursache: `run_tests` im Spielmodus).
+Lücken (unverändert): Szenenwerte des `EnvironmentController`, Nachbearbeitungs-Globals (9 offen), Switch-Referenzbild.
 
 ## 11. Reproduktion
 
