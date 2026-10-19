@@ -36,6 +36,9 @@ unity/Assets/XnuGenerated/
 unity/Assets/XnuGenerated.meta
 unity/Assets/Scripts/BattleFlow/Ai/Generated/
 unity/Assets/Scripts/BattleFlow/Ai/Generated.meta
+cache/
+unity/Assets/_Recovery/
+unity/Assets/_Recovery.meta
 unity/Assets/XnuStubs/
 unity/Assets/XnuStubs.meta
 unity/Assets/csc.rsp
