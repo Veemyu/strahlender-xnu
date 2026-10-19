@@ -2,9 +2,8 @@
 
 > **Stand 2026-10-19:** Die Stufen `assets`, `stubs`, `unity-build` und `deploy` (Unity-Projekt) sind aus `main` entfernt, ebenso die Optionen `--shaders-into-unity`, `--target` für Unity und die Editor-Erkennung. Verbleibende Stufen: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio`. Die Abschnitte zu den entfernten Stufen gelten nur noch für den Branch `unity`.
 
-Einstiegspunkt ist `scripts/build_all.sh` (bash 3.2-kompatibel). Hilfslogik: `scripts/build_helpers.py` (Entschlüsselung, Manifest) und `scripts/build_stages.py` (Stufenauswahl, Marker mit Eingabe-Hashes, Preflight, Editor-Erkennung). Die Nutzeranleitung „NSP/XCI angeben, App erhalten“ steht in `docs/bauen.md`; dieses Dokument beschreibt die Technik.
-
-Stufen in fester Reihenfolge: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio` (Platzhalter), `assets`, `stubs`, `unity-build`, `deploy`. (`recomp` = macOS-App aus der Rekompilation, Hauptweg seit Entscheidung 3; Technik: `docs/recomp-macapp.md`.) Vor den Stufen läuft ein Preflight. Stand der Umsetzung: alle Stufen sind im Skript vorhanden; `audio` meldet „nicht implementiert“. Getestet sind Dry-run, `extract` (früherer Lauf, siehe unten), `il2cpp`, `masterdata`, `video` (Stichprobe), `shaders` (Stichprobe), `assets`, `recomp` und die Editor-Erkennung. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor.
+Einstiegspunkt ist `scripts/build_all.sh` (bash 3.2-kompatibel). Hilfslogik: `scripts/build_helpers.py` (Entschlüsselung, Manifest) und `scripts/build_stages.py` (Stufenauswahl, Marker mit Eingabe-Hashes, Preflight). Die Nutzeranleitung „NSP/XCI angeben, App erhalten“ steht in `docs/bauen.md`; dieses Dokument beschreibt die Technik.
+Stufen in fester Reihenfolge: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio` (Platzhalter). Die Unity-Stufen `assets`, `stubs`, `unity-build`, `deploy` sind entfernt (Branch `unity`). (`recomp` = macOS-App aus der Rekompilation, Hauptweg seit Entscheidung 3; Technik: `docs/recomp-macapp.md`.) Vor den Stufen läuft ein Preflight. Stand der Umsetzung: alle Stufen sind im Skript vorhanden; `audio` meldet „nicht implementiert“. Getestet sind Dry-run, `extract` (früherer Lauf, siehe unten), `il2cpp`, `masterdata`, `video` (Stichprobe), `shaders` (Stichprobe) und `recomp`. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor.
 
 ## Aufruf
 
@@ -20,19 +19,18 @@ scripts/build_all.sh preflight
 |---|---|
 | `--xci`, `--nsp`, `--keys`, `--prod-keys`, `--title-keys` | Eingaben für `extract` (NSP optional; `title.keys` nur Rückfall). Nach einem erfolgreichen `extract` ist `--xci` nicht mehr nötig. |
 | `--work` | Arbeitsordner, Standard **`work/`** (früher `work/build`). Dort erwarten auch die übrigen Skripte `exefs/`, `romfs/`, `il2cpp/`, `masterdata/`. |
-| `--target` | `macos`, `ios`, `all` (Standard) für `unity-build` und `deploy`. |
+| `--target` | `macos`, `ios`, `all` (Standard) für `recomp`. |
 | `--dry-run` | Nichts ausführen, schreiben oder installieren; Kommandos mit `[dry-run]` anzeigen. |
-| `--from`, `--to`, `--only` | Bereich bzw. genaue Auswahl der Stufen (`--only` nicht mit `--from/--to` kombinierbar). `unity` und `xcode` sind Kurzformen. |
+| `--from`, `--to`, `--only` | Bereich bzw. genaue Auswahl der Stufen (`--only` nicht mit `--from/--to` kombinierbar). |
 | `--force` | Gewählte Stufen neu erzeugen, auch wenn der Marker passt. |
 | `--no-preflight`, `--min-free-gb N` | Preflight auslassen bzw. Mindestplatz ändern (Standard 60). |
 | `--keep-nca` | Entpackte NCAs (mehrere GB) behalten. |
 | `--video-profile`, `--movie-src` | `h265-crf18` (Standard) oder `h265-crf14`; abweichende Videoquelle (Stichproben, ohne Marker). |
-| `--shaders-into-unity`, `--shader-only NAME` | Shader nach `unity/Assets/GameData/Shaders` statt `work/build/shaders`; nur ein Shader (Test, ohne Marker). |
+| `--shader-only NAME` | Nur ein Shader (Test, ohne Marker). |
 | `--launch` | iOS-App nach der Installation starten (Standard: nicht starten). |
-| `--bundle-platform`, `--bundle-subset` | Zielplattform der Bundles (`macos`, `ios`, `keep`; Standard aus `--target`) und Teilmenge der Bundles für den Player (Stufe `assets`, siehe dort). |
-| `--texture-format` | `6x6` (Standard bei iOS), `4x4`, `8x8`, `off` (Standard sonst): BC-Texturen der Bundles nach ASTC (Stufe `assets`, `docs/ios-texturen.md`). |
+| `--bundle-platform`, `--bundle-subset`, `--texture-format` | Optionen der entfernten Stufe `assets` (Branch `unity`). |
 
-Umgebungsvariablen: `TOOLS_DIR` (Standard `tools/`), `MIN_FREE_GB` (Reserve in `extract`, Standard 25), `PREFLIGHT_MIN_FREE_GB`, `UNITY_EDITOR_ROOT`, `DEVELOPER_DIR`, `TEAM_ID`, `SHADER_USED` (JSON der benutzten Keyword-Mengen), `ASSETS_DEST` (gitignorierter Zielordner der Stufe `assets`), `XNU_UNITY_DRIVER=cli|editor|auto`, `XNU_LOCAL_ENV` (statt `work/local.env`).
+Umgebungsvariablen: `TOOLS_DIR` (Standard `tools/`), `MIN_FREE_GB` (Reserve in `extract`, Standard 25), `PREFLIGHT_MIN_FREE_GB`, `DEVELOPER_DIR`, `SHADER_USED` (JSON der benutzten Keyword-Mengen).
 
 ## Preflight
 
@@ -40,8 +38,6 @@ Nur Prüfung, nie Installation, nie `sudo`. Geprüft wird, was die gewählten St
 
 - **Plattenplatz ≥ 60 GB** frei (bei allen Stufen außer `tools`/`audio`, `recomp` allein: **≥ 25 GB**, siehe `docs/bauen.md`); knapper Platz → Exit-Code 8 und Hinweis auf `--min-free-gb`.
 - `recomp`: Homebrew-`clang` und Apple-`clang`, `pkg-config` mit `sdl3`, `libavcodec`, `libavformat`, `libavutil`, `rsync`, `codesign`, `install_name_tool`, `otool`, `iconutil`, `plutil`, `tools/pydeps/{capstone,unicorn}`, vendorte LASRecomp-Teile unter `scripts/recomp/upstream/` und `scripts/recomp/rt-bdsp/nvn/upstream/` (kein Klon nötig).- `tools`: git, make, cc. `extract`: `tools/hactool/hactool` (oder wird von `tools` gebaut). `il2cpp`: `dotnet` ≥ 8 und `tools/il2cppdumper-bin/Il2CppDumper.dll`. `masterdata`/`shaders`: `tools/pydeps/UnityPy`; `shaders`: make, cc. `video`: `ffmpeg` mit `libx265`.
-- `unity-build`: Editor **6000.3.26f1**, Modul Mac Build Support (IL2CPP, arm64) und/oder iOS Build Support je nach `--target`, `unity`-CLI (nur Hinweis; Rückfall: Editor direkt im Batchmodus). `unity-build`/`deploy`: Xcode über `DEVELOPER_DIR` (`xcodebuild -version`).
-
 Fehlendes erscheint als **Installationsliste** (Befehle zum selbst Ausführen). Exit-Code 4 bei fehlenden Werkzeugen, 8 bei zu wenig Platz. Im Dry-run endet ein nicht bestandener Preflight nicht; er zeigt, mit welchem Code der echte Lauf enden würde.
 
 ## Marker und Idempotenz
@@ -55,9 +51,7 @@ Nach Erfolg schreibt jede Stufe (außer `tools`, `audio`, Stichproben) `work/.st
 | `masterdata` | Manifest-Kern, `masterdata_export.py` |
 | `shaders` | Manifest-Kern, alle `shader_*.py`/`shader_build.sh`, Quellen von `shader_translator/`, `SHADER_USED` |
 | `video` | Manifest-Kern, `video_convert.sh`, Profil, Pfade und Größen der WebM-Quellen |
-| `assets` | Manifest-Kern, Pfad/Größen aller Bundles, Marker von `video`, `masterdata`, `audio` |
-| `unity-build` | Marker von `assets`/`shaders`, Inhalt von `Assets/Scripts`, `Assets/Scenes`, `ProjectSettings`, `Packages/manifest.json`, Ziel, Editorversion |
-| `deploy` | Marker von `unity-build`, **Hash** der Team-ID, Ziel |
+| `il2cpp` | Kern von `manifest.json`, SHA-256 von `global-metadata.dat` und Il2CppDumper |
 
 Stufen mit passendem Marker (und vorhandener Ausgabe) werden übersprungen; ein abgebrochener Lauf setzt dort fort, wo die Marker enden. `extract` behält sein eigenes `manifest.json`-Verfahren (siehe unten). Marker, Logs und Ausgaben enthalten nie Schlüssel; die Team-ID erscheint nirgends im Klartext.
 
@@ -70,15 +64,14 @@ Stufen mit passendem Marker (und vorhandener Ausgabe) werden übersprungen; ein 
 `masterdata_export.py export --set all --messages` und `counts` mit `PYTHONPATH=tools/pydeps` nach `work/masterdata/`. Test (Sandbox): 9 s, 129 Dateien, 104.649.610 Byte.
 
 ### `shaders`
-Ruft `scripts/shader_build.sh` (`docs/shader-unity-integration.md`, Abschnitt 13.6). Standardausgabe `work/build/shaders/`; mit `--shaders-into-unity` nach `unity/Assets/GameData/Shaders` (nur gitignorierte Pfade). Exit 9 (16 Varianten mit Subgroup-Shuffle nicht verpackbar) ist eine Warnung. Weil die Hilfsskripte fest `work/romfs` lesen, legt die Stufe bei einem anderen `--work` einen Symlink dorthin an (oder bricht ab, wenn dort ein echter, anderer Ordner liegt). Test: Stichprobe `Custom/EffectCopyTexture` in 1,3 s. Ein Vollauf (6.804 Varianten) wurde hier nicht gestartet; ohne Strippen (`SHADER_USED`) sind Importzeit und Dateimenge im Unity-Projekt unverhältnismäßig, deshalb der Standard außerhalb des Projekts.
-
+Ruft `scripts/shader_build.sh` (`docs/shader-translator.md`). Standardausgabe `work/build/shaders/`. Exit 9 (16 Varianten mit Subgroup-Shuffle nicht verpackbar) ist eine Warnung. Weil die Hilfsskripte fest `work/romfs` lesen, legt die Stufe bei einem anderen `--work` einen Symlink dorthin an (oder bricht ab, wenn dort ein echter, anderer Ordner liegt). Test: Stichprobe `Custom/EffectCopyTexture` in 1,3 s. Ein Vollauf (6.804 Varianten) wurde hier nicht gestartet; ohne Strippen (`SHADER_USED`) sind Importzeit und Dateimenge im Unity-Projekt unverhältnismäßig, deshalb der Standard außerhalb des Projekts.
 ### `video`
 `scripts/video_convert.sh <Movie> work/video <Profil>`: libx265, `hvc1`, kein H.264-Rückfall (`docs/video-umwandlung.md`). Das Skript ist über `video-manifest.json` selbst idempotent. Test: 4-s-Loop in 2,5 s, zweiter Lauf „unverändert, übersprungen“; ein Vollauf der 18 Videos wurde nicht gestartet (rund 10 Minuten Kodierzeit).
 
 ### `audio`
 **Nicht implementiert.** Die Stufe meldet das deutlich und endet mit Erfolg ohne Marker. Vorgesehen ist ausschließlich Offline-Konvertierung der Wwise-Banks in Dateien (vgmstream); die Pipeline spielt nie Ton ab, die App ist standardmäßig stumm (`AudioSafety`).
 
-### `assets`
+### `assets` (entfernt, Branch `unity`; historisch)
 Legt für den Player unter `unity/Assets/StreamingAssets/GameData/` (gitignoriert, per `git check-ignore` erzwungen; sonst Abbruch, Exit 2) bereit:
 
 ```
@@ -96,7 +89,7 @@ Die Struktur entspricht `GameDataPaths` (`Root` = `StreamingAssets/GameData`, we
 - Der Marker-Hash der Stufe enthält `bundle_retarget.py`, `texture_transcode.py`, Plattform, Texturformat, Teilmenge und die Liste der Materialexporte.
 - Beim Unity-Build kopiert Unity die Daten danach einmal vollständig in das Paket (macOS: App 4,1 GB, Ausgabeordner mit Symbolen 5,0 GB; iOS ohne Teilmenge entsprechend ca. 4,4 GB plus Xcode-Derived-Data).
 
-### `unity-build`
+### `unity-build` (entfernt, Branch `unity`; historisch)
 Je Ziel ein Batch-Build mit `Xnu.Build.Editor.BuildScript` (`BuildMacOS`, `BuildIos`):
 
 - Treiber `cli`: `unity --non-interactive --no-banner build unity --target StandaloneOSX|iOS --execute-method … --output-path … --editor-version 6000.3.26f1 --architecture arm64 --allow-dirty-build --log-file …`.
@@ -106,7 +99,7 @@ Je Ziel ein Batch-Build mit `Xnu.Build.Editor.BuildScript` (`BuildMacOS`, `Build
 - **Editor offen:** Erkennt `build_stages.py editor-open` einen Unity-Prozess mit `-projectpath unity` (Import-Worker und Shader-Compiler zählen nicht), wird der Build nicht versucht. Das Skript nennt die PID und zwei Auswege, überspringt `unity-build` und `deploy` und endet mit Exit-Code **11**.
 - Exit-Code 12: Unity-Build fehlgeschlagen (Auszug aus dem Unity-Log).
 
-### `deploy`
+### `deploy` (entfernt, Branch `unity`; historisch)
 - macOS: prüft `work/builds/macos/xnu.app` und `codesign --verify` (nur lesend); die App liegt bereits im Zielordner.
 - iOS: ohne Team-ID (Umgebung `TEAM_ID` oder `work/local.env`) nur Hinweis „nur gebaut“. Mit Team-ID `scripts/ios_deploy.sh work/builds/ios/xnu --no-launch` (mit `--launch` startet die App). Kein iPad → übersprungen mit Hinweis; sonst Exit-Code 13.
 
@@ -127,7 +120,7 @@ Prüft oder erzeugt alles lokal, nichts wird systemweit installiert: hactool (Kl
 
 ## Exit-Codes
 
-0 ok · 2 Aufruf · 3 Eingabedatei fehlt · 4 Werkzeug fehlt oder Build fehlgeschlagen · 5 hactool-Fehler · 6 Schlüssel/Titlekey · 7 passende NCA nicht gefunden · 8 zu wenig Platz · 9 Ergebnisprüfung fehlgeschlagen · 10 Voraussetzung/Vorstufe fehlt · **11 Unity-Editor hält das Projekt (Build übersprungen)** · 12 Unity-Build fehlgeschlagen · 13 iOS-Deploy fehlgeschlagen · 14 il2cpp/masterdata/shaders/video/assets fehlgeschlagen.
+0 ok · 2 Aufruf · 3 Eingabedatei fehlt · 4 Werkzeug fehlt oder Build fehlgeschlagen · 5 hactool-Fehler · 6 Schlüssel/Titlekey · 7 passende NCA nicht gefunden · 8 zu wenig Platz · 9 Ergebnisprüfung fehlgeschlagen · 10 Voraussetzung/Vorstufe fehlt · 14 il2cpp/masterdata/shaders/video fehlgeschlagen (11 bis 13 entfielen mit den Unity-Stufen).
 
 ## Tests
 
@@ -139,7 +132,7 @@ Prüft oder erzeugt alles lokal, nichts wird systemweit installiert: hactool (Kl
 
 Lauf in ein neues Verzeichnis (inzwischen gelöscht): `tools` unter 1 s; `extract` komplett 31 s und 34 s; zweiter Aufruf mit passendem Manifest 0,3 s (übersprungen). Fehlerfälle: fehlende XCI/Keys Exit 3, fehlender Parameter Exit 2, leere Keys Exit 6. Vergleich mit dem manuellen Stand: `exefs/main` und alle fünf ExeFS-Dateien identisch; RomFS byte-identisch bis auf sechs `.DS_Store`-Dateien. Ermittelte Version: Titelversion 393216, Anzeigeversion 1.3.0.
 
-## Ergebnis des ersten Player-Builds (Stand 2026-10-19, M1 Pro und iPad Pro M2)
+## Ergebnis des ersten Player-Builds (Stand 2026-10-19, M1 Pro und iPad Pro M2; Unity-Pipeline, historisch)
 
 Ausführlich in `docs/player-build-1.md`. Kurz:
 
@@ -163,8 +156,6 @@ Gefundene Fehler und Lösungen:
 
 ## Offene Punkte
 
-- Der Unity-Batch-Treiber (Editor geschlossen, `build_all.sh --only unity-build,deploy`) wurde mit echten Bundles noch nicht gelaufen; die Builds entstanden im offenen Editor über `Xnu/Build/…`. Die Startszene ist jetzt `Boot` (Auswahlmenü).
-- Texturumwandlung BC → ASTC ist umgesetzt (`scripts/texture_transcode.py`, Abschnitt „`assets`“, `docs/ios-texturen.md`), aber auf dem iPad noch nicht gelaufen; volle Bundle-Menge auf dem iPad (Installation, Platz, Ladezeit) nicht gemessen; keine Sichtprüfung des Bildes (Mac: kein Bildschirmfoto möglich).
-- `--target all` legt nur einen Datensatz `StreamingAssets/GameData` an (Plattform macOS).
+- (Historisch, Stufe entfernt) Der Unity-Batch-Treiber (Editor geschlossen, `build_all.sh --only unity-build,deploy`) wurde mit echten Bundles noch nicht gelaufen; die Builds entstanden im offenen Editor über `Xnu/Build/…`. Die Startszene ist jetzt `Boot` (Auswahlmenü).- Texturumwandlung BC → ASTC ist umgesetzt (`scripts/texture_transcode.py`, `docs/ios-texturen.md`; Stufe `assets` entfernt), aber auf dem iPad noch nicht gelaufen; volle Bundle-Menge auf dem iPad (Installation, Platz, Ladezeit) nicht gemessen; keine Sichtprüfung des Bildes (Mac: kein Bildschirmfoto möglich).- (Historisch) `--target all` legte nur einen Datensatz `StreamingAssets/GameData` an (Plattform macOS).
 - Auf dieser Entwicklungsmaschine liegt der freie Platz (≈ 41 GB) unter dem Preflight-Mindestwert von 60 GB; der echte Gesamtlauf braucht dort `--min-free-gb` oder mehr Platz.
-- `audio` fehlt; Shader-Strippen (`SHADER_USED`) fehlt, daher Shader standardmäßig außerhalb des Unity-Projekts.
+- `audio` fehlt; Shader-Strippen (`SHADER_USED`) fehlt.

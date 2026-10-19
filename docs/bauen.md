@@ -31,7 +31,7 @@ Der Dry-run prüft Voraussetzungen, zeigt je Stufe, ob sie übersprungen oder au
 
 | Stufe | Tut | Ergebnis |
 |---|---|---|
-| `tools` | baut hactool lokal, prüft ffmpeg, Unity, Xcode | `tools/hactool` |
+| `tools` | baut hactool lokal, prüft ffmpeg, Xcode | `tools/hactool` |
 | `extract` | entpackt XCI/NSP, wendet das Update an | `work/exefs`, `work/romfs`, `work/manifest.json` |
 | `il2cpp` | Il2CppDumper über `exefs/main` und `global-metadata.dat` | `work/il2cpp/` |
 | `recomp` | **macOS-App aus der Rekompilation** (Hauptweg, siehe Abschnitt unten): Generator → C → Übersetzen → Laufzeit/Metal → `BDSP.app`, RomFS nach Application Support | `work/builds/macos-recomp/BDSP.app` |
@@ -39,19 +39,12 @@ Der Dry-run prüft Voraussetzungen, zeigt je Stufe, ob sie übersprungen oder au
 | `shaders` | übersetzt die Maxwell-Shader, erzeugt Unity-Wrapper | `work/build/shaders/` (Standard) |
 | `video` | WebM (VP8) nach H.265 (`.mp4`, `hvc1`) | `work/video/` |
 | `audio` | **nicht implementiert** (Platzhalter, spielt nie etwas ab) | – |
-| `assets` | legt Bundles, Videos, Stammdaten und Materialexporte für den Player bereit und setzt die Plattformkennung der Bundles (ohne sie lädt der Player nichts) | `unity/Assets/StreamingAssets/GameData/` |
-| `unity-build` | baut macOS und iOS im Batchmodus (IL2CPP, arm64, Metal) | `work/builds/macos/xnu.app`, `work/builds/ios/xnu/` |
-| `deploy` | prüft die macOS-App; installiert auf ein angeschlossenes iPad | – |
-
-Kurzformen: `unity` = `unity-build`, `xcode` = `deploy`.
-
 ## Teilschritte und Wiederaufnahme
 
 ```sh
 scripts/build_all.sh --from masterdata --to video      # nur ein Bereich
 scripts/build_all.sh --only shaders,video              # genau diese Stufen
 scripts/build_all.sh preflight                         # nur Voraussetzungen prüfen
-scripts/build_all.sh --only unity-build,deploy         # nach Schließen des Editors wiederholen
 ```
 
 Jede Stufe schreibt nach Erfolg einen Marker `work/.stages/<Stufe>.json` mit dem Hash ihrer Eingaben (Manifest der Extraktion, Skripte, vorgelagerte Marker, Unity-Quellen). Ein erneuter Aufruf überspringt Stufen, deren Eingaben unverändert sind, und setzt dort fort, wo ein Lauf abgebrochen wurde. `--force` erzwingt Neuerzeugung der gewählten Stufen. Für `extract` genügt nach dem ersten Lauf ein Aufruf ohne `--xci`; das vorhandene Ergebnis wird weiterverwendet.
@@ -74,20 +67,20 @@ open work/builds/macos-recomp/BDSP.app
 - **Spielstand importieren:** Menü *Spiel → Spielstand importieren …*, per Ablegen von `SaveData.bin` (oder dem Ordner) auf das Fenster oder `BDSP.app/Contents/MacOS/BDSP --import-save <Pfad>`; der Stand wird vorher geprüft (Größe 979.108 Byte, MD5-Prüfsumme wie `scripts/bdsp_save.py`).
 - **Fehlermeldungen:** Fehlt etwas, nennt das Skript es auf Deutsch mit dem nächsten Schritt (Exit-Codes: 4 Werkzeug/Bau, 8 Platz, 10 Voraussetzung/Vorstufe). Logs: `work/logs/recomp-compile.log`, `recomp-runtime.log`, `recomp-images.log`, Generator: `work/recomp/spike2/gen4_<Modul>.log`.
 
-## Wenn der Unity-Editor offen ist
+## Unity-Build (entfernt, Branch `unity`)
 
-Hält ein Unity-Editor das Projekt `unity/`, kann kein Batch-Build laufen (Projektsperre). Das Skript erkennt das, nennt die PID und überspringt `unity-build` und `deploy`, statt zu scheitern. Der Lauf endet dann mit Exit-Code **11**. Editor schließen und `--only unity-build,deploy` wiederholen, oder im offenen Editor das Menü **Xnu > Build** benutzen (Ausgabe ebenfalls unter `work/builds/`).
+Der Unity-Weg ist aus `main` entfernt; die Stufen `assets`, `unity-build` und `deploy` stehen nur noch auf dem Branch `unity`. Dieser Abschnitt ist historisch.
 
 ## iPad / iPadOS
 
 1. iPad per USB anschließen, entsperren, Entwicklermodus an, Entwicklerprofil vertrauen.
-2. Team-ID bereitstellen: als Umgebungsvariable `TEAM_ID` oder als Zeile `TEAM_ID=<deine ID>` in `work/local.env` (gitignoriert). Die ID steht nie in `ProjectSettings`, Logs oder Markern (nur ein Hash).
-3. `scripts/build_all.sh --only deploy --target ios` baut mit Xcode und installiert. Mit `--launch` startet die App danach (sie ist derzeit stumm).
+2. Team-ID als Zeile `TEAM_ID=<deine ID>` in `work/local.env` (gitignoriert). Sie wird nie ausgegeben oder gespeichert (`scripts/recomp/ios/deploy_ios.sh`).
+3. `scripts/recomp/ios/deploy_ios.sh build`, einmalig `data` (RomFS nach Documents, ca. 4,7 GB), dann `install` und `run [Sekunden]`. Ohne Zeitangabe läuft die App bis Ctrl-C; das Log landet in `work/builds/`. Die App ist derzeit stumm.
 4. Spielstand aufs iPad: `scripts/ios_push_save.sh` (Datei nach `Documents/SaveData.bin`, Prüfsumme vor und nach, Import beim nächsten „Weiter“; `--pull` holt den Stand zurück). Der Build trägt `UIFileSharingEnabled` ein, der Documents-Ordner erscheint damit in der Dateien-App. Verfahren, Ursachen und Messwerte: `docs/ipad-durchstich-1.md`.
 
-Ohne Team-ID bleibt es beim Xcode-Projekt unter `work/builds/ios/xnu/`; du kannst es in Xcode mit deinem eigenen Team öffnen. Ohne angeschlossenes iPad wird die Installation übersprungen. Ein kostenloses Apple-Team reicht; das Profil läuft nach 7 Tagen ab.
+Ein kostenloses Apple-Team reicht; das Profil läuft nach 7 Tagen ab.
 
-**Daten auf dem iPad (Stand 2026-10-19):** Für die iPad-Erprobung genügt eine Teilmenge der Bundles: `scripts/build_all.sh --only assets --target ios --bundle-subset scripts/subsets/ipad-start.txt` (fünf Bundles, 34,6 MB, mit Stammdaten 179 MB); danach in Unity `Xnu/Build/iOS und iPadOS (Xcode-Projekt)` und `scripts/ios_deploy.sh work/builds/ios/xnu --no-launch`. Start einer Szene ohne Eingabe: `xcrun devicectl device process launch --device <iPad> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"FieldTest2"}' dev.local.xnum0`. Die App startet in der Boot-Szene (Auswahlliste der Testszenen). **Texturen:** Bei `--target ios` wandelt die Stufe `assets` die BC/DXT-Texturen der Bundles automatisch nach ASTC 6×6 um (`scripts/texture_transcode.py`, `--texture-format 4x4|6x6|8x8|off`; Teilmenge: 24 s, Zone 422: Texturspeicher 46,4 → 25,5 MiB, Bundles auf der Platte rund 1,4-fach); Technik, Messungen und Grenzen in `docs/ios-texturen.md`. Ohne diesen Schritt bleibt die Karte auf iOS ohne Texturen.
+**Daten auf dem iPad (historisch):** Die Teilmenge der Bundles (`scripts/subsets/ipad-start.txt`, fünf Bundles, 34,6 MB) stammt aus der entfernten Stufe `assets` (Branch `unity`). Für den Recomp-Weg sind RomFS und Start per `deploy_ios.sh data` und `run` maßgeblich. Start einer Szene ohne Eingabe: `xcrun devicectl device process launch --device <iPad> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"FieldTest2"}' dev.local.xnum0`. Die App startet in der Boot-Szene (Auswahlliste der Testszenen). **Texturen (historisch):** Die Umwandlung BC/DXT nach ASTC lief in der Stufe `assets` (`scripts/texture_transcode.py`, Messungen in `docs/ios-texturen.md`).
 
 ## Daten im Player
 
@@ -115,6 +108,6 @@ Die App sucht ihre Daten zuerst über die Umgebungsvariable `XNU_GAMEDATA`, dann
 ## Bekannte Lücken
 
 - `audio` ist nicht umgesetzt: die gebaute App enthält derzeit keinen Ton und bleibt stumm; Ton wird erforscht (Todo `rc-audio`).
-- Die Shader-Wrapper landen standardmäßig nur in `work/build/shaders/`; ins Unity-Projekt (`--shaders-into-unity`) sollten sie erst nach dem Strippen auf die tatsächlich benutzten Varianten, sonst entstehen tausende Dateien (Stand: `docs/shader-unity-integration.md`, Abschnitt 13).
+- Die Shader-Wrapper landen in `work/build/shaders/`.
 - Platz: 60 GB sind der Mindestwert des Preflights. Auf knapperen Laufwerken lässt er sich mit `--min-free-gb N` bewusst senken.
 - Der erste echte Player-Build lief am 2026-10-19 im offenen Editor (Menü `Xnu/Build/…`) durch: macOS 202 s (kalt) bzw. 44 s, iOS 19 s, Installation 2 min 40 s; die Zone 422 lädt in beiden Apps in rund 1 s mit 30 FPS (`docs/player-build-1.md`). **Neu:** Umwandlung der BC-Texturen nach ASTC (`scripts/texture_transcode.py`, `docs/ios-texturen.md`), auf macOS mit geladenem Bundle geprüft, **auf dem iPad noch nicht**. **Offen:** Lauf der umgewandelten Texturen auf dem iPad, Bild-Sichtprüfung, volle Bundle-Menge auf dem iPad, Lauf des Batch-Treibers bei geschlossenem Editor.

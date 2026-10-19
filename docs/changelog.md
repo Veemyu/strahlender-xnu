@@ -4,6 +4,9 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 ## 2026-10-19
 
+- **Doku bereinigt:** `bauen.md` und `build-pipeline.md` nennen nur noch die aktuellen Stufen. Abschnitte zu den entfernten Unity-Stufen sind als historisch markiert. iPad-Anleitung führt jetzt über `scripts/recomp/ios/deploy_ios.sh`. Stand-Hinweis oben in beiden Dateien.
+- **Unity-Stufen aus Skripten entfernt:** siehe nächster Eintrag.
+
 - **Unity-Stufen entfernt:** `assets`, `stubs`, `unity-build` und `deploy` sind aus `scripts/build_all.sh` und `scripts/build_stages.py` entfernt, ebenso Editor-Erkennung (`editor-open`), `--shaders-into-unity`, Unity- und Xcode-Preflight. Die Shader-Stufe bleibt (liest Unity-Bundles des Spiels per UnityPy). Tests angepasst, 347 Tests bestehen.
 - **Unity auf Branch `unity`:** siehe Eintrag oben (Unity-Projekt, Docs, Test für `material_variants`).
 
