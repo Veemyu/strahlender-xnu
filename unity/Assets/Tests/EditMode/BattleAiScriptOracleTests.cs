@@ -82,9 +82,9 @@ namespace Xnu.Tests
                 Assert.AreEqual(int.Parse(((string)kv.Value).Substring("BaciAI_Seq_".Length)), AiScriptBasic.SeqDispatch[int.Parse(kv.Key)], "KI-Nummer " + kv.Key);
         }
 
-        internal static void Check(string cls, AiScriptBase script)
+        internal static void Check(string cls, AiScriptBase script, string fixture = "BattleAiScripts.json")
         {
-            var root = BattleFixtures.Load("BattleAiScripts.json");
+            var root = BattleFixtures.Load(fixture);
             var funcs = Functions(root, cls);
             int checkedFunctions = 0, checkedCases = 0, skipped = 0;
             var failures = new List<string>();
@@ -129,6 +129,27 @@ namespace Xnu.Tests
         }
 
         [Test]
+        public void DoubleScriptMatchesOracle() => Check("BtlAiDouble", Gen("AiScriptDouble"), "BattleAiScriptsDouble.json");
+
+        [Test]
+        public void ExpertScriptMatchesOracle() => Check("BtlAiExpert", Gen("AiScriptExpert"), "BattleAiScriptsExpert.json");
+
+        [Test]
+        public void StrongFullScriptMatchesOracle() => Check("BtlAiStrong", Gen("AiScriptStrongFull"), "BattleAiScriptsStrongFull.json");
+
+        // Die Klassen entstehen beim Bauen aus dem eigenen Dump (scripts/ai_translate); ohne sie wird übersprungen.
+        static AiScriptBase Gen(string className)
+        {
+            var s = AiGenerated.Create(className);
+            if (s == null) Assert.Ignore("Erzeugte KI-Klasse " + className + " fehlt (Build-Stufe ai_translate nicht gelaufen).");
+            return s;
+        }
+
+        // Die übrigen BaciAI_Seq_*-Funktionen (aus dem Pseudocode übersetzt) und die von Hand umgesetzten gemeinsam, ohne den Verteiler-Überspringer.
+        [Test]
+        public void BasicSeqScriptsMatchOracle() => Check("BtlAiBasic", new AiScriptBasic(), "BattleAiScriptsBasicSeq.json");
+
+        [Test]
         public void StrongScriptMatchesOracle() => Check("BtlAiStrong", new AiScriptStrong());
 
         [Test]
@@ -150,8 +171,9 @@ namespace Xnu.Tests
         [Test]
         public void ImplementedSeqFunctionsAreDispatched()
         {
+            new AiScriptBasic();     // die Konstruktion trägt die erzeugten Seq-Funktionen in ImplementedSeq ein
             var targets = new HashSet<int>(AiScriptBasic.SeqDispatch.Values);
-            foreach (int n in AiScriptBasic.ImplementedSeq) Assert.IsTrue(targets.Contains(n), "Seq " + n + " wird von keiner KI-Nummer erreicht");
+            foreach (int n in targets) Assert.IsTrue(AiScriptBasic.ImplementedSeq.Contains(n), "Seq " + n + " ist nicht umgesetzt");
         }
     }
 }

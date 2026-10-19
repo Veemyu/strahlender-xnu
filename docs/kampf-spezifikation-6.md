@@ -1,5 +1,7 @@
 # Kampfablauf, Scheibe 6: Gegner-KI der Trainer (BtlAi*, AIBit, Wertung, Item, Wechsel)
 
+> **Nachtrag:** Double, Expert, die übrigen Basic-Funktionen und der Strong-Doppelzweig, die hier als Lücken stehen (Abschnitt 8), sind seit Scheibe 7 umgesetzt und per Orakel geprüft: `docs/kampf-spezifikation-7.md`.
+
 Stand: Scheibe 6, aufbauend auf `docs/kampf-spezifikation-5.md` (Abschnitt 5 kündigte die KI als Lücke an). Code: `unity/Assets/Scripts/BattleFlow/Ai/`
 (`TrainerAi.cs`, `AiWorld.cs`, `AiScriptBase.cs`, `AiScriptBasic.cs`, `AiScriptsOther.cs`), Schnittstelle in `BattleEngine.cs` (`BattleSetup.EnemyAi`, `EnemyItems`).
 Orakel: `scripts/battle_oracle_ai.py` (Unicorn, echte ARM64-Funktionen aus `work/elf/main.patched.elf`), Fixtures `unity/Assets/Tests/EditMode/Fixtures/BattleAi*.json` (nur Zahlen).

@@ -15,8 +15,15 @@ SplitMix64; 62,5 % kleine Zahl 0..13, 18,75 % Konstante aus der Liste `big` (all
 Aufruf:  PYTHONPATH=tools/pydeps python3 scripts/battle_oracle_ai.py [--out DIR] [--cases N] [--only KLASSE ...]
 Ausgabe: BattleAiScripts.json (nur Zahlen: Funktionen, Aufrufzaehler, Hash der Aufruffolge, Endwertung) und
          BattleAiDispatch.json (Attacken-KI-Nummer -> Funktion je Skriptklasse) und BattleAiCmdUsage.json.
+
+Scheibe 7 (uebersetzte Skriptklassen, Fixtures je Klasse mit --suffix; Include-Eintraege duerfen Muster enthalten, `name@62=k` legt die KI-Nummer fest):
+  --only BtlAiDouble --cases 16 --include scripts/battle_oracle_ai_functions.json --suffix Double
+  --only BtlAiExpert --cases 12 --include scripts/battle_oracle_ai_expert_strong.json --suffix Expert
+  --only BtlAiStrong --cases 32 --include scripts/battle_oracle_ai_expert_strong.json --suffix StrongFull
+  --only BtlAiBasic  --cases 12 --include scripts/battle_oracle_ai_basic_seq.json --suffix BasicSeq
 """
 import argparse
+import fnmatch
 import json
 import re
 import struct
@@ -170,7 +177,16 @@ def bo_script_methods(name):
     return [m["Address"] + IMAGE_BASE for m in _SM if m["Name"] == name]
 
 
-DISPATCHERS = {"BtlAiBasic": "Calc_BasicAll", "BtlAiExpert": "main_proc"}
+DISPATCHERS = {"BtlAiBasic": [("Calc_BasicAll", "BtlAiBasic")], "BtlAiExpert": [("main_proc", "BtlAiExpert")],
+               "BtlAiDouble": [("DoubleAI_Enemy_Main", "BtlAiDouble.Enemy"), ("DoubleAI_Friend_Main", "BtlAiDouble.Friend")]}
+
+
+def seq_no(name):
+    """Skriptnummer aus dem Funktionsnamen (Double: Friend-Funktionen +1000); Hilfsfunktionen ohne Nummer -> None."""
+    m = re.search(r"Seq_(\d+)$", name)
+    if not m:
+        return None
+    return int(m.group(1)) + (1000 if "Friend" in name else 0)
 
 
 def run_function(o, addr, src, name, seed, big, override=None):
@@ -209,6 +225,7 @@ def main(argv=None):
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--trace", help="Klasse.Funktion:Seed - Aufruffolge der echten Funktion ausgeben und beenden")
     ap.add_argument("--include", help="JSON {Klasse: [Funktionsname, ...]}: nur diese Funktionen in die Fixture schreiben")
+    ap.add_argument("--suffix", help="Dateinamen-Zusatz (z. B. Double -> BattleAiScriptsDouble.json), damit die Fixtures je Skriptklasse getrennt bleiben")
     ns = ap.parse_args(argv)
     out = Path(ns.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -243,17 +260,21 @@ def main(argv=None):
                 for a in sorted({int(m, 16) for m in re.findall(r"puVar\d = PTR_DAT_([0-9a-f]{8});", src)}):
                     o._make_static_class(a)
                 o.run(addr, max_insns=200000)
+        expanded = []
         for addr, name, src in split_functions(text):
-            if name == "_ctor" or (name == "main" and cls != "BtlAiItem"):
+            if name == "_ctor" or (name == "main" and cls not in ("BtlAiItem", "BtlAiDouble")):
                 continue
-            override = {}
-            if include is not None:
-                # Eintrag "name" oder "name@57=0,128=0" (feste Antworten fuer einzelne Befehle, z. B. Einzelkampf ohne G-Modus)
-                spec = next((e for e in include.get(cls, []) if e.split("@")[0] == name), None)
-                if spec is None:
-                    continue
+            if include is None:
+                expanded.append((addr, name, src, {}))
+                continue
+            # Eintrag "name" oder "name@57=0,128=0" (feste Antworten fuer einzelne Befehle, z. B. Einzelkampf ohne G-Modus);
+            # derselbe Name darf mehrfach mit verschiedenen Antworten stehen (z. B. Verteiler mit festgelegter KI-Nummer)
+            for spec in [e for e in include.get(cls, []) if fnmatch.fnmatchcase(name, e.split("@")[0])]:
+                ov = {}
                 if "@" in spec:
-                    override = {int(k): int(v) for k, v in (kv.split("=") for kv in spec.split("@")[1].split(","))}
+                    ov = {int(k): int(v) for k, v in (kv.split("=") for kv in spec.split("@")[1].split(","))}
+                expanded.append((addr, name, src, ov))
+        for addr, name, src, override in expanded:
             returns_void = re.search(r"\n\s*void\s", src[:200]) is not None
             o.prepare(src)
             o.prepare_slots(src)
@@ -266,7 +287,7 @@ def main(argv=None):
             for seed in range(1, ns.cases + 1):
                 o.entered = []
                 r = run_function(o, addr, src, name, seed, big, override)
-                entered_seq = next((int(re.search(r"(\d+)$", seq_addrs[a]).group(1)) for a in o.entered if a in seq_addrs and a != addr), 0)
+                entered_seq = next((seq_no(seq_addrs[a]) for a in o.entered if a in seq_addrs and a != addr and seq_no(seq_addrs[a])), 0)
                 if r["error"]:
                     errors += 1
                 for c, _a, _v in r["calls"]:
@@ -279,11 +300,10 @@ def main(argv=None):
                 entry["override"] = {str(k): v for k, v in override.items()}
             funcs.append(entry)
         result["classes"][cls] = funcs
-        disp = DISPATCHERS.get(cls)
-        if disp:
+        for disp, key in DISPATCHERS.get(cls, []):
             by_addr = {a: n for a, n, _s in split_functions(text)}
-            o.watch_entries([a for a, n in by_addr.items() if a != next(x for x, y in by_addr.items() if y == disp)])
             daddr = next(a for a, n in by_addr.items() if n == disp)
+            o.watch_entries([a for a, n in by_addr.items() if a != daddr])
             table = {}
             for k in range(0, 700):
                 for seed in range(1, 25):
@@ -293,11 +313,12 @@ def main(argv=None):
                     if names:
                         table[k] = names[0]
                         break
-            dispatch[cls] = table
+            dispatch[key] = table
         print(cls, len(funcs), "Funktionen,", sum(f["errors"] for f in funcs), "Fehlerlaeufe", file=sys.stderr)
-    (out / "BattleAiScripts.json").write_text(json.dumps(result, separators=(",", ":")))
-    (out / "BattleAiDispatch.json").write_text(json.dumps(dispatch, sort_keys=True))
-    (out / "BattleAiCmdUsage.json").write_text(json.dumps(cmd_usage, sort_keys=True))
+    sfx = ns.suffix or ""
+    (out / f"BattleAiScripts{sfx}.json").write_text(json.dumps(result, separators=(",", ":")))
+    (out / f"BattleAiDispatch{sfx}.json").write_text(json.dumps(dispatch, sort_keys=True))
+    (out / f"BattleAiCmdUsage{sfx}.json").write_text(json.dumps(cmd_usage, sort_keys=True))
     return 0
 
 

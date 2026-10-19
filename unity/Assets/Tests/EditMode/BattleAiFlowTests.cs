@@ -93,6 +93,30 @@ namespace Xnu.Tests
             Assert.AreEqual(BattlePhase.Finished, e.Phase);
         }
 
+        // Scheibe 7: Expert und Double laufen im Ablauf mit (alle sieben AIBit-Skripte), reproduzierbar und ohne Ausnahme.
+        [Test]
+        public void EngineRunsWholeBattleWithAllScripts()
+        {
+            var data = BattleFlowTestData.Create();
+            const uint all = AiBit.Basic | AiBit.Strong | AiBit.Expert | AiBit.Double | AiBit.Allowance | AiBit.Item | AiBit.PokeChange;
+            var turns = new int[2];
+            for (int run = 0; run < 2; run++)
+            {
+                var e = Engine(data, 21, all, null, BattleFlowTestData.Ember, BattleFlowTestData.Flamethrower, BattleFlowTestData.Tackle);
+                int guard = 0;
+                while (e.Phase != BattlePhase.Finished && guard++ < 300)
+                {
+                    if (e.Phase == BattlePhase.AwaitReplacement) e.SubmitReplacement(e.Parties[0].FindIndex(m => !m.IsFainted));
+                    else e.Submit(BattleCommand.Fight(0));
+                }
+                Assert.AreEqual(BattlePhase.Finished, e.Phase);
+                turns[run] = e.Turn;
+            }
+            Assert.AreEqual(turns[0], turns[1]);
+            if (AiGenerated.Available("AiScriptExpert") && AiGenerated.Available("AiScriptDouble"))
+                Assert.AreEqual(0, new TrainerAi(all, 1).UnimplementedScriptBits);
+        }
+
         [Test]
         public void TrainerWithoutBitsGetsNoAi() => Assert.IsNull(TrainerAi.ForTrainer(0, 1, null));
 

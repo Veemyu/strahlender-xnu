@@ -34,8 +34,12 @@ unity/Assets/GameData.meta
 unity/Assets/StreamingAssets.meta
 unity/Assets/XnuGenerated/
 unity/Assets/XnuGenerated.meta
+unity/Assets/Scripts/BattleFlow/Ai/Generated/
+unity/Assets/Scripts/BattleFlow/Ai/Generated.meta
 unity/Assets/XnuStubs/
 unity/Assets/XnuStubs.meta
+unity/Assets/csc.rsp
+unity/Assets/csc.rsp.meta
 unity/Assets/StreamingAssets/
 unity/Assets/Scripts/Probe/Resources/MemoryProbeVariant.txt*
 unity/Assets/Screenshots/

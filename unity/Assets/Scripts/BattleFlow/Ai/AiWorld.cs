@@ -12,8 +12,13 @@ namespace Xnu.Battle.Flow
     {
         readonly BattleEngine _e;
         readonly BattleRandom _rng;
+        readonly BattleRandom _common;
         readonly HashSet<int> _opened = new HashSet<int>();
         int _logSeen;
+        readonly Dictionary<int, HashSet<int>> _used = new Dictionary<int, HashSet<int>>();   // Attacken, die ein Pokemon im Kampf schon eingesetzt hat (CheckWazaStored)
+
+        // Gemeinsamer Zufallswert der Runde (IF_COMMONRND_*, statisches Feld im Original) [A: einmal je Entscheidung gezogen].
+        public ulong CommonRnd;
 
         public int Side;                 // Seite des KI-Pokemon
         public BattleMon Attacker;
@@ -27,6 +32,7 @@ namespace Xnu.Battle.Flow
         {
             _e = engine;
             _rng = new BattleRandom(seed);
+            _common = new BattleRandom(seed ^ 0x9E3779B97F4A7C15UL);   // [A] BTL_CLIENT-Zufall fuer IF_COMMONRND_* (eigene Folge, Seed unbekannt)
         }
 
         public BattleRandom Rng => _rng;
@@ -40,7 +46,13 @@ namespace Xnu.Battle.Flow
             {
                 var l = _e.Log[_logSeen];
                 if (l.Kind == LogKind.AbilityActivated && l.Poke >= 0) _opened.Add(l.Poke);
+                if (l.Kind == LogKind.MoveUsed && l.Poke >= 0)
+                {
+                    if (!_used.TryGetValue(l.Poke, out var set)) _used[l.Poke] = set = new HashSet<int>();
+                    set.Add(l.Id);
+                }
             }
+            CommonRnd = _common.GetValue(256);
         }
 
         BattleMon Bpp(long aiSide)
@@ -112,21 +124,8 @@ namespace Xnu.Battle.Flow
             return SideEff(m, kind) ? 1 : 0;
         }
 
-        // Vereinfachter Schadenswert (Stufen/Wetter/Faehigkeiten ohne Wirkung) fuer COMP_POWER und Skripte, die Schaden vergleichen. [A]
-        public int EstimateDamage(BattleMon atk, BattleMon def, long moveNo)
-        {
-            var m = Move(moveNo);
-            if (!IsDamage(m) || m.Power == 0) return 0;
-            bool physical = m.DamageType == 1;
-            int a = physical ? atk.Poke.Attack : atk.Poke.SpAttack;
-            int d = Math.Max(1, (int)(physical ? def.Poke.Defence : def.Poke.SpDefence));
-            double dmg = (atk.Level * 2 / 5 + 2) * (double)m.Power * a / d / 50 + 2;
-            if (atk.Poke.IsMatchType(m.Type)) dmg *= 1.5;
-            dmg *= AffinityFactor(Affinity(def, moveNo));
-            return (int)dmg;
-        }
-
-        static double AffinityFactor(int id) => id >= 0 && id <= 13 ? new double[] { 0, 1 / 64.0, 1 / 32.0, 1 / 16.0, 1 / 8.0, 1 / 4.0, 1 / 2.0, 1, 2, 4, 8, 16, 32, 64 }[id] : 1;
+        // Schadenswert wie BattleSimulator.CalcDamage der KI: der echte Schadensrechner der Engine mit festem Zufallsfaktor 85 (kein Volltreffer).
+        public int EstimateDamage(BattleMon atk, BattleMon def, long moveNo) => _e.EstimateDamageForAi(atk, def, (int)moveNo);
 
         static double RankFactor(int rank) => rank >= 6 ? (2 + (rank - 6)) / 2.0 : 2.0 / (2 + (6 - rank));
 
@@ -242,7 +241,36 @@ namespace Xnu.Battle.Flow
                 case AiCmd.IfParaUnder: return PokeValue(Bpp(a0), a1) < a2 ? 1 : 0;                    // [P]
                 case AiCmd.IfParaOver: return PokeValue(Bpp(a0), a1) > a2 ? 1 : 0;
                 case AiCmd.IfParaEqual: return PokeValue(Bpp(a0), a1) == a2 ? 1 : 0;
-                case AiCmd.IfWazaHinshi: return 0;                                                     // [N]
+                case AiCmd.IfWazaHinshi: return WazaKills() ? 1 : 0;                                   // [P] check_current_waza_hinsi: CalcDamage >= KP des Gegners
+                case AiCmd.IfDokudoku: return Toxic(Bpp(a0)) ? 1 : 0;                                  // [P] Gift mit Moudoku-Zaehler (SICKCONT.IsMoudokuCont)
+                case AiCmd.IfnDokudoku: return Toxic(Bpp(a0)) ? 0 : 1;
+                case AiCmd.IfBenchPpdec: return BenchPpDec(a0) ? 1 : 0;                                // [P] ein Ersatzpokemon mit angebrauchten AP
+                case AiCmd.IfZidandaPowerup: return 0;                                                 // [N] Fussabdruck-Zustand nicht modelliert
+                case AiCmd.IfnWazaHinshi: return WazaKills() ? 0 : 1;
+                case AiCmd.IfHinshi: return Bpp(a0).Poke.Hp == 0 ? 1 : 0;                              // [P]
+                case AiCmd.IfnHinshi: return Bpp(a0).Poke.Hp == 0 ? 0 : 1;
+                case AiCmd.IfHaveWaza: return HaveWaza(a0, a1, false) ? 1 : 0;                         // [P] eigene: alle Attacken; Gegenueber: schon eingesetzte
+                case AiCmd.IfnHaveWaza: return HaveWaza(a0, a1, false) ? 0 : 1;
+                case AiCmd.IfHaveWazaSeqno: return HaveWaza(a0, a1, true) ? 1 : 0;                     // [P]
+                case AiCmd.IfnHaveWazaSeqno: return HaveWaza(a0, a1, true) ? 0 : 1;
+                case AiCmd.IfCommonrndUnder: return CommonRnd < (ulong)a0 ? 1 : 0;                    // [P] Feld +8 des statischen Zufallswerts
+                case AiCmd.IfCommonrndOver: return CommonRnd > (ulong)a0 ? 1 : 0;                      // [A]
+                case AiCmd.IfCommonrndEqual: return CommonRnd == (ulong)a0 ? 1 : 0;                    // [A]
+                case AiCmd.IfnCommonrndEqual: return CommonRnd == (ulong)a0 ? 0 : 1;
+                case AiCmd.CheckAgiRank: return AgiRank(Bpp(a0));                                      // [A] CalcAgilityOrder: 0 = zuerst
+                case AiCmd.CheckMamoruCount: return Bpp(a0).ProtectCount;                              // [P] Feld; hier die Engine-Zaehlung [A]
+                case AiCmd.CheckLastWazaKind: return Move(Defender.LastMove)?.DamageType ?? 0;         // [P] letzte Attacke des Verteidigers
+                case AiCmd.CheckStatus: return PokeValue(Bpp(a0), a1);                                 // [P] BTL_POKEPARAM.GetValue
+                case AiCmd.IfDmgPhysicUnder: return PhysicVsSpecial(a0) < 0 ? 1 : 0;                   // [P] StatusRank(Angriff) < StatusRank(Sp.-Angriff)
+                case AiCmd.IfDmgPhysicOver: return PhysicVsSpecial(a0) > 0 ? 1 : 0;
+                case AiCmd.IfDmgPhysicEqual: return PhysicVsSpecial(a0) == 0 ? 1 : 0;
+                case AiCmd.CheckIryoku: return Move(MoveNo)?.Power ?? 0;                               // [A]
+                case AiCmd.IfBenchDamageMax: return 0;                                                 // [N]
+                case AiCmd.CheckSlowstartTurn: return 0;                                               // [N]
+                case AiCmd.GetMezameType: return 0;                                                    // [N] Erwachen-Kraft
+                case AiCmd.IfWazahide: return 0;                                                       // [N] Tauchen/Fliegen o. ae.
+                case AiCmd.IfAlreadyMoraibi: return 0;                                                 // [N]
+                case AiCmd.CompPowerWithPartner: return 0;                                             // [N] Doppelkampf
                 case AiCmd.CheckSoubiItem: return Bpp(a0).Poke.Item;                                   // [P]
                 case AiCmd.CheckSoubiEquip: return _e.Data.GetItem(Bpp(a0).Poke.Item)?.HoldEffect ?? 0;  // [A]
                 case AiCmd.CheckPokeSex: return Bpp(a0).Poke.Sex;                                      // [P]
@@ -295,6 +323,54 @@ namespace Xnu.Battle.Flow
                 case AiCmd.IfHaveKinomi: return (_e.Data.GetItem(Bpp(a0).Poke.Item)?.Type ?? -1) == 3 ? 1 : 0;   // [A]
                 default: return 0;
             }
+        }
+
+        static bool Toxic(BattleMon m) => m.PokeSick == Sick.Poison && SickCont.IsMoudokuCont(m.SickContents[Sick.Poison]);
+
+        bool BenchPpDec(long a0)
+        {
+            var m = Bpp(a0);
+            foreach (var p in _e.Parties[m.Side])
+            {
+                if (p == _e.Active(m.Side) || p.IsFainted) continue;
+                for (int i = 0; i < BattleMon.MoveCount; i++) if (p.Moves[i] != 0 && p.Pp[i] != p.MaxPp[i]) return true;
+            }
+            return false;
+        }
+
+        // IF_WAZA_HINSHI: die aktuelle Attacke des Angreifers (CalcDamage, fester Zufallsfaktor) besiegt den Verteidiger.
+        bool WazaKills() => Defender != null && Attacker != null && EstimateDamage(Attacker, Defender, MoveNo) >= Defender.Poke.Hp;
+
+        // check_have_waza / check_have_waza_seqno: eigene Seite (AI-Seite 1/3) prueft alle Attacken, das Gegenueber nur schon eingesetzte (CheckWazaStored).
+        bool HaveWaza(long aiSide, long value, bool bySeqNo)
+        {
+            var m = Bpp(aiSide);
+            if (m == null || m.Poke.Hp == 0) return false;
+            bool own = aiSide == 1 || aiSide == 3;
+            _used.TryGetValue(m.PokeId, out var known);
+            for (int i = 0; i < BattleMon.MoveCount; i++)
+            {
+                int no = m.Moves[i];
+                if (no == 0 || (!own && (known == null || !known.Contains(no)))) continue;
+                if (bySeqNo ? (Move(no)?.AiSeqNo ?? 0) == value : no == value) return true;
+            }
+            return false;
+        }
+
+        // CalcAgilityOrder: 0 = handelt zuerst (hoehere Initiative); bei Gleichstand 0 fuer das eigene Pokemon [A].
+        long AgiRank(BattleMon m)
+        {
+            var other = m == Attacker ? Defender : Attacker;
+            return Agility(m) >= Agility(other) ? 0 : 1;
+        }
+
+        // StatusRank(Angriff) gegen StatusRank(Sp.-Angriff) mit Stufenfaktor: < 0, 0, > 0.
+        int PhysicVsSpecial(long aiSide)
+        {
+            var m = Bpp(aiSide);
+            double a = m.Poke.Attack * RankFactor(m.Poke.GetRank(PokeValueId.ATTACK_RANK));
+            double s = m.Poke.SpAttack * RankFactor(m.Poke.GetRank(PokeValueId.SP_ATTACK_RANK));
+            return (int)a < (int)s ? -1 : (int)a > (int)s ? 1 : 0;
         }
 
         bool AnyDamageMove(BattleMon m)

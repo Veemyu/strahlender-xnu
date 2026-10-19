@@ -7,7 +7,7 @@ namespace Xnu.Battle.Flow
     // verschenkte Statuswirkung usw.). Der Aufbau folgt dem Original: main_proc -> fuenf Sonderpruefungen -> Calc_BasicDamage -> Calc_BasicAll
     // (Verteiler nach der KI-Nummer der Attacke, WAZADATA.AISeqNo). Nur ein Teil der BaciAI_Seq_*-Funktionen ist umgesetzt (siehe ImplementedSeq);
     // alle umgesetzten Funktionen sind gegen die echten ARM64-Funktionen geprueft (BattleAiScriptOracleTests).
-    public sealed class AiScriptBasic : AiScriptBase
+    public sealed partial class AiScriptBasic : AiScriptBase
     {
         // Funktion -> Eintritt; alles, was das Orakel pruefen kann.
         readonly Dictionary<string, Func<long>> _entries;
@@ -74,7 +74,11 @@ namespace Xnu.Battle.Flow
                 var body = kv.Value;
                 _entries["BaciAI_Seq_" + kv.Key.ToString("000")] = () => { body(); return 0; };
             }
+            RegisterGenerated();
         }
+
+        // Umsetzung der uebrigen BaciAI_Seq_NNN-Funktionen (AiScriptBasicGen.cs, aus dem Pseudocode uebersetzt).
+        partial void RegisterGenerated();
 
         public override IEnumerable<string> Functions => _entries.Keys;
 

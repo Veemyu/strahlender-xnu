@@ -82,7 +82,7 @@ namespace Xnu.Battle.Flow
         public TrainerAi(uint aiBits, ulong seed, int[] useItems = null)
         {
             _bits = aiBits;
-            _seed = seed ^ 0xA1A1A1A1UL;
+            _seed = seed;
             _items = useItems == null ? new int[4] : (int[])useItems.Clone();
             if (_items.Length < 4) Array.Resize(ref _items, 4);
         }
@@ -96,7 +96,9 @@ namespace Xnu.Battle.Flow
             switch (no)
             {
                 case 0: s = new AiScriptBasic(); break;
-                case 1: s = new AiScriptStrong(); break;
+                case 1: s = AiGenerated.Create("AiScriptStrongFull") ?? new AiScriptStrong(); break;
+                case 2: s = AiGenerated.Create("AiScriptExpert"); break;
+                case 3: s = AiGenerated.Create("AiScriptDouble"); break;
                 case 4: s = new AiScriptAllowance(); break;
                 case 5: s = new AiScriptItem(); break;
                 case 6: s = new AiScriptPokeChange(); break;
@@ -108,8 +110,16 @@ namespace Xnu.Battle.Flow
 
         bool Has(int scriptNo) => (_bits >> scriptNo & 1) != 0;
 
-        // Anzahl der gesetzten, aber noch nicht umgesetzten Skripte (Expert, Double): Bericht fuer die Tests.
-        public int UnimplementedScriptBits => ((_bits & AiBit.Expert) != 0 ? 1 : 0) + ((_bits & AiBit.Double) != 0 ? 1 : 0);
+        // Gesetzte KI-Bits, für die keine Skriptklasse vorliegt (Expert/Double fehlen ohne die erzeugten Klassen).
+        public int UnimplementedScriptBits
+        {
+            get
+            {
+                int n = 0;
+                for (int no = 0; no < 7; no++) if (Has(no) && Script(no) == null) n++;
+                return n;
+            }
+        }
 
         static int AliveCount(BattleEngine e, int side)
         {
@@ -153,7 +163,8 @@ namespace Xnu.Battle.Flow
 
         public AiResult Decide(BattleEngine engine, int side)
         {
-            if (_world == null) _world = new AiWorld(engine, _seed);
+            // [P] BattleAi.ctor: eigener Random (Xoroshiro128+), mit dem randSeed des Kampf-Setups initialisiert (Random.Initialize(setup.+0x28)) - kein XOR, eigene Folge.
+            if (_world == null) _world = new AiWorld(engine, engine.Setup.Seed != 0 ? engine.Setup.Seed : _seed);
             _world.Begin(side);
             var mon = engine.Active(side);
             var result = new AiResult();
@@ -247,7 +258,7 @@ namespace Xnu.Battle.Flow
             script.Host = _world;
             script.Score = 0;
             script.PokeChangeEnable = 0;
-            script.Run(scriptNo == 5 || scriptNo == 6 ? "main" : "main_proc");
+            script.Run(scriptNo == 5 || scriptNo == 6 || scriptNo == 3 ? "main" : "main_proc");
             LastEnable = script.PokeChangeEnable != 0;
             return script.Score;
         }

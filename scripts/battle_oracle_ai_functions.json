@@ -75,5 +75,22 @@
   "main_proc@57=0,128=0",
   "Strong_exception",
   "Strong_KinomiCheck"
+ ],
+ "BtlAiDouble": [
+  "*",
+  "DoubleAI_Enemy_Main@62=2", "DoubleAI_Enemy_Main@62=4", "DoubleAI_Enemy_Main@62=6", "DoubleAI_Enemy_Main@62=7", "DoubleAI_Enemy_Main@62=27",
+  "DoubleAI_Enemy_Main@62=52", "DoubleAI_Enemy_Main@62=70", "DoubleAI_Enemy_Main@62=111", "DoubleAI_Enemy_Main@62=147", "DoubleAI_Enemy_Main@62=158",
+  "DoubleAI_Enemy_Main@62=170", "DoubleAI_Enemy_Main@62=172", "DoubleAI_Enemy_Main@62=190", "DoubleAI_Enemy_Main@62=195", "DoubleAI_Enemy_Main@62=212",
+  "DoubleAI_Enemy_Main@62=223", "DoubleAI_Enemy_Main@62=225", "DoubleAI_Enemy_Main@62=257", "DoubleAI_Enemy_Main@62=259", "DoubleAI_Enemy_Main@62=278",
+  "DoubleAI_Enemy_Main@62=284", "DoubleAI_Enemy_Main@62=289", "DoubleAI_Enemy_Main@62=290", "DoubleAI_Enemy_Main@62=292", "DoubleAI_Enemy_Main@62=301",
+  "DoubleAI_Enemy_Main@62=306", "DoubleAI_Enemy_Main@62=307", "DoubleAI_Enemy_Main@62=312", "DoubleAI_Enemy_Main@62=313", "DoubleAI_Enemy_Main@62=315",
+  "DoubleAI_Enemy_Main@62=335", "DoubleAI_Enemy_Main@62=336", "DoubleAI_Enemy_Main@62=339", "DoubleAI_Enemy_Main@62=345", "DoubleAI_Enemy_Main@62=350",
+  "DoubleAI_Enemy_Main@62=355", "DoubleAI_Enemy_Main@62=361", "DoubleAI_Enemy_Main@62=366", "DoubleAI_Enemy_Main@62=376", "DoubleAI_Enemy_Main@62=378",
+  "DoubleAI_Enemy_Main@62=385", "DoubleAI_Enemy_Main@62=388", "DoubleAI_Enemy_Main@62=405", "DoubleAI_Enemy_Main@62=419",
+  "DoubleAI_Friend_Main@62=118", "DoubleAI_Friend_Main@62=143", "DoubleAI_Friend_Main@62=154", "DoubleAI_Friend_Main@62=167", "DoubleAI_Friend_Main@62=176",
+  "DoubleAI_Friend_Main@62=178", "DoubleAI_Friend_Main@62=191", "DoubleAI_Friend_Main@62=226", "DoubleAI_Friend_Main@62=285", "DoubleAI_Friend_Main@62=299",
+  "DoubleAI_Friend_Main@62=300", "DoubleAI_Friend_Main@62=309", "DoubleAI_Friend_Main@62=362", "DoubleAI_Friend_Main@62=385", "DoubleAI_Friend_Main@62=386",
+  "DoubleAI_Friend_Main@62=388", "DoubleAI_Friend_Main@62=391", "DoubleAI_Friend_Main@62=393", "DoubleAI_Friend_Main@62=398", "DoubleAI_Friend_Main@62=399",
+  "DoubleAI_Friend_Main@62=402", "DoubleAI_Friend_Main@62=434"
  ]
 }
