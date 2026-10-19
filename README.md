@@ -18,7 +18,7 @@ Dieses Projekt übernimmt und verändert Teile von **LASRecomp** (https://github
 
 - `shader_translator/`: Maxwell-zu-MSL/GLSL-Übersetzer, aus dem Original abgeleitet und verändert (`shader_translator/NOTICE.md`, Lizenz `shader_translator/LICENSE-LASRecomp`).
 - `scripts/recomp/rt-bdsp/`: Laufzeit im Entwurf des Originals, eigene Umsetzung (`scripts/recomp/rt-bdsp/NOTICE.md`, Lizenz `scripts/recomp/rt-bdsp/LICENSE-LASRecomp`).
-- NVN-Grafikschicht (Metal und Vulkan): zur Bauzeit aus dem Klon `research/LASRecomp` kopiert und mit Patches aus `scripts/recomp/rt-bdsp/nvn/` verändert. Hinweise in `scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md`.
+- NVN-Grafikschicht (Metal und Vulkan): unverändert in `scripts/recomp/rt-bdsp/nvn/upstream/` (Lizenz dort in `LICENSE`), mit Patches aus `scripts/recomp/rt-bdsp/nvn/` verändert.
 
 Vollständige Liste, Drittkomponenten und Nicht-Übernommenes: `THIRD_PARTY_NOTICES.md`.
 

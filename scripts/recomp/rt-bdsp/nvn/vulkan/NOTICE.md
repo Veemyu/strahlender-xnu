@@ -1,12 +1,12 @@
 # NOTICE: Vulkan-Fassung der NVN-Schicht (`nvn/vulkan/`)
 
-Wie die Metal-Fassung (siehe `../../NOTICE.md`, Abschnitt „NVN-Schicht“) **übernimmt** die Vulkan-Fassung Quelltext des Klons LASRecomp mit ausdrücklicher Freigabe des Nutzers, unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Text unverändert in [`../../LICENSE-LASRecomp`](../../LICENSE-LASRecomp)).
+Wie die Metal-Fassung (siehe `../../NOTICE.md`, Abschnitt „NVN-Schicht“) **übernimmt** die Vulkan-Fassung Quelltext des Klons LASRecomp mit ausdrücklicher Freigabe des Nutzers, unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Lizenztext in [`../upstream/LICENSE`](../upstream/LICENSE)).
 
 | | |
 |---|---|
 | Projekt | LASRecomp, https://github.com/peiikai/LASRecomp |
 | Stand | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` |
-| Übernommen (zur Bauzeit, nicht im Repo) | `runtime/nvn/vulkan/{device.c, exec.c, shaders.c, shaders.h, textures.c, vk.h, vma.cpp}`; `prepare_vk.sh` kopiert sie nach `work/recomp/nvn-src-vk` und wendet `las-vk.patch` an. `research/` bleibt unverändert. Der gemeinsame Teil (`objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `astc.c`, Übersetzer) kommt wie beim Metal-Weg aus `../prepare.sh`. |
+| Übernommen (unverändert in `../upstream/nvn/vulkan/`) | `device.c`, `exec.c`, `shaders.c`, `shaders.h`, `textures.c`, `vk.h`, `vma.cpp`; `prepare_vk.sh` kopiert sie nach `work/recomp/nvn-src-vk` und wendet `las-vk.patch` an. Der gemeinsame Teil (`objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `astc.c`, Übersetzer) kommt wie beim Metal-Weg aus `../prepare.sh`. |
 | Nicht übernommen | `imgui_glue.cpp`, `texpatch.c`, `output_scale.c`, `smaa_data.c`, alle `runtime/hle/*` (Spiel-Hooks), `ui/`, Randomizer, `third_party/` |
 | Eigen | `prepare_vk.sh`, `build_vk.sh`, `vk_glue.c`, `shim/*`, `las-vk.patch` (Änderungen: trennbare Programme, bindlose Texturen und getrennte Sampler, Offscreen-Betrieb `--headless`, Pfade unter `work/recomp/`, Entfernung der Zelda-Hooks) |
 

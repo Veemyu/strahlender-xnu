@@ -27,7 +27,7 @@ Der Generator (`../eh_gen.py`) importiert die Werkzeuge des Klons (`research/LAS
 
 ## NVN-Schicht (Gate 2, `nvn/`)
 
-Anders als der Rest dieses Ordners **übernimmt** die Grafikschicht Quelltext des Klons, mit ausdrücklicher Freigabe des Nutzers und unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Text unverändert in [`LICENSE-LASRecomp`](LICENSE-LASRecomp)). Die Übernahme geschieht **nicht durch Kopieren ins Repo**: `nvn/prepare.sh` kopiert die Dateien zur Bauzeit aus `research/LASRecomp/runtime/nvn` (Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`) nach `work/recomp/nvn-src` und wendet `nvn/las-nvn.patch` an; `research/` bleibt unverändert, übernommene Quelltexte liegen nicht im Repo (nur Ausschnitte als Kontextzeilen des Patches).
+Anders als der Rest dieses Ordners **übernimmt** die Grafikschicht Quelltext des Klons, mit ausdrücklicher Freigabe des Nutzers und unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Lizenztext in [`nvn/upstream/LICENSE`](nvn/upstream/LICENSE)). Die Dateien liegen **unverändert** in `nvn/upstream/` (Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`, byte-identisch mit dem Klon). `nvn/prepare.sh` kopiert sie nach `work/recomp/nvn-src` und wendet die Patches `nvn/las-nvn.patch` und `fixes.patch` an; Änderungen stehen nur in den Patches, nicht in den vendorten Dateien.
 
 | Übernommen (zur Bauzeit, mit Patch) | Nicht übernommen |
 |---|---|

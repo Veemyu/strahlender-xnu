@@ -14,8 +14,8 @@ Dieses Repository enthält eigenen Code und folgende übernommene Teile. Das Rep
 ## LASRecomp, weitere Teile (MIT, Copyright (c) 2026 Peiikai)
 
 - **Wo:** `scripts/recomp/rt-bdsp/` (Entwurf der Laufzeit, Details und Liste in `scripts/recomp/rt-bdsp/NOTICE.md`; Lizenztext `scripts/recomp/rt-bdsp/LICENSE-LASRecomp`), `scripts/recomp/rt-bdsp/nvn/movie_glue.c` (nach `runtime/hle/movie.c`).
-- **NVN-Grafikschicht (Metal und Vulkan):** wird zur Bauzeit aus `research/LASRecomp/runtime/nvn` (Commit `09f8e5e`) nach `work/` kopiert und mit `nvn/*.patch` verändert. Die Quelltexte liegen nicht im Repository. Details: `scripts/recomp/rt-bdsp/NOTICE.md`, `scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md`.
-- **Nicht übernommen:** UI, Randomizer, `third_party/` des Originals (u. a. imgui, smaa, Schriften, LAS-Randomizer), `texpatch.c`, `output_scale.c`, `smaa_data.c`, Spiel-Hooks `runtime/hle/*` außer der Filmschicht.
+- **NVN-Grafikschicht (Metal und Vulkan):** liegt unverändert unter `scripts/recomp/rt-bdsp/nvn/upstream/` (Lizenz dort in `LICENSE`, Commit `09f8e5e`); Änderungen nur in den Patches unter `scripts/recomp/rt-bdsp/nvn/`. Details: `scripts/recomp/rt-bdsp/NOTICE.md`, `scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md`.
+- **Nicht übernommen:** UI, Randomizer, `third_party/` des Originals (u. a. imgui, smaa, Schriften, LAS-Randomizer), `texpatch.c`, `output_scale.c`, `smaa_data.c`, `imgui_glue.cpp`, Spiel-Hooks `runtime/hle/*` außer der Filmschicht.
 
 ## Weitere Drittkomponenten (nur Verweis)
 
