@@ -144,3 +144,70 @@ extern "C" long test_backtrace(long *out) {
     bt_leaf(out);
     return out[0];
 }
+
+// ---- setjmp/longjmp (T7): eigene Fassung nach AAPCS64 wie die libc der Switch. Die Namen setjmp/longjmp sind wichtig:
+// der Generator findet daran die Rücksprungstellen (Wiedereinstieg hinter `bl setjmp`) und behandelt `mov sp, xN; ret`
+// in longjmp als indirekten Sprung auf x30.
+asm(R"(
+.text
+.global setjmp
+.type setjmp,%function
+setjmp:
+    stp x19, x20, [x0, #0]
+    stp x21, x22, [x0, #16]
+    stp x23, x24, [x0, #32]
+    stp x25, x26, [x0, #48]
+    stp x27, x28, [x0, #64]
+    stp x29, x30, [x0, #80]
+    mov x2, sp
+    str x2, [x0, #96]
+    stp d8, d9, [x0, #104]
+    stp d10, d11, [x0, #120]
+    stp d12, d13, [x0, #136]
+    stp d14, d15, [x0, #152]
+    mov w0, #0
+    ret
+.global longjmp
+.type longjmp,%function
+longjmp:
+    ldp x19, x20, [x0, #0]
+    ldp x21, x22, [x0, #16]
+    ldp x23, x24, [x0, #32]
+    ldp x25, x26, [x0, #48]
+    ldp x27, x28, [x0, #64]
+    ldp x29, x30, [x0, #80]
+    ldp d8, d9, [x0, #104]
+    ldp d10, d11, [x0, #120]
+    ldp d12, d13, [x0, #136]
+    ldp d14, d15, [x0, #152]
+    ldr x2, [x0, #96]
+    cmp w1, #0
+    csinc w0, w1, wzr, ne
+    mov sp, x2
+    ret
+)");
+extern "C" int setjmp(long *) __attribute__((returns_twice));
+extern "C" void longjmp(long *, int) __attribute__((noreturn));
+
+__attribute__((noinline)) static void lj_leaf(long *jb, int v) { longjmp(jb, v); }
+__attribute__((noinline)) static void lj_mid(long *jb, int v, volatile int *log) {
+    Guard g{log, 2};  // longjmp wickelt nicht ab: der Destruktor darf nicht laufen
+    lj_leaf(jb, v);
+}
+__attribute__((noinline)) static void lj_rec(long *jb, int depth, int v, volatile int *log) {
+    if (depth == 0) lj_mid(jb, v, log);
+    else lj_rec(jb, depth - 1, v, log);
+    *log = 99999;
+}
+// setjmp in einer Funktion, longjmp aus 3 + depth tieferen Rahmen; k1/k2 leben über setjmp/longjmp (x19..x28)
+extern "C" long test_longjmp(volatile int *log, int v, long a, long depth) {
+    long jb[32];
+    long k1 = a * 7 + 1, k2 = depth * 5 + 2;
+    int r = setjmp(jb);
+    if (r == 0) {
+        lj_rec(jb, (int)depth, v, log);
+        return -1;
+    }
+    *log = *log * 10 + 8;
+    return r + k1 + k2;
+}

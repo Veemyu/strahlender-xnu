@@ -10,6 +10,14 @@ JOBS=${1:-3}
 GEN=${GEN:-work/recomp/gen4}
 OBJ=${OBJ:-work/recomp/obj4}
 mkdir -p "$OBJ"
+# veraltete Objekte (Chunk-Datei existiert nicht mehr, z. B. nach geänderter Fenstereinteilung) entfernen, sonst doppelte Symbole beim Linken
+for o in "$OBJ"/*.o; do
+  [ -e "$o" ] || continue
+  b=$(basename "$o" .o)
+  m=${b%%_*}
+  rest=${b#*_}
+  [ -f "$GEN/$m/$rest.c" ] || rm -f "$o"
+done
 : > "$OBJ/list_O1.txt"; : > "$OBJ/list_O0.txt"
 for f in "$GEN"/*/*.c; do
   size=$(stat -f %z "$f")

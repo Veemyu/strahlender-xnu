@@ -42,6 +42,8 @@
 
 extern uint8_t *g_base;  // Basis des 4-GiB-Gastfensters (vom Host gesetzt)
 #define G2H(a) ((void *)(g_base + (uint32_t)(a)))
+#undef GPTR
+#define GPTR(a) G2H(a)  // Exklusiv-Paare (rt/cpu.h)
 
 #undef LD8
 #undef LD16

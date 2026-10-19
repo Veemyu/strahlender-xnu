@@ -1,0 +1,2 @@
+# Symbole, die mkimages.sh bei HLE_LIST=... an Host-Slots statt an die SDK-Definition bindet (Vorversuch für Gate 2).
+nvnBootstrapLoader

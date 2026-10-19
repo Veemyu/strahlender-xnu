@@ -339,7 +339,7 @@ int main(int argc, char **argv) {
 #else
     cpu->tpidrro = cpu->tpidr = (uint64_t)(uintptr_t)calloc(1, 0x400);  // ThreadLocalRegion (0x200) des Gast-Threads
 #endif
-    uint64_t t_basic = 0, t_rethrow = 0, t_deep = 0, t_bad = 0, t_nothrow = 0, t_bench = 0, t_bt = 0;
+    uint64_t t_basic = 0, t_rethrow = 0, t_deep = 0, t_bad = 0, t_nothrow = 0, t_bench = 0, t_bt = 0, t_lj = 0;
     uint64_t a_alloc = 0, a_throw = 0, a_zti = 0, t_run = 0;
     const char *real_spec = NULL, *main_img = NULL;
     for (int i = 4; i < argc; i++) {
@@ -351,6 +351,7 @@ int main(int argc, char **argv) {
         else if (!strncmp(argv[i], "test_nothrow=", 13)) t_nothrow = v;
         else if (!strncmp(argv[i], "test_bench=", 11)) t_bench = v;
         else if (!strncmp(argv[i], "test_backtrace=", 15)) t_bt = v;
+        else if (!strncmp(argv[i], "test_longjmp=", 13)) t_lj = v;
         else if (!strncmp(argv[i], "real=", 5)) real_spec = strchr(argv[i], '=') + 1;
         else if (!strncmp(argv[i], "mainimg=", 8)) main_img = strchr(argv[i], '=') + 1;
         else if (!strncmp(argv[i], "alloc=", 6)) a_alloc = v;
@@ -406,6 +407,17 @@ int main(int argc, char **argv) {
         r = (long)call(t_bad, GA(log), 0, 0, 0);
         printf("  Rueckgabe %ld (erwartet 77), Log %d (erwartet 17)\n", r, *log);
         CHECK(r == 77 && *log == 17, "badalloc");
+    }
+
+    if (t_lj) {
+        printf("T7 setjmp/longjmp (Wiedereinstieg hinter bl setjmp), longjmp aus 3 + 20 Rahmen, Destruktoren duerfen nicht laufen\n");
+        for (int pass = 0; pass < 2; pass++) {  // zweiter Durchlauf: Rahmenkette nach dem ersten Wiedereinstieg unversehrt
+            *log = 1;
+            r = (long)call(t_lj, GA(log), 5, 3, 20);
+            long expect = 5 + (3 * 7 + 1) + (20 * 5 + 2);
+            printf("  Durchlauf %d: Rueckgabe %ld (erwartet %ld), Log %d (erwartet 18), Kette %p\n", pass + 1, r, expect, *log, (void *)EH_TOP(cpu));
+            CHECK(r == expect && *log == 18 && EH_TOP(cpu) == NULL, "longjmp");
+        }
     }
 
     if (t_bench) {

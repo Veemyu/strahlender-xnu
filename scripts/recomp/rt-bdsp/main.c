@@ -1,0 +1,194 @@
+// Einstieg der BDSP-Laufzeit (Gate 1): Gastfenster reservieren, Module laden, nn::init::Start auf einem Host-Thread
+// starten, den Lauf überwachen (Zeitlimit, Gate-Erkennung, Fortschrittszeilen) und das Ergebnisprotokoll ausgeben.
+// Kein Grafik-, kein Audioausgang. Eigener Code.
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <signal.h>
+#include <sys/resource.h>
+#include <unistd.h>
+
+#include "bdsp.h"
+
+#ifdef BDSP_REBASE32
+uint8_t *g_base;
+#endif
+
+// Das Gastfenster vor allem anderen belegen (der Host-Allokator legt sonst Bereiche in dasselbe Fenster).
+__attribute__((constructor(101))) static void reserve_guest_space(void) {
+    mach_vm_address_t a = GUEST_LO;
+    if (mach_vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) == KERN_SUCCESS) return;
+    fprintf(stderr, "FATAL: Gastfenster %llx-%llx ist nicht frei\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI);
+    _exit(1);
+}
+
+// ---- Gast-Log (lm und OutputDebugString)
+static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+static char last_line[1024];
+static uint64_t log_lines;
+void guest_log(const char *line) {
+    pthread_mutex_lock(&log_lock);
+    snprintf(last_line, sizeof last_line, "%s", line);
+    log_lines++;
+    uint64_t n = log_lines;
+    pthread_mutex_unlock(&log_lock);
+    static int verbose = -1;
+    if (verbose < 0) verbose = getenv("BDSP_LOG_ALL") != NULL;
+    if (verbose || n <= 400) printf("[gast] %s\n", line);
+}
+
+static long rss_now_mib(void) {
+    mach_task_basic_info_data_t info;
+    mach_msg_type_number_t cnt = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &cnt) != KERN_SUCCESS) return -1;
+    return (long)(info.resident_size >> 20);
+}
+static long rss_peak_mib(void) { struct rusage ru; getrusage(RUSAGE_SELF, &ru); return (long)(ru.ru_maxrss >> 20); }
+
+// ---- rtld-Ersatz: nn::init::Start ruft x2 nach nnosInitialize (Initialisierung des SDK-Moduls) und x3 vor nnMain (main)
+static void module_init(Cpu *c, Module *m) {
+    LOG("[init] %s (DT_INIT %llx, %llu init_array-Einträge)\n", m->name, (unsigned long long)(m->base + m->init), (unsigned long long)(m->init_array_sz / 8));
+    if (m->init) { guest_call(c, m->base + m->init); return; }
+    for (uint64_t i = 0; i < m->init_array_sz / 8; i++) {
+        uint64_t fn = *G2H64(m->base + m->init_array + i * 8);
+        if (fn) guest_call(c, fn);
+    }
+}
+static void rtld_init_sdk(Cpu *c) { module_init(c, &g_modules[1]); }
+static void rtld_init_main(Cpu *c) { module_init(c, &g_modules[0]); }
+static void rtld_nop(Cpu *c) { (void)c; LOG("[init] Fini-Rückruf nach nnMain erreicht\n"); }
+
+static volatile uint64_t g_start_ns;
+static pthread_t g_main_thread_id;
+static volatile uint64_t g_stress_cycles;
+static void report(const char *why) {
+    double secs = (rt_now_ns() - g_start_ns) / 1e9;
+    fflush(NULL);
+    printf("\n==== ERGEBNIS: %s nach %.1f s ====\n", why, secs);
+    kernel_report(stdout);
+    pthread_mutex_lock(&log_lock);
+    printf("Gast-Logzeilen: %llu, letzte: %s\n", (unsigned long long)log_lines, last_line[0] ? last_line : "(keine)");
+    pthread_mutex_unlock(&log_lock);
+    gate_report(stdout);
+    ipc_stats(stdout);
+    fs_report(stdout);
+    printf("RSS jetzt %ld MiB, Spitze %ld MiB\n", rss_now_mib(), rss_peak_mib());
+    if (g_stress_cycles) printf("Anhalte-Stresstest (BDSP_SUSPEND_STRESS): %llu Anhalten/Kontext/Fortsetzen-Zyklen an laufenden Gastthreads\n", (unsigned long long)g_stress_cycles);
+    fflush(NULL);
+}
+
+static void *suspend_stress(void *arg) {
+    (void)arg;
+    Cpu c;
+    memset(&c, 0, sizeof c);
+    uint8_t *buf = malloc(0x400);
+    uint64_t gbuf = H2G(hle_alloc(0x400));
+    (void)buf;
+    for (;;) {
+        for (uint32_t h = 0x101; h < 0x101 + 256; h++) {
+            KObject *o = handle_get(h);
+            if (!o || o->type != KOBJ_THREAD) continue;
+            c.x[0] = h; c.x[1] = 1; rt_svc(&c, 0x32, 0);                 // anhalten
+            if (c.x[0] == 0) {
+                c.x[0] = gbuf; c.x[1] = h; rt_svc(&c, 0x33, 0);          // Kontext lesen
+                c.x[0] = h; c.x[1] = 0; rt_svc(&c, 0x32, 0);             // fortsetzen
+                g_stress_cycles++;
+            }
+        }
+        usleep(200);
+    }
+    return NULL;
+}
+
+static void on_sigint(int s) { (void)s; g_stop = 4; }
+
+static int g_stop_at_gate = 1;
+static const char *volatile g_fatal_why;
+static volatile int g_fatal_code;
+void bdsp_fatal_report(const char *why, int code) {
+    g_fatal_code = code;
+    g_fatal_why = why;
+    if (g_main_thread_id && pthread_equal(pthread_self(), g_main_thread_id)) { report(why); _exit(code); }  // vor dem Start der Gastthreads
+}
+void bdsp_gate_hit(const char *what) {
+    if (!g_stop_at_gate) return;
+    static volatile int once;
+    if (__atomic_exchange_n(&once, 1, __ATOMIC_SEQ_CST)) return;
+    char why[128];
+    snprintf(why, sizeof why, "Gate 1 erreicht (%s wurde aufgerufen)", what);
+    report(why);
+    _exit(0);
+}
+
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
+    signal(SIGINT, on_sigint);
+    signal(SIGPIPE, SIG_IGN);
+    const char *img = getenv("BDSP_IMG") ? getenv("BDSP_IMG") : "work/recomp/img";
+    const char *npdm = getenv("BDSP_NPDM") ? getenv("BDSP_NPDM") : "work/exefs/main.npdm";
+    int timeout = getenv("BDSP_TIMEOUT") ? atoi(getenv("BDSP_TIMEOUT")) : 120;
+    fs_set_dirs(getenv("BDSP_ROMFS"), getenv("BDSP_SAVE"));
+    g_start_ns = rt_now_ns();
+    g_main_thread_id = pthread_self();
+
+    uint32_t stack_size = 0x100000;
+    int prio = 44;
+    FILE *f = fopen(npdm, "rb");
+    if (f) {
+        uint8_t meta[0x80];
+        if (fread(meta, 1, sizeof meta, f) == sizeof meta && !memcmp(meta, "META", 4)) {
+            prio = meta[0xE];
+            g_system_resource_size = *(uint32_t *)(meta + 0x14);
+            stack_size = *(uint32_t *)(meta + 0x1C);
+            uint32_t aci0 = *(uint32_t *)(meta + 0x70);
+            uint8_t aci[0x20];
+            if (!fseek(f, aci0, SEEK_SET) && fread(aci, 1, sizeof aci, f) == sizeof aci && !memcmp(aci, "ACI0", 4)) memcpy(&g_program_id, aci + 0x10, 8);
+        }
+        fclose(f);
+    }
+
+    kernel_init();
+    loader_load(img);
+    dispatch_init();
+    nvn_null_init();
+    kernel_region_add(TLS_BASE, TLS_SIZE, 0xB, 3);
+    kernel_region_add(HLE_HEAP, HLE_HEAP_SIZE, 0xB, 3);
+    g_stop_at_gate = getenv("BDSP_STOP_AT_GATE") == NULL || atoi(getenv("BDSP_STOP_AT_GATE"));
+    {
+        uint64_t a = loader_find_symbol("nvnBootstrapLoader");
+        if (a) watch_add(a, "nvnBootstrapLoader");
+    }
+
+    uint64_t start = loader_find_symbol("_ZN2nn4init5StartEmmPFvvES2_S2_");
+    if (!start) rt_fatal("nn::init::Start nicht gefunden\n");
+    uint64_t init_fn = hle_register("<rtld_init_sdk>", rtld_init_sdk);
+    uint64_t fini_fn = hle_register("<rtld_init_main>", rtld_init_main);
+    uint64_t nop_fn = hle_register("<rtld_fini>", rtld_nop);
+    LOG("[boot] Hauptthread: Priorität %d, Gast-Stack 0x%x, Host-Stack %s MiB, Zeitlimit %d s\n", prio, stack_size,
+        getenv("BDSP_HOST_STACK_MB") ? getenv("BDSP_HOST_STACK_MB") : "16", timeout);
+    KThread *t = kernel_create_main_thread(start, stack_size, prio, 0);
+    t->cpu.x[4] = nop_fn;
+    kernel_run_main(t, t->handle, 0, init_fn, fini_fn);  // nn::init::Start(thread_handle, args_region, init, init_main, fini)
+    if (getenv("BDSP_SUSPEND_STRESS")) {  // Prüfung des GC-Pfads: ein Host-Thread hält alle Gastthreads reihum an (SVC 0x32/0x33) und setzt sie fort
+        pthread_t st;
+        pthread_create(&st, NULL, suspend_stress, NULL);
+        pthread_detach(st);
+    }
+
+    uint64_t last_progress = 0;
+    const char *why = "Zeitlimit";
+    for (;;) {
+        usleep(20000);
+        double secs = (rt_now_ns() - g_start_ns) / 1e9;
+        if (g_fatal_why) { report(g_fatal_why); _exit(g_fatal_code); }
+        if (g_stop) { why = g_stop == 3 ? "Gast hat Beenden verlangt" : g_stop == 4 ? "Abbruch (SIGINT)" : "Gast hat den Prozess beendet"; break; }
+        if (secs > timeout) break;
+        if ((uint64_t)secs >= last_progress + 10) {
+            last_progress = (uint64_t)secs;
+            LOG("[fortschritt] %.0f s, Threads %d, RSS %ld MiB\n", secs, kernel_thread_count(), rss_now_mib());
+        }
+    }
+    report(why);
+    _exit(0);
+}

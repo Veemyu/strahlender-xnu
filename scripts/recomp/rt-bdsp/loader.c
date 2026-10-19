@@ -1,0 +1,133 @@
+// Lader der BDSP-Laufzeit: liest die von mkimg.py erzeugten Modulbilder (work/recomp/img/<modul>.img/.mod/.syms.json,
+// Relokationen und Modulquerverweise bereits angewandt) in das Gastfenster und trägt die Segmente in die Speicherkarte ein.
+// Importe, die keinem Modul gehören, stehen in hle.txt (Zeile i = HLE-Slot i). Eigener Code.
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "bdsp.h"
+
+Module g_modules[4];
+int g_nmodules;
+
+typedef struct { char *name; uint64_t addr; } Sym;
+static Sym *syms;
+static size_t nsyms, capsyms;
+static Sym **by_addr;
+static int sorted;
+
+static void add_sym(const char *name, size_t len, uint64_t addr) {
+    if (nsyms == capsyms) { capsyms = capsyms ? capsyms * 2 : 65536; syms = realloc(syms, capsyms * sizeof *syms); }
+    syms[nsyms].name = strndup(name, len);
+    syms[nsyms].addr = addr;
+    nsyms++;
+}
+
+// {"name": 123, ...}: Namen ohne Anführungszeichen/Escapes (Mangling-Namen)
+static void load_syms(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc(n + 1);
+    if (fread(buf, 1, n, f) != (size_t)n) { fclose(f); free(buf); return; }
+    buf[n] = 0;
+    fclose(f);
+    for (char *p = buf; (p = strchr(p, '"'));) {
+        char *e = strchr(p + 1, '"');
+        if (!e) break;
+        char *colon = e + 1;
+        while (*colon == ' ' || *colon == ':') colon++;
+        char *end;
+        uint64_t v = strtoull(colon, &end, 10);
+        add_sym(p + 1, (size_t)(e - p - 1), v);
+        p = end;
+    }
+    free(buf);
+}
+
+uint64_t loader_find_symbol(const char *name) {
+    for (size_t i = 0; i < nsyms; i++)
+        if (!strcmp(syms[i].name, name)) return syms[i].addr;
+    return 0;
+}
+
+static int cmp_addr(const void *a, const void *b) {
+    uint64_t x = (*(Sym *const *)a)->addr, y = (*(Sym *const *)b)->addr;
+    return x < y ? -1 : x > y;
+}
+
+const char *loader_symbol_at(uint64_t addr, uint64_t *offset) {
+    if (!sorted) {
+        by_addr = malloc(nsyms * sizeof *by_addr);
+        for (size_t i = 0; i < nsyms; i++) by_addr[i] = &syms[i];
+        qsort(by_addr, nsyms, sizeof *by_addr, cmp_addr);
+        sorted = 1;
+    }
+    for (int i = 0; i < g_nmodules; i++) {
+        Module *m = &g_modules[i];
+        if (addr >= m->base && addr < m->base + m->size) {
+            static __thread char buf[64];
+            size_t lo = 0, hi = nsyms;
+            while (lo < hi) { size_t mid = (lo + hi) / 2; if (by_addr[mid]->addr <= addr) lo = mid + 1; else hi = mid; }
+            if (lo && by_addr[lo - 1]->addr >= m->base && addr - by_addr[lo - 1]->addr < 0x10000) {
+                if (offset) *offset = addr - by_addr[lo - 1]->addr;
+                return by_addr[lo - 1]->name;
+            }
+            snprintf(buf, sizeof buf, "%s", m->name);
+            if (offset) *offset = addr - m->base;
+            return buf;
+        }
+    }
+    if (offset) *offset = 0;
+    return NULL;
+}
+
+static void read_image(const char *path, uint64_t addr) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { perror(path); rt_fatal("Modulbild %s fehlt (scripts/recomp/rt-bdsp/mkimages.sh ausführen)\n", path); }
+    struct stat st;
+    fstat(fd, &st);
+    uint8_t *dst = G2H8(addr);
+    size_t done = 0;
+    while (done < (size_t)st.st_size) {
+        ssize_t n = pread(fd, dst + done, (size_t)st.st_size - done, (off_t)done);
+        if (n <= 0) rt_fatal("Lesefehler bei %s\n", path);
+        done += (size_t)n;
+    }
+    close(fd);
+}
+
+void loader_load(const char *dir) {
+    char path[1024];
+    snprintf(path, sizeof path, "%s/hle.txt", dir);
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char l[512];
+        while (fgets(l, sizeof l, f)) { l[strcspn(l, "\n")] = 0; if (l[0]) hle_register(l, NULL); }
+        fclose(f);
+    }
+    static const char *order[] = {"main", "sdk", "subsdk0"};
+    for (int i = 0; i < 3; i++) {
+        snprintf(path, sizeof path, "%s/%s.mod", dir, order[i]);
+        f = fopen(path, "r");
+        if (!f) rt_fatal("%s fehlt (mkimages.sh ausführen)\n", path);
+        Module *m = &g_modules[g_nmodules++];
+        unsigned long long v[11];
+        if (fscanf(f, "%15s %llx %llx %llx %llx %llx %llx %llx %llx %llx %llx %llx", m->name, &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &v[8], &v[9], &v[10]) != 12)
+            rt_fatal("ungültige Moduldatei %s\n", path);
+        fclose(f);
+        m->base = v[0]; m->text_lo = v[1]; m->text_hi = v[2]; m->ro_lo = v[3]; m->ro_hi = v[4]; m->data_lo = v[5]; m->data_hi = v[6]; m->size = v[7];
+        m->init = v[8]; m->init_array = v[9]; m->init_array_sz = v[10];
+        snprintf(path, sizeof path, "%s/%s.img", dir, order[i]);
+        read_image(path, m->base);
+        kernel_region_add(m->base + m->text_lo, m->text_hi - m->text_lo, 3, 5);
+        kernel_region_add(m->base + m->ro_lo, m->ro_hi - m->ro_lo, 3, 1);
+        kernel_region_add(m->base + m->data_lo, m->size - m->data_lo, 4, 3);
+        snprintf(path, sizeof path, "%s/%s.syms.json", dir, order[i]);
+        load_syms(path);
+        LOG("[loader] %-8s bei %llx, Bild %llu KiB, Text %llx..%llx\n", m->name, (unsigned long long)m->base, (unsigned long long)(m->size >> 10),
+            (unsigned long long)m->text_lo, (unsigned long long)m->text_hi);
+    }
+}

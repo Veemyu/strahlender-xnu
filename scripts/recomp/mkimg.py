@@ -31,7 +31,18 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--hle-base", type=lambda s: int(s, 0), default=HLE_BASE)
     ap.add_argument("--link", action="append", default=[], help="JSON {Exportname: Adresse} eines anderen Moduls (mehrfach)")
+    ap.add_argument("--hle-list", help="Textdatei mit Symbolnamen (eine je Zeile, '#' = Kommentar), die auch bei vorhandenem Export an einen HLE-Slot gebunden werden")
+    ap.add_argument("--interpose-from", help="JSON {Exportname: Adresse} des Hauptmoduls: passende Symbole der anderen Module werden an dessen Definition gebunden (ELF-Interposition: die Definition der ausführbaren Datei gewinnt, z. B. operator new/delete des Spiels gegenüber dem SDK)")
+    ap.add_argument("--interpose-regex", default=r"^(_Zn[wa]|_Zd[la]|_ZT[IS])", help="welche Symbole interponiert werden (Standard: operator new/delete und typeinfo)")
     a = ap.parse_args()
+    forced = set()
+    if a.hle_list:
+        forced = {l.strip() for l in Path(a.hle_list).read_text().splitlines() if l.strip() and not l.startswith("#")}
+    import re
+    interpose = {}
+    if a.interpose_from:
+        rx = re.compile(a.interpose_regex)
+        interpose = {k: v for k, v in json.loads(Path(a.interpose_from).read_text()).items() if rx.match(k)}
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     n = Nso(a.nso)
@@ -57,7 +68,13 @@ def main():
             stats["relative"] += 1
         elif typ in (257, 1025, 1026):
             s = n.syms[sym]
-            if s[2]:
+            if s[0] in forced:
+                struct.pack_into("<Q", img, off, slot(s[0]) + (add if typ == 257 else 0))
+                stats["hle"] += 1
+            elif s[0] in interpose and a.name != "main":
+                struct.pack_into("<Q", img, off, interpose[s[0]] + (add if typ == 257 else 0))
+                stats["interposed"] = stats.get("interposed", 0) + 1
+            elif s[2]:
                 struct.pack_into("<Q", img, off, a.base + s[3] + (add if typ == 257 else 0))
                 stats["bound"] += 1
             elif s[0] in linked:

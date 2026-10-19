@@ -32,8 +32,23 @@ sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
 
 SETJMP_NAMES = {"setjmp", "_setjmp", "sigsetjmp", "__sigsetjmp"}
+EXTRA_SETJMP = []
 STATS = Counter()
 TAIL = re.compile(r"__attribute__\(\(musttail\)\) return ([^;]+);")
+
+
+def excl_pair(w):
+    """C für LDXP/LDAXP (Bit 22 = 1) und STXP/STLXP: Hilfsfunktionen aus rt/cpu.h (Adresse über GPTR)."""
+    from lifter import X, XS, set_reg
+    sz64 = (w >> 30) & 1
+    load = (w >> 22) & 1
+    rs, rt2, rn, rt = (w >> 16) & 31, (w >> 10) & 31, (w >> 5) & 31, w & 31
+    n = 64 if sz64 else 32
+    if load:
+        return (f"{{ uint64_t ea = {XS(rn)}; uint64_t lo, hi; ldxp{n}(c, ea, GPTR(ea), &lo, &hi); "
+                f"{set_reg(sz64, rt, 'lo')} {set_reg(sz64, rt2, 'hi')} }}")
+    return (f"{{ uint64_t ea = {XS(rn)}; uint32_t st = stxp{n}(c, ea, GPTR(ea), {X(rt)}, {X(rt2)}); "
+            f"{set_reg(0, rs, 'st')} }}")
 
 
 def install(las_dir):
@@ -64,7 +79,7 @@ def install(las_dir):
         def _find_setjmp_returns(self):
             """Adressen hinter `bl setjmp` (Wiedereinstieg bei longjmp): direkte Exporte oder PLT-Stubs auf Importe."""
             n, base = self.nso, self.base
-            target_fns = {base + s[3] for s in n.syms if s[0] in SETJMP_NAMES and s[2]}
+            target_fns = {base + s[3] for s in n.syms if s[0] in SETJMP_NAMES and s[2]} | {base + o for o in EXTRA_SETJMP}
             slots = {}
             for off, typ, sym, add in n.relocs:
                 if typ in (1025, 1026, 257) and sym and n.syms[sym][0] in SETJMP_NAMES:
@@ -94,6 +109,10 @@ def install(las_dir):
             return res
 
         def lift(self, a):
+            w0 = self.word(a)
+            if (w0 & 0xBFA00000) == 0x88200000:  # LDXP/LDAXP/STXP/STLXP (Standardlifter: nicht unterstützt)
+                STATS["excl_pair"] += 1
+                return Insn("op", excl_pair(w0))
             ins = super().lift(a)
             if ins.kind == "ret":
                 w = self.word(a)
@@ -138,13 +157,13 @@ def install(las_dir):
 
 
 def is_jumptable_base_adr(words, i):
-    """`adr xD, T` gefolgt (<= 8 Wörter) von `add xD, xD, xM, lsl n` und `br xD`: T ist die Basis einer relativen
-    Sprungtabelle innerhalb derselben Funktion, kein Funktionsanfang (der Standard-Generator zerschneidet sonst
-    die Funktion an T)."""
+    """`adr xD, T` gefolgt (<= 24 Wörter) von `add xD, xD, xM, lsl n` und `br xD`: T ist die Basis einer relativen
+    Sprungtabelle (oder der erste Fall einer Byte-Offset-Tabelle, Fenster 24 wegen dazwischen liegender Konstantenladungen)
+    innerhalb derselben Funktion, kein Funktionsanfang (der Standard-Generator zerschneidet sonst die Funktion an T)."""
     w = words[i]
     d = w & 31
     seen_add = False
-    for k in range(i + 1, min(i + 9, len(words))):
+    for k in range(i + 1, min(i + 25, len(words))):
         x = words[k]
         if (x & 0xFF200000) == 0x8B000000 and (x & 31) == d and ((x >> 5) & 31) == d:
             seen_add = True
@@ -230,9 +249,13 @@ def generate(gen, args):
             print(f"{args.name}: --only: {len(missing)} Anfänge sind keine Funktionsanfänge", file=sys.stderr)
     nchunks, ci, pending = 0, 0, None
     all_refs = set()
+    written, last_win, sub = set(), None, 0
+    win_of = lambda a: (a - m.lo) // args.window if args.window else 0  # feste Adressfenster: Chunks bleiben bei lokalen Änderungen stabil
     while ci < len(order) or pending:
         body, refs, size, fns = [], set(), 0, []
         while (pending or ci < len(order)) and len(fns) < args.chunk and size < args.chunk_bytes:
+            if not pending and fns and win_of(order[ci]) != win_of(fns[0]):
+                break
             if pending:
                 a, lines, r = pending
                 pending = None
@@ -253,7 +276,12 @@ def generate(gen, args):
             refs |= r
             if n > args.big_fn:
                 break
-        path = os.path.join(args.outdir, f"{args.name}_{nchunks:03d}.c")
+        win = win_of(fns[0])
+        sub = sub + 1 if win == last_win else 0
+        last_win = win
+        fname_ = f"{args.name}_{win:05x}_{sub}.c"
+        written.add(fname_)
+        path = os.path.join(args.outdir, fname_)
         text = ['#include "cpu.h"\n' + ('#include "simd.h"\n' if m.lifter.sc else "")]
         text += [f"void {gen.fname(r)}(Cpu *c);\n" for r in sorted(refs)]
         text += [f"void {gen.sanitize(hle[a])}(Cpu *c);\n" for a in sorted(set(hle) & set(fns))]
@@ -262,9 +290,8 @@ def generate(gen, args):
         all_refs |= refs
         nchunks += 1
         print(f"{args.name}: progress {ci}/{len(order)} files {nchunks}", file=sys.stderr, flush=True)
-    for fn in os.listdir(args.outdir):
-        mm = re.fullmatch(re.escape(args.name) + r"_(\d{3})\.c", fn)
-        if mm and int(mm.group(1)) >= nchunks:
+    for fn in os.listdir(args.outdir):  # Chunks früherer Läufe (andere Fenster oder alte Nummerierung)
+        if re.fullmatch(re.escape(args.name) + r"_(\d{3}|[0-9a-f]{5}_\d+)\.c", fn) and fn not in written:
             os.remove(os.path.join(args.outdir, fn))
     with io.StringIO() as f:
         f.write('#include "cpu.h"\n')
@@ -310,10 +337,14 @@ def main():
     ap.add_argument("--chunk", type=int, default=1500)
     ap.add_argument("--chunk-bytes", type=int, default=1500000)
     ap.add_argument("--big-fn", type=int, default=100000)
+    ap.add_argument("--window", type=lambda x: int(x, 0), default=0x8000, help="Chunk-Grenze alle N Byte Gastcode (0 = nur nach Größe)")
+    ap.add_argument("--setjmp-at", action="append", type=lambda x: int(x, 0), default=[],
+                    help="zusätzliche setjmp-Funktion (Offset zur Modulbasis) für Module ohne dynamische Symbole (Testmodul)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only")
     ap.add_argument("--simd", choices=("asm", "c"), default="asm" if platform.machine().lower() in ("arm64", "aarch64") else "c")
     args = ap.parse_args(argv)
+    EXTRA_SETJMP.extend(args.setjmp_at)
     atexit.register(lambda: print("eh_gen:", dict(STATS), file=sys.stderr))
     generate(gen, args)
 
