@@ -37,7 +37,7 @@ macOS-Werkzeuge sind BSD-Varianten (`ls --time-style` und GNU-Optionen fehlen). 
 | QA-Szenarien | `scripts/recomp/qa/qa_run.sh <szenario>|--list|--report <ordner>` (Sperrdatei, Spielstand-Kopie aus `work/recomp/qa/save_base`) |
 | Unity (nur falls je wieder nötig) | `scripts/unity_safe.sh open|restart|status|test|watch`; Tests nie im Play-Modus (hängt), vorher `editor_stop` |
 
-Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `BDSP_WAIT` (Warteberichte), `BDSP_WATCH`, `BDSP_ALIAS_BASE/SIZE`, `BDSP_APPMEM`, `BDSP_SHOT_DIR`, `LARECOMP_SCREENSHOT_*`.
+Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `BDSP_WAIT` (Warteberichte), `BDSP_WATCH`, `BDSP_ALIAS_BASE/SIZE`, `BDSP_APPMEM`, `BDSP_SHOT_DIR`, `BDSP_SCREENSHOT_*`.
 
 ## 3. Standard-Testspielstand und Verteilung
 

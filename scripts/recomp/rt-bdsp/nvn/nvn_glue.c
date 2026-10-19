@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 #include <fcntl.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
@@ -311,7 +312,21 @@ bool menu_is_open(void) { return false; }
 __attribute__((weak)) void menu_apply_window_requests(void *w) { (void)w; }
 void menu_test_open(void) {}
 void menu_render(void *dev, void *cb, void *target) { (void)dev; (void)cb; (void)target; }
-void input_frame(uint64_t f) { (void)f; }
+// Bildraten-Begrenzer auf g_bdsp_fps (30/60/120, services_gfx.c). Läuft pro präsentiertem Bild (metal.m ruft input_frame
+// nach dem Present) und wartet bis zum nächsten Zielzeitpunkt. Nur Spiel-Ticks (Wartezeit), keine Änderung am Renderer.
+extern volatile int g_bdsp_fps;
+static void frame_pace(void) {
+    static uint64_t next_ns;
+    uint64_t period_ns = 1000000000ull / (unsigned)g_bdsp_fps;
+    uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    if (next_ns == 0 || now > next_ns + 4 * period_ns) next_ns = now;  // nach Stillstand (Laden) neu aufsetzen
+    next_ns += period_ns;
+    if (now < next_ns) {
+        struct timespec ts = {(time_t)((next_ns - now) / 1000000000ull), (long)((next_ns - now) % 1000000000ull)};
+        nanosleep(&ts, NULL);
+    }
+}
+void input_frame(uint64_t f) { (void)f; frame_pace(); }
 void fnprof_frame(uint64_t f) { (void)f; }
 void warp_frame(uint64_t f) { (void)f; }
 void reboot_test_frame(uint64_t f) { (void)f; }

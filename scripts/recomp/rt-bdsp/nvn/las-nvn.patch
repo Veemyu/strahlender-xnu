@@ -37,7 +37,7 @@
      g_guest_buffer = [dev newBufferWithBytesNoCopy:(void *)HEAP_BASE length:HEAP_MAX
                                             options:MTLResourceStorageModeShared deallocator:nil];
 @@ -1105,8 +1107,9 @@
-     if (shot_from < 0) { const char *e = getenv("LARECOMP_SCREENSHOT_FROM"); shot_from = e ? atol(e) : 0; }
+     if (shot_from < 0) { const char *e = getenv("BDSP_SCREENSHOT_FROM"); shot_from = e ? atol(e) : 0; }
      if (shot_every && b && b->tex && total_frames % shot_every == 0 && (long)total_frames >= shot_from) {
          char path[256];
 -        if (shot_from) mkdir("build/frames", 0755);
@@ -46,12 +46,12 @@
 +        mkdir(dir, 0755);
 +        snprintf(path, sizeof path, "%s/frame_%05llu.png", dir, total_frames);
          save_png(b->tex, path);
-         if (getenv("LARECOMP_EXIT_AFTER_SHOT")) { fflush(stderr); _exit(0); }
+         if (getenv("BDSP_EXIT_AFTER_SHOT")) { fflush(stderr); _exit(0); }
      }
 @@ -1147,7 +1150,7 @@
-     // LARECOMP_HIDDEN=1: never shown (automated test runs render off screen without taking the user's focus)
+     // BDSP_HIDDEN=1: never shown (automated test runs render off screen without taking the user's focus)
      SDL_WindowFlags wflags = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-     if (getenv("LARECOMP_HIDDEN")) wflags |= SDL_WINDOW_HIDDEN;
+     if (getenv("BDSP_HIDDEN")) wflags |= SDL_WINDOW_HIDDEN;
 -    window = SDL_CreateWindow("LAS Recomp", win_w, win_h, wflags);
 +    window = SDL_CreateWindow("BDSP Recomp", win_w, win_h, wflags);
      if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
@@ -196,7 +196,7 @@
          if (f) { fputs(src[i], f); fclose(f); }
 @@ -828,7 +833,7 @@
      static int started;
-     if (started++ || getenv("LARECOMP_NO_SHADER_WARM")) return;
+     if (started++ || getenv("BDSP_NO_SHADER_WARM")) return;
      dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
 -        DIR *d = opendir("cache/shaders");
 +        DIR *d = opendir("work/recomp/cache/shaders");
@@ -260,7 +260,7 @@
      for (int i = 0; i < st.nattrib; i++) vkey.attr_kind[i] = (uint8_t)attr_kind(st.attrib[i] & 0xFF);
      for (int i = 0; i < st.rt.ncolor; i++) if (st.rt.color[i]) fkey.rt_kind[i] = (uint8_t)rt_kind(st.rt.color[i]->format);
 @@ -1985,14 +2007,14 @@
-     if (ENV("LARECOMP_POT_PROBE") && st.ubuf[0][2].addr && st.ubuf[0][2].size >= 48) {  // (debug: bush / pot draws)
+     if (ENV("BDSP_POT_PROBE") && st.ubuf[0][2].addr && st.ubuf[0][2].size >= 48) {  // (debug: bush / pot draws)
          extern void pot_probe(const float *m, bool tintable, uint64_t mesh, uint32_t inst);
          uint32_t ninst = indexed ? (uint32_t)r->x[6] : (uint32_t)r->x[4];
 -        pot_probe((const float *)(uintptr_t)st.ubuf[0][2].addr, pr->fi->uses_tint, st.vbuf[0].addr, ninst);

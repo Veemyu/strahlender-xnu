@@ -42,3 +42,5 @@ void bdsp_app_restart(void) __attribute__((noreturn));
 void bdsp_app_alert(const char *title, const char *msg);
 
 extern volatile int g_bdsp_paused;   // services_gfx.c: hält das Vsync-Ereignis an
+extern volatile int g_bdsp_fps;      // services_gfx.c: Bildrate 30/60/120
+void bdsp_set_fps(int fps);          // ungültige Werte werden ignoriert

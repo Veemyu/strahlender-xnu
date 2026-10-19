@@ -1,5 +1,5 @@
 Korrekturen an renderer.m (nach las-nvn.patch angewandt; prepare.sh):
- 1. Vertex-/Indexdaten gehen standardmäßig über den Ring (Kopie) statt über den umhüllten Gastspeicher (LARECOMP_GUEST_BUF=1 schaltet
+ 1. Vertex-/Indexdaten gehen standardmäßig über den Ring (Kopie) statt über den umhüllten Gastspeicher (BDSP_GUEST_BUF=1 schaltet
     das alte Verhalten zurück): die GPU sah im umhüllten Puffer alte (nie beschriebene) Seiten, alle indizierten Zeichenaufrufe blieben unsichtbar.
  2. Bindlose Texturen: Handles aus zwei Wörtern haben die Textur in der Tabelle ab 0x168 und den Sampler in der ab 0x568 (Fund des Vulkan-Strangs).
  3. nvnWindowSetCrop erreicht die Präsentation (metal.m; objects.c bietet nvn_window_crop() für beide Backends).
@@ -10,8 +10,8 @@ Korrekturen an renderer.m (nach las-nvn.patch angewandt; prepare.sh):
  
  // Bind guest memory [addr, addr+size) as a buffer: zero-copy inside the heap, copied otherwise.
 +static bool guest_heap_ok(uint64_t addr, uint64_t size) {
-+    static int off = -1;  // Standard: Daten über den Ring kopieren; LARECOMP_GUEST_BUF=1 nutzt den umhüllten Gastspeicher (siehe docs/recomp-gate2.md: die GPU sah dort alte Seiten)
-+    if (off < 0) off = getenv("LARECOMP_GUEST_BUF") == NULL;
++    static int off = -1;  // Standard: Daten über den Ring kopieren; BDSP_GUEST_BUF=1 nutzt den umhüllten Gastspeicher (siehe docs/recomp-gate2.md: die GPU sah dort alte Seiten)
++    if (off < 0) off = getenv("BDSP_GUEST_BUF") == NULL;
 +    return !off && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
 +}
 +
@@ -97,7 +97,7 @@ Korrekturen an renderer.m (nach las-nvn.patch angewandt; prepare.sh):
 @@ -1866,7 +1866,8 @@
          MTLDepthStencilDescriptor *dd = [MTLDepthStencilDescriptor new];
          static int nodt = -1;
-         if (nodt < 0) nodt = getenv("LARECOMP_NO_DEPTH_TEST") != NULL;
+         if (nodt < 0) nodt = getenv("BDSP_NO_DEPTH_TEST") != NULL;
 -        if (st.ds[0] && !nodt) { dd.depthCompareFunction = compare_fn(st.ds[2]); dd.depthWriteEnabled = st.ds[1] != 0; }
 +        // no depth target bound: the GPU skips the depth test (Metal would test against nothing and drop everything)
 +        if (st.ds[0] && !nodt && st.rt.depth) { dd.depthCompareFunction = compare_fn(st.ds[2]); dd.depthWriteEnabled = st.ds[1] != 0; }

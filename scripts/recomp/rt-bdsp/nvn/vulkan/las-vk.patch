@@ -43,7 +43,7 @@
  
 +static void create_headless_images(void) {
 +    int w = 1920, h = 1080;
-+    if (getenv("LARECOMP_WINDOW")) sscanf(getenv("LARECOMP_WINDOW"), "%dx%d", &w, &h);
++    if (getenv("BDSP_WINDOW")) sscanf(getenv("BDSP_WINDOW"), "%dx%d", &w, &h);
 +    g_vk.sc_format = VK_FORMAT_B8G8R8A8_UNORM;
 +    g_vk.sc_extent = (VkExtent2D){(uint32_t)w, (uint32_t)h};
 +    g_vk.sc_count = 3;
@@ -131,11 +131,11 @@
          bool shot = win_shot && (long)total_frames + 1 == win_shot;
 -        vk_frame_end(shot ? "build/window.png" : NULL);
 +        vk_frame_end(shot ? "work/recomp/shots/window.png" : NULL);
-         if (shot && getenv("LARECOMP_EXIT_AFTER_SHOT")) { fflush(stderr); _exit(0); }
+         if (shot && getenv("BDSP_EXIT_AFTER_SHOT")) { fflush(stderr); _exit(0); }
 @@ -574,3 +616,3 @@
          static int init;
--        if (!init) { init = 1; next = getenv("LARECOMP_SHOT_AT"); if (next) mkdir("build/frames", 0755); }
-+        if (!init) { init = 1; next = getenv("LARECOMP_SHOT_AT"); if (next) mkdir(shot_dir(), 0755); }
+-        if (!init) { init = 1; next = getenv("BDSP_SHOT_AT"); if (next) mkdir("build/frames", 0755); }
++        if (!init) { init = 1; next = getenv("BDSP_SHOT_AT"); if (next) mkdir(shot_dir(), 0755); }
          while (next && *next) {
 @@ -580,3 +622,3 @@
                  char path[256];
@@ -154,7 +154,7 @@
      atexit(quick_exit_handler);
 -    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
      settings_load();
-+    headless = getenv("LARECOMP_HIDDEN") != NULL;
++    headless = getenv("BDSP_HIDDEN") != NULL;
 +    if (headless) {  // no window, no display connection (ssh sessions, tests): Vulkan renders into images of its own
 +        create_instance();
 +        pick_device();

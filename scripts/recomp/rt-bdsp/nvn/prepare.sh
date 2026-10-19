@@ -19,8 +19,12 @@ cp "$SRC/nvn/maxwell/"* "$DST/nvn/maxwell/"
 cp shader_translator/translate.c "$DST/nvn/maxwell/translate.c"
 cp shader_translator/shader.h "$DST/nvn/maxwell/shader.h"
 cp -R "$HERE/shim/." "$DST/"
+# Die Upstream-Quellen tragen noch LARECOMP_*-Umgebungsnamen; die Kopie wird vor dem Patchen auf BDSP_* umbenannt (Patches nutzen BDSP_*).
+find "$DST" -type f \( -name '*.c' -o -name '*.h' -o -name '*.m' -o -name '*.inc' -o -name '*.cpp' \) -exec perl -pi -e 's/LARECOMP_/BDSP_/g' {} +
 if [ -f "$HERE/las-nvn.patch" ]; then (cd "$DST" && patch -p1 --quiet < "../../../$HERE/las-nvn.patch"); fi
 # fixes.patch: Korrekturen (Ring statt umhülltem Gastspeicher, Textur-/Sampler-Tabelle); debug.patch: Debug-Haken, nur mit NVN_DEBUG=1
 if [ -f "$HERE/fixes.patch" ]; then (cd "$DST" && patch -p1 --quiet < "../../../$HERE/fixes.patch"); fi
+# dbgthread.patch: Screenshots/Readbacks auf eigenem Thread (BDSP_DEBUG_THREAD=1, Standard aus; debug_thread.c)
+if [ -f "$HERE/dbgthread.patch" ]; then (cd "$DST" && patch -p1 --quiet < "../../../$HERE/dbgthread.patch"); fi
 if [ -n "${NVN_DEBUG:-}" ] && [ -f "$HERE/debug.patch" ]; then (cd "$DST" && patch -p1 --quiet < "../../../$HERE/debug.patch"); fi
 echo "NVN-Quellen: $DST"

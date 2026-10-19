@@ -18,5 +18,6 @@ done
 # Texpatch-Kopf liegt im Klon neben vulkan/ (../texpatch.h), die Metal-Shims legen ihn an die Wurzel
 cp "$HERE/shim/texpatch.h" "$DST/nvn/texpatch.h"
 cp -R "$VK/shim/." "$DST/"
+find "$DST" -type f \( -name '*.c' -o -name '*.h' -o -name '*.m' -o -name '*.inc' -o -name '*.cpp' \) -exec perl -pi -e 's/LARECOMP_/BDSP_/g' {} +
 if [ -f "$VK/las-vk.patch" ]; then (cd "$DST" && patch -p1 --quiet < "$OLDPWD/$VK/las-vk.patch"); fi
 echo "Vulkan-NVN-Quellen: $DST"

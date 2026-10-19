@@ -65,6 +65,7 @@ else
   compile "$NVN32/nvn/metal_ios.m" "$RT/nvn/metal.o" "$MCC" $W $NVINC -fobjc-arc
 fi
 compile "$SRC/nvn/nvn_glue.c" "$RT/nvn/nvn_glue.o" "$CC" -O1 -g -w $DEFS $NVINC
+compile "$SRC/nvn/debug_thread.c" "$RT/nvn/debug_thread.o" "$CC" -O1 -g -w $DEFS $NVINC
 if [ "$TARGET" = mac ] || [ -n "$FFINC" ]; then
   compile "$NVN32/movie_glue32.c" "$RT/nvn/movie_glue.o" "$CC" -O1 -g -w $DEFS $NVINC $FFINC
 fi

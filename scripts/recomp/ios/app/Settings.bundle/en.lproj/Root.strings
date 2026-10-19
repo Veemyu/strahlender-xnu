@@ -1,0 +1,10 @@
+/* Settings.bundle, Englisch (Fallback) */
+"FPS_GROUP" = "Display";
+"FPS_TITLE" = "Frame rate";
+"FPS_FOOTER" = "Frame rate of the emulation. Takes effect after restarting the app. Default: 60 fps. 120 fps requires a 120 Hz display.";
+"FPS_30" = "30 fps";
+"FPS_60" = "60 fps";
+"FPS_120" = "120 fps";
+"DEBUG_GROUP" = "Debug";
+"DEBUG_FOOTER" = "Shows the Metal performance HUD (FPS, frame time, GPU). Takes effect after restarting the app.";
+"DEBUG_METAL_HUD" = "Show Metal HUD";

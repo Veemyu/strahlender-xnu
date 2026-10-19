@@ -136,8 +136,8 @@ void bdsp_app_restart(void) {
     fflush(NULL);
     // Die Umgebung wandert über open/exec zum neuen Exemplar (BDSP_HOME usw. sollen bleiben); Testhaken dürfen nicht mit, sonst
     // startet sich das neue Exemplar nach demselben Zeitplan wieder neu
-    static const char *const test_env[] = {"BDSP_UI_SELFTEST", "BDSP_KEY_SCRIPT", "BDSP_PAUSE_SELFTEST", "BDSP_INPUT_SCRIPT", "LARECOMP_SCREENSHOT_EVERY",
-                                           "LARECOMP_SCREENSHOT_FROM", "LARECOMP_EXIT_AFTER_SHOT", NULL};
+    static const char *const test_env[] = {"BDSP_UI_SELFTEST", "BDSP_KEY_SCRIPT", "BDSP_PAUSE_SELFTEST", "BDSP_INPUT_SCRIPT", "BDSP_SCREENSHOT_EVERY",
+                                           "BDSP_SCREENSHOT_FROM", "BDSP_EXIT_AFTER_SHOT", NULL};
     for (int i = 0; test_env[i]; i++) unsetenv(test_env[i]);
     if (g_app.bundle[0]) {
         // Das neue Exemplar startet nach einer Sekunde, wenn dieses beendet ist (gleicher Spielstand-Ordner, gleiches Fenster)
@@ -184,7 +184,8 @@ static const char *const k_default_config =
     "# fullscreen = 0\n"
     "# pause_on_focus_loss = 0   # 1: Spiel hält an, wenn das Fenster den Fokus verliert\n"
     "# pad_layout = nintendo     # nintendo (Tastenposition wie bei der Switch) oder xbox (Beschriftung)\n"
-    "# backups = 10              # Zahl der Sicherungen beim Start\n";
+    "# backups = 10              # Zahl der Sicherungen beim Start\n"
+    "# fps = 60                  # Bildrate: 30, 60 oder 120 (Menü Ansicht > Bildrate hat Vorrang)\n";
 
 static const char *const k_keys_help =
     "Tastatur (Standard von Ryujinx):\n"
@@ -239,6 +240,10 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     SDL_SetWindowSize(w, (int)(s.tag >> 16), (int)(s.tag & 0xFFFF));
     SDL_SyncWindow(w);
 }
+- (void)setFps:(NSMenuItem *)s {
+    bdsp_set_fps((int)s.tag);
+    [[NSUserDefaults standardUserDefaults] setInteger:s.tag forKey:@"bdsp_fps"];
+}
 - (void)openCache:(id)s { open_folder(g_app.cache); }
 - (void)openLogs:(id)s { open_folder(g_app.logs); }
 - (void)showConfig:(id)s {
@@ -248,6 +253,7 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
 - (void)showKeys:(id)s { ask(@"Tastenbelegung", [NSString stringWithUTF8String:k_keys_help], @[@"OK"]); }
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     if (item.action == @selector(togglePause:)) item.state = g_user_paused ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(setFps:)) item.state = item.tag == g_bdsp_fps ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(toggleFullscreen:)) {
         SDL_Window *w = ui_window();
         item.state = w && (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -295,6 +301,15 @@ static void install_menu(void) {
     NSMenu *vm = [[NSMenu alloc] initWithTitle:@"Ansicht"];
     vi.submenu = vm;
     item(vm, @"Vollbild", @selector(toggleFullscreen:), @"f", NSEventModifierFlagCommand, g_target);
+    NSMenuItem *fi = [vm addItemWithTitle:@"Bildrate" action:nil keyEquivalent:@""];
+    NSMenu *fm = [[NSMenu alloc] initWithTitle:@"Bildrate"];
+    fi.submenu = fm;
+    for (NSNumber *f in @[@30, @60, @120]) {
+        NSMenuItem *it = item(fm, [NSString stringWithFormat:@"%@ fps", f], @selector(setFps:), @"", 0, g_target);
+        it.tag = f.integerValue;
+    }
+    NSInteger savedFps = [[NSUserDefaults standardUserDefaults] integerForKey:@"bdsp_fps"];
+    if (savedFps) bdsp_set_fps((int)savedFps);
     [vm addItem:[NSMenuItem separatorItem]];
     static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
     for (int i = 0; i < 4; i++) {

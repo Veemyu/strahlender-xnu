@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 
 extern int bdsp_runtime_main(int argc, char **argv);
+extern void bdsp_set_fps(int fps);   // services_gfx.c: 30, 60 oder 120
 extern CAMetalLayer *g_ios_layer;
 extern _Atomic uint64_t g_ext_buttons;
 extern _Atomic int32_t g_ext_stick[4];
@@ -372,6 +373,9 @@ static void *RuntimeThread(void *arg) {
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)opts {
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
+    // Metal liest MTL_HUD_ENABLED beim Start des Geräts; deshalb vor jeder Metal-Nutzung setzen (Neustart nötig)
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"bdsp_metal_hud"]) setenv("MTL_HUD_ENABLED", "1", 1);
+    fprintf(stderr, "[ipad] Metal-HUD %s\n", getenv("MTL_HUD_ENABLED") ? "an" : "aus");
     app.idleTimerDisabled = YES;
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController = [GameVC new];
@@ -407,7 +411,9 @@ static void *RuntimeThread(void *arg) {
     setenv("BDSP_SAVE", [docs stringByAppendingPathComponent:@"Saves"].UTF8String, 0);
     setenv("BDSP_SHOT_DIR", [docs stringByAppendingPathComponent:@"Shots"].UTF8String, 0);
     setenv("BDSP_TIMEOUT", "86400", 0);
-    setenv("LARECOMP_FPS_INTERVAL", "5", 0);
+    setenv("BDSP_FPS_INTERVAL", "5", 0);
+    NSInteger fps = [NSUserDefaults.standardUserDefaults integerForKey:@"bdsp_fps"];
+    bdsp_set_fps(fps ? (int)fps : 60);
     fprintf(stderr, "[ipad] Start: %s, Gerät %s, os_proc_available_memory %zu MiB\n", UIDevice.currentDevice.systemVersion.UTF8String,
             UIDevice.currentDevice.model.UTF8String, os_proc_available_memory() >> 20);
     if (![fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"GameData/romfs"]])

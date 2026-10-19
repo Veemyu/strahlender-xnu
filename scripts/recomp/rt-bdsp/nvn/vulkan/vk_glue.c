@@ -22,4 +22,4 @@ void plat_terminate(void) { _exit(0); }
 // Zeit, die dieser Thread in Warte-/Schlaf-Aufrufen des Kernels blockiert war (exec.c: Bildtakt-Messung des Klons). Die BDSP-Laufzeit
 // führt sie nicht; der Bildtakt bleibt beim Spiel (Vsync-Ereignis aus services_gfx.c), die Takterkennung des Klons ist aus.
 __thread uint64_t g_blocked_ns;
-__attribute__((constructor)) static void vk_glue_defaults(void) { setenv("LARECOMP_PACE", "0", 0); }
+__attribute__((constructor)) static void vk_glue_defaults(void) { setenv("BDSP_PACE", "0", 0); }

@@ -182,12 +182,12 @@ int main(int argc, char **argv) {
 #endif
     for (int i = 1; i < argc; i++) {   // Optionen (setzen die Umgebungsvariablen der NVN-Schicht)
         if (!strcmp(argv[i], "--screenshot-after") && i + 1 < argc) {   // Bild Nr. N nach work/recomp/shots (BDSP_SHOT_DIR) speichern
-            setenv("LARECOMP_SCREENSHOT_EVERY", argv[i + 1], 1);
-            setenv("LARECOMP_SCREENSHOT_FROM", argv[i + 1], 1);
+            setenv("BDSP_SCREENSHOT_EVERY", argv[i + 1], 1);
+            setenv("BDSP_SCREENSHOT_FROM", argv[i + 1], 1);
             i++;
-        } else if (!strcmp(argv[i], "--exit-after-shot")) setenv("LARECOMP_EXIT_AFTER_SHOT", "1", 1);
-        else if (!strcmp(argv[i], "--headless")) setenv("LARECOMP_HIDDEN", "1", 1);   // Fenster nie sichtbar, Rendern bleibt Metal
-        else if (!strcmp(argv[i], "--window") && i + 1 < argc) setenv("LARECOMP_WINDOW", argv[++i], 1);
+        } else if (!strcmp(argv[i], "--exit-after-shot")) setenv("BDSP_EXIT_AFTER_SHOT", "1", 1);
+        else if (!strcmp(argv[i], "--headless")) setenv("BDSP_HIDDEN", "1", 1);   // Fenster nie sichtbar, Rendern bleibt Metal
+        else if (!strcmp(argv[i], "--window") && i + 1 < argc) setenv("BDSP_WINDOW", argv[++i], 1);
         else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // keine Grafik (nur Gate-1-Messung): NVN-Funktionen bleiben ungenutzt
         else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) setenv("BDSP_INPUT_SCRIPT", argv[++i], 1);   // "Sekunde:TASTE[+TASTE]:Dauer,..." (nvn_glue.c)
         else if (!strcmp(argv[i], "--save") && i + 1 < argc) setenv("BDSP_SAVE", argv[++i], 1);   // Speicherstand-Ordner (Standard work/recomp/save, siehe install_save.sh)

@@ -149,9 +149,10 @@ void bdsp_app_init(int argc, char **argv) {
     g_app.pause_on_focus_loss = cfg_int("BDSP_PAUSE_ON_FOCUS_LOSS", cfg_get(keys, vals, n, "pause_on_focus_loss"), 0);
     g_app.fullscreen = cfg_int("BDSP_FULLSCREEN", cfg_get(keys, vals, n, "fullscreen"), 0);
     g_app.backups = cfg_int("BDSP_BACKUPS", cfg_get(keys, vals, n, "backups"), 10);
+    bdsp_set_fps(cfg_int("BDSP_FPS", cfg_get(keys, vals, n, "fps"), 60));
     g_app.win_w = 1280;
     g_app.win_h = 720;
-    const char *win = getenv("LARECOMP_WINDOW");
+    const char *win = getenv("BDSP_WINDOW");
     if (!win) win = cfg_get(keys, vals, n, "window");
     if (win) sscanf(win, "%dx%d", &g_app.win_w, &g_app.win_h);
     const char *lang = cfg_get(keys, vals, n, "language");
@@ -186,10 +187,10 @@ void bdsp_app_init(int argc, char **argv) {
     {
         char w[32];
         snprintf(w, sizeof w, "%dx%d", g_app.win_w, g_app.win_h);
-        setenv("LARECOMP_WINDOW", w, 0);
+        setenv("BDSP_WINDOW", w, 0);
     }
     // Relative Pfade der Umgebung und der Kommandozeile beziehen sich auf den Aufruf: vor dem Wechsel des Arbeitsverzeichnisses absolut machen
-    static const char *const path_env[] = {"BDSP_IMG", "BDSP_NPDM", "BDSP_IL2SYM", "BDSP_SHOT_DIR", "LARECOMP_SHOT_PATH", NULL};
+    static const char *const path_env[] = {"BDSP_IMG", "BDSP_NPDM", "BDSP_IL2SYM", "BDSP_SHOT_DIR", "BDSP_SHOT_PATH", NULL};
     for (int i = 0; path_env[i]; i++) {
         const char *v = getenv(path_env[i]);
         char a[1200];

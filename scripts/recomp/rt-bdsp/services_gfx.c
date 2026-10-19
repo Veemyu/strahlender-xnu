@@ -15,15 +15,37 @@ static uint32_t new_event_handle(KEvent **out) {
     return r;
 }
 
-// ---- Vsync-Ereignis: 60 Hz ohne Anzeige (der Gast wartet auf dieses Ereignis, bevor er ein Bild beginnt)
+// ---- Vsync-Ereignis ohne Anzeige (der Gast wartet auf dieses Ereignis, bevor er ein Bild beginnt)
 static KEvent *g_vsync;
 volatile int g_bdsp_paused;   // von der App-Hülle (Pause, Fokusverlust) gesetzt: das Vsync-Ereignis bleibt aus, das Spiel wartet
+volatile int g_bdsp_fps = 60; // Bildrate: 30, 60 oder 120 (App-Einstellung, siehe bdsp_set_fps)
+void bdsp_set_fps(int fps) {
+    if (fps == 30 || fps == 60 || fps == 120) g_bdsp_fps = fps;
+}
+static uint64_t mono_ns(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
+}
+// Absolute Zielzeiten statt relativem nanosleep: sonst driftet der Takt auf ~20 ms (≈50 Hz) und das Spiel bleibt bei 50 fps.
 static void *vsync_thread(void *arg) {
     (void)arg;
+    uint64_t next = mono_ns();
     for (;;) {
-        struct timespec ts = {0, 16666667};
-        nanosleep(&ts, NULL);
-        while (g_bdsp_paused) nanosleep(&(struct timespec){0, 10000000}, NULL);
+        uint64_t period = 1000000000ull / (uint64_t)g_bdsp_fps;
+        next += period;
+        uint64_t now = mono_ns();
+        if (next > now) {
+            uint64_t d = next - now;
+            struct timespec ts = {(time_t)(d / 1000000000ull), (long)(d % 1000000000ull)};
+            nanosleep(&ts, NULL);
+        } else if (now > next + 4 * period) {
+            next = now;   // nach Stillstand (z. B. Laden) neu aufsetzen, kein Aufholen
+        }
+        while (g_bdsp_paused) {
+            nanosleep(&(struct timespec){0, 10000000}, NULL);
+            next = mono_ns();
+        }
         pthread_mutex_lock(&g_klock);
         kernel_signal(g_vsync);
         pthread_mutex_unlock(&g_klock);

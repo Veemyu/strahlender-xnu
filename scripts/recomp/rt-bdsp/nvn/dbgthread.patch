@@ -1,0 +1,105 @@
+--- a/nvn/metal.m
++++ b/nvn/metal.m
+@@ -648,6 +648,9 @@
+ #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+ 
+ void renderer_save_texture(id<MTLTexture> tex, const char *path);
++bool dbg_thread_enabled(void);                                    // debug_thread.c
++void dbg_thread_submit(void (*fn)(void *), void *arg);
++void dbg_thread_drain(void);
+ 
+ // Scanout shows the bytes the game wrote: sample sRGB textures through a non-sRGB view so the
+ // present/screenshot shaders pass them through instead of decoding to linear.
+@@ -887,11 +890,11 @@
+ }
+ static float g_shot_crop[4] = {0, 0, 1, 1};  // presented crop of the current frame (screenshots match it)
+ static bool g_save_upright;  // (set around saves of the window image: test shots under any name)
+-void renderer_save_texture(id<MTLTexture> tex, const char *path) {
++static void save_texture_now(id<MTLTexture> tex, const char *path, const float *crop_in, bool upright) {
+     NSUInteger w = tex.width, h = tex.height;
+     float shot_crop[4] = {0, 0, 1, 1};
+     if (strstr(path, "frame_")) {
+-        memcpy(shot_crop, g_shot_crop, sizeof shot_crop);
++        memcpy(shot_crop, crop_in, sizeof shot_crop);
+         w = (NSUInteger)(w * shot_crop[2]); h = (NSUInteger)(h * shot_crop[3]);
+     }
+     MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+@@ -916,7 +919,7 @@
+     id<MTLRenderCommandEncoder> e = [cb renderCommandEncoderWithDescriptor:rp];
+     float flip = renderer_origin_lower_left() ? 1.0f : 0.0f;
+     [e setRenderPipelineState:pipe];
+-    if (g_save_upright || strstr(path, "window")) flip = 0;  // the window image is already upright
++    if (upright || strstr(path, "window")) flip = 0;  // the window image is already upright
+     float pv[8] = {flip, 0, 0, 0, shot_crop[0], shot_crop[1], shot_crop[2], shot_crop[3]};
+     [e setVertexBytes:pv length:sizeof pv atIndex:0];
+     [e setFragmentTexture:raw_view(tex) atIndex:0];
+@@ -942,6 +945,42 @@
+     LOG("[metal] saved %s (%lux%lu)\n", path, (unsigned long)w, (unsigned long)h);
+ }
+ 
++// BDSP_DEBUG_THREAD=1 (debug_thread.c): the render thread only copies the image on the GPU queue (no wait); reading it back,
++// encoding the PNG and writing the file run on the debug thread.
++typedef struct { void *tex;  /* retained id<MTLTexture> (ARC forbids object pointers in C structs) */ char path[256]; float crop[4]; bool upright; } ShotJob;
++static void shot_job_run(void *p) {
++    ShotJob *j = p;
++    @autoreleasepool {
++        id<MTLTexture> t = CFBridgingRelease(j->tex);
++        save_texture_now(t, j->path, j->crop, j->upright);
++    }
++    free(j);
++}
++void renderer_save_texture(id<MTLTexture> tex, const char *path) {
++    if (dbg_thread_enabled() && tex.textureType == MTLTextureType2D && tex.sampleCount == 1 && strlen(path) < 256) {
++        MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:tex.pixelFormat
++                                                                                     width:tex.width height:tex.height mipmapped:NO];
++        d.usage = MTLTextureUsageShaderRead | MTLTextureUsagePixelFormatView;
++        d.storageMode = MTLStorageModePrivate;
++        id<MTLTexture> copy = [dev newTextureWithDescriptor:d];
++        if (copy) {
++            id<MTLCommandBuffer> cb = [queue commandBuffer];
++            id<MTLBlitCommandEncoder> bl = [cb blitCommandEncoder];
++            [bl copyFromTexture:tex toTexture:copy];
++            [bl endEncoding];
++            [cb commit];
++            ShotJob *j = calloc(1, sizeof *j);
++            j->tex = (void *)CFBridgingRetain(copy);
++            snprintf(j->path, sizeof j->path, "%s", path);
++            memcpy(j->crop, g_shot_crop, sizeof j->crop);
++            j->upright = g_save_upright;
++            dbg_thread_submit(shot_job_run, j);
++            return;
++        }
++    }
++    save_texture_now(tex, path, g_shot_crop, g_save_upright);
++}
++
+ // ================================================================== present
+ 
+ static double last_fps_time;
+@@ -1068,7 +1107,7 @@
+         [cb presentDrawable:drawable];
+         [cb commit];
+         if (shot_tex) {
+-            [cb waitUntilCompleted];
++            if (!dbg_thread_enabled()) [cb waitUntilCompleted];  // (debug thread: renderer_save_texture queues its copy behind this buffer)
+             // BDSP_SHOT_PATH: where (parallel test runs each write their own; default build/window.png)
+             g_save_upright = true;
+             if (g_window_shot_request[0]) {
+@@ -1076,7 +1115,7 @@
+                 g_window_shot_request[0] = 0;
+             } else {
+                 renderer_save_texture(shot_tex, getenv("BDSP_SHOT_PATH") ? getenv("BDSP_SHOT_PATH") : "build/window.png");
+-                if (getenv("BDSP_EXIT_AFTER_SHOT")) { fflush(stderr); _exit(0); }
++                if (getenv("BDSP_EXIT_AFTER_SHOT")) { dbg_thread_drain(); fflush(stderr); _exit(0); }
+             }
+             g_save_upright = false;
+         }
+@@ -1115,7 +1154,7 @@
+         mkdir(dir, 0755);
+         snprintf(path, sizeof path, "%s/frame_%05llu.png", dir, total_frames);
+         save_png(b->tex, path);
+-        if (getenv("BDSP_EXIT_AFTER_SHOT")) { fflush(stderr); _exit(0); }
++        if (getenv("BDSP_EXIT_AFTER_SHOT")) { dbg_thread_drain(); fflush(stderr); _exit(0); }
+     }
+     double now = SDL_GetTicks() / 1000.0;
+     static double fps_iv = -1, prev_present, max_gap;  // BDSP_FPS_INTERVAL=<s>: fps line period (default 2)

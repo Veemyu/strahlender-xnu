@@ -10,7 +10,7 @@ void ui_window_init(void) {
     dev = MTLCreateSystemDefaultDevice();
     layer.device = dev;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    layer.framebufferOnly = getenv("LARECOMP_WINDOW_SHOT") ? NO : YES;
+    layer.framebufferOnly = getenv("BDSP_WINDOW_SHOT") ? NO : YES;
     LOG("[ios] Metal-Gerät %s, BC-Texturen %d, maxBufferLength %llu MiB, recommendedMaxWorkingSetSize %llu MiB\n", dev.name.UTF8String,
         (int)dev.supportsBCTextureCompression, (unsigned long long)(dev.maxBufferLength >> 20),
         (unsigned long long)(dev.recommendedMaxWorkingSetSize >> 20));

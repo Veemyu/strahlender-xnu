@@ -1,3 +1,6 @@
+# Arbeitsnotizen und Todos (lokal, nicht im Repo)
+todo/
+
 # Nie committen: Keys, Dumps, Saves, extrahierte Inhalte
 nsp/
 Ryujinx/
@@ -51,6 +54,7 @@ unity/Assets/M0Tests/
 unity/Assets/Plugins/Wwise*/
 *.unitypackage
 *.bundle
+!scripts/recomp/ios/app/Settings.bundle/
 *.ipa
 *.p12
 *.mobileprovision
