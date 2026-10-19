@@ -233,8 +233,9 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
         parts["movies"] = hash_listing(os.path.join(work, "romfs", "Data", "StreamingAssets", "Movie"), (".webm",))
     elif stage == "assets":
         parts["bundles"] = hash_listing(os.path.join(work, "romfs", "Data", "StreamingAssets", "AssetAssistant"))
-        parts["retarget"] = files("bundle_retarget.py")
+        parts["retarget"] = files("bundle_retarget.py", "texture_transcode.py")
         parts["platform"] = env.get("XNU_BUNDLE_PLATFORM", "") or "auto"
+        parts["texture_format"] = env.get("XNU_TEXTURE_FORMAT", "") or "auto"
         subset = env.get("XNU_BUNDLE_SUBSET", "")
         parts["subset"] = hash_file(subset) if subset else "alle"
         parts["materials"] = hash_listing(os.path.join(work, "materials"))

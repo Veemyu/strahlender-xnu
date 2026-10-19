@@ -27,6 +27,8 @@
 #   --bundle-platform P macos|ios|keep: Zielplattform in den Bundles (Standard aus --target; bei all: macos).
 #                       Ein Player lädt nur Bundles mit passender Kennung (Switch-Kennung 38 wird abgelehnt).
 #   --bundle-subset F   nur die in F aufgeführten Bundles (plus Katalog) in den Player legen (iPad: Platz/Speicher)
+#   --texture-format F  BC-Texturen der Bundles nach ASTC umwandeln (scripts/texture_transcode.py): 6x6|4x4|8x8|off.
+#                       Standard: 6x6 bei Bundle-Plattform ios (Apple-GPUs kennen kein BC), sonst off.
 # Umgebung: TOOLS_DIR, MIN_FREE_GB (Reserve in extract, Standard 25), UNITY_EDITOR_ROOT, DEVELOPER_DIR,
 #   TEAM_ID (sonst work/local.env), SHADER_USED, ASSETS_DEST (gitignorierter Zielordner), XNU_UNITY_DRIVER=cli|editor|auto
 #
@@ -55,7 +57,7 @@ ALL_STAGES="tools extract il2cpp masterdata shaders video audio assets unity-bui
 XCI="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
 DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all VIDEO_PROFILE="h265-crf18" MOVIE_SRC=""
-SHADERS_INTO_UNITY=0 SHADER_ONLY="" LAUNCH=0 BUNDLE_PLATFORM="" BUNDLE_SUBSET=""
+SHADERS_INTO_UNITY=0 SHADER_ONLY="" LAUNCH=0 BUNDLE_PLATFORM="" BUNDLE_SUBSET="" TEXTURE_FORMAT=""
 EXTRACT_ACTIVE=0
 SELECTED="" RESULTS="" UPSTREAM_DIRTY=0 BLOCKED_EDITOR=0 NOT_IMPL=""
 
@@ -532,6 +534,7 @@ stage_assets() {
   if [ "$DRY" -eq 1 ]; then
     [ ! -d "$aa" ] || { n="$(sp tree-size --path "$aa")"; echo "    [dry-run] Bundles: ${n% *} Dateien, $(human "${n#* }")"; }
     echo "    [dry-run] kopiere (APFS-Klon) $aa -> $dest/$AA_REL; Bundle-Plattform: $BUNDLE_PLATFORM${BUNDLE_SUBSET:+, nur Teilmenge $BUNDLE_SUBSET}"
+    echo "    [dry-run] Texturformat: $TEXTURE_FORMAT (BC -> ASTC per scripts/texture_transcode.py; off = Originalformate)"
     echo "    [dry-run] kopiere $WORK/video/*.mp4 -> $dest/$MOVIE_REL (H.265 statt WebM)"
     echo "    [dry-run] kopiere $WORK/masterdata -> $dest/masterdata; Audio wird nicht kopiert (Stufe audio fehlt)"
     stage_done assets; return 0
@@ -548,6 +551,13 @@ stage_assets() {
       PYTHONPATH="$TOOLS_DIR/pydeps" logrun assets-retarget python3 "$ROOT/scripts/bundle_retarget.py" tree "$stg/$AA_REL" \
         --platform "$BUNDLE_PLATFORM" || die 14 "Plattform der Bundles lässt sich nicht setzen (Log: $WORK/logs/assets-retarget.log)"
     fi
+  fi
+  if [ "$TEXTURE_FORMAT" != off ]; then
+    need_pydeps
+    [ -d "$TOOLS_DIR/pydeps/astc_encoder" ] && [ -d "$TOOLS_DIR/pydeps/texture2ddecoder" ] \
+      || die 4 "Python-Pakete für die Texturumwandlung fehlen: python3 -m pip install --target tools/pydeps astc-encoder-py texture2ddecoder Pillow"
+    PYTHONPATH="$TOOLS_DIR/pydeps" logrun assets-textures python3 "$ROOT/scripts/texture_transcode.py" tree "$stg/$AA_REL" \
+      --block "$TEXTURE_FORMAT" || die 14 "Texturumwandlung BC -> ASTC fehlgeschlagen (Log: $WORK/logs/assets-textures.log)"
   fi
   if [ -d "$WORK/video" ] && [ -n "$(find "$WORK/video" -name '*.mp4' -print -quit)" ]; then
     (cd "$WORK/video" && find . -name '*.mp4' -print | while IFS= read -r f; do
@@ -727,6 +737,7 @@ while [ $# -gt 0 ]; do
     --launch) LAUNCH=1; shift ;;
     --bundle-platform) need_val $# "$1"; BUNDLE_PLATFORM="$2"; shift 2 ;;
     --bundle-subset) need_val $# "$1"; BUNDLE_SUBSET="$2"; shift 2 ;;
+    --texture-format) need_val $# "$1"; TEXTURE_FORMAT="$2"; shift 2 ;;
     --xci) need_val $# "$1"; XCI="$2"; shift 2 ;;
     --nsp) need_val $# "$1"; NSP="$2"; shift 2 ;;
     --keys) need_val $# "$1"; KEYS_DIR="$2"; shift 2 ;;
@@ -747,7 +758,11 @@ if [ -z "$BUNDLE_PLATFORM" ]; then
 fi
 case "$BUNDLE_PLATFORM" in macos|ios|keep) ;; *) die 2 "--bundle-platform: macos, ios oder keep erwartet (nicht '$BUNDLE_PLATFORM')" ;; esac
 [ -z "$BUNDLE_SUBSET" ] || [ -f "$BUNDLE_SUBSET" ] || die 3 "--bundle-subset: Datei fehlt: $BUNDLE_SUBSET"
-export XNU_BUNDLE_PLATFORM="$BUNDLE_PLATFORM" XNU_BUNDLE_SUBSET="$BUNDLE_SUBSET"
+if [ -z "$TEXTURE_FORMAT" ]; then
+  case "$BUNDLE_PLATFORM" in ios) TEXTURE_FORMAT=6x6 ;; *) TEXTURE_FORMAT=off ;; esac
+fi
+case "$TEXTURE_FORMAT" in 4x4|6x6|8x8|off) ;; *) die 2 "--texture-format: 4x4, 6x6, 8x8 oder off erwartet (nicht '$TEXTURE_FORMAT')" ;; esac
+export XNU_BUNDLE_PLATFORM="$BUNDLE_PLATFORM" XNU_BUNDLE_SUBSET="$BUNDLE_SUBSET" XNU_TEXTURE_FORMAT="$TEXTURE_FORMAT"
 if [ -z "${STAGES// /}" ] && [ -z "$FROM" ] && [ -z "$TO" ] && [ -z "${ONLY// /}" ] && [ "$PREFLIGHT_ONLY" -eq 0 ]; then usage; exit 2; fi
 SELECTED="$(sp stages --stage "$STAGES" ${FROM:+--from "$FROM"} ${TO:+--to "$TO"} --only "$ONLY")" || exit 2
 case "$WORK" in /*) ;; *) WORK="$PWD/$WORK" ;; esac

@@ -28,6 +28,7 @@ scripts/build_all.sh preflight
 | `--shaders-into-unity`, `--shader-only NAME` | Shader nach `unity/Assets/GameData/Shaders` statt `work/build/shaders`; nur ein Shader (Test, ohne Marker). |
 | `--launch` | iOS-App nach der Installation starten (Standard: nicht starten). |
 | `--bundle-platform`, `--bundle-subset` | Zielplattform der Bundles (`macos`, `ios`, `keep`; Standard aus `--target`) und Teilmenge der Bundles für den Player (Stufe `assets`, siehe dort). |
+| `--texture-format` | `6x6` (Standard bei iOS), `4x4`, `8x8`, `off` (Standard sonst): BC-Texturen der Bundles nach ASTC (Stufe `assets`, `docs/ios-texturen.md`). |
 
 Umgebungsvariablen: `TOOLS_DIR` (Standard `tools/`), `MIN_FREE_GB` (Reserve in `extract`, Standard 25), `PREFLIGHT_MIN_FREE_GB`, `UNITY_EDITOR_ROOT`, `DEVELOPER_DIR`, `TEAM_ID`, `SHADER_USED` (JSON der benutzten Keyword-Mengen), `ASSETS_DEST` (gitignorierter Zielordner der Stufe `assets`), `XNU_UNITY_DRIVER=cli|editor|auto`, `XNU_LOCAL_ENV` (statt `work/local.env`).
 
@@ -88,7 +89,8 @@ Die Struktur entspricht `GameDataPaths` (`Root` = `StreamingAssets/GameData`, we
 **Plattformkennung der Bundles (Pflicht für den Player).** Die Original-Bundles tragen die Zielplattform 38 (Switch). Der Editor lädt sie, ein **Player nicht** („The file can not be loaded because it was created for another build target…“). Die Stufe ruft deshalb `scripts/bundle_retarget.py tree … --platform macos|ios` auf: je Bundle wird nur die Plattformkennung im Serialized File geändert (Block mit den vier Bytes entpacken, patchen, mit LZ4HC neu packen, Blockinfo neu schreiben, übrige Blöcke unverändert kopieren; Texturformate und Inhalt bleiben). Ergebnis auf echten Daten: 14.052 Bundles, 0 Fehler; die Klone sind danach echte Kopien (4,0 GB Plattenverbrauch). Zeit gesamt 42 s (24 s, wenn der gepatchte Block unkomprimiert bleibt, dafür +0,9 GB). UnityPy öffnet gepatchte und Originalbundle mit identischen Objekten (28.225 Objekte in `area001`, gleiche Prüfsumme der ersten 300).
 - `--bundle-platform macos|ios|keep`: Standard aus `--target` (`ios` → ios, sonst macos; bei `all` gilt `macos`, für iOS die Stufe mit `--target ios` wiederholen). `keep` lässt die Kennung (nur für Tools, ein Player lädt die Bundles dann nicht).
 - `--bundle-subset DATEI`: statt aller Bundles nur die gelisteten (Namen relativ zu `AssetAssistant`, `#` für Kommentare) plus alle Nicht-Bundle-Dateien (Katalog `Dpr.bin` u. a.). Für das iPad: `scripts/subsets/ipad-start.txt` (Start der Szene `FieldTest2`, 5 Bundles, 34,6 MB; Begründung und Messung in `docs/player-build-1.md`).
-- Der Marker-Hash der Stufe enthält `bundle_retarget.py`, Plattform, Teilmenge und die Liste der Materialexporte.
+- `--texture-format 4x4|6x6|8x8|off`: BC-Texturen (BC1/BC3/BC4/BC5/BC7, Crunch) der Bundles nach ASTC umwandeln (`scripts/texture_transcode.py tree`, nach dem Setzen der Plattformkennung). Standard `6x6` bei Bundle-Plattform `ios` (Apple-GPUs kennen kein BC), sonst `off`. Mip-Ketten, Größen, Namen, PathIDs, ColorSpace und das Streaming über `.resS` bleiben erhalten; BC4/BC5 nutzen immer ASTC 4×4. Idempotent (ein Bundle ohne BC-Texturen bleibt unverändert). Messung (Teilmenge `ipad-start`): 24 s, 34,6 → 47,9 MB auf der Platte, Texturspeicher der Zone 422 46,4 → 25,5 MiB; alle Bundles: 2.838 mit BC-Texturen (5,2 GB roh), Hochrechnung 10 bis 15 Minuten bei 4 bis 6 Prozessen. Details: `docs/ios-texturen.md`.
+- Der Marker-Hash der Stufe enthält `bundle_retarget.py`, `texture_transcode.py`, Plattform, Texturformat, Teilmenge und die Liste der Materialexporte.
 - Beim Unity-Build kopiert Unity die Daten danach einmal vollständig in das Paket (macOS: App 4,1 GB, Ausgabeordner mit Symbolen 5,0 GB; iOS ohne Teilmenge entsprechend ca. 4,4 GB plus Xcode-Derived-Data).
 
 ### `unity-build`
@@ -128,7 +130,7 @@ Prüft oder erzeugt alles lokal, nichts wird systemweit installiert: hactool (Kl
 
 - `python3 -m unittest discover -s scripts/tests` (alle grün). Neu: `test_build_stages.py` (Stufenauswahl, Marker, Hash-Abhängigkeiten, Team-ID nie im Klartext, Editor-Erkennung an Beispielausgaben von `ps`, Preflight mit simulierten Werkzeugen, Installationsliste ohne `sudo`) und `test_build_all.py` (Dry-run ohne Schreibzugriff, `--from/--to/--only`, Aufruffehler, Audio-Platzhalter, Assets-Stufe mit synthetischen Bundles: Kopie, Überspringen, Neu-Erzeugen, gitignore-Erzwingung). `test_build_helpers.py` deckt weiter Ticket-Parser, NCA-Auswahl und Manifest ab.
 - Das C#-Buildskript wurde zunächst ohne Editorstart gegen die Unity-6000.3.26f1-Assemblies **übersetzt** (0 Fehler); seit 2026-10-19 läuft es im offenen Editor (macOS und iOS, Abschnitt „Ergebnis des ersten Player-Builds“). Neu: `test_bundle_retarget.py` (8 Tests mit synthetischen UnityFS-Bundles: Plattform lesen und ändern, Inhalt bleibt gleich, Original unberührt, unkomprimiert/Big-Endian, `tree` und `subset`, fehlende Einträge); Python-Suite insgesamt 258 Tests grün. Unity EditMode: 635 von 635 grün (inkl. `BootOptionsTests`).
-- `bash -n scripts/build_all.sh` ist sauber; `shellcheck` ist hier nicht installiert.
+- `bash -n scripts/build_all.sh` ist sauber; `shellcheck` ist hier nicht installiert. Neu: `test_texture_transcode.py` (10 Tests: BC → ASTC mit synthetischen Texturen und einem handgebauten Mini-Bundle mit `.resS`, Idempotenz, Teilmenge/Probelauf; Voraussetzung `astc_encoder`, `etcpak`, `texture2ddecoder` in `tools/pydeps`, sonst übersprungen).
 
 ## Testergebnis `extract` (Stand 2026-10-18, macOS arm64)
 
@@ -159,7 +161,7 @@ Gefundene Fehler und Lösungen:
 ## Offene Punkte
 
 - Der Unity-Batch-Treiber (Editor geschlossen, `build_all.sh --only unity-build,deploy`) wurde mit echten Bundles noch nicht gelaufen; die Builds entstanden im offenen Editor über `Xnu/Build/…`. Die Startszene ist jetzt `Boot` (Auswahlmenü).
-- Texturumwandlung BC → ASTC für iOS; volle Bundle-Menge auf dem iPad (Installation, Platz, Ladezeit) nicht gemessen; keine Sichtprüfung des Bildes (Mac: kein Bildschirmfoto möglich).
+- Texturumwandlung BC → ASTC ist umgesetzt (`scripts/texture_transcode.py`, Abschnitt „`assets`“, `docs/ios-texturen.md`), aber auf dem iPad noch nicht gelaufen; volle Bundle-Menge auf dem iPad (Installation, Platz, Ladezeit) nicht gemessen; keine Sichtprüfung des Bildes (Mac: kein Bildschirmfoto möglich).
 - `--target all` legt nur einen Datensatz `StreamingAssets/GameData` an (Plattform macOS).
 - Auf dieser Entwicklungsmaschine liegt der freie Platz (≈ 41 GB) unter dem Preflight-Mindestwert von 60 GB; der echte Gesamtlauf braucht dort `--min-free-gb` oder mehr Platz.
 - `audio` fehlt; Shader-Strippen (`SHADER_USED`) fehlt, daher Shader standardmäßig außerhalb des Unity-Projekts.
