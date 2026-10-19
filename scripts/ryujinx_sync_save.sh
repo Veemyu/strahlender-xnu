@@ -19,7 +19,26 @@ rz() { ssh -o ConnectTimeout=10 -o BatchMode=yes "$RZ_HOST" "$@"; }
 sha() { shasum -a 256 "$1" | cut -c1-16; }
 
 rz_id() {
-  rz "cd ~/$RZ_SAVE_ROOT && for d in */; do f=\$d/0/SaveData.bin; [ -f \$f ] && [ \$(stat -c %s \$f) -eq $SIZE ] && echo \${d%/}; done" | head -1
+  # Die Speicherstelle des AKTUELLEN Ryujinx-Profils: Ryujinx legt je Benutzer einen eigenen Ordner an. Er trägt die
+  # Benutzer-ID in ExtraData0 (Bytes 8..23, jede 8-Byte-Hälfte der Profil-ID byteweise gedreht) und die Titel-ID in Bytes 0..7.
+  rz "python3 - <<'PY'
+import json, os
+root = os.path.expanduser('~/.config/Ryujinx')
+profiles = json.load(open(root + '/system/Profiles.json'))['profiles']
+prof = next((p for p in profiles if p.get('account_state') == 'Open'), profiles[0])
+uid = bytes.fromhex(prof['user_id'])
+want_user = uid[:8][::-1] + uid[8:][::-1]
+want_title = bytes.fromhex('0000d911' + '00000001')
+save = root + '/bis/user/save'
+for d in sorted(os.listdir(save)):
+    try:
+        e = open(save + '/' + d + '/ExtraData0', 'rb').read()
+    except OSError:
+        continue
+    if e[0:8] == want_title and e[8:24] == want_user:
+        print(d)
+        break
+PY" | head -1
 }
 
 # Ryujinx muss das Spiel beenden, bevor der Stand getauscht wird (sonst überschreibt es ihn wieder).
