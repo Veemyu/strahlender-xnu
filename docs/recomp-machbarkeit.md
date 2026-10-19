@@ -2,6 +2,8 @@
 
 **Auftrag:** nur messen und analysieren, keine Entscheidung. Eigene Worte, keine Rechtsberatung. Aus `research/LASRecomp` (MIT, nur gelesen) wurde nichts ins Repo kopiert; es stehen nur Dateipfade, Zeilennummern, Zahlen und Namen im Dokument. Keine Binärdaten, kein erzeugter Code, keine Disassembly.
 
+**Nachtrag 2026-10-19:** Die Spike-Phase 2 aus Abschnitt 7 ist durchgeführt: `docs/recomp-spike-2.md`. Der „Kernblocker“ C++-Exceptions ist gelöst (Variante a, getestet am echten SDK-Unwinder und an 180 echten Funktionen), Thread-Anhalten und 32-Bit-Speichermodell sind prototypisiert, der Gesamtbau ist gemessen (15,6 min, 224 MiB). Aussagen unten, die diese Punkte als offen oder „Wochen bis Monate“ führen, sind dadurch überholt.
+
 **Kennzeichnung:** **gemessen** = mit `scripts/recomp_survey.py` oder per Kommando an den lokalen Dateien ermittelt. **belegt** = im Klon, in einer genannten Quelle oder in unseren Docs gelesen. *vermutet* = Schluss ohne Test. **nicht verifiziert** = Zahl oder Aussage aus Sekundärquelle bzw. nicht prüfbar.
 
 **Reproduktion** (alles lokal; Ausgaben landen in `work/recomp/`, gitignoriert):

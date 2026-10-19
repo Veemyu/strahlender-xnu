@@ -1,0 +1,9 @@
+# Gast-Symbole des SDK-Moduls, die der Exception-Test durch Host-Funktionen ersetzt (HLE).
+# __cxa_get_globals*: je Thread ein Host-Block statt nn::os-TLS (der echte Pfad braucht den vollen SDK-Start).
+# GetExceptionInfo: Modulliste des Hosts statt QueryMemory-SVC auf dem Segmentbild des Laders.
+__cxa_get_globals
+__cxa_get_globals_fast
+_ZN2nn2ro6detail16GetExceptionInfoEPNS1_13ExceptionInfoEm
+# nn::os-Mutex des Unwinders (FDE-Cache): braucht den SDK-Thread-Start (ThreadType, Kernel-Arbitration); im Test ein Thread.
+_ZN2nn2os9LockMutexEPNS0_9MutexTypeE
+_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE
