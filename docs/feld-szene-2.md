@@ -116,3 +116,5 @@ Der Materialexport (`work/materials/<Bundle mit __>.json`, `scripts/material_exp
 5. Streaming: Abstände sind abgeleitet, nicht aus dem Original; Texturspeicher fällt erst mit dem Gebietswechsel; Wasser/Himmel/Wetter nicht blockweise.
 6. Fahrrad, Schwimmen, Angeln, Klettern; Kantensprung-Dauer/Bogen; Brücken weiter nur synthetisch geprüft (Scheibe 1, Punkt 8).
 7. Messung auf dem iPad (Speicher, 30 Hz) steht aus.
+
+**Nachtrag 2026-10-19 (Sichtprüfung, `docs/sichtpruefung-1.md`):** Erstes Bild der Zonen 422/425/54/367 gesehen. Folgen für diese Scheibe: Kamera-Gier im Freien jetzt 180 (`fieldCameraYaw`; die Annahme „Gier 0“ aus Scheibe 1 war falsch, die Tür lag hinter dem Haus); Container werden allen berührten Blöcken zugeordnet (Zone 367 war leer); Bodensuche beim Start von oben; Spielerfigur nach Zonenwechsel nicht mehr magenta; Spielwerte (`EnvironmentDriver`, Stunde über `XNU_ENV_HOUR`) und `SunLight.Ensure` im `FieldController`. Punkt 1 und 2 oben sind damit für Figur, Innenraumkamera, NPC-Marker und Licht erledigt; Überblendung/Zonengrenzen am Bild und Himmel bleiben offen.

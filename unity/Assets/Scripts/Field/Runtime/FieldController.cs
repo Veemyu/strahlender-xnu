@@ -32,9 +32,18 @@ namespace Xnu.Field
                 y = hit.point.y;
                 return true;
             }
+            // Platzierung am Startpunkt: Liegt der Boden über der Ausgangshöhe (Zone 367: Boden bei y = 2, Ausgang 0), von oben suchen.
+            if (SpawnSearch && Physics.Raycast(new Vector3(worldX, SpawnSearchHeight, worldZ), Vector3.down, out hit, SpawnSearchHeight + _depth, _mask, QueryTriggerInteraction.Ignore))
+            {
+                y = hit.point.y;
+                return true;
+            }
             y = fromY;
             return false;
         }
+
+        public bool SpawnSearch;
+        public float SpawnSearchHeight = 60f;
     }
 
     // Feld-Szene (Scheibe 2): lädt eine Zone aus den Original-Bundles, streamt die Karte blockweise um den Spieler,
@@ -76,6 +85,14 @@ namespace Xnu.Field
         [Tooltip("Erzeugte Shader (Xnu/Render/Sync Generated Shaders) für den Material-Umbau; sonst Ersatzmaterial. Standard aus: " +
                  "im Haupt-Editor zeichnete der Umbau schwarz bzw. blockierte den Editor (docs/feld-szene-2.md, Kapitel 6). Umgebungsvariable XNU_GENERATED_SHADERS=1 schaltet ein.")]
         public bool useGeneratedShaders = false;
+        [Tooltip("Spielwerte der Zone (EnvironmentSettings: Licht, Schatten, Spiel-Globals) per EnvironmentDriver setzen, solange der Umbau " +
+                 "mit erzeugten Shadern aktiv ist; sonst Platzhalter-Globals und weißes Licht (docs/sichtpruefung-1.md).")]
+        public bool useGameEnvironment = true;
+        [Tooltip("Stunde (0 bis 24) für die Tageszeit; negativ = lokale Uhr. Umgebungsvariable XNU_ENV_HOUR überschreibt.")]
+        public float environmentHour = -1f;
+        [Tooltip("Gier der Kamera im Freien. 180 = Blick nach −Z: Zellraster x nach rechts, y nach unten, Haustür unten im Bild (Sichtprüfung Zone 422, docs/sichtpruefung-1.md). " +
+                 "0 = Blick nach +Z (frühere Annahme aus docs/feld-szene-1.md: dann liegt die Tür hinter dem Haus).")]
+        public float fieldCameraYaw = 180f;
         [Tooltip("Gier der Kamera in Innenräumen (180 = Tür unten im Bild, Annahme, siehe docs/feld-szene-2.md).")]
         public float roomCameraYaw = 180f;
 
@@ -113,6 +130,7 @@ namespace Xnu.Field
         public int NpcCount => _npcs != null ? _npcs.LiveCount : 0;
         public readonly List<string> TransitionReports = new List<string>();
         public Transform Player => _player;
+        public float CameraYaw { get => _yaw; set => _yaw = value; }
         public int ZoneIdNow => zoneId;
 
         BundleProvider _provider;
@@ -140,6 +158,10 @@ namespace Xnu.Field
         int _lastStreamX = int.MinValue, _lastStreamY = int.MinValue;
         bool _globalsSet;
         Light _sun;
+        EnvironmentDriver _envDriver;
+        EnvironmentSettingsCatalog _envCatalog;
+        bool _envCatalogTried;
+        public string EnvironmentNote { get; private set; } = "";
 
         void Start()
         {
@@ -229,13 +251,14 @@ namespace Xnu.Field
             Collision = Data.BuildCollision(zone);
             if (!Data.TryGetCamera(zone.ZoneId, out var cam)) throw new InvalidDataException("Keine Kamera für Zone " + zone.ZoneId);
             _camSettings = new FieldCameraSettings(cam.Pitch, cam.Fov, cam.TargetRange);
-            _yaw = zone.IsField ? 0f : roomCameraYaw;
+            _yaw = zone.IsField ? fieldCameraYaw : roomCameraYaw;
             if (_camera == null) { _camPitch = cam.Pitch; _camFov = cam.Fov; _camRange = cam.TargetRange; }
             var list = new List<PlacementRecord>();
             var key = string.IsNullOrEmpty(zone.AssetBundleName) ? "" : zone.AssetBundleName.Substring(zone.AssetBundleName.LastIndexOf('/') + 1).ToUpperInvariant();
             foreach (var z in Data.ZonesWithMapName(key)) list.AddRange(Data.Placements.InZone(z));
             if (list.Count == 0) list.AddRange(Data.Placements.InZone(id));
             _mapPlacements = list;
+            ApplyEnvironmentSettings();
         }
 
         // Wechselt zur Zone (mit Überblendung): lädt Karte und platziert den Spieler am Locator `spawnLocator`.
@@ -330,8 +353,9 @@ namespace Xnu.Field
             ApplyPlayerTransform();
         }
 
-        // Die erzeugten Shader lesen Licht und Spiel-Globals: ein Richtungslicht (ohne Licht bleibt das Forward-Bild schwarz) und
-        // die Platzhalterwerte der Spiel-Globals (keine Originalwerte, docs/material-remap.md Abschnitt 6).
+        // Die erzeugten Shader lesen Licht und Spiel-Globals: ein Richtungslicht (ohne Licht bleibt das Forward-Bild schwarz, siehe
+        // SunLight) und die Spiel-Globals. Mit useGameEnvironment setzt ein EnvironmentDriver sie je Bild aus den EnvironmentSettings
+        // der Zone; ohne Katalog oder ohne Settings der Zone bleiben die Platzhalter (keine Originalwerte, docs/material-remap.md Abschnitt 6).
         void EnsureRenderEnvironment()
         {
             if (!_globalsSet)
@@ -339,22 +363,53 @@ namespace Xnu.Field
                 new GameGlobals(new UnityGlobalSink()).SetDefaults();
                 _globalsSet = true;
             }
-            if (_sun == null)
+            if (_sun == null) _sun = SunLight.Ensure(transform, LightShadows.Soft);
+            if (_envDriver == null && useGameEnvironment)
             {
-                foreach (var l in FindObjectsByType<Light>(FindObjectsSortMode.None))
-                    if (l.type == LightType.Directional) { _sun = l; break; }
+                _envDriver = _sun.GetComponent<EnvironmentDriver>() ?? _sun.gameObject.AddComponent<EnvironmentDriver>();
+                _envDriver.Sun = _sun;
+                _envDriver.HourProvider = CurrentHour;
             }
-            if (_sun == null)
+            ApplyEnvironmentSettings();
+        }
+
+        // Stunde der Tageszeit: XNU_ENV_HOUR, sonst environmentHour, sonst lokale Uhr.
+        public float CurrentHour()
+        {
+            var env = Environment.GetEnvironmentVariable("XNU_ENV_HOUR");
+            if (!string.IsNullOrEmpty(env) && float.TryParse(env, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var h)) return Mathf.Repeat(h, 24f);
+            if (environmentHour >= 0f) return Mathf.Repeat(environmentHour, 24f);
+            return EnvironmentDriver.SystemHours();
+        }
+
+        // Settings der aktuellen Zone in den Treiber; ohne Katalog/Settings wird der Treiber abgeschaltet (Platzhalterwerte bleiben).
+        void ApplyEnvironmentSettings()
+        {
+            if (_envDriver == null) return;
+            if (!_envCatalogTried)
             {
-                var go = new GameObject("FieldSun") { hideFlags = HideFlags.DontSave };
-                go.transform.SetParent(transform, false);
-                go.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
-                _sun = go.AddComponent<Light>();
-                _sun.type = LightType.Directional;
-                _sun.color = Color.white;
-                _sun.intensity = 1f;
-                _sun.shadows = LightShadows.None;
+                _envCatalogTried = true;
+                try
+                {
+                    var dir = FieldDataSet.DefaultDirectory;
+                    var s = Path.Combine(dir, "EnvironmentSettings.json");
+                    var z = Path.Combine(dir, "MapRenderSettings.json");
+                    if (File.Exists(s) && File.Exists(z))
+                    {
+                        var c = new EnvironmentSettingsCatalog();
+                        c.LoadSettingsJson(File.ReadAllText(s));
+                        c.LoadZonesJson(File.ReadAllText(z));
+                        _envCatalog = c;
+                    }
+                }
+                catch (Exception e) { Debug.LogWarning("[Field] Umgebungsdaten nicht lesbar: " + e.Message); }
             }
+            var settings = _envCatalog?.ForZone(zoneId);
+            _envDriver.Settings = settings;
+            _envDriver.ZoneFixedTime = _envCatalog?.Zone(zoneId)?.FixedTime ?? false;
+            _envDriver.enabled = settings != null;
+            EnvironmentNote = settings != null ? "Spielwerte " + settings.Name + ", Stunde " + CurrentHour().ToString("F1")
+                : _envCatalog == null ? "Platzhalter (kein EnvironmentSettings.json)" : "Platzhalter (Zone " + zoneId + " ohne Settings)";
         }
 
         int CountBlocks()
@@ -366,9 +421,11 @@ namespace Xnu.Field
 
         void CreateMover(int gx, int gy, MoveDir facing, GridMover previous)
         {
+            _ground.SpawnSearch = true;
             Mover = new GridMover(Collision, _ground, gx, gy, facing);
             if (previous != null) { Mover.Bicycle = previous.Bicycle; Mover.Swim = previous.Swim; Mover.WalkSpeed = previous.WalkSpeed; Mover.RunSpeed = previous.RunSpeed; }
             Mover.Teleport(gx, gy, facing);
+            _ground.SpawnSearch = false;
             Mover.IsOccupied = (x, y) => Data.Placements.IsNpcAt(Data.Router.ZoneAtCell(zoneId, x, y), x, y);
         }
 

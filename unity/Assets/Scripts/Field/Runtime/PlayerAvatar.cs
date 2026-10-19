@@ -75,6 +75,7 @@ namespace Xnu.Field
                 // Sofort alle Materialien ersetzen, bevor ein Bild gezeichnet wird.
                 var b = new Bounds();
                 var first = true;
+                // Höhe aus den aktiven, eingeschalteten Renderern (Reittiere, Fahrrad und Alternativmodelle im selben Prefab stehen aus oder daneben).
                 foreach (var r in a.Root.GetComponentsInChildren<Renderer>(true))
                 {
                     var src = r.sharedMaterials;
@@ -82,6 +83,7 @@ namespace Xnu.Field
                     for (var i = 0; i < dst.Length; i++) dst[i] = materials.For(src[i]);
                     r.sharedMaterials = dst;
                     a.Renderers++;
+                    if (!r.enabled || !r.gameObject.activeInHierarchy) continue;
                     if (first) { b = r.bounds; first = false; } else b.Encapsulate(r.bounds);
                 }
                 a.Bounds = b;

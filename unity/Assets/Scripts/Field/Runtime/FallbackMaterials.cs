@@ -113,6 +113,17 @@ namespace Xnu.Field
             return _missing;
         }
 
+        // Gibt ein von For erzeugtes Material frei (nicht das gemeinsame Platzhaltermaterial).
+        public void Release(Material m)
+        {
+            if (m == null || m == _missing) return;
+            int key = 0; var found = false;
+            foreach (var kv in _cache) if (kv.Value == m) { key = kv.Key; found = true; break; }
+            if (!found) return;
+            _cache.Remove(key);
+            Object.DestroyImmediate(m);
+        }
+
         public void Destroy()
         {
             foreach (var m in _cache.Values) if (m != null) Object.DestroyImmediate(m);

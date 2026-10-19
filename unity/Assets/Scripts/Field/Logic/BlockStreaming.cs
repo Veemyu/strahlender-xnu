@@ -36,6 +36,30 @@ namespace Xnu.Field
             return Math.Max(dx, dy);
         }
 
+        // Alle Blöcke, die das Weltrechteck [minX, maxX] x [minZ, maxZ] berühren (Zelle gx = floor(0,5 - x), gy = floor(z + 0,5); Block = Zelle >> 5).
+        // Strecken über mehr als maxSpan Blöcke je Achse werden auf maxSpan um die Mitte begrenzt (Ausreißer wie Himmelskuppeln).
+        public static List<BlockId> BlocksCovering(float minX, float maxX, float minZ, float maxZ, int maxSpan = 16)
+        {
+            var c0 = FieldCoords.BlockOf((int)Math.Floor(0.5 - maxX));
+            var c1 = FieldCoords.BlockOf((int)Math.Floor(0.5 - minX));
+            var r0 = FieldCoords.BlockOf((int)Math.Floor(minZ + 0.5));
+            var r1 = FieldCoords.BlockOf((int)Math.Floor(maxZ + 0.5));
+            Clamp(ref c0, ref c1, maxSpan);
+            Clamp(ref r0, ref r1, maxSpan);
+            var list = new List<BlockId>((c1 - c0 + 1) * (r1 - r0 + 1));
+            for (var c = c0; c <= c1; c++)
+                for (var r = r0; r <= r1; r++) list.Add(new BlockId(c, r));
+            return list;
+        }
+
+        static void Clamp(ref int a, ref int b, int maxSpan)
+        {
+            if (b - a + 1 <= maxSpan) return;
+            var mid = (a + b) / 2;
+            a = mid - maxSpan / 2;
+            b = a + maxSpan - 1;
+        }
+
         public static BlockSelection Select(int gx, int gy, IEnumerable<BlockId> available, ISet<BlockId> loaded, int loadDistance, int unloadDistance)
         {
             if (unloadDistance < loadDistance) unloadDistance = loadDistance;

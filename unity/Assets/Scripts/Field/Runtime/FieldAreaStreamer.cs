@@ -11,7 +11,8 @@ namespace Xnu.Field
         readonly FieldMapBuilder _builder;
         readonly Transform _skeletonOffset;
         readonly Dictionary<BlockId, List<Transform>> _sources = new Dictionary<BlockId, List<Transform>>();
-        readonly Dictionary<BlockId, List<GameObject>> _built = new Dictionary<BlockId, List<GameObject>>();
+        readonly Dictionary<Transform, GameObject> _builtContainers = new Dictionary<Transform, GameObject>();
+        readonly Dictionary<Transform, int> _refs = new Dictionary<Transform, int>();
         readonly HashSet<BlockId> _loaded = new HashSet<BlockId>();
 
         public GameObject Root { get; }
@@ -38,24 +39,61 @@ namespace Xnu.Field
             if (srcOffset == null) return;
 
             _skeletonOffset = Root.transform.Find("Offset");
+            var offsetMatrix = Matrix4x4.TRS(srcOffset.localPosition, srcOffset.localRotation, srcOffset.localScale);
             for (var i = 0; i < srcOffset.childCount; i++)
             {
                 var c = srcOffset.GetChild(i);
                 var p = c.localPosition;
-                var id = new BlockId(FieldCoords.BlockColumnOfOriginX(p.x), FieldCoords.BlockRowOfOriginZ(p.z));
-                if (!_sources.TryGetValue(id, out var l)) _sources[id] = l = new List<Transform>();
-                l.Add(c);
+                // Ein Container ist nicht auf einen Block begrenzt (Routen und Städte reichen über mehrere Blöcke, sein Ursprung liegt
+                // nicht einmal auf dem 32er-Raster): Er gehört zu allen Blöcken, die seine Meshes berühren, und zu seinem Ursprungsblock.
+                var blocks = new HashSet<BlockId> { new BlockId(FieldCoords.BlockColumnOfOriginX(p.x), FieldCoords.BlockRowOfOriginZ(p.z)) };
+                if (TryWorldBounds(c, offsetMatrix, out var b))
+                    foreach (var id in BlockStreamingMath.BlocksCovering(b.min.x, b.max.x, b.min.z, b.max.z)) blocks.Add(id);
+                foreach (var id in blocks)
+                {
+                    if (!_sources.TryGetValue(id, out var l)) _sources[id] = l = new List<Transform>();
+                    l.Add(c);
+                }
                 ContainersAvailable++;
             }
         }
 
-        // Baut einen Block (alle Container dieser Zelle des Rasters). Ohne Offset-Gerüst passiert nichts.
+        // Weltrechteck aller Meshes unter dem Container (aus Mesh-Bounds und Transform-Kette; das Prefab wird nicht instanziiert).
+        static bool TryWorldBounds(Transform container, Matrix4x4 offsetMatrix, out Bounds bounds)
+        {
+            bounds = new Bounds();
+            var any = false;
+            foreach (var mf in container.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var mesh = mf.sharedMesh;
+                if (mesh == null) continue;
+                var m = Matrix4x4.identity;
+                for (var t = mf.transform; t != null && t != container.parent; t = t.parent)
+                    m = Matrix4x4.TRS(t.localPosition, t.localRotation, t.localScale) * m;
+                m = offsetMatrix * m;
+                var mb = mesh.bounds;
+                for (var k = 0; k < 8; k++)
+                {
+                    var corner = mb.center + Vector3.Scale(mb.extents, new Vector3((k & 1) == 0 ? -1 : 1, (k & 2) == 0 ? -1 : 1, (k & 4) == 0 ? -1 : 1));
+                    var w = m.MultiplyPoint3x4(corner);
+                    if (!any) { bounds = new Bounds(w, Vector3.zero); any = true; }
+                    else bounds.Encapsulate(w);
+                }
+            }
+            return any;
+        }
+
+        // Baut einen Block (alle Container, die ihn berühren; ein Container steht nur einmal, auch wenn mehrere Blöcke geladen sind).
+        // Ohne Offset-Gerüst passiert nichts.
         public bool LoadBlock(BlockId id)
         {
             if (_skeletonOffset == null || _loaded.Contains(id) || !_sources.TryGetValue(id, out var list)) return false;
-            var objs = new List<GameObject>(list.Count);
-            foreach (var src in list) objs.Add(_builder.CloneBranch(src, _skeletonOffset).gameObject);
-            _built[id] = objs;
+            foreach (var src in list)
+            {
+                if (_refs.TryGetValue(src, out var n)) { _refs[src] = n + 1; continue; }
+                _builtContainers[src] = _builder.CloneBranch(src, _skeletonOffset).gameObject;
+                _refs[src] = 1;
+            }
             _loaded.Add(id);
             LoadCount++;
             if (_loaded.Count > PeakLoaded) PeakLoaded = _loaded.Count;
@@ -65,14 +103,22 @@ namespace Xnu.Field
         public bool UnloadBlock(BlockId id)
         {
             if (!_loaded.Remove(id)) return false;
-            if (_built.TryGetValue(id, out var objs))
+            if (_sources.TryGetValue(id, out var list))
             {
-                foreach (var go in objs) if (go != null) FieldDestroy.Kill(go);
-                _built.Remove(id);
+                foreach (var src in list)
+                {
+                    if (!_refs.TryGetValue(src, out var n)) continue;
+                    if (n > 1) { _refs[src] = n - 1; continue; }
+                    _refs.Remove(src);
+                    if (_builtContainers.TryGetValue(src, out var go) && go != null) FieldDestroy.Kill(go);
+                    _builtContainers.Remove(src);
+                }
             }
             UnloadCount++;
             return true;
         }
+
+        public int BuiltContainers => _builtContainers.Count;
 
         // Lädt/entlädt nach Auswahl; zuerst entladen (Speicherspitze), dann laden. Rückgabe: die Auswahl.
         public BlockSelection Update(int gx, int gy, int loadDistance, int unloadDistance)

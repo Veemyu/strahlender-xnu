@@ -25,6 +25,7 @@ namespace Xnu.Field
         readonly string _bundle;
         readonly Dictionary<int, Material> _cache = new Dictionary<int, Material>();
         readonly List<RemapResult> _results = new List<RemapResult>();
+        readonly HashSet<Material> _fallbackMade = new HashSet<Material>();
 
         public int Remapped { get; private set; }
         public int FellBack { get; private set; }
@@ -56,7 +57,7 @@ namespace Xnu.Field
 
             // Name und Keywords der Quelle: nur Name/Keywords werden gelesen (Eigenschaften über die Material-API nicht).
             var rec = _catalog.Find(_bundle, original.name, original.shaderKeywords);
-            if (rec == null) { NoRecord++; m = _fallback.For(original); FellBack++; }
+            if (rec == null) { NoRecord++; m = Fallback(original); FellBack++; }
             else
             {
                 var res = _remapper.Remap(original, rec);
@@ -67,9 +68,18 @@ namespace Xnu.Field
                     Remapped++;
                     if (!res.Complete) { Incomplete++; Notes.Add(original.name + ": " + string.Join("; ", res.Notes)); }
                 }
-                else { m = _fallback.For(original); FellBack++; Notes.Add(original.name + ": " + string.Join("; ", res.Notes)); }
+                else { m = Fallback(original); FellBack++; Notes.Add(original.name + ": " + string.Join("; ", res.Notes)); }
             }
             _cache[id] = m;
+            return m;
+        }
+
+        // Ersatzmaterial für ein Karten-Original; es wird beim Abbau der Karte freigegeben. Der Ersatzspeicher selbst gehört dem
+        // Aufrufer (Spielerfigur und NPC-Marker teilen ihn: sie wurden früher beim Zonenwechsel magenta).
+        Material Fallback(Material original)
+        {
+            var m = _fallback.For(original);
+            if (m != null) _fallbackMade.Add(m);
             return m;
         }
 
@@ -78,7 +88,8 @@ namespace Xnu.Field
             foreach (var r in _results) r.DestroyAll();
             _results.Clear();
             _cache.Clear();
-            _fallback.Destroy();
+            foreach (var m in _fallbackMade) _fallback.Release(m);
+            _fallbackMade.Clear();
         }
     }
 }

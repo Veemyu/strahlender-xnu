@@ -6,7 +6,7 @@ Dieser Bericht trennt Gemessenes von Angenommenem. **Ein fertiges, spielbares Sp
 
 | Bereich | Stand | Beleg |
 |---|---|---|
-| Tests | 638 EditMode-Tests grün (Haupteditor), Python- und C-Tests grün | `unity test`, `scripts/tests`, `make test` |
+| Tests | 645 EditMode-Tests grün (Haupteditor), 268 Python-Tests und C-Tests grün | `unity test`, `scripts/tests`, `make test` |
 | Stammdaten | 125 JSON-Tabellen exportiert, C#-Leser für Trainer, Zonen, Begegnungen, Items, Warps | `docs/masterdata.md` |
 | Spielstand | Lesen und Schreiben, Roundtrip am echten Save byte-identisch (1206 Slots) | `docs/save-kompatibilitaet.md` |
 | Pokémon-Slots | Kodierung, Prüfsummen, Felder, Statuswerte; Orakel mit den echten ARM64-Funktionen, 0 Abweichungen | `docs/pokepara-spezifikation.md` |
@@ -22,7 +22,7 @@ Dieser Bericht trennt Gemessenes von Angenommenem. **Ein fertiges, spielbares Sp
 
 ## 2. Was nicht läuft (ehrlich)
 
-- **Kein bestätigtes Bild mit den richtigen Shadern.** Der Material-Umbau läuft im Lab und im Player ohne Absturz, ein Bildvergleich mit der Switch fehlt (keine Referenz). Die frühere Beobachtung „schwarzes Bild/Hänger“ ist erklärt (Abschnitt 5).
+- **Bild mit den erzeugten Shadern:** Zone 422 rendert im Editor erkennbar korrekt (Abschnitt 5b). Ein Pixelvergleich mit der Switch fehlt (keine Referenz); Figur, Himmel und Nachbearbeitung fehlen noch.
 - **Schatten und Wasser** sind nur strukturell geprüft. Ohne Referenzbilder der Switch ist ein Pixelvergleich nicht möglich.
 - **Die Gegner-KI** ist nicht umgesetzt (kompilierter Code, grob 6–8 Tage). Die Gegner wählen zufällig.
 - **Wildgenerierung und Begegnungsraten** sind teils angenommen.
@@ -51,8 +51,15 @@ Dieser Bericht trennt Gemessenes von Angenommenem. **Ein fertiges, spielbares Sp
 - **Größter Fund:** Die Original-Bundles tragen die Zielplattform Switch; Player lehnen sie ab. `scripts/bundle_retarget.py` setzt die Kennung (14.052 Bundles, 0 Fehler) und ist Teil der Stufe `assets`.
 - **Editor-Hänger:** Ursache war `run_tests` im laufenden Spielmodus, nicht die Shader. Regel: erst `editor_stop`.
 - **Schwarzes Bild:** fehlendes Richtungslicht. Mit Licht und Spielwerten (Stunde 12) Bildmittel (83, 104, 63) statt (0, 0, 0).
-- **Offen:** `useGeneratedShaders` im Feld ist weiter standardmäßig aus; erst nach einem Bildvergleich einschalten. Zone 367 zeigt im Lab nur Hintergrund (Spawn/Streaming prüfen).
-- Endstand: **638 EditMode-Tests grün.**
+- **Offen:** Zone 367 und die Kamera-Gier sind behoben (siehe Nachtrag 2). Weiter offen: Figur und NPC-Marker tragen noch den Ersatz-Shader (Charakter-Materialien nicht exportiert); nach Zone 54 sind andere Zonen ca. 19 % dunkler (Ursache offen); kein Himmel, keine Nachbearbeitung.
+- Endstand: **645 EditMode-Tests grün.**
+
+## 5b. Nachtrag 2: Sichtprüfung und iOS-Texturen
+
+- **Erstes belegtes Bild:** Zone 422 (Zwieblüh) rendert im Editor mit den erzeugten Shadern erkennbar wie im Spiel (Blockhaus, Briefkasten, Nadelbäume, Wiese, Weg; Fenster leuchten nachts). Auch Zone 425, 54 und 367 rendern vollständig. Bildmittel Zone 422 bei Stunde 12: (101, 125, 72); 155 Draw-Calls, 53.793 Dreiecke. Die Bilder liegen nur unter `work/visual/` (`docs/sichtpruefung-1.md`). Ein Vergleich mit dem Original ist mangels Referenzbild nicht möglich.
+- **Behoben:** Kamera-Gier im Freien, Zone 367 ohne Karte (Container über mehrere Blöcke), Spielerhöhe am Start, Magenta nach Zonenwechsel.
+- **iOS-Texturen:** `scripts/texture_transcode.py` wandelt BC nach ASTC (6x6 Farbe, 4x4 BC4/BC5). Zone 422: 46,4 → 25,5 MiB, PSNR Median 46,2 dB; alle 208 Texturen laden in Unity (macOS/Metal). Ein Lauf auf dem iPad steht aus. Aktivierung über `--texture-format` (Standard bei `--target ios`: 6x6). Details: `docs/ios-texturen.md`.
+- Der Punkt „iPad-Texturen“ aus Abschnitt 4 ist damit umgesetzt, aber noch nicht auf dem Gerät geprüft.
 
 ## 6. Regeln, die eingehalten wurden
 
