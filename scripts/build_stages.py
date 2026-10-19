@@ -30,12 +30,12 @@ EX_USAGE = 2
 EX_TOOLS = 4
 EX_DISK = 8
 
-STAGES = ["tools", "extract", "il2cpp", "masterdata", "shaders", "video", "audio", "assets", "unity-build", "deploy"]
+STAGES = ["tools", "extract", "il2cpp", "masterdata", "shaders", "video", "audio", "assets", "stubs", "unity-build", "deploy"]
 ALIASES = {"unity": "unity-build", "xcode": "deploy", "shader": "shaders", "videos": "video"}
 UNITY_VERSION = "6000.3.26f1"
 MARKER_SCHEMA = 1
 MIN_FREE_GB = 60
-HEAVY_STAGES = {"extract", "il2cpp", "masterdata", "shaders", "video", "assets", "unity-build", "deploy"}
+HEAVY_STAGES = {"extract", "il2cpp", "masterdata", "shaders", "video", "assets", "stubs", "unity-build", "deploy"}
 TARGETS = ("macos", "ios", "all")
 
 
@@ -242,9 +242,14 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
         parts["video"] = _marker_hash(work, "video")
         parts["masterdata"] = _marker_hash(work, "masterdata")
         parts["audio"] = _marker_hash(work, "audio")
+    elif stage == "stubs":
+        parts["scripts"] = files("stub_gen.py", "stub_dump.py")
+        parts["il2cpp"] = _marker_hash(work, "il2cpp")
+        parts["bundles"] = hash_listing(os.path.join(work, "romfs", "Data", "StreamingAssets", "AssetAssistant"))
     elif stage == "unity-build":
         unity = os.path.join(root, "unity")
         parts["assets"] = _marker_hash(work, "assets")
+        parts["stubs"] = _marker_hash(work, "stubs")
         parts["shaders"] = _marker_hash(work, "shaders")
         parts["sources"] = {
             "Scripts": hash_tree_content(os.path.join(unity, "Assets", "Scripts"), (".cs", ".asmdef")),
@@ -363,7 +368,7 @@ def preflight(stages, target, root, work, tools_dir=None, unity_root="/Applicati
             "git clone https://github.com/Perfare/Il2CppDumper tools/Il2CppDumper && "
             "dotnet build tools/Il2CppDumper/Il2CppDumper -c Release -f net8.0 -o tools/il2cppdumper-bin")
 
-    if s & {"masterdata", "shaders"}:
+    if s & {"masterdata", "shaders", "stubs"}:
         add("Python-Pakete (UnityPy, lz4) in tools/pydeps", os.path.isdir(os.path.join(tools_dir, "pydeps", "UnityPy")),
             os.path.join(tools_dir, "pydeps"), "python3 -m pip install --target tools/pydeps UnityPy lz4")
     if "shaders" in s:

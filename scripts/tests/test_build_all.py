@@ -48,11 +48,26 @@ class DryRunTests(unittest.TestCase):
     def test_all_stages_listed_and_nothing_written(self):
         rc, out, err = self.dry(["all", "--xci", self.xci, "--keys", self.keys])
         self.assertEqual(rc, 0, err)
-        for stage in ("tools", "extract", "il2cpp", "masterdata", "shaders", "video", "audio", "assets",
+        for stage in ("tools", "extract", "il2cpp", "masterdata", "shaders", "video", "audio", "assets", "stubs",
                       "unity-build", "deploy"):
             self.assertIn("  %-12s" % stage, out, stage)
         self.assertIn("nicht implementiert", out)
         self.assertFalse(os.path.exists(self.work), "Dry-run darf nichts anlegen")
+
+    def test_stubs_stage_dry_run_plans_scan_gen_and_conflicts(self):
+        rc, out, err = self.dry(["--only", "stubs"])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("stub_gen.py scan", out)
+        self.assertIn("stub_gen.py gen", out)
+        self.assertIn("stub_gen.py conflicts", out)
+        self.assertIn("unity/Assets/XnuStubs", out)
+        self.assertFalse(os.path.exists(self.work), "Dry-run darf nichts anlegen")
+
+    def test_stubs_run_before_unity_build(self):
+        self.assertLess(bs.STAGES.index("assets"), bs.STAGES.index("stubs"))
+        self.assertLess(bs.STAGES.index("stubs"), bs.STAGES.index("unity-build"))
+        rc, out, _ = self.dry(["--from", "assets", "--to", "unity-build"])
+        self.assertIn("Stufen: assets stubs unity-build ", out)
 
     def test_from_to_and_only(self):
         rc, out, _ = self.dry(["--from", "video", "--to", "audio"])

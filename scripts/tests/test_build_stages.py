@@ -28,7 +28,7 @@ class StageSelectionTests(unittest.TestCase):
 
     def test_from_to(self):
         self.assertEqual(bs.select_stages(from_stage="masterdata", to_stage="video"), ["masterdata", "shaders", "video"])
-        self.assertEqual(bs.select_stages(from_stage="assets"), ["assets", "unity-build", "deploy"])
+        self.assertEqual(bs.select_stages(from_stage="assets"), ["assets", "stubs", "unity-build", "deploy"])
         self.assertEqual(bs.select_stages(to_stage="extract"), ["tools", "extract"])
 
     def test_from_after_to_fails(self):

@@ -2,7 +2,7 @@
 # Einstiegspunkt der Build-Pipeline (docs/build-pipeline.md, Anleitung: docs/bauen.md, Ziel: docs/kernziel.md).
 # Das Repo enthält nie Spieldaten oder Keys.
 #
-# Stufen (feste Reihenfolge): tools extract il2cpp masterdata shaders video audio assets unity-build deploy
+# Stufen (feste Reihenfolge): tools extract il2cpp masterdata shaders video audio assets stubs unity-build deploy
 #   Kurzformen: unity = unity-build, xcode = deploy. Vorab läuft ein Preflight (nur Prüfung, keine Installation).
 #
 # Aufruf (alles in einem Befehl):
@@ -52,7 +52,7 @@ UNITY_EDITOR_ROOT="${UNITY_EDITOR_ROOT:-/Applications/Unity/Hub/Editor}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 MIN_FREE_GB="${MIN_FREE_GB:-25}"
 PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-60}"
-ALL_STAGES="tools extract il2cpp masterdata shaders video audio assets unity-build deploy"
+ALL_STAGES="tools extract il2cpp masterdata shaders video audio assets stubs unity-build deploy"
 
 XCI="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
@@ -576,6 +576,47 @@ stage_assets() {
   stage_done assets "dateien=${n% *}" "bytes=${n#* }"
 }
 
+# ---------- Stufe stubs (Assembly-CSharp-Stubs aus TypeTree + Dump; nur Dateien erzeugen, kein Unity-Start) ----------
+# Ziel gitignoriert (docs/stubs-1.md). Hält ein Editor das Projekt, wird die Stufe übersprungen: neue Skriptdateien würden
+# im offenen Editor eine Neukompilierung auslösen.
+stubs_dest() { echo "${STUBS_DEST:-$ROOT/unity/Assets/XnuStubs}"; }
+
+stage_stubs() {
+  log "Stufe stubs"
+  need_extract; need_pydeps
+  local dest aa="$WORK/$AA_REL" dump="$WORK/il2cpp/dump.cs" pid="" n="0"
+  dest="$(stubs_dest)"
+  git -C "$ROOT" check-ignore -q "$dest/manifest.json" 2>/dev/null \
+    || die 2 "Zielordner $dest ist nicht gitignoriert: erzeugte Stubs gehören nie ins Repo (STUBS_DEST prüfen)"
+  case "$dest" in "$ROOT/unity"/*) pid="$(sp editor-open --project "$ROOT/unity" || true)" ;; esac
+  if [ -n "$pid" ]; then
+    echo "  BLOCKIERT: Der Unity-Editor (PID $pid) hat das Projekt $ROOT/unity offen; neue Dateien unter $dest würden dort eine Neukompilierung auslösen."
+    echo "  Editor schließen und die Stufe wiederholen: scripts/build_all.sh --only stubs   (oder STUBS_DEST auf ein anderes Projekt setzen)"
+    if [ "$DRY" -eq 0 ]; then stage_result stubs "blockiert (Editor offen, PID $pid)"; return 0; fi
+    echo "    [dry-run] (der echte Lauf würde die Stufe hier überspringen; die Kommandos unten zeigen den Plan)"
+  fi
+  stage_cached stubs "$dest/manifest.json" && return 0
+  if [ "$DRY" -eq 0 ]; then
+    [ -d "$aa" ] || die 10 "AssetAssistant fehlt: $aa (Stufe extract unvollständig?)"
+    [ -s "$dump" ] || die 10 "il2cpp-Dump fehlt: $dump (Stufe il2cpp)"
+    mkdir -p "$WORK/stubs"
+  fi
+  PYTHONPATH="$TOOLS_DIR/pydeps" logrun stubs-scan python3 "$ROOT/scripts/stub_gen.py" scan \
+    --assets "$aa" --scan "$WORK/stubs/scan.json" \
+    || die 14 "Stub-Scan fehlgeschlagen (Log: $WORK/logs/stubs-scan.log)"
+  logrun stubs-gen python3 "$ROOT/scripts/stub_gen.py" gen \
+    --scan "$WORK/stubs/scan.json" --dump "$dump" --out "$dest" --report "$WORK/stubs/report.json" \
+    || die 14 "Stub-Erzeugung fehlgeschlagen (Log: $WORK/logs/stubs-gen.log)"
+  # Namenskonflikte mit handgeschriebenen Typen nur melden (CS0436/CS0433 möglich), kein Abbruch
+  QUIET_FAIL=1 logrun stubs-conflicts python3 "$ROOT/scripts/stub_gen.py" conflicts \
+    --manifest "$dest/manifest.json" --scripts "$ROOT/unity/Assets/Scripts" \
+    || echo "  Warnung: gleiche Typnamen in handgeschriebenem Code und Stubs (Log: $WORK/logs/stubs-conflicts.log)"
+  if [ "$DRY" -eq 0 ]; then
+    n="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["script_classes"])' "$WORK/stubs/report.json")"
+  fi
+  stage_done stubs "klassen=$n"
+}
+
 # ---------- Stufe unity-build ----------
 unity_cli() {
   local c
@@ -712,6 +753,7 @@ run_stage() {
     video) stage_video ;;
     audio) stage_audio ;;
     assets) stage_assets ;;
+    stubs) stage_stubs ;;
     unity-build) stage_unity_build ;;
     deploy) stage_deploy ;;
     *) die 2 "Unbekannte Stufe: $1 (bekannt: $ALL_STAGES)" ;;
