@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "comment": "Zuordnung der Ryujinx-Referenzbilder (F8) zu Ansichten und Szenarien (docs/visuelle-pruefung.md, Abschnitt Ryujinx-Referenz). Die Bilder werden der Reihe nach (Dateizeit) den views zugeordnet, sofern der Nutzer sie nicht umbenennt: eine Datei, deren Name (ohne Endung) mit dem Namen einer Ansicht beginnt, belegt genau diese Ansicht. Weitere Dateien heißen free_<Name> und werden nur zum Ansehen mitgeführt. mask = ausgeschlossene Rechtecke [x0,y0,x1,y1] in Bruchteilen der Bildgröße (HUD/Debugtext der Unity-Spielszene, links oben).",
+  "ryzen": {
+    "host": "nobara",
+    "screenshots": ".config/Ryujinx/screenshots",
+    "config": ".config/Ryujinx/Config.json",
+    "shader_cache": ".config/Ryujinx/games/0100000011d90000/cache/shader"
+  },
+  "normalize": {"width": 1280, "height": 720, "crop_bars": true},
+  "game_clock": {
+    "assumption": "Ryujinx-Spieluhr = Host-Epoche + system_time_offset (Config.json), Zeitzone system_time_zone (hier UTC). Stunde = ((Epoche + Offset) mod 86400) / 3600 in UTC. Annahme [A], nicht gegen Spielinhalt geprüft; die Ansicht kann im Bericht per hour überschrieben werden."
+  },
+  "compare": {
+    "grid": [8, 8],
+    "cell_bad_mad": 28.0,
+    "max_shift_px": 48,
+    "gates": {"ssim_matched_min": 0.30, "bad_cells_max": 0.60}
+  },
+  "views": [
+    {
+      "view": "ref_01_feld_weiter",
+      "title": "Feld Zone 167 direkt nach „Weiter“ (nichts gedrückt)",
+      "unity": ["game_feld_z167", "field_z167_h12"],
+      "mask": [[0.0, 0.0, 0.34, 0.14]]
+    },
+    {
+      "view": "ref_02_menue",
+      "title": "Hauptmenü am gespeicherten Ort (Menütaste, Cursor nicht bewegt)",
+      "unity": ["game_menue"],
+      "mask": []
+    },
+    {
+      "view": "ref_03_innen_eintritt",
+      "title": "Pokécenter innen direkt nach dem Eintreten (Zone 168, nichts weiter gedrückt)",
+      "unity": ["game_innen_z168", "field_z168_h12"],
+      "mask": [[0.0, 0.0, 0.34, 0.14]]
+    },
+    {
+      "view": "ref_04_text_schwester",
+      "title": "optional: erstes Textfenster der Schwester (Tresen, A drücken)",
+      "unity": ["game_text"],
+      "mask": [],
+      "optional": true
+    }
+  ]
+}
