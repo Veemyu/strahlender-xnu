@@ -2,8 +2,8 @@
 # Einstiegspunkt der Build-Pipeline (docs/build-pipeline.md, Anleitung: docs/bauen.md, Ziel: docs/kernziel.md).
 # Das Repo enthält nie Spieldaten oder Keys.
 #
-# Stufen (feste Reihenfolge): tools extract il2cpp recomp masterdata shaders video audio assets stubs unity-build deploy
-#   Kurzformen: unity = unity-build, xcode = deploy. Vorab läuft ein Preflight (nur Prüfung, keine Installation).
+# Stufen (feste Reihenfolge): tools extract il2cpp recomp masterdata shaders video audio
+#   Vorab läuft ein Preflight (nur Prüfung, keine Installation).
 #
 # Aufruf (alles in einem Befehl):
 #   scripts/build_all.sh all --xci <x.xci> --nsp <update.nsp> --keys <Ordner> [--target macos|ios|all]
@@ -14,7 +14,7 @@
 # Eingaben (nur für extract): --xci DATEI, --nsp DATEI (optional), --keys ORDNER | --prod-keys DATEI [--title-keys DATEI]
 # Steuerung:
 #   --work ORDNER       Arbeitsordner (Standard: work/, gitignoriert)
-#   --target T          macos, ios oder all (Standard: all) für unity-build und deploy
+#   --target T          macos, ios oder all (Standard: all) für recomp
 #   --dry-run           nichts ausführen, nur Plan, Marker-Status und Kommandos zeigen
 #   --from S / --to S   Bereich der Stufenreihenfolge;  --only S[,S]  genau diese Stufen
 #   --force             gewählte Stufen neu erzeugen, auch wenn der Marker passt
@@ -22,7 +22,6 @@
 #   --keep-nca          entpackte NCAs (mehrere GB) behalten
 #   --video-profile P   h265-crf18 (Standard) oder h265-crf14
 #   --movie-src ORDNER  Videoquelle statt romfs/.../Movie (Stichproben)
-#   --shaders-into-unity  Shader nach unity/Assets/GameData/Shaders statt work/build/shaders (tausende Dateien)
 #   --shader-only NAME  nur ein Shader (Test);  --launch  iOS-App nach der Installation starten
 #   --bundle-platform P macos|ios|keep: Zielplattform in den Bundles (Standard aus --target; bei all: macos).
 #                       Ein Player lädt nur Bundles mit passender Kennung (Switch-Kennung 38 wird abgelehnt).
@@ -32,13 +31,12 @@
 #   Stufe recomp (macOS-App aus der Rekompilation, work/builds/macos-recomp/BDSP.app; nur für --target macos|all):
 #   --recomp-jobs N     Zahl der Compiler (Standard 4, höchstens 4);  --recomp-o0-kb N  Ausreißer ab N KB mit -O0 (Standard 300)
 #   --hardened          App mit Hardened Runtime signieren (Standard: nur ad hoc);  --no-install-data  RomFS nicht nach Application Support klonen
-# Umgebung: TOOLS_DIR, MIN_FREE_GB (Reserve in extract, Standard 25), UNITY_EDITOR_ROOT, DEVELOPER_DIR,
-#   TEAM_ID (sonst work/local.env), SHADER_USED, ASSETS_DEST (gitignorierter Zielordner), XNU_UNITY_DRIVER=cli|editor|auto
+# Umgebung: TOOLS_DIR, MIN_FREE_GB (Reserve in extract, Standard 25), DEVELOPER_DIR,
+#   SHADER_USED
 #
 # Exit-Codes: 0 ok, 2 Aufruf, 3 Eingabe fehlt, 4 Werkzeug fehlt/Build, 5 hactool-Fehler,
 #   6 Schlüssel/Titlekey, 7 NCA nicht gefunden, 8 zu wenig Platz, 9 Prüfung, 10 Voraussetzung/Stufe fehlt,
-#   11 Unity-Editor hält das Projekt (Build übersprungen, kein Fehler im Build), 12 Unity-Build fehlgeschlagen,
-#   13 Deploy fehlgeschlagen, 14 Stufe il2cpp/masterdata/video/assets fehlgeschlagen
+#   14 Stufe il2cpp/masterdata/video fehlgeschlagen (11 bis 13 entfallen mit den Unity-Stufen)
 # hactool gibt Schlüsselwerte aus: stdout/stderr gehen nie ins Log (nur gefilterte Felder).
 set -euo pipefail
 
@@ -49,21 +47,18 @@ TOOLS_DIR="${TOOLS_DIR:-$ROOT/tools}"
 HACTOOL_DIR="$TOOLS_DIR/hactool"
 HACTOOL="$HACTOOL_DIR/hactool"
 HACTOOL_REPO="https://github.com/SciresM/hactool"
-UNITY_VERSION="6000.3.26f1"
-UNITY_HUB="${UNITY_HUB:-/Applications/Unity Hub.app/Contents/MacOS/Unity Hub}"
-UNITY_EDITOR_ROOT="${UNITY_EDITOR_ROOT:-/Applications/Unity/Hub/Editor}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 MIN_FREE_GB="${MIN_FREE_GB:-25}"
 PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-60}"
-ALL_STAGES="tools extract il2cpp recomp masterdata shaders video audio assets stubs unity-build deploy"
+ALL_STAGES="tools extract il2cpp recomp masterdata shaders video audio"
 
 XCI="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
 DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all VIDEO_PROFILE="h265-crf18" MOVIE_SRC=""
-SHADERS_INTO_UNITY=0 SHADER_ONLY="" LAUNCH=0 BUNDLE_PLATFORM="" BUNDLE_SUBSET="" TEXTURE_FORMAT=""
+SHADER_ONLY="" LAUNCH=0 BUNDLE_PLATFORM="" BUNDLE_SUBSET="" TEXTURE_FORMAT=""
 EXTRACT_ACTIVE=0
 RECOMP_JOBS=4 RECOMP_O0_KB=300 RECOMP_HARDENED=0 RECOMP_DATA=1
-SELECTED="" RESULTS="" UPSTREAM_DIRTY=0 BLOCKED_EDITOR=0 NOT_IMPL=""
+SELECTED="" RESULTS="" UPSTREAM_DIRTY=0 NOT_IMPL=""
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 die() { local code="$1"; shift; echo "FEHLER: $*" >&2; exit "$code"; }
@@ -115,27 +110,6 @@ check_ffmpeg() {
   fi
 }
 
-check_unity() {
-  local bad=0 editor="$UNITY_EDITOR_ROOT/$UNITY_VERSION"
-  if [ -x "$UNITY_HUB" ]; then
-    ok "Unity Hub CLI ($UNITY_HUB)"
-  else
-    miss "Unity Hub CLI ($UNITY_HUB); Installation: brew install --cask unity-hub"; bad=1
-  fi
-  if [ -d "$editor/Unity.app" ]; then
-    ok "Unity Editor $UNITY_VERSION ($editor)"
-    if [ -d "$editor/PlaybackEngines/iOSSupport" ]; then
-      ok "  Modul iOS Build Support"
-    else
-      miss "  Modul iOS Build Support für $UNITY_VERSION"; bad=1
-    fi
-  else
-    miss "Unity Editor $UNITY_VERSION unter $UNITY_EDITOR_ROOT (nur geprüft, nicht installiert; Hub-CLI: 'Unity Hub -- --headless install --version $UNITY_VERSION')"
-    bad=1
-  fi
-  return $bad
-}
-
 check_xcode() {
   local v
   [ -d /Applications/Xcode.app ] || { miss "Xcode unter /Applications/Xcode.app"; return 1; }
@@ -157,14 +131,13 @@ stage_tools() {
   log "Stufe tools"
   if [ "$DRY" -eq 1 ]; then
     if hactool_runs; then ok "hactool vorhanden ($HACTOOL)"; else echo "    [dry-run] würde hactool klonen und bauen: $HACTOOL_REPO nach $HACTOOL_DIR (make, ohne sudo)"; fi
-    echo "    [dry-run] würde python3, ffmpeg, Unity-Editor $UNITY_VERSION und Xcode prüfen (nur Prüfung)"
+    echo "    [dry-run] würde python3, ffmpeg und Xcode prüfen (nur Prüfung)"
     stage_result tools "Plan"; return 0
   fi
   local bad=0
   check_python || bad=1
   check_hactool || bad=1
   check_ffmpeg || bad=1
-  check_unity || bad=1
   check_xcode || bad=1
   [ "$bad" -eq 0 ] || die 4 "Werkzeuge unvollständig (siehe FEHLT oben)"
   log "Stufe tools fertig"
@@ -340,6 +313,7 @@ stage_extract() {
 stage_result() { RESULTS="$RESULTS$1|$2"$'\n'; }
 human() { awk -v b="$1" 'BEGIN { printf "%.1f GB", b / 1073741824 }'; }
 sp() { python3 "$STAGEPY" "$@"; }
+want_target() { [ "$TARGET" = all ] || [ "$TARGET" = "$1" ]; }
 
 # Kommando ausführen, Ausgabe in work/logs/<Stufe>.log; bei --dry-run nur anzeigen.
 logrun() {
@@ -500,8 +474,7 @@ ensure_legacy_links() {
 stage_shaders() {
   log "Stufe shaders"
   need_extract; need_pydeps
-  local out="$WORK/build/shaders" rc=0 args=() pid
-  [ "$SHADERS_INTO_UNITY" -eq 0 ] || out="$ROOT/unity/Assets/GameData/Shaders"
+  local out="$WORK/build/shaders" rc=0 args=()
   if stage_cached shaders "$out"; then
     if [ -z "$SHADER_ONLY" ]; then return 0; fi
   fi
@@ -511,10 +484,6 @@ stage_shaders() {
   [ -z "${SHADER_USED:-}" ] || args+=(--used "$SHADER_USED")
   [ -z "$SHADER_ONLY" ] || args+=(--shader "$SHADER_ONLY")
   [ "$FORCE" -eq 0 ] || args+=(--force)
-  if [ "$SHADERS_INTO_UNITY" -eq 1 ] && [ "$DRY" -eq 0 ]; then
-    pid="$(sp editor-open --project "$ROOT/unity" || true)"
-    [ -z "$pid" ] || echo "  Hinweis: Unity-Editor (PID $pid) hat das Projekt offen und importiert die neuen Shader beim nächsten Fokus."
-  fi
   logrun shaders "$ROOT/scripts/shader_build.sh" "${args[@]}" || rc=$?
   case "$rc" in
     0) ;;
@@ -559,249 +528,6 @@ stage_audio() {
   stage_result audio "nicht implementiert"
 }
 
-# ---------- Stufe assets ----------
-assets_dest() { echo "${ASSETS_DEST:-$ROOT/unity/Assets/StreamingAssets/GameData}"; }
-
-# APFS-Klon (kein zusätzlicher Platz), sonst normale Kopie
-clone_tree() { cp -cR "$1/." "$2/" 2>/dev/null || cp -R "$1/." "$2/"; }
-
-stage_assets() {
-  log "Stufe assets"
-  need_extract
-  local dest aa="$WORK/$AA_REL" stg
-  dest="$(assets_dest)"; stg="$(dirname "$dest")/.$(basename "$dest").new"
-  git -C "$ROOT" check-ignore -q "$dest" 2>/dev/null \
-    || die 2 "Zielordner $dest ist nicht gitignoriert: Spieldaten dürfen nie ins Repo (ASSETS_DEST prüfen)"
-  stage_cached assets "$dest" && return 0
-  [ "$DRY" -eq 1 ] || [ -d "$aa" ] || die 10 "AssetAssistant fehlt: $aa (Stufe extract unvollständig?)"
-  local n
-  if [ "$DRY" -eq 1 ]; then
-    [ ! -d "$aa" ] || { n="$(sp tree-size --path "$aa")"; echo "    [dry-run] Bundles: ${n% *} Dateien, $(human "${n#* }")"; }
-    echo "    [dry-run] kopiere (APFS-Klon) $aa -> $dest/$AA_REL; Bundle-Plattform: $BUNDLE_PLATFORM${BUNDLE_SUBSET:+, nur Teilmenge $BUNDLE_SUBSET}"
-    echo "    [dry-run] Texturformat: $TEXTURE_FORMAT (BC -> ASTC per scripts/texture_transcode.py; off = Originalformate)"
-    echo "    [dry-run] kopiere $WORK/video/*.mp4 -> $dest/$MOVIE_REL (H.265 statt WebM)"
-    echo "    [dry-run] kopiere $WORK/masterdata -> $dest/masterdata; Audio wird nicht kopiert (Stufe audio fehlt)"
-    stage_done assets; return 0
-  fi
-  rm -rf "$stg"; mkdir -p "$stg/$AA_REL" "$stg/$MOVIE_REL" "$stg/masterdata"
-  if [ -n "$BUNDLE_SUBSET" ]; then
-    need_pydeps
-    PYTHONPATH="$TOOLS_DIR/pydeps" logrun assets-subset python3 "$ROOT/scripts/bundle_retarget.py" subset "$aa" "$stg/$AA_REL" \
-      --list "$BUNDLE_SUBSET" --platform "$BUNDLE_PLATFORM" || die 14 "Bundle-Teilmenge fehlgeschlagen (Log: $WORK/logs/assets-subset.log)"
-  else
-    clone_tree "$aa" "$stg/$AA_REL" || die 14 "Bundles lassen sich nicht kopieren (Platz?)"
-    if [ "$BUNDLE_PLATFORM" != keep ]; then
-      need_pydeps
-      PYTHONPATH="$TOOLS_DIR/pydeps" logrun assets-retarget python3 "$ROOT/scripts/bundle_retarget.py" tree "$stg/$AA_REL" \
-        --platform "$BUNDLE_PLATFORM" || die 14 "Plattform der Bundles lässt sich nicht setzen (Log: $WORK/logs/assets-retarget.log)"
-    fi
-  fi
-  if [ "$TEXTURE_FORMAT" != off ]; then
-    need_pydeps
-    [ -d "$TOOLS_DIR/pydeps/astc_encoder" ] && [ -d "$TOOLS_DIR/pydeps/texture2ddecoder" ] \
-      || die 4 "Python-Pakete für die Texturumwandlung fehlen: python3 -m pip install --target tools/pydeps astc-encoder-py texture2ddecoder Pillow"
-    PYTHONPATH="$TOOLS_DIR/pydeps" logrun assets-textures python3 "$ROOT/scripts/texture_transcode.py" tree "$stg/$AA_REL" \
-      --block "$TEXTURE_FORMAT" || die 14 "Texturumwandlung BC -> ASTC fehlgeschlagen (Log: $WORK/logs/assets-textures.log)"
-  fi
-  if [ -d "$WORK/video" ] && [ -n "$(find "$WORK/video" -name '*.mp4' -print -quit)" ]; then
-    (cd "$WORK/video" && find . -name '*.mp4' -print | while IFS= read -r f; do
-      mkdir -p "$stg/$MOVIE_REL/$(dirname "$f")"; cp -c "$f" "$stg/$MOVIE_REL/$f" 2>/dev/null || cp "$f" "$stg/$MOVIE_REL/$f"
-    done)
-  else
-    echo "  Hinweis: keine umgewandelten Videos in $WORK/video (Stufe video); die App enthält dann keine Videos."
-  fi
-  if [ -d "$WORK/masterdata" ]; then clone_tree "$WORK/masterdata" "$stg/masterdata"
-  else echo "  Hinweis: $WORK/masterdata fehlt (Stufe masterdata); Feld-/Datenmodule finden keine Stammdaten."; fi
-  # Materialexporte (scripts/material_export.py) für den Shader-Umbau; optional, ohne sie nutzt der Player Ersatzmaterial.
-  if [ -d "$WORK/materials" ]; then mkdir -p "$stg/materials"; clone_tree "$WORK/materials" "$stg/materials"; fi
-  # Charaktermodelle (Spielfigur, NPCs): Materialexporte aus work/materials_all (nur Characters__*, 8 MB; Pokémon/Effekte bleiben draußen)
-  if ls "$WORK"/materials_all/Characters__*.json >/dev/null 2>&1; then
-    mkdir -p "$stg/materials"
-    for f in "$WORK"/materials_all/Characters__*.json; do cp -c "$f" "$stg/materials/" 2>/dev/null || cp "$f" "$stg/materials/"; done
-  fi
-  rm -rf "$dest"; mkdir -p "$(dirname "$dest")"; mv "$stg" "$dest"
-  n="$(sp tree-size --path "$dest")"
-  log "assets: ${n% *} Dateien, $(human "${n#* }") in $dest (gitignoriert; Unity kopiert sie beim Build ein zweites Mal ins Paket)"
-  stage_done assets "dateien=${n% *}" "bytes=${n#* }"
-}
-
-# ---------- Stufe stubs (Assembly-CSharp-Stubs aus TypeTree + Dump; nur Dateien erzeugen, kein Unity-Start) ----------
-# Ziel gitignoriert (docs/stubs-1.md). Hält ein Editor das Projekt, wird die Stufe übersprungen: neue Skriptdateien würden
-# im offenen Editor eine Neukompilierung auslösen.
-stubs_dest() { echo "${STUBS_DEST:-$ROOT/unity/Assets/XnuStubs}"; }
-
-stage_stubs() {
-  log "Stufe stubs"
-  need_extract; need_pydeps
-  local dest aa="$WORK/$AA_REL" dump="$WORK/il2cpp/dump.cs" pid="" n="0"
-  dest="$(stubs_dest)"
-  git -C "$ROOT" check-ignore -q "$dest/manifest.json" 2>/dev/null \
-    || die 2 "Zielordner $dest ist nicht gitignoriert: erzeugte Stubs gehören nie ins Repo (STUBS_DEST prüfen)"
-  case "$dest" in "$ROOT/unity"/*) pid="$(sp editor-open --project "$ROOT/unity" || true)" ;; esac
-  if [ -n "$pid" ]; then
-    echo "  BLOCKIERT: Der Unity-Editor (PID $pid) hat das Projekt $ROOT/unity offen; neue Dateien unter $dest würden dort eine Neukompilierung auslösen."
-    echo "  Editor schließen und die Stufe wiederholen: scripts/build_all.sh --only stubs   (oder STUBS_DEST auf ein anderes Projekt setzen)"
-    if [ "$DRY" -eq 0 ]; then stage_result stubs "blockiert (Editor offen, PID $pid)"; return 0; fi
-    echo "    [dry-run] (der echte Lauf würde die Stufe hier überspringen; die Kommandos unten zeigen den Plan)"
-  fi
-  stage_cached stubs "$dest/manifest.json" && return 0
-  if [ "$DRY" -eq 0 ]; then
-    [ -d "$aa" ] || die 10 "AssetAssistant fehlt: $aa (Stufe extract unvollständig?)"
-    [ -s "$dump" ] || die 10 "il2cpp-Dump fehlt: $dump (Stufe il2cpp)"
-    mkdir -p "$WORK/stubs"
-  fi
-  PYTHONPATH="$TOOLS_DIR/pydeps" logrun stubs-scan python3 "$ROOT/scripts/stub_gen.py" scan \
-    --assets "$aa" --scan "$WORK/stubs/scan.json" \
-    || die 14 "Stub-Scan fehlgeschlagen (Log: $WORK/logs/stubs-scan.log)"
-  logrun stubs-gen python3 "$ROOT/scripts/stub_gen.py" gen \
-    --scan "$WORK/stubs/scan.json" --dump "$dump" --out "$dest" --report "$WORK/stubs/report.json" \
-    || die 14 "Stub-Erzeugung fehlgeschlagen (Log: $WORK/logs/stubs-gen.log)"
-  # Namenskonflikte mit handgeschriebenen Typen nur melden (CS0436/CS0433 möglich), kein Abbruch
-  QUIET_FAIL=1 logrun stubs-conflicts python3 "$ROOT/scripts/stub_gen.py" conflicts \
-    --manifest "$dest/manifest.json" --scripts "$ROOT/unity/Assets/Scripts" \
-    || echo "  Warnung: gleiche Typnamen in handgeschriebenem Code und Stubs (Log: $WORK/logs/stubs-conflicts.log)"
-  # Schalter XNU_STUBS: csc.rsp (gitignoriert) aktiviert nur für Assembly-CSharp die Hooks unter Assets/Scripts/DprHooks.
-  # Ohne Stubs (kein Dump) gibt es die Datei nicht, und das Projekt baut ohne Original-Prefabs.
-  case "$dest" in
-    "$ROOT/unity/Assets"/*)
-      if [ "$DRY" -eq 0 ]; then printf -- '-define:XNU_STUBS\n' > "$ROOT/unity/Assets/csc.rsp"; else echo "    [dry-run] würde unity/Assets/csc.rsp mit -define:XNU_STUBS schreiben"; fi ;;
-  esac
-  if [ "$DRY" -eq 0 ]; then
-    n="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["script_classes"])' "$WORK/stubs/report.json")"
-  fi
-  stage_done stubs "klassen=$n"
-}
-
-# ---------- Stufe unity-build ----------
-unity_cli() {
-  local c
-  c="$(command -v unity 2>/dev/null || true)"
-  [ -n "$c" ] || { [ -x "$HOME/.unity/bin/unity" ] && c="$HOME/.unity/bin/unity"; } || true
-  echo "$c"
-}
-
-want_target() { [ "$TARGET" = all ] || [ "$TARGET" = "$1" ]; }
-mac_out() { echo "$WORK/builds/macos/xnu.app"; }
-ios_out() { echo "$WORK/builds/ios/xnu"; }
-
-# Ein Build; Treiber: unity CLI (build) oder Editor direkt im Batchmodus (XNU_UNITY_DRIVER=cli|editor|auto)
-unity_build_one() {
-  local t="$1" ut method out log cli ed driver="${XNU_UNITY_DRIVER:-auto}" cmd=()
-  case "$t" in
-    macos) ut=StandaloneOSX; method=Xnu.Build.Editor.BuildScript.BuildMacOS; out="$(mac_out)" ;;
-    ios) ut=iOS; method=Xnu.Build.Editor.BuildScript.BuildIos; out="$(ios_out)" ;;
-  esac
-  log="$WORK/logs/unity-build-$t.log"
-  cli="$(unity_cli)"; ed="$UNITY_EDITOR_ROOT/$UNITY_VERSION/Unity.app/Contents/MacOS/Unity"
-  [ "$driver" != auto ] || { [ -n "$cli" ] && driver=cli || driver=editor; }
-  if [ "$driver" = cli ] && [ -n "$cli" ]; then
-    cmd=("$cli" --non-interactive --no-banner build "$ROOT/unity" --target "$ut" --execute-method "$method"
-         --output-path "$out" --editor-version "$UNITY_VERSION" --architecture arm64 --allow-dirty-build
-         --log-file "$log" --no-tail)
-  else
-    [ -x "$ed" ] || [ "$DRY" -eq 1 ] || die 4 "Unity-Editor $UNITY_VERSION fehlt unter $UNITY_EDITOR_ROOT"
-    cmd=("$ed" -batchmode -quit -projectPath "$ROOT/unity" -buildTarget "$ut" -executeMethod "$method"
-         -xnuOutput "$out" -logFile "$log")
-  fi
-  # Neu erzeugen: Unity hängt sonst an alte Xcode-Projekte an; der iOS-Postbuild (Entitlements) muss laufen.
-  run rm -rf "$out"
-  [ "$t" != macos ] || run rm -rf "$WORK/builds/macos/xnu_BackUpThisFolder_ButDontShipItWithYourGame"
-  run mkdir -p "$(dirname "$out")" "$WORK/logs"
-  log "unity-build $t: Treiber $driver, Log $log"
-  if [ "$DRY" -eq 1 ]; then printf '    [dry-run]'; printf ' %q' "${cmd[@]}"; printf '\n'; return 0; fi
-  if ! "${cmd[@]}" </dev/null >"$WORK/logs/unity-build-$t.cli.log" 2>&1; then
-    tail -n 25 "$log" 2>/dev/null >&2 || tail -n 25 "$WORK/logs/unity-build-$t.cli.log" >&2
-    die 12 "Unity-Build ($t) fehlgeschlagen (Log: $log)"
-  fi
-  case "$t" in
-    macos) [ -d "$out/Contents/MacOS" ] || die 12 "macOS-Build ohne .app-Inhalt: $out (Log: $log)" ;;
-    ios) [ -d "$out/Unity-iPhone.xcodeproj" ] || die 12 "iOS-Build ohne Xcode-Projekt: $out (Log: $log)"
-         [ -f "$out/Xnu.entitlements" ] || die 12 "iOS-Postbuild (Entitlements) lief nicht: $out/Xnu.entitlements fehlt; Build mit -buildTarget iOS (Skript IosPostBuild.cs)" ;;
-  esac
-}
-
-stage_unity_build() {
-  log "Stufe unity-build (Ziel: $TARGET)"
-  local pid outs=()
-  want_target macos && outs+=("$(mac_out)")
-  want_target ios && outs+=("$(ios_out)")
-  pid="$(sp editor-open --project "$ROOT/unity" || true)"
-  if [ -n "$pid" ]; then
-    BLOCKED_EDITOR=1
-    cat <<EOF
-  BLOCKIERT: Der Unity-Editor (PID $pid) hat das Projekt $ROOT/unity offen. Ein Batch-Build
-  würde an der Projektsperre scheitern; der Build wird deshalb übersprungen (kein Fehler im Build).
-  Optionen: (1) Editor schließen und die Stufe wiederholen: scripts/build_all.sh --only unity-build,deploy
-            (2) im offenen Editor das Menü  Xnu > Build  (macOS bzw. iOS) benutzen; Ausgabe: work/builds/
-EOF
-    if [ "$DRY" -eq 1 ]; then echo "    [dry-run] (der echte Lauf würde hier mit Exit-Code 11 enden; die Kommandos unten zeigen den Plan)"; BLOCKED_EDITOR=0
-    else stage_result unity-build "blockiert (Editor offen, PID $pid)"; return 0; fi
-  fi
-  [ "$DRY" -eq 1 ] || [ -d "$ROOT/unity/Assets/StreamingAssets/GameData" ] || [ -n "${ASSETS_DEST:-}" ] \
-    || echo "  Hinweis: Assets/StreamingAssets/GameData fehlt (Stufe assets): der Player enthält keine Spieldaten."
-  # Schalter XNU_STUBS konsistent halten: csc.rsp nur mit erzeugten Stubs, sonst bricht die Hook-Kompilierung ohne Stubs.
-  if [ "$DRY" -eq 0 ] && [ -f "$ROOT/unity/Assets/csc.rsp" ] && [ ! -f "$ROOT/unity/Assets/XnuStubs/manifest.json" ]; then
-    echo "  Hinweis: csc.rsp (XNU_STUBS) ohne Stubs: entfernt, der Build läuft ohne Original-Prefabs."
-    rm -f "$ROOT/unity/Assets/csc.rsp" "$ROOT/unity/Assets/csc.rsp.meta"
-  fi
-  stage_cached unity-build "${outs[@]}" && return 0
-  want_target macos && unity_build_one macos
-  want_target ios && unity_build_one ios
-  local sz="" o
-  if [ "$DRY" -eq 0 ]; then
-    for o in "${outs[@]}"; do
-      sz="$sz $(basename "$o")=$(sp tree-size --path "$o" | cut -d' ' -f2)"
-    done
-  fi
-  stage_done unity-build "ziel=$TARGET" ${sz:+"größen=$sz"}
-}
-
-# ---------- Stufe deploy (macOS-App bereitstellen, iOS installieren) ----------
-local_team_id() {
-  local t="${TEAM_ID:-}"
-  [ -n "$t" ] || t="$(sp env-get --file "${XNU_LOCAL_ENV:-$ROOT/work/local.env}" --key TEAM_ID || true)"
-  echo "$t"
-}
-
-stage_deploy() {
-  log "Stufe deploy (Ziel: $TARGET)"
-  if [ "$BLOCKED_EDITOR" -eq 1 ]; then stage_result deploy "übersprungen (Editor offen)"; return 0; fi
-  local team rc=0 app xp
-  if want_target macos; then
-    app="$(mac_out)"
-    if [ "$DRY" -eq 1 ]; then echo "    [dry-run] macOS: prüfen, dass $app existiert; codesign --verify (nur lesend)"
-    else
-      [ -d "$app/Contents/MacOS" ] || die 10 "macOS-App fehlt: $app (Stufe unity-build, Ziel macos)"
-      if codesign --verify --deep "$app" >/dev/null 2>&1; then echo "  macOS: $app (Signatur gültig)"
-      else echo "  macOS: $app (Unity-Build ohne gültige Signatur; lokal startbar, ggf. Rechtsklick > Öffnen)"; fi
-    fi
-  fi
-  if want_target ios; then
-    xp="$(ios_out)"
-    team="$(local_team_id)"
-    if [ "$DRY" -eq 0 ] && [ ! -d "$xp/Unity-iPhone.xcodeproj" ]; then die 10 "Xcode-Projekt fehlt: $xp (Stufe unity-build, Ziel ios)"; fi
-    if [ -z "$team" ]; then
-      echo "  iOS: keine TEAM_ID (Umgebung oder work/local.env mit Zeile TEAM_ID=...): nur gebaut, nicht installiert."
-      echo "       Xcode-Projekt: $xp (in Xcode mit eigenem Team öffnen oder TEAM_ID setzen und '--only deploy' wiederholen)"
-      stage_result deploy "nur Build (keine TEAM_ID)"; return 0
-    fi
-    local dargs=("$xp")
-    [ "$LAUNCH" -eq 1 ] || dargs+=(--no-launch)
-    if [ "$DRY" -eq 1 ]; then printf '    [dry-run] TEAM_ID=<aus Umgebung/local.env> '; printf ' %q' "$ROOT/scripts/ios_deploy.sh" "${dargs[@]}"; printf '\n'
-      stage_done deploy; return 0; fi
-    stage_cached deploy && return 0
-    TEAM_ID="$team" "$ROOT/scripts/ios_deploy.sh" "${dargs[@]}" || rc=$?
-    case "$rc" in
-      0) stage_done deploy "ziel=ios" ;;
-      3) echo "  iOS: kein verbundenes, entsperrtes iPad gefunden: Installation übersprungen (iPad anschließen, '--only deploy' wiederholen)."
-         stage_result deploy "gebaut, nicht installiert (kein iPad)" ;;
-      *) die 13 "iOS-Deploy fehlgeschlagen (Exit $rc, Log: work/builds/ios-deploy.log)" ;;
-    esac
-    return 0
-  fi
-  stage_done deploy "ziel=$TARGET"
-}
-
 # ---------- Aufruf ----------
 run_stage() {
   case "$1" in
@@ -813,10 +539,6 @@ run_stage() {
     shaders) stage_shaders ;;
     video) stage_video ;;
     audio) stage_audio ;;
-    assets) stage_assets ;;
-    stubs) stage_stubs ;;
-    unity-build) stage_unity_build ;;
-    deploy) stage_deploy ;;
     *) die 2 "Unbekannte Stufe: $1 (bekannt: $ALL_STAGES)" ;;
   esac
 }
@@ -835,7 +557,6 @@ while [ $# -gt 0 ]; do
     --min-free-gb) need_val $# "$1"; PREFLIGHT_FREE_GB="$2"; shift 2 ;;
     --video-profile) need_val $# "$1"; VIDEO_PROFILE="$2"; shift 2 ;;
     --movie-src) need_val $# "$1"; MOVIE_SRC="$2"; shift 2 ;;
-    --shaders-into-unity) SHADERS_INTO_UNITY=1; shift ;;
     --shader-only) need_val $# "$1"; SHADER_ONLY="$2"; shift 2 ;;
     --launch) LAUNCH=1; shift ;;
     --bundle-platform) need_val $# "$1"; BUNDLE_PLATFORM="$2"; shift 2 ;;
@@ -882,7 +603,7 @@ if [ "$NO_PREFLIGHT" -eq 0 ]; then
   log "Preflight"
   PRE_RC=0
   sp preflight --stages "$SELECTED" --target "$TARGET" --root "$ROOT" --work "$WORK" --tools-dir "$TOOLS_DIR" \
-    --unity-root "$UNITY_EDITOR_ROOT" --developer-dir "$DEVELOPER_DIR" --min-free-gb "$PREFLIGHT_FREE_GB" || PRE_RC=$?
+    --min-free-gb "$PREFLIGHT_FREE_GB" || PRE_RC=$?
   if [ "$PRE_RC" -ne 0 ]; then
     if [ "$DRY" -eq 1 ] && [ "$PREFLIGHT_ONLY" -eq 0 ]; then
       echo "  (Dry-run: der echte Lauf würde hier mit Exit-Code $PRE_RC enden; mit --no-preflight bzw. --min-free-gb N lässt sich das umgehen)"
@@ -901,9 +622,5 @@ for s in $SELECTED; do run_stage "$s"; done
 
 log "Zusammenfassung"
 printf '%s' "$RESULTS" | while IFS='|' read -r s r; do [ -z "$s" ] || printf '  %-12s %s\n' "$s" "$r"; done
-if [ "$BLOCKED_EDITOR" -eq 1 ]; then
-  echo "Unity-Build wartet: Editor schließen und 'scripts/build_all.sh --only unity-build,deploy' wiederholen." >&2
-  exit 11
-fi
 [ -z "$NOT_IMPL" ] || log "Nicht implementierte Stufen (Platzhalter):$NOT_IMPL"
 exit 0

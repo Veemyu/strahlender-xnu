@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stufenlogik für scripts/build_all.sh (Auswahl, Marker mit Eingabe-Hashes, Preflight, Editor-Erkennung).
+"""Stufenlogik für scripts/build_all.sh (Auswahl, Marker mit Eingabe-Hashes, Preflight).
 
 Nur Standardbibliothek. Gibt nie Schlüsselmaterial, Team-IDs oder Spielinhalte aus; Marker und Logs
 enthalten nur Hashes, Größen und Zählwerte.
@@ -11,7 +11,6 @@ Unterbefehle (Aufruf: build_stages.py <befehl> ...):
   marker-write --work W --stage S --hash H [--note K=V ...]
   marker-clear --work W --stage S
   preflight --stages "a b" --target T --root R --work W [--min-free-gb N] [--tools-dir D] ...
-  editor-open --project DIR                      Exit 0 und PID, wenn ein Editor das Projekt hält
   env-get --file F --key K                       Wert aus einer KEY=Wert-Datei (z. B. work/local.env)
   tree-size --path P                             "<Dateien> <Bytes>" eines Ordners
 """
@@ -30,13 +29,12 @@ EX_USAGE = 2
 EX_TOOLS = 4
 EX_DISK = 8
 
-STAGES = ["tools", "extract", "il2cpp", "recomp", "masterdata", "shaders", "video", "audio", "assets", "stubs", "unity-build", "deploy"]
-ALIASES = {"unity": "unity-build", "xcode": "deploy", "shader": "shaders", "videos": "video", "macapp": "recomp"}
-UNITY_VERSION = "6000.3.26f1"
+STAGES = ["tools", "extract", "il2cpp", "recomp", "masterdata", "shaders", "video", "audio"]
+ALIASES = {"shader": "shaders", "videos": "video", "macapp": "recomp"}
 MARKER_SCHEMA = 1
 MIN_FREE_GB = 60
 RECOMP_MIN_FREE_GB = 25   # Generator-C, Objekte, Binärdatei, App, Zwischenablagen (gemessen rund 3 GB; der Rest ist Reserve für Compiler und Auslagerung)
-HEAVY_STAGES = {"extract", "il2cpp", "masterdata", "shaders", "video", "assets", "stubs", "unity-build", "deploy"}
+HEAVY_STAGES = {"extract", "il2cpp", "masterdata", "shaders", "video"}
 TARGETS = ("macos", "ios", "all")
 
 
@@ -251,71 +249,11 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
         parts["scripts"] = files("video_convert.sh")
         parts["profile"] = profile
         parts["movies"] = hash_listing(os.path.join(work, "romfs", "Data", "StreamingAssets", "Movie"), (".webm",))
-    elif stage == "assets":
-        parts["bundles"] = hash_listing(os.path.join(work, "romfs", "Data", "StreamingAssets", "AssetAssistant"))
-        parts["retarget"] = files("bundle_retarget.py", "texture_transcode.py")
-        parts["platform"] = env.get("XNU_BUNDLE_PLATFORM", "") or "auto"
-        parts["texture_format"] = env.get("XNU_TEXTURE_FORMAT", "") or "auto"
-        subset = env.get("XNU_BUNDLE_SUBSET", "")
-        parts["subset"] = hash_file(subset) if subset else "alle"
-        parts["materials"] = hash_listing(os.path.join(work, "materials"))
-        parts["video"] = _marker_hash(work, "video")
-        parts["masterdata"] = _marker_hash(work, "masterdata")
-        parts["audio"] = _marker_hash(work, "audio")
-    elif stage == "stubs":
-        parts["scripts"] = files("stub_gen.py", "stub_dump.py")
-        parts["il2cpp"] = _marker_hash(work, "il2cpp")
-        parts["bundles"] = hash_listing(os.path.join(work, "romfs", "Data", "StreamingAssets", "AssetAssistant"))
-    elif stage == "unity-build":
-        unity = os.path.join(root, "unity")
-        parts["assets"] = _marker_hash(work, "assets")
-        parts["stubs"] = _marker_hash(work, "stubs")
-        parts["shaders"] = _marker_hash(work, "shaders")
-        parts["sources"] = {
-            "Scripts": hash_tree_content(os.path.join(unity, "Assets", "Scripts"), (".cs", ".asmdef")),
-            "Scenes": hash_tree_content(os.path.join(unity, "Assets", "Scenes"), (".unity",)),
-            "ProjectSettings": hash_tree_content(os.path.join(unity, "ProjectSettings"), (".asset", ".txt")),
-            "Packages": hash_file(os.path.join(unity, "Packages", "manifest.json")),
-        }
-        parts["target"] = target
-        parts["editor"] = UNITY_VERSION
-    elif stage == "deploy":
-        parts["unity-build"] = _marker_hash(work, "unity-build")
-        team = (env.get("TEAM_ID") or read_env_value(env.get("XNU_LOCAL_ENV") or os.path.join(root, "work", "local.env"), "TEAM_ID") or "")
-        parts["team"] = _sha(team.encode())[:16] if team else "keine"  # nur ein Hash, nie die ID
-        parts["target"] = target
     digest = _sha(json.dumps(parts, sort_keys=True).encode())
     return digest, parts
 
 
 # ---------- Editor-Erkennung ----------
-
-def find_editor_pid(ps_text, project_dir):
-    """PID des Unity-Editors, der `project_dir` offen hat (nicht: Import-Worker, Shader-Compiler)."""
-    want = os.path.realpath(project_dir)
-    for line in ps_text.splitlines():
-        line = line.strip()
-        m = re.match(r"(\d+)\s+(.*)$", line)
-        if not m:
-            continue
-        pid, cmd = m.groups()
-        if "Unity.app/Contents/MacOS/Unity" not in cmd:
-            continue
-        if "AssetImportWorker" in cmd or "-adb2" in cmd:
-            continue
-        pm = re.search(r"-projectpath\s+(.+?)(?=\s+-[A-Za-z]|$)", cmd, re.IGNORECASE)
-        if pm and os.path.realpath(pm.group(1).strip().strip('"')) == want:
-            return int(pid)
-    return None
-
-
-def editor_open(project_dir):
-    try:
-        out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True, timeout=20).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return find_editor_pid(out, project_dir)
-
 
 # ---------- Preflight ----------
 
@@ -342,15 +280,12 @@ def _run_ok(cmd, env=None, timeout=60):
         return False, ""
 
 
-def preflight(stages, target, root, work, tools_dir=None, unity_root="/Applications/Unity/Hub/Editor",
-              developer_dir="/Applications/Xcode.app/Contents/Developer", min_free_gb=MIN_FREE_GB,
-              which=shutil.which, run=_run_ok, free=free_gb, home=None):
+def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_GB,
+              which=shutil.which, run=_run_ok, free=free_gb):
     """Prüft nur, was die gewählten Stufen brauchen; nichts wird installiert. Eintrag: dict(name, ok, detail, hint, level)."""
     tools_dir = tools_dir or os.path.join(root, "tools")
-    home = home or os.path.expanduser("~")
     s = set(stages)
     want_mac = target in ("macos", "all")
-    want_ios = target in ("ios", "all")
     items = []
 
     def add(name, ok, detail="", hint="", level="fehlt"):
@@ -388,7 +323,7 @@ def preflight(stages, target, root, work, tools_dir=None, unity_root="/Applicati
             "git clone https://github.com/Perfare/Il2CppDumper tools/Il2CppDumper && "
             "dotnet build tools/Il2CppDumper/Il2CppDumper -c Release -f net8.0 -o tools/il2cppdumper-bin")
 
-    if s & {"masterdata", "shaders", "stubs"}:
+    if s & {"masterdata", "shaders"}:
         add("Python-Pakete (UnityPy, lz4) in tools/pydeps", os.path.isdir(os.path.join(tools_dir, "pydeps", "UnityPy")),
             os.path.join(tools_dir, "pydeps"), "python3 -m pip install --target tools/pydeps UnityPy lz4")
     if "shaders" in s:
@@ -425,33 +360,6 @@ def preflight(stages, target, root, work, tools_dir=None, unity_root="/Applicati
         ok, out = run([ffmpeg, "-hide_banner", "-encoders"]) if ffmpeg else (False, "")
         add("ffmpeg mit libx265", ok and "libx265" in out, ffmpeg or "nicht gefunden", "brew install ffmpeg")
 
-    if s & {"unity-build", "deploy"}:
-        editor = os.path.join(unity_root, UNITY_VERSION)
-        have = os.path.isdir(os.path.join(editor, "Unity.app"))
-        if "unity-build" in s:
-            add("Unity Editor " + UNITY_VERSION, have, editor,
-                "Unity Hub installieren (brew install --cask unity-hub, das fragt ggf. selbst nach Admin-Rechten) und dann: "
-                "unity install %s -a arm64   bzw.   Unity Hub -- --headless install --version %s --architecture arm64" % (UNITY_VERSION, UNITY_VERSION))
-            if want_mac:
-                mac = os.path.join(editor, "Unity.app", "Contents", "PlaybackEngines", "MacStandaloneSupport",
-                                   "Variations", "macos_arm64_player_nondevelopment_il2cpp")
-                add("Unity-Modul Mac Build Support (IL2CPP)", os.path.isdir(mac), "",
-                    "unity install-modules -e %s -a arm64 -m mac-il2cpp --non-interactive" % UNITY_VERSION)
-            if want_ios:
-                add("Unity-Modul iOS Build Support", os.path.isdir(os.path.join(editor, "PlaybackEngines", "iOSSupport")), "",
-                    "unity install-modules -e %s -a arm64 -m ios --non-interactive" % UNITY_VERSION)
-            cli = which("unity") or (os.path.join(home, ".unity", "bin", "unity")
-                                     if os.access(os.path.join(home, ".unity", "bin", "unity"), os.X_OK) else None)
-            add("unity CLI (optional)", cli, cli or "nicht gefunden; Rückfall: Editor direkt im Batchmodus",
-                "Unity-CLI von unity.com installieren", level="hinweis" if not cli else "fehlt")
-        xcode_ok = os.path.isdir(developer_dir)
-        out = ""
-        if xcode_ok:
-            xcode_ok, out = run(["xcodebuild", "-version"], env=dict(os.environ, DEVELOPER_DIR=developer_dir))
-        add("Xcode (DEVELOPER_DIR)", xcode_ok, (out.strip().replace("\n", " ") if xcode_ok else developer_dir),
-            "Xcode aus dem App Store oder von developer.apple.com in /Applications installieren, Lizenz akzeptieren "
-            "(xcodebuild -license, braucht Admin) und DEVELOPER_DIR=<Xcode>/Contents/Developer setzen; "
-            "xcode-select -s wird absichtlich nicht benutzt")
     return items
 
 
@@ -509,11 +417,7 @@ def main(argv=None):
     p.add_argument("--root", required=True)
     p.add_argument("--work", required=True)
     p.add_argument("--tools-dir")
-    p.add_argument("--unity-root", default="/Applications/Unity/Hub/Editor")
-    p.add_argument("--developer-dir", default="/Applications/Xcode.app/Contents/Developer")
     p.add_argument("--min-free-gb", type=int, default=MIN_FREE_GB)
-    p = sub.add_parser("editor-open")
-    p.add_argument("--project", required=True)
     p = sub.add_parser("env-get")
     p.add_argument("--file", required=True)
     p.add_argument("--key", required=True)
@@ -544,8 +448,7 @@ def main(argv=None):
         clear_marker(a.work, a.stage)
         return 0
     if a.cmd == "preflight":
-        items = preflight(a.stages.split(), a.target, a.root, a.work, a.tools_dir, a.unity_root,
-                          a.developer_dir, a.min_free_gb)
+        items = preflight(a.stages.split(), a.target, a.root, a.work, a.tools_dir, min_free_gb=a.min_free_gb)
         lines, missing, disk = format_preflight(items)
         print("\n".join(lines))
         for m in missing:
@@ -556,12 +459,6 @@ def main(argv=None):
         if disk:
             return EX_DISK if all(m["name"].startswith("Plattenplatz") for m in missing) else EX_TOOLS
         return EX_TOOLS if missing else 0
-    if a.cmd == "editor-open":
-        pid = editor_open(a.project)
-        if pid:
-            print(pid)
-            return 0
-        return 1
     if a.cmd == "env-get":
         v = read_env_value(a.file, a.key)
         if v is None:

@@ -23,12 +23,12 @@ class StageSelectionTests(unittest.TestCase):
         self.assertEqual(bs.select_stages([]), bs.STAGES)
 
     def test_order_is_canonical_and_aliases_work(self):
-        self.assertEqual(bs.select_stages(["deploy", "masterdata", "unity"]), ["masterdata", "unity-build", "deploy"])
-        self.assertEqual(bs.select_stages(["xcode"]), ["deploy"])
+        self.assertEqual(bs.select_stages(["video", "masterdata", "shader"]), ["masterdata", "shaders", "video"])
+        self.assertEqual(bs.select_stages(["macapp"]), ["recomp"])
 
     def test_from_to(self):
         self.assertEqual(bs.select_stages(from_stage="masterdata", to_stage="video"), ["masterdata", "shaders", "video"])
-        self.assertEqual(bs.select_stages(from_stage="assets"), ["assets", "stubs", "unity-build", "deploy"])
+        self.assertEqual(bs.select_stages(from_stage="audio"), ["audio"])
         self.assertEqual(bs.select_stages(to_stage="extract"), ["tools", "extract"])
 
     def test_from_after_to_fails(self):
@@ -115,33 +115,6 @@ class HashTests(unittest.TestCase):
         write(os.path.join(self.work, "romfs", "Data", "StreamingAssets", "Movie", "b.webm"), "1")
         self.assertNotEqual(base, self.h("video"))
 
-    def test_assets_follow_upstream_markers_and_bundles(self):
-        base = self.h("assets")
-        bs.write_marker(self.work, "video", "v-neu")
-        after_video = self.h("assets")
-        self.assertNotEqual(base, after_video)
-        write(os.path.join(self.work, "romfs", "Data", "StreamingAssets", "AssetAssistant", "c", "bundle2"), "9")
-        self.assertNotEqual(after_video, self.h("assets"))
-
-    def test_unity_build_depends_on_target_and_sources(self):
-        write(os.path.join(self.root, "unity", "Assets", "Scripts", "A.cs"), "class A {}")
-        a = self.h("unity-build", target="macos")
-        self.assertNotEqual(a, self.h("unity-build", target="ios"))
-        write(os.path.join(self.root, "unity", "Assets", "Scripts", "A.cs"), "class B {}")
-        self.assertNotEqual(a, self.h("unity-build", target="macos"))
-        # .DS_Store und Library zählen nicht
-        write(os.path.join(self.root, "unity", "Assets", "Scripts", ".DS_Store"), "x")
-        write(os.path.join(self.root, "unity", "Library", "Cache.cs"), "x")
-        b = self.h("unity-build", target="macos")
-        write(os.path.join(self.root, "unity", "Library", "Cache.cs"), "y")
-        self.assertEqual(b, self.h("unity-build", target="macos"))
-
-    def test_deploy_hash_never_contains_team_id(self):
-        digest, parts = bs.stage_hash("deploy", self.root, self.work, "ios", env={"TEAM_ID": "ABCDE12345"})
-        self.assertNotIn("ABCDE12345", json.dumps(parts))
-        other, _ = bs.stage_hash("deploy", self.root, self.work, "ios", env={"TEAM_ID": "ZZZZZ99999"})
-        self.assertNotEqual(digest, other)
-
 
 class EnvFileTests(unittest.TestCase):
     def test_parse(self):
@@ -160,37 +133,6 @@ class EnvFileTests(unittest.TestCase):
             self.assertIsNone(bs.read_env_value(p, "TEAM_ID"))
 
 
-UNITY = "/Applications/Unity/Hub/Editor/6000.3.26f1/Unity.app/Contents/MacOS/Unity"
-
-
-class EditorDetectionTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.project = os.path.join(self.tmp.name, "unity")
-        os.makedirs(self.project)
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_main_editor_found(self):
-        ps = "  100 /bin/zsh\n  200 %s -projectpath %s -useHub -hubIPC\n" % (UNITY, self.project)
-        self.assertEqual(bs.find_editor_pid(ps, self.project), 200)
-
-    def test_workers_and_other_projects_ignored(self):
-        ps = ("201 %s -adb2 -batchMode -name AssetImportWorker0 -projectPath %s -logFile x\n"
-              "202 %s -projectpath /woanders/unity -useHub\n"
-              "203 /Applications/Unity/Hub/Editor/6000.3.26f1/Unity.app/Contents/Helpers/UnityShaderCompiler %s\n"
-              % (UNITY, self.project, UNITY, self.project))
-        self.assertIsNone(bs.find_editor_pid(ps, self.project))
-
-    def test_batch_editor_found_with_camel_case_flag(self):
-        ps = "300 %s -batchmode -projectPath %s -quit\n" % (UNITY, self.project)
-        self.assertEqual(bs.find_editor_pid(ps, self.project), 300)
-
-    def test_no_processes(self):
-        self.assertIsNone(bs.find_editor_pid("", self.project))
-
-
 class PreflightTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -198,9 +140,7 @@ class PreflightTests(unittest.TestCase):
         self.root = os.path.join(t, "repo")
         self.work = os.path.join(t, "work")
         self.tools = os.path.join(t, "tools")
-        self.unity = os.path.join(t, "Editor")
-        self.xcode = os.path.join(t, "Xcode")
-        for d in (self.root, self.work, self.xcode):
+        for d in (self.root, self.work):
             os.makedirs(d)
         write(os.path.join(self.tools, "hactool", "hactool"))
         os.chmod(os.path.join(self.tools, "hactool", "hactool"), 0o755)
@@ -210,11 +150,6 @@ class PreflightTests(unittest.TestCase):
         os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
         write(os.path.join(self.root, "scripts", "recomp", "upstream", "generator", "gen.py"))
         write(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
-        base = os.path.join(self.unity, bs.UNITY_VERSION)
-        os.makedirs(os.path.join(base, "Unity.app"))
-        os.makedirs(os.path.join(base, "Unity.app", "Contents", "PlaybackEngines", "MacStandaloneSupport",
-                                 "Variations", "macos_arm64_player_nondevelopment_il2cpp"))
-        os.makedirs(os.path.join(base, "PlaybackEngines", "iOSSupport"))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -222,9 +157,9 @@ class PreflightTests(unittest.TestCase):
     def run_pf(self, stages, target="all", which=None, run=None, free=lambda p: 200.0):
         which = which or (lambda c: "/usr/bin/" + c)
         run = run or (lambda cmd, env=None, timeout=60: (True, "8.0.100" if "dotnet" in cmd[0]
-                                                         else "libx265 encoder" if "-encoders" in cmd else "Xcode 26"))
-        return bs.preflight(stages, target, self.root, self.work, self.tools, self.unity, self.xcode, 60,
-                            which=which, run=run, free=free, home=self.tmp.name)
+                                                         else "libx265 encoder" if "-encoders" in cmd else "ok"))
+        return bs.preflight(stages, target, self.root, self.work, self.tools, 60,
+                            which=which, run=run, free=free)
 
     def names(self, items, ok):
         return [i["name"] for i in items if i["ok"] == ok and i["level"] == "fehlt"]
@@ -240,7 +175,7 @@ class PreflightTests(unittest.TestCase):
         self.assertTrue(disk)
         with contextlib.redirect_stdout(io.StringIO()):
             rc = bs.main(["preflight", "--stages", "masterdata", "--root", self.root, "--work", self.work,
-                          "--tools-dir", self.tools, "--unity-root", self.unity, "--min-free-gb", "100000000"])
+                          "--tools-dir", self.tools, "--min-free-gb", "100000000"])
         self.assertEqual(rc, bs.EX_DISK)
 
     def test_only_selected_stages_are_checked(self):
@@ -259,25 +194,15 @@ class PreflightTests(unittest.TestCase):
         items = self.run_pf(["il2cpp"], run=run)
         self.assertEqual(self.names(items, False), ["dotnet >= 8"])
 
-    def test_missing_unity_modules_and_hactool(self):
-        os.rmdir(os.path.join(self.unity, bs.UNITY_VERSION, "PlaybackEngines", "iOSSupport"))
+    def test_missing_hactool_is_reported_for_extract(self):
         os.remove(os.path.join(self.tools, "hactool", "hactool"))
-        items = self.run_pf(["extract", "unity-build"], target="ios")
-        self.assertEqual(sorted(self.names(items, False)), ["Unity-Modul iOS Build Support", "hactool"])
-        # nur das iOS-Ziel gewählt: das Mac-Modul wird nicht verlangt
-        items = self.run_pf(["unity-build"], target="ios")
-        self.assertNotIn("Unity-Modul Mac Build Support (IL2CPP)", [i["name"] for i in items])
+        items = self.run_pf(["extract"])
+        self.assertEqual(self.names(items, False), ["hactool"])
 
     def test_hactool_is_built_by_tools_stage(self):
         os.remove(os.path.join(self.tools, "hactool", "hactool"))
         items = self.run_pf(["tools", "extract"])
         self.assertEqual(self.names(items, False), [])
-
-    def test_missing_cli_is_only_a_hint(self):
-        which = lambda c: None if c == "unity" else "/usr/bin/" + c
-        items = self.run_pf(["unity-build"], which=which)
-        self.assertEqual(self.names(items, False), [])
-        self.assertTrue(any(i["name"].startswith("unity CLI") and i["level"] == "hinweis" for i in items))
 
     def test_install_list_has_no_sudo(self):
         os.remove(os.path.join(self.tools, "hactool", "hactool"))
@@ -315,8 +240,8 @@ class RecompStageTests(unittest.TestCase):
     def pf(self, free=30.0, min_free=60, which=None, run=None, target="all", stages=("recomp",)):
         which = which or (lambda c: "/usr/bin/" + c)
         run = run or (lambda cmd, env=None, timeout=60: (True, "ok"))
-        return bs.preflight(list(stages), target, self.root, self.work, self.tools, "/nicht/da", "/nicht/da", min_free,
-                            which=which, run=run, free=lambda p: free, home=self.tmp.name)
+        return bs.preflight(list(stages), target, self.root, self.work, self.tools, min_free,
+                            which=which, run=run, free=lambda p: free)
 
     def missing(self, items):
         return [i["name"] for i in items if not i["ok"] and i["level"] == "fehlt"]

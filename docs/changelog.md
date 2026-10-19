@@ -4,6 +4,9 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 ## 2026-10-19
 
+- **Unity-Stufen entfernt:** `assets`, `stubs`, `unity-build` und `deploy` sind aus `scripts/build_all.sh` und `scripts/build_stages.py` entfernt, ebenso Editor-Erkennung (`editor-open`), `--shaders-into-unity`, Unity- und Xcode-Preflight. Die Shader-Stufe bleibt (liest Unity-Bundles des Spiels per UnityPy). Tests angepasst, 347 Tests bestehen.
+- **Unity auf Branch `unity`:** siehe Eintrag oben (Unity-Projekt, Docs, Test für `material_variants`).
+
 - **Unity auf Branch `unity`:** Das Unity-Projekt `unity/` (810 Dateien), `scripts/unity_safe.sh`, `docs/unity6-tooling.md`, `docs/unity-autopilot.md`, `docs/feld-szene-2.md`, `docs/material-remap.md`, `docs/shader-unity-integration.md` und der Test `scripts/tests/test_material_variants.py` (Fixture aus `unity/`) sind aus `main` entfernt. Branch `unity` ist auf origin (Stand 13b3977, vollständig). README, Architekturentscheidung und Doku-Index verweisen darauf.
 - **Noch auf main, bewusst:** Build-Stufen `stubs`, `assets`, `unity-build`, `deploy` in `build_all.sh` und `build_stages.py` (Folgeschritt), die Shader-Stufe (liest Unity-Bundles des Spiels per UnityPy) und `stub_*`, `visual_*`, `bundle_retarget.py`, `material_*.py`.
 - **Lokal unverändert:** der ignorierte Ordner `unity/` (3,6 GB, u. a. `Library`) bleibt auf der Festplatte, wird nicht versioniert.
