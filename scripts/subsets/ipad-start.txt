@@ -1,0 +1,9 @@
+# Bundle-Teilmenge für den iPad-Start (scripts/build_all.sh --bundle-subset scripts/subsets/ipad-start.txt).
+# Namen relativ zu romfs/Data/StreamingAssets/AssetAssistant; der Katalog (Dpr.bin u. a.) wird immer mitkopiert.
+# Gemessen mit dem macOS-Player (Szene FieldTest2, Zone 422, 30 s): genau diese vier Bundles werden geladen (rund 28,5 MB).
+Environments/fields/area001
+Characters/persons/field/fc0001_00
+Characters/persons/field/fc0001_11
+Characters/persons/field/pc_parts
+# Textbox-Skin der UI-Szene (UiTest)
+UIs/shareduiassets/sharedui

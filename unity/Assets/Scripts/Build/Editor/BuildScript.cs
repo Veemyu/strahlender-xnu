@@ -18,11 +18,24 @@ namespace Xnu.Build.Editor
     // setzt scripts/ios_deploy.sh bzw. Xcode, nie dieses Skript.
     public static class BuildScript
     {
-        // Rückfall, solange die Build Settings keine Szene enthalten; die erste Szene ist der Einstieg.
+        // Rückfall, solange die Build Settings keine Szene enthalten; die erste Szene ist der Einstieg:
+        // Boot (Auswahlmenü, startet per -xnuScene/XNU_START_SCENE auch ohne Eingabe) und die Testszenen.
         internal static readonly string[] DefaultScenes =
         {
+            BootSceneBuilder.ScenePath,
+            "Assets/Scenes/FieldTest2.unity",
             "Assets/Scenes/FieldTest.unity",
+            "Assets/Scenes/UiTest.unity",
             "Assets/Scenes/InputTest.unity",
+        };
+
+        // Quellen der erzeugten Shader (Stufe shaders), in dieser Reihenfolge; maßgebend ist eine vorhandene variants.json.
+        internal static string[] ShaderSources(string overrideDir, string repoRoot) => new[]
+        {
+            overrideDir,
+            Environment.GetEnvironmentVariable("XNU_SHADERS"),
+            Path.Combine(repoRoot, "work", "build", "shaders"),
+            Path.Combine(repoRoot, "work", "shaders", "combined"),
         };
 
         private const string Tag = "[XnuBuild] ";
@@ -87,6 +100,28 @@ namespace Xnu.Build.Editor
             return null;
         }
 
+        // Die erzeugten Shader liegen gitignoriert in Assets/XnuGenerated/Resources; Resources-Inhalte sind im Player
+        // enthalten, nur so findet Shader.Find sie dort. Vor jedem Build werden sie mit der Stufe shaders abgeglichen.
+        private static void SyncGeneratedShaders(string overrideDir)
+        {
+            var repoRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
+            var source = ShaderSources(overrideDir, repoRoot)
+                .FirstOrDefault(d => !string.IsNullOrEmpty(d) && File.Exists(Path.Combine(d, "variants.json")));
+            if (source == null)
+            {
+                Debug.LogWarning(Tag + "Keine erzeugten Shader gefunden (Stufe shaders, XNU_SHADERS oder -xnuShaders): der Player nutzt nur Ersatzmaterialien.");
+                return;
+            }
+            Debug.Log(Tag + "Shader-Abgleich: " + Xnu.Render.Editor.GeneratedShaderSync.Sync(source));
+        }
+
+        private static long DirectorySize(string dir)
+        {
+            long total = 0;
+            foreach (var f in new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories)) total += f.Length;
+            return total;
+        }
+
         private static void Run(BuildTarget target, string defaultRelativeOutput)
         {
             var batch = Application.isBatchMode;
@@ -98,6 +133,8 @@ namespace Xnu.Build.Editor
                     output = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", defaultRelativeOutput));
 
                 var scenes = ResolveScenes(Arg(args, "-xnuScenes"));
+                if (scenes.Contains(BootSceneBuilder.ScenePath)) BootSceneBuilder.Ensure();
+                SyncGeneratedShaders(Arg(args, "-xnuShaders"));
                 var missing = scenes.Where(s => !File.Exists(s)).ToArray();
                 if (scenes.Length == 0 || missing.Length > 0)
                     throw new BuildFailedException("Szenenliste leer oder Szene fehlt: " + string.Join(", ", missing));
@@ -105,6 +142,7 @@ namespace Xnu.Build.Editor
                 var bundled = Path.Combine(Application.dataPath, "StreamingAssets", "GameData");
                 if (!Directory.Exists(bundled))
                     Debug.LogWarning(Tag + "Assets/StreamingAssets/GameData fehlt (Stufe assets): der Player enthält keine Spieldaten.");
+                if (Directory.Exists(bundled)) Debug.Log(Tag + "Spieldaten im Paket: " + (DirectorySize(bundled) / (1024 * 1024)) + " MB");
 
                 Directory.CreateDirectory(Path.GetDirectoryName(output));
                 ApplyPlayerSettings(target);

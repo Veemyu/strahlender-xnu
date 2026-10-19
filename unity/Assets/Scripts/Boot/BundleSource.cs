@@ -42,6 +42,9 @@ namespace Xnu.Boot
             if (!System.IO.File.Exists(path)) throw new BundleLoadException("Bundle-Datei fehlt: " + path);
             var b = AssetBundle.LoadFromFile(path);
             if (b == null) throw new BundleLoadException("AssetBundle.LoadFromFile lieferte null: " + path);
+            var i = path.IndexOf("AssetAssistant", StringComparison.Ordinal);
+            Debug.Log("[Boot] Bundle geladen: " + (i >= 0 ? path.Substring(i + "AssetAssistant".Length).TrimStart('/') : path)
+                      + " (" + new System.IO.FileInfo(path).Length + " Byte)");
             return new Handle(b);
         }
     }

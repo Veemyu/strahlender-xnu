@@ -2,7 +2,7 @@
 
 Einstiegspunkt ist `scripts/build_all.sh` (bash 3.2-kompatibel). Hilfslogik: `scripts/build_helpers.py` (Entschlüsselung, Manifest) und `scripts/build_stages.py` (Stufenauswahl, Marker mit Eingabe-Hashes, Preflight, Editor-Erkennung). Die Nutzeranleitung „NSP/XCI angeben, App erhalten“ steht in `docs/bauen.md`; dieses Dokument beschreibt die Technik.
 
-Stufen in fester Reihenfolge: `tools`, `extract`, `il2cpp`, `masterdata`, `shaders`, `video`, `audio` (Platzhalter), `assets`, `unity-build`, `deploy`. Vor den Stufen läuft ein Preflight. Stand der Umsetzung: alle Stufen sind im Skript vorhanden; `audio` meldet „nicht implementiert“. Getestet sind Dry-run, `extract` (früherer Lauf, siehe unten), `il2cpp`, `masterdata`, `video` (Stichprobe), `shaders` (Stichprobe), `assets` und die Editor-Erkennung; der echte Unity-Build und der iOS-Deploy wurden in diesem Auftrag bewusst **nicht** ausgeführt.
+Stufen in fester Reihenfolge: `tools`, `extract`, `il2cpp`, `masterdata`, `shaders`, `video`, `audio` (Platzhalter), `assets`, `unity-build`, `deploy`. Vor den Stufen läuft ein Preflight. Stand der Umsetzung: alle Stufen sind im Skript vorhanden; `audio` meldet „nicht implementiert“. Getestet sind Dry-run, `extract` (früherer Lauf, siehe unten), `il2cpp`, `masterdata`, `video` (Stichprobe), `shaders` (Stichprobe), `assets` und die Editor-Erkennung. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor.
 
 ## Aufruf
 
@@ -27,6 +27,7 @@ scripts/build_all.sh preflight
 | `--video-profile`, `--movie-src` | `h265-crf18` (Standard) oder `h265-crf14`; abweichende Videoquelle (Stichproben, ohne Marker). |
 | `--shaders-into-unity`, `--shader-only NAME` | Shader nach `unity/Assets/GameData/Shaders` statt `work/build/shaders`; nur ein Shader (Test, ohne Marker). |
 | `--launch` | iOS-App nach der Installation starten (Standard: nicht starten). |
+| `--bundle-platform`, `--bundle-subset` | Zielplattform der Bundles (`macos`, `ios`, `keep`; Standard aus `--target`) und Teilmenge der Bundles für den Player (Stufe `assets`, siehe dort). |
 
 Umgebungsvariablen: `TOOLS_DIR` (Standard `tools/`), `MIN_FREE_GB` (Reserve in `extract`, Standard 25), `PREFLIGHT_MIN_FREE_GB`, `UNITY_EDITOR_ROOT`, `DEVELOPER_DIR`, `TEAM_ID`, `SHADER_USED` (JSON der benutzten Keyword-Mengen), `ASSETS_DEST` (gitignorierter Zielordner der Stufe `assets`), `XNU_UNITY_DRIVER=cli|editor|auto`, `XNU_LOCAL_ENV` (statt `work/local.env`).
 
@@ -82,14 +83,20 @@ GameData/romfs/Data/StreamingAssets/Movie/            H.265-Videos aus work/vide
 GameData/masterdata/                                  JSON aus work/masterdata
 ```
 
-Die Struktur entspricht `GameDataPaths` (`Root` = `StreamingAssets/GameData`, wenn `XNU_GAMEDATA` nicht gesetzt ist), sodass `AssetAssistant` und `masterdata` ohne Codeänderung der Verbraucher gefunden werden. Audio wird nicht kopiert. Anzahl und Größe werden gemessen und ausgegeben. Test (Sandbox, echte Bundles): 14.183 Dateien, 3,9 GB in 4 s ohne zusätzlichen Plattenverbrauch (Klon). Beim Unity-Build kopiert Unity die Daten danach einmal vollständig in das Paket (je Ziel ca. 4,4 GB plus Xcode-Derived-Data).
+Die Struktur entspricht `GameDataPaths` (`Root` = `StreamingAssets/GameData`, wenn `XNU_GAMEDATA` nicht gesetzt ist), sodass `AssetAssistant` und `masterdata` ohne Codeänderung der Verbraucher gefunden werden. Zusätzlich `GameData/materials/` (Materialexporte aus `work/materials`, falls vorhanden; sie braucht der Shader-Umbau). Audio wird nicht kopiert. Anzahl und Größe werden gemessen und ausgegeben. Test (Sandbox, echte Bundles): 14.183 Dateien, 3,9 GB in 4 s ohne zusätzlichen Plattenverbrauch (Klon).
+
+**Plattformkennung der Bundles (Pflicht für den Player).** Die Original-Bundles tragen die Zielplattform 38 (Switch). Der Editor lädt sie, ein **Player nicht** („The file can not be loaded because it was created for another build target…“). Die Stufe ruft deshalb `scripts/bundle_retarget.py tree … --platform macos|ios` auf: je Bundle wird nur die Plattformkennung im Serialized File geändert (Block mit den vier Bytes entpacken, patchen, mit LZ4HC neu packen, Blockinfo neu schreiben, übrige Blöcke unverändert kopieren; Texturformate und Inhalt bleiben). Ergebnis auf echten Daten: 14.052 Bundles, 0 Fehler; die Klone sind danach echte Kopien (4,0 GB Plattenverbrauch). Zeit gesamt 42 s (24 s, wenn der gepatchte Block unkomprimiert bleibt, dafür +0,9 GB). UnityPy öffnet gepatchte und Originalbundle mit identischen Objekten (28.225 Objekte in `area001`, gleiche Prüfsumme der ersten 300).
+- `--bundle-platform macos|ios|keep`: Standard aus `--target` (`ios` → ios, sonst macos; bei `all` gilt `macos`, für iOS die Stufe mit `--target ios` wiederholen). `keep` lässt die Kennung (nur für Tools, ein Player lädt die Bundles dann nicht).
+- `--bundle-subset DATEI`: statt aller Bundles nur die gelisteten (Namen relativ zu `AssetAssistant`, `#` für Kommentare) plus alle Nicht-Bundle-Dateien (Katalog `Dpr.bin` u. a.). Für das iPad: `scripts/subsets/ipad-start.txt` (Start der Szene `FieldTest2`, 5 Bundles, 34,6 MB; Begründung und Messung in `docs/player-build-1.md`).
+- Der Marker-Hash der Stufe enthält `bundle_retarget.py`, Plattform, Teilmenge und die Liste der Materialexporte.
+- Beim Unity-Build kopiert Unity die Daten danach einmal vollständig in das Paket (macOS: App 4,1 GB, Ausgabeordner mit Symbolen 5,0 GB; iOS ohne Teilmenge entsprechend ca. 4,4 GB plus Xcode-Derived-Data).
 
 ### `unity-build`
 Je Ziel ein Batch-Build mit `Xnu.Build.Editor.BuildScript` (`BuildMacOS`, `BuildIos`):
 
 - Treiber `cli`: `unity --non-interactive --no-banner build unity --target StandaloneOSX|iOS --execute-method … --output-path … --editor-version 6000.3.26f1 --architecture arm64 --allow-dirty-build --log-file …`.
 - Treiber `editor` (Rückfall oder `XNU_UNITY_DRIVER=editor`): `Unity -batchmode -quit -projectPath unity -buildTarget … -executeMethod … -xnuOutput …`.
-- Das Buildskript setzt vor dem Bauen: Scripting-Backend IL2CPP, **nur Metal** als Grafik-API, macOS-Architektur arm64 (per Reflection, fällt sonst auf den Editor-Standard zurück), iOS Gerätetyp iPhone und iPad. Szenen: aktivierte Szenen der Build Settings, sonst `FieldTest` und `InputTest` (Einstieg: erste Szene); `-xnuScenes a;b` überschreibt. Ausgabe: `-xnuOutput` bzw. `-buildOutput`. Im Batchmodus Exit-Code 1 bei Fehlern. Der iOS-Postbuild `IosPostBuild.cs` (Entitlement „Increased Memory Limit“) bleibt unverändert; er läuft nur, wenn der Build mit dem Ziel iOS gestartet wird, was beide Treiber (`--target iOS` bzw. `-buildTarget iOS`) tun. Das Skript prüft nach dem Bau, dass `Xnu.entitlements` im Xcode-Projekt liegt.
+- Das Buildskript setzt vor dem Bauen: Scripting-Backend IL2CPP, **nur Metal** als Grafik-API, macOS-Architektur arm64 (per Reflection, fällt sonst auf den Editor-Standard zurück), iOS Gerätetyp iPhone und iPad. Szenen: aktivierte Szenen der Build Settings, sonst `Boot` (Auswahlmenü, Einstieg), `FieldTest2`, `FieldTest`, `UiTest`, `InputTest`; `-xnuScenes a;b` überschreibt. Die Boot-Szene wird bei Bedarf automatisch erzeugt (`BootSceneBuilder`). **Vor dem Bauen** gleicht das Skript die erzeugten Shader nach `Assets/XnuGenerated/Resources` ab (`GeneratedShaderSync`; Quelle `-xnuShaders`, `XNU_SHADERS`, `work/build/shaders`, `work/shaders/combined` mit je einer `variants.json`); Resources-Inhalt ist im Player enthalten, `Shader.Find` findet die Shader dort (belegt: 61 von 61 im macOS-Player). `unity/Assets/link.xml` verhindert das Strippen von Engine-Klassen, die nur Bundle-Inhalt braucht (iOS: `SkinnedMeshRenderer`). Der Player startet mit `-xnuScene <Name>` oder `XNU_START_SCENE` direkt in eine Szene. Ausgabe: `-xnuOutput` bzw. `-buildOutput`. Im Batchmodus Exit-Code 1 bei Fehlern. Der iOS-Postbuild `IosPostBuild.cs` (Entitlement „Increased Memory Limit“) bleibt unverändert; er existiert nur, wenn beim Kompilieren das Ziel iOS aktiv ist: Beide Treiber (`--target iOS` bzw. `-buildTarget iOS`) erfüllen das; **im offenen Editor mit aktivem Ziel macOS fehlte beim ersten Aufruf das Entitlement** (Wiederholung nach dem Zielwechsel liefert es). Das Skript prüft nach dem Bau, dass `Xnu.entitlements` im Xcode-Projekt liegt. `ApplyPlayerSettings` schreibt dabei in `ProjectSettings.asset`: Scripting-Backend IL2CPP für Standalone und nur Metal für macOS und iOS (gewollt, gehört ins Repo).
 - Die Ausgabe wird vorher gelöscht (Unity würde sonst an alte Xcode-Projekte anhängen).
 - **Editor offen:** Erkennt `build_stages.py editor-open` einen Unity-Prozess mit `-projectpath unity` (Import-Worker und Shader-Compiler zählen nicht), wird der Build nicht versucht. Das Skript nennt die PID und zwei Auswege, überspringt `unity-build` und `deploy` und endet mit Exit-Code **11**.
 - Exit-Code 12: Unity-Build fehlgeschlagen (Auszug aus dem Unity-Log).
@@ -120,15 +127,39 @@ Prüft oder erzeugt alles lokal, nichts wird systemweit installiert: hactool (Kl
 ## Tests
 
 - `python3 -m unittest discover -s scripts/tests` (alle grün). Neu: `test_build_stages.py` (Stufenauswahl, Marker, Hash-Abhängigkeiten, Team-ID nie im Klartext, Editor-Erkennung an Beispielausgaben von `ps`, Preflight mit simulierten Werkzeugen, Installationsliste ohne `sudo`) und `test_build_all.py` (Dry-run ohne Schreibzugriff, `--from/--to/--only`, Aufruffehler, Audio-Platzhalter, Assets-Stufe mit synthetischen Bundles: Kopie, Überspringen, Neu-Erzeugen, gitignore-Erzwingung). `test_build_helpers.py` deckt weiter Ticket-Parser, NCA-Auswahl und Manifest ab.
-- Das C#-Buildskript wurde ohne Editorstart gegen die Unity-6000.3.26f1-Assemblies **übersetzt** (0 Fehler); ausgeführt wurde es nicht.
+- Das C#-Buildskript wurde zunächst ohne Editorstart gegen die Unity-6000.3.26f1-Assemblies **übersetzt** (0 Fehler); seit 2026-10-19 läuft es im offenen Editor (macOS und iOS, Abschnitt „Ergebnis des ersten Player-Builds“). Neu: `test_bundle_retarget.py` (8 Tests mit synthetischen UnityFS-Bundles: Plattform lesen und ändern, Inhalt bleibt gleich, Original unberührt, unkomprimiert/Big-Endian, `tree` und `subset`, fehlende Einträge); Python-Suite insgesamt 258 Tests grün. Unity EditMode: 635 von 635 grün (inkl. `BootOptionsTests`).
 - `bash -n scripts/build_all.sh` ist sauber; `shellcheck` ist hier nicht installiert.
 
 ## Testergebnis `extract` (Stand 2026-10-18, macOS arm64)
 
 Lauf in ein neues Verzeichnis (inzwischen gelöscht): `tools` unter 1 s; `extract` komplett 31 s und 34 s; zweiter Aufruf mit passendem Manifest 0,3 s (übersprungen). Fehlerfälle: fehlende XCI/Keys Exit 3, fehlender Parameter Exit 2, leere Keys Exit 6. Vergleich mit dem manuellen Stand: `exefs/main` und alle fünf ExeFS-Dateien identisch; RomFS byte-identisch bis auf sechs `.DS_Store`-Dateien. Ermittelte Version: Titelversion 393216, Anzeigeversion 1.3.0.
 
+## Ergebnis des ersten Player-Builds (Stand 2026-10-19, M1 Pro und iPad Pro M2)
+
+Ausführlich in `docs/player-build-1.md`. Kurz:
+
+| Messung | Wert |
+|---|---|
+| Stufe `assets`, nur Klon (Plattform unverändert) | 4 s, 14.187 Dateien, 3,9 GB (kein Plattenverbrauch) |
+| Stufe `assets` mit Plattformkennung (macOS, alle Bundles) | 42 s, 14.833 Dateien, 4,0 GB (echte Kopien) |
+| Stufe `assets` für iPad (Teilmenge) | 7 s, 9 Dateien Bundles/Katalog (34,6 MB), mit Stammdaten und Materialien 179 MB |
+| macOS-Build | erster Build 202 s, danach 44 s und nach Zielwechsel 92 s; 0 Fehler; App 4,1 GB, Ausgabeordner 5,0 GB |
+| iOS-Build (Unity) | 19 s inkrementell, 247 s bei erstem Zielwechsel; Xcode-Projekt 1.055 MB |
+| `ios_deploy.sh` (Xcode Release, Signatur, Installation) | 2 min 25 s bis 2 min 40 s |
+| Start Zone 422 | macOS 1,2 s, iPad 1,1 s; je 30 FPS |
+
+Gefundene Fehler und Lösungen:
+1. **Bundles mit Plattform 38 (Switch) lädt der Player nicht** → `bundle_retarget.py` in der Stufe `assets` (Plattformkennung je Bundle).
+2. **iOS strippte `SkinnedMeshRenderer`** („Could not produce class with ID 137“) → `unity/Assets/link.xml`.
+3. **`IosPostBuild` fehlte im ersten iOS-Build aus dem offenen Editor** (`#if UNITY_IOS`, aktives Ziel war macOS) → Build nach dem Zielwechsel wiederholen; Batchtreiber nicht betroffen; die Stufe prüft `Xnu.entitlements`.
+4. **`-logFile` mit relativem Pfad** erzeugt keine Datei → absolute Pfade verwenden.
+5. **Generierte Shader im Player:** kein Fehler; Abgleich nach `Assets/XnuGenerated/Resources` vor jedem Build (`BuildScript`), 61 von 61 per `Shader.Find` gefunden. 237 Build-Warnungen stammen aus diesen Shadern (Schleifen mit einer Iteration, Negation unsigned) und sind unkritisch.
+6. **Noch offen:** BC1/BC3/BC7-Texturen der Karten laufen auf iOS nicht (1.884 Fehlermeldungen in Zone 422); Umwandlung nach ASTC fehlt (`docs/player-build-1.md`, Abschnitt 6).
+
 ## Offene Punkte
 
-- Voller Unity-Build mit Bundles und iOS-Deploy: nicht ausgeführt (Auftrag: nur Dry-run und Review). Erst dann ist die Szenenliste (`FieldTest`, `InputTest` als Rückfall) gegen eine echte Startszene zu ersetzen.
+- Der Unity-Batch-Treiber (Editor geschlossen, `build_all.sh --only unity-build,deploy`) wurde mit echten Bundles noch nicht gelaufen; die Builds entstanden im offenen Editor über `Xnu/Build/…`. Die Startszene ist jetzt `Boot` (Auswahlmenü).
+- Texturumwandlung BC → ASTC für iOS; volle Bundle-Menge auf dem iPad (Installation, Platz, Ladezeit) nicht gemessen; keine Sichtprüfung des Bildes (Mac: kein Bildschirmfoto möglich).
+- `--target all` legt nur einen Datensatz `StreamingAssets/GameData` an (Plattform macOS).
 - Auf dieser Entwicklungsmaschine liegt der freie Platz (≈ 41 GB) unter dem Preflight-Mindestwert von 60 GB; der echte Gesamtlauf braucht dort `--min-free-gb` oder mehr Platz.
 - `audio` fehlt; Shader-Strippen (`SHADER_USED`) fehlt, daher Shader standardmäßig außerhalb des Unity-Projekts.

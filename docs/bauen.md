@@ -36,7 +36,7 @@ Der Dry-run prüft Voraussetzungen, zeigt je Stufe, ob sie übersprungen oder au
 | `shaders` | übersetzt die Maxwell-Shader, erzeugt Unity-Wrapper | `work/build/shaders/` (Standard) |
 | `video` | WebM (VP8) nach H.265 (`.mp4`, `hvc1`) | `work/video/` |
 | `audio` | **nicht implementiert** (Platzhalter, spielt nie etwas ab) | – |
-| `assets` | legt Bundles, Videos und Stammdaten für den Player bereit | `unity/Assets/StreamingAssets/GameData/` |
+| `assets` | legt Bundles, Videos, Stammdaten und Materialexporte für den Player bereit und setzt die Plattformkennung der Bundles (ohne sie lädt der Player nichts) | `unity/Assets/StreamingAssets/GameData/` |
 | `unity-build` | baut macOS und iOS im Batchmodus (IL2CPP, arm64, Metal) | `work/builds/macos/xnu.app`, `work/builds/ios/xnu/` |
 | `deploy` | prüft die macOS-App; installiert auf ein angeschlossenes iPad | – |
 
@@ -65,6 +65,12 @@ Hält ein Unity-Editor das Projekt `unity/`, kann kein Batch-Build laufen (Proje
 
 Ohne Team-ID bleibt es beim Xcode-Projekt unter `work/builds/ios/xnu/`; du kannst es in Xcode mit deinem eigenen Team öffnen. Ohne angeschlossenes iPad wird die Installation übersprungen. Ein kostenloses Apple-Team reicht; das Profil läuft nach 7 Tagen ab.
 
+**Daten auf dem iPad (Stand 2026-10-19):** Für die iPad-Erprobung genügt eine Teilmenge der Bundles: `scripts/build_all.sh --only assets --target ios --bundle-subset scripts/subsets/ipad-start.txt` (fünf Bundles, 34,6 MB, mit Stammdaten 179 MB); danach in Unity `Xnu/Build/iOS und iPadOS (Xcode-Projekt)` und `scripts/ios_deploy.sh work/builds/ios/xnu --no-launch`. Start einer Szene ohne Eingabe: `xcrun devicectl device process launch --device <iPad> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"FieldTest2"}' dev.local.xnum0`. Die App startet in der Boot-Szene (Auswahlliste der Testszenen). **Achtung:** Die Karten-Texturen (BC/DXT) sind auf iOS noch nicht umgewandelt (siehe Lücken).
+
+## Daten im Player
+
+Der Player lädt Bundles nur, wenn ihre Plattformkennung zum Ziel passt. Die Original-Bundles tragen die Kennung der Switch; die Stufe `assets` setzt sie je Ziel (`--bundle-platform`, Standard aus `--target`). Bei `--target all` entsteht nur ein Datensatz (macOS); für iOS die Stufe `assets` mit `--target ios` wiederholen. Einzelne Bundles prüfst du mit `PYTHONPATH=tools/pydeps python3 scripts/bundle_retarget.py info <Datei>`.
+
 ## Ausgabestruktur (alles gitignoriert)
 
 ```
@@ -87,4 +93,4 @@ Die App sucht ihre Daten zuerst über die Umgebungsvariable `XNU_GAMEDATA`, dann
 - `audio` ist nicht umgesetzt: die gebaute App enthält keinen Ton und bleibt stumm.
 - Die Shader-Wrapper landen standardmäßig nur in `work/build/shaders/`; ins Unity-Projekt (`--shaders-into-unity`) sollten sie erst nach dem Strippen auf die tatsächlich benutzten Varianten, sonst entstehen tausende Dateien (Stand: `docs/shader-unity-integration.md`, Abschnitt 13).
 - Platz: 60 GB sind der Mindestwert des Preflights. Auf knapperen Laufwerken lässt er sich mit `--min-free-gb N` bewusst senken.
-- Der vollständige Unity-Build mit echten Bundles wurde noch nicht durchlaufen, nur Dry-run und Teilstufen; Details in `docs/build-pipeline.md`.
+- Der erste echte Player-Build lief am 2026-10-19 im offenen Editor (Menü `Xnu/Build/…`) durch: macOS 202 s (kalt) bzw. 44 s, iOS 19 s, Installation 2 min 40 s; die Zone 422 lädt in beiden Apps in rund 1 s mit 30 FPS (`docs/player-build-1.md`). **Offen:** Umwandlung der BC-Texturen nach ASTC für iOS, Bild-Sichtprüfung, volle Bundle-Menge auf dem iPad, Lauf des Batch-Treibers bei geschlossenem Editor.

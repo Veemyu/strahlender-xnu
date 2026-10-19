@@ -24,6 +24,9 @@
 #   --movie-src ORDNER  Videoquelle statt romfs/.../Movie (Stichproben)
 #   --shaders-into-unity  Shader nach unity/Assets/GameData/Shaders statt work/build/shaders (tausende Dateien)
 #   --shader-only NAME  nur ein Shader (Test);  --launch  iOS-App nach der Installation starten
+#   --bundle-platform P macos|ios|keep: Zielplattform in den Bundles (Standard aus --target; bei all: macos).
+#                       Ein Player lädt nur Bundles mit passender Kennung (Switch-Kennung 38 wird abgelehnt).
+#   --bundle-subset F   nur die in F aufgeführten Bundles (plus Katalog) in den Player legen (iPad: Platz/Speicher)
 # Umgebung: TOOLS_DIR, MIN_FREE_GB (Reserve in extract, Standard 25), UNITY_EDITOR_ROOT, DEVELOPER_DIR,
 #   TEAM_ID (sonst work/local.env), SHADER_USED, ASSETS_DEST (gitignorierter Zielordner), XNU_UNITY_DRIVER=cli|editor|auto
 #
@@ -52,7 +55,7 @@ ALL_STAGES="tools extract il2cpp masterdata shaders video audio assets unity-bui
 XCI="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
 DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all VIDEO_PROFILE="h265-crf18" MOVIE_SRC=""
-SHADERS_INTO_UNITY=0 SHADER_ONLY="" LAUNCH=0
+SHADERS_INTO_UNITY=0 SHADER_ONLY="" LAUNCH=0 BUNDLE_PLATFORM="" BUNDLE_SUBSET=""
 EXTRACT_ACTIVE=0
 SELECTED="" RESULTS="" UPSTREAM_DIRTY=0 BLOCKED_EDITOR=0 NOT_IMPL=""
 
@@ -528,13 +531,24 @@ stage_assets() {
   local n
   if [ "$DRY" -eq 1 ]; then
     [ ! -d "$aa" ] || { n="$(sp tree-size --path "$aa")"; echo "    [dry-run] Bundles: ${n% *} Dateien, $(human "${n#* }")"; }
-    echo "    [dry-run] kopiere (APFS-Klon) $aa -> $dest/$AA_REL"
+    echo "    [dry-run] kopiere (APFS-Klon) $aa -> $dest/$AA_REL; Bundle-Plattform: $BUNDLE_PLATFORM${BUNDLE_SUBSET:+, nur Teilmenge $BUNDLE_SUBSET}"
     echo "    [dry-run] kopiere $WORK/video/*.mp4 -> $dest/$MOVIE_REL (H.265 statt WebM)"
     echo "    [dry-run] kopiere $WORK/masterdata -> $dest/masterdata; Audio wird nicht kopiert (Stufe audio fehlt)"
     stage_done assets; return 0
   fi
   rm -rf "$stg"; mkdir -p "$stg/$AA_REL" "$stg/$MOVIE_REL" "$stg/masterdata"
-  clone_tree "$aa" "$stg/$AA_REL" || die 14 "Bundles lassen sich nicht kopieren (Platz?)"
+  if [ -n "$BUNDLE_SUBSET" ]; then
+    need_pydeps
+    PYTHONPATH="$TOOLS_DIR/pydeps" logrun assets-subset python3 "$ROOT/scripts/bundle_retarget.py" subset "$aa" "$stg/$AA_REL" \
+      --list "$BUNDLE_SUBSET" --platform "$BUNDLE_PLATFORM" || die 14 "Bundle-Teilmenge fehlgeschlagen (Log: $WORK/logs/assets-subset.log)"
+  else
+    clone_tree "$aa" "$stg/$AA_REL" || die 14 "Bundles lassen sich nicht kopieren (Platz?)"
+    if [ "$BUNDLE_PLATFORM" != keep ]; then
+      need_pydeps
+      PYTHONPATH="$TOOLS_DIR/pydeps" logrun assets-retarget python3 "$ROOT/scripts/bundle_retarget.py" tree "$stg/$AA_REL" \
+        --platform "$BUNDLE_PLATFORM" || die 14 "Plattform der Bundles lässt sich nicht setzen (Log: $WORK/logs/assets-retarget.log)"
+    fi
+  fi
   if [ -d "$WORK/video" ] && [ -n "$(find "$WORK/video" -name '*.mp4' -print -quit)" ]; then
     (cd "$WORK/video" && find . -name '*.mp4' -print | while IFS= read -r f; do
       mkdir -p "$stg/$MOVIE_REL/$(dirname "$f")"; cp -c "$f" "$stg/$MOVIE_REL/$f" 2>/dev/null || cp "$f" "$stg/$MOVIE_REL/$f"
@@ -544,6 +558,8 @@ stage_assets() {
   fi
   if [ -d "$WORK/masterdata" ]; then clone_tree "$WORK/masterdata" "$stg/masterdata"
   else echo "  Hinweis: $WORK/masterdata fehlt (Stufe masterdata); Feld-/Datenmodule finden keine Stammdaten."; fi
+  # Materialexporte (scripts/material_export.py) für den Shader-Umbau; optional, ohne sie nutzt der Player Ersatzmaterial.
+  if [ -d "$WORK/materials" ]; then mkdir -p "$stg/materials"; clone_tree "$WORK/materials" "$stg/materials"; fi
   rm -rf "$dest"; mkdir -p "$(dirname "$dest")"; mv "$stg" "$dest"
   n="$(sp tree-size --path "$dest")"
   log "assets: ${n% *} Dateien, $(human "${n#* }") in $dest (gitignoriert; Unity kopiert sie beim Build ein zweites Mal ins Paket)"
@@ -709,6 +725,8 @@ while [ $# -gt 0 ]; do
     --shaders-into-unity) SHADERS_INTO_UNITY=1; shift ;;
     --shader-only) need_val $# "$1"; SHADER_ONLY="$2"; shift 2 ;;
     --launch) LAUNCH=1; shift ;;
+    --bundle-platform) need_val $# "$1"; BUNDLE_PLATFORM="$2"; shift 2 ;;
+    --bundle-subset) need_val $# "$1"; BUNDLE_SUBSET="$2"; shift 2 ;;
     --xci) need_val $# "$1"; XCI="$2"; shift 2 ;;
     --nsp) need_val $# "$1"; NSP="$2"; shift 2 ;;
     --keys) need_val $# "$1"; KEYS_DIR="$2"; shift 2 ;;
@@ -724,6 +742,12 @@ while [ $# -gt 0 ]; do
 done
 case "$TARGET" in macos|ios|all) ;; *) die 2 "--target: macos, ios oder all erwartet (nicht '$TARGET')" ;; esac
 case "$PREFLIGHT_FREE_GB" in ''|*[!0-9]*) die 2 "--min-free-gb braucht eine ganze Zahl" ;; esac
+if [ -z "$BUNDLE_PLATFORM" ]; then
+  case "$TARGET" in ios) BUNDLE_PLATFORM=ios ;; *) BUNDLE_PLATFORM=macos ;; esac
+fi
+case "$BUNDLE_PLATFORM" in macos|ios|keep) ;; *) die 2 "--bundle-platform: macos, ios oder keep erwartet (nicht '$BUNDLE_PLATFORM')" ;; esac
+[ -z "$BUNDLE_SUBSET" ] || [ -f "$BUNDLE_SUBSET" ] || die 3 "--bundle-subset: Datei fehlt: $BUNDLE_SUBSET"
+export XNU_BUNDLE_PLATFORM="$BUNDLE_PLATFORM" XNU_BUNDLE_SUBSET="$BUNDLE_SUBSET"
 if [ -z "${STAGES// /}" ] && [ -z "$FROM" ] && [ -z "$TO" ] && [ -z "${ONLY// /}" ] && [ "$PREFLIGHT_ONLY" -eq 0 ]; then usage; exit 2; fi
 SELECTED="$(sp stages --stage "$STAGES" ${FROM:+--from "$FROM"} ${TO:+--to "$TO"} --only "$ONLY")" || exit 2
 case "$WORK" in /*) ;; *) WORK="$PWD/$WORK" ;; esac
