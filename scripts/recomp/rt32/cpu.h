@@ -82,3 +82,10 @@ EXCL32(8, uint8_t)
 EXCL32(16, uint16_t)
 EXCL32(32, uint32_t)
 EXCL32(64, uint64_t)
+
+// DC ZVA erzeugt der Lifter als memset((void*)(uintptr_t)(Xn & ~63ull), 0, 64) mit der Gastadresse als Hostzeiger. Nur im erzeugten Code
+// (-DRT32_GEN, ios/compile_chunk_ios.sh) wird das memset auf die Gastbasis umgerechnet; die Laufzeit selbst bleibt unberührt.
+#ifdef RT32_GEN
+static inline void *rt32_zva(void *p, int v, unsigned long n) { return __builtin_memset((void *)(g_base + (uint32_t)(uintptr_t)p), v, n); }
+#define memset(p, v, n) rt32_zva(p, v, n)
+#endif

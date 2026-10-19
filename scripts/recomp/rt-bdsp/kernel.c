@@ -163,7 +163,7 @@ static void query_memory(uint64_t addr, uint64_t out) {
         } else prev_end = r->addr + r->size;
     }
     pthread_mutex_unlock(&g_rlock);
-    if (!done) { info[0] = prev_end; info[1] = (1ull << 39) - prev_end; }
+    if (!done) { info[0] = prev_end; info[1] = ADDR_SPACE_END - prev_end; }
     memcpy(G2H(out), info, 0x28);
 }
 
@@ -298,7 +298,13 @@ static uint32_t block_current(int64_t timeout_ns) {  // g_klock gehalten
     waitlist_add(t);
     while (t->wait_kind != WAIT_NONE) {
         if (t->cancel) { t->cancel = false; t->wait_kind = WAIT_NONE; t->wait_result = R_CANCELLED; break; }
-        if (!kwait(timeout_ns, &ts)) { t->wait_kind = WAIT_NONE; t->wait_result = R_TIMEOUT; break; }
+        if (!kwait(timeout_ns, &ts)) {
+            // Zeitablauf und Weckruf können sich überschneiden (pthread_cond_timedwait meldet ETIMEDOUT auch, wenn der Waker die Sperre davor hatte):
+            // hat der Waker den Wartezustand schon beendet (Mutex-Übergabe!), gilt dessen Ergebnis, sonst hält der Thread den Mutex und der
+            // SDK-Code sperrt ihn nach dem Zeitablauf noch einmal selbst (Selbstverklemmung, auf dem iPad bei ca. jedem zweiten Start im Eröffnungsfilm)
+            if (t->wait_kind != WAIT_NONE) { t->wait_kind = WAIT_NONE; t->wait_result = R_TIMEOUT; }
+            break;
+        }
     }
     waitlist_remove(t);
     return t->wait_result;
@@ -721,11 +727,11 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         switch (id0) {
         case 0: v = 0xF; break;
         case 1: v = 0xFFFFFFFFFFFFFFFFull; break;
-        case 2: v = ALIAS_BASE; break;
-        case 3: v = ALIAS_SIZE; break;
+        case 2: v = getenv("BDSP_ALIAS_BASE") ? strtoull(getenv("BDSP_ALIAS_BASE"), NULL, 16) : ALIAS_BASE; break;   // Umgebung: Fehlersuche
+        case 3: v = getenv("BDSP_ALIAS_SIZE") ? strtoull(getenv("BDSP_ALIAS_SIZE"), NULL, 16) : ALIAS_SIZE; break;
         case 4: v = HEAP_BASE; break;
-        case 5: v = HEAP_MAX; break;
-        case 6: case 21: v = 0xCD500000ull; break;  // Anwendungsspeicher (ca. 3,2 GB wie auf der Konsole)
+        case 5: v = HEAP_REPORT; break;
+        case 6: case 21: v = getenv("BDSP_APPMEM") ? strtoull(getenv("BDSP_APPMEM"), NULL, 16) : APP_MEMORY; break;  // Anwendungsspeicher (A: ca. 3,2 GB wie auf der Konsole; B: was in die Alias-Region passt)
         case 7: case 22: v = heap_size + 0x4000000; break;
         case 8: case 9: v = 0; break;
         case 11: v = ((uint64_t)arc4random() << 32) | arc4random(); break;
@@ -780,18 +786,18 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
 }
 
 // ------------------------------------------------------------------ Bericht
-#include <mach/mach_vm.h>
+#include <mach/vm_map.h>
 static unsigned resident_stack_kib(KThread *t) {
     if (!t->started || !t->host_stack_lo || t->finished) return 0;
     uintptr_t lo = (uintptr_t)t->host_stack_lo, hi = lo + t->host_stack_size;
-    mach_vm_address_t a = lo;
+    vm_address_t a = lo;
     uint64_t total = 0;
-    while (a < hi) {  // belegte Seiten des Host-Stacks (Rahmen der rekompilierten Funktionen)
-        mach_vm_size_t sz = 0;
+    while (a < hi) {  // belegte Seiten des Host-Stacks (Rahmen der rekompilierten Funktionen); vm_region_64 gibt es auch unter iOS
+        vm_size_t sz = 0;
         vm_region_extended_info_data_t info;
         mach_msg_type_number_t cnt = VM_REGION_EXTENDED_INFO_COUNT;
         mach_port_t obj;
-        if (mach_vm_region(mach_task_self(), &a, &sz, VM_REGION_EXTENDED_INFO, (vm_region_info_t)&info, &cnt, &obj) != KERN_SUCCESS) break;
+        if (vm_region_64(mach_task_self(), &a, &sz, VM_REGION_EXTENDED_INFO, (vm_region_info_t)&info, &cnt, &obj) != KERN_SUCCESS) break;
         if (a >= hi) break;
         total += (uint64_t)info.pages_resident * vm_page_size;
         a += sz;
@@ -823,6 +829,15 @@ void kernel_report(FILE *f) {
             fprintf(f, "      wartet: %s addr %llx mutex %llx handle0 %x/%d seit %.1f s, letzter SVC vor %.1f s\n", k, (unsigned long long)t->wait_addr,
                     (unsigned long long)t->wait_mutex, t->wait_h0, t->wait_n, t->wait_since ? (now - t->wait_since) / 1e9 : 0.0,
                     t->svc_last_ns ? (now - t->svc_last_ns) / 1e9 : 0.0);
+            if (t->wait_kind == WAIT_MUTEX || (t->wait_kind == WAIT_CONDVAR && t->wait_mutex)) {   // Besitzer des Mutex (Verklemmungssuche)
+                uint64_t ma = t->wait_kind == WAIT_MUTEX ? t->wait_addr : t->wait_mutex;
+                uint32_t v = *G2H32(ma), ow = v & ~WAITERS_BIT;
+                KThread *o = NULL;
+                for (KThread *x = g_threads; x; x = x->anext) if (x->handle == ow) o = x;
+                fprintf(f, "      Mutex %llx = %08x: Besitzer Thread %llu (%s, letzte SVC %02x)\n", (unsigned long long)ma, v, o ? (unsigned long long)o->id : 0ull,
+                        !o ? "unbekannt" : o->finished ? "BEENDET" : o->wait_kind == WAIT_MUTEX ? "wartet auf Mutex" : o->wait_kind == WAIT_CONDVAR ? "wartet auf Schlüssel" :
+                        o->in_sync_wait ? "WaitSynchronization" : "läuft/schläft", o ? (unsigned)o->svc_last : 0u);
+            }
         }
         if (getenv("BDSP_BT") && t->svc_calls > 20) {   // Rücksprungadressen aus der Rahmenkette (x29), nur für Threads mit Betrieb
             uint64_t fp = t->cpu.x[29], off = 0;

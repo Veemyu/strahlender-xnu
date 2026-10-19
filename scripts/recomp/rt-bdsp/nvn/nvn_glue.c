@@ -6,6 +6,7 @@
 #include <mach-o/ldsyms.h>
 #endif
 #include <SDL3/SDL.h>
+#include <fcntl.h>
 #include <stdatomic.h>
 #include <string.h>
 #include <strings.h>
@@ -24,8 +25,13 @@ void bdsp_gate_hit(const char *what);
 void kernel_phys_range(uint64_t *lo, uint64_t *hi);
 uint64_t loader_find_symbol(const char *name);
 void rt_fatal(const char *fmt, ...);
+#ifdef BDSP_REBASE32   // Rückfallwerte wie in bdsp.h (Variante B)
+#define ALIAS_BASE 0x20000000ull
+#define ALIAS_SIZE 0xE0000000ull
+#else
 #define ALIAS_BASE 0x7190000000ull
 #define ALIAS_SIZE 0x0190000000ull
+#endif
 
 BdspSettings g_settings;
 uint64_t g_nvn_mem_base, g_nvn_mem_size;
@@ -190,20 +196,30 @@ int maxwell_dbg_reg;
 enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
 static const char *const pad_names[16] = {"A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS", "MINUS", "LEFT", "UP", "RIGHT", "DOWN"};
 static _Atomic uint64_t key_buttons;
+// Tasten und Sticks der App-Hülle (rt-bdsp/app: Tastatur, GameController); Sticks lx, ly, rx, ry von -32767 bis 32767
+_Atomic uint64_t g_ext_buttons;
+_Atomic int32_t g_ext_stick[4];
 static int64_t pad_sampling;
 extern uint64_t g_proc_start_ns;
 typedef struct { double at, len; uint32_t mask; } ScriptStep;
-static ScriptStep script[256];
+#define MAX_SCRIPT 8192
+static ScriptStep script[MAX_SCRIPT];
 static int nscript = -1;
 
 static void script_load(void) {
     nscript = 0;
     const char *spec = getenv("BDSP_INPUT_SCRIPT");
-    static char buf[4096];
+    static char buf[MAX_SCRIPT * 24];
     if (!spec) return;
-    snprintf(buf, sizeof buf, "%s", spec);
+    if (spec[0] == '@') {   // "@datei": Skript aus einer Datei (QA-Läufe mit vielen Schritten)
+        FILE *f = fopen(spec + 1, "rb");
+        size_t n = f ? fread(buf, 1, sizeof buf - 1, f) : 0;
+        if (f) fclose(f);
+        buf[n] = 0;
+        for (size_t i = 0; i < n; i++) if (buf[i] == '\n') buf[i] = ',';
+    } else snprintf(buf, sizeof buf, "%s", spec);
     char *save1 = NULL;
-    for (char *tok = strtok_r(buf, ",", &save1); tok && nscript < 256; tok = strtok_r(NULL, ",", &save1)) {
+    for (char *tok = strtok_r(buf, ",", &save1); tok && nscript < MAX_SCRIPT; tok = strtok_r(NULL, ",", &save1)) {
         double at = 0, len = 0.3;
         char names[96] = "";
         if (sscanf(tok, "%lf:%95[A-Z+]:%lf", &at, names, &len) < 2) continue;
@@ -218,7 +234,14 @@ static void script_load(void) {
 
 static uint64_t buttons_now(void) {
     if (nscript < 0) script_load();
-    uint64_t b = key_buttons;
+    uint64_t b = key_buttons | g_ext_buttons;
+    static int ctl_fd = -2;   // BDSP_INPUT_CTL=<Datei>: Tastenmaske (16 Hex-Ziffern) von außen, QA-Harness (ereignisgesteuerte Eingaben)
+    if (ctl_fd == -2) { const char *p = getenv("BDSP_INPUT_CTL"); ctl_fd = p ? open(p, O_RDONLY) : -1; }
+    if (ctl_fd >= 0) {
+        char s[24];
+        ssize_t n = pread(ctl_fd, s, sizeof s - 1, 0);
+        if (n > 0) { s[n] = 0; b |= strtoull(s, NULL, 16); }
+    }
     double t = (rt_now_ns() - g_proc_start_ns) / 1e9;
     for (int i = 0; i < nscript; i++)
         if (t >= script[i].at && t < script[i].at + script[i].len) b |= script[i].mask;
@@ -254,6 +277,7 @@ static void npad_fill(uint8_t *s) {
     *(int64_t *)s = ++pad_sampling;
     uint64_t b = buttons_now();
     *(uint64_t *)(s + 8) = b;
+    for (int i = 0; i < 4; i++) *(int32_t *)(s + 16 + 4 * i) = g_ext_stick[i];
     *(uint32_t *)(s + 32) = 1;
     static uint64_t last;
     if (b != last && getenv("BDSP_TRACE_INPUT")) LOG("[input] Tasten %#llx\n", (unsigned long long)b);
@@ -282,9 +306,9 @@ void settings_load(void) {}
 void rt_window_icon(void *w) { (void)w; }
 int rt_reboot_requested(void) { return 0; }
 bool input_user_blocked(const void *e) { (void)e; return false; }
-bool menu_handle_event(const void *e) { (void)e; return false; }
+__attribute__((weak)) bool menu_handle_event(const void *e) { (void)e; return false; }   // App-Hülle: rt-bdsp/app/app_ui.m
 bool menu_is_open(void) { return false; }
-void menu_apply_window_requests(void *w) { (void)w; }
+__attribute__((weak)) void menu_apply_window_requests(void *w) { (void)w; }
 void menu_test_open(void) {}
 void menu_render(void *dev, void *cb, void *target) { (void)dev; (void)cb; (void)target; }
 void input_frame(uint64_t f) { (void)f; }

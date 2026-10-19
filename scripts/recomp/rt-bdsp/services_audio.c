@@ -3,12 +3,49 @@
 // liefern leere Rendering-Antworten. Eigener Code.
 #include "bdsp.h"
 
-typedef struct { KEvent *ev; uint32_t ev_handle; uint64_t tags[64]; int ntags, started; uint64_t appended, released, empty_polls; pthread_mutex_t lk; } AudOut;
+// Jeder angehängte Puffer „spielt“ in Echtzeit (Dauer aus der Datengröße) und wird erst danach zurückgegeben, wie bei echter Hardware. Ohne diese
+// Pacing sah die Wwise-Audioschleife immer freie Puffer, rechnete ohne Ende Bilder und hielt dabei die globale Wwise-Sperre: der Hauptthread hing
+// (QA: Stillstand beim Betreten des Pokécenters, AkGameObj::SetPosition). Kein Ton: es wird nichts ausgegeben.
+typedef struct { KEvent *ev; uint32_t ev_handle; uint64_t tags[64], due[64], last_due, signaled_due; int ntags, started; uint64_t appended, released, empty_polls; pthread_mutex_t lk; } AudOut;
 
 static void signal_ev(KEvent *e) {
     pthread_mutex_lock(&g_klock);
     kernel_signal(e);
     pthread_mutex_unlock(&g_klock);
+}
+
+static AudOut *g_audouts[8];
+static int g_naudouts;
+static pthread_mutex_t g_audlock = PTHREAD_MUTEX_INITIALIZER;
+// Zeitgeber: meldet das Pufferereignis, sobald der vorderste Puffer fertig gespielt ist
+static void *audout_timer(void *arg) {
+    (void)arg;
+    for (;;) {
+        nanosleep(&(struct timespec){0, 4000000}, NULL);
+        uint64_t now = rt_now_ns();
+        pthread_mutex_lock(&g_audlock);
+        int n = g_naudouts;
+        pthread_mutex_unlock(&g_audlock);
+        for (int i = 0; i < n; i++) {
+            AudOut *a = g_audouts[i];
+            int fire = 0;
+            pthread_mutex_lock(&a->lk);
+            if (a->ntags && a->due[0] <= now && a->due[0] != a->signaled_due) { a->signaled_due = a->due[0]; fire = 1; }
+            pthread_mutex_unlock(&a->lk);
+            if (fire) signal_ev(a->ev);
+        }
+    }
+    return NULL;
+}
+static void audout_register(AudOut *a) {
+    pthread_mutex_lock(&g_audlock);
+    if (g_naudouts < 8) g_audouts[g_naudouts++] = a;
+    if (g_naudouts == 1) {
+        pthread_t t;
+        pthread_create(&t, NULL, audout_timer, NULL);
+        pthread_detach(t);
+    }
+    pthread_mutex_unlock(&g_audlock);
 }
 
 // ---- IAudioOut
@@ -20,38 +57,41 @@ static void audout_obj(Service *s, IpcReq *req, IpcResp *resp) {
     case 1: a->started = 1; break;                                             // Start
     case 2: a->started = 0; break;                                             // Stop
     case 3: case 7: {                                                          // AppendAudioOutBuffer(tag) mit AudioOutBuffer im A-Puffer
-        // Mehrere Gastthreads (Anhängen, Abfragen) sprechen dasselbe Objekt an: ohne Sperre ging ein Tag verloren (ntags++ gegen ntags = 0),
-        // der Puffer kam nie zurück und das Spiel drehte im Abfrageschleifen-Thread, bis der Hauptthread an dessen Mutex hing (QA: Hänger)
+        IpcBuf *b = in_buf(req, 0);   // AudioOutBuffer {next, buffer, capacity, dataSize, offset}: Spieldauer aus dataSize (16 Bit, 2 Kanäle, 48 kHz)
+        uint64_t bytes = b && b->size >= 0x20 ? *(G2H64(b->addr) + 3) : 0;
+        uint64_t ns = bytes ? bytes / 4 * 1000000000ull / 48000 : 21333333ull;
+        if (ns < 5000000ull) ns = 5000000ull;   // mindestens 5 ms: das Gastsystem trägt den Puffer erst nach der Rückkehr der Anfrage in seine Warteschlange ein
+        if (ns > 200000000ull) ns = 200000000ull;
+        uint64_t now = rt_now_ns();
         pthread_mutex_lock(&a->lk);
-        if (a->ntags < 64) a->tags[a->ntags++] = IN(uint64_t, 0);
+        uint64_t start = a->last_due > now ? a->last_due : now;
+        a->last_due = start + ns;
+        if (a->ntags < 64) { a->tags[a->ntags] = IN(uint64_t, 0); a->due[a->ntags] = a->last_due; a->ntags++; }
         a->appended++;
         pthread_mutex_unlock(&a->lk);
-        IpcBuf *b = in_buf(req, 0);   // AudioOutBuffer {next, buffer, capacity, dataSize, offset}: Dauer des Puffers abwarten (Echtzeit, sonst Dauerschleife)
-        uint64_t bytes = b && b->size >= 0x20 ? *(G2H64(b->addr) + 3) : 0;
-        uint64_t ns = bytes ? bytes / 4 * 1000000000ull / 48000 : 5000000ull;
-        if (ns > 50000000ull) ns = 50000000ull;
-        struct timespec ts = {0, (long)ns};
-        nanosleep(&ts, NULL);
-        signal_ev(a->ev);
         break;
     }
     case 4: resp->copy_handles[resp->ncopy++] = a->ev_handle; break;           // RegisterBufferEvent
-    case 5: case 8: {                                                          // GetReleasedAudioOutBuffer: alle Tags zurück (so viele, wie der Puffer fasst)
+    case 5: case 8: {                                                          // GetReleasedAudioOutBuffer: fertig gespielte Tags (so viele, wie der Puffer fasst)
         IpcBuf *b = out_buf(req, 0);
         int cap = b && b->size ? (int)(b->size / 8) : 0;
+        uint64_t now = rt_now_ns();
         pthread_mutex_lock(&a->lk);
-        int n = a->ntags < cap ? a->ntags : cap;
+        int n = 0;
+        while (n < a->ntags && n < cap && a->due[n] <= now) n++;
         if (n) {
             uint64_t *p = G2H64(b->addr);
             for (int i = 0; i < n; i++) p[i] = a->tags[i];
             memmove(a->tags, a->tags + n, (size_t)(a->ntags - n) * 8);
+            memmove(a->due, a->due + n, (size_t)(a->ntags - n) * 8);
             a->ntags -= n;
         }
         pthread_mutex_unlock(&a->lk);
+        if (n && getenv("BDSP_TRACE_AUDIO")) LOG("[audio] Get: Puffer %llu Byte, n %d, Tag0 %llx\n", (unsigned long long)(b ? b->size : 0), n, (unsigned long long)G2H64(b->addr)[0]);
         if (!n) {
-            if ((++a->empty_polls % 2000) == 0) LOG("[audio] %llu leere Abfragen in Folge (angehängt %llu, zurückgegeben %llu, wartend %d, Puffer %llu Byte)\n",
-                                                      (unsigned long long)a->empty_polls, (unsigned long long)a->appended, (unsigned long long)a->released, a->ntags,
-                                                      (unsigned long long)(b ? b->size : 0));
+            if (b && b->size >= 8) *G2H64(b->addr) = 0;   // das SDK liest den Tag ohne ihn vorzubelegen: ohne Nullen liefert die Schleife des Spiels den alten Tag endlos zurück
+            if ((++a->empty_polls % 4000) == 0) LOG("[audio] %llu leere Abfragen in Folge (angehängt %llu, zurückgegeben %llu, wartend %d)\n",
+                                                      (unsigned long long)a->empty_polls, (unsigned long long)a->appended, (unsigned long long)a->released, a->ntags);
             struct timespec ts = {0, 2000000}; nanosleep(&ts, NULL);   // nichts zurückzugeben: Abfrageschleifen des Spiels bremsen
         } else { a->released += (uint64_t)n; a->empty_polls = 0; }
         OUT(uint32_t, 0) = (uint32_t)n;
@@ -84,6 +124,7 @@ static void audout_mgr(Service *s, IpcReq *req, IpcResp *resp) {
         pthread_mutex_init(&a->lk, NULL);
         uint32_t w;
         a->ev = kernel_create_event_pair(&w, &a->ev_handle);
+        audout_register(a);
         OUT(uint32_t, 0) = rate ? rate : 48000;
         OUT(uint32_t, 4) = ch ? ch : 2;
         OUT(uint32_t, 8) = 2;
