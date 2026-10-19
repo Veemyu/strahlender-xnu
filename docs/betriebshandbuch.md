@@ -73,7 +73,7 @@ Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `
 
 ## 5. Unbelegtes und Annahmen (nicht als Tatsache weitergeben)
 
-- **Entscheidung des Nutzers (17:35): keine Wiederholungsläufe mehr.** Der frühere Absturz kam vom VP8-Film, der läuft seit langem stabil. Den seltenen Startstillstand (0–40 Bilder, in den letzten Läufen ca. 4 von 9) jagen wir nicht weiter, er ist ein Randfall mit niedriger Priorität. Kein Agent startet dafür Schleifen auf dem iPad. Nur wieder aufnehmen, wenn er im echten Spielbetrieb stört.
+- **Entscheidung des Nutzers (2026-10-19, nachmittags): keine Wiederholungsläufe mehr.** Der frühere Absturz kam vom VP8-Film, der läuft seit langem stabil. Den seltenen Startstillstand (0–40 Bilder, in den letzten Läufen ca. 4 von 9) jagen wir nicht weiter, er ist ein Randfall mit niedriger Priorität. Kein Agent startet dafür Schleifen auf dem iPad. Nur wieder aufnehmen, wenn er im echten Spielbetrieb stört.
 - Der **iPad-Absturz bei nicht übersprungenem Intro** ist nicht reproduziert; die Selbstverklemmung ist die belegte, aber nicht bewiesene Ursache. Ein einzelner Stillstand (2 Bilder) nach der Korrektur ist ungeklärt.
 - **32-Bit-Modell (`rebase32`) auf dem Gerät:** läuft laut `recomp-ios.md`, aber nur 1,98 GiB statt 3,14 GiB Gastspeicher; Langzeit und Kämpfe ungemessen.
 - **Bildvergleich:** Kameraversatz 28 px (vermutlich Timing), Zellenzuordnung (58,729) aus einem Bild, Zuordnung der Spieluhr zur Tageszeit in Ryujinx angenommen.

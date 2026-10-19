@@ -1,6 +1,6 @@
 # Dokumentation: Einstieg
 
-Stand 2026-10-19. Zuerst `arbeitsstand-2026-10-19.md` lesen (Gesamtbild), dann `betriebshandbuch.md` (Regeln, Befehle, Agenten-Stand), dann nach Thema.
+Stand 2026-10-19. Zum Weitermachen: `../todo/neustart.md` (Todos, Kurzstand, Fundstellen). Zuerst `arbeitsstand-2026-10-19.md` lesen (Gesamtbild), dann `betriebshandbuch.md` (Regeln, Befehle, Agenten-Stand), dann nach Thema.
 
 ## Wo anfangen
 | Frage | Dokument |
