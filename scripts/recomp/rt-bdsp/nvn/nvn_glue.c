@@ -322,11 +322,15 @@ static void frame_pace(void) {
     static int hist_on = -1;
     if (hist_on < 0) hist_on = getenv("BDSP_FRAMEHIST") != NULL;
     uint64_t period_ns = 1000000000ull / (unsigned)g_bdsp_fps;
+    static int pace_pct = -1;   // BDSP_PACE_PCT: Taktgeber kürzer als die Anzeige (Rest übernimmt die Präsentation)
+    if (pace_pct < 0) pace_pct = getenv("BDSP_PACE_PCT") ? atoi(getenv("BDSP_PACE_PCT")) : 100;
+    period_ns = period_ns * (unsigned)pace_pct / 100;
     uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     if (hist_on) {   // Frame-Zeit-Histogramm (nur mit BDSP_FRAMEHIST=1): Abstand zwischen zwei Frames in ms
         static const double edge[8] = {7.5, 8.0, 8.25, 8.5, 9.0, 10.0, 12.0, 16.0};
         if (last_ns) {
             double ms = (double)(now - last_ns) / 1e6;
+            if (ms > 20.0 && getenv("BDSP_PRESENT_OUT")) printf("[gap] t=%.3f Spielframe-Abstand %.2f ms\n", now / 1e9, ms);
             int b = 0;
             while (b < 8 && ms >= edge[b]) b++;
             hist[b]++;

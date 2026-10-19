@@ -20,6 +20,13 @@
 static id<MTLDevice> dev;
 static id<MTLCommandQueue> queue;
 static CAMetalLayer *layer;
+#if TARGET_OS_OSX
+#define PRESENT_AT_DEFAULT 3   // phasenstarre Präsentation (Messung siehe docs/framerate.md); iPad bis zur Messung aus
+#else
+#define PRESENT_AT_DEFAULT 0
+#endif
+extern volatile int g_bdsp_fps;
+static inline double g_bdsp_fps_now(void) { return g_bdsp_fps; }
 static SDL_Window *window;
 static atomic_bool ui_ready;
 static id<MTLRenderPipelineState> present_pipe;
@@ -1183,22 +1190,49 @@ static bool present_gpu(uint64_t frame, id<MTLTexture> tex, bool has_wc, const f
             [bl endEncoding];
         }
         static int pstats = -1;  // BDSP_PRESENT_STATS=1: tatsächlich angezeigte Drawables (Abstand der presentedTime) alle 2 s
-        static int pat = -1;     // BDSP_PRESENT_AT=min|grid: Präsentationszeitpunkt (Standard: sofort beim nächsten Vsync)
+        static int pat = -1;     // BDSP_PRESENT_AT=min|grid|lock: Präsentationszeitpunkt (Standard: sofort beim nächsten Vsync)
         if (pstats < 0) pstats = getenv("BDSP_PRESENT_STATS") != NULL;
-        if (pat < 0) { const char *e = getenv("BDSP_PRESENT_AT"); pat = !e ? 0 : !strcmp(e, "min") ? 1 : !strcmp(e, "grid") ? 2 : 0; }
+        if (pat < 0) { const char *e = getenv("BDSP_PRESENT_AT"); pat = !e ? PRESENT_AT_DEFAULT : !strcmp(e, "min") ? 1 : !strcmp(e, "grid") ? 2 : !strcmp(e, "lock") ? 3 : 0; }   // "off": altes Verhalten
         static _Atomic double vsync_anchor;  // letzte angezeigte presentedTime: legt das Raster der Anzeige fest
-        const double vper = 1.0 / 120.0;
+        static double vper;   // Anzeigeintervall (ProMotion 1/120 s)
+        if (vper == 0) {
+            long hz = 0;
+#if TARGET_OS_OSX
+            hz = (long)NSScreen.mainScreen.maximumFramesPerSecond;
+#else
+            hz = (long)UIScreen.mainScreen.maximumFramesPerSecond;
+#endif
+            vper = 1.0 / (hz >= 30 && hz <= 240 ? hz : 120);
+        }
+        double tgt = 0;
         if (pat == 1) [cb presentDrawable:drawable afterMinimumDuration:vper];
         else if (pat == 2) {
             // auf das Vsync-Raster legen: Ziel knapp vor dem nächsten Raster-Tick, damit genau dieser Tick getroffen wird
             double a = atomic_load(&vsync_anchor), now = CACurrentMediaTime();
             if (a > 0 && now > a) [cb presentDrawable:drawable atTime:a + (floor((now - a) / vper) + 1) * vper - vper * 0.5];
             else [cb presentDrawable:drawable];
+        } else if (pat == 3) {
+            // Phasenstarre Kette: jedes Bild genau step Anzeigeintervalle nach dem vorigen. Kommt ein Bild zu spät,
+            // wird auf einen Rasterpunkt mit Vorlauf neu aufgesetzt (Raster aus der letzten echten presentedTime).
+            static double chain;
+            static double lead = -1;
+            if (lead < 0) lead = getenv("BDSP_PRESENT_LEAD") ? atof(getenv("BDSP_PRESENT_LEAD")) : 1.0;
+            double a = atomic_load(&vsync_anchor), now = CACurrentMediaTime();
+            double step = fmax(1.0, round(1.0 / (g_bdsp_fps_now() * vper))) * vper;
+            if (a > 0) {
+                double t = chain + step;
+                bool resync = chain <= 0 || t - now < 0.75 * step || t - now > lead * step + 1.5 * step;
+                if (resync) t = a + ceil((now + lead * step - a) / vper) * vper;
+                chain = t;
+                tgt = t;
+                [cb presentDrawable:drawable atTime:t - vper * 0.5];
+            } else [cb presentDrawable:drawable];
         } else [cb presentDrawable:drawable];
-        if (pstats || pat == 2) {
-            [drawable addPresentedHandler:^(id<MTLDrawable> d) {
+        if (pstats || pat >= 2) {
+            double commit_t = CACurrentMediaTime();
+        [drawable addPresentedHandler:^(id<MTLDrawable> d) {
                 static double prev, t0, sum, sum2;
-                static unsigned n, hist[6], ncnt;
+                static unsigned n, hist[6], ncnt, inband;
                 double pt = d.presentedTime;
                 if (pt <= 0) { hist[5]++; return; }   // verworfen, nie angezeigt
                 atomic_store(&vsync_anchor, pt);
@@ -1207,6 +1241,9 @@ static bool present_gpu(uint64_t frame, id<MTLTexture> tex, bool has_wc, const f
                     double ms = (pt - prev) * 1000;
                     int k = (int)(ms / (vper * 1000) + 0.5);   // Anzahl Anzeigeintervalle zwischen zwei Bildern
                     hist[k < 1 ? 0 : k > 4 ? 4 : k - 1]++;
+                    if (fabs(ms - 1000.0 / g_bdsp_fps_now()) <= 0.3) inband++;
+                    else if (getenv("BDSP_PRESENT_OUT"))
+                        LOG("[out] frame %llu t=%.3f abstand %.2f ms, Commit %.2f ms vor Anzeige, GPU-Ende %.2f ms vor Anzeige, GPU-Dauer %.2f ms, Ziel-Vorlauf %.2f ms\n", (unsigned long long)frame, pt, ms, (pt - commit_t) * 1000, (pt - cb.GPUEndTime) * 1000, (cb.GPUEndTime - cb.GPUStartTime) * 1000, (tgt - commit_t) * 1000);
                     sum += ms; sum2 += ms * ms; ncnt++;
                 }
                 prev = pt;
@@ -1214,9 +1251,9 @@ static bool present_gpu(uint64_t frame, id<MTLTexture> tex, bool has_wc, const f
                 if (!t0) t0 = pt;
                 if (pt - t0 >= 2) {
                     double mean = ncnt ? sum / ncnt : 0, sd = ncnt ? sqrt(fmax(0, sum2 / ncnt - mean * mean)) : 0;
-                    LOG("[present] %.1f angezeigt/s, Intervalle zu 1/2/3/4+ Vsync: %u/%u/%u/%u, verworfen %u, Abstand Mittel %.2f ms sd %.2f ms\n",
-                        n / (pt - t0), hist[0], hist[1], hist[2], hist[3] + hist[4], hist[5], mean, sd);
-                    n = 0; t0 = pt; sum = sum2 = 0; ncnt = 0; memset(hist, 0, sizeof hist);
+                    LOG("[present] %.1f angezeigt/s, Intervalle zu 1/2/3/4+ Vsync: %u/%u/%u/%u, verworfen %u, Abstand Mittel %.2f ms sd %.2f ms, im Zielband (±0,3 ms) %.1f %%\n",
+                        n / (pt - t0), hist[0], hist[1], hist[2], hist[3] + hist[4], hist[5], mean, sd, ncnt ? 100.0 * inband / ncnt : 0.0);
+                    n = 0; t0 = pt; sum = sum2 = 0; ncnt = 0; inband = 0; memset(hist, 0, sizeof hist);
                 }
             }];
         }

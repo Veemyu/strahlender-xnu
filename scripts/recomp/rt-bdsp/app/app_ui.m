@@ -315,7 +315,7 @@ static void install_menu(void) {
         it.tag = f.integerValue;
     }
     NSInteger savedFps = [[NSUserDefaults standardUserDefaults] integerForKey:@"bdsp_fps"];
-    if (savedFps) bdsp_set_fps((int)savedFps);
+    if (savedFps && !getenv("BDSP_FPS")) bdsp_set_fps((int)savedFps);
     [vm addItem:[NSMenuItem separatorItem]];
     static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
     for (int i = 0; i < 4; i++) {
