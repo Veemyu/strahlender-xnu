@@ -268,7 +268,7 @@ Messung: `work/shaders/unity-lab/mass_unity.py` (jede 3. erzeugte Variante, in B
 
 Nicht importiert (Zeitrahmen): die Partikel-Varianten (`FxSystem/Particle`, alphabetisch hinter den Blöcken 0 und 1) bis auf zwei Stichproben, und die übrigen Shader ab `Delphis/Map/Standard`-Ende. Die Bilanz für diese Varianten ist **nicht gemessen**.
 
-**Folgerung für das iPad-Budget (Schätzung, nicht gemessen):** Alle 6.804 Varianten in den Player zu nehmen ist weder in der Kompilierzeit (Stunden je Plattform) noch in der Größe sinnvoll; die Varianten sind nach den Keywords der echten Materialien zu **strippen**. `scripts/shader_wrap_all.py --used used.json` erzeugt nur die gelisteten (Shader, Keyword-Menge)-Paare; `used.json` entsteht aus den Materialien der Bundles (nicht Teil dieses Auftrags: `m_ShaderKeywords` der Material-Objekte lesen). Danach: je Pass ein Block mit `multi_compile` (Abschnitt 9, Punkt 2) statt einer Datei je Variante.
+**Folgerung für das iPad-Budget (Schätzung, nicht gemessen):** Alle 6.804 Varianten in den Player zu nehmen ist weder in der Kompilierzeit (Stunden je Plattform) noch in der Größe sinnvoll; die Varianten sind nach den Keywords der echten Materialien zu **strippen**. `scripts/shader_wrap_all.py --used used.json` erzeugt nur die gelisteten (Shader, Keyword-Menge)-Paare; `used.json` entsteht aus den Materialien der Bundles (nicht Teil dieses Auftrags: `m_ShaderKeywords` der Material-Objekte lesen; **jetzt vorhanden:** `scripts/material_export.py` + `scripts/material_variants.py`, `docs/material-remap.md`). Danach: je Pass ein Block mit `multi_compile` (Abschnitt 9, Punkt 2) statt einer Datei je Variante.
 
 ### 13.6 Build-Stufe `shaders` (`scripts/shader_build.sh`)
 
@@ -282,7 +282,7 @@ Kette: `make shader_translator` → `shader_extract_blobs.py --extra` (Blobs aus
 
 ### 13.7 Offene Lücken (Stand dieses Abschnitts)
 
-1. Instancing-Bild: Unity zeichnet im Lab Einheitsmatrizen (13.1) — Ursache offen.
+1. Instancing-Bild: Unity zeichnete im Lab Einheitsmatrizen (13.1) — **Nachtrag 2026-10-19 (`docs/material-remap.md`, Abschnitt 8): im aktuellen Stand nicht mehr reproduzierbar** (Fall `inst` 0/255 gegen Harness, Kontrollshader gleich); Ursache der früheren Messung nicht bewiesen, Instancing über Renderer-Batching ungemessen.
 2. Partikel-Bild: kein gültiger Vergleichsfall (13.2).
 3. Subgroup-Shuffle: 16 Varianten (13.4).
 4. Massenlauf: nur ein Teil importiert (13.5); Kompilierzeit der großen Shader hoch; Strippen nach Materialdaten fehlt (`used.json`).

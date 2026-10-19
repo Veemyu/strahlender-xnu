@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.Render",
+  "rootNamespace": "Xnu.Render",
+  "references": ["Xnu.Core", "Xnu.Data"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}

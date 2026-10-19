@@ -212,11 +212,16 @@ def inventory_shader(obj, bundle):
             stages = {}
             for key in ("progVertex", "progFragment", "progGeometry", "progHull", "progDomain", "progRayTracing"):
                 stages[key[4:].lower()] = stage_info(ps[key], names, blob)
+            state = decode_state(ps["m_State"])
+            ptags = tags_of(ps["m_Tags"])
+            # Pass-Tags stehen in m_State.m_Tags (m_Tags der Pass ist leer); fuer die Beleuchtung zaehlt LightMode.
+            if "LIGHTMODE" in state["tags"]:
+                ptags["LIGHTMODE"] = state["tags"]["LIGHTMODE"]
             pd = {"type": PASS_TYPE.get(ps["m_Type"], ps["m_Type"]), "name": ps["m_Name"], "useName": ps["m_UseName"],
-                  "textureName": ps["m_TextureName"], "tags": tags_of(ps["m_Tags"]),
+                  "textureName": ps["m_TextureName"], "tags": ptags,
                   "programMask": ps["m_ProgramMask"], "hasInstancing": ps["m_HasInstancingVariant"],
                   "hasProceduralInstancing": ps["m_HasProceduralInstancingVariant"],
-                  "state": decode_state(ps["m_State"]), "nameTable": {n: i for n, i in ps["m_NameIndices"]},
+                  "state": state, "nameTable": {n: i for n, i in ps["m_NameIndices"]},
                   "stages": stages}
             pd["programCounts"] = {k: len(v) for k, v in stages.items()}
             combos = Counter()

@@ -89,7 +89,8 @@ def main(argv=None):
         name = variant_name(sh, si, pi, k)
         a = namespace(args, shader=sh["name"], bundle=sh.get("bundle"), sub=si, pass_index=pi, keywords=list(k),
                       out=str(out / f"{name}.shader"), name=f"XNU/Generated/{name}", mode=args.mode)
-        entry = {"file": f"{name}.shader", "shader": sh["name"], "sub": si, "pass": pi, "keywords": list(k)}
+        entry = {"file": f"{name}.shader", "shader": sh["name"], "sub": si, "pass": pi, "keywords": list(k),
+                 "lightMode": sh["subShaders"][si]["passes"][pi].get("tags", {}).get("LIGHTMODE")}
         try:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 sw.wrap(a)
