@@ -12,6 +12,11 @@
 	<string>dev.local.xnubdsp</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>de</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>BDSP</string>
 	<key>CFBundleDisplayName</key>

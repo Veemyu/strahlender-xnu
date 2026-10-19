@@ -6,9 +6,7 @@ Wie die Metal-Fassung (siehe `../../NOTICE.md`, Abschnitt „NVN-Schicht“) **�
 |---|---|
 | Projekt | LASRecomp, https://github.com/peiikai/LASRecomp |
 | Stand | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` |
-| Übernommen (unverändert in `../../../upstream/runtime/nvn/vulkan/`) | `device.c`, `exec.c`, `shaders.c`, `shaders.h`, `textures.c`, `vk.h`, `vma.cpp`; `prepare_vk.sh` kopiert sie nach `work/recomp/nvn-src-vk` und wendet `las-vk.patch` an. Der gemeinsame Teil (`objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `astc.c`, Übersetzer) kommt wie beim Metal-Weg aus `../prepare.sh`. |
-| Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten. Alles übrige (u. a. `imgui_glue.cpp`, `texpatch.c`, `output_scale.c`, `smaa_data.c`) liegt vollständig unter `scripts/recomp/upstream/runtime/` |
-| Eigen | `prepare_vk.sh`, `build_vk.sh`, `vk_glue.c`, `shim/*`, `las-vk.patch` (Änderungen: trennbare Programme, bindlose Texturen und getrennte Sampler, Offscreen-Betrieb `--headless`, Pfade unter `work/recomp/`, Entfernung der Zelda-Hooks) |
+| Übernommen (geändert, Quellen `nvn/vulkan/src/` und `nvn/src/`) | `device.c`, `exec.c`, `shaders.c`, `shaders.h`, `textures.c`, `vk.h`, `vma.cpp`; `prepare_vk.sh` kopiert `nvn/src/` und `nvn/vulkan/src/` nach `work/recomp/nvn-src-vk` (keine Patches mehr). Der gemeinsame Teil (`objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `astc.c`, Übersetzer) kommt wie beim Metal-Weg aus `../prepare.sh`. || Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten. Alles übrige (u. a. `imgui_glue.cpp`, `texpatch.c`, `output_scale.c`, `smaa_data.c`) liegt vollständig unter `scripts/recomp/upstream/runtime/` || Eigen | `prepare_vk.sh`, `build_vk.sh`, `vk_glue.c`, `shim/*`, `las-vk.patch` (Änderungen: trennbare Programme, bindlose Texturen und getrennte Sampler, Offscreen-Betrieb `--headless`, Pfade unter `work/recomp/`, Entfernung der Zelda-Hooks) |
 
 **Drittkomponenten, die nur zur Bauzeit gebraucht werden und nicht im Repo liegen** (`scripts/recomp/ryzen/vk_sync_deps.sh` überträgt nur Header auf den Linux-Rechner; kein Quelltext davon im Repo):
 

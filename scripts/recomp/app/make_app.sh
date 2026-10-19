@@ -29,6 +29,7 @@ rm -rf "$NEW"
 mkdir -p "$NEW/Contents/MacOS" "$NEW/Contents/Resources" "$NEW/Contents/Frameworks"
 cp "$BIN" "$NEW/Contents/MacOS/BDSP"
 cp -c -R "$IMG" "$NEW/Contents/Resources/img" 2>/dev/null || cp -R "$IMG" "$NEW/Contents/Resources/img"
+cp -R "$HERE/lproj/." "$NEW/Contents/Resources/"
 cp "$NPDM" "$NEW/Contents/Resources/main.npdm"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" "$HERE/Info.plist.in" > "$NEW/Contents/Info.plist"
 plutil -lint "$NEW/Contents/Info.plist" > /dev/null

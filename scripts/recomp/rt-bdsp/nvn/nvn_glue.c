@@ -317,8 +317,31 @@ void menu_render(void *dev, void *cb, void *target) { (void)dev; (void)cb; (void
 extern volatile int g_bdsp_fps;
 static void frame_pace(void) {
     static uint64_t next_ns;
+    static uint64_t last_ns, report_ns;
+    static unsigned hist[9], hist_n;
+    static int hist_on = -1;
+    if (hist_on < 0) hist_on = getenv("BDSP_FRAMEHIST") != NULL;
     uint64_t period_ns = 1000000000ull / (unsigned)g_bdsp_fps;
     uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    if (hist_on) {   // Frame-Zeit-Histogramm (nur mit BDSP_FRAMEHIST=1): Abstand zwischen zwei Frames in ms
+        static const double edge[8] = {7.5, 8.0, 8.25, 8.5, 9.0, 10.0, 12.0, 16.0};
+        if (last_ns) {
+            double ms = (double)(now - last_ns) / 1e6;
+            int b = 0;
+            while (b < 8 && ms >= edge[b]) b++;
+            hist[b]++;
+            hist_n++;
+        }
+        last_ns = now;
+        if (!report_ns) report_ns = now;
+        if (now - report_ns >= 3000000000ull && hist_n) {
+            printf("[frames] %u Frames, Abstand ms: <7.5:%u 7.5-8:%u 8-8.25:%u 8.25-8.5:%u 8.5-9:%u 9-10:%u 10-12:%u 12-16:%u >=16:%u\n",
+                   hist_n, hist[0], hist[1], hist[2], hist[3], hist[4], hist[5], hist[6], hist[7], hist[8]);
+            for (int i = 0; i < 9; i++) hist[i] = 0;
+            hist_n = 0;
+            report_ns = now;
+        }
+    }
     if (next_ns == 0 || now > next_ns + 4 * period_ns) next_ns = now;  // nach Stillstand (Laden) neu aufsetzen
     next_ns += period_ns;
     if (now < next_ns) {

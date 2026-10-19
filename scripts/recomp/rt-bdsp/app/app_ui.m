@@ -244,6 +244,11 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     bdsp_set_fps((int)s.tag);
     [[NSUserDefaults standardUserDefaults] setInteger:s.tag forKey:@"bdsp_fps"];
 }
+- (void)toggleMetalHud:(id)s {
+    NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+    [d setBool:![d boolForKey:@"bdsp_metal_hud"] forKey:@"bdsp_metal_hud"];
+    ask(@"Metal-HUD", NSLocalizedString(@"Wirkt nach einem Neustart von BDSP.", nil), @[@"OK"]);
+}
 - (void)openCache:(id)s { open_folder(g_app.cache); }
 - (void)openLogs:(id)s { open_folder(g_app.logs); }
 - (void)showConfig:(id)s {
@@ -254,6 +259,7 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     if (item.action == @selector(togglePause:)) item.state = g_user_paused ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setFps:)) item.state = item.tag == g_bdsp_fps ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(toggleMetalHud:)) item.state = [[NSUserDefaults standardUserDefaults] boolForKey:@"bdsp_metal_hud"] ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(toggleFullscreen:)) {
         SDL_Window *w = ui_window();
         item.state = w && (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -298,11 +304,11 @@ static void install_menu(void) {
     item(gm, @"Spiel zurücksetzen …", @selector(resetSave:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagShift, g_target);
     // Ansicht
     NSMenuItem *vi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
-    NSMenu *vm = [[NSMenu alloc] initWithTitle:@"Ansicht"];
+    NSMenu *vm = [[NSMenu alloc] initWithTitle:NSLocalizedString(@"Ansicht", nil)];
     vi.submenu = vm;
-    item(vm, @"Vollbild", @selector(toggleFullscreen:), @"f", NSEventModifierFlagCommand, g_target);
-    NSMenuItem *fi = [vm addItemWithTitle:@"Bildrate" action:nil keyEquivalent:@""];
-    NSMenu *fm = [[NSMenu alloc] initWithTitle:@"Bildrate"];
+    item(vm, NSLocalizedString(@"Vollbild", nil), @selector(toggleFullscreen:), @"f", NSEventModifierFlagCommand, g_target);
+    NSMenuItem *fi = [vm addItemWithTitle:NSLocalizedString(@"Bildrate", nil) action:nil keyEquivalent:@""];
+    NSMenu *fm = [[NSMenu alloc] initWithTitle:NSLocalizedString(@"Bildrate", nil)];
     fi.submenu = fm;
     for (NSNumber *f in @[@30, @60, @120]) {
         NSMenuItem *it = item(fm, [NSString stringWithFormat:@"%@ fps", f], @selector(setFps:), @"", 0, g_target);
@@ -313,10 +319,15 @@ static void install_menu(void) {
     [vm addItem:[NSMenuItem separatorItem]];
     static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
     for (int i = 0; i < 4; i++) {
-        NSMenuItem *it = item(vm, [NSString stringWithFormat:@"Fenstergröße %d × %d", sizes[i][0], sizes[i][1]], @selector(windowSize:),
+        NSMenuItem *it = item(vm, [NSString stringWithFormat:NSLocalizedString(@"Fenstergröße %d × %d", nil), sizes[i][0], sizes[i][1]], @selector(windowSize:),
                               [NSString stringWithFormat:@"%d", i + 1], NSEventModifierFlagCommand, g_target);
         it.tag = (NSInteger)sizes[i][0] << 16 | sizes[i][1];
     }
+    [vm addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *di = [vm addItemWithTitle:NSLocalizedString(@"Debug", nil) action:nil keyEquivalent:@""];
+    NSMenu *dm = [[NSMenu alloc] initWithTitle:NSLocalizedString(@"Debug", nil)];
+    di.submenu = dm;
+    item(dm, NSLocalizedString(@"Metal-HUD anzeigen", nil), @selector(toggleMetalHud:), @"", 0, g_target);
     // Fenster
     NSMenuItem *wi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
     NSMenu *wm = [[NSMenu alloc] initWithTitle:@"Fenster"];

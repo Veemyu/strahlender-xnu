@@ -1,6 +1,7 @@
 // Pfade, Konfiguration und Start der App-Hülle (siehe app.h, docs/recomp-macapp.md). Reines C, kein AppKit.
 #include "app.h"
 
+#include <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
@@ -82,6 +83,12 @@ static void redirect_log_if_gui(void) {
 }
 
 void bdsp_app_init(int argc, char **argv) {
+    // Metal-HUD (Menü Ansicht > Debug): MTL_HUD_ENABLED wird beim Start gelesen, daher hier und vor jeder Metal-Initialisierung
+    Boolean hud_valid = false;
+    if (CFPreferencesGetAppBooleanValue(CFSTR("bdsp_metal_hud"), kCFPreferencesCurrentApplication, &hud_valid) && hud_valid) {
+        setenv("MTL_HUD_ENABLED", "1", 1);
+        printf("[app] Metal-HUD an (Start)\n");
+    }
     g_app.argc = argc;
     g_app.argv = argv;
     char raw[1024];

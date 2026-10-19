@@ -7,14 +7,14 @@ RT=${RT:-work/recomp/rt-bdsp}
 SRC=${NVN_SRC:-work/recomp/nvn-src}
 HERE=scripts/recomp/rt-bdsp/nvn
 mkdir -p "$RT/nvn"
-if [ -z "${NVN_KEEP:-}" ] && { [ ! -d "$SRC/nvn" ] || [ -n "$(find "$HERE/shim" "$HERE/prepare.sh" "$HERE/las-nvn.patch" "$HERE/fixes.patch" "$HERE/dbgthread.patch" "$HERE/debug.patch" -newer "$SRC/nvn/nvn.h" -print -quit 2>/dev/null)" ]; }; then
+if [ -z "${NVN_KEEP:-}" ] && { [ ! -d "$SRC/nvn" ] || [ -n "$(find "$HERE/src" "$HERE/prepare.sh" -newer "$SRC/nvn/nvn.h" -print -quit 2>/dev/null)" ]; }; then
   "$HERE/prepare.sh" > /dev/null
 fi
 INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/rt-bdsp $(pkg-config --cflags sdl3)"
 W="-w"
 build() {  # Quelle Objekt [Zusatzflags]
   local f=$1 o=$2; shift 2
-  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/shim" -name '*.h' -newer "$o" -print -quit)" ]; then
+  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/src" -name '*.h' -newer "$o" -print -quit)" ]; then
     # Objective-C mit dem Apple-Compiler: der Homebrew-LLVM erzeugt Klassen-Stubs, die der Apple-Linker nicht auflöst
     local cc=clang; case "$f" in *.m) cc=/usr/bin/clang;; esac
     $cc -O1 -g $W $INC "$@" -c "$f" -o "$o"
