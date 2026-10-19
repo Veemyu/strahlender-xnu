@@ -17,11 +17,13 @@ static uint32_t new_event_handle(KEvent **out) {
 
 // ---- Vsync-Ereignis: 60 Hz ohne Anzeige (der Gast wartet auf dieses Ereignis, bevor er ein Bild beginnt)
 static KEvent *g_vsync;
+volatile int g_bdsp_paused;   // von der App-Hülle (Pause, Fokusverlust) gesetzt: das Vsync-Ereignis bleibt aus, das Spiel wartet
 static void *vsync_thread(void *arg) {
     (void)arg;
     for (;;) {
         struct timespec ts = {0, 16666667};
         nanosleep(&ts, NULL);
+        while (g_bdsp_paused) nanosleep(&(struct timespec){0, 10000000}, NULL);
         pthread_mutex_lock(&g_klock);
         kernel_signal(g_vsync);
         pthread_mutex_unlock(&g_klock);

@@ -2,7 +2,7 @@
 
 Einstiegspunkt ist `scripts/build_all.sh` (bash 3.2-kompatibel). Hilfslogik: `scripts/build_helpers.py` (Entschlüsselung, Manifest) und `scripts/build_stages.py` (Stufenauswahl, Marker mit Eingabe-Hashes, Preflight, Editor-Erkennung). Die Nutzeranleitung „NSP/XCI angeben, App erhalten“ steht in `docs/bauen.md`; dieses Dokument beschreibt die Technik.
 
-Stufen in fester Reihenfolge: `tools`, `extract`, `il2cpp`, `masterdata`, `shaders`, `video`, `audio` (Platzhalter), `assets`, `unity-build`, `deploy`. Vor den Stufen läuft ein Preflight. Stand der Umsetzung: alle Stufen sind im Skript vorhanden; `audio` meldet „nicht implementiert“. Getestet sind Dry-run, `extract` (früherer Lauf, siehe unten), `il2cpp`, `masterdata`, `video` (Stichprobe), `shaders` (Stichprobe), `assets` und die Editor-Erkennung. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor.
+Stufen in fester Reihenfolge: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio` (Platzhalter), `assets`, `stubs`, `unity-build`, `deploy`. (`recomp` = macOS-App aus der Rekompilation, Hauptweg seit Entscheidung 3; Technik: `docs/recomp-macapp.md`.) Vor den Stufen läuft ein Preflight. Stand der Umsetzung: alle Stufen sind im Skript vorhanden; `audio` meldet „nicht implementiert“. Getestet sind Dry-run, `extract` (früherer Lauf, siehe unten), `il2cpp`, `masterdata`, `video` (Stichprobe), `shaders` (Stichprobe), `assets`, `recomp` und die Editor-Erkennung. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor.
 
 ## Aufruf
 
@@ -36,7 +36,8 @@ Umgebungsvariablen: `TOOLS_DIR` (Standard `tools/`), `MIN_FREE_GB` (Reserve in `
 
 Nur Prüfung, nie Installation, nie `sudo`. Geprüft wird, was die gewählten Stufen brauchen:
 
-- **Plattenplatz ≥ 60 GB** frei (bei allen Stufen außer `tools`/`audio`); knapper Platz → Exit-Code 8 und Hinweis auf `--min-free-gb`.
+- **Plattenplatz ≥ 60 GB** frei (bei allen Stufen außer `tools`/`audio`, `recomp` allein: **≥ 25 GB**, siehe `docs/bauen.md`); knapper Platz → Exit-Code 8 und Hinweis auf `--min-free-gb`.
+- `recomp`: Homebrew-`clang` und Apple-`clang`, `pkg-config` mit `sdl3`, `libavcodec`, `libavformat`, `libavutil`, `rsync`, `codesign`, `install_name_tool`, `otool`, `iconutil`, `plutil`, `tools/pydeps/{capstone,unicorn}`, Klon `research/LASRecomp` (mit Hinweis auf den `git clone`).
 - `tools`: git, make, cc. `extract`: `tools/hactool/hactool` (oder wird von `tools` gebaut). `il2cpp`: `dotnet` ≥ 8 und `tools/il2cppdumper-bin/Il2CppDumper.dll`. `masterdata`/`shaders`: `tools/pydeps/UnityPy`; `shaders`: make, cc. `video`: `ffmpeg` mit `libx265`.
 - `unity-build`: Editor **6000.3.26f1**, Modul Mac Build Support (IL2CPP, arm64) und/oder iOS Build Support je nach `--target`, `unity`-CLI (nur Hinweis; Rückfall: Editor direkt im Batchmodus). `unity-build`/`deploy`: Xcode über `DEVELOPER_DIR` (`xcodebuild -version`).
 
@@ -49,6 +50,7 @@ Nach Erfolg schreibt jede Stufe (außer `tools`, `audio`, Stichproben) `work/.st
 | Stufe | Eingabe-Hash aus |
 |---|---|
 | `il2cpp` | Kern von `manifest.json`, SHA-256 von `global-metadata.dat` und Il2CppDumper |
+| `recomp` | Module des Dumps (SHA-256 von `exefs/main`, `sdk`, `subsdk0`, `rtld`), Generatorskripte und die Werkzeuge des Klons, Teilmarker `recomp-gen` (C erzeugt) und `recomp-obj` (Objekte übersetzt), Quellen von `rt-bdsp/` (ohne `test/`, `vulkan/`), der NVN-Quellen des Klons, `shader_translator/`, `scripts/recomp/app/`, `main.npdm`, Optionen (`-O0`-Schwelle, Hardened Runtime, Daten) |
 | `masterdata` | Manifest-Kern, `masterdata_export.py` |
 | `shaders` | Manifest-Kern, alle `shader_*.py`/`shader_build.sh`, Quellen von `shader_translator/`, `SHADER_USED` |
 | `video` | Manifest-Kern, `video_convert.sh`, Profil, Pfade und Größen der WebM-Quellen |

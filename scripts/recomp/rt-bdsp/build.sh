@@ -19,8 +19,9 @@ FW=""
 nvnobjs=()
 case "$NVN_BACKEND" in
   metal)
-    scripts/recomp/rt-bdsp/nvn/build_nvn.sh "$@"
-    nvnobjs=("$RT"/nvn/*.o)
+    # NVN_RT: Objektordner der NVN-Schicht (unabhängig von RT, damit die App-Fassung dieselben Objekte nutzt)
+    RT="${NVN_RT:-$RT}" scripts/recomp/rt-bdsp/nvn/build_nvn.sh "$@"
+    nvnobjs=("${NVN_RT:-$RT}"/nvn/*.o)
     FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $([ -n "${BDSP_NO_MOVIE:-}" ] || pkg-config --libs libavcodec libavformat libavutil)" ;;
   none) EXTRA="-DBDSP_NVN_NONE"; RT="${RT}-none"; mkdir -p "$RT" ;;
   vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/), Laufzeitbibliotheken per Vollpfad
@@ -31,14 +32,33 @@ case "$NVN_BACKEND" in
 esac
 if [ "$(uname -s)" = Linux ]; then INC="$INC -I scripts/recomp/ryzen/compat"; fi
 rm -f "$RT/nvn_null.o"
+# macOS-App (BDSP_APP=1): zusätzlich die Hülle aus app/ (Konfiguration, Spielstand, Menü, Eingabe); Objekte und Ausgabe getrennt (RT, OUT)
+if [ -n "${BDSP_APP:-}" ]; then
+  [ "$NVN_BACKEND" = metal ] || { echo "BDSP_APP=1 braucht NVN_BACKEND=metal" >&2; exit 2; }
+  EXTRA="$EXTRA -DBDSP_APP"
+  FW="$FW -framework GameController"
+fi
 objs=()
 for f in "$SRC"/*.c; do
   o="$RT/$(basename "$f" .c).o"
   objs+=("$o")
-  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/bdsp.h" -nt "$o" ] || [ "$SRC/guestmem.h" -nt "$o" ]; then
+  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/bdsp.h" -nt "$o" ] || [ "$SRC/guestmem.h" -nt "$o" ] || { [ -n "${BDSP_APP:-}" ] && [ "$SRC/app/app.h" -nt "$o" ]; }; then
     clang -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function $INC $EXTRA "$@" -c "$f" -o "$o"
   fi
 done
+if [ -n "${BDSP_APP:-}" ]; then
+  for f in "$SRC"/app/*.c "$SRC"/app/*.m; do
+    [ -e "$f" ] || continue
+    o="$RT/app_$(basename "${f%.*}").o"
+    objs+=("$o")
+    if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/app/app.h" -nt "$o" ]; then
+      case "$f" in
+        *.m) /usr/bin/clang -O1 -g -Wall -Wno-unused-parameter -fobjc-arc $INC $(pkg-config --cflags sdl3) -c "$f" -o "$o" ;;
+        *) clang -O1 -g -Wall -Wextra -Wno-unused-parameter $INC -c "$f" -o "$o" ;;
+      esac
+    fi
+  done
+fi
 objs+=(${nvnobjs[@]+"${nvnobjs[@]}"})
 newest=$(ls -t "${objs[@]}" | head -1)
 if [ ! -x "$OUT" ] || [ "$newest" -nt "$OUT" ] || [ -n "$(find "$OBJ" -name '*.o' -newer "$OUT" -print -quit)" ]; then

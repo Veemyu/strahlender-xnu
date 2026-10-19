@@ -3,6 +3,7 @@
 # Einzelfunktionen mit mehr als 1 MB C werden mit -O0 übersetzt (Ausreißer), alles andere mit -O1.
 # Ausgabe: work/recomp/obj4/*.o, work/recomp/obj4/compile_times.txt ("<datei> <s> <MB RSS>"), Gesamtzeit auf stdout.
 # Aufruf: build_all.sh [JOBS]   (Standard 3; die Maschine ist geteilt, höchstens 4)
+# O0_BYTES: Dateien mit genau einer Funktion und mehr als so vielen Byte C gelten als Ausreißer und werden mit -O0 übersetzt (Standard 1000000)
 set -u
 cd "$(dirname "$0")/../.."
 JOBS=${1:-3}
@@ -21,7 +22,7 @@ done
 : > "$OBJ/list_O1.txt"; : > "$OBJ/list_O0.txt"
 for f in "$GEN"/*/*.c; do
   size=$(stat -f %z "$f")
-  if [ "$size" -gt 1000000 ] && [ "$(grep -c '^void f_.*) {$' "$f")" = "1" ]; then echo "$f" >> "$OBJ/list_O0.txt"; else echo "$f" >> "$OBJ/list_O1.txt"; fi
+  if [ "$size" -gt "${O0_BYTES:-1000000}" ] && [ "$(grep -c '^void f_.*) {$' "$f")" = "1" ]; then echo "$f" >> "$OBJ/list_O0.txt"; else echo "$f" >> "$OBJ/list_O1.txt"; fi
 done
 echo "O1: $(wc -l < "$OBJ/list_O1.txt") Dateien, O0: $(wc -l < "$OBJ/list_O0.txt") Dateien, Jobs $JOBS"
 start=$(date +%s)

@@ -48,10 +48,14 @@
 #define HEAP_MAX     0x00D0000000ull   // 3,25 GiB für SetHeapSize
 #define ALIAS_BASE   0x7190000000ull   // Alias-Region: Ziel von MapPhysicalMemory/MapMemory
 #define ALIAS_SIZE   0x0190000000ull   // 6,25 GiB
+#define APP_MEMORY   0xCD500000ull
+#define HEAP_REPORT  HEAP_MAX
 // BDSP verlangt in nninitStartup fast den ganzen Anwendungsspeicher (3,14 GB) als einen zusammenhängenden Bereich, den das SDK
 // per MapPhysicalMemory aus der Alias-Region nimmt: sie muss mindestens so groß sein (Messung: Abbruch in StandardAllocator::Initialize).
 #else
-// ---- Variante B (iPad, Gate 2, hier nur als Layout festgehalten und noch ungetestet): alles unter 4 GiB, Fenster bei g_guest_base
+// ---- Variante B (--rebase32, iPad): alles unter 4 GiB, Fenster bei g_base (scripts/recomp/ios/gen32.sh erzeugt C und Bilder mit
+// diesen Basen). Die Alias-Region nimmt das Anwendungsspeicher-Stück (SDK: 3,14 GiB am Stück per MapPhysicalMemory), die Heap-Region
+// (SetHeapSize) bleibt klein: BDSP ruft SetHeapSize nicht auf (gemessen, docs/recomp-ios.md).
 #define GUEST_LO     0x00000000ull
 #define GUEST_HI     0x100000000ull
 #define MAIN_BASE    0x01000000ull
@@ -64,12 +68,19 @@
 #define TLS_SIZE     0x00100000ull
 #define HLE_HEAP     0x0A200000ull
 #define HLE_HEAP_SIZE 0x06000000ull
-#define STACK_BASE   0x10000000ull
-#define STACK_SIZE   0x10000000ull
-#define ALIAS_BASE   0x20000000ull
-#define ALIAS_SIZE   0x10000000ull
-#define HEAP_BASE    0x30000000ull
-#define HEAP_MAX     0xD0000000ull
+#define STACK_BASE   0x10400000ull
+#define STACK_SIZE   0x0FC00000ull   // 252 MiB: das SDK legt die Thread-Stacks per MapMemory in diese Region (32 MiB reichten für 19 Threads)
+#define ALIAS_BASE   0x20000000ull   // das SDK legt seinen Block auf die nächste 2-GiB-Grenze der Alias-Region (hier 0x8000_0000, A: 0x72_0000_0000);
+#define ALIAS_SIZE   0xE0000000ull   // die Region muss groß genug für den zufällig platzierten Rest sein (gemessen: ab 0x4000_0000 scheitert eine 32-MiB-Zuteilung)
+#define HEAP_BASE    0x10300000ull
+#define HEAP_MAX     0x00100000ull   // SetHeapSize wird nicht benutzt (gemessen); die Region liegt nur der Vollständigkeit in einer Lücke
+#define APP_MEMORY   0x83000000ull   // dem SDK gemeldeter Anwendungsspeicher (GetInfo 6/21; es nimmt davon 64 MiB Systemressourcen ab): 1,98 GiB ab 0x8000_0000
+#define HEAP_REPORT  0xD0000000ull   // gemeldete Größe der Heap-Region (GetInfo 5); das SDK prüft den Anwendungsspeicher dagegen, SetHeapSize nutzt es nicht
+#endif
+#ifdef BDSP_REBASE32
+#define ADDR_SPACE_END (1ull << 32)
+#else
+#define ADDR_SPACE_END (1ull << 39)
 #endif
 typedef enum { KOBJ_THREAD = 1, KOBJ_EVENT, KOBJ_SESSION, KOBJ_SHMEM, KOBJ_TMEM } KType;
 typedef enum { WAIT_NONE = 0, WAIT_MUTEX, WAIT_CONDVAR, WAIT_ARBITER } WaitKind;

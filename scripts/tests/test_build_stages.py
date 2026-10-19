@@ -206,6 +206,10 @@ class PreflightTests(unittest.TestCase):
         os.chmod(os.path.join(self.tools, "hactool", "hactool"), 0o755)
         write(os.path.join(self.tools, "il2cppdumper-bin", "Il2CppDumper.dll"))
         os.makedirs(os.path.join(self.tools, "pydeps", "UnityPy"))
+        os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
+        os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
+        write(os.path.join(self.root, "research", "LASRecomp", "tools", "gen.py"))
+        os.makedirs(os.path.join(self.root, "research", "LASRecomp", "runtime", "nvn"))
         base = os.path.join(self.unity, bs.UNITY_VERSION)
         os.makedirs(os.path.join(base, "Unity.app"))
         os.makedirs(os.path.join(base, "Unity.app", "Contents", "PlaybackEngines", "MacStandaloneSupport",
@@ -285,6 +289,88 @@ class PreflightTests(unittest.TestCase):
         self.assertNotIn("sudo ", text)
         self.assertIn("brew install ffmpeg", text)
         self.assertNotIn("Plattenplatz", text)
+
+
+class RecompStageTests(unittest.TestCase):
+    """Stufe recomp: Reihenfolge, Preflight (Platz, Klon, Pakete) und Eingabe-Hashes."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = self.tmp.name
+        self.root, self.work, self.tools = (os.path.join(t, n) for n in ("repo", "work", "tools"))
+        for m in ("main", "sdk", "subsdk0", "rtld"):
+            write(os.path.join(self.work, "exefs", m), m)
+        write(os.path.join(self.work, "exefs", "main.npdm"), "npdm")
+        os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
+        os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
+        write(os.path.join(self.root, "research", "LASRecomp", "tools", "gen.py"))
+        os.makedirs(os.path.join(self.root, "research", "LASRecomp", "runtime", "nvn"))
+        write(os.path.join(self.root, "scripts", "recomp", "eh_gen.py"), "gen")
+        write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){}")
+        write(os.path.join(self.root, "scripts", "recomp", "app", "make_app.sh"), "#!/bin/sh")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def pf(self, free=30.0, min_free=60, which=None, run=None, target="all", stages=("recomp",)):
+        which = which or (lambda c: "/usr/bin/" + c)
+        run = run or (lambda cmd, env=None, timeout=60: (True, "ok"))
+        return bs.preflight(list(stages), target, self.root, self.work, self.tools, "/nicht/da", "/nicht/da", min_free,
+                            which=which, run=run, free=lambda p: free, home=self.tmp.name)
+
+    def missing(self, items):
+        return [i["name"] for i in items if not i["ok"] and i["level"] == "fehlt"]
+
+    def test_order_after_il2cpp(self):
+        self.assertEqual(bs.STAGES[bs.STAGES.index("il2cpp") + 1], "recomp")
+        self.assertEqual(bs.normalize_stage("macapp"), "recomp")
+
+    def test_preflight_ok_and_disk_limit_is_25_gb(self):
+        self.assertEqual(self.missing(self.pf(free=30.0)), [])
+        self.assertEqual(self.missing(self.pf(free=21.0)), ["Plattenplatz >= 25 GB frei (Stufe recomp)"])
+        # bewusst weniger verlangt
+        self.assertEqual(self.missing(self.pf(free=21.0, min_free=15)), [])
+
+    def test_disk_exit_code(self):
+        items = self.pf(free=10.0)
+        lines, missing, disk = bs.format_preflight(items)
+        self.assertTrue(disk)
+        self.assertEqual(len(missing), 1)
+
+    def test_missing_clone_and_packages_get_german_hints(self):
+        os.rmdir(os.path.join(self.root, "research", "LASRecomp", "runtime", "nvn"))
+        os.rmdir(os.path.join(self.tools, "pydeps", "unicorn"))
+        items = self.pf()
+        self.assertEqual(sorted(self.missing(items)), ["Python-Pakete capstone, unicorn in tools/pydeps (Generator)",
+                                                       "research/LASRecomp (Generator und NVN-Schicht, MIT)"])
+        _, missing, _ = bs.format_preflight(items)
+        text = "\n".join(bs.install_list(missing))
+        self.assertIn("git clone https://github.com/peiikai/LASRecomp", text)
+        self.assertNotIn("sudo ", text)
+
+    def test_ios_target_does_not_check_mac_app_tools(self):
+        names = [i["name"] for i in self.pf(which=lambda c: None, target="ios")]
+        self.assertNotIn("clang (Homebrew-LLVM im PATH)", names)
+
+    def test_hash_reacts_to_module_runtime_and_options(self):
+        env = {"XNU_RECOMP_OPTS": "o0kb=300"}
+        h0, _ = bs.stage_hash("recomp", self.root, self.work, env=env)
+        self.assertEqual(h0, bs.stage_hash("recomp", self.root, self.work, env=env)[0])
+        write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){return 1;}")
+        h1, _ = bs.stage_hash("recomp", self.root, self.work, env=env)
+        self.assertNotEqual(h0, h1)
+        write(os.path.join(self.work, "exefs", "main"), "anderer Dump")
+        h2, _ = bs.stage_hash("recomp", self.root, self.work, env=env)
+        self.assertNotEqual(h1, h2)
+        h3, _ = bs.stage_hash("recomp", self.root, self.work, env={"XNU_RECOMP_OPTS": "o0kb=1000"})
+        self.assertNotEqual(h2, h3)
+
+    def test_generator_hash_ignores_runtime(self):
+        h0, _ = bs.stage_hash("recomp-gen", self.root, self.work)
+        write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){return 2;}")
+        self.assertEqual(h0, bs.stage_hash("recomp-gen", self.root, self.work)[0])
+        write(os.path.join(self.root, "scripts", "recomp", "eh_gen.py"), "gen v2")
+        self.assertNotEqual(h0, bs.stage_hash("recomp-gen", self.root, self.work)[0])
 
 
 class TreeSizeTests(unittest.TestCase):

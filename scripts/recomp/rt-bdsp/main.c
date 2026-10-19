@@ -1,25 +1,44 @@
 // Einstieg der BDSP-Laufzeit (Gate 1): Gastfenster reservieren, Module laden, nn::init::Start auf einem Host-Thread
 // starten, den Lauf überwachen (Zeitlimit, Gate-Erkennung, Fortschrittszeilen) und das Ergebnisprotokoll ausgeben.
 // Kein Grafik-, kein Audioausgang. Eigener Code.
+#include <TargetConditionals.h>
+#include <errno.h>
 #include <mach/mach.h>
-#include <mach/mach_vm.h>
 #include <signal.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#if !defined(BDSP_REBASE32) || !defined(__APPLE__) || !TARGET_OS_IPHONE
+#include <mach/mach_vm.h>
+#endif
 
 #include "bdsp.h"
+#ifdef BDSP_APP
+#include "app/app.h"
+#endif
 
 #ifdef BDSP_REBASE32
 uint8_t *g_base;
 #endif
 
 // Das Gastfenster vor allem anderen belegen (der Host-Allokator legt sonst Bereiche in dasselbe Fenster).
+#ifdef BDSP_REBASE32
+// Variante B: 4-GiB-Fenster irgendwo im Hostadressraum; Seiten werden erst beim Zugriff belegt (anonym, null). Die ersten 64 KiB bleiben
+// gesperrt, damit Nullzeiger des Gastes wie auf der Konsole abstürzen.
+__attribute__((constructor(101))) static void reserve_guest_space(void) {
+    void *p = mmap(NULL, GUEST_HI - GUEST_LO, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (p == MAP_FAILED) { fprintf(stderr, "FATAL: Gastfenster (4 GiB) nicht reservierbar: %s\n", strerror(errno)); _exit(1); }
+    g_base = p;
+    mprotect(p, 0x10000, PROT_NONE);
+}
+#else
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
     mach_vm_address_t a = GUEST_LO;
     if (mach_vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) == KERN_SUCCESS) return;
     fprintf(stderr, "FATAL: Gastfenster %llx-%llx ist nicht frei\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI);
     _exit(1);
 }
+#endif
 
 // ---- Gast-Log (lm und OutputDebugString)
 static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -152,6 +171,9 @@ static void *monitor_loop(void *arg) {
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
+#ifdef BDSP_APP
+    bdsp_app_init(argc, argv);   // macOS-App: Pfade/Konfiguration, Umgebung der Laufzeit, Spielstand-Sicherung (rt-bdsp/app)
+#endif
     signal(SIGINT, on_sigint);
     signal(SIGPIPE, SIG_IGN);
     int no_window = 0;
@@ -200,6 +222,10 @@ int main(int argc, char **argv) {
     kernel_init();
     loader_load(img);
     dispatch_init();
+    if (getenv("BDSP_WATCH")) {   // Fehlersuche: "hexadresse,hexadresse": Aufrufe über den Verteiler mit x0..x2 und lr protokollieren
+        char *spec = strdup(getenv("BDSP_WATCH")), *sv = NULL;
+        for (char *tok = strtok_r(spec, ",", &sv); tok; tok = strtok_r(NULL, ",", &sv)) watch_add(strtoull(tok, NULL, 16), tok);
+    }
     nvn_glue_init();
     kernel_region_add(TLS_BASE, TLS_SIZE, 0xB, 3);
     kernel_region_add(HLE_HEAP, HLE_HEAP_SIZE, 0xB, 3);

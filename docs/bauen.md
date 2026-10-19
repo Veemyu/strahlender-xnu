@@ -32,6 +32,7 @@ Der Dry-run prüft Voraussetzungen, zeigt je Stufe, ob sie übersprungen oder au
 | `tools` | baut hactool lokal, prüft ffmpeg, Unity, Xcode | `tools/hactool` |
 | `extract` | entpackt XCI/NSP, wendet das Update an | `work/exefs`, `work/romfs`, `work/manifest.json` |
 | `il2cpp` | Il2CppDumper über `exefs/main` und `global-metadata.dat` | `work/il2cpp/` |
+| `recomp` | **macOS-App aus der Rekompilation** (Hauptweg, siehe Abschnitt unten): Generator → C → Übersetzen → Laufzeit/Metal → `BDSP.app`, RomFS nach Application Support | `work/builds/macos-recomp/BDSP.app` |
 | `masterdata` | liest Stammdaten und Texte aus den Bundles | `work/masterdata/` |
 | `shaders` | übersetzt die Maxwell-Shader, erzeugt Unity-Wrapper | `work/build/shaders/` (Standard) |
 | `video` | WebM (VP8) nach H.265 (`.mp4`, `hvc1`) | `work/video/` |
@@ -52,6 +53,25 @@ scripts/build_all.sh --only unity-build,deploy         # nach Schließen des Edi
 ```
 
 Jede Stufe schreibt nach Erfolg einen Marker `work/.stages/<Stufe>.json` mit dem Hash ihrer Eingaben (Manifest der Extraktion, Skripte, vorgelagerte Marker, Unity-Quellen). Ein erneuter Aufruf überspringt Stufen, deren Eingaben unverändert sind, und setzt dort fort, wo ein Lauf abgebrochen wurde. `--force` erzwingt Neuerzeugung der gewählten Stufen. Für `extract` genügt nach dem ersten Lauf ein Aufruf ohne `--xci`; das vorhandene Ergebnis wird weiterverwendet.
+
+## macOS-App aus der Rekompilation (Stufe `recomp`)
+
+Seit Entscheidung 3 (`docs/architektur-entscheidung.md`) ist die Rekompilation der Hauptweg: aus **deinem** Dump entsteht das Spiel als native arm64-App mit Metal, **ohne Ton**, ohne Netz. Die Stufe läuft nach `extract` (und `il2cpp`); Technik, Tastenbelegung, Spielstand und Messwerte stehen in `docs/recomp-macapp.md`.
+
+```sh
+scripts/build_all.sh --only recomp                  # nach extract; ohne --xci wird das vorhandene work/exefs, work/romfs benutzt
+scripts/build_all.sh --dry-run --only recomp        # nur Plan, Preflight und Marker-Status
+open work/builds/macos-recomp/BDSP.app
+```
+
+- **Zusätzlich nötig:** Homebrew-Pakete `llvm`, `sdl3`, `ffmpeg`, `pkg-config` (`brew install llvm sdl3 ffmpeg pkg-config`, `/opt/homebrew/opt/llvm/bin` vor `/usr/bin` im `PATH`), Xcode Command Line Tools, die Python-Pakete `capstone` und `unicorn` in `tools/pydeps` (`python3 -m pip install --target tools/pydeps capstone unicorn`) und der Klon `research/LASRecomp` (`git clone https://github.com/peiikai/LASRecomp research/LASRecomp`, MIT; liefert Generator-Werkzeuge und die NVN-Schicht, die das Skript zur Bauzeit nach `work/` kopiert und patcht). Der Preflight nennt Fehlendes mit der passenden Zeile.
+- **Platz:** der Preflight verlangt **≥ 25 GB** frei (`--min-free-gb N` senkt das bewusst). Gemessen belegt die Stufe selbst nur rund 1,7 GB (C 1,0 GB, Objekte 0,3 GB, Programm 0,22 GB, App 0,36 GB, RomFS-Klon 0 GB; kurzzeitig +1 GB Zwischenablage bei Wiederholung des Generators); der Rest ist Reserve für Compiler und Auslagerung.
+- **Zeit:** kalt (Generator + Übersetzen + App) gemessen **rund 27,5 Minuten** bei Last 25 bis 50 (Generator 7,2 min, Übersetzen 19,8 min; Zahlen in `docs/recomp-macapp.md`), danach nur geänderte Teile: unveränderte Eingaben 0,4 s, Änderung an der Laufzeit 13 bis 50 s, an einer Generator-Eingabe nur die geänderten C-Dateien. Parallelität höchstens 4 Compiler (`--recomp-jobs N`), Ausreißer-Dateien (eine Funktion, mehr als 300 KB C) werden mit `-O0` übersetzt (`--recomp-o0-kb N`).
+- **Idempotenz:** Teilmarker `work/.stages/recomp-gen.json` und `recomp-obj.json` plus der Stufenmarker `recomp.json` (Hash aus den Modulen des Dumps, Generator, Laufzeitquellen, Optionen). Zweiter Aufruf ohne Änderung: „Marker passt, übersprungen“. `--force` erzeugt alles neu.
+- **Signatur:** ad hoc (`codesign -s -`), ohne Entwicklerkonto startbar; beim ersten Start aus dem Finder ggf. Rechtsklick → Öffnen (Gatekeeper). `--hardened` signiert mit Hardened Runtime (Entitlement nur `disable-library-validation` für die gebündelten Bibliotheken); JIT wird **nicht** gebraucht, es gibt keine Sandbox und keine Netzrechte.
+- **Daten:** die App liest das RomFS aus `~/Library/Application Support/dev.local.xnubdsp/romfs` (die Stufe legt dort einen APFS-Klon von `work/romfs` an, der keinen zusätzlichen Platz braucht; `--no-install-data` überspringt das), den Spielstand aus `…/save` und legt Shader-Cache und Bildschirmfotos unter `~/Library/Caches/dev.local.xnubdsp` ab. Alle Pfade sind über `config.ini` oder Umgebungsvariablen änderbar; nichts davon liegt im Repo.
+- **Spielstand importieren:** Menü *Spiel → Spielstand importieren …*, per Ablegen von `SaveData.bin` (oder dem Ordner) auf das Fenster oder `BDSP.app/Contents/MacOS/BDSP --import-save <Pfad>`; der Stand wird vorher geprüft (Größe 979.108 Byte, MD5-Prüfsumme wie `scripts/bdsp_save.py`).
+- **Fehlermeldungen:** Fehlt etwas, nennt das Skript es auf Deutsch mit dem nächsten Schritt (Exit-Codes: 4 Werkzeug/Bau, 8 Platz, 10 Voraussetzung/Vorstufe). Logs: `work/logs/recomp-compile.log`, `recomp-runtime.log`, `recomp-images.log`, Generator: `work/recomp/spike2/gen4_<Modul>.log`.
 
 ## Wenn der Unity-Editor offen ist
 
@@ -81,6 +101,8 @@ work/
   il2cpp/  masterdata/  video/
   build/shaders/           erzeugte .shader-Wrapper
   builds/macos/xnu.app     macOS-App (arm64)
+  builds/macos-recomp/BDSP.app   macOS-App aus der Rekompilation (Stufe recomp)
+  recomp/                  Zwischenstände der Stufe recomp (gen4: erzeugtes C, obj4: Objekte, img_app, bdsp_app)
   builds/ios/xnu/          Xcode-Projekt für iOS/iPadOS
   logs/<Stufe>.log         Logs je Stufe
   .stages/<Stufe>.json     Marker mit Eingabe-Hash

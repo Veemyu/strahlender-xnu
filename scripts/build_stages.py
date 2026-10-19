@@ -30,11 +30,12 @@ EX_USAGE = 2
 EX_TOOLS = 4
 EX_DISK = 8
 
-STAGES = ["tools", "extract", "il2cpp", "masterdata", "shaders", "video", "audio", "assets", "stubs", "unity-build", "deploy"]
-ALIASES = {"unity": "unity-build", "xcode": "deploy", "shader": "shaders", "videos": "video"}
+STAGES = ["tools", "extract", "il2cpp", "recomp", "masterdata", "shaders", "video", "audio", "assets", "stubs", "unity-build", "deploy"]
+ALIASES = {"unity": "unity-build", "xcode": "deploy", "shader": "shaders", "videos": "video", "macapp": "recomp"}
 UNITY_VERSION = "6000.3.26f1"
 MARKER_SCHEMA = 1
 MIN_FREE_GB = 60
+RECOMP_MIN_FREE_GB = 25   # Generator-C, Objekte, Binärdatei, App, Zwischenablagen (gemessen rund 3 GB; der Rest ist Reserve für Compiler und Auslagerung)
 HEAVY_STAGES = {"extract", "il2cpp", "masterdata", "shaders", "video", "assets", "stubs", "unity-build", "deploy"}
 TARGETS = ("macos", "ios", "all")
 
@@ -220,6 +221,25 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
         parts["dumper"] = hash_file(os.path.join(root, "tools", "il2cppdumper-bin", "Il2CppDumper.dll"))
     elif stage == "masterdata":
         parts["scripts"] = files("masterdata_export.py")
+    elif stage in ("recomp-gen", "recomp"):
+        # Generator: Module des Dumps, eigene Generatorskripte und der Klon, dessen Werkzeuge er zur Laufzeit importiert
+        rec = os.path.join(scripts, "recomp")
+        parts["modules"] = {m: hash_file(os.path.join(work, "exefs", m)) for m in ("main", "sdk", "subsdk0", "rtld")}
+        parts["generator"] = {n: hash_file(os.path.join(rec, n)) for n in
+                              ("eh_gen.py", "eh_lsda.py", "eh_pick.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
+        parts["las_tools"] = hash_tree_content(os.path.join(root, "research", "LASRecomp", "tools"), (".py",), skip_dirs=("__pycache__",))
+        if stage == "recomp":
+            # Laufzeit, NVN-Schicht (Klon + Patches), Übersetzer, App-Hülle; die Teilmarker bilden Generator und Objekte ab
+            skip = ("test", "vulkan", "__pycache__")
+            parts["gen"] = _marker_hash(work, "recomp-gen")
+            parts["obj"] = _marker_hash(work, "recomp-obj")
+            parts["runtime"] = hash_tree_content(os.path.join(rec, "rt-bdsp"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
+            parts["nvn_las"] = hash_tree_content(os.path.join(root, "research", "LASRecomp", "runtime", "nvn"), (".c", ".h", ".m"), skip_dirs=("vulkan",))
+            parts["translator"] = hash_tree_content(os.path.join(root, "shader_translator"), (".c", ".h"), skip_dirs=("build", "__pycache__"))
+            parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".in", ".entitlements"), skip_dirs=("__pycache__",))
+            parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh")
+            parts["npdm"] = hash_file(os.path.join(work, "exefs", "main.npdm"))
+            parts["options"] = env.get("XNU_RECOMP_OPTS", "")
     elif stage == "shaders":
         parts["scripts"] = files("shader_build.sh", "shader_extract_blobs.py", "shader_inventory.py",
                                  "shader_fidelity.py", "shader_wrap_all.py", "shader_wrap.py")
@@ -375,6 +395,31 @@ def preflight(stages, target, root, work, tools_dir=None, unity_root="/Applicati
         for c in ("make", "cc"):
             add(c + " (für shader_translator)", which(c), "", "xcode-select --install (Command Line Tools)")
 
+    if "recomp" in s and want_mac:
+        if not (s & HEAVY_STAGES):   # sonst deckt der allgemeine Platz-Check (strenger) das schon ab
+            need = min(RECOMP_MIN_FREE_GB, min_free_gb)
+            gb = free(work)
+            add("Plattenplatz >= %d GB frei (Stufe recomp)" % need, gb >= need, "%.0f GB frei unter %s" % (gb, work),
+                "Platz schaffen (alte work/recomp-Unterordner wie img*, gen, obj*, spike2 löschen) oder bewusst weniger verlangen: --min-free-gb N")
+        add("clang (Homebrew-LLVM im PATH)", which("clang"), which("clang") or "", "brew install llvm und /opt/homebrew/opt/llvm/bin vor /usr/bin in den PATH")
+        ok, _ = run(["/usr/bin/xcrun", "--find", "clang"])
+        add("Apple-clang (Objective-C, Command Line Tools)", ok, "", "xcode-select --install")
+        for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync ist Teil von macOS"), ("codesign", "xcode-select --install"),
+                        ("install_name_tool", "xcode-select --install"), ("otool", "xcode-select --install"),
+                        ("iconutil", "xcode-select --install"), ("plutil", "plutil ist Teil von macOS")):
+            add(c + " (für die App)", which(c), "", hint)
+        pc = which("pkg-config")
+        ok, _ = run([pc, "--exists", "sdl3", "libavcodec", "libavformat", "libavutil"]) if pc else (False, "")
+        add("SDL3 und FFmpeg-Bibliotheken (pkg-config)", ok, "", "brew install sdl3 ffmpeg")
+        pyd = os.path.join(tools_dir, "pydeps")
+        add("Python-Pakete capstone, unicorn in tools/pydeps (Generator)",
+            os.path.isdir(os.path.join(pyd, "capstone")) and os.path.isdir(os.path.join(pyd, "unicorn")), pyd,
+            "python3 -m pip install --target tools/pydeps capstone unicorn")
+        las = os.path.join(root, "research", "LASRecomp")
+        add("research/LASRecomp (Generator und NVN-Schicht, MIT)",
+            os.path.isfile(os.path.join(las, "tools", "gen.py")) and os.path.isdir(os.path.join(las, "runtime", "nvn")), las,
+            "git clone https://github.com/peiikai/LASRecomp research/LASRecomp (Commit siehe scripts/recomp/rt-bdsp/NOTICE.md)")
+
     if "video" in s:
         ffmpeg = which("ffmpeg")
         ok, out = run([ffmpeg, "-hide_banner", "-encoders"]) if ffmpeg else (False, "")
@@ -509,7 +554,7 @@ def main(argv=None):
         if any(not m["name"].startswith("Plattenplatz") for m in missing):
             print("\n".join(install_list(missing)))
         if disk:
-            return EX_DISK if len(missing) == 1 else EX_TOOLS
+            return EX_DISK if all(m["name"].startswith("Plattenplatz") for m in missing) else EX_TOOLS
         return EX_TOOLS if missing else 0
     if a.cmd == "editor-open":
         pid = editor_open(a.project)

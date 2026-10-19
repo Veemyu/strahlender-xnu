@@ -2,7 +2,7 @@
 # Einstiegspunkt der Build-Pipeline (docs/build-pipeline.md, Anleitung: docs/bauen.md, Ziel: docs/kernziel.md).
 # Das Repo enthält nie Spieldaten oder Keys.
 #
-# Stufen (feste Reihenfolge): tools extract il2cpp masterdata shaders video audio assets stubs unity-build deploy
+# Stufen (feste Reihenfolge): tools extract il2cpp recomp masterdata shaders video audio assets stubs unity-build deploy
 #   Kurzformen: unity = unity-build, xcode = deploy. Vorab läuft ein Preflight (nur Prüfung, keine Installation).
 #
 # Aufruf (alles in einem Befehl):
@@ -29,6 +29,9 @@
 #   --bundle-subset F   nur die in F aufgeführten Bundles (plus Katalog) in den Player legen (iPad: Platz/Speicher)
 #   --texture-format F  BC-Texturen der Bundles nach ASTC umwandeln (scripts/texture_transcode.py): 6x6|4x4|8x8|off.
 #                       Standard: 6x6 bei Bundle-Plattform ios (Apple-GPUs kennen kein BC), sonst off.
+#   Stufe recomp (macOS-App aus der Rekompilation, work/builds/macos-recomp/BDSP.app; nur für --target macos|all):
+#   --recomp-jobs N     Zahl der Compiler (Standard 4, höchstens 4);  --recomp-o0-kb N  Ausreißer ab N KB mit -O0 (Standard 300)
+#   --hardened          App mit Hardened Runtime signieren (Standard: nur ad hoc);  --no-install-data  RomFS nicht nach Application Support klonen
 # Umgebung: TOOLS_DIR, MIN_FREE_GB (Reserve in extract, Standard 25), UNITY_EDITOR_ROOT, DEVELOPER_DIR,
 #   TEAM_ID (sonst work/local.env), SHADER_USED, ASSETS_DEST (gitignorierter Zielordner), XNU_UNITY_DRIVER=cli|editor|auto
 #
@@ -52,13 +55,14 @@ UNITY_EDITOR_ROOT="${UNITY_EDITOR_ROOT:-/Applications/Unity/Hub/Editor}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 MIN_FREE_GB="${MIN_FREE_GB:-25}"
 PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-60}"
-ALL_STAGES="tools extract il2cpp masterdata shaders video audio assets stubs unity-build deploy"
+ALL_STAGES="tools extract il2cpp recomp masterdata shaders video audio assets stubs unity-build deploy"
 
 XCI="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
 DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all VIDEO_PROFILE="h265-crf18" MOVIE_SRC=""
 SHADERS_INTO_UNITY=0 SHADER_ONLY="" LAUNCH=0 BUNDLE_PLATFORM="" BUNDLE_SUBSET="" TEXTURE_FORMAT=""
 EXTRACT_ACTIVE=0
+RECOMP_JOBS=4 RECOMP_O0_KB=300 RECOMP_HARDENED=0 RECOMP_DATA=1
 SELECTED="" RESULTS="" UPSTREAM_DIRTY=0 BLOCKED_EDITOR=0 NOT_IMPL=""
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -420,6 +424,46 @@ stage_il2cpp() {
   stage_done il2cpp
 }
 
+# ---------- Stufe recomp ----------
+# macOS-App aus der Rekompilation des eigenen Dumps (Generator -> C -> Übersetzen -> Laufzeit/Metal -> BDSP.app); Technik und
+# Teilschritte: scripts/recomp/app/recomp_build.sh, Anleitung: docs/bauen.md, docs/recomp-macapp.md
+recomp_out() { echo "$WORK/builds/macos-recomp/BDSP.app"; }
+
+stage_recomp() {
+  log "Stufe recomp (macOS-App aus der Rekompilation, Metal, ohne Ton)"
+  if ! want_target macos; then
+    echo "  recomp: nur für --target macos oder all (iPadOS: scripts/recomp/ios, docs/recomp-ios.md); übersprungen"
+    stage_result recomp "übersprungen (Ziel $TARGET)"; return 0
+  fi
+  need_extract
+  case "$RECOMP_JOBS$RECOMP_O0_KB" in ''|*[!0-9]*) die 2 "--recomp-jobs und --recomp-o0-kb brauchen ganze Zahlen" ;; esac
+  local out; out="$(recomp_out)"
+  export XNU_RECOMP_OPTS="o0kb=$RECOMP_O0_KB hardened=$RECOMP_HARDENED data=$RECOMP_DATA"
+  stage_cached recomp "$out/Contents/MacOS/BDSP" && return 0
+  local args=(--jobs "$RECOMP_JOBS" --o0-kb "$RECOMP_O0_KB" --out "$out")
+  [ "$RECOMP_HARDENED" -eq 0 ] || args+=(--hardened)
+  [ "$RECOMP_DATA" -eq 1 ] || args+=(--no-install-data)
+  [ "$FORCE" -eq 0 ] || args+=(--force)
+  if [ "$DRY" -eq 1 ]; then
+    if [ -s "$WORK/exefs/main" ]; then
+      ensure_legacy_links
+      WORK="$WORK" "$ROOT/scripts/recomp/app/recomp_build.sh" --dry-run "${args[@]}"
+    else
+      echo "    [dry-run] würde ausführen: Generator -> C (work/recomp/gen4, rund 1 GB) -> Übersetzen (4 Jobs, -O0 ab ${RECOMP_O0_KB} KB) -> Modulbilder -> Laufzeit/NVN-Metal -> $out (ad hoc signiert)$([ "$RECOMP_DATA" -eq 1 ] && echo ' -> RomFS nach Application Support')"
+    fi
+    stage_done recomp; return 0
+  fi
+  ensure_legacy_links
+  local rc=0 t0=$SECONDS
+  WORK="$WORK" "$ROOT/scripts/recomp/app/recomp_build.sh" "${args[@]}" || rc=$?
+  [ "$rc" -eq 0 ] || die "$rc" "Stufe recomp fehlgeschlagen (Meldungen oben; Logs: $WORK/logs/recomp-*.log). Wiederholung setzt dort fort, wo es stehen blieb."
+  log "Stufe recomp fertig in $((SECONDS - t0)) s: $out"
+  # Teilmarker (recomp-gen, recomp-obj) sind jetzt geschrieben und gehören zum Eingabe-Hash der Stufe: neu berechnen
+  STAGE_HASH="$(sp stage-hash --stage recomp --root "$ROOT" --work "$WORK" --target "$TARGET" --profile "$VIDEO_PROFILE" | tail -n 1)"
+  local sz; sz="$(sp tree-size --path "$out" | cut -d' ' -f2)"
+  stage_done recomp "app=${out#"$ROOT"/}" "bytes=$sz"
+}
+
 # ---------- Stufe masterdata ----------
 stage_masterdata() {
   log "Stufe masterdata"
@@ -764,6 +808,7 @@ run_stage() {
     tools) stage_tools ;;
     extract) stage_extract ;;
     il2cpp) stage_il2cpp ;;
+    recomp) stage_recomp ;;
     masterdata) stage_masterdata ;;
     shaders) stage_shaders ;;
     video) stage_video ;;
@@ -804,6 +849,10 @@ while [ $# -gt 0 ]; do
     --work) need_val $# "$1"; WORK="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     --keep-nca) KEEP_NCA=1; shift ;;
+    --recomp-jobs) need_val $# "$1"; RECOMP_JOBS="$2"; shift 2 ;;
+    --recomp-o0-kb) need_val $# "$1"; RECOMP_O0_KB="$2"; shift 2 ;;
+    --hardened) RECOMP_HARDENED=1; shift ;;
+    --no-install-data) RECOMP_DATA=0; shift ;;
     -*) die 2 "Unbekannte Option: $1 (--help zeigt die Hilfe)" ;;
     preflight) PREFLIGHT_ONLY=1; shift ;;
     *) STAGES="$STAGES $1"; shift ;;

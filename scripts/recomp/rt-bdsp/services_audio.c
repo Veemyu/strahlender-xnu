@@ -3,7 +3,7 @@
 // liefern leere Rendering-Antworten. Eigener Code.
 #include "bdsp.h"
 
-typedef struct { KEvent *ev; uint32_t ev_handle; uint64_t tags[64]; int ntags, started; uint64_t appended; } AudOut;
+typedef struct { KEvent *ev; uint32_t ev_handle; uint64_t tags[64]; int ntags, started; uint64_t appended, released, empty_polls; pthread_mutex_t lk; } AudOut;
 
 static void signal_ev(KEvent *e) {
     pthread_mutex_lock(&g_klock);
@@ -20,8 +20,12 @@ static void audout_obj(Service *s, IpcReq *req, IpcResp *resp) {
     case 1: a->started = 1; break;                                             // Start
     case 2: a->started = 0; break;                                             // Stop
     case 3: case 7: {                                                          // AppendAudioOutBuffer(tag) mit AudioOutBuffer im A-Puffer
+        // Mehrere Gastthreads (Anhängen, Abfragen) sprechen dasselbe Objekt an: ohne Sperre ging ein Tag verloren (ntags++ gegen ntags = 0),
+        // der Puffer kam nie zurück und das Spiel drehte im Abfrageschleifen-Thread, bis der Hauptthread an dessen Mutex hing (QA: Hänger)
+        pthread_mutex_lock(&a->lk);
         if (a->ntags < 64) a->tags[a->ntags++] = IN(uint64_t, 0);
         a->appended++;
+        pthread_mutex_unlock(&a->lk);
         IpcBuf *b = in_buf(req, 0);   // AudioOutBuffer {next, buffer, capacity, dataSize, offset}: Dauer des Puffers abwarten (Echtzeit, sonst Dauerschleife)
         uint64_t bytes = b && b->size >= 0x20 ? *(G2H64(b->addr) + 3) : 0;
         uint64_t ns = bytes ? bytes / 4 * 1000000000ull / 48000 : 5000000ull;
@@ -32,15 +36,24 @@ static void audout_obj(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     }
     case 4: resp->copy_handles[resp->ncopy++] = a->ev_handle; break;           // RegisterBufferEvent
-    case 5: case 8: {                                                          // GetReleasedAudioOutBuffer: alle Tags zurück
+    case 5: case 8: {                                                          // GetReleasedAudioOutBuffer: alle Tags zurück (so viele, wie der Puffer fasst)
         IpcBuf *b = out_buf(req, 0);
-        int n = a->ntags;
-        if (b && b->size) {
+        int cap = b && b->size ? (int)(b->size / 8) : 0;
+        pthread_mutex_lock(&a->lk);
+        int n = a->ntags < cap ? a->ntags : cap;
+        if (n) {
             uint64_t *p = G2H64(b->addr);
-            for (int i = 0; i < n && (uint64_t)(i + 1) * 8 <= b->size; i++) p[i] = a->tags[i];
+            for (int i = 0; i < n; i++) p[i] = a->tags[i];
+            memmove(a->tags, a->tags + n, (size_t)(a->ntags - n) * 8);
+            a->ntags -= n;
         }
-        a->ntags = 0;
-        if (!n) { struct timespec ts = {0, 2000000}; nanosleep(&ts, NULL); }   // nichts zurückzugeben: Abfrageschleifen des Spiels bremsen
+        pthread_mutex_unlock(&a->lk);
+        if (!n) {
+            if ((++a->empty_polls % 2000) == 0) LOG("[audio] %llu leere Abfragen in Folge (angehängt %llu, zurückgegeben %llu, wartend %d, Puffer %llu Byte)\n",
+                                                      (unsigned long long)a->empty_polls, (unsigned long long)a->appended, (unsigned long long)a->released, a->ntags,
+                                                      (unsigned long long)(b ? b->size : 0));
+            struct timespec ts = {0, 2000000}; nanosleep(&ts, NULL);   // nichts zurückzugeben: Abfrageschleifen des Spiels bremsen
+        } else { a->released += (uint64_t)n; a->empty_polls = 0; }
         OUT(uint32_t, 0) = (uint32_t)n;
         resp_size(resp, 4);
         break;
@@ -68,6 +81,7 @@ static void audout_mgr(Service *s, IpcReq *req, IpcResp *resp) {
         uint32_t rate = IN(uint32_t, 0);
         uint16_t ch = IN(uint16_t, 4);
         AudOut *a = calloc(1, sizeof *a);
+        pthread_mutex_init(&a->lk, NULL);
         uint32_t w;
         a->ev = kernel_create_event_pair(&w, &a->ev_handle);
         OUT(uint32_t, 0) = rate ? rate : 48000;

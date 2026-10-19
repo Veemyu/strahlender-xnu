@@ -48,11 +48,31 @@ class DryRunTests(unittest.TestCase):
     def test_all_stages_listed_and_nothing_written(self):
         rc, out, err = self.dry(["all", "--xci", self.xci, "--keys", self.keys])
         self.assertEqual(rc, 0, err)
-        for stage in ("tools", "extract", "il2cpp", "masterdata", "shaders", "video", "audio", "assets", "stubs",
+        for stage in ("tools", "extract", "il2cpp", "recomp", "masterdata", "shaders", "video", "audio", "assets", "stubs",
                       "unity-build", "deploy"):
             self.assertIn("  %-12s" % stage, out, stage)
         self.assertIn("nicht implementiert", out)
         self.assertFalse(os.path.exists(self.work), "Dry-run darf nichts anlegen")
+
+    def test_recomp_dry_run_plans_all_steps_and_writes_nothing(self):
+        rc, out, err = self.dry(["--only", "recomp"])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("Stufe recomp", out)
+        for part in ("Generator", "Übersetzen", "Modulbilder", "BDSP.app", "RomFS"):
+            self.assertIn(part, out)
+        self.assertIn("-O0 ab 300 KB", out)
+        self.assertFalse(os.path.exists(self.work), "Dry-run darf nichts anlegen")
+
+    def test_recomp_options_reach_the_plan(self):
+        rc, out, err = self.dry(["--only", "recomp", "--recomp-o0-kb", "500", "--hardened", "--no-install-data"])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("-O0 ab 500 KB", out)
+        self.assertNotIn("RomFS nach Application Support", out)
+
+    def test_recomp_skipped_for_ios_target(self):
+        rc, out, err = self.dry(["--only", "recomp", "--target", "ios"])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("übersprungen", out)
 
     def test_stubs_stage_dry_run_plans_scan_gen_and_conflicts(self):
         rc, out, err = self.dry(["--only", "stubs"])
