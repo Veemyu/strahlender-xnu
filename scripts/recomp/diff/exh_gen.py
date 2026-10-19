@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Erzeugt exh_ops.h für den erschöpfenden Einzelbefehlstest (exh.c, docs/recomp-diff.md Abschnitt 4):
+je Befehl der c-Modus-Lifter-Output (Gastfunktion) und der Inline-asm-Block für den nativen M1-Lauf.
+Eigener Code. Aufruf: exh_gen.py <ausgabe.h>"""
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from common import *  # noqa: E402,F403
+sys.path.insert(0, str(LAS / "tools"))
+from lifter import Lifter  # noqa: E402
+
+# (Text, Eingabeart): s = 32-Bit-Gleitkomma in S1, d = 64-Bit in D1 (obere 32 Bit erschöpfend), w = X1 32 Bit, x = X1 (obere 32 Bit erschöpfend)
+OPS = [
+    ("fsqrt s0, s1", "s"), ("frecpe s0, s1", "s"), ("frsqrte s0, s1", "s"), ("frecpx s0, s1", "s"),
+    ("fcvtzs w0, s1", "s"), ("fcvtzu w0, s1", "s"), ("fcvtns w0, s1", "s"), ("fcvtas w0, s1", "s"), ("fcvtps w0, s1", "s"),
+    ("fcvtmu w0, s1", "s"), ("fcvtzs x0, s1", "s"), ("fcvtzu x0, s1", "s"), ("fcvtzs w0, s1, #8", "s"), ("fcvt d0, s1", "s"),
+    ("fcvt h0, s1", "s"), ("frintn s0, s1", "s"), ("frinta s0, s1", "s"), ("frintx s0, s1", "s"), ("frinti s0, s1", "s"),
+    ("frintz s0, s1", "s"), ("frintm s0, s1", "s"), ("frintp s0, s1", "s"), ("fabs s0, s1", "s"), ("fneg s0, s1", "s"),
+    ("scvtf s0, w1", "w"), ("ucvtf s0, w1", "w"), ("scvtf d0, w1", "w"), ("scvtf s0, w1, #5", "w"),
+    ("scvtf s0, x1", "x"), ("ucvtf s0, x1", "x"), ("scvtf d0, x1", "x"), ("ucvtf d0, x1", "x"),
+    ("fsqrt d0, d1", "d"), ("frecpe d0, d1", "d"), ("frsqrte d0, d1", "d"), ("fcvt s0, d1", "d"), ("fcvtzs x0, d1", "d"),
+    ("fcvtzs w0, d1", "d"), ("fcvtzu x0, d1", "d"), ("fcvtns x0, d1", "d"), ("frintn d0, d1", "d"), ("frintx d0, d1", "d"),
+    ("frinta d0, d1", "d"), ("fcvt h0, d1", "d"),
+]
+
+
+def main():
+    words = assemble([t for t, _ in OPS])
+    L = Lifter(0x7000000000, "c")
+    o = ["// erzeugt von exh_gen.py (nicht von Hand ändern)\n"]
+    for k, ((txt, kind), w) in enumerate(zip(OPS, words)):
+        o.append(f"#ifdef REF_ASM\nstatic inline void A_{k}(uint64_t i, uint64_t *v, uint64_t *x) {{\n"
+                 f"    register uint64_t x1 __asm__(\"x1\") = i; register uint64_t x0 __asm__(\"x0\") = 0; uint64_t r;\n"
+                 f"    __asm__ volatile(\"fmov d1, x1\\n\\tfmov d0, xzr\\n\\t.inst 0x{w:08x}\\n\\tfmov %[r], d0\\n\" : [r] \"=&r\"(r), \"+r\"(x0) : \"r\"(x1) : \"v0\", \"v1\", \"memory\");\n"
+                 f"    *v = r; *x = x0;\n}}\n#else\nstatic void L_{k}(Cpu *c) {{\n{L.lift(w, 0x7000000000).code}\n}}\n#endif\n")
+    o.append("static const struct { const char *name; char kind; } OPS[] = {\n" + ",\n".join(f'    {{"{t}", \'{k}\'}}' for t, k in OPS) + "};\n")
+    o.append(f"#define NOPS {len(OPS)}\n")
+    o.append("#ifdef REF_ASM\nstatic void run_op(int k, uint64_t i, uint64_t *v, uint64_t *x) { switch (k) {\n"
+             + "".join(f"    case {k}: A_{k}(i, v, x); break;\n" for k in range(len(OPS))) + "    } }\n#else\n"
+             "static void (*const FN[])(Cpu *) = {" + ", ".join(f"L_{k}" for k in range(len(OPS))) + "};\n#endif\n")
+    Path(sys.argv[1]).write_text("".join(o))
+    print(len(OPS), "Befehle")
+
+
+if __name__ == "__main__":
+    main()
