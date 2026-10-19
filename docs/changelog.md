@@ -4,6 +4,8 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 ## 2026-10-19
 
+- **Lizenz:** `LICENSE` im Root (MIT, Copyright (c) 2026 Veemyu). README-Abschnitt „Lizenz des eigenen Codes“ ergänzt. Fremdcode behält seine Lizenz.
+
 - **Alles vendort:** `scripts/recomp/upstream/runtime/` ist eine unveränderte Kopie der vollständigen Laufzeit des Klons (einschließlich `nvn/`, `nvn/vulkan/`, `hle/`, `services/`, `platform/`, `ui/`), `scripts/recomp/upstream/generator/` die des Werkzeugordners (einschließlich `rando/`). Beide byte-identisch mit `09f8e5e`. Nicht übernommen: `third_party/` des Originals (eigene Lizenzen, Nintendo-Ausschluss), `fonts/`, Klon-Metadaten.
 - **Eine NVN-Quelle:** Die Doppelkopie `scripts/recomp/rt-bdsp/nvn/upstream/` ist entfernt. `nvn/prepare.sh` und `nvn/vulkan/prepare_vk.sh` kopieren aus `scripts/recomp/upstream/runtime/`.
 - **Ryzen und Diff-Werkzeuge:** Pfade auf `scripts/recomp/upstream/` umgestellt; `sync.sh` und `vk_sync.sh` übertragen den Klon-Ordner nicht mehr, weil `scripts/recomp` ihn enthält.

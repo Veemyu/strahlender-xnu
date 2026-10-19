@@ -27,4 +27,4 @@ Der Nutzer dieses Repositorys hat die Übernahme und Weiterentwicklung des MIT-l
 
 ## Lizenz des eigenen Codes
 
-Noch nicht festgelegt.
+Der eigene Code dieses Repositorys steht unter der MIT-Lizenz (`LICENSE`, Copyright (c) 2026 Veemyu). Ausgenommen sind die Fremdteile oben: Sie behalten ihre eigene Lizenz (`scripts/recomp/rt-bdsp/LICENSE-LASRecomp`, `scripts/recomp/upstream/LICENSE`, `shader_translator/LICENSE-LASRecomp`). Spieldaten, Keys und Dumps gehören nicht zum Repository und fallen nicht unter diese Lizenz.
