@@ -106,7 +106,7 @@ FLAG_TEXT = {
 
 KIND_DETECTORS = {
     "field": ["balken", "leer", "mittel", "farben", "weiss", "schwarz", "flach", "streckung", "hud"],
-    "room": ["balken", "leer", "mittel", "farben", "weiss", "schwarz", "streckung", "hud"],  # Raum: einfarbiger Hintergrund erlaubt
+    "room": ["leer", "mittel", "farben", "weiss", "streckung", "hud"],  # Raum steht frei vor einfarbigem (blau oder schwarz) Kamerahintergrund: keine Balken-/Schwarz-/Flach-Prüfung
     "ui": ["leer", "mittel", "farben"],
 }
 

@@ -89,7 +89,7 @@ class ImportAndRunTests(Tmp):
         raw = self.tmp / "raw"
         dest = self.tmp / "ref"
         t = time.time() - 100
-        for i, name in enumerate(["s1.png", "s2.png", "ref_b__x.png", "free_r_1__y.png"]):
+        for i, name in enumerate(["s1.png", "s2.png", "ref_b__x.png", "x.png", "free_r_1__y.png"]):
             save(raw / name, noise_scene(640, 360, seed=i))
             os.utime(raw / name, (t + i, t + i))
         done, state = vr.import_new(raw, dest, MAP, offset_seconds=-1800, log=lambda *_: None)
@@ -98,6 +98,7 @@ class ImportAndRunTests(Tmp):
         self.assertEqual(views["s1.png"], "ref_a")                # Reihenfolge füllt die freien Ansichten
         self.assertEqual(views["s2.png"], "ref_c")
         self.assertEqual(views["free_r_1__y.png"], "free_r_1")
+        self.assertNotIn("x.png", views)                           # Original einer umbenannten Kopie wird nicht noch einmal zugeordnet
         self.assertTrue((dest / "views" / "ref_a.png").is_file())
         with Image.open(dest / "views" / "ref_a.png") as im:
             self.assertEqual(im.size, (320, 180))
@@ -132,6 +133,42 @@ class ImportAndRunTests(Tmp):
         self.assertTrue((run / "ref" / "ref_a_heatmap.png").is_file())
         rep2, code2 = vr.compare_run(run, refd, MAP, gate=False, log=lambda *_: None)
         self.assertEqual(code2, 0)
+
+    def test_import_recomp_by_name_alias_and_change(self):
+        raw1, raw2 = self.tmp / "mac", self.tmp / "ryzen"
+        dest = self.tmp / "recomp"
+        amap = json.loads(json.dumps(MAP))
+        amap["views"][1]["aliases"] = ["gate2_b"]
+        save(raw1 / "ref_a__x.png", noise_scene(640, 360, seed=1))
+        save(raw1 / "gate2_b_metal.png", noise_scene(1920, 1080, seed=2))
+        save(raw1 / "frame_01200.png", noise_scene(64, 36, seed=3))          # nicht zugeordnet: übergangen
+        save(raw2 / "free_t__y.png", noise_scene(320, 180, seed=4))
+        done, st = vr.import_recomp([raw1, raw2], dest, amap, log=lambda *_: None)
+        self.assertEqual(sorted(v for _, v in done), ["free_t", "ref_a", "ref_b"])
+        self.assertNotIn("frame_01200.png", json.dumps(st["files"]))
+        with Image.open(dest / "views" / "ref_b.png") as im:
+            self.assertEqual(im.size, (320, 180))
+        again, _ = vr.import_recomp([raw1, raw2], dest, amap, log=lambda *_: None)
+        self.assertEqual(again, [])
+        save(raw1 / "gate2_b_metal.png", noise_scene(1920, 1080, seed=9))      # Datei geändert -> erneut
+        again, _ = vr.import_recomp([raw1, raw2], dest, amap, log=lambda *_: None)
+        self.assertEqual([v for _, v in again], ["ref_b"])
+        everything, _ = vr.import_recomp([raw1], self.tmp / "r2", amap, log=lambda *_: None, all_free=True)
+        self.assertIn("free_frame_01200", [v for _, v in everything])
+
+    def test_refs_compare_two_sources(self):
+        a, b = self.tmp / "a", self.tmp / "b"
+        base = noise_scene(1280, 720, seed=5)
+        save(a / "views" / "ref_a.png", np.clip(base.astype(np.int16) + 15, 0, 255).astype(np.uint8))
+        save(b / "views" / "ref_a.png", base)
+        save(b / "views" / "ref_b.png", base)
+        rep = vr.refs_compare(a, b, MAP, self.tmp / "out", "recomp", "ryujinx", log=lambda *_: None)
+        by = {r["view"]: r for r in rep["results"]}
+        self.assertEqual(by["ref_a"]["status"], "verglichen")
+        self.assertGreater(by["ref_a"]["metrics"]["ssim_matched"], 0.9)
+        self.assertIn("recomp", by["ref_b"]["status"])
+        md = (self.tmp / "out" / "ref_report.md").read_text(encoding="utf-8")
+        self.assertIn("Quellenvergleich (recomp ↔ ryujinx)", md)
 
     def test_cache_report(self):
         used = self.tmp / "used.json"

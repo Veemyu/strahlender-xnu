@@ -5,10 +5,15 @@
         Rohbilder (F8-Screenshots) den Ansichten aus ref_map.json zuordnen (Reihenfolge der Dateizeit oder Umbenennung),
         auf 1280x720 normalisieren (schwarze Ränder abschneiden, auf 16:9 zuschneiden, skalieren) nach <dest>/views/<Ansicht>.png,
         Zuordnung und Spieluhr nach <dest>/assignments.json. Idempotent: bekannte Dateien werden nicht erneut zugeordnet.
-  visual_ref.py compare --run work/visual/auto/<lauf> [--ref work/visual/ref/ryujinx] [--out DIR] [--gate] [--no-align]
+  visual_ref.py import --source recomp [--raw DIR…] [--all-free]
+        Rekompilations-Screenshots (Standard: work/recomp/shots = Mac-Metal, work/visual/recomp = Ryzen) nach work/visual/ref/recomp/views/.
+        Zuordnung nur per Name (Ansichtsname, "aliases" in ref_map.json, Präfix free_); sonst wird die Datei übergangen.
+  visual_ref.py compare --run work/visual/auto/<lauf> [--source ryujinx|recomp] [--ref work/visual/ref/ryujinx] [--out DIR] [--gate] [--no-align]
         Unity-/Recomp-Bild des Laufs gegen die Referenz: SSIM, mittlere Abweichung (roh und nach Histogramm-Angleichung),
         Kantenschärfe-Verhältnis, Farbstich, Raster-Heatmap (8x8) mit schlechtesten Zellen; Bericht ref_report.md/json und
         Kontaktbogen contact/ref_NN.png (Referenz | Unity | Differenz-Heatmap). Aufruf auch: visual_compare.py ref compare ...
+  visual_ref.py refs [--a recomp] [--b ryujinx]
+        Zwei Referenzquellen gegeneinander (Rekompilation gegen Ryujinx): gleiche Ansichten, Kennzahlen, Heatmap, Kontaktbogen.
   visual_ref.py cache --entries NAME=GRÖSSE:ANZAHL ... [--used work/materials_all/used_final.json]
         Ryujinx-Shader-Cache (nur Zahlen) neben die Zahl unserer genutzten Varianten stellen.
 Exit-Code compare: 0 = in Ordnung (oder ohne --gate), 1 = Schwelle verletzt (--gate), 2 = Fehler.
@@ -27,6 +32,9 @@ from visual_compare import np, Image, ImageDraw  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MAP = ROOT / "scripts" / "visual" / "ref_map.json"
 DEFAULT_REF = ROOT / "work" / "visual" / "ref" / "ryujinx"
+# Referenzquellen: Ryujinx (Emulator, F8) und Rekompilation (Original-Engine rekompiliert: Mac-Metal und Ryzen-Vulkan)
+SOURCES = {"ryujinx": DEFAULT_REF, "recomp": ROOT / "work" / "visual" / "ref" / "recomp"}
+RECOMP_RAW = (ROOT / "work" / "recomp" / "shots", ROOT / "work" / "visual" / "recomp")
 IMG_EXT = {".png", ".jpg", ".jpeg", ".bmp"}
 
 
@@ -73,18 +81,23 @@ def import_new(raw_dir, dest, ref_map, offset_seconds=0, log=print, since=None):
     views = [v["view"] for v in ref_map.get("views", [])]
     files = sorted((p for p in raw_dir.glob("*") if p.suffix.lower() in IMG_EXT), key=lambda p: (p.stat().st_mtime, p.name))
     new = [p for p in files if p.name not in state["files"]]
-    if since:
-        for p in [p for p in new if p.stat().st_mtime < since]:
-            state["files"][p.name] = {"view": None, "ignored": "vor --since", "mtime": int(p.stat().st_mtime)}
-            log("  %-40s ignoriert (älter als --since)" % p.name)
-        new = [p for p in new if p.stat().st_mtime >= since]
-    # Umbenannte Dateien zuerst: Name beginnt mit dem Namen einer Ansicht
+    # Originale, die der Nutzer/ryujinx_record.sh umbenannt hat (<Ansicht>__<Original>), nicht noch einmal der Reihe nach zuordnen
+    renamed_from = {p.name.split("__", 1)[1] for p in files if "__" in p.name}
+    for p in [p for p in new if p.name in renamed_from]:
+        state["files"][p.name] = {"view": None, "ignored": "umbenannte Kopie vorhanden", "mtime": int(p.stat().st_mtime)}
+    new = [p for p in new if p.name not in renamed_from]
+    # Umbenannte Dateien zuerst: Name beginnt mit dem Namen einer Ansicht (gelten auch vor --since: ausdrücklicher Wunsch)
     claimed = {}
     for p in new:
         for v in views:
             if p.stem == v or p.stem.startswith(v + "_") or p.stem.startswith(v + "-"):
                 claimed[p.name] = v
                 break
+    if since:
+        for p in [p for p in new if p.name not in claimed and p.stat().st_mtime < since]:
+            state["files"][p.name] = {"view": None, "ignored": "vor --since", "mtime": int(p.stat().st_mtime)}
+            log("  %-40s ignoriert (älter als --since)" % p.name)
+        new = [p for p in new if p.name in claimed or p.stat().st_mtime >= since]
     taken = set(state["views"]) | set(claimed.values())
     free_views = [v for v in views if v not in taken]
     out = []
@@ -116,8 +129,83 @@ def import_new(raw_dir, dest, ref_map, offset_seconds=0, log=print, since=None):
     return out, state
 
 
-# ---------------------------------------------------------------------------------------------------------------------
-# Vergleich
+def _view_for(stem, views, aliases):
+    """Ansicht zu einem Dateinamen: Ansichtsname (auch als Präfix) oder Alias-Präfix aus ref_map.json."""
+    for v in views:
+        if stem == v or stem.startswith(v + "_") or stem.startswith(v + "-"):
+            return v
+    for v, al in aliases.items():
+        if any(stem.startswith(a) for a in al):
+            return v
+    return None
+
+
+def import_recomp(raw_dirs, dest, ref_map, log=print, all_free=False):
+    """Rekompilations-Screenshots (Mac-Metal: work/recomp/shots, Ryzen: work/visual/recomp) als zweite Referenzquelle.
+    Nur Zuordnung per Name (Ansichtsname, Alias aus ref_map.json "aliases" oder Präfix free_); alles andere wird übergangen
+    (all_free=True: auch als free_<Name> führen). Eine geänderte Datei (Größe/Zeit) wird erneut importiert, die neuere gewinnt."""
+    dest = Path(dest)
+    (dest / "views").mkdir(parents=True, exist_ok=True)
+    state_path = dest / "assignments.json"
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {"files": {}, "views": {}}
+    norm = ref_map.get("normalize", {})
+    views = [v["view"] for v in ref_map.get("views", [])]
+    aliases = {v["view"]: v.get("aliases", []) for v in ref_map.get("views", []) if v.get("aliases")}
+    files = []
+    for d in raw_dirs:
+        files += [p for p in Path(d).glob("*") if p.suffix.lower() in IMG_EXT]
+    files.sort(key=lambda p: (p.stat().st_mtime, str(p)))
+    out = []
+    for p in files:
+        key = "%s/%s" % (p.parent.name, p.name)
+        st = p.stat()
+        sig = [int(st.st_mtime), st.st_size]
+        if state["files"].get(key, {}).get("sig") == sig:
+            continue
+        view = _view_for(p.stem, views, aliases)
+        if view is None and p.stem.startswith("free_"):
+            view = p.stem.split("__")[0]
+        if view is None and all_free:
+            view = "free_" + p.stem
+        if view is None:
+            continue
+        rgb = vc.load_rgb(p)
+        Image.fromarray(normalize(rgb, norm.get("width", 1280), norm.get("height", 720), norm.get("crop_bars", True))).save(dest / "views" / (view + ".png"))
+        state["files"][key] = {"view": view, "sig": sig, "source_size": [int(rgb.shape[1]), int(rgb.shape[0])],
+                               "mtime_text": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st.st_mtime))}
+        state["views"][view] = {"file": key, "game_hour": None}
+        out.append((key, view))
+        log("  %-52s -> %-24s (Quelle %dx%d)" % (key, view, rgb.shape[1], rgb.shape[0]))
+    state["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    state_path.write_text(json.dumps(state, indent=1, ensure_ascii=False), encoding="utf-8")
+    return out, state
+
+
+def refs_compare(dir_a, dir_b, ref_map, out, label_a="recomp", label_b="ryujinx", align=True, log=print):
+    """Zwei Referenzquellen gegeneinander (z. B. Rekompilation gegen Ryujinx): gleiche Ansichten, B ist die Referenz."""
+    dir_a, dir_b, out = Path(dir_a), Path(dir_b), Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    cmp_cfg = ref_map.get("compare", {})
+    grid = tuple(cmp_cfg.get("grid", [8, 8]))
+    results = []
+    for v in ref_map.get("views", []):
+        pa, pb = dir_a / "views" / (v["view"] + ".png"), dir_b / "views" / (v["view"] + ".png")
+        res = {"view": v["view"], "title": v.get("title", ""), "unity": label_a}
+        if not (pa.is_file() and pb.is_file()):
+            res["status"] = "fehlt (%s)" % ", ".join(n for n, p in ((label_a, pa), (label_b, pb)) if not p.is_file())
+        else:
+            m, _, _, valid, diff_m = compare_pair(vc.load_rgb(pb), vc.load_rgb(pa), v.get("mask"), grid, cmp_cfg.get("cell_bad_mad", 28.0), cmp_cfg.get("max_shift_px", 48), align)
+            (out / "ref").mkdir(exist_ok=True)
+            Image.fromarray(heatmap(diff_m, valid, m, grid)).save(out / "ref" / (v["view"] + "_heatmap.png"))
+            res.update(status="verglichen", metrics=m, ref_path=str(pb), unity_path=str(pa), game_hour=None, violations=[])
+            log("  %-24s SSIM %.3f (angeglichen %.3f)  MAD %.1f -> %.1f" % (v["view"], m["ssim"], m["ssim_matched"], m["mad"], m["mad_matched"]))
+        results.append(res)
+    sheets = make_sheets(results, out / "contact")
+    rep = {"run": str(out), "ref_dir": "%s gegen %s" % (label_a, label_b), "created": time.strftime("%Y-%m-%d %H:%M:%S"), "align": align,
+           "results": results, "problems": [], "contact_sheets": [str(p) for p in sheets]}
+    (out / "ref_report.json").write_text(json.dumps(rep, indent=1, ensure_ascii=False), encoding="utf-8")
+    (out / "ref_report.md").write_text(render_md(rep).replace("Referenzvergleich (Ryujinx ↔ Unity)", "Quellenvergleich (%s ↔ %s)" % (label_a, label_b)), encoding="utf-8")
+    return rep
 # ---------------------------------------------------------------------------------------------------------------------
 
 def valid_mask(h, w, rects):
@@ -434,35 +522,58 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     i = sub.add_parser("import")
-    i.add_argument("--raw", default=str(DEFAULT_REF / "raw"))
-    i.add_argument("--dest", default=str(DEFAULT_REF))
+    i.add_argument("--source", default="ryujinx", choices=sorted(SOURCES), help="ryujinx (F8-Screenshots, Zuordnung nach Reihenfolge/Name) oder recomp (Rekompilation, nur nach Name/Alias)")
+    i.add_argument("--raw", nargs="+", default=None)
+    i.add_argument("--dest", default=None)
     i.add_argument("--map", default=str(DEFAULT_MAP))
     i.add_argument("--offset", type=int, default=0, help="Ryujinx system_time_offset in Sekunden")
     i.add_argument("--since", default="", help="Dateien mit älterer Dateizeit ignorieren (\"YYYY-MM-DD HH:MM\", Ortszeit des Macs)")
+    i.add_argument("--all-free", action="store_true", help="recomp: auch nicht zugeordnete Dateien als free_<Name> führen")
     c = sub.add_parser("compare")
     c.add_argument("--run", required=True)
-    c.add_argument("--ref", default=str(DEFAULT_REF))
+    c.add_argument("--source", default="ryujinx", choices=sorted(SOURCES))
+    c.add_argument("--ref", default=None)
     c.add_argument("--map", default=str(DEFAULT_MAP))
     c.add_argument("--out")
     c.add_argument("--gate", action="store_true")
     c.add_argument("--no-align", action="store_true")
+    r = sub.add_parser("refs", help="zwei Referenzquellen gegeneinander (Standard: recomp gegen ryujinx)")
+    r.add_argument("--a", default="recomp", choices=sorted(SOURCES))
+    r.add_argument("--b", default="ryujinx", choices=sorted(SOURCES))
+    r.add_argument("--map", default=str(DEFAULT_MAP))
+    r.add_argument("--out")
+    r.add_argument("--no-align", action="store_true")
     k = sub.add_parser("cache")
     k.add_argument("--entries", nargs="+", required=True)
     k.add_argument("--used", default=str(ROOT / "work" / "materials_all" / "used_final.json"))
     a = ap.parse_args(argv)
     try:
         if a.cmd == "import":
-            Path(a.raw).mkdir(parents=True, exist_ok=True)
+            dest = a.dest or str(SOURCES[a.source])
+            if a.source == "recomp":
+                raws = a.raw or [str(p) for p in RECOMP_RAW]
+                done, _ = import_recomp([r for r in raws if Path(r).is_dir()], dest, load_map(a.map), all_free=a.all_free)
+                print("%d Datei(en) importiert." % len(done))
+                return 0
+            raw = (a.raw or [str(Path(dest) / "raw")])[0]
+            Path(raw).mkdir(parents=True, exist_ok=True)
             since = time.mktime(time.strptime(a.since, "%Y-%m-%d %H:%M")) if a.since else None
-            done, _ = import_new(a.raw, a.dest, load_map(a.map), a.offset, since=since)
+            done, _ = import_new(raw, dest, load_map(a.map), a.offset, since=since)
             print("%d neue Datei(en) zugeordnet." % len(done))
             return 0
         if a.cmd == "compare":
-            rep, code = compare_run(a.run, a.ref, load_map(a.map), a.out, not a.no_align, a.gate)
-            print("Bericht: %s" % ((Path(a.out) if a.out else Path(a.run)) / "ref_report.md"))
+            ref_dir = a.ref or str(SOURCES[a.source])
+            out = a.out or (str(Path(a.run) / a.source) if a.source != "ryujinx" else None)
+            rep, code = compare_run(a.run, ref_dir, load_map(a.map), out, not a.no_align, a.gate)
+            print("Bericht: %s" % ((Path(out) if out else Path(a.run)) / "ref_report.md"))
             for p in rep["problems"]:
                 print("SCHWELLE " + p)
             return code
+        if a.cmd == "refs":
+            out = a.out or str(DEFAULT_REF.parent / ("%s_vs_%s" % (a.a, a.b)))
+            rep = refs_compare(SOURCES[a.a], SOURCES[a.b], load_map(a.map), out, a.a, a.b, not a.no_align)
+            print("Bericht: %s" % (Path(out) / "ref_report.md"))
+            return 0
         if a.cmd == "cache":
             print(cache_report(a.entries, a.used))
             return 0

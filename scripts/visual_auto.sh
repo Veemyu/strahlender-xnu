@@ -3,7 +3,8 @@
 #   visual_auto.sh run [--mode editor|player|ipad] [--quick] [--only a,b] [--name LAUF] [--strict] [--no-capture] [--ref] [--timeout SEK]
 #        Aufnahme (Editor: Feldszenarien über Xnu.Visual.Capture + Spielszene-Folgen; Player: macOS-Build, Folgen der Spielszene;
 #        iPad: devicectl, Folgen der Spielszene), danach Vergleich mit der Baseline, Bericht work/visual/auto/<lauf>/report.md.
-#        --quick = nur Szenarien mit Tag "quick" (Feldkamera, keine Spielszene-Folgen); --ref = zusätzlich gegen Ryujinx-Referenzen.
+#        --quick = nur Szenarien mit Tag "quick" (Feldkamera, keine Spielszene-Folgen); --ref [ryujinx|recomp|both] = zusätzlich gegen
+#        Referenzbilder (Ryujinx-F8-Screenshots, Rekompilations-Screenshots; ohne Wert: ryujinx).
 #        Exit-Code 0 = keine Regression, 1 = Regression, 2 = Fehler/Aufnahme gescheitert, 4 = Aufnahmecode (Phase B) nicht übernommen.
 #   visual_auto.sh compare [--run LAUF|latest] [--strict] [--ref]   nur Vergleich eines vorhandenen Laufs
 #   visual_auto.sh accept [LAUF|latest]                           Lauf als neue Baseline übernehmen (erst nach Sichtung der Kontaktbögen!)
@@ -27,7 +28,7 @@ SCEN="$HERE/scripts/visual/scenarios.json"
 REFDIR="$HERE/work/visual/ref/ryujinx"
 PLAYER="${XNU_PLAYER:-$HERE/work/builds/macos/xnu.app/Contents/MacOS/xnu}"
 TIMEOUT="${XNU_VISUAL_TIMEOUT:-1500}"
-CAPTURE_CS="$PROJ/Assets/Scripts/Visual/Editor/Capture.cs"
+have_capture() { [ -n "$(find "$PROJ/Assets" -path '*Visual/Editor/Capture.cs' 2>/dev/null | head -1)" ]; }
 
 log() { echo "[visual] $*"; }
 die() { echo "[visual] FEHLER: $1" >&2; exit "${2:-2}"; }
@@ -89,7 +90,7 @@ mark_requested() { # RUN Namen...
 
 capture_editor() {
   local run="$1" s names
-  [ -f "$CAPTURE_CS" ] || die "Aufnahmecode fehlt: $CAPTURE_CS (Phase B noch nicht übernommen, siehe docs/visuelle-pruefung.md, Abschnitt Übernahme)" 4
+  have_capture || die "Aufnahmecode fehlt im Projekt $PROJ (Assets/**/Visual/Editor/Capture.cs; Phase B noch nicht übernommen, siehe docs/visuelle-pruefung.md, Abschnitt Übernahme)" 4
   case "$(editor_state)" in
     bereit) ;;
     aus) log "Editor aus: starte ihn (unity_safe.sh open)"; "$HERE/scripts/unity_safe.sh" open || die "Editor nicht bereit" ;;
@@ -104,7 +105,7 @@ capture_editor() {
   vs export-field "${fargs[@]}" || die "Export der Feldszenarien"
   if grep -q '"name"' "$run/field_scenarios.json"; then
     log "Feldaufnahme (FieldTest2) …"
-    out="$(ucmd eval "Xnu.Visual.Capture.CaptureAll(\"$run/field_scenarios.json\", \"$run\")" 2>&1)" || die "eval CaptureAll: $out"
+    out="$(ucmd eval "Xnu.Visual.Capture.CaptureAll(\"$run/field_scenarios.json\", \"$run\");" 2>&1)" || die "eval CaptureAll: $out"
     log "$out"
     wait_capture "$run/capture.json" || die "Feldaufnahme gescheitert (siehe $run/capture.json)"
     ucmd editor_stop >/dev/null 2>&1 || true
@@ -115,7 +116,7 @@ capture_editor() {
   for s in $(sequences_for); do
     log "Spielszene-Folge $s (Editor-Spielmodus) …"
     vs script "$s" --out "$run/seq-$s.txt" || die "Skript der Folge $s"
-    ucmd eval "System.Environment.SetEnvironmentVariable(\"XNU_GAMEDATA\", \"$HERE/work\"); System.Environment.SetEnvironmentVariable(\"XNU_SCRIPTED_INPUT\", \"$run/seq-$s.txt\"); System.Environment.SetEnvironmentVariable(\"XNU_SHOT_DIR\", \"$run/shots\"); System.Environment.SetEnvironmentVariable(\"XNU_ENV_HOUR\", \"12\"); System.Environment.SetEnvironmentVariable(\"XNU_GENERATED_SHADERS\", \"1\"); UnityEditor.SceneManagement.EditorSceneManager.OpenScene(\"Assets/Scenes/Game.unity\")" >/dev/null 2>&1 || die "Szene Game öffnen"
+    ucmd eval "System.Environment.SetEnvironmentVariable(\"XNU_GAMEDATA\", \"$HERE/work\"); System.Environment.SetEnvironmentVariable(\"XNU_SCRIPTED_INPUT\", \"$run/seq-$s.txt\"); System.Environment.SetEnvironmentVariable(\"XNU_SHOT_DIR\", \"$run/shots\"); System.Environment.SetEnvironmentVariable(\"XNU_ENV_HOUR\", \"12\"); System.Environment.SetEnvironmentVariable(\"XNU_GENERATED_SHADERS\", \"1\"); UnityEditor.SceneManagement.EditorSceneManager.OpenScene(\"Assets/Scenes/Game.unity\");" >/dev/null 2>&1 || die "Szene Game öffnen"
     ucmd editor_play >/dev/null 2>&1 || die "editor_play"
     if ! wait_file "$run/shots/$(last_shot_of "$s").png" "$TIMEOUT"; then
       ucmd editor_stop >/dev/null 2>&1 || true
@@ -166,16 +167,30 @@ do_compare() { # RUN
   [ -d "$BASE/shots" ] || log "Hinweis: keine Baseline ($BASE): alle Bilder gelten als neu (nur Anomalie-Prüfung)"
   [ "$STRICT" = 1 ] && args+=(--strict)
   "$PY" "$HERE/scripts/visual_compare.py" compare --run "$run" --baseline "$BASE" --scenarios "$SCEN" "${args[@]+"${args[@]}"}" || code=$?
-  if [ "$WITH_REF" = 1 ] && [ -f "$REFDIR/assignments.json" ]; then
-    "$PY" "$HERE/scripts/visual_compare.py" ref compare --run "$run" --ref "$REFDIR" || log "Referenzvergleich meldete Fehler"
-  fi
+  ref_compare "$run"
   log "Bericht: $run/report.md"
   log "Kontaktbögen: $run/contact/ (mit dem view-Tool ansehen)"
   return "$code"
 }
 
+# Referenzvergleich je Quelle: ryujinx (Emulator-Screenshots) und/oder recomp (Rekompilation); Ergebnis run/ref_report.md bzw. run/recomp/ref_report.md
+ref_compare() { # RUN
+  local run="$1" src
+  [ "$WITH_REF" = 1 ] || return 0
+  for src in $( [ "$REF_SRC" = both ] && echo "ryujinx recomp" || echo "$REF_SRC" ); do
+    if [ "$src" = recomp ]; then
+      "$PY" "$HERE/scripts/visual_ref.py" import --source recomp >/dev/null 2>&1 || true
+      "$PY" "$HERE/scripts/visual_compare.py" ref compare --run "$run" --source recomp || log "Referenzvergleich recomp meldete Fehler"
+    elif [ -f "$REFDIR/assignments.json" ]; then
+      "$PY" "$HERE/scripts/visual_compare.py" ref compare --run "$run" --ref "$REFDIR" || log "Referenzvergleich ryujinx meldete Fehler"
+    else
+      log "Keine Ryujinx-Referenzen (scripts/ryujinx_fetch_shots.sh fetch)"
+    fi
+  done
+}
+
 cmd="${1:-help}"; shift || true
-MODE=editor; NAME=""; TAG=""; ONLY=""; STRICT=0; NOCAP=0; WITH_REF=0; RUNARG=latest; INTERVAL=10; ONCE=0; FETCH=0
+MODE=editor; NAME=""; TAG=""; ONLY=""; STRICT=0; NOCAP=0; WITH_REF=0; REF_SRC=ryujinx; RUNARG=latest; INTERVAL=10; ONCE=0; FETCH=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode) MODE="$2"; shift 2 ;;
@@ -184,7 +199,7 @@ while [ $# -gt 0 ]; do
     --only) ONLY="$2"; shift 2 ;;
     --strict) STRICT=1; shift ;;
     --no-capture) NOCAP=1; shift ;;
-    --ref) WITH_REF=1; shift ;;
+    --ref) WITH_REF=1; case "${2:-}" in ryujinx|recomp|both) REF_SRC="$2"; shift ;; esac; shift ;;
     --fetch) FETCH=1; shift ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --run) RUNARG="$2"; shift 2 ;;
@@ -238,7 +253,8 @@ case "$cmd" in
   ref)
     [ "$FETCH" = 1 ] && { "$HERE/scripts/ryujinx_fetch_shots.sh" fetch || exit $?; }
     RUN="$(resolve_run "$RUNARG")"
-    "$PY" "$HERE/scripts/visual_compare.py" ref compare --run "$RUN" --ref "$REFDIR"
+    WITH_REF=1
+    ref_compare "$RUN"
     ;;
   scenarios)
     vs validate && vs list
@@ -251,7 +267,7 @@ case "$cmd" in
     echo "Baseline   : $( [ -d "$BASE/shots" ] && echo "$(ls "$BASE/shots" | wc -l | tr -d ' ') Bilder ($(sed -n 's/.*"accepted_at": *"\(.*\)".*/\1/p' "$BASE/baseline.json" 2>/dev/null))" || echo "keine (visual_auto.sh accept nach der ersten Sichtung)")"
     echo "Letzter Lauf: $(latest_run || true)"
     echo "Referenzen : $( [ -f "$REFDIR/assignments.json" ] && ls "$REFDIR/views" 2>/dev/null | wc -l | tr -d ' ' || echo 0) Ansicht(en)"
-    echo "Aufnahmecode: $( [ -f "$CAPTURE_CS" ] && echo "übernommen" || echo "noch nicht in unity/ (Phase B, work/visual/phaseB/)")"
+    echo "Aufnahmecode: $( have_capture && echo "im Projekt $PROJ vorhanden" || echo "noch nicht in $PROJ (Phase B, work/visual/phaseB/)")"
     ;;
   help|*)
     awk 'NR > 1 && /^set -u/ {exit} NR > 1 {sub(/^# ?/, ""); print}' "$0"

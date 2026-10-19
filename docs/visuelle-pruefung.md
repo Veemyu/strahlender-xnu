@@ -8,17 +8,17 @@ scripts/visual_auto.sh run            # Aufnahme -> Vergleich mit der Baseline -
 
 Bilder, Berichte und Referenzen liegen nur unter `work/` (gitignoriert); im Repo stehen Skripte, Szenarioliste, Routen und diese Beschreibung. Kein Ton: nichts spielt etwas ab (Tests und Skripte nur mit synthetischen Bildern).
 
-**Stand der Lieferung (ehrlich):** Vergleich, Anomalie-Detektor, Berichte, Kontaktbögen, Szenarioliste, Orchestrierung, Referenzimport und Tasten-Spieler sind fertig und getestet (Python-Tests, Trockenläufe, echter F8-Test auf dem Ryzen). Der **Aufnahmecode im Unity-Editor** (`Xnu.Visual.Capture`) liegt fertig und gegen die Unity-DLLs übersetzungsgeprüft unter `work/visual/phaseB/`, ist aber **noch nicht in `unity/Assets`** (der Haupteditor gehörte bis ca. 15:30 einem anderen Agenten); Übernahme siehe Abschnitt 7. Bis dahin geht `visual_auto.sh run` mit Exit-Code 4, `compare`/`accept`/`ref` funktionieren auf vorhandenen Bildern.
+**Stand der Lieferung (ehrlich, 15:30):** Vergleich, Anomalie-Detektor, Berichte, Kontaktbögen, Szenarioliste, Orchestrierung, Referenzimport (Ryujinx und Rekompilation) und Tasten-Spieler sind fertig und getestet (Python-Tests, Trockenläufe, echter F8-Test auf dem Ryzen). Der **Aufnahmecode im Unity-Editor** (`Xnu.Visual.Capture`) läuft im **Labor-Editor** (`work/unity-shader-lab`, Kopie unter `Assets/XnuSrc/Visual/Editor/`): `XNU_UNITY_PROJECT=$PWD/work/unity-shader-lab scripts/visual_auto.sh run …` nahm 11 Feldszenarien in 30 s auf (Zonen 24, 27, 422, 425, 54, 367, 167, 168), verglich und schrieb Berichte und Referenzvergleiche. Die Quelle bleibt `work/visual/phaseB/`; in `unity/Assets` kommt sie erst nach Freigabe (Abschnitt 7). Bis dahin endet `visual_auto.sh run` im Haupteditor mit Exit-Code 4.
 
 ## 1. Befehle
 
 | Befehl | Wirkung |
 |---|---|
 | `scripts/visual_auto.sh run [--quick] [--only a,b] [--mode editor\|player\|ipad] [--strict] [--ref]` | Aufnahme, Vergleich, Bericht `work/visual/auto/run-<Zeit>/report.md`. `--quick`: nur Szenarien mit Tag `quick` (4 Feldbilder, ca. 1–2 Minuten). Exit 0 = keine Regression, 1 = Regression, 2 = Fehler, 4 = Aufnahmecode fehlt |
-| `scripts/visual_auto.sh compare [--run LAUF\|latest] [--ref]` | nur Vergleich eines vorhandenen Laufs |
+| `scripts/visual_auto.sh compare [--run LAUF\|latest] [--ref [ryujinx\|recomp\|both]]` | nur Vergleich eines vorhandenen Laufs; `--ref` ergänzt den Referenzvergleich (Ryujinx-F8-Bilder, Rekompilation, beide) |
 | `scripts/visual_auto.sh accept [LAUF]` | Lauf als **neue Baseline** übernehmen (`work/visual/auto/baseline/`, alte nach `baseline.alt/`). **Erst nach Sichtung** der Kontaktbögen durch den Hauptagenten/Nutzer |
 | `scripts/visual_auto.sh watch [--interval MIN] [--once]` | alle N Minuten (Standard 10) laufen, wenn sich `unity/Assets/Scripts/{Field,Render}` oder `scripts/shader_*` geändert haben |
-| `scripts/visual_auto.sh ref [--fetch] [--run LAUF]` | Ryujinx-Referenzen holen und gegen den Lauf vergleichen (Abschnitt 8) |
+| `scripts/visual_auto.sh ref [--fetch] [--run LAUF] [--ref ryujinx\|recomp\|both]` | Referenzen holen (`--fetch`, Ryujinx) und gegen den Lauf vergleichen (Abschnitt 8); Labor-Editor: `XNU_UNITY_PROJECT=$PWD/work/unity-shader-lab` vor `run` |
 | `scripts/visual_auto.sh scenarios \| test \| status` | Szenarioliste prüfen, Python-Tests, Zustand |
 | `python3 scripts/visual_compare.py analyze BILD… [--kind field\|room\|ui]` | nur Anomalie-Detektor für einzelne Bilder |
 | `scripts/ryujinx_fetch_shots.sh [fetch\|status\|cache\|reset]` | F8-Screenshots vom Ryzen holen (Abschnitt 8) |
@@ -118,12 +118,13 @@ Auf diesen Stand umgestellt: Szenarien `field_z24_h12|h18`, `field_z27_h12`, `ga
 
 ## 7. Übernahme des Aufnahmecodes (Phase B)
 
-Erst wenn der Haupteditor frei ist (`scripts/visual_auto.sh status`, `scripts/unity_safe.sh status`; keine Tests und kein Spielmodus laufen):
+Erst nach Freigabe durch den Hauptagenten (der Haupteditor gehört zurzeit `ap-field-render`; `scripts/visual_auto.sh status`, `scripts/unity_safe.sh status`; keine Tests und kein Spielmodus laufen):
 
+0. **Erprobt im Labor-Editor (15:12–15:25):** `Capture.cs` und `Xnu.Visual.Editor.asmdef` nach `work/unity-shader-lab/Assets/XnuSrc/Visual/Editor/` kopiert, `recompile` (0 Fehler), Menü `Xnu/Field/Create FieldTest2 Scene` (die Lab-Szene gab es noch nicht), dann `unity command … eval 'Xnu.Visual.Capture.CaptureAll("<Liste>", "<Ausgabe>");'` (**das Semikolon am Ende ist Pflicht**, sonst „; expected“). Ergebnis: 8 Szenarien in 30 s, 11 in ca. 40 s (je Bild 50–75 ms Aufnahme, der Rest ist Zonenwechsel), `capture.json` mit `state: fertig`. Danach lief `visual_auto.sh run --name lab-full --only … --ref both` im Labor-Editor von der Aufnahme bis zum Bericht ohne Handarbeit (`XNU_UNITY_PROJECT` zeigt auf das Labor).
 1. `work/visual/phaseB/Capture.cs` nach `unity/Assets/Scripts/Visual/Editor/Capture.cs`, `Xnu.Visual.Editor.asmdef` daneben kopieren (Referenzen `Xnu.Field`, `Xnu.Field.Editor`, `Xnu.Core`; Editor-only). Unity legt die `.meta`-Dateien an.
-2. Übersetzen lassen (`unity command … recompile`), Konsole auf Fehler prüfen. Die Datei ist vorher mit `dotnet build work/visual/phaseB/check` gegen die Unity-DLLs und die vorhandenen `Xnu.*`-Assemblies übersetzt worden (0 Fehler); im Editor selbst noch **nicht** ausgeführt.
+2. Übersetzen lassen (`unity command … recompile`), Konsole auf Fehler prüfen (Labor: 0 Fehler).
 3. `scripts/visual_auto.sh run --quick`: erste Aufnahme (4 Bilder), Bericht und Kontaktbögen ansehen.
-4. `scripts/visual_auto.sh run`: alles inklusive Spielszene-Folgen; nach der Sichtung `accept`.
+4. `scripts/visual_auto.sh run`: alles inklusive Spielszene-Folgen (im Labor nicht erprobt: dort gibt es keine Szene `Game`); nach der Sichtung `accept`.
 
 Funktionsweise von `Xnu.Visual.Capture.CaptureAll(scenariosPath, outDir)`: liest die exportierte Liste (`visual_scenarios.py export-field`), öffnet `FieldTest2`, setzt `XNU_GAMEDATA`, `XNU_GENERATED_SHADERS=1`, `XNU_ENV_HOUR` und geht in den Spielmodus (Zustand in `SessionState`, überlebt den Domain-Reload). Je Szenario: Stunde setzen, `FieldController.BeginSwitchZone(zone, locator)`, auf Ende der Überblendung warten, bei Zellenangabe `Mover.Teleport` + `ForceStream`, `settle_frames` Bilder warten, `FieldShot.Capture` (RenderTexture, Alpha 255). Schreibt `<outDir>/shots/<name>.png` und `capture.json` (`state` laeuft/fertig/fehler, Zeiten, Zeile je Bild mit Status und Zonenzustand). Ein ungespeicherter Zustand einer anderen Szene führt zum Abbruch statt zu einem Dialog; Menü `Xnu/Visual/Capture All` liest `work/visual/auto/current-job.json`.
 
@@ -176,6 +177,15 @@ Schwellen (`ref_map.json`, `gates`) binden nur mit `--gate` (Exit 1); Unity und 
 | unsere genutzten Varianten (`used_final.json`) | – | **120** (119 übersetzbar) |
 
 Verhältnisse 10,2 (guest) bzw. 23,6 (Host) je genutzter Variante; sie sind **nicht 1:1 vergleichbar**: der Cache zählt Programme je Stufenkombination und Pipeline-/Spezialisierungszustand, wir zählen Shader × Schlüsselwortvariante. Brauchbar ist die Größenordnung (ein Shader-Variantenraum von ~120 gegenüber ~1.200 Gast-Programmen: wir decken die Materialvarianten ab, nicht die Zustandsvarianten) und die Veränderung über die Zeit (der Cache wächst während des Spielens; ca. 3.500 im Vollausbau laut Nutzer).
+
+### 8.5 Rekompilation als zweite Referenzquelle (Phase C, `--ref recomp`)
+
+Die rekompilierte Original-Engine (Mac-Metal-Runtime, Ryzen-Vulkan) ist die zweite Referenz neben Ryujinx: sie rechnet den Originalcode ohne Emulator. Quellen: `work/recomp/shots/*.png` (Mac) und `work/visual/recomp/*.png` (Ryzen). `python3 scripts/visual_ref.py import --source recomp` ordnet **nur per Name** zu (Ansichtsname als Präfix, `aliases` in `ref_map.json`, Präfix `free_`; die vielen `frame_NNNNN.png` werden übergangen, `--all-free` führt sie als `free_…`) und schreibt normalisierte Bilder nach `work/visual/ref/recomp/views/`; geänderte Dateien werden erneut importiert. Aliase: `gate2_titel*` → `ref_00_titel`, `gate2_sprachauswahl*` → `ref_00b_sprachauswahl`. Wer ein Rekompilationsbild für eine Ansicht liefert, nennt es `ref_01_feld_weiter_metal.png` (oder trägt einen Alias ein).
+
+* **Unity gegen Rekompilation:** `visual_compare.py ref compare --run LAUF --source recomp` (auch `visual_auto.sh run --ref recomp`, `--ref both` für beide Quellen); Bericht `LAUF/recomp/ref_report.md`, Kontaktbögen `LAUF/recomp/contact/`.
+* **Rekompilation gegen Ryujinx:** `visual_ref.py refs` (Standard `--a recomp --b ryujinx`): gleiche Ansichten beider Quellen, Ryujinx ist die Referenz. Bericht `work/visual/ref/recomp_vs_ryujinx/ref_report.md`. Damit lassen sich Fehler der Rekompilation von Emulator-Eigenheiten trennen.
+* Erster Wert: Sprachauswahl (`ref_00b_sprachauswahl`, Rekompilation Metal 1920×1080 auf 1280×720 skaliert gegen Ryujinx 1280×720): **SSIM 0,999, mittlere Abweichung 0,1** – die Rekompilation gibt diesen Bildschirm praktisch pixelgleich wieder.
+* Das Titelbild der Rekompilation (`gate2_titel_metal.png`) hat einen **dunkelgrünen Hintergrund** (Mittel 33/88/37) und rote Beschriftung „Drücke den A-Knopf“. Ein Ryujinx-Titelbild zum Gegenprüfen fehlt noch: bitte im Spiel zum Titel zurückgehen und F8 drücken (Name `ref_00_titel….png`), dann sagt `refs`, ob Farbe und Beschriftung stimmen.
 
 ## 9. Tasten-Spieler für Ryujinx (`scripts/ryzen_keys.py`)
 
@@ -230,8 +240,76 @@ scripts/ryujinx_record.sh tuer_innenraum         # Tür -> Innenraum, 1 Referenz
 
 ## 10. Bekannte Grenzen und nächste Schritte
 
-* Aufnahmecode im Editor ist **nicht** in `unity/` und nicht im Editor ausgeführt (Übersetzungsprüfung gegen die Unity-DLLs bestanden). `player` und `ipad` sind nur geschrieben, nicht ausgeführt; sie liefern nur Spielszene-Folgen, keine Feldszenarien.
+* Aufnahmecode im Editor: im **Labor-Editor** erprobt, **nicht** in `unity/` (Abschnitt 7). `player` und `ipad` sind nur geschrieben, nicht ausgeführt; sie liefern nur Spielszene-Folgen, keine Feldszenarien. Die Spielszene-Folgen (`game_*`) sind weder im Labor noch im Haupteditor gelaufen.
 * Die Spielszene-Folgen nutzen den Spielstand-Import der Szene `Game` (Quelle Ryujinx-Ordner im Repo); ohne ihn bleibt `game_feld_z24` aus und der Lauf meldet die Aufnahme als fehlend.
 * Zone 54, 27 und 168 laufen mit Locator 0 (Zellen unbekannt); Zone 24 an Zelle 57/729 stammt aus dem Spielstand (6.1), die Blickrichtung ist Annahme. Der Spielkern liest die Position noch aus `TownMapLocation` (6.1): `game_feld_z24` zeigt deshalb vorerst den Locator (58, 723) statt (57, 729), bis `SavedPosition.Read` angepasst ist.
 * Detektor: gestreckte Texturen, Diagonalband und weiße Figur ohne Referenz nicht erkennbar (Abschnitt 4); Ryujinx-Referenz und Differenzbild decken sie ab.
 * Ryujinx-Spieluhr und Zeitzone sind Annahmen; Referenz-Zeitpunkt `ref_04` ist nicht exakt reproduzierbar (Tresenposition).
+
+## 11. Erste Referenzvergleiche (Stand 15:30, Labor-Editor gegen Ryujinx)
+
+Grundlage: zwei echte Ryujinx-Bilder des Nutzers in Mio-Stadt/Fleetburg (`14-47-54` = `ref_01_feld_weiter`, Spielstunde ≈ 12,4; `15-03-21` = `ref_05_vor_pokecenter`, ≈ 12,7) und Aufnahmen des Labor-Editors (`work/visual/auto/run-lab-z24`, `run-lab-full`, Stunden aus den Referenzen). Der Lauf `lab1` (Zelle 57/729) und `lab-cells` (12 Kandidatenzellen) gehören dazu. Die Bilder der Spielszene `Game` (UI, Menü, Kampf) gibt es noch ohne Referenz; zu **UI/Menü** gibt es deshalb noch keinen Befund (`ref_02_menue` fehlt).
+
+### 11.1 Position: gespeicherte Zelle ≠ Unity-Zelle (neuer Befund)
+
+Mit den zwölf Kandidatenzellen um (57, 729) (`lab-cells`, SSIM nach Histogramm-Angleichung, Restversatz nach Kreuzkorrelation):
+
+| Unity-Zelle | SSIM angeglichen | Restversatz (x, y) px |
+|---|---|---|
+| **(58, 729)** | **0,414** | **(8, −24)** |
+| (57, 729) | 0,408 | (−68, −24) |
+| (59, 730) | 0,406 | (92, 24) |
+| (57, 730) | 0,406 | (−60, 24) |
+| (58, 728) | 0,355 | (0, −84) |
+| (56, 729) | 0,346 | (−100, −20) |
+
+Das Referenzbild gehört zur Unity-Zelle **(58, 729)** (Restversatz 8 px waagerecht), nicht zur gespeicherten Zelle (57, 729): Spielstand-Zelle und Unity-Zelle unterscheiden sich um **+1 in x** (und etwa +0,4 Zellen in y, dort ist der Versatz von 24 px unabhängig von der Zelle, also eher Kamera). **[A]** Erklärung: die Originalwelt hat Zellmitten bei halben Zahlen (Weltposition −(gx + 1) bzw. gy + 0,5), `FieldCoords` rechnet mit ganzen Zahlen; sicher ist nur der Bildabgleich an diesem einen Bild. `field_z24_h12|h18` nutzen deshalb (58, 729). Für den Spielkern (`SavedPosition`) heißt das: gespeicherte Zelle (57, 729) → Spawn bei Unity-Zelle (58, 729) prüfen, sobald ein zweites Referenzbild mit bekannter Zelle vorliegt.
+
+### 11.2 `ref_01_feld_weiter` ↔ `field_z24_h12` (Unity-Zelle 58/729, Stunde 12,4)
+
+| Kennzahl | Wert |
+|---|---|
+| SSIM roh / nach Histogramm-Angleichung | **0,449 / 0,416** |
+| mittlere Abweichung roh → angeglichen | 32,8 → 25,1 |
+| Detail-Verhältnis (Laplace Unity/Referenz) | **×1,37** (Unity schärfer/unruhiger) |
+| Farbstich R/G/B (helligkeitsbereinigt) | 0,98 / 1,00 / 1,05 (leicht bläulich) |
+| Helligkeit Unity/Referenz | **×0,83** (Unity 17 % dunkler) |
+| schlechte Zellen (> 28) | 17 von 62; schlechteste A2 (86), A3 (86), A4 (69) |
+
+Mittelwerte nach Farbmasken (Bild bei Zelle 57/729, Referenz → Unity):
+
+| Fläche | Referenz RGB | Unity RGB |
+|---|---|---|
+| Pflaster (grau-violett) | 141 / 137 / 161 | 118 / 117 / 138 (**−16 %**) |
+| Baumgrün | 50 / 106 / 32 | 57 / 111 / 40 (heller, gelbstichiger) |
+| blaues Dach | 57 / 120 / 185 | 58 / 116 / 166 (weniger blau, dunkler) |
+| Wasser | 55 / 119 / 186 | 59 / 117 / 168 |
+| gesamt | 106 / 120 / 118 | 88 / 103 / 111 |
+| Pixel mit Luma > 200 | 1,8 % | **0,1 %** |
+| Luma-Streuung | 42,9 | **33,3** |
+
+Befunde (nach Kontaktbogen `contact/ref_01.png` und Kennzahlen):
+
+* **Helligkeit/Kontrast:** Unity ist insgesamt etwa 17 % dunkler, vor allem Pflaster und Hauswände (Hauswand beim blauen Haus: Referenz weißgrau, Unity dunkles Blaugrau, die Differenz-Heatmap leuchtet dort). Es fehlen helle Spitzen (1,8 % → 0,1 % der Pixel über Luma 200) und damit Kontrast (Streuung 33 statt 43): das Original hat vermutlich Bloom/Tonwert-Nachbearbeitung und hellere Umgebungsbeleuchtung der senkrechten Flächen. Das zieht auch die Detail-Kennzahl hoch (Unity ×1,37 schärfer: die Referenz ist weicher/geglättet, wahrscheinlich Kantenglättung/Bloom).
+* **Farbe:** insgesamt gut getroffen (Stich unter 6 %); Dachblau etwas matter, Baumgrün gelbstichiger und heller, Schatten in Unity bläulicher (29/47/35 gegen 25/49/24 in der Referenz).
+* **Spielerfigur:** im Labor **farbig** (rotes Käppi, dunkles Oberteil), Pose und Größe wie im Original; nur die Kleidung ist dunkler als in der Referenz (gleiches Beleuchtungsthema). Der NPC mit braunen Haaren steht wie in der Referenz neben dem Spieler (kleine Abweichung der Position, Animation).
+* **Wasser:** Unity zeigt am linken Rand ein Hafenbecken mit blauem, funkelndem Wasser; im Referenzbild liegen dort oben links ein **hölzerner Hafenkran/Steg** (dunkles Metall, Holz) und darunter türkises Wasser. **Der Kran fehlt in Unity** (Zellen A2–A4 sind mit MAD 69–86 die schlechtesten). Wasserpixel per Farbmaske: Referenz 55/119/186, Unity 59/117/168 (Unity weniger blau und dunkler; die Masken erfassen verschiedene Bildstellen, Wert nur als Hinweis).
+* **Schatten:** Richtung und Form der Hausschatten stimmen; in Unity sind Schattenflächen etwas dunkler und kälter.
+* **UI/Menü:** nicht verglichen (kein Referenzbild).
+
+### 11.3 `ref_05_vor_pokecenter` ↔ `field_z24_vor_pc` (nicht aussagekräftig)
+
+SSIM 0,37 / 0,31 (angeglichen), 56 von 64 Zellen schlecht: das Referenzbild zeigt einen **anderen Ort** als die geschätzte Unity-Zelle (54, 722): links eine Tannenwand, rechts ein **orangebraunes Gebäude mit weißen Dachrinnen und Poké-Ball-Zeichen** (kein rotes Pokécenter wie in Unity), davor ein Schild mit Poké-Ball; Unity zeigt dort Wasser links und das rote Pokécenter. Es ist vermutlich ein anderes Gebäude (Beschriftung/Form ähnlich einem Markt) an anderer Stelle der Stadt; die Zelle ist unbekannt. Bis die Zelle bekannt ist, taugt das Bild nur zur Ansicht. Für eine Suche der Zelle reicht `lab-cells`-artiges Rastern (12 Zellen = 35 s; ein Raster 40×50 Zellen mit Schritt 3 etwa 10 Minuten).
+
+### 11.4 Rekompilation (Phase C)
+
+* Sprachauswahl Mac-Metal ↔ Ryujinx: **SSIM 0,999**, mittlere Abweichung 0,1: praktisch pixelgleich (Abschnitt 8.5).
+* Titelbild Mac-Metal: grüner Hintergrund und rote Beschriftung; Gegenstück aus Ryujinx fehlt (Bitte um ein F8 am Titelbild).
+* Weitere Ansichten (Stadt, Menü) gibt es in der Rekompilation noch nicht.
+
+### 11.5 Was daraus für Unity folgt (Reihenfolge nach Gewicht)
+
+1. **Gesamthelligkeit und Kontrast** (−17 %, fehlende Lichter): Umgebungslicht/Boden-Aufhellung der senkrechten Flächen und Nachbearbeitung (Bloom, Tonwert) prüfen; größter Hebel auf allen Stadtbildern.
+2. **Fehlende Objekte** (Hafenkran/Steg in Zone 24): Containerzuordnung/Streaming (`Blöcke 4`) oder Kategorien, die der Karten-Aufbau auslässt.
+3. **Koordinatenversatz** Spielstand ↔ Unity-Zelle (11.1).
+4. Wasserfarbe (Referenz blauer/türkiser); Baumgrün weniger gelb.

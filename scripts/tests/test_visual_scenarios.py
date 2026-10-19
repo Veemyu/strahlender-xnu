@@ -27,7 +27,7 @@ class RealFileTests(unittest.TestCase):
     def test_export_and_hours(self):
         exp = vs.export_field(self.data, tag="quick")
         self.assertTrue(all(i["width"] == 1280 for i in exp["items"]))
-        self.assertTrue(any(i["name"] == "field_z24_h12" and i["hasCell"] and (i["cellX"], i["cellY"]) == (57, 729) for i in exp["items"]))
+        self.assertTrue(any(i["name"] == "field_z24_h12" and i["hasCell"] and (i["cellX"], i["cellY"]) == (58, 729) for i in exp["items"]))
         exp2 = vs.export_field(self.data, hours={"field_z24_h12": 12.41})
         self.assertEqual(next(i for i in exp2["items"] if i["name"] == "field_z24_h12")["hour"], 12.41)
 

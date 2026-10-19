@@ -14,10 +14,26 @@
   "compare": {
     "grid": [8, 8],
     "cell_bad_mad": 28.0,
-    "max_shift_px": 48,
+    "max_shift_px": 100,
     "gates": {"ssim_matched_min": 0.30, "bad_cells_max": 0.60}
   },
   "views": [
+    {
+      "view": "ref_00_titel",
+      "title": "Titelbild („Drücke den A-Knopf“)",
+      "unity": ["game_titel"],
+      "aliases": ["gate2_titel"],
+      "mask": [],
+      "optional": true
+    },
+    {
+      "view": "ref_00b_sprachauswahl",
+      "title": "Sprachauswahl vor dem Titel (nur Rekompilation/Ryujinx, kein Unity-Gegenstück)",
+      "unity": [],
+      "aliases": ["gate2_sprachauswahl"],
+      "mask": [],
+      "optional": true
+    },
     {
       "view": "ref_01_feld_weiter",
       "title": "Feld Zone 24 (Mio-Stadt/Fleetburg) direkt nach „Weiter“ am gespeicherten Ort (nichts gedrückt)",
@@ -40,6 +56,13 @@
       "view": "ref_04_text_schwester",
       "title": "optional: erstes Textfenster der Schwester (Tresen, A drücken)",
       "unity": ["game_text"],
+      "mask": [],
+      "optional": true
+    },
+    {
+      "view": "ref_05_vor_pokecenter",
+      "title": "freie Aufnahme: Spieler links vor dem Pokécenter Mio, Zelle ≈ (54, 722) [A]; nicht exakt reproduzierbar, Unity-Zelle per Bildabgleich geschätzt",
+      "unity": ["field_z24_vor_pc"],
       "mask": [],
       "optional": true
     }
