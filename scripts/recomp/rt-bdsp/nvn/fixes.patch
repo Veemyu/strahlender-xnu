@@ -78,3 +78,29 @@ Korrekturen an renderer.m (nach las-nvn.patch angewandt; prepare.sh):
          widescreen_set_factor((float)shape);
          {   // (diagnostics) log output scale / drawable changes
              static double psx, psy, pdw, pdh;
+--- a/nvn/renderer.m
++++ b/nvn/renderer.m
+@@ -1854,11 +1854,11 @@
+     // depth / stencil
+     static uint64_t last_dsk;
+     static id<MTLDepthStencilState> last_dss;
+-    uint64_t dsk = hmix(hmix(hmix(0xcbf29ce484222325ull, st.ds, 8), st.stencil_mask, sizeof st.stencil_mask), st.stencil_vmask, sizeof st.stencil_vmask);
++    uint64_t dsk = hmix(hmix(hmix(hmix(0xcbf29ce484222325ull, st.ds, 8), &(char){st.rt.depth != NULL}, 1), st.stencil_mask, sizeof st.stencil_mask), st.stencil_vmask, sizeof st.stencil_vmask);
+     id<MTLDepthStencilState> dss = dsk == last_dsk ? last_dss : nil;
+     NSString *dk = nil;
+     if (!dss) {
+-        dk = [NSString stringWithFormat:@"ds %02x%02x%02x%02x%02x%02x%02x%02x %x %x %x %x", st.ds[0], st.ds[1], st.ds[2], st.ds[3],
++        dk = [NSString stringWithFormat:@"ds%d %02x%02x%02x%02x%02x%02x%02x%02x %x %x %x %x", st.rt.depth != NULL, st.ds[0], st.ds[1], st.ds[2], st.ds[3],
+                     st.ds[4], st.ds[5], st.ds[6], st.ds[7], st.stencil_mask[0], st.stencil_vmask[0], st.stencil_mask[1], st.stencil_vmask[1]];
+         dss = cache[dk];
+     }
+@@ -1866,7 +1866,8 @@
+         MTLDepthStencilDescriptor *dd = [MTLDepthStencilDescriptor new];
+         static int nodt = -1;
+         if (nodt < 0) nodt = getenv("LARECOMP_NO_DEPTH_TEST") != NULL;
+-        if (st.ds[0] && !nodt) { dd.depthCompareFunction = compare_fn(st.ds[2]); dd.depthWriteEnabled = st.ds[1] != 0; }
++        // no depth target bound: the GPU skips the depth test (Metal would test against nothing and drop everything)
++        if (st.ds[0] && !nodt && st.rt.depth) { dd.depthCompareFunction = compare_fn(st.ds[2]); dd.depthWriteEnabled = st.ds[1] != 0; }
+         else { dd.depthCompareFunction = MTLCompareFunctionAlways; dd.depthWriteEnabled = NO; }
+         if (st.ds[3]) {
+             uint32_t ops = st.ds[5] | st.ds[6] << 8 | st.ds[7] << 16;
