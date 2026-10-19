@@ -570,6 +570,11 @@ stage_assets() {
   else echo "  Hinweis: $WORK/masterdata fehlt (Stufe masterdata); Feld-/Datenmodule finden keine Stammdaten."; fi
   # Materialexporte (scripts/material_export.py) für den Shader-Umbau; optional, ohne sie nutzt der Player Ersatzmaterial.
   if [ -d "$WORK/materials" ]; then mkdir -p "$stg/materials"; clone_tree "$WORK/materials" "$stg/materials"; fi
+  # Charaktermodelle (Spielfigur, NPCs): Materialexporte aus work/materials_all (nur Characters__*, 8 MB; Pokémon/Effekte bleiben draußen)
+  if ls "$WORK"/materials_all/Characters__*.json >/dev/null 2>&1; then
+    mkdir -p "$stg/materials"
+    for f in "$WORK"/materials_all/Characters__*.json; do cp -c "$f" "$stg/materials/" 2>/dev/null || cp "$f" "$stg/materials/"; done
+  fi
   rm -rf "$dest"; mkdir -p "$(dirname "$dest")"; mv "$stg" "$dest"
   n="$(sp tree-size --path "$dest")"
   log "assets: ${n% *} Dateien, $(human "${n#* }") in $dest (gitignoriert; Unity kopiert sie beim Build ein zweites Mal ins Paket)"
@@ -611,6 +616,12 @@ stage_stubs() {
   QUIET_FAIL=1 logrun stubs-conflicts python3 "$ROOT/scripts/stub_gen.py" conflicts \
     --manifest "$dest/manifest.json" --scripts "$ROOT/unity/Assets/Scripts" \
     || echo "  Warnung: gleiche Typnamen in handgeschriebenem Code und Stubs (Log: $WORK/logs/stubs-conflicts.log)"
+  # Schalter XNU_STUBS: csc.rsp (gitignoriert) aktiviert nur für Assembly-CSharp die Hooks unter Assets/Scripts/DprHooks.
+  # Ohne Stubs (kein Dump) gibt es die Datei nicht, und das Projekt baut ohne Original-Prefabs.
+  case "$dest" in
+    "$ROOT/unity/Assets"/*)
+      if [ "$DRY" -eq 0 ]; then printf -- '-define:XNU_STUBS\n' > "$ROOT/unity/Assets/csc.rsp"; else echo "    [dry-run] würde unity/Assets/csc.rsp mit -define:XNU_STUBS schreiben"; fi ;;
+  esac
   if [ "$DRY" -eq 0 ]; then
     n="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["script_classes"])' "$WORK/stubs/report.json")"
   fi
@@ -684,6 +695,11 @@ EOF
   fi
   [ "$DRY" -eq 1 ] || [ -d "$ROOT/unity/Assets/StreamingAssets/GameData" ] || [ -n "${ASSETS_DEST:-}" ] \
     || echo "  Hinweis: Assets/StreamingAssets/GameData fehlt (Stufe assets): der Player enthält keine Spieldaten."
+  # Schalter XNU_STUBS konsistent halten: csc.rsp nur mit erzeugten Stubs, sonst bricht die Hook-Kompilierung ohne Stubs.
+  if [ "$DRY" -eq 0 ] && [ -f "$ROOT/unity/Assets/csc.rsp" ] && [ ! -f "$ROOT/unity/Assets/XnuStubs/manifest.json" ]; then
+    echo "  Hinweis: csc.rsp (XNU_STUBS) ohne Stubs: entfernt, der Build läuft ohne Original-Prefabs."
+    rm -f "$ROOT/unity/Assets/csc.rsp" "$ROOT/unity/Assets/csc.rsp.meta"
+  fi
   stage_cached unity-build "${outs[@]}" && return 0
   want_target macos && unity_build_one macos
   want_target ios && unity_build_one ios

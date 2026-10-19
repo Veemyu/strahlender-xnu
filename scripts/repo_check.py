@@ -21,9 +21,9 @@ FORBIDDEN_SUFFIXES = (
 
 # Pfadbestandteile, die lokale Daten markieren.
 FORBIDDEN_PARTS = (
-    "nsp/", "Ryujinx/", "work/", "tools/", "research/",
+    "nsp/", "Ryujinx/", "Ryujinx_", "work/", "tools/", "research/", "cache/shaders/",
     "StreamingAssets/AssetAssistant", "GameData/",
-    "unity/Library/", "unity/Temp/",
+    "unity/Library/", "unity/Temp/", "unity/Assets/_Recovery/", "unity/Assets/XnuStubs/", "unity/Assets/XnuGenerated/",
 )
 
 # Dateinamen mit Schlüssel-Charakter (unabhängig vom Ordner).
