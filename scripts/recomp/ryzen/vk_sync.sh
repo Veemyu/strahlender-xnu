@@ -1,6 +1,6 @@
 #!/bin/bash
 # Mac → Ryzen für den Vulkan-Pfad (idempotent, rsync). Überträgt den Arbeitsstand, der für den Bau von rt-bdsp mit NVN_BACKEND=vulkan nötig ist:
-#   scripts/recomp (einschließlich rt-bdsp, anders als sync.sh), shader_translator (ohne build/tests), research/LASRecomp/runtime,
+#   scripts/recomp (einschließlich rt-bdsp und scripts/recomp/upstream, anders als sync.sh), shader_translator (ohne build/tests),
 #   work/recomp/img_gfx (Speicherbilder aus den eigenen NSOs, auf dem Mac mit mkimages.sh erzeugt; hat der Ryzen die NSOs, geht auch dort mkimages.sh)
 # Aufruf: vk_sync.sh [--daten]
 #   --daten   zusätzlich main.npdm und das RomFS (work/romfs) des eigenen Dumps auf den Ryzen (nur nach ~/xnu-recomp/work, nie ins Repo);
@@ -20,11 +20,10 @@ done
 big=$(find scripts/recomp shader_translator -type f -size +2M -not -path '*/build/*' | head -3)
 [ -z "$big" ] || rz_die "Unerwartet große Dateien (kein Spielinhalt übertragen!): $big"
 rz_require
-rz_ssh "mkdir -p ~/$RZ_DIR/scripts ~/$RZ_DIR/shader_translator ~/$RZ_DIR/research/LASRecomp/runtime ~/$RZ_DIR/work/recomp"
+rz_ssh "mkdir -p ~/$RZ_DIR/scripts ~/$RZ_DIR/shader_translator ~/$RZ_DIR/work/recomp"
 EXCL=(--exclude='__pycache__' --exclude='*.o' --exclude='*.nso' --exclude='*.img' --exclude='*.keys')
 rsync -a --delete "${EXCL[@]}" scripts/recomp/ "$RZ_HOST:$RZ_DIR/scripts/recomp/"
 rsync -a --delete --exclude=build --exclude=tests --exclude='__pycache__' shader_translator/ "$RZ_HOST:$RZ_DIR/shader_translator/"
-rsync -a --delete research/LASRecomp/runtime/ "$RZ_HOST:$RZ_DIR/research/LASRecomp/runtime/"
 if [ -d work/recomp/img_gfx ]; then
   rz_ssh "mkdir -p ~/$RZ_DIR/work/recomp/img_gfx"
   rsync -a --delete work/recomp/img_gfx/ "$RZ_HOST:$RZ_DIR/work/recomp/img_gfx/"

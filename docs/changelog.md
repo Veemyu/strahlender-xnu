@@ -4,6 +4,11 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 ## 2026-10-19
 
+- **Alles vendort:** `scripts/recomp/upstream/runtime/` ist eine unveränderte Kopie der vollständigen Laufzeit des Klons (einschließlich `nvn/`, `nvn/vulkan/`, `hle/`, `services/`, `platform/`, `ui/`), `scripts/recomp/upstream/generator/` die des Werkzeugordners (einschließlich `rando/`). Beide byte-identisch mit `09f8e5e`. Nicht übernommen: `third_party/` des Originals (eigene Lizenzen, Nintendo-Ausschluss), `fonts/`, Klon-Metadaten.
+- **Eine NVN-Quelle:** Die Doppelkopie `scripts/recomp/rt-bdsp/nvn/upstream/` ist entfernt. `nvn/prepare.sh` und `nvn/vulkan/prepare_vk.sh` kopieren aus `scripts/recomp/upstream/runtime/`.
+- **Ryzen und Diff-Werkzeuge:** Pfade auf `scripts/recomp/upstream/` umgestellt; `sync.sh` und `vk_sync.sh` übertragen den Klon-Ordner nicht mehr, weil `scripts/recomp` ihn enthält.
+- **Klon nicht mehr nötig:** `research/` wird vom Build nicht mehr gelesen. Geprüft: Mac-Laufzeit, iPad-Build, NVN-Vorbereitung für Metal und Vulkan, 370 Tests, `repo_check`.
+
 - **Klon nicht mehr nötig:** Generator-Werkzeuge (`gen.py`, `lifter.py`, `analyze.py`, `nso.py`, `patches.py`, `simd_c.py`) unverändert unter `scripts/recomp/upstream/generator/`. Die Pfade in `eh_gen.py`, `mkimg.py`, `build_stages.py`, `recomp_build.sh` und den Tests zeigen dorthin. Der Ordner heißt bewusst nicht `tools/`, weil `repo_check.py` jeden Pfad mit `tools/` ablehnt. Nicht übernommen: Randomizer (`tools/rando/`).
 - **Test- und Build-Pfade:** Die Test-Skripte (`scripts/recomp/test/`, `rt-bdsp/test/`) nutzen `scripts/recomp/upstream/runtime`. Nicht umgestellt: `scripts/recomp/diff/`, `scripts/recomp/ryzen/` und `run_boot_probe_las.sh`. Sie brauchen weiterhin die volle LASRecomp-Laufzeit (Dienste, Plattform) aus dem Klon.
 

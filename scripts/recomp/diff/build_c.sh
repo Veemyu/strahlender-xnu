@@ -18,8 +18,7 @@ case "${1:-}" in
   c)
     name=$2; shift 2
     inc=""; [ -n "${OVERLAY:-}" ] && inc="-I $OVERLAY"
-    $CC "$@" -fno-strict-aliasing -fvisibility=default -shared -fPIC -w $LINK $inc -I research/LASRecomp/runtime -I scripts/recomp/c_exact -I scripts/recomp/diff \
-      scripts/recomp/diff/ctest.c "${LIFTED:-$D/lifted.c}" -lm -o "$D/lib_$name.so"
+    $CC "$@" -fno-strict-aliasing -fvisibility=default -shared -fPIC -w $LINK $inc     -I scripts/recomp/upstream/runtime -I scripts/recomp/c_exact -I scripts/recomp/diff \      scripts/recomp/diff/ctest.c "${LIFTED:-$D/lifted.c}" -lm -o "$D/lib_$name.so"
     ;;
   *) echo "Aufruf: build_c.sh base | c <name> [Flags]"; exit 2;;
 esac

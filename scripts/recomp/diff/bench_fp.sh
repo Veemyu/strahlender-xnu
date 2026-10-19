@@ -8,7 +8,7 @@ S=work/recomp/diff/bench
 mkdir -p $S
 echo '{}' > $S/empty.json
 T=scripts/recomp/test
-LAS=research/LASRecomp
+LAS=scripts/recomp/upstream
 run() { # Name, Gast-Flags, native Flags, C-Flags des Rekompilats
   local name=$1 gf=$2 nf=$3 cf=$4 D=$S/$1
   mkdir -p $D/gen && rm -f $D/gen/*

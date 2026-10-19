@@ -15,7 +15,7 @@ if [ "$mode" = m1 ]; then
   for c in "${CFG[@]}"; do set -- $c; ./$D/exh_m1 -1 $1 $2 >> $D/exh_m1.txt; done
 else
   flags=$2; jobs=${3:-4}
-  clang $flags -w -I research/LASRecomp/runtime -I $D scripts/recomp/diff/exh.c -lm -o $D/exh_c
+  clang $flags -w -I scripts/recomp/upstream/runtime -I $D scripts/recomp/diff/exh.c -lm -o $D/exh_c
   rm -f $D/exh_c.part.*
   for c in "${CFG[@]}"; do set -- $c; for k in $(seq 0 43); do echo "$k $1 $2"; done; done \
     | xargs -P "$jobs" -L 1 bash -c './'$D'/exh_c $0 $1 $2 >> '$D'/exh_c.part.$$' 

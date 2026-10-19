@@ -9,7 +9,7 @@ Die Laufzeit in diesem Ordner folgt dem Entwurf von LASRecomp und enthält **Tei
 | Stand | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (einziger Commit des Klons) |
 | Urheber | Peiikai |
 | Lizenz | MIT, „Copyright (c) 2026 Peiikai“. Lizenztext unverändert in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Nicht übernommen | UI, Randomizer, `third_party/`, Spiel-Hooks (`runtime/hle/*`); der Renderer (NVN/Metal) ab Gate 2 doch, siehe Abschnitt „NVN-Schicht“ am Ende |
+| Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten (`.git`, Makefile, README, `docs/`). Laufzeit und Generator sind vollständig vendort (`scripts/recomp/upstream/`), siehe „Woher was stammt“ und „NVN-Schicht“ |
 
 Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus. Davon ist hier nichts enthalten. Der Nutzer des Repositories hat die Nutzung und Weiterentwicklung ausdrücklich freigegeben.
 
@@ -23,19 +23,18 @@ Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus. D
 | `services_fs.c` | `romfs_build.c`, `services/fs.c` | Aufbau des RomFS-Abbilds (Kopf 0x50, Daten ab 0x200, Tabellen danach), IFileSystem/IFile/IDirectory-Befehlssatz; neu: virtuelles Abbild ohne 5-GB-Datei |
 | `dispatch.c`, `loader.c`, `main.c` | `dispatch.c`, `loader.c`, `main.c` | Idee des Verteilers mit Cache und HLE-Slots, Start über `nn::init::Start`; neu: vier Tabellen, Wiedereinstieg, Überwachung |
 
-Der Generator (`../eh_gen.py`) nutzt die vendorten Werkzeuge in `scripts/recomp/upstream/generator/` (`gen.py`, `lifter.py`, `analyze.py`, `nso.py`, `patches.py`, `simd_c.py`; unverändert, Lizenz `scripts/recomp/upstream/LICENSE`). Nicht übernommen: der Randomizer-Anteil (`tools/rando/`), den `gen.py` nur optional lädt. `patches.py` enthält spielspezifische Hooks.
+Der Generator (`../eh_gen.py`) nutzt die vendorten Werkzeuge in `scripts/recomp/upstream/generator/` (gen.py, lifter.py, analyze.py, nso.py, patches.py, simd_c.py; vollständiger Stand von `tools/`, ohne `__pycache__`, Lizenz `scripts/recomp/upstream/LICENSE`). `patches.py` enthält spielspezifische Hooks.
 
 ## NVN-Schicht (Gate 2, `nvn/`)
 
-Anders als der Rest dieses Ordners **übernimmt** die Grafikschicht Quelltext des Klons, mit ausdrücklicher Freigabe des Nutzers und unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Lizenztext in [`nvn/upstream/LICENSE`](nvn/upstream/LICENSE)). Die Dateien liegen **unverändert** in `nvn/upstream/` (Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`, byte-identisch mit dem Klon). `nvn/prepare.sh` kopiert sie nach `work/recomp/nvn-src` und wendet die Patches `nvn/las-nvn.patch` und `fixes.patch` an; Änderungen stehen nur in den Patches, nicht in den vendorten Dateien.
-
-| Übernommen (zur Bauzeit, mit Patch) | Nicht übernommen |
+Anders als der Rest dieses Ordners **übernimmt** die Grafikschicht Quelltext des Klons, mit ausdrücklicher Freigabe des Nutzers und unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Lizenztext in [`../upstream/LICENSE`](../upstream/LICENSE)). Die Dateien liegen **unverändert** in `scripts/recomp/upstream/runtime/` (Quelle für Metal und Vulkan, Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`, byte-identisch mit dem Klon). `nvn/prepare.sh` kopiert sie nach `work/recomp/nvn-src` und wendet die Patches `nvn/las-nvn.patch` und `fixes.patch` an; Änderungen stehen nur in den Patches, nicht in den vendorten Dateien.
+| Übernommen (unverändert, mit Patch zur Bauzeit) | Nicht übernommen |
 |---|---|
-| `objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `tegra.h`, `astc.c`, `astc.h`, `nvn.h`, `renderer.m`, `renderer.h`, `metal.m`, `output_scale.h` | Vulkan-Teil (`vulkan/`), `texpatch.c` (Textur-Änderungen für ein bestimmtes Spiel), `output_scale.c`, `smaa_data.c`, alle `runtime/hle/*` (Spiel-Hooks), `ui/` (Menü), Randomizer, `third_party/` |
+| alles unter `scripts/recomp/upstream/runtime/` (Metal, Vulkan, `hle/`, `services/`, `platform/`, `ui/`) und `scripts/recomp/upstream/generator/` (inkl. `rando/`) | `third_party/` des Originals, `fonts/`, Klon-Metadaten |
 | `maxwell/translate.c` und `maxwell/shader.h` werden **ersetzt** durch `shader_translator/` (selbst von LASRecomp abgeleitet, siehe `../../../../shader_translator/NOTICE.md`) | |
 
 Eigen sind `nvn/shim/*`, `nvn/nvn_glue.c`, `nvn/build_nvn.sh`, `nvn/prepare.sh` und die Patches (`las-nvn.patch`, `fixes.patch`, `debug.patch`). Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus; davon ist nichts enthalten.
 
 **Filmschicht (`nvn/movie_glue.c`):** in eigener Schreibweise nach `runtime/hle/movie.c` des Klons (Aufbau von `MediaData`, Extractor, Decoder, Ausgabeschlange und Ereignisse als Vorbild; Anpassungen für BDSP: Vtable-Slot 2, direkt importierte Aufrufe, Videospur allein, Schreiben in den Puffer des Spielers). Linkt FFmpeg (LGPL/GPL je nach Bauart, wird nicht mitgeliefert).
 
-**Vulkan-Fassung (Linux/Windows):** übernimmt zusätzlich `runtime/nvn/vulkan/*` des Klons, ebenfalls nur zur Bauzeit und mit eigenem Patch; Einzelheiten, Drittkomponenten und Lizenzen in [`nvn/vulkan/NOTICE.md`](nvn/vulkan/NOTICE.md). (Die Zeile „Vulkan-Teil“ in der Tabelle oben gilt nur für den Metal-Weg.)
+**Vulkan-Fassung (Linux/Windows):** übernimmt zusätzlich `runtime/nvn/vulkan/*` des Klons, ebenfalls nur zur Bauzeit und mit eigenem Patch; Einzelheiten, Drittkomponenten und Lizenzen in [`nvn/vulkan/NOTICE.md`](nvn/vulkan/NOTICE.md).

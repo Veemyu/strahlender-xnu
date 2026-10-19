@@ -1,5 +1,5 @@
 // movie:: (nnMedia des SDK) mit FFmpeg: Android-artige Extractor-/Decoder-Schnittstelle für den Unity-SwitchVideoPlayer.
-// Entwurf und Teile nach research/LASRecomp/runtime/hle/movie.c (MIT, siehe NOTICE.md), für BDSP angepasst:
+// Entwurf und Teile nach scripts/recomp/upstream/runtime/hle/movie.c (MIT, siehe NOTICE.md), für BDSP angepasst:
 //  - Extractor-Aufrufe, die BDSP direkt (nicht über die Vtable) importiert: GetTrackCount, SetDataSource(const char*), GetTrackConfiguration;
 //  - nur die Videospur wird angeboten (kein Ton), Ausgabe NV12 im Puffer (Unity lädt Y und UV selbst);
 //  - Pfade „rom:/…“ liegen im RomFS-Ordner der Laufzeit (g_romfs_dir).

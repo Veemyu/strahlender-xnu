@@ -1,6 +1,6 @@
 // Host-Gleitkommazustand für den portablen c-Modus (docs/recomp-diff.md, Abschnitt 5). Eigener Code.
 //
-// Der c-Modus (research/LASRecomp/runtime/simd.h, MIT) rechnet auf dem Schnellpfad (FPCR = 0) mit der Host-FPU und setzt
+// Der c-Modus (scripts/recomp/upstream/runtime/simd.h, MIT) rechnet auf dem Schnellpfad (FPCR = 0) mit der Host-FPU und setzt
 // voraus: Rundung auf nächste gerade Zahl, Denormale an (kein FTZ/DAZ), alle Ausnahmen maskiert. Treiber, Audio- und
 // Grafikbibliotheken und manche Laufzeiten ändern MXCSR in ihren Threads (typisch FTZ/DAZ); der Test zeigt dann
 // Abweichungen bei Denormalen und Rundung. rt_fp_guest_mode() stellt den Zustand wieder her. Aufrufen: am Anfang jedes

@@ -25,7 +25,7 @@ Stand: 2026-10-19 (Endstand der Aufgabe `ap-recomp-farm`; die Messungen entstand
 ### 2.1 Ablauf
 
 ```
-Mac ── sync.sh (rsync) ──► Ryzen ~/xnu-recomp/{work/exefs, research/LASRecomp, scripts/recomp}
+Mac ── sync.sh (rsync) ──► Ryzen ~/xnu-recomp/{work/exefs, scripts/recomp (mit scripts/recomp/upstream)}
 Mac ── build.sh / run_probe.sh ──► ssh → setsid nohup remote/job.sh <bahn> <job> <skript>
                                           ↳ logs/<job>.log   .rc (Rückgabewert, erst am Ende)   .sec (Wanduhr)   lane-<bahn>.pid/.job
 Mac ── fetch.sh status|holen|log|stop ◄── ssh/rsync (nur Logs und Zahlen)

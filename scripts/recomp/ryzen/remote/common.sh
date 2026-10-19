@@ -2,7 +2,7 @@
 R=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 cd "$R" || exit 1
 export PATH="$HOME/.local/bin:$PATH"
-LAS=research/LASRecomp
+LAS=scripts/recomp/upstream
 W=work/recomp
 JOBS=${JOBS:-10}                    # parallele Compiler (12 Threads, 30 GB RAM)
 TIMEV=(/usr/bin/time -f "%e s wall  %U s user  %S s sys  %M KB maxrss")

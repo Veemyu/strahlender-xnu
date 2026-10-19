@@ -19,8 +19,7 @@ Stand: 2026-10-19, Zwischenstand (wird je Etappe fortgeschrieben). Grundlage: `d
 
 | Datei | Inhalt |
 |---|---|
-| `prepare.sh` | **Kopiert** die LAS-Quellen `research/LASRecomp/runtime/nvn` (MIT, `research/` bleibt unverändert) nach `work/recomp/nvn-src` (nichts davon liegt im Repo), legt die Ersatz-Header aus `shim/` daneben, ersetzt `maxwell/translate.c` und `shader.h` durch `shader_translator/` und wendet `las-nvn.patch` an. Nicht übernommen: Vulkan-Teil, `texpatch.c` (Zelda-Texturtabellen), `output_scale.c`, `smaa_data.c`, alle Spiel-Hooks. |
-| `las-nvn.patch` | unsere Änderungen an den LAS-Quellen (14 Abschnitte, Liste unten) |
+| `prepare.sh` | **Kopiert** die LAS-Quellen `scripts/recomp/upstream/runtime/nvn` (MIT, vendort, unverändert) nach `work/recomp/nvn-src` (nichts davon liegt im Repo), legt die Ersatz-Header aus `shim/` daneben, ersetzt `maxwell/translate.c` und `shader.h` durch `shader_translator/` und wendet `las-nvn.patch` an. Nicht übernommen: Vulkan-Teil, `texpatch.c` (Zelda-Texturtabellen), `output_scale.c`, `smaa_data.c`, alle Spiel-Hooks. || `las-nvn.patch` | unsere Änderungen an den LAS-Quellen (14 Abschnitte, Liste unten) |
 | `shim/` | Ersatz für `rt.h`, `hle.h`, `platform.h`, `kernel.h`, `paths.h`, `settings.h`, `ui/menu.h`, `texpatch.h` des Klons: nur das, was `objects.c`, `cmdbuf.c`, `renderer.m`, `metal.m` brauchen; Adressraum und Heap kommen aus der BDSP-Laufzeit |
 | `nvn_glue.c` | `nvnBootstrapLoader`/`nvnDeviceGetProcAddress` (Funktionstabelle nach Namen), 9 gebundene Importe von `main` (nn::vi 5, nv 3), Hülle des Anwendungsspeichers für den Metal-Puffer, Ausgabegröße, 7 Prüfpunkt-Stummel, wirkungslose Stummel für die Spiel-Hooks des Klons (Breitbild, Zelda-Effekte, Menü, Eingabe, Neustart) |
 | `build_nvn.sh` | baut die Objekte inkrementell (Apple-Clang für Objective-C: der Homebrew-LLVM erzeugt Klassen-Stubs, die der Apple-Linker nicht auflöst); `NVN_KEEP=1` verhindert das Neuanlegen der Kopie (Entwicklung) |

@@ -1,8 +1,7 @@
 #!/bin/bash
 # Mac → Ryzen: überträgt nur die Eingaben des Generators (idempotent, rsync) und prüft danach die Prüfsummen auf dem Ryzen.
 #   - work/exefs/{rtld,main,sdk,subsdk0}      (nur diese vier Dateien; keine Keys/NCA/XCI/NSP/Saves)
-#   - research/LASRecomp                      (ohne .git, third_party, fonts, docs)
-#   - scripts/recomp                          (ohne rt-bdsp = Arbeitsstand von ap-recomp-3, ohne Zwischenstände)
+#   - scripts/recomp                          (enthält scripts/recomp/upstream = vendorte LASRecomp-Teile; ohne rt-bdsp = Arbeitsstand von ap-recomp-3, ohne Zwischenstände)
 # Aufruf: sync.sh [--mit-rt-bdsp] [--ohne-setup]
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
@@ -19,7 +18,7 @@ done
 
 MODS="rtld main sdk subsdk0"
 for m in $MODS; do [ -f "work/exefs/$m" ] || rz_die "work/exefs/$m fehlt. Erst den eigenen Dump entpacken (docs/…), dann sync.sh."; done
-[ -f research/LASRecomp/tools/gen.py ] || rz_die "research/LASRecomp/tools/gen.py fehlt (Klon von LASRecomp nötig)."
+[ -f scripts/recomp/upstream/generator/gen.py ] || rz_die "scripts/recomp/upstream/generator/gen.py fehlt (vendorte LASRecomp-Teile)."
 [ -f scripts/recomp/eh_gen.py ] || rz_die "scripts/recomp/eh_gen.py fehlt."
 # Schutz: in scripts/recomp darf nichts Großes oder Spielartiges liegen
 big=$(find scripts/recomp -type f -size +2M -not -path '*/rt-bdsp/*' | head -3)
@@ -35,9 +34,6 @@ rz_ssh "mkdir -p ~/$RZ_DIR/work/exefs ~/$RZ_DIR/research ~/$RZ_DIR/scripts ~/$RZ
 rz_info "Eingaben (4 Dateien) …"
 rsync -a work/exefs/rtld work/exefs/main work/exefs/sdk work/exefs/subsdk0 "$RZ_HOST:$RZ_DIR/work/exefs/"
 rsync -a "$MAN" "$RZ_HOST:$RZ_DIR/manifest/exefs.sha256"
-rz_info "research/LASRecomp …"
-rsync -a --delete --exclude=.git --exclude=third_party --exclude=fonts --exclude=docs --exclude='__pycache__' \
-  research/LASRecomp/ "$RZ_HOST:$RZ_DIR/research/LASRecomp/"
 rz_info "scripts/recomp …"
 EXCL=(--exclude='__pycache__' --exclude='*.o' --exclude='*.nso' --exclude='*.img' --exclude='*.keys')
 [ "$WITH_BDSP" = 1 ] || EXCL+=(--exclude=rt-bdsp)

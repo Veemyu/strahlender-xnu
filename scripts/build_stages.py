@@ -234,7 +234,7 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
             parts["gen"] = _marker_hash(work, "recomp-gen")
             parts["obj"] = _marker_hash(work, "recomp-obj")
             parts["runtime"] = hash_tree_content(os.path.join(rec, "rt-bdsp"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
-            parts["nvn_las"] = hash_tree_content(os.path.join(rec, "rt-bdsp", "nvn", "upstream", "nvn"), (".c", ".h", ".m"), skip_dirs=("vulkan",))
+            parts["nvn_las"] = hash_tree_content(os.path.join(rec, "upstream", "runtime", "nvn"), (".c", ".h", ".m"), skip_dirs=("vulkan",))
             parts["translator"] = hash_tree_content(os.path.join(root, "shader_translator"), (".c", ".h"), skip_dirs=("build", "__pycache__"))
             parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".in", ".entitlements"), skip_dirs=("__pycache__",))
             parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh")

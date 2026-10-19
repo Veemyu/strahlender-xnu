@@ -2,7 +2,7 @@
 """Testliste des Differenzialtests erzeugen (docs/recomp-diff.md, Abschnitt 2).
 
 Eigener Code. Durchsucht den FP-/SIMD-Kodierungsraum (Bits 27:25 = 111) mit Capstone, bildet je Befehlsform
-("Shape", wie in hist.py) Vertreter, lässt die Vertreter vom c-Modus-Lifter (research/LASRecomp/tools, nur importiert)
+("Shape", wie in hist.py) Vertreter, lässt die Vertreter vom c-Modus-Lifter (scripts/recomp/upstream/generator, nur importiert)
 in C umsetzen und schreibt
   work/recomp/diff/tests.json   Testliste (Befehlswörter, Form, Spielhäufigkeit, Eingabetypen, Fallzahl)
   work/recomp/diff/lifted.c     eine Gastfunktion t_<id>(Cpu *) je Test + Tabelle test_fns[]

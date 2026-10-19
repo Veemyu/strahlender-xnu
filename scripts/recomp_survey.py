@@ -13,7 +13,7 @@ Unterbefehle:
   gensample optional: Stichprobe mit gen.py (Funktionsgenerator): C-Bytes je Instruktion/Funktion
   lifter   optional: LASRecomp-Lifter (nur gelesen, Pfad per --lifter-dir) über den Text laufen
            lassen und zählen, welche Encodings er ablehnt (Unsupported) und wie viel C je
-           Instruktion entsteht. Es wird nichts aus research/ kopiert.
+           Instruktion entsteht. Es wird nichts kopiert.
 
 capstone liegt unter tools/pydeps (pip install --target tools/pydeps capstone).
 Beispiel: python3 scripts/recomp_survey.py hist --module main
@@ -739,7 +739,7 @@ def main():
     p.add_argument("--npdm", default=str(EXEFS / "main.npdm"))
     p.set_defaults(fn=cmd_npdm)
     p = sub.add_parser("lifter")
-    p.add_argument("--lifter-dir", required=True, help="Ordner mit lifter.py (z. B. research/LASRecomp/tools), nur gelesen")
+    p.add_argument("--lifter-dir", required=True, help="Ordner mit lifter.py (z. B. scripts/recomp/upstream/generator), nur gelesen")
     p.add_argument("--module", default="main", choices=MODULES)
     p.add_argument("--simd", default="asm", choices=("asm", "c"))
     p.add_argument("--stride", type=int, default=1, help="nur jedes n-te Wort lifteten (Stichprobe)")

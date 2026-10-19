@@ -1,11 +1,11 @@
 #!/bin/bash
 # Bereitet die NVN-Schicht für den Bau vor. Die Upstream-Quellen (LASRecomp, MIT, Commit 09f8e5e) liegen unverändert im Repo unter
-# nvn/upstream/ (Lizenz dort in LICENSE); sie werden nach work/recomp/nvn-src KOPIERT, die Ersatz-Header aus shim/ daneben gelegt
-# und die Patches angewandt. Nicht übernommen: Vulkan-Teil-imgui_glue.cpp, texpatch.c, output_scale.c, smaa_data.c.
+# scripts/recomp/upstream/runtime/ (Lizenz scripts/recomp/upstream/LICENSE); sie werden nach work/recomp/nvn-src KOPIERT, die Ersatz-Header aus shim/ daneben gelegt
+# und die Patches angewandt. Nicht im Build: Vulkan-Teil, imgui_glue.cpp (Vulkan) und Spiel-Hooks, die die Patches nicht brauchen.
 # Aufruf: prepare.sh      Umgebung: NVN_SRC=work/recomp/nvn-src
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
-SRC=scripts/recomp/rt-bdsp/nvn/upstream
+SRC=scripts/recomp/upstream/runtime
 DST=${NVN_SRC:-work/recomp/nvn-src}
 HERE=scripts/recomp/rt-bdsp/nvn
 rm -rf "$DST"

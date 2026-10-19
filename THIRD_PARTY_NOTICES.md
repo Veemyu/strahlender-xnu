@@ -14,9 +14,10 @@ Dieses Repository enthält eigenen Code und folgende übernommene Teile. Das Rep
 ## LASRecomp, weitere Teile (MIT, Copyright (c) 2026 Peiikai)
 
 - **Wo:** `scripts/recomp/rt-bdsp/` (Entwurf der Laufzeit, teils wörtlich übernommen; Abgleich und Details in `scripts/recomp/rt-bdsp/NOTICE.md`; Lizenztext `scripts/recomp/rt-bdsp/LICENSE-LASRecomp`), `scripts/recomp/rt-bdsp/nvn/movie_glue.c` (nach `runtime/hle/movie.c`).
-- **Header und Generator:** `cpu.h`, `simd.h`, `simd_fp.h` unverändert in `scripts/recomp/upstream/runtime/`; Generator-Werkzeuge `gen.py`, `lifter.py`, `analyze.py`, `nso.py`, `patches.py`, `simd_c.py` unverändert in `scripts/recomp/upstream/generator/` (Lizenz `scripts/recomp/upstream/LICENSE`). Nicht übernommen: Randomizer (`tools/rando/`).
-- **NVN-Grafikschicht (Metal und Vulkan):** liegt unverändert unter `scripts/recomp/rt-bdsp/nvn/upstream/` (Lizenz dort in `LICENSE`, Commit `09f8e5e`); Änderungen nur in den Patches unter `scripts/recomp/rt-bdsp/nvn/`. Details: `scripts/recomp/rt-bdsp/NOTICE.md`, `scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md`.
-- **Nicht übernommen:** UI, Randomizer, `third_party/` des Originals (u. a. imgui, smaa, Schriften, LAS-Randomizer), `texpatch.c`, `output_scale.c`, `smaa_data.c`, `imgui_glue.cpp`, Spiel-Hooks `runtime/hle/*` außer der Filmschicht.
+- **Header und Generator:** `cpu.h`, `simd.h`, `simd_fp.h` unverändert in `scripts/recomp/upstream/runtime/`; Generator-Werkzeuge in `scripts/recomp/upstream/generator/` (Lizenz `scripts/recomp/upstream/LICENSE`).
+- **NVN-Grafikschicht (Metal und Vulkan):** unverändert unter `scripts/recomp/upstream/runtime/` (Lizenz `scripts/recomp/upstream/LICENSE`, Commit `09f8e5e`); Änderungen nur in den Patches unter `scripts/recomp/rt-bdsp/nvn/`. Details: `scripts/recomp/rt-bdsp/NOTICE.md`, `scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md`.
+- **Vollständig vendort:** Laufzeit `runtime/` (einschließlich `hle/`, `services/`, `platform/`, `ui/`, `nvn/`) und Generator `generator/` (einschließlich `rando/`), jeweils unverändert.
+- **Nicht übernommen:** `third_party/` des Originals (eigene Lizenzen, u. a. imgui, smaa, Schriften, LAS-Randomizer; Nintendo-Ausschluss laut Original-LICENSE), `fonts/`, Klon-Metadaten (`.git`, Makefile, README, CONTRIBUTING, `docs/`). Ohne `third_party/` bauen die UI-Teile von `runtime/ui/` nicht; wir bauen sie nicht.
 
 ## Weitere Drittkomponenten (nur Verweis)
 

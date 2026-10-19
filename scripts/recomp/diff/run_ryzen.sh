@@ -17,7 +17,7 @@ case "$SET" in
          "o2_v3_default:-O2 $V3" "o1_x86_off:-O1 -ffp-contract=off");;
   neg)    # Negativkontrolle: Laufzeit ohne FENV_ACCESS-Pragma (OVERLAY), -ffp-contract=fast
     mkdir -p $D/neg
-    for h in cpu.h simd.h simd_fp.h; do sed '/FENV_ACCESS/d' research/LASRecomp/runtime/$h > $D/neg/$h; done
+    for h in cpu.h simd.h simd_fp.h; do sed '/FENV_ACCESS/d' scripts/recomp/upstream/runtime/$h > $D/neg/$h; done
     export OVERLAY=$D/neg
     VAR=("o2_v3_fast:-O2 $V3 -ffp-contract=fast" "o1_v3_fast:-O1 $V3 -ffp-contract=fast");;
   *) VAR=($SET);;
