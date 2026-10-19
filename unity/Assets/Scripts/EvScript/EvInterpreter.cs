@@ -560,6 +560,24 @@ namespace Xnu.EvScript
                     return true;
                 }
 
+                case EvCmdId.CaseCancel:
+                {
+                    // CASE_CANCEL: vergleicht Work 0xF2 mit Work 0xF8 (Abbruchwert) und springt bei Gleichheit [P; Vergleichsart "EQ" ist Annahme]
+                    var x = Vars.GetWork(EvCmdId.WorkItemEventA);
+                    var y = Vars.GetWork(EvCmdId.WorkCaseCancel);
+                    _cmpFlag = x < y ? 0 : x == y ? 1 : 2;
+                    IfJumpCall(true, "EQ", ArgString(a, 1));
+                    return true;
+                }
+                case EvCmdId.CmpWk:
+                {
+                    // CMPWK: beide Argumente werden als Arbeitswert-Index genommen, danach noch einmal nachgeschlagen [P]
+                    Need(a, 2);
+                    var x = Vars.GetWork(ArgValue(a, 1));
+                    var y = Vars.GetWork(ArgValue(a, 2));
+                    _cmpFlag = x < y ? 0 : x == y ? 1 : 2;
+                    return true;
+                }
                 case EvCmdId.LdVal:
                 case EvCmdId.LdWk:
                 case EvCmdId.LdWkVal:

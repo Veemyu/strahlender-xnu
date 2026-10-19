@@ -172,17 +172,22 @@ namespace Xnu.Game
             }
         }
 
-        // Rückkehr nach Niederlage: Ereignis abbrechen, Team heilen (wie im Pokécenter), zur Rücksetzzone (SET_WARP_ID). Das Geld hat BattleSession abgezogen.
+        // Rückkehr nach Niederlage: Ereignis abbrechen, Team heilen (wie im Pokécenter), zur Rücksetzzone. Das Geld hat BattleSession abgezogen.
+        // Original (FieldConnector.ZenmetuProc [P]): Warp-Art "Zenmetsu", Systemflag 2 (Partner) aus, Begleiter weg, Zielzone aus der Tabelle ZenmetuZone
+        // (Pokécenter-Zonen, Gitter 8/6, Ausgang 0), gewählt über PlayerWork.transitionZoneID; SET_WARP_ID setzt sie (ZoneChangeSetZenmetu).
+        // Ohne SET_WARP_ID nehmen wir das zuletzt benutzte Pokécenter (PC_KAIFUKU) [A].
         void Wipeout()
         {
             Wipeouts++;
             if (Interpreter.IsRunning) Interpreter.Abort();
             Session.HealAll();
-            if (Session.WipeoutZone >= 0)
+            Session.Vars.SetSysFlag(2, false);
+            var zone = Session.WipeoutZone >= 0 ? Session.WipeoutZone : Session.World.LastHealZone;
+            if (zone >= 0)
             {
                 Session.BeforeZoneId = Session.ZoneId;
-                Session.ZoneId = Session.WipeoutZone;
-                Field.ChangeZone(Session.WipeoutZone, 0, true);
+                Session.ZoneId = zone;
+                Field.ChangeZone(zone, 0, true);
             }
             State = GameState.Field;
             Add("wipeout");

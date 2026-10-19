@@ -350,12 +350,17 @@ namespace Xnu.Tests
         public void UnknownHostCommandsAreCountedAsGapsAndDoNotBlock()
         {
             var b = new FileBuilder();
-            b.Script("t", C(1234), C(EvCmdId.FlagSet, FL(205)), C(EvCmdId.End));
+            // Eine Host-Kennung ohne Eintrag in der Tabelle suchen (die Zahl der Lücken sinkt mit jeder Scheibe).
+            var gapId = 0;
+            for (var id = 1; id <= EvCmdId.MaxDispatchId && gapId == 0; id++)
+                if (EvCommandTable.Classify(id) == EvCmdKind.Host && !HostCommands.Table.ContainsKey(id)) gapId = id;
+            if (gapId == 0) Assert.Ignore("keine Lücke mehr in der Host-Tabelle");
+            b.Script("t", C(gapId), C(EvCmdId.FlagSet, FL(205)), C(EvCmdId.End));
             var w = NewWorld(b);
             w.Loop.StartEvent("t");
             w.Loop.Tick(1f / 30f, GameInput.None);
             Assert.AreEqual(1, w.Loop.Host.GapCommandCalls);
-            Assert.AreEqual(1, w.Loop.Host.Gaps[1234]);
+            Assert.AreEqual(1, w.Loop.Host.Gaps[gapId]);
             Assert.IsTrue(w.Session.Vars.GetFlag(205));
         }
 

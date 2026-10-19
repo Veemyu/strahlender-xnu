@@ -12,7 +12,7 @@ namespace Xnu.Game
 {
     // Zustand einer Spielsitzung: Spielstand (SaveData), Ereignisvariablen (Work/Flags/Systemflags/Trainer, direkt im Save-Puffer),
     // Beutel, Geld, Team und die Laufzeitwerte, die das Original außerhalb von SaveData hält.
-    public sealed class GameSession
+    public sealed partial class GameSession
     {
         public const int MaxItemCount = 999;
         public const int MaxMoney = 999999;

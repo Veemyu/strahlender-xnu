@@ -29,6 +29,8 @@ namespace Xnu.Game
 
         public IBattleData Battle { get; }
         public MessageBank Messages { get; }
+        // Läden (ShopTable): optional; ohne Tabelle bieten Läden nichts an.
+        public ShopTables Shops { get; set; }
 
         public GameData(IBattleData battle, MessageBank messages, IEnumerable<TrainerRecord> trainers = null,
             IEnumerable<ZoneEncounterRecord> encounters = null, IReadOnlyDictionary<string, int> trainerNames = null,

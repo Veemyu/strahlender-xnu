@@ -3,6 +3,7 @@
 Stand: 2026-10-19. Nur Namen, Zahlen und Struktur; keine Spieltexte, keine Daten, keine echten Saves im Repo. Code: `unity/Assets/Scripts/Game` (Assembly `Xnu.Game`, reines C#, `noEngineReferences`),
 Tests: `unity/Assets/Tests/EditMode/GameFlowTests.cs` und `GameFixture.cs`. Prüfstufen wie in `docs/evscript-spezifikation.md`: **[P]** Handler-Pseudocode gelesen, **[A]** Annahme (Name, Argumentform oder Teilbefund),
 **[N]** nur Name und Aufrufliste, **[O]** Orakel (laufendes Original): **für nichts davon vorhanden**.
+**Fortsetzung und Korrekturen: `docs/spielkern-2.md`** (alle 599 Host-Kennungen belegt; Befehl 523 ist `GET_POKE_COUNT2` = Zahl der Mitglieder ohne Ei, nicht die Teamgröße; Abschnitt 3 dort).
 
 ## 1. Ergebnis in Kürze
 

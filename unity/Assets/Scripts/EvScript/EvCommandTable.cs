@@ -26,7 +26,7 @@ namespace Xnu.EvScript
             EvCmdId.FlagSet, EvCmdId.ArriveFlagSet, EvCmdId.FlagReset, EvCmdId.IfFlagOnJump, EvCmdId.IfFlagOffJump, EvCmdId.IfFlagOnCall,
             EvCmdId.IfFlagOffCall, EvCmdId.FlagSetWk, EvCmdId.TrainerFlagSet, EvCmdId.TrainerFlagReset, EvCmdId.TrainerFlagCheck,
             EvCmdId.IfTrFlagOnJump, EvCmdId.IfTrFlagOffJump, EvCmdId.IfTrFlagOnCall, EvCmdId.IfTrFlagOffCall,
-            EvCmdId.AddWk, EvCmdId.SubWk, EvCmdId.LdVal, EvCmdId.LdWk, EvCmdId.LdWkVal,
+            EvCmdId.AddWk, EvCmdId.SubWk, EvCmdId.CmpWk, EvCmdId.CaseCancel, EvCmdId.LdVal, EvCmdId.LdWk, EvCmdId.LdWkVal,
             EvCmdId.TalkMsg, EvCmdId.TalkClose, EvCmdId.TalkCloseNoClear, EvCmdId.TalkKeyWait, EvCmdId.EasyObjMsg, EvCmdId.EasyMsg, EvCmdId.YesNoWin,
             EvCmdId.ObjAnime, EvCmdId.ObjAnimeWait, EvCmdId.SpEventDataEnd, EvCmdId.SceneChangeLabel, EvCmdId.SceneChangeData,
             EvCmdId.SceneChangeEnd, EvCmdId.FlagChangeLabel, EvCmdId.ObjChangeLabel, EvCmdId.InitChangeLabel,

@@ -36,6 +36,9 @@ namespace Xnu.EvScript
         public const int IfTrFlagOnCall = 56;
         public const int IfTrFlagOffCall = 57;
         public const int AddWk = 58;
+        public const int CmpWk = 19;              // Vergleich zweier Arbeitswerte (setzt _cmp_flag)
+        public const int CaseCancel = 38;         // Makro: Work 0xF2 gegen Work 0xF8, Sprung bei Gleichheit
+        public const int WorkCaseCancel = 0xF8;
         public const int SubWk = 59;
         public const int LdVal = 60;
         public const int LdWk = 61;

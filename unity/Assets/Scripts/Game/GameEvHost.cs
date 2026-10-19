@@ -199,7 +199,15 @@ namespace Xnu.Game
                 }
                 return true;
             }
+            // Darstellungs- und Wartebefehle erscheinen im Ereignisprotokoll (nur mit Record); die Dauer in Frames (Aufrufe bis zum Ende) trägt der Host nach.
+            var timed = cmd.Kind == HostKind.Field || cmd.Kind == HostKind.Wait;
+            if (call.First && timed) _openEvent = Emit(call, cmd.Name, 0);
             var done = cmd.Run(this, call);
+            if (done && timed && _openEvent != null)
+            {
+                _openEvent.DurationFrames = call.Phase;
+                _openEvent = null;
+            }
             if (done)
             {
                 HandledIds.TryGetValue(call.Id, out var n);

@@ -32,9 +32,12 @@ namespace Xnu.Game
     }
 
     // Tabelle der umgesetzten Host-Befehle (Kennung -> Handler). Alles, was hier fehlt, ist eine Lücke (GameEvHost.Gaps).
-    public static class HostCommands
+    public static partial class HostCommands
     {
         public static readonly Dictionary<int, HostCommand> Table = Build();
+
+        // Erweiterung (Spielkern Scheibe 2): HostCommandsMore.cs trägt weitere Befehle ein; ohne diese Datei bleibt die Methode ohne Wirkung.
+        static partial void InstallMore(Dictionary<int, HostCommand> t);
 
         static Dictionary<int, HostCommand> _t;
 
@@ -88,8 +91,7 @@ namespace Xnu.Game
             Reg(289, "GET_BEFORE_ZONE_ID", A, S, (h, c) => { c.SetWork(1, h.Session.BeforeZoneId); return true; });
             Reg(554, "GET_TIME_ZONE", P, S, (h, c) => { c.SetWork(1, h.Session.PeriodOfDay); return true; });
             Reg(522, "GET_POKE_COUNT", P, S, (h, c) => { c.SetWork(1, h.Session.PartyCount); return true; });
-            // 523: nur aus der Pokécenter-Animation erschlossen (Schleife zählt Bälle bis zu diesem Wert) [A]: Anzahl der Teammitglieder.
-            Reg(523, "GET_POKE_COUNT_ANIM", A, S, (h, c) => { c.SetWork(1, h.Session.PartyCount); return true; });
+            // 523 (GET_POKE_COUNT2, zählt Teammitglieder ohne Ei, [P]) steht in HostCommandsMore.cs; Scheibe 1 hatte es als Teamgröße angenommen.
             Reg(326, "FIRST_POKE_NO_GET", P, S, (h, c) => { c.SetWork(1, h.Session.DefaultPokeNo); return true; });
             Reg(563, "TEMOTI_POKE_CHK", P, S, (h, c) =>
             {
@@ -226,6 +228,7 @@ namespace Xnu.Game
             Mute(128, "PLAYER_FIELD_DEMO_BGM_PLAY"); Mute(130, "CTRL_BGM_FLAG_RESET"); Mute(341, "TRAINER_BGM_SET"); Mute(1163, "PLAY_EMO_SE");
             Mute(1198, "RESET_SAVEBGM"); Mute(1117, "PLAY_FUREAI_VOICE_NAKAYOSHIRANK");
 
+            InstallMore(_t);
             return _t;
         }
 

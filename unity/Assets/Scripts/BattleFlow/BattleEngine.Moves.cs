@@ -47,6 +47,19 @@ namespace Xnu.Battle.Flow
             HitPercent = (uint)rec.Accuracy,
         };
 
+        // Schadenswert wie BattleSimulator.CalcDamage der Gegner-KI: fester Zufallsfaktor 85, kein Volltreffer, ohne Abwehr-Handler (Delegator, Fähigkeiten
+        // außerhalb der Wirkungs-ID); 0 bei Statusattacken und Typ-Immunität. Verändert weder Kampf noch Zufallsfolge.
+        internal int EstimateDamageForAi(BattleMon att, BattleMon foe, int moveNo)
+        {
+            var rec = Data.GetMove(moveNo);
+            if (rec == null || rec.DamageType == 0 || (rec.Power == 0 && rec.MoveNo != StruggleNo)) return 0;
+            int aff = TypeAffinity.CalcPair(rec.Type, foe.Poke.Type1, foe.Poke.Type2, foe.Poke.TypeEx, Setup.Inverse);
+            if (aff == AffinityId.Zero) return 0;
+            var input = Launcher.BuildDamageInput(att.Poke, foe.Poke, MakeMoveInfo(rec), false, aff, Weather.Weather, att.PokeSick == Sick.Burn);
+            input.FixedRoll = true;
+            return DamageCalculator.Calc(input, Random).Damage;
+        }
+
         // Ersatzdaten fuer Verzweifler, falls die Stammdaten ihn nicht enthalten (Normal, physisch, 50, Rueckstoss 1/4 der Max-KP).
         MoveRecord StruggleRecord() => Data.GetMove(StruggleNo) ?? new MoveRecord { MoveNo = StruggleNo, IsValid = true, Type = 18, DamageType = 1, Power = 50, Accuracy = 0, BasePp = 1, Target = 0 };
 

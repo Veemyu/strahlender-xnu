@@ -5,7 +5,7 @@ Stand: 2026-10-19. Nur Namen, Zahlen und Struktur; keine Spieltexte, keine Daten
 
 **Die Story-Reihenfolge der ersten Strecke ist nicht bestätigt.** Stellen, die davon abhängen, sind mit **[A]** (Annahme) markiert.
 
-Fortsetzung: Der konkrete Host für die Host-Befehle, die Spielschleife und der Echtdatenlauf bis zum ersten Kampf stehen in `docs/spielkern-1.md` (Assembly `Xnu.Game`).
+Fortsetzung: Der konkrete Host für die Host-Befehle, die Spielschleife und der Echtdatenlauf bis zum ersten Kampf stehen in `docs/spielkern-1.md` (Assembly `Xnu.Game`); alle 599 Host-Kennungen, `CMPWK` (19) und `CASE_CANCEL` (38) als **Kernbefehle** (jetzt 63 statt 61), der Pokécenter-Ablauf und der Story-Lauf in `docs/spielkern-2.md`.
 
 ## 1. Ergebnis in Kürze
 
@@ -86,6 +86,8 @@ Argumente ab 1 gezählt. `v` = `val` (Work/Float), `W` = Ziel-Work (roh), `L` = 
 | 32, 34 | IFVAL_JUMP, IFWK_JUMP | 3 096 | [P] | `v1, "EQ…", v2, L` |
 | 33, 35 | IFVAL_CALL, IFWK_CALL | 1 532 | [P] | wie oben, mit Aufruf |
 | 36, 37 | SWITCH, CASE_JUMP | 966 | [P] | SWITCH merkt Work-Index; CASE_JUMP `v, L`: springt, wenn `Work[merk] == v` |
+| 19 | CMPWK | 1 | [P] | `_cmp_flag` aus `Work[v1]` gegen `Work[v2]` (beide Argumente werden als Work-Index genommen und noch einmal nachgeschlagen); 0 kleiner, 1 gleich, 2 größer (Scheibe 2) |
+| 38 | CASE_CANCEL | 1 | [P], Art [A] | Makro: `Work[0xF2]` gegen `Work[0xF8]`, bei Gleichheit Sprung auf `L` (Vergleichsart „EQ“ angenommen; Scheibe 2) |
 | 30, 31 | IF_JUMP, IF_CALL | 1 | [P] | `"EQ…", L` gegen `_cmp_flag` |
 | 60, 61, 62 | LDVAL, LDWK, LDWKVAL | 2 958 | [P] | `W = v` |
 | 58, 59 | ADD_WK, SUB_WK | 173 | [P] | `Work[a] = Work[a] ± v(b)` |

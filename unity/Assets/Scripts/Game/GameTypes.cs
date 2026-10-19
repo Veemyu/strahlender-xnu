@@ -23,6 +23,8 @@ namespace Xnu.Game
         public int Replacement;
         // Startwahl (FIRST_POKE_SELECT_PROC): Index 0..2 der drei Starter, -1 = keine Wahl.
         public int StarterChoice;
+        // Texteingabe (Namenseingabe, NAMEIN_*): null = nichts eingegeben, "" = leer bestätigt.
+        public string Text;
 
         public static GameInput None => new GameInput { Replacement = -1, StarterChoice = -1 };
         public static GameInput Press() => new GameInput { Confirm = true, Replacement = -1, StarterChoice = -1 };
