@@ -303,6 +303,8 @@ Format (Dump und TypeTree stimmen überein): `EvData { List<Script> Scripts; Lis
 
 ## 15. Texte (nur Zahlen)
 
+Hinweis: Die Label-Zahlen unten schließen Auffüll-Einträge ein (je Sprache 4.261 leere Labels, `common_msbt` 9.940); echte Labels: 38.296 je Sprache, 46.500 in `common_msbt`. Format, Tags und Leser (`Xnu.Text`): `docs/lokalisierung.md`.
+
 Alle Sprachen haben dieselbe Struktur: 119 Textdateien mit insgesamt 42 557 Labels (außer `common_msbt`: 90 Dateien, 56 440 Labels).
 Wortzahl je Sprache: Englisch 71 411, Deutsch 75 508, Französisch 76 495, Italienisch 76 727, Spanisch 74 546,
 Japanisch 79 900 (Kanji 79 880), Koreanisch 81 549, Vereinfachtes Chinesisch 77 970, Traditionelles Chinesisch 81 633;
