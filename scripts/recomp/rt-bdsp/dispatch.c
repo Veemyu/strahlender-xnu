@@ -19,7 +19,7 @@ volatile int g_fnprof;
 
 // ---- HLE-Slots: Scheinadressen HLE_BASE + 16 * i
 #define MAX_HLE 4096
-static struct { char *name; HostFn fn; uint64_t calls; } hle_slots[MAX_HLE];
+static struct { char *name; HostFn fn; uint64_t calls, ncall; } hle_slots[MAX_HLE];
 static int hle_count;
 static pthread_mutex_t hle_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -61,7 +61,35 @@ void gate_report(FILE *f) {
 #define RING 4096
 static __thread uint64_t ring_fn[RING], ring_lr[RING];
 static __thread unsigned ring_pos;
-void fnprof_hit(uint64_t a, uint64_t lr, uint64_t x0) { (void)x0; ring_fn[ring_pos & (RING - 1)] = a; ring_lr[ring_pos & (RING - 1)] = lr; ring_pos++; }
+static struct { uint64_t tid; uint64_t *fn, *lr; unsigned *pos; } ring_reg[128];
+static int ring_nreg;
+void fnprof_hit(uint64_t a, uint64_t lr, uint64_t x0) {
+    (void)x0;
+    static __thread int registered;
+    if (!registered) {
+        registered = 1;
+        KThread *kt = kernel_current_thread();
+        int i = __atomic_fetch_add(&ring_nreg, 1, __ATOMIC_SEQ_CST);
+        if (i < 128) { ring_reg[i].tid = kt ? kt->id : 0; ring_reg[i].fn = ring_fn; ring_reg[i].lr = ring_lr; ring_reg[i].pos = &ring_pos; }
+    }
+    ring_fn[ring_pos & (RING - 1)] = a; ring_lr[ring_pos & (RING - 1)] = lr; ring_pos++;
+}
+// BDSP_RINGDUMP=n (mit BDSP_FNPROF=1): die letzten n Funktionseintritte der Threads mit mehr als 50 Eintritten im Ergebnisprotokoll
+void fnprof_report(FILE *f, unsigned n) {
+    for (int i = 0; i < ring_nreg && i < 128; i++) {
+        unsigned pos = *ring_reg[i].pos;
+        if (pos < 50) continue;
+        fprintf(f, "Thread %llu: %u Funktionseintritte, die letzten %u (älteste zuerst, Aufrufer):\n", (unsigned long long)ring_reg[i].tid, pos, n);
+        for (unsigned k = n; k-- > 0;) {
+            if (pos < k + 1) continue;
+            unsigned j = (pos - 1 - k) & (RING - 1);
+            uint64_t off = 0, off2 = 0;
+            const char *s = loader_symbol_at(ring_reg[i].fn[j], &off);
+            fprintf(f, "  %llx %s+%llx (lr %llx)\n", (unsigned long long)ring_reg[i].fn[j], s ? s : "", (unsigned long long)off, (unsigned long long)ring_reg[i].lr[j]);
+            (void)off2;
+        }
+    }
+}
 
 void dispatch_init(void) {
     tables[0] = (FnTable){main_fn_addrs, main_fn_ptrs, main_fn_count, main_fn_addrs[0], main_fn_addrs[main_fn_count - 1]};
@@ -92,7 +120,27 @@ static __thread int t_hle_slot = -1;
 int hle_current_slot(void) { return t_hle_slot; }  // Slot des gerade laufenden HLE-Aufrufs (nur gültig in der Host-Funktion)
 const char *hle_slot_name(int i) { return i >= 0 && i < hle_count ? hle_slots[i].name : "?"; }
 
+// Importe ohne Host-Umsetzung, die der Gast aufgerufen hat (Name, Aufrufzahl): die fehlenden NVN-Funktionen von Gate 2
+int hle_unimpl_report(FILE *f) {
+    int n = 0;
+    for (int i = 0; i < hle_count; i++)
+        if (!hle_slots[i].fn && hle_slots[i].calls) { fprintf(f, "  fehlt: %s: %llu Aufrufe\n", hle_slots[i].name, (unsigned long long)hle_slots[i].calls); n++; }
+    return n;
+}
+
 static void hle_unimplemented(Cpu *c) { c->x[0] = 0; }
+
+// Aufrufzahlen aller Host-Funktionen (Name, Anzahl), absteigend; BDSP_NVN_STATS=1 gibt sie im Ergebnisprotokoll aus
+void hle_stats_report(FILE *f) {
+    int *idx = malloc(sizeof(int) * hle_count), n = 0;
+    for (int i = 0; i < hle_count; i++) if (hle_slots[i].ncall) idx[n++] = i;
+    for (int a = 0; a < n; a++)
+        for (int b = a + 1; b < n; b++)
+            if (hle_slots[idx[b]].ncall > hle_slots[idx[a]].ncall) { int t = idx[a]; idx[a] = idx[b]; idx[b] = t; }
+    fprintf(f, "Host-Funktionen (HLE) aufgerufen: %d verschiedene\n", n);
+    for (int a = 0; a < n; a++) fprintf(f, "  %8llu  %s\n", (unsigned long long)hle_slots[idx[a]].ncall, hle_slots[idx[a]].name);
+    free(idx);
+}
 
 static GuestFn dispatch_slow(Cpu *c) {
     uint64_t pc = c->pc;
@@ -100,6 +148,14 @@ static GuestFn dispatch_slow(Cpu *c) {
         int i = (int)((pc - HLE_BASE) / 16);
         if (i < hle_count) {
             t_hle_slot = i;
+            __atomic_add_fetch(&hle_slots[i].ncall, 1, __ATOMIC_RELAXED);
+            static int trace = -1;   // BDSP_TRACE_HLE=<n>: die ersten n Aufrufe der Host-Funktionen mit Thread und Argumenten protokollieren (nvnDeviceGetProcAddress ausgenommen)
+            if (trace < 0) trace = getenv("BDSP_TRACE_HLE") ? atoi(getenv("BDSP_TRACE_HLE")) : 0;
+            if (trace > 0 && strcmp(hle_slots[i].name, "nvnDeviceGetProcAddress") && __atomic_fetch_sub(&trace, 1, __ATOMIC_RELAXED) > 0) {
+                KThread *kt = kernel_current_thread();
+                LOG("[hle] T%llu %s(%llx, %llx, %llx, %llx) lr=%llx\n", (unsigned long long)(kt ? kt->id : 0), hle_slots[i].name, (unsigned long long)c->x[0],
+                    (unsigned long long)c->x[1], (unsigned long long)c->x[2], (unsigned long long)c->x[3], (unsigned long long)c->x[30]);
+            }
             if (hle_slots[i].fn) return hle_slots[i].fn;
             if (hle_slots[i].calls++ < 3)
                 LOG("[hle] nicht umgesetzter Import %s (x0=%llx x1=%llx lr=%llx) -> 0\n", hle_slots[i].name, (unsigned long long)c->x[0],

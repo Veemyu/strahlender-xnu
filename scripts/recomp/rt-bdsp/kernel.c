@@ -119,6 +119,8 @@ static Region regions[2048];
 static int nregions;
 static uint64_t heap_size;
 static uint64_t phys_mapped, phys_peak;  // per MapPhysicalMemory abgebildete Bytes (aktuell, Spitze)
+static uint64_t phys_lo, phys_hi;        // Hüllbereich aller MapPhysicalMemory-Abbildungen (für den Metal-Puffer der NVN-Schicht)
+void kernel_phys_range(uint64_t *lo, uint64_t *hi) { *lo = phys_lo; *hi = phys_hi; }
 static pthread_mutex_t g_rlock = PTHREAD_MUTEX_INITIALIZER;
 uint64_t kernel_heap_size(void) { return heap_size; }
 
@@ -317,17 +319,33 @@ static uint32_t svc_arbitrate_unlock(uint64_t addr) {
 static uint32_t svc_wait_process_wide_key(uint64_t mutex, uint64_t key, uint32_t tag, int64_t timeout) {
     pthread_mutex_lock(&g_klock);
     KThread *t = t_cur;
+    // Der Schlüssel muss gesetzt sein, bevor der Mutex frei wird: Signal/Broadcast des SDK lesen ihn ohne Kernelsperre und rufen die SVC nur bei != 0
+    // auf; wer den Mutex als Nächster nimmt, darf sonst ein Signal verlieren (verlorener Weckruf, Unity-Semaphoren)
+    __atomic_store_n(u32p(key), 1, __ATOMIC_SEQ_CST);
     mutex_release(mutex);
     t->wait_kind = WAIT_CONDVAR; t->wait_addr = key; t->wait_mutex = mutex; t->wait_tag = tag;
-    __atomic_store_n(u32p(key), 1, __ATOMIC_SEQ_CST);
     uint32_t r = block_current(timeout);
     if (r != R_OK) {
-        if (!mutex_acquire_or_mark(mutex, tag)) { t->wait_kind = WAIT_MUTEX; t->wait_addr = mutex; block_current(-1); }
+        // Zeitablauf/Abbruch: der Kernel nimmt den Mutex NICHT zurück (der SDK-Code sperrt ihn selbst erneut; sonst Selbstverklemmung).
+        bool any = false;
+        for (KThread *w = g_waitlist; w; w = w->wnext)
+            if (w->wait_kind == WAIT_CONDVAR && w->wait_addr == key) any = true;
+        if (!any) __atomic_store_n(u32p(key), 0, __ATOMIC_SEQ_CST);
     }
     pthread_mutex_unlock(&g_klock);
     return r;
 }
-static void svc_signal_process_wide_key(uint64_t key, int32_t count) {
+// Mitschrift der Synchronisations-SVCs (BDSP_TRACE_SYNC=1): letzte Ereignisse je Lauf, Ausgabe im Ergebnisprotokoll
+static struct { uint64_t tid, a, b, c; uint32_t svc; } sync_ring[4096];
+static uint32_t sync_pos;
+static int sync_trace = -1;
+static void sync_note(uint32_t svc, uint64_t a, uint64_t b, uint64_t c) {
+    if (sync_trace < 0) sync_trace = getenv("BDSP_TRACE_SYNC") != NULL;
+    if (!sync_trace) return;
+    uint32_t i = __atomic_fetch_add(&sync_pos, 1, __ATOMIC_RELAXED) & 4095;
+    sync_ring[i].tid = t_cur ? t_cur->id : 0; sync_ring[i].svc = svc; sync_ring[i].a = a; sync_ring[i].b = b; sync_ring[i].c = c;
+}
+static int svc_signal_process_wide_key(uint64_t key, int32_t count) {
     pthread_mutex_lock(&g_klock);
     int woken = 0;
     bool any_left = false;
@@ -347,6 +365,7 @@ static void svc_signal_process_wide_key(uint64_t key, int32_t count) {
         if (t->wait_kind == WAIT_CONDVAR && t->wait_addr == key) any_left = true;
     if (!any_left) __atomic_store_n(u32p(key), 0, __ATOMIC_SEQ_CST);
     pthread_mutex_unlock(&g_klock);
+    return woken;
 }
 
 // ------------------------------------------------------------------ Address-Arbiter
@@ -642,10 +661,10 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         pthread_mutex_unlock(&g_klock);
         break;
     }
-    case 0x1A: x[0] = svc_arbitrate_lock((uint32_t)x[0], x[1], (uint32_t)x[2]); break;
-    case 0x1B: x[0] = svc_arbitrate_unlock(x[0]); break;
-    case 0x1C: x[0] = svc_wait_process_wide_key(x[0], x[1], (uint32_t)x[2], (int64_t)x[3]); break;
-    case 0x1D: svc_signal_process_wide_key(x[0], (int32_t)x[1]); x[0] = R_OK; break;
+    case 0x1A: sync_note(0x1A, x[1], x[0], x[2]); x[0] = svc_arbitrate_lock((uint32_t)x[0], x[1], (uint32_t)x[2]); break;
+    case 0x1B: sync_note(0x1B, x[0], 0, 0); x[0] = svc_arbitrate_unlock(x[0]); break;
+    case 0x1C: sync_note(0x1C, x[0], x[1], x[3]); x[0] = svc_wait_process_wide_key(x[0], x[1], (uint32_t)x[2], (int64_t)x[3]); break;
+    case 0x1D: { uint64_t k = x[0]; int w = svc_signal_process_wide_key(x[0], (int32_t)x[1]); sync_note(0x1D, k, x[1], (uint64_t)w); x[0] = R_OK; break; }
     case 0x1E: x[0] = rt_ticks(); break;
     case 0x1F: {  // ConnectToNamedPort(_, name)
         uint32_t h = ipc_connect_named_port(G2HC(x[1]));
@@ -720,6 +739,8 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x2A: case 0x2B: case 0x5F: x[0] = R_OK; break;  // Cache-Wartung: nichts zu tun
     case 0x2C:  // MapPhysicalMemory(addr, size): die Seiten des Fensters sind frisch (null) und werden erst beim Zugriff belegt
         kernel_region_add(x[0], x[1], 0x7, 3);
+        if (!phys_lo || x[0] < phys_lo) phys_lo = x[0];
+        if (x[0] + x[1] > phys_hi) phys_hi = x[0] + x[1];
         if ((phys_mapped += x[1]) > phys_peak) phys_peak = phys_mapped;
         x[0] = R_OK;
         break;
@@ -787,6 +808,29 @@ void kernel_report(FILE *f) {
                 (unsigned long long)t->id, (unsigned long long)t->entry, t->finished ? "beendet" : (t->started ? "läuft" : "nicht gestartet"),
                 (unsigned)t->svc_last, svc_name((unsigned)t->svc_last), (unsigned long long)t->svc_calls, (unsigned long long)t->ipc_calls,
                 resident_stack_kib(t), (unsigned long long)(t->host_stack_size >> 10), (unsigned long long)t->cpu.sp);
+        if (getenv("BDSP_BT") && t->svc_calls > 20) {   // Rücksprungadressen aus der Rahmenkette (x29), nur für Threads mit Betrieb
+            uint64_t fp = t->cpu.x[29], off = 0;
+            const char *s0 = loader_symbol_at(t->cpu.x[30], &off);
+            fprintf(f, "      lr %llx %s+%llx\n", (unsigned long long)t->cpu.x[30], s0 ? s0 : "?", (unsigned long long)off);
+            for (int n = 0; n < 16 && fp >= STACK_BASE && fp < STACK_BASE + STACK_SIZE; n++) {
+                uint64_t lr = *G2H64(fp + 8);
+                const char *s = loader_symbol_at(lr, &off);
+                fprintf(f, "      #%d %llx %s+%llx\n", n, (unsigned long long)lr, s ? s : "?", (unsigned long long)off);
+                uint64_t next = *G2H64(fp);
+                if (next <= fp) break;
+                fp = next;
+            }
+        }
     }
     pthread_mutex_unlock(&g_klock);
+    if (sync_trace > 0) {   // letzte 300 Ereignisse (älteste zuerst): 1C = Warten (Mutex, Schlüssel, Zeitgrenze), 1D = Signal (Schlüssel, Anzahl, geweckt)
+        fprintf(f, "Synchronisation, letzte Ereignisse:\n");
+        uint32_t end = sync_pos, lim = (uint32_t)atoi(getenv("BDSP_TRACE_SYNC")), n = end < lim ? end : lim;
+        if (n > 4096) n = 4096;
+        for (uint32_t k = end - n; k < end; k++) {
+            uint32_t i = k & 4095;
+            fprintf(f, "  T%llu %s mutex/key=%llx %llx %lld\n", (unsigned long long)sync_ring[i].tid, sync_ring[i].svc == 0x1C ? "WAIT  " : sync_ring[i].svc == 0x1A ? "LOCK  " : sync_ring[i].svc == 0x1B ? "UNLOCK" : "SIGNAL",
+                    (unsigned long long)sync_ring[i].a, (unsigned long long)sync_ring[i].b, (long long)sync_ring[i].c);
+        }
+    }
 }

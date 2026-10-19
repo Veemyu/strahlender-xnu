@@ -28,7 +28,7 @@ static void *vsync_thread(void *arg) {
     }
     return NULL;
 }
-static uint32_t vsync_handle(void) {
+uint32_t vi_vsync_handle(void) {
     static uint32_t handle;
     if (!g_vsync) {
         uint32_t w;
@@ -93,7 +93,7 @@ static void vi_display_service(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     }
     case 2021: case 2031: case 2101: break;                                   // CloseLayer, DestroyStrayLayer, SetLayerScalingMode
-    case 5202: resp->copy_handles[resp->ncopy++] = vsync_handle(); break;    // GetDisplayVsyncEvent
+    case 5202: resp->copy_handles[resp->ncopy++] = vi_vsync_handle(); break;    // GetDisplayVsyncEvent
     default: UNHANDLED("IApplicationDisplayService");
     }
 }

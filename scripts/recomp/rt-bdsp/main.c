@@ -69,6 +69,10 @@ static void report(const char *why) {
     printf("Gast-Logzeilen: %llu, letzte: %s\n", (unsigned long long)log_lines, last_line[0] ? last_line : "(keine)");
     pthread_mutex_unlock(&log_lock);
     gate_report(stdout);
+    printf("NVN-Funktionen ohne Host-Umsetzung (vom Gast aufgerufen):\n");
+    if (!hle_unimpl_report(stdout)) printf("  (keine)\n");
+    nvn_report(stdout);
+    if (getenv("BDSP_NVN_STATS")) hle_stats_report(stdout);
     ipc_stats(stdout);
     fs_report(stdout);
     printf("RSS jetzt %ld MiB, Spitze %ld MiB\n", rss_now_mib(), rss_peak_mib());
@@ -101,7 +105,7 @@ static void *suspend_stress(void *arg) {
 
 static void on_sigint(int s) { (void)s; g_stop = 4; }
 
-static int g_stop_at_gate = 1;
+static int g_stop_at_gate;
 static const char *volatile g_fatal_why;
 static volatile int g_fatal_code;
 void bdsp_fatal_report(const char *why, int code) {
@@ -119,15 +123,56 @@ void bdsp_gate_hit(const char *what) {
     _exit(0);
 }
 
+static int g_timeout = 120;
+
+// Überwachung: Zeitlimit, Gast-Ende, Absturzbericht, Fortschrittszeilen
+static void *monitor_loop(void *arg) {
+    (void)arg;
+    uint64_t last_progress = 0;
+    const char *why = "Zeitlimit";
+    for (;;) {
+        usleep(20000);
+        double secs = (rt_now_ns() - g_start_ns) / 1e9;
+        if (g_fatal_why) { report(g_fatal_why); _exit(g_fatal_code); }
+        if (g_stop) { why = g_stop == 3 ? "Gast hat Beenden verlangt" : g_stop == 4 ? "Abbruch (SIGINT)" : "Gast hat den Prozess beendet"; break; }
+        if (secs > g_timeout) break;
+        if ((uint64_t)secs >= last_progress + 10) {
+            last_progress = (uint64_t)secs;
+            LOG("[fortschritt] %.0f s, Threads %d, RSS %ld MiB\n", secs, kernel_thread_count(), rss_now_mib());
+        }
+    }
+    if (getenv("BDSP_DUMP")) rt_fatal_trace();   // Speicherauszug auch beim Zeitlimit
+    if (getenv("BDSP_RINGDUMP")) fnprof_report(stdout, (unsigned)atoi(getenv("BDSP_RINGDUMP")));
+    report(why);
+    _exit(0);
+    return NULL;
+}
+
 int main(int argc, char **argv) {
-    (void)argc; (void)argv;
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
     signal(SIGINT, on_sigint);
     signal(SIGPIPE, SIG_IGN);
+    int no_window = 0;
+#ifdef BDSP_NVN_NONE
+    no_window = 1;
+#endif
+    for (int i = 1; i < argc; i++) {   // Optionen (setzen die Umgebungsvariablen der NVN-Schicht)
+        if (!strcmp(argv[i], "--screenshot-after") && i + 1 < argc) {   // Bild Nr. N nach work/recomp/shots (BDSP_SHOT_DIR) speichern
+            setenv("LARECOMP_SCREENSHOT_EVERY", argv[i + 1], 1);
+            setenv("LARECOMP_SCREENSHOT_FROM", argv[i + 1], 1);
+            i++;
+        } else if (!strcmp(argv[i], "--exit-after-shot")) setenv("LARECOMP_EXIT_AFTER_SHOT", "1", 1);
+        else if (!strcmp(argv[i], "--headless")) setenv("LARECOMP_HIDDEN", "1", 1);   // Fenster nie sichtbar, Rendern bleibt Metal
+        else if (!strcmp(argv[i], "--window") && i + 1 < argc) setenv("LARECOMP_WINDOW", argv[++i], 1);
+        else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // keine Grafik (nur Gate-1-Messung): NVN-Funktionen bleiben ungenutzt
+        else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) setenv("BDSP_TIMEOUT", argv[++i], 1);
+        else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }
+    }
     const char *img = getenv("BDSP_IMG") ? getenv("BDSP_IMG") : "work/recomp/img";
     const char *npdm = getenv("BDSP_NPDM") ? getenv("BDSP_NPDM") : "work/exefs/main.npdm";
-    int timeout = getenv("BDSP_TIMEOUT") ? atoi(getenv("BDSP_TIMEOUT")) : 120;
+    g_timeout = getenv("BDSP_TIMEOUT") ? atoi(getenv("BDSP_TIMEOUT")) : 120;
+    int timeout = g_timeout;
     fs_set_dirs(getenv("BDSP_ROMFS"), getenv("BDSP_SAVE"));
     g_start_ns = rt_now_ns();
     g_main_thread_id = pthread_self();
@@ -151,14 +196,10 @@ int main(int argc, char **argv) {
     kernel_init();
     loader_load(img);
     dispatch_init();
-    nvn_null_init();
+    nvn_glue_init();
     kernel_region_add(TLS_BASE, TLS_SIZE, 0xB, 3);
     kernel_region_add(HLE_HEAP, HLE_HEAP_SIZE, 0xB, 3);
-    g_stop_at_gate = getenv("BDSP_STOP_AT_GATE") == NULL || atoi(getenv("BDSP_STOP_AT_GATE"));
-    {
-        uint64_t a = loader_find_symbol("nvnBootstrapLoader");
-        if (a) watch_add(a, "nvnBootstrapLoader");
-    }
+    g_stop_at_gate = getenv("BDSP_STOP_AT_GATE") != NULL && atoi(getenv("BDSP_STOP_AT_GATE"));   // Gate 1 nur auf Wunsch (Gate 2: weiterlaufen)
 
     uint64_t start = loader_find_symbol("_ZN2nn4init5StartEmmPFvvES2_S2_");
     if (!start) rt_fatal("nn::init::Start nicht gefunden\n");
@@ -175,20 +216,11 @@ int main(int argc, char **argv) {
         pthread_create(&st, NULL, suspend_stress, NULL);
         pthread_detach(st);
     }
-
-    uint64_t last_progress = 0;
-    const char *why = "Zeitlimit";
-    for (;;) {
-        usleep(20000);
-        double secs = (rt_now_ns() - g_start_ns) / 1e9;
-        if (g_fatal_why) { report(g_fatal_why); _exit(g_fatal_code); }
-        if (g_stop) { why = g_stop == 3 ? "Gast hat Beenden verlangt" : g_stop == 4 ? "Abbruch (SIGINT)" : "Gast hat den Prozess beendet"; break; }
-        if (secs > timeout) break;
-        if ((uint64_t)secs >= last_progress + 10) {
-            last_progress = (uint64_t)secs;
-            LOG("[fortschritt] %.0f s, Threads %d, RSS %ld MiB\n", secs, kernel_thread_count(), rss_now_mib());
-        }
-    }
-    report(why);
-    _exit(0);
+    if (no_window) { monitor_loop(NULL); return 0; }
+    // Der Hauptthread gehört dem Fenster (AppKit/SDL verlangen ihn); die Überwachung läuft in einem eigenen Thread.
+    pthread_t mt;
+    pthread_create(&mt, NULL, monitor_loop, NULL);
+    pthread_detach(mt);
+    ui_run();
+    return 0;
 }

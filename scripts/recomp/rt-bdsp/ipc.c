@@ -5,7 +5,8 @@
 #include "bdsp.h"
 
 extern const ServiceDef g_service_defs_sm[];
-static const ServiceDef *const registries[] = {g_service_defs_sm, g_service_defs, g_service_defs_fs, g_service_defs_gfx, g_service_defs_net};
+extern const ServiceDef g_service_defs_audio[];
+static const ServiceDef *const registries[] = {g_service_defs_sm, g_service_defs, g_service_defs_fs, g_service_defs_gfx, g_service_defs_audio, g_service_defs_net};
 
 // ---- Mitschrift (Dienst/Objekt, Befehl) -> Anzahl und ob behandelt
 typedef struct { char svc[28]; uint32_t cmd; uint64_t n; int unhandled; } Seen;

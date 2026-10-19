@@ -117,6 +117,7 @@ KThread *kernel_create_main_thread(uint64_t entry, uint64_t stack_size, int prio
 void kernel_run_main(KThread *t, uint64_t x0, uint64_t x1, uint64_t x2, uint64_t x3);
 void kernel_region_add(uint64_t addr, uint64_t size, uint32_t type, uint32_t perm);
 uint64_t kernel_heap_size(void);
+void kernel_phys_range(uint64_t *lo, uint64_t *hi);   // Hülle der MapPhysicalMemory-Bereiche (0/0 = keine)
 void kernel_report(FILE *f);   // Thread-/SVC-Zähler, Heap, Handles
 int kernel_thread_count(void);
 extern uint64_t g_program_id, g_system_resource_size;
@@ -214,7 +215,18 @@ extern volatile uint64_t g_watch_hits;
 // Dienste
 int hle_current_slot(void);
 const char *hle_slot_name(int i);
-void nvn_null_init(void);   // nvn_null.c: nur wirksam für Bilder mit HLE-Bindung von nvnBootstrapLoader (mkimages.sh mit HLE_LIST)
+int hle_unimpl_report(FILE *f);
+void hle_stats_report(FILE *f);
+void fnprof_report(FILE *f, unsigned n);
+#ifndef BDSP_NVN_NONE   // NVN-Backend (Metal, später Vulkan): nvn/nvn_glue.c + nvn/metal.m; ohne Backend (BDSP_NVN_NONE, z. B. Linux ohne Vulkan) bleibt der NVN-Treiber des SDK
+void nvn_report(FILE *f);       // nvn_glue.c: Zähler der NVN-Schicht
+void nvn_glue_init(void);       // nvn_glue.c: bindet die Host-Funktionen der NVN-Schicht an die HLE-Slots
+int ui_run(void);               // nvn/metal.m: Fensterschleife des Hauptthreads (kehrt nicht zurück)
+#else
+#define nvn_report(f) ((void)0)
+#define nvn_glue_init() ((void)0)
+#define ui_run() 0
+#endif
 void bdsp_fatal_report(const char *why, int code);   // main.c: Bericht aus normalem Kontext (Hauptthread) und Prozessende; kehrt aus dem Hauptthread nicht zurück
 void bdsp_gate_hit(const char *what);   // main.c: bei BDSP_STOP_AT_GATE=1 (Standard) Bericht und Ende
 void guest_log(const char *line);

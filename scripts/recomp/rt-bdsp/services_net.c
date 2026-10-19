@@ -33,9 +33,19 @@ static void bsd_service(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
+// bcat:u: Sitzung und Unterobjekte antworten „Erfolg ohne Daten“ (die Anmeldung beim Dienst darf nicht scheitern, sonst bricht nn::bcat::Initialize ab)
+static void bcat_obj(Service *s, IpcReq *req, IpcResp *resp) {
+    ipc_note(s->name, req->cmd, 0);
+    resp_size(resp, 0x10);
+}
+static void bcat_creator(Service *s, IpcReq *req, IpcResp *resp) {
+    ipc_note(s->name, req->cmd, 0);
+    ipc_return_object(resp, service_new("IBcatService", bcat_obj, NULL));
+}
+
 #define ERR(n) {n, svc_error}
 const ServiceDef g_service_defs_net[] = {
-    ERR("nifm:u"), {"bsd:u", bsd_service}, {"bsd:s", bsd_service}, ERR("bsdcfg"), ERR("ssl"), ERR("friend:u"), ERR("ldn:u"), ERR("bcat:u"), ERR("nim:eca"), ERR("notif:a"),
+    ERR("nifm:u"), {"bsd:u", bsd_service}, {"bsd:s", bsd_service}, ERR("bsdcfg"), ERR("ssl"), ERR("friend:u"), ERR("ldn:u"), {"bcat:u", bcat_creator}, ERR("nim:eca"), ERR("notif:a"),
     ERR("sfdnsres"), ERR("nsd:u"), ERR("ntc"), ERR("ngct:u"), ERR("htc"), ERR("htc:tenv"), ERR("htcs"), ERR("irs"), ERR("nfc:mf:u"),
     ERR("nfc:user"), ERR("nfp:user"), ERR("mii:u"), ERR("banana"), ERR("pcm"), ERR("mm:u"), ERR("caps:su"), ERR("caps:u"), ERR("pl:u"),
     ERR("audin:u"), ERR("audout:u"), ERR("hwopus"),

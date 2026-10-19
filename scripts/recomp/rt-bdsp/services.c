@@ -260,7 +260,7 @@ static void acc_u0(Service *s, IpcReq *req, IpcResp *resp) {
     switch (req->cmd) {
     case 0: OUT(int32_t, 0) = 1; resp_size(resp, 4); break;
     case 1: OUT(uint8_t, 0) = !memcmp(req->data, g_user_id, 16); resp_size(resp, 1); break;
-    case 2: case 3: case 141: write_uid_list(req); break;
+    case 2: case 3: case 131: case 141: write_uid_list(req); break;
     case 4: case 51: memcpy(resp->data, g_user_id, 16); resp_size(resp, 16); break;
     case 5: ipc_return_object(resp, service_new("IProfile", acc_profile, NULL)); break;
     case 50: OUT(uint8_t, 0) = 0; resp_size(resp, 1); break;
@@ -399,7 +399,7 @@ static void timezone_service(Service *s, IpcReq *req, IpcResp *resp) {
     case 0: memcpy(resp->data, "UTC", 4); resp_size(resp, 0x24); break;
     case 100: to_calendar(IN(int64_t, 0), resp, 1); break;
     case 101: to_calendar(IN(int64_t, 0), resp, 0); break;
-    case 201: {
+    case 201: case 202: {
         const uint8_t *in = req->data;
         struct tm tm = {0};
         tm.tm_year = *(uint16_t *)in - 1900; tm.tm_mon = in[2] - 1; tm.tm_mday = in[3]; tm.tm_hour = in[4]; tm.tm_min = in[5]; tm.tm_sec = in[6]; tm.tm_isdst = -1;

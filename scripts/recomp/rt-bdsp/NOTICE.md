@@ -9,7 +9,7 @@ Die Laufzeit in diesem Ordner ist **Eigenbau**, folgt aber im Entwurf der Laufze
 | Stand | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (einziger Commit des Klons) |
 | Urheber | Peiikai |
 | Lizenz | MIT, „Copyright (c) 2026 Peiikai“. Lizenztext unverändert in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Nicht übernommen | Renderer (NVN/Metal/Vulkan), UI, Randomizer, `third_party/`, Spiel-Hooks (`runtime/hle/*`) |
+| Nicht übernommen | UI, Randomizer, `third_party/`, Spiel-Hooks (`runtime/hle/*`); der Renderer (NVN/Metal) ab Gate 2 doch, siehe Abschnitt „NVN-Schicht“ am Ende |
 
 Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus. Davon ist hier nichts enthalten. Der Nutzer des Repositories hat die Nutzung und Weiterentwicklung ausdrücklich freigegeben.
 
@@ -24,3 +24,14 @@ Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus. D
 | `dispatch.c`, `loader.c`, `main.c` | `dispatch.c`, `loader.c`, `main.c` | Idee des Verteilers mit Cache und HLE-Slots, Start über `nn::init::Start`; neu: vier Tabellen, Wiedereinstieg, Überwachung |
 
 Der Generator (`../eh_gen.py`) importiert die Werkzeuge des Klons (`research/LASRecomp/tools`) wie bisher nur zur Laufzeit.
+
+## NVN-Schicht (Gate 2, `nvn/`)
+
+Anders als der Rest dieses Ordners **übernimmt** die Grafikschicht Quelltext des Klons, mit ausdrücklicher Freigabe des Nutzers und unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Text unverändert in [`LICENSE-LASRecomp`](LICENSE-LASRecomp)). Die Übernahme geschieht **nicht durch Kopieren ins Repo**: `nvn/prepare.sh` kopiert die Dateien zur Bauzeit aus `research/LASRecomp/runtime/nvn` (Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`) nach `work/recomp/nvn-src` und wendet `nvn/las-nvn.patch` an; `research/` bleibt unverändert, übernommene Quelltexte liegen nicht im Repo (nur Ausschnitte als Kontextzeilen des Patches).
+
+| Übernommen (zur Bauzeit, mit Patch) | Nicht übernommen |
+|---|---|
+| `objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `tegra.h`, `astc.c`, `astc.h`, `nvn.h`, `renderer.m`, `renderer.h`, `metal.m`, `output_scale.h` | Vulkan-Teil (`vulkan/`), `texpatch.c` (Textur-Änderungen für ein bestimmtes Spiel), `output_scale.c`, `smaa_data.c`, alle `runtime/hle/*` (Spiel-Hooks), `ui/` (Menü), Randomizer, `third_party/` |
+| `maxwell/translate.c` und `maxwell/shader.h` werden **ersetzt** durch `shader_translator/` (selbst von LASRecomp abgeleitet, siehe `../../../../shader_translator/NOTICE.md`) | |
+
+Eigen sind `nvn/shim/*`, `nvn/nvn_glue.c`, `nvn/build_nvn.sh`, `nvn/prepare.sh` und der Patch. Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus; davon ist nichts enthalten.
