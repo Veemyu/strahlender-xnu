@@ -6,14 +6,21 @@ using Xnu.Input;
 
 namespace Xnu.Field.Editor
 {
-    // Erzeugt Assets/Scenes/FieldTest.unity: nur eigene Objekte (Kamera, DisplayController, GameInput, FieldController),
-    // keine Spieldaten. Die Karte entsteht zur Laufzeit aus den Bundles.
+    // Erzeugt Assets/Scenes/FieldTest.unity und FieldTest2.unity: nur eigene Objekte (Kamera, DisplayController, GameInput,
+    // FieldController), keine Spieldaten. Die Karte entsteht zur Laufzeit aus den Bundles.
+    // FieldTest2 ist die Szene der Scheibe 2 (Streaming, Zonenwechsel, Spielerfigur, NPCs, Interaktion).
     public static class FieldSceneBuilder
     {
         public const string ScenePath = "Assets/Scenes/FieldTest.unity";
+        public const string Scene2Path = "Assets/Scenes/FieldTest2.unity";
 
         [MenuItem("Xnu/Field/Create FieldTest Scene")]
-        public static void CreateScene()
+        public static void CreateScene() => Create(ScenePath, false);
+
+        [MenuItem("Xnu/Field/Create FieldTest2 Scene")]
+        public static void CreateScene2() => Create(Scene2Path, true);
+
+        static void Create(string path, bool slice2)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -38,10 +45,14 @@ namespace Xnu.Field.Editor
             var field = fieldGo.AddComponent<FieldController>();
             field.zoneId = 422;
             field.cameraOverride = cam;
+            field.streaming = slice2;
+            field.usePlayerModel = slice2;
+            field.showNpcs = slice2;
+            field.useGeneratedShaders = false;
 
-            EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorSceneManager.SaveScene(scene, path);
             AssetDatabase.Refresh();
-            Debug.Log("[Field] Szene gespeichert: " + ScenePath);
+            Debug.Log("[Field] Szene gespeichert: " + path);
         }
     }
 }

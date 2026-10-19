@@ -49,7 +49,7 @@ namespace Xnu.Field
 
     // Material-Ersatz beim Laden: Für jedes Original-Material entsteht (einmalig) ein Material mit dem eigenen
     // Unlit-Shader. Die Originalmaterialien werden nie zugewiesen oder gerendert.
-    public sealed class FallbackMaterials
+    public sealed class FallbackMaterials : IMapMaterialSource
     {
         public const string ShaderResource = "XnuFieldFallbackUnlit";
         public const string ShaderName = "Xnu/FieldFallbackUnlit";
@@ -74,6 +74,8 @@ namespace Xnu.Field
         public Shader Shader => _shader;
 
         public bool IsFallback(Material m) => m != null && m.shader == _shader;
+
+        public bool IsAllowed(Material m) => IsFallback(m);
 
         // Ersatzmaterial für ein Original (null liefert ein graues Platzhaltermaterial).
         public Material For(Material original)

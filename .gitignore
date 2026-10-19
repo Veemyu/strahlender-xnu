@@ -30,6 +30,9 @@ unity/*.sln
 unity/*.slnx
 unity/*.user
 unity/Assets/GameData/
+unity/Assets/GameData.meta
+unity/Assets/XnuGenerated/
+unity/Assets/XnuGenerated.meta
 unity/Assets/StreamingAssets/
 unity/Assets/Scripts/Probe/Resources/MemoryProbeVariant.txt*
 unity/Assets/Screenshots/

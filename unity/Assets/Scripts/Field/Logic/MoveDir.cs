@@ -42,6 +42,14 @@ namespace Xnu.Field
     // bei Gleichstand die horizontale (|y| <= |x|).
     public static class FieldInputMath
     {
+        // Bildschirmrichtung → Rasterrichtung bei gedrehter Kamera (Gier in 90°-Schritten, 180 = Räume mit gedrehter Kamera).
+        public static MoveDir ScreenToGrid(MoveDir screen, float yawDegrees)
+        {
+            if (screen == MoveDir.None) return MoveDir.None;
+            var quarters = (int)System.Math.Round(yawDegrees / 90f);
+            return Facing.FromQuarter(screen.ToQuarter() + quarters);
+        }
+
         public static MoveDir LimitToFourWay(float x, float y, float deadzone = 0f)
         {
             var ax = System.Math.Abs(x);

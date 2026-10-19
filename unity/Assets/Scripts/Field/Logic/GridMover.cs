@@ -24,6 +24,7 @@ namespace Xnu.Field
         Started = 1,    // Schritt zur Nachbarzelle begonnen
         Arrived = 2,    // Zielzelle erreicht
         Bumped = 4,     // Schritt abgelehnt (Kollision), nur gedreht
+        Jumped = 8,     // Sprung über eine Absprungkante begonnen (Started ist ebenfalls gesetzt)
     }
 
     // Rasterbewegung des Spielers: ein Schritt = eine Zelle mit fester Geschwindigkeit (Zellen/s).
@@ -39,6 +40,7 @@ namespace Xnu.Field
 
         int _targetX, _targetY;
         float _progress;
+        float _distance = 1f;   // Zellen des laufenden Schritts: 1 normal, 2 beim Sprung
 
         public int GridX { get; private set; }
         public int GridY { get; private set; }
@@ -51,6 +53,14 @@ namespace Xnu.Field
         public bool Bicycle { get; set; }
         public bool Swim { get; set; }
         public long StepsTaken { get; private set; }
+        public bool IsJumping { get; private set; }
+        public long JumpsTaken { get; private set; }
+        // Höhe des Sprungbogens über dem Boden (Darstellung); die Dauer folgt der Gehgeschwindigkeit.
+        public float JumpArcHeight { get; set; } = 0.6f;
+        public float JumpOffset => IsJumping ? (float)Math.Sin(Math.PI * Math.Min(1f, _progress)) * JumpArcHeight : 0f;
+
+        // Zusätzliche Sperre (z. B. NPCs und Objekte mit Kollision): true = Zelle belegt.
+        public Func<int, int, bool> IsOccupied { get; set; }
 
         public GridMover(FieldCollision collision, IGroundHeight ground, int gridX, int gridY, MoveDir facing = MoveDir.Down)
         {
@@ -62,7 +72,7 @@ namespace Xnu.Field
         public void Teleport(int gridX, int gridY, MoveDir facing)
         {
             GridX = gridX; GridY = gridY; _targetX = gridX; _targetY = gridY;
-            IsMoving = false; _progress = 0f;
+            IsMoving = false; IsJumping = false; _progress = 0f; _distance = 1f;
             if (facing != MoveDir.None) Facing = facing;
             Height = SampleHeight(WorldX, WorldZ, Height);
         }
@@ -89,31 +99,53 @@ namespace Xnu.Field
                     var d = held.GridDelta();
                     var nx = GridX + d.Dx;
                     var ny = GridY + d.Dy;
-                    var res = _collision.CanEnter(nx, ny, Height, Bicycle, Swim);
-                    if (!res.CanEnter)
+                    var ledgeDir = AttributeCodes.JumpDirection(_collision.CellAt(nx, ny).Code);
+                    if (ledgeDir != MoveDir.None && ledgeDir == held)
                     {
-                        LastBlock = res.Reason;
-                        events |= MoveEvents.Bumped;
-                        break;
+                        // Absprungkante in Laufrichtung: über die Kante auf die Zelle dahinter springen (zwei Zellen).
+                        var lx = nx + d.Dx;
+                        var ly = ny + d.Dy;
+                        var land = _collision.CanEnter(lx, ly, Height, Bicycle, Swim);
+                        if (!land.CanEnter || (IsOccupied != null && IsOccupied(lx, ly)))
+                        {
+                            LastBlock = land.CanEnter ? BlockReason.Npc : land.Reason;
+                            events |= MoveEvents.Bumped;
+                            break;
+                        }
+                        LastBlock = BlockReason.None;
+                        _targetX = lx; _targetY = ly; _progress = 0f; _distance = 2f; IsMoving = true; IsJumping = true;
+                        JumpsTaken++;
+                        events |= MoveEvents.Started | MoveEvents.Jumped;
                     }
-                    LastBlock = BlockReason.None;
-                    _targetX = nx; _targetY = ny; _progress = 0f; IsMoving = true;
-                    events |= MoveEvents.Started;
+                    else
+                    {
+                        var res = _collision.CanEnter(nx, ny, Height, Bicycle, Swim);
+                        if (res.CanEnter && IsOccupied != null && IsOccupied(nx, ny)) res = new EnterResult(false, BlockReason.Npc);
+                        if (!res.CanEnter)
+                        {
+                            LastBlock = res.Reason;
+                            events |= MoveEvents.Bumped;
+                            break;
+                        }
+                        LastBlock = BlockReason.None;
+                        _targetX = nx; _targetY = ny; _progress = 0f; _distance = 1f; IsMoving = true;
+                        events |= MoveEvents.Started;
+                    }
                 }
 
-                var speed = run ? RunSpeed : WalkSpeed;
+                var speed = IsJumping ? WalkSpeed : (run ? RunSpeed : WalkSpeed);
                 if (speed <= 0f) break;
-                var need = (1f - _progress) / speed;
+                var need = (1f - _progress) * _distance / speed;
                 if (remaining >= need)
                 {
                     remaining -= need;
-                    GridX = _targetX; GridY = _targetY; _progress = 0f; IsMoving = false;
+                    GridX = _targetX; GridY = _targetY; _progress = 0f; IsMoving = false; IsJumping = false; _distance = 1f;
                     StepsTaken++;
                     events |= MoveEvents.Arrived;
                 }
                 else
                 {
-                    _progress += remaining * speed;
+                    _progress += remaining * speed / _distance;
                     remaining = 0f;
                 }
             }

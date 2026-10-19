@@ -10,6 +10,7 @@ namespace Xnu.Field
         Ledge,          // Absprungkante (Takeoff), zu Fuß nicht betretbar
         BicycleNoEntry, // Fahrrad auf Gras/Schnee/Sumpf
         Bridge,         // Brücke von oben, quer zur Brückenrichtung
+        Npc,            // Zelle von einem NPC/Objekt belegt (GridMover.IsOccupied)
     }
 
     public readonly struct EnterResult

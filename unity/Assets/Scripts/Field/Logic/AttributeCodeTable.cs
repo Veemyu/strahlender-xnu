@@ -43,10 +43,32 @@ namespace Xnu.Field
         public const int StairsLeft = 0x5F;
         public const int Door = 0x69;
         public const int Counter = 0x80;
+        // AttributeID.MATR_IsJump*: 56 = rechts, 57 = links, 58 = oben, 59 = unten (Entry = 0, Stop 128 an der Kante).
+        public const int JumpRight = 0x38;
+        public const int JumpLeft = 0x39;
+        public const int JumpUp = 0x3A;
+        public const int JumpDown = 0x3B;
+        public const int RockClimbVertical = 0x4B;
+        public const int RockClimbHorizontal = 0x4C;
+        public const int WaterNoIn = 0x59;
         public const int TakeOffLeft = 0xD7;
         public const int TakeOffRight = 0xD8;
 
         public static bool IsWaterHeightLevel(int c) => c >= 0x56 && c <= 0x58;
+
+        // Richtung, in die eine Absprungkante übersprungen wird (None = keine Kante). Quelle: Dekompilat der MATR_IsJump*-Funktionen;
+        // die Richtung gilt im Viertelsystem von Facing (rechts = gx - 1).
+        public static MoveDir JumpDirection(int code)
+        {
+            switch (code)
+            {
+                case JumpRight: return MoveDir.Right;
+                case JumpLeft: return MoveDir.Left;
+                case JumpUp: return MoveDir.Up;
+                case JumpDown: return MoveDir.Down;
+                default: return MoveDir.None;
+            }
+        }
 
         // AttributeID.MATR_IsGrass: 2, 4..7, 9, 10 und 0xA9 (Langgras 3 hat eine eigene Prüfung).
         public static bool IsGrass(int c) => c == 2 || (c >= 4 && c <= 7) || c == 9 || c == 10 || c == 0xA9;

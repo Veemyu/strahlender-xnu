@@ -30,7 +30,7 @@ namespace Xnu.Field
     // andere Komponenten (Skripte der Spiel-Assembly) fehlen ohnehin und werden nicht kopiert.
     public sealed class FieldMapBuilder
     {
-        readonly FallbackMaterials _materials;
+        readonly IMapMaterialSource _materials;
         readonly HashSet<Mesh> _meshes = new HashSet<Mesh>();
         readonly List<Component> _compBuffer = new List<Component>();
 
@@ -39,7 +39,7 @@ namespace Xnu.Field
         // Entscheidet je Kindknoten (Tiefe 1 = direktes Kind der Prefab-Wurzel), ob der Zweig gebaut wird.
         public Func<Transform, int, bool> IncludeBranch { get; set; }
 
-        public FieldMapBuilder(FallbackMaterials materials)
+        public FieldMapBuilder(IMapMaterialSource materials)
         {
             _materials = materials ?? throw new ArgumentNullException(nameof(materials));
         }
@@ -49,6 +49,9 @@ namespace Xnu.Field
             var root = Clone(sourcePrefab.transform, parent, 0);
             return root.gameObject;
         }
+
+        // Baut nur den Zweig ab src (Streaming: ein Blockcontainer) unter parent; IncludeBranch gilt weiter für dessen Kinder.
+        public Transform CloneBranch(Transform src, Transform parent) => Clone(src, parent, 2);
 
         Transform Clone(Transform src, Transform parent, int depth)
         {
@@ -129,7 +132,7 @@ namespace Xnu.Field
             var bad = 0;
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
                 foreach (var m in r.sharedMaterials)
-                    if (!_materials.IsFallback(m)) bad++;
+                    if (!_materials.IsAllowed(m)) bad++;
             return bad;
         }
     }
