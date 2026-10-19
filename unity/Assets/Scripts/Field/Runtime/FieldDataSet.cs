@@ -18,6 +18,7 @@ namespace Xnu.Field
         public WarpTable Warps { get; private set; }
         public FieldZoneRouter Router { get; private set; }
         public PlacementDirectory Placements { get; private set; }
+        public CharacterGraphicsTable CharacterGraphics { get; private set; }
 
         readonly Dictionary<int, ZoneInfoRecord> _zones = new Dictionary<int, ZoneInfoRecord>();
         readonly Dictionary<string, List<int>> _zonesByMapName = new Dictionary<string, List<int>>(StringComparer.Ordinal);
@@ -53,6 +54,12 @@ namespace Xnu.Field
             var namePath = Path.Combine(masterDataDirectory, ZoneNames.RelativePath);
             if (File.Exists(namePath)) names = ZoneNames.Parse(File.ReadAllText(namePath));
             d.AttachWorld(sets, names, places);
+            var graphicsPath = Path.Combine(masterDataDirectory, CharacterGraphicsTable.RelativePath);
+            if (File.Exists(graphicsPath))
+            {
+                try { d.CharacterGraphics = CharacterGraphicsTable.Parse(File.ReadAllText(graphicsPath)); }
+                catch (FormatException) { }
+            }
             return d;
         }
 

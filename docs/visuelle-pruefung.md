@@ -30,7 +30,7 @@ Aufnahmearten: **editor** (Standard: Feldszenarien über `Xnu.Visual.Capture` in
 
 | Datei | Aufgabe |
 |---|---|
-| `scripts/visual/scenarios.json` | Aufnahmeliste: 10 Feldszenarien (Zonen 422 zu vier Stunden, 425, 54, 367, 167 zu zwei Stunden, 168), 14 Spielszene-Bilder in zwei Folgen (`durchlauf`: Titel, Feld, Innen, Text, Auswahl, Kampf; `menue`: Menü, Team, Beutel, Bericht); 1280×720, stabile Namen, Wartezeit in Bildern (`settle_frames`), Typ (`kind`), erlaubte Flags, Schwellen je Szenario |
+| `scripts/visual/scenarios.json` | Aufnahmeliste: 13 Feldszenarien (Standard-Testspielstand: Zone 24 zu zwei Stunden, Zone 27 Pokécenter innen; dazu 422 zu vier Stunden, 425, 54, 367 und die älteren 167 zu zwei Stunden, 168), 14 Spielszene-Bilder in zwei Folgen (`durchlauf`: Titel, Feld, Innen, Text, Auswahl, Kampf; `menue`: Menü, Team, Beutel, Bericht); 1280×720, stabile Namen, Wartezeit in Bildern (`settle_frames`), Typ (`kind`), erlaubte Flags, Schwellen je Szenario |
 | `scripts/visual_scenarios.py` | prüft/exportiert die Liste (`validate`, `list`, `script FOLGE`, `export-field`, `mark-requested`) |
 | `scripts/visual_compare.py` | Vergleich, Anomalie-Detektor, Bericht, Kontaktbögen, `accept`, Modus `ref` |
 | `scripts/visual_ref.py` | Ryujinx-Referenz: Import/Normalisierung, Vergleich mit Heatmap, Shader-Cache-Zahlen |
@@ -100,7 +100,21 @@ Ablauf: `run` → Bericht lesen → Kontaktbögen ansehen → bei Fehlern behebe
 
 ## 6. Szenarien (Auszug)
 
-Feld (Editor, `FieldTest2`): `field_z422_h07|h12|h18|h22` (Zelle 116/886, Blick oben; Tageszeit über `XNU_ENV_HOUR`), `field_z425_h12` (Spielerhaus innen, Typ `room`), `field_z54_h12` (Locator 0), `field_z367_h12` (Zelle 512/726), `field_z167_h12|h18` (Zelle 840/599, Pokécenter-Eingang vor Wasser und Felswand), `field_z168_h12` (Pokécenter innen). Spielszene (`Game`, Eingabeskript wie `work/vslice/run4.txt` und `work/ui2/run1b.txt`): `game_titel`, `game_feld_z167`, `game_innen_z168`, `game_text`, `game_auswahl`, `game_nach_ereignis`, `game_kampf_befehl|attacken|meldung`, `game_menue`, `game_menue_rechts`, `game_team`, `game_beutel`, `game_bericht_frage`. Die Spielszene-Bilder entstehen mit dem Skriptbefehl `shot` (`-xnuShotDir`); die Folge endet mit `quit` (Editor: `visual_auto.sh` beendet den Spielmodus nach dem letzten Bild).
+Feld (Editor, `FieldTest2`): **`field_z24_h12|h18`** (Standard-Testspielstand: Mio-Stadt/Fleetburg, Zelle 57/729, Blick oben), **`field_z27_h12`** (Pokécenter dort innen, Typ `room`), `field_z422_h07|h12|h18|h22` (Zelle 116/886, Blick oben; Tageszeit über `XNU_ENV_HOUR`), `field_z425_h12` (Spielerhaus innen, Typ `room`), `field_z54_h12` (Locator 0), `field_z367_h12` (Zelle 512/726), ältere Prüfstellen des alten Spielstands `field_z167_h12|h18` (Zelle 840/599, Pokécenter-Eingang vor Wasser und Felswand; bekannte Fehler des Nutzer-Screenshots) und `field_z168_h12`. Spielszene (`Game`, Eingabeskript wie `work/vslice/run4.txt` und `work/ui2/run1b.txt`): `game_titel`, `game_feld_z24`, `game_innen_z27`, `game_text`, `game_auswahl`, `game_nach_ereignis`, `game_kampf_befehl|attacken|meldung`, `game_menue`, `game_menue_rechts`, `game_team`, `game_beutel`, `game_bericht_frage`. Die Spielszene-Bilder entstehen mit dem Skriptbefehl `shot` (`-xnuShotDir`); die Folge endet mit `quit` (Editor: `visual_auto.sh` beendet den Spielmodus nach dem letzten Bild).
+
+### 6.1 Standard-Testspielstand ab 14:50 (Ort aus SaveData bestimmt)
+
+SaveData sha256 `0396a4a62735…`, Backup.bin `7a324b865ea9…`, Spielzeit 69:08:16, Mio-Stadt (japanischer Name ミオシティ; deutsche Fassung Fleetburg/Eisenach-artig). Ablageort **nicht mehr** aus `TownMapLocation` annehmen. Befund (Python-Lesen der 979.108 Byte, Vergleich mit dem Stand 69:05 und dem alten Stand der Siegesstraße):
+
+| Feld (Offset) | alter Stand (Zone 167) | Stand 69:05 | **neuer Stand** |
+|---|---|---|---|
+| `zoneID` (0x5634) | 167 | 416 | **24** (`C02`, Bundle `fields/area010`) |
+| `TownMapLocation` (0x8FB04 + 0x54: Zone, x, y, z) | 167, −842 / 6 / 597 | 416, −789 / 1 / 355 | 416, −789 / 1 / 355 (**veraltet**: Zone ≠ `zoneID`) |
+| **PLAYER_DATA Zelle** (0x79BF4: int gx, int gy, float Höhe) | **852, 599**, 6,0 | 789, 357, 1,0 | **57, 729**, 1,0 |
+
+Der neue Stand steht also in **Zone 24, Zelle (57, 729)**; `TownMapLocation` zeigt auf die Zone des vorherigen Aufenthalts (416) und wird in Städten nicht nachgeführt. Belege: (a) die Zelle (57, 729) liegt im Gebiet der Zone 24 (Locatoren 37–63 / 714–755), sieben Zellen unter dem Pokécenter-Locator (58, 723) – genau das zeigt der Ryujinx-Screenshot (Pokécenter oben im Bild, Spieler darunter, Hafenkran links); (b) in den beiden älteren Ständen stimmt die PLAYER_DATA-Zelle mit der Zone-Locator-Nähe überein (789/357 ≈ Locator 2 (789, 357) der Zone 416). Die Blickrichtung steht nicht im gefundenen Block (**[A]** Annahme „oben“). **Folge für den Spielkern (nicht von mir geändert):** `SavedPosition.Read` in `Game/Runtime/SaveSlotService.cs` verwirft die Position, wenn `TownMapLocation`-Zone ≠ `zoneID`; der Treiber startet dann am Locator 0 der Zone (58, 723) statt in (57, 729). Besser: Zelle aus PLAYER_DATA 0x79BF4/0x79BF8 lesen (gültig, wenn x/y in der Zone liegen), `TownMapLocation` nur als Rückfall.
+
+Auf diesen Stand umgestellt: Szenarien `field_z24_h12|h18`, `field_z27_h12`, `game_feld_z24`, `game_innen_z27`; Eingabefolge `durchlauf` (Tür bei Locator (58, 723), Innenraum Zone 27); Referenzansichten `ref_01_feld_weiter` (Unity: `game_feld_z24`, `field_z24_h12`) und `ref_03_innen_eintritt` (`game_innen_z27`, `field_z27_h12`); Routen `boot_weiter`, `tuer_innenraum` (eine Zelle rechts, sieben nach oben). Baselines gab es noch nicht (nichts zu verwerfen).
 
 ## 7. Übernahme des Aufnahmecodes (Phase B)
 
@@ -125,7 +139,7 @@ Zuordnung: der Reihe nach (Dateizeit) auf die freien Ansichten, **oder** per Umb
 
 ### 8.2 Anleitung für den Nutzer (die zwei exakt reproduzierbaren Zustände)
 
-Reproduzierbar ist der Moment nach „Weiter“ am gespeicherten Ort und die Route Tür → Innenraum (Kamera, Zelle und Blick liegen im Spielstand). Vorher `scripts/ryujinx_sync_save.sh status` (Hash des Mac-Stands `8dd552b1287c` muss auf dem Ryzen stehen).
+Reproduzierbar ist der Moment nach „Weiter“ am gespeicherten Ort (Standard-Testspielstand: Zone 24 Mio-Stadt/Fleetburg, Zelle 57/729, Abschnitt 6.1) und die Route Tür → Innenraum des Pokécenters (Zone 27). Vorher `scripts/ryujinx_sync_save.sh status` (Hash des Standes `0396a4a62735` muss auf Mac und Ryzen stehen).
 
 1. Ryujinx starten, Spiel bis zum **Titelbild** („Weiter“). Fenster im Vordergrund lassen.
 2. **Weiter** wählen (A = Taste `Z`), warten bis das Feld steht. **Nichts bewegen. F8** → `ref_01_feld_weiter`.
@@ -136,11 +150,11 @@ Reproduzierbar ist der Moment nach „Weiter“ am gespeicherten Ort und die Rou
 
 **Uhrzeit:** muss nicht notiert werden. Der Vergleich nimmt die Dateizeit des Screenshots und rechnet die Spielstunde: `((Epoche + system_time_offset) mod 86400) / 3600` in UTC (Config: `system_time_offset` −1388 s, `system_time_zone` UTC). Beispiel: Screenshot um 14:32 Ortszeit (12:32 UTC) → Spielstunde 12,2. Das ist eine **Annahme [A]** (Host-Uhr + Offset, Zeitzone UTC); im Zweifel `game_hour` in `assignments.json` von Hand überschreiben. `visual_auto.sh run` rendert die Unity-Szenarien der Referenzansichten mit genau dieser Stunde (`export-field --ref-hours`; für den Editor-Weg `XNU_ENV_HOUR`). Weicht das Bild trotzdem in der Helligkeit ab, gleicht der Vergleich per Histogramm an.
 
-**Beobachtung zum Spielzustand:** die ersten Screenshots des Nutzers (14:19) und der F8-Test (14:32, 14:35) zeigen die **Sprachauswahl** („Select the language you would like to play“, Cursor auf English), nicht das Titelbild. Solange das Spiel dort steht, sind es keine Referenzen; erst nach der Sprachauswahl/Titelbild beginnt Schritt 1. Ob der abgeglichene Spielstand (Slot des Benutzers in Ryujinx) von der Sprachauswahl nicht erkannt wird oder die Auswahl nur beim ersten Start erscheint, ist offen.
+**Stand der Referenzen (14:47):** das erste echte Referenzbild liegt vor, `Pokémon Brilliant Diamond_2026-10-19_14-47-54.png` (Spielstunde ≈ 12,4 nach Formel): Stadtplatz in Mio-Stadt/Fleetburg, blaues Dach links, Pokécenter oben, rote Spielerfigur (farbig, bei uns noch weiß), Nachbar-NPC rechts, Tannen, Hafenkran. Es ist als `ref_01_feld_weiter` zugeordnet (`fetch --since "2026-10-19 14:45"`); die früheren Bilder (14:19–14:35) zeigten die Sprachauswahl und sind mit `--since` ausgeblendet. Ob dieses Bild exakt „Weiter, nichts bewegt“ war, ist nicht belegt (Spieler steht in der Mitte des Platzes).
 
 ### 8.3 Referenzvergleich
 
-`python3 scripts/visual_compare.py ref compare --run work/visual/auto/<lauf>` (auch `visual_auto.sh ref`, `run --ref`). Je Ansicht (Unity-Bild laut `ref_map.json`, z. B. `game_feld_z167` oder `field_z167_h12`):
+`python3 scripts/visual_compare.py ref compare --run work/visual/auto/<lauf>` (auch `visual_auto.sh ref`, `run --ref`). Je Ansicht (Unity-Bild laut `ref_map.json`, z. B. `game_feld_z24` oder `field_z24_h12`):
 
 * beide auf 1280×720, HUD-/Debugbereich per **Maske** ausgeschlossen (`mask`, Bruchteile der Bildgröße; Spielszene: links oben),
 * Bildversatz per Kreuzkorrelation ausgeglichen (±48 px),
@@ -207,7 +221,7 @@ Es legt per `evdev.UInput` die virtuelle Tastatur **`xnu-virtual-keyboard`** an,
 
 ### 9.5 Freigabe vor Bewegungs- und Menütasten
 
-**Es wurden NUR F8-Tasten wirklich gesendet** (zwei Läufe `f8_only`, bei geprüft aktivem Ryujinx-Fenster). Bewegungs- und Menütasten (`boot_weiter`, `tuer_innenraum`) sind nur im Trockenlauf geprüft. Vor dem ersten echten Lauf braucht es die Zustimmung des Nutzers (Hauptagent fragt): das Spiel muss am Titelbild stehen (aktuell steht es in der Sprachauswahl, dort würde A „English“ wählen), das Ryujinx-Fenster angeklickt sein. Befehl danach:
+**Es wurden NUR F8-Tasten wirklich gesendet** (zwei Läufe `f8_only`, bei geprüft aktivem Ryujinx-Fenster). Bewegungs- und Menütasten (`boot_weiter`, `tuer_innenraum`) sind nur im Trockenlauf geprüft. Vor dem ersten echten Lauf braucht es die Zustimmung des Nutzers (Hauptagent fragt): das Spiel muss am Titelbild stehen (Stand 14:47: das Spiel läuft bereits in der Stadt; dann zuerst im Spiel zum Titel zurückgehen oder die Route erst ab dem Feld verwenden, sonst würde A im Spiel etwas bestätigen), das Ryujinx-Fenster angeklickt sein. Befehl danach:
 
 ```
 scripts/ryujinx_record.sh boot_weiter            # Titel -> Feld -> Menü, 2 Referenzbilder
@@ -217,7 +231,7 @@ scripts/ryujinx_record.sh tuer_innenraum         # Tür -> Innenraum, 1 Referenz
 ## 10. Bekannte Grenzen und nächste Schritte
 
 * Aufnahmecode im Editor ist **nicht** in `unity/` und nicht im Editor ausgeführt (Übersetzungsprüfung gegen die Unity-DLLs bestanden). `player` und `ipad` sind nur geschrieben, nicht ausgeführt; sie liefern nur Spielszene-Folgen, keine Feldszenarien.
-* Die Spielszene-Folgen nutzen den Spielstand-Import der Szene `Game` (Quelle Ryujinx-Ordner im Repo); ohne ihn bleibt `game_feld_z167` aus und der Lauf meldet die Aufnahme als fehlend.
-* Zone 54 und 168 laufen mit Locator 0 (Zellen unbekannt); Zone 167 an Zelle 840/599 ist eine Annahme aus dem vertikalen Durchstich.
+* Die Spielszene-Folgen nutzen den Spielstand-Import der Szene `Game` (Quelle Ryujinx-Ordner im Repo); ohne ihn bleibt `game_feld_z24` aus und der Lauf meldet die Aufnahme als fehlend.
+* Zone 54, 27 und 168 laufen mit Locator 0 (Zellen unbekannt); Zone 24 an Zelle 57/729 stammt aus dem Spielstand (6.1), die Blickrichtung ist Annahme. Der Spielkern liest die Position noch aus `TownMapLocation` (6.1): `game_feld_z24` zeigt deshalb vorerst den Locator (58, 723) statt (57, 729), bis `SavedPosition.Read` angepasst ist.
 * Detektor: gestreckte Texturen, Diagonalband und weiße Figur ohne Referenz nicht erkennbar (Abschnitt 4); Ryujinx-Referenz und Differenzbild decken sie ab.
 * Ryujinx-Spieluhr und Zeitzone sind Annahmen; Referenz-Zeitpunkt `ref_04` ist nicht exakt reproduzierbar (Tresenposition).

@@ -301,6 +301,16 @@ class Build(unittest.TestCase):
         self.assertNotIn("float4x4 unity_MatrixVP;", text)
         self.assertEqual(man["arrays"], {"mxav_cb3": 16, "mxaf_cb3": 16})
 
+    def test_int_uniform_words_are_converted(self):
+        # Das Original liest das Wort als int (float(int(cb))): die Float-Eigenschaft 1.0 darf nicht als Bitmuster 0x3F800000 ankommen.
+        vs, fs = stages()
+        fs.hlsl += "\n    r1 = asuint(float(int(mx_cb3[0][0])));\n"
+        text, _, _ = sw.build_shader(SHADER, 0, 0, ["KW_A"], vs, fs, "named", "metal", sw.EXACT_PRAGMAS, None, None)
+        self.assertIn("asuint(int(_Cut))", text)
+        text2, _, _ = self.build()
+        self.assertNotIn("asuint(int(_Cut))", text2)
+        self.assertIn("asuint(_Cut)", text2)
+
     def test_compiler_constants_literal(self):
         c1 = (0x3F800000).to_bytes(4, "little") + (0x40000000).to_bytes(4, "little") + b"\0" * 8 + (0xDEADBEEF).to_bytes(4, "little")
         text, _, _ = self.build(stage_kw={"c1": c1})

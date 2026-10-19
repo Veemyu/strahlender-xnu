@@ -35,7 +35,7 @@ namespace Xnu.Render
         {
             var env = Environment.GetEnvironmentVariable(ShadersEnvVar);
             return string.IsNullOrEmpty(env)
-                ? new[] { Path.Combine(GameDataPaths.Root, "shaders", "combined"), Path.Combine(GameDataPaths.Root, "shaders") }
+                ? new[] { Path.Combine(GameDataPaths.Root, "shaders", "combined_all"), Path.Combine(GameDataPaths.Root, "shaders", "combined"), Path.Combine(GameDataPaths.Root, "shaders") }
                 : new[] { env };
         }
 
@@ -51,6 +51,20 @@ namespace Xnu.Render
 
         public static string MaterialFileFor(string bundleName) =>
             Path.Combine(MaterialsDirectory, bundleName.Replace("/", "__") + ".json");
+
+        // Materialexport eines Bundles: im Materialordner, sonst im Nachbarordner "<Materialordner>_all" (scripts/material_export.py mit
+        // --out work/materials_all: Charaktere, Pokémon, Effekte). null = kein Export vorhanden.
+        public static string FindMaterialFile(string bundleName)
+        {
+            var name = bundleName.Replace("/", "__") + ".json";
+            var dir = MaterialsDirectory.TrimEnd(Path.DirectorySeparatorChar, '/');
+            foreach (var d in new[] { dir, dir + "_all" })
+            {
+                var p = Path.Combine(d, name);
+                if (File.Exists(p)) return p;
+            }
+            return null;
+        }
 
         // Zählt, wie viele erzeugte Shader der Index über Shader.Find tatsächlich liefert (Diagnose).
         public static int CountFindable(ShaderVariantIndex index, out int total)

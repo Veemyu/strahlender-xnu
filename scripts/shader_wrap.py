@@ -469,6 +469,12 @@ def build_stage_block(st, mode, uniforms, arrays, warnings, extras=None, manifes
                         raise WrapError(f"Uniform {m['name']} mit zwei Typen: {uniforms[m['name']]} / {d}")
                     uniforms[m["name"]] = d
                 cells = rows_for_block(cb, rows)
+                # Ganzzahl-Uniforms (_BaseColorAddEnable, _Cascade, _ColorMapUvIndex …): Das Original liest das Wort als int
+                # (float(int(cb))). Unity-Eigenschaften sind Float, die Bits von 1.0 wären als int 1065353216 (Inf/NaN im Bild).
+                for m_ in re.finditer(rf"(?:float\(int\(|float\(uint\(|\bint\(|\bas(?:int|uint)\()mx_cb{k}\[(\d+)\]\[(\d)\]", st.hlsl):
+                    r_, c_ = int(m_.group(1)), int(m_.group(2))
+                    if r_ < len(cells) and cells[r_][c_] and cells[r_][c_] not in RAW_UINT_EXPRS and not cells[r_][c_].startswith("int("):
+                        cells[r_][c_] = f"int({cells[r_][c_]})"
                 if cb["size"] > icb["size"] + 15:
                     warnings.append(f"{st.kind}: Block {cb['name']} ({cb['size']} Byte) groesser als vom Shader gelesen ({icb['size']})")
                 for r, row in enumerate(cells):

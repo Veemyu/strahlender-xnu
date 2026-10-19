@@ -30,14 +30,22 @@ namespace Xnu.Render.Editor
         [MenuItem("Xnu/Render/Sync Generated Shaders")]
         public static void SyncMenu() => Debug.Log("[Render] " + Sync());
 
+        // Quellordner der erzeugten Shader: XNU_SHADERS, sonst der erste Ordner mit variants.json unter <GameData>/shaders/combined_all,
+        // <GameData>/shaders/combined, <GameData>/build/shaders (Ausgabe von scripts/shader_build.sh). null = keiner vorhanden.
+        public static string FindSourceDirectory()
+        {
+            var env = Environment.GetEnvironmentVariable(GeneratedShaderLibrary.ShadersEnvVar);
+            if (!string.IsNullOrEmpty(env)) return File.Exists(Path.Combine(env, "variants.json")) ? env : null;
+            foreach (var d in new[] { Path.Combine(GameDataPaths.Root, "shaders", "combined_all"), Path.Combine(GameDataPaths.Root, "shaders", "combined"),
+                                      Path.Combine(GameDataPaths.Root, "build", "shaders") })
+                if (File.Exists(Path.Combine(d, "variants.json"))) return d;
+            return null;
+        }
+
         public static Result Sync(string sourceDirectory = null)
         {
             var src = sourceDirectory;
-            if (string.IsNullOrEmpty(src))
-            {
-                var env = Environment.GetEnvironmentVariable(GeneratedShaderLibrary.ShadersEnvVar);
-                src = !string.IsNullOrEmpty(env) ? env : Path.Combine(GameDataPaths.Root, "shaders", "combined");
-            }
+            if (string.IsNullOrEmpty(src)) src = FindSourceDirectory() ?? Path.Combine(GameDataPaths.Root, "shaders", "combined_all");
             var res = new Result { Source = src };
             var variants = Path.Combine(src, "variants.json");
             if (!File.Exists(variants)) throw new FileNotFoundException("variants.json fehlt (scripts/shader_build.sh ausführen)", variants);

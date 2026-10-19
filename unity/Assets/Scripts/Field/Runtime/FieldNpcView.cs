@@ -14,6 +14,11 @@ namespace Xnu.Field
         readonly Dictionary<PlacementRecord, GameObject> _live = new Dictionary<PlacementRecord, GameObject>();
         readonly Dictionary<Color, Material> _materials = new Dictionary<Color, Material>();
         readonly List<PlacementRecord> _drop = new List<PlacementRecord>();
+        readonly Dictionary<GameObject, PlayerAvatar> _avatars = new Dictionary<GameObject, PlayerAvatar>();
+
+        // Liefert das Charaktermodell einer Platzierung (null: Marker). Ohne Fabrik zeigt die Ansicht nur Marker.
+        public Func<PlacementRecord, Transform, PlayerAvatar> ModelFactory { get; set; }
+        public int ModelCount => _avatars.Count;
 
         public int LiveCount => _live.Count;
 
@@ -34,7 +39,7 @@ namespace Xnu.Field
                 if (!PlacementDirectory.IsActive(p, flags) || Math.Max(Math.Abs(p.GridX - playerX), Math.Abs(p.GridY - playerY)) > radius + 8)
                     _drop.Add(p);
             }
-            foreach (var p in _drop) { FieldDestroy.Kill(_live[p]); _live.Remove(p); }
+            foreach (var p in _drop) { Remove(_live[p]); _live.Remove(p); }
 
             foreach (var p in candidates)
             {
@@ -44,8 +49,24 @@ namespace Xnu.Field
             }
         }
 
+        void Remove(GameObject go)
+        {
+            if (go == null) return;
+            if (_avatars.TryGetValue(go, out var av)) { _avatars.Remove(go); av.Destroy(); }
+            else FieldDestroy.Kill(go);
+        }
+
         GameObject Create(PlacementRecord p, float groundY)
         {
+            var av = ModelFactory?.Invoke(p, _root);
+            if (av != null)
+            {
+                var t = av.Root.transform;
+                t.position = new Vector3(FieldCoords.WorldX(p.GridX), groundY, FieldCoords.WorldZ(p.GridY));
+                t.rotation = Quaternion.Euler(0f, p.Facing.YawDegrees(), 0f);
+                _avatars[av.Root] = av;
+                return av.Root;
+            }
             var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             go.name = "Npc_" + p.Id;
             go.hideFlags = HideFlags.DontSave;
@@ -76,7 +97,7 @@ namespace Xnu.Field
 
         public void Clear()
         {
-            foreach (var go in _live.Values) if (go != null) FieldDestroy.Kill(go);
+            foreach (var go in _live.Values) Remove(go);
             _live.Clear();
         }
 

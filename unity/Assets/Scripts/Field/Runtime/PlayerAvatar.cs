@@ -48,8 +48,10 @@ namespace Xnu.Field
             _provider = provider; _bundleName = bundleName;
         }
 
-        // null bei Fehlern (Beschreibung in note); der Aufrufer bleibt dann bei der Kapsel.
-        public static PlayerAvatar Create(BundleProvider provider, IMapMaterialSource materials, string bundleName, Transform parent, out string note)
+        // null bei Fehlern (Beschreibung in note); der Aufrufer bleibt dann bei der Kapsel. rootName/scaleMul: für NPC-Modelle
+        // (Name des Objekts, Größenfaktor aus CharacterGraphics.Scale).
+        public static PlayerAvatar Create(BundleProvider provider, IMapMaterialSource materials, string bundleName, Transform parent, out string note,
+            string rootName = "PlayerModel", float scaleMul = 1f)
         {
             var a = new PlayerAvatar(provider, bundleName);
             try
@@ -70,7 +72,7 @@ namespace Xnu.Field
                 if (prefab == null) { note = "Kein Prefab in " + bundleName; a.Release(); return null; }
 
                 a.Root = UnityEngine.Object.Instantiate(prefab, parent, false);
-                a.Root.name = "PlayerModel";
+                a.Root.name = rootName;
                 a.Root.hideFlags = HideFlags.DontSave;
                 // Sofort alle Materialien ersetzen, bevor ein Bild gezeichnet wird.
                 var b = new Bounds();
@@ -93,6 +95,7 @@ namespace Xnu.Field
                     a.Root.transform.localScale *= TargetHeight / b.size.y;
                     a.ScaledFrom = b.size.y;
                 }
+                if (Math.Abs(scaleMul - 1f) > 0.001f && scaleMul > 0f) a.Root.transform.localScale *= scaleMul;
                 a.SetupAnimation(clips);
                 note = "Modell " + bundleName + ": " + a.Renderers + " Renderer, " + a.ClipsFound + "/3 Clips, Höhe " + b.size.y.ToString("F2") +
                        (a.ScaledFrom > 0f ? " (auf " + TargetHeight.ToString("F1") + " skaliert)" : "");
@@ -119,7 +122,12 @@ namespace Xnu.Field
             _mixer = AnimationMixerPlayable.Create(_graph, 3);
             for (var i = 0; i < 3; i++)
             {
-                if (!clips.TryGetValue(names[i], out var clip) && !(i == 2 && clips.TryGetValue(WalkClip, out clip))) continue;
+                if (!clips.TryGetValue(names[i], out var clip))
+                {
+                    if (i == 0) clip = FindIdle(clips);
+                    else if (i == 2) clips.TryGetValue(WalkClip, out clip);
+                    if (clip == null) continue;
+                }
                 var cp = AnimationClipPlayable.Create(_graph, clip);
                 cp.SetApplyFootIK(false);
                 _graph.Connect(cp, 0, _mixer, i);
@@ -131,6 +139,20 @@ namespace Xnu.Field
             output.SetSourcePlayable(_mixer);
             _graph.Play();
             _graphValid = true;
+        }
+
+        // NPC-Modelle haben nicht immer „idling_f“: nach Name mit „idl“, sonst „wait“, sonst der alphabetisch erste Clip.
+        static AnimationClip FindIdle(Dictionary<string, AnimationClip> clips)
+        {
+            AnimationClip first = null; string firstName = null;
+            foreach (var kv in clips)
+            {
+                var n = kv.Key.ToLowerInvariant();
+                if (n.Contains("idl")) return kv.Value;
+                if (firstName == null || string.CompareOrdinal(kv.Key, firstName) < 0) { first = kv.Value; firstName = kv.Key; }
+            }
+            foreach (var kv in clips) if (kv.Key.ToLowerInvariant().Contains("wait")) return kv.Value;
+            return first;
         }
 
         public void SetState(AvatarState s) => _state = s;

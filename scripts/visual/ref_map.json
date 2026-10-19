@@ -20,8 +20,8 @@
   "views": [
     {
       "view": "ref_01_feld_weiter",
-      "title": "Feld Zone 167 direkt nach „Weiter“ (nichts gedrückt)",
-      "unity": ["game_feld_z167", "field_z167_h12"],
+      "title": "Feld Zone 24 (Mio-Stadt/Fleetburg) direkt nach „Weiter“ am gespeicherten Ort (nichts gedrückt)",
+      "unity": ["game_feld_z24", "field_z24_h12"],
       "mask": [[0.0, 0.0, 0.34, 0.14]]
     },
     {
@@ -32,8 +32,8 @@
     },
     {
       "view": "ref_03_innen_eintritt",
-      "title": "Pokécenter innen direkt nach dem Eintreten (Zone 168, nichts weiter gedrückt)",
-      "unity": ["game_innen_z168", "field_z168_h12"],
+      "title": "Pokécenter Mio innen direkt nach dem Eintreten (Zone 27, nichts weiter gedrückt)",
+      "unity": ["game_innen_z27", "field_z27_h12"],
       "mask": [[0.0, 0.0, 0.34, 0.14]]
     },
     {

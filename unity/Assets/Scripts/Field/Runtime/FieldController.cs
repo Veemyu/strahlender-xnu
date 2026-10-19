@@ -82,9 +82,19 @@ namespace Xnu.Field
         [Tooltip("Charakter-Bundle der Spielerfigur (fc0001_00 = Junge, fc0002_00 = Mädchen).")]
         public string playerModelBundle = "Characters/persons/field/fc0001_00";
         public bool showNpcs = true;
-        [Tooltip("Erzeugte Shader (Xnu/Render/Sync Generated Shaders) für den Material-Umbau; sonst Ersatzmaterial. Standard aus: " +
-                 "im Haupt-Editor zeichnete der Umbau schwarz bzw. blockierte den Editor (docs/feld-szene-2.md, Kapitel 6). Umgebungsvariable XNU_GENERATED_SHADERS=1 schaltet ein.")]
-        public bool useGeneratedShaders = false;
+        [Tooltip("Erzeugte Shader (Xnu/Render/Sync Generated Shaders) für den Material-Umbau, solange variants.json, Shader und Materialexport vorhanden sind; " +
+                 "sonst sauber das Ersatzmaterial (MaterialMode nennt den Grund). Umgebungsvariable XNU_GENERATED_SHADERS=0 schaltet aus, =1 erzwingt ein.")]
+        public bool useGeneratedShaders = true;
+        [Tooltip("Mit dem Material-Umbau: Tiefentexturen (Wasser), Reflexionskamera und Nachbearbeitung (Bloom, Nebel, FXAA) an der Kamera. " +
+                 "Ohne sie zeichnet das Wasser eine einfarbige Fläche.")]
+        public bool useRenderRig = true;
+        public bool useReflection = true;
+        public bool usePostProcessing = true;
+        [Tooltip("Nachbearbeitung auch auf einer von außen übergebenen Kamera (cameraOverride). Aus: das Spiel zeichnet seine Oberfläche (Screen Space - Camera) " +
+                 "auf dieser Kamera, Bloom und FXAA würden sie mit verändern; der Original-Compositor trennt Welt- und Oberflächenkamera, das ist hier noch offen.")]
+        public bool postOnSharedCamera = false;
+        [Tooltip("Debug-Text oben links (nur ohne externe Spielschleife).")]
+        public bool showHud = true;
         [Tooltip("Spielwerte der Zone (EnvironmentSettings: Licht, Schatten, Spiel-Globals) per EnvironmentDriver setzen, solange der Umbau " +
                  "mit erzeugten Shadern aktiv ist; sonst Platzhalter-Globals und weißes Licht (docs/sichtpruefung-1.md).")]
         public bool useGameEnvironment = true;
@@ -157,6 +167,14 @@ namespace Xnu.Field
         List<PlacementRecord> _mapPlacements = new List<PlacementRecord>();
         int _lastStreamX = int.MinValue, _lastStreamY = int.MinValue;
         bool _globalsSet;
+        ShaderVariantIndex _index;
+        int _shadersFindable, _shadersTotal;
+        FieldRenderRig _rig;
+        IMapMaterialSource _playerMaterials;
+        NpcModels _npcModels;
+        public string RigNote => _rig != null ? _rig.ToString() : "aus";
+        public int NpcModelCount => _npcs != null ? _npcs.ModelCount : 0;
+        public string NpcModelNote => _npcModels != null ? _npcModels.Created + " Modelle, " + _npcModels.Unresolved + " nicht auflösbar" : "";
         Light _sun;
         EnvironmentDriver _envDriver;
         EnvironmentSettingsCatalog _envCatalog;
@@ -331,21 +349,59 @@ namespace Xnu.Field
         }
 
         // Material-Umbau, wenn Shader, Variantentabelle und Materialexport des Bundles vorhanden sind; sonst Ersatzmaterial.
+        bool GeneratedShadersWanted()
+        {
+            var env = Environment.GetEnvironmentVariable("XNU_GENERATED_SHADERS");
+            if (env == "0") return false;
+            return env == "1" || useGeneratedShaders;
+        }
+
+        // Erzeugte Shader, die der Player findet, und die Variantentabelle (einmal je Controller); null mit Grund in MaterialMode.
+        ShaderVariantIndex LoadShaderIndex()
+        {
+            if (_index != null) return _index;
+            var index = GeneratedShaderLibrary.LoadIndex(out _);
+            if (index == null) { MaterialMode = "Ersatzmaterial (keine variants.json: Xnu/Render/Sync Generated Shaders)"; return null; }
+            var findable = GeneratedShaderLibrary.CountFindable(index, out var total);
+            if (findable == 0) { MaterialMode = "Ersatzmaterial (erzeugte Shader nicht im Projekt, 0/" + total + ")"; return null; }
+            _shadersFindable = findable; _shadersTotal = total;
+            _index = index;
+            return index;
+        }
+
+        // Materialumbau für ein Modellbundle (Figur, NPC); Ersatzmaterial, wenn es keinen Export oder keine Shader gibt.
+        IMapMaterialSource CreateModelMaterials(string bundleName)
+        {
+            try
+            {
+                if (!GeneratedShadersWanted()) return _fallback;
+                var index = LoadShaderIndex();
+                var file = index != null ? GeneratedShaderLibrary.FindMaterialFile(bundleName) : null;
+                if (file == null) return _fallback;
+                var catalog = new MaterialCatalog();
+                catalog.LoadJson(File.ReadAllText(file));
+                return new RemappedMaterials(_fallback, catalog, index, bundleName);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Field] Materialumbau für " + bundleName + " nicht möglich: " + e.Message);
+                return _fallback;
+            }
+        }
+
         IMapMaterialSource CreateMaterials(string bundleName)
         {
             MaterialMode = "Ersatzmaterial";
-            if (!useGeneratedShaders && Environment.GetEnvironmentVariable("XNU_GENERATED_SHADERS") != "1") return _fallback;
+            if (!GeneratedShadersWanted()) return _fallback;
             try
             {
-                var index = GeneratedShaderLibrary.LoadIndex(out var src);
-                if (index == null) { MaterialMode = "Ersatzmaterial (keine variants.json)"; return _fallback; }
-                var file = GeneratedShaderLibrary.MaterialFileFor(bundleName);
-                if (!File.Exists(file)) { MaterialMode = "Ersatzmaterial (kein Materialexport " + Path.GetFileName(file) + ")"; return _fallback; }
-                var findable = GeneratedShaderLibrary.CountFindable(index, out var total);
-                if (findable == 0) { MaterialMode = "Ersatzmaterial (erzeugte Shader nicht im Projekt, 0/" + total + ")"; return _fallback; }
+                var index = LoadShaderIndex();
+                if (index == null) return _fallback;
+                var file = GeneratedShaderLibrary.FindMaterialFile(bundleName);
+                if (file == null) { MaterialMode = "Ersatzmaterial (kein Materialexport " + Path.GetFileName(GeneratedShaderLibrary.MaterialFileFor(bundleName)) + ")"; return _fallback; }
                 var catalog = new MaterialCatalog();
                 catalog.LoadJson(File.ReadAllText(file));
-                MaterialMode = "Umbau (Shader " + findable + "/" + total + ", " + catalog.Count + " Materialeinträge)";
+                MaterialMode = "Umbau (Shader " + _shadersFindable + "/" + _shadersTotal + ", " + catalog.Count + " Materialeinträge)";
                 return new RemappedMaterials(_fallback, catalog, index, bundleName);
             }
             catch (Exception e)
@@ -382,6 +438,7 @@ namespace Xnu.Field
             CreateMover(sp.GridX, sp.GridY, sp.Facing, null);
             CreatePlayer();
             SetupCamera();
+            AttachRenderRig();
             if (GameInput.Instance == null) new GameObject("GameInput").AddComponent<GameInput>();
             RefreshNpcs();
             ApplyPlayerTransform();
@@ -405,6 +462,16 @@ namespace Xnu.Field
                 _envDriver.HourProvider = CurrentHour;
             }
             ApplyEnvironmentSettings();
+        }
+
+        // Tiefentexturen, Reflexion und Nachbearbeitung an der Kamera (einmal; bleibt über Zonenwechsel). Hintergrund wie die Hauptkamera
+        // der Originalszene: Schwarz (docs/sichtpruefung-2.md, Abschnitt 4).
+        void AttachRenderRig()
+        {
+            if (_rig != null || !useRenderRig || _camera == null || !(_materials is RemappedMaterials)) return;
+            _rig = FieldRenderRig.Attach(_camera, _envDriver, useReflection, usePostProcessing && (cameraOverride == null || postOnSharedCamera));
+            _camera.backgroundColor = Color.black;
+            Memory.Mark("Kamera-Ausstattung: " + _rig);
         }
 
         // Stunde der Tageszeit: XNU_ENV_HOUR, sonst environmentHour, sonst lokale Uhr.
@@ -523,13 +590,22 @@ namespace Xnu.Field
             }
             if (Avatar == null && usePlayerModel && !string.IsNullOrEmpty(playerModelBundle))
             {
-                Avatar = PlayerAvatar.Create(_provider, _fallback, playerModelBundle, _player, out var note);
-                AvatarNote = note;
+                _playerMaterials = CreateModelMaterials(playerModelBundle);
+                Avatar = PlayerAvatar.Create(_provider, _playerMaterials, playerModelBundle, _player, out var note);
+                AvatarNote = note + (ReferenceEquals(_playerMaterials, _fallback) ? " [Ersatzmaterial]" : " [Umbau " + ((RemappedMaterials)_playerMaterials).Remapped + " Materialien, Ersatz " + ((RemappedMaterials)_playerMaterials).FellBack + "]");
                 if (Avatar != null) _capsule.SetActive(false);
                 else Debug.LogWarning("[Field] " + note);
-                Memory.Mark("Spielerfigur: " + note);
+                Memory.Mark("Spielerfigur: " + AvatarNote);
             }
-            if (_npcs == null && showNpcs) _npcs = new FieldNpcView(transform, _fallback.Shader);
+            if (_npcs == null && showNpcs)
+            {
+                _npcs = new FieldNpcView(transform, _fallback.Shader);
+                if (Data?.CharacterGraphics != null)
+                {
+                    _npcModels = new NpcModels(_provider, Data.CharacterGraphics, CreateModelMaterials);
+                    _npcs.ModelFactory = _npcModels.Create;
+                }
+            }
         }
 
         void SetupCamera()
@@ -717,19 +793,30 @@ namespace Xnu.Field
             Debug.Log("[Field] Wechsel " + report);
         }
 
+        // Nur eine Instanz zeichnet den Text (zwei Controller übereinander ergaben unleserlichen Überdruck), und nicht mit externer
+        // Spielschleife (dort gehört die Anzeige dem Spiel).
+        static FieldController _hudOwner;
+
+        bool HudAllowed()
+        {
+            if (!showHud || ExternalTick) return false;
+            if (_hudOwner == null || !_hudOwner.isActiveAndEnabled) _hudOwner = this;
+            return _hudOwner == this;
+        }
+
         void OnGUI()
         {
-            if (!Loaded)
+            if (HudAllowed() && !Loaded)
             {
                 GUI.Label(new Rect(8, 8, 600, 24), Error != null ? "Fehler: " + Error : "Lade Zone " + zoneId + " ...");
             }
-            else
+            else if (HudAllowed())
             {
                 var cell = Collision.CellAt(Mover.GridX, Mover.GridY);
                 _hud = "Zone " + zoneId + "  Zelle (" + Mover.GridX + ", " + Mover.GridY + ")  Höhe " + Mover.Height.ToString("F2") +
                        "\nAttribut Code " + cell.Code + " Stop " + cell.Stop + "  Blick " + Mover.Facing + "  Sperre " + Mover.LastBlock +
                        "\nBlöcke " + (Streamer != null ? Streamer.Loaded.Count : 0) + " (Laden " + (Streamer != null ? Streamer.LoadCount : 0) + ", Entladen " + (Streamer != null ? Streamer.UnloadCount : 0) +
-                       "), NPCs " + NpcCount + ", Budget " + Budget + "\n" + _fps.ToString("F0") + " fps, Logik 30 Hz, Schritte " + Mover.StepsTaken;
+                       "), NPCs " + NpcCount + " (Modelle " + NpcModelCount + "), Budget " + Budget + "\n" + _fps.ToString("F0") + " fps, Logik 30 Hz, Schritte " + Mover.StepsTaken;
                 GUI.Label(new Rect(8, 8, 800, 80), _hud);
             }
             if (Fade.Alpha > 0.001f)
@@ -778,8 +865,14 @@ namespace Xnu.Field
             UnloadMap();
             _npcs?.Destroy();
             _npcs = null;
+            _npcModels?.Destroy();
+            _npcModels = null;
             Avatar?.Destroy();
             Avatar = null;
+            if (_playerMaterials != null && !ReferenceEquals(_playerMaterials, _fallback)) _playerMaterials.Destroy();
+            _playerMaterials = null;
+            _rig?.Detach();
+            _rig = null;
             if (_player != null) FieldDestroy.Kill(_player.gameObject);
             _player = null;
             _capsule = null;
