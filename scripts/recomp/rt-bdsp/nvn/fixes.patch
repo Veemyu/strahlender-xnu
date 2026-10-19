@@ -2,6 +2,7 @@ Korrekturen an renderer.m (nach las-nvn.patch angewandt; prepare.sh):
  1. Vertex-/Indexdaten gehen standardmäßig über den Ring (Kopie) statt über den umhüllten Gastspeicher (LARECOMP_GUEST_BUF=1 schaltet
     das alte Verhalten zurück): die GPU sah im umhüllten Puffer alte (nie beschriebene) Seiten, alle indizierten Zeichenaufrufe blieben unsichtbar.
  2. Bindlose Texturen: Handles aus zwei Wörtern haben die Textur in der Tabelle ab 0x168 und den Sampler in der ab 0x568 (Fund des Vulkan-Strangs).
+ 3. nvnWindowSetCrop erreicht die Präsentation (metal.m; objects.c bietet nvn_window_crop() für beide Backends).
 --- a/nvn/renderer.m
 +++ b/nvn/renderer.m
 @@ -645,8 +645,14 @@
@@ -45,3 +46,35 @@ Korrekturen an renderer.m (nach las-nvn.patch angewandt; prepare.sh):
                  ib = g_guest_buffer; ioff = iaddr - HEAP_BASE;
              } else {
                  ioff = ring_alloc((void *)(uintptr_t)iaddr, (uint64_t)count * isz); ib = ring;
+--- a/nvn/objects.c
++++ b/nvn/objects.c
+@@ -663,7 +663,15 @@
+ NVN(nvnWindowSetNumActiveTextures) { WIN->active = (int)A(1); }
+ NVN(nvnWindowGetPresentInterval) { RET(WIN->interval); }
+ NVN(nvnWindowSetPresentInterval) { WIN->interval = (int)A(1); }
+-NVN(nvnWindowSetCrop) { int *cr = WIN->crop; cr[0] = (int)A(1); cr[1] = (int)A(2); cr[2] = (int)A(3); cr[3] = (int)A(4); }
++int g_win_crop[4];  // letzter nvnWindowSetCrop (Pixel x, y, Breite, Höhe): die Präsentation zeigt nur diesen Ausschnitt
++bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th) {
++    if (!tw || !th || g_win_crop[2] <= 0 || g_win_crop[3] <= 0 || g_win_crop[0] < 0 || g_win_crop[1] < 0 ||
++        (uint32_t)(g_win_crop[0] + g_win_crop[2]) > tw || (uint32_t)(g_win_crop[1] + g_win_crop[3]) > th) return false;
++    uv[0] = (float)g_win_crop[0] / tw; uv[1] = (float)g_win_crop[1] / th;
++    uv[2] = (float)g_win_crop[2] / tw; uv[3] = (float)g_win_crop[3] / th;
++    return true;
++}
++NVN(nvnWindowSetCrop) { int *cr = WIN->crop; cr[0] = (int)A(1); cr[1] = (int)A(2); cr[2] = (int)A(3); cr[3] = (int)A(4); memcpy(g_win_crop, cr, sizeof g_win_crop); }
+ NVN(nvnWindowGetCrop) { memcpy(AP(1), WIN->crop, 16); }
+ NVN(nvnWindowAcquireTexture) {
+     NvnWindow *w = WIN;
+--- a/nvn/metal.m
++++ b/nvn/metal.m
+@@ -996,6 +996,10 @@
+         extern void widescreen_present_crop(uint64_t, double, float *, double *, double *, double *, double *);
+         float crop[4];  // uv origin and size
+         widescreen_present_crop(total_frames, shape, crop, &vx, &vy, &vw, &vh);
++        {   // der vom Spiel gesetzte Ausschnitt (nvnWindowSetCrop): 1280x720 im 1920x1080-Fensterbild
++            extern bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th);
++            if (t) nvn_window_crop(crop, t->width, t->height);
++        }
+         widescreen_set_factor((float)shape);
+         {   // (diagnostics) log output scale / drawable changes
+             static double psx, psy, pdw, pdh;

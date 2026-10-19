@@ -25,3 +25,7 @@ build "$SRC/nvn/maxwell/translate.c" "$RT/nvn/translate.o" "$@"
 build "$SRC/nvn/renderer.m" "$RT/nvn/renderer.o" -fobjc-arc "$@"
 build "$SRC/nvn/metal.m" "$RT/nvn/metal.o" -fobjc-arc "$@"
 build "$HERE/nvn_glue.c" "$RT/nvn/nvn_glue.o" -Wall -Wextra -Wno-unused-parameter "$@"
+# Filmwiedergabe (movie:: des SDK mit FFmpeg); ohne FFmpeg: BDSP_NO_MOVIE=1 (dann bleibt der SDK-Pfad, der ohne Decoder abbricht)
+if [ -z "${BDSP_NO_MOVIE:-}" ]; then
+  build "$HERE/movie_glue.c" "$RT/nvn/movie_glue.o" $(pkg-config --cflags libavcodec libavformat libavutil) -Wall -Wextra -Wno-unused-parameter "$@"
+fi

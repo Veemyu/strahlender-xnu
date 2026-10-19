@@ -34,6 +34,8 @@ Anders als der Rest dieses Ordners **übernimmt** die Grafikschicht Quelltext de
 | `objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `tegra.h`, `astc.c`, `astc.h`, `nvn.h`, `renderer.m`, `renderer.h`, `metal.m`, `output_scale.h` | Vulkan-Teil (`vulkan/`), `texpatch.c` (Textur-Änderungen für ein bestimmtes Spiel), `output_scale.c`, `smaa_data.c`, alle `runtime/hle/*` (Spiel-Hooks), `ui/` (Menü), Randomizer, `third_party/` |
 | `maxwell/translate.c` und `maxwell/shader.h` werden **ersetzt** durch `shader_translator/` (selbst von LASRecomp abgeleitet, siehe `../../../../shader_translator/NOTICE.md`) | |
 
-Eigen sind `nvn/shim/*`, `nvn/nvn_glue.c`, `nvn/build_nvn.sh`, `nvn/prepare.sh` und der Patch. Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus; davon ist nichts enthalten.
+Eigen sind `nvn/shim/*`, `nvn/nvn_glue.c`, `nvn/build_nvn.sh`, `nvn/prepare.sh` und die Patches (`las-nvn.patch`, `fixes.patch`, `debug.patch`). Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus; davon ist nichts enthalten.
+
+**Filmschicht (`nvn/movie_glue.c`):** in eigener Schreibweise nach `runtime/hle/movie.c` des Klons (Aufbau von `MediaData`, Extractor, Decoder, Ausgabeschlange und Ereignisse als Vorbild; Anpassungen für BDSP: Vtable-Slot 2, direkt importierte Aufrufe, Videospur allein, Schreiben in den Puffer des Spielers). Linkt FFmpeg (LGPL/GPL je nach Bauart, wird nicht mitgeliefert).
 
 **Vulkan-Fassung (Linux/Windows):** übernimmt zusätzlich `runtime/nvn/vulkan/*` des Klons, ebenfalls nur zur Bauzeit und mit eigenem Patch; Einzelheiten, Drittkomponenten und Lizenzen in [`nvn/vulkan/NOTICE.md`](nvn/vulkan/NOTICE.md). (Die Zeile „Vulkan-Teil“ in der Tabelle oben gilt nur für den Metal-Weg.)

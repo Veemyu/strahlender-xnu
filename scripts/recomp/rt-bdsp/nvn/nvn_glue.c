@@ -4,11 +4,11 @@
 #ifdef __APPLE__
 #include <mach-o/getsect.h>
 #include <mach-o/ldsyms.h>
+#endif
 #include <SDL3/SDL.h>
 #include <stdatomic.h>
 #include <string.h>
 #include <strings.h>
-#endif
 #include <time.h>
 #include <unistd.h>
 #include "guestmem.h"

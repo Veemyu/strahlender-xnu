@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "bdsp.h"
+#include "../c_exact/fp_env.h"
 
 #define PSEUDO_THREAD 0xFFFF8000u
 #define PSEUDO_PROCESS 0xFFFF8001u
@@ -182,6 +183,7 @@ static void *thread_main(void *arg) {
     t->host_stack_lo = (void *)((uintptr_t)pthread_get_stackaddr_np(pthread_self()) - t->host_stack_size);
     crash_handler_install();
     rt_set_fpcr(0);
+    rt_fp_guest_mode();   // Host-FPU-Umgebung wie im c-Modus vorausgesetzt (docs/recomp-diff.md): RN, kein FTZ/DAZ
     pthread_mutex_lock(&g_klock);
     if (++g_thread_live > g_thread_peak) g_thread_peak = g_thread_live;
     pthread_mutex_unlock(&g_klock);
@@ -509,9 +511,10 @@ void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) {
     uint64_t n = ++svc_count[imm & 255];
     if (n == 1) svc_first_seen[imm & 255] = pc;
     if (trace_svc < 0) trace_svc = getenv("BDSP_TRACE_SVC") ? atoi(getenv("BDSP_TRACE_SVC")) : 0;
-    if (!trace_svc) return svc_impl(c, imm, pc);
+    if (!trace_svc) { svc_impl(c, imm, pc); rt_fp_guest_mode(); return; }
     uint64_t in[4] = {c->x[0], c->x[1], c->x[2], c->x[3]};
     svc_impl(c, imm, pc);
+    rt_fp_guest_mode();
     if (trace_svc > 1 || n <= 3)
         LOG("[svc] t%llu %02x %s(%llx, %llx, %llx, %llx) -> %llx %llx %llx @%llx\n", (unsigned long long)(t ? t->id : 0), imm,
             svc_name(imm), (unsigned long long)in[0], (unsigned long long)in[1], (unsigned long long)in[2], (unsigned long long)in[3],

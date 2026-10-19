@@ -21,7 +21,7 @@ case "$NVN_BACKEND" in
   metal)
     scripts/recomp/rt-bdsp/nvn/build_nvn.sh "$@"
     nvnobjs=("$RT"/nvn/*.o)
-    FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3)" ;;
+    FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $([ -n "${BDSP_NO_MOVIE:-}" ] || pkg-config --libs libavcodec libavformat libavutil)" ;;
   none) EXTRA="-DBDSP_NVN_NONE"; RT="${RT}-none"; mkdir -p "$RT" ;;
   vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/), Laufzeitbibliotheken per Vollpfad
     RT="$RT" scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh "$@"
