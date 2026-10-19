@@ -12,6 +12,13 @@ Das Repository enthält **keine Spieldaten**, keine Schlüssel, keine Speicherst
 
 Der Unity-Nachbau ist eingestellt und liegt vollständig auf dem Branch `unity` (`unity/DEPRECATED.md` dort). `main` enthält ihn nicht mehr.
 
+### Verwandte Projekte
+
+Der Weg über das Original-Unity-Projekt und die Rekreation in modernem Unity wurde bewusst verworfen. Wer diesen Weg verfolgen möchte, findet die Arbeit an anderer Stelle:
+
+- [uDPR](https://github.com/shatter9652/uDPR) von shatter9652, eine Unity-Rekreation, die auf [opendpr](https://github.com/TeamLumi/opendpr) aufbaut.
+- [opendpr](https://github.com/TeamLumi/opendpr) von TeamLumi, das ursprüngliche Projekt.
+
 ## Fremdcode und Attribution
 
 Dieses Projekt übernimmt und verändert Teile von **LASRecomp** (https://github.com/peiikai/LASRecomp, Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`), Copyright (c) 2026 Peiikai, MIT-Lizenz. Betroffen sind:
