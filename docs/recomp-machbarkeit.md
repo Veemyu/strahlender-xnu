@@ -11,8 +11,8 @@
 ```
 pip install --target tools/pydeps capstone unicorn            # lz4 war schon da
 python3 scripts/recomp_survey.py nso | hist | imports | svc | npdm | eh
-python3 scripts/recomp_survey.py lifter    --lifter-dir research/LASRecomp/tools --module main --simd asm
-python3 scripts/recomp_survey.py gensample --lifter-dir research/LASRecomp/tools --module main --functions 0
+python3 scripts/recomp_survey.py lifter    --lifter-dir scripts/recomp/upstream/generator --module main --simd asm
+python3 scripts/recomp_survey.py gensample --lifter-dir scripts/recomp/upstream/generator --module main --functions 0
 ```
 
 `lifter` und `gensample` importieren Lifter und Generator aus dem Klon nur zur Laufzeit (ohne `.pyc`-Dateien dort zu schreiben, ohne die LAS-spezifischen Patch-Tabellen) und erzeugen nur Zahlen. Das Ziel-Binary wird nie verändert.

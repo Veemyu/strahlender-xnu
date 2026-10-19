@@ -4,6 +4,9 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 ## 2026-10-19
 
+- **Klon nicht mehr nötig:** Generator-Werkzeuge (`gen.py`, `lifter.py`, `analyze.py`, `nso.py`, `patches.py`, `simd_c.py`) unverändert unter `scripts/recomp/upstream/generator/`. Die Pfade in `eh_gen.py`, `mkimg.py`, `build_stages.py`, `recomp_build.sh` und den Tests zeigen dorthin. Der Ordner heißt bewusst nicht `tools/`, weil `repo_check.py` jeden Pfad mit `tools/` ablehnt. Nicht übernommen: Randomizer (`tools/rando/`).
+- **Test- und Build-Pfade:** Die Test-Skripte (`scripts/recomp/test/`, `rt-bdsp/test/`) nutzen `scripts/recomp/upstream/runtime`. Nicht umgestellt: `scripts/recomp/diff/`, `scripts/recomp/ryzen/` und `run_boot_probe_las.sh`. Sie brauchen weiterhin die volle LASRecomp-Laufzeit (Dienste, Plattform) aus dem Klon.
+
 - **Header vendored:** `cpu.h`, `simd.h`, `simd_fp.h` unverändert unter `scripts/recomp/upstream/runtime/`. Die App-Build-Skripte (`rt-bdsp/build.sh`, `nvn/build_nvn.sh`, `nvn/vulkan/build_vk.sh`, `ios/build_rt32.sh`, `ios/compile_chunk_ios.sh`) nutzen diesen Pfad. Geprüft: iPad-Build und Mac-Laufzeit gelinkt.
 - **Provenienz korrigiert:** Abgleich zeigt wörtlich übernommene Zeilen in `kernel.c`, `ipc.c`, `services*.c` und weiteren Dateien (8 bis 47 %). Die bisherige Aussage „keine Datei wurde kopiert“ war falsch und ist in NOTICE, THIRD_PARTY_NOTICES und README korrigiert.
 

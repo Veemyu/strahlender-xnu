@@ -11,8 +11,8 @@ clang --target=aarch64-linux-gnu -O2 -ffreestanding -fno-pic -fno-asynchronous-u
 python3 scripts/recomp/mini_link.py $S/bench_guest.o $S/gbn --base 0x7008000000 --syms $S/empty.json
 python3 scripts/recomp/eh_gen.py gen gbn $S/gbn.nso 0x7008000000 $S/gen --simd asm 2>&1 | grep -E "wrote|eh_gen"
 rm -f $S/gen/*.o
-for f in $S/gen/*.c; do clang $OPT -fno-strict-aliasing -w -I scripts/recomp/rt -I research/LASRecomp/runtime -c $f -o ${f%.c}.o; done
-clang -O2 -w -I scripts/recomp/rt -I research/LASRecomp/runtime -I scripts/recomp/test -c scripts/recomp/test/bench_prove.c -o $S/bench_prove.o
+for f in $S/gen/*.c; do clang $OPT -fno-strict-aliasing -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c $f -o ${f%.c}.o; done
+clang -O2 -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/test -c scripts/recomp/test/bench_prove.c -o $S/bench_prove.o
 clang -o $S/bench_prove $S/bench_prove.o $S/gen/*.o
 off() { python3 -c "import json,sys; print(hex(json.load(open('$S/gbn.json'))['syms'][sys.argv[1]]))" "$1"; }
 echo "Erzeugtes C mit $OPT, Gastcode aarch64 mit -O2, native Vergleichsversion -O2"

@@ -227,14 +227,14 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
         parts["modules"] = {m: hash_file(os.path.join(work, "exefs", m)) for m in ("main", "sdk", "subsdk0", "rtld")}
         parts["generator"] = {n: hash_file(os.path.join(rec, n)) for n in
                               ("eh_gen.py", "eh_lsda.py", "eh_pick.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
-        parts["las_tools"] = hash_tree_content(os.path.join(root, "research", "LASRecomp", "tools"), (".py",), skip_dirs=("__pycache__",))
+        parts["las_tools"] = hash_tree_content(os.path.join(rec, "upstream", "generator"), (".py",), skip_dirs=("__pycache__",))
         if stage == "recomp":
-            # Laufzeit, NVN-Schicht (Klon + Patches), Übersetzer, App-Hülle; die Teilmarker bilden Generator und Objekte ab
+            # Laufzeit, NVN-Schicht (vendort + Patches), Übersetzer, App-Hülle; die Teilmarker bilden Generator und Objekte ab
             skip = ("test", "vulkan", "__pycache__")
             parts["gen"] = _marker_hash(work, "recomp-gen")
             parts["obj"] = _marker_hash(work, "recomp-obj")
             parts["runtime"] = hash_tree_content(os.path.join(rec, "rt-bdsp"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
-            parts["nvn_las"] = hash_tree_content(os.path.join(root, "research", "LASRecomp", "runtime", "nvn"), (".c", ".h", ".m"), skip_dirs=("vulkan",))
+            parts["nvn_las"] = hash_tree_content(os.path.join(rec, "rt-bdsp", "nvn", "upstream", "nvn"), (".c", ".h", ".m"), skip_dirs=("vulkan",))
             parts["translator"] = hash_tree_content(os.path.join(root, "shader_translator"), (".c", ".h"), skip_dirs=("build", "__pycache__"))
             parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".in", ".entitlements"), skip_dirs=("__pycache__",))
             parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh")
@@ -415,10 +415,10 @@ def preflight(stages, target, root, work, tools_dir=None, unity_root="/Applicati
         add("Python-Pakete capstone, unicorn in tools/pydeps (Generator)",
             os.path.isdir(os.path.join(pyd, "capstone")) and os.path.isdir(os.path.join(pyd, "unicorn")), pyd,
             "python3 -m pip install --target tools/pydeps capstone unicorn")
-        las = os.path.join(root, "research", "LASRecomp")
-        add("research/LASRecomp (Generator und NVN-Schicht, MIT)",
-            os.path.isfile(os.path.join(las, "tools", "gen.py")) and os.path.isdir(os.path.join(las, "runtime", "nvn")), las,
-            "git clone https://github.com/peiikai/LASRecomp research/LASRecomp (Commit siehe scripts/recomp/rt-bdsp/NOTICE.md)")
+        up = os.path.join(root, "scripts", "recomp", "upstream")
+        add("Vendorte LASRecomp-Teile (Generator, Header; MIT)",
+            os.path.isfile(os.path.join(up, "generator", "gen.py")) and os.path.isfile(os.path.join(up, "runtime", "cpu.h")), up,
+            "git checkout -- scripts/recomp/upstream (Ordner fehlt im Arbeitsstand)")
 
     if "video" in s:
         ffmpeg = which("ffmpeg")

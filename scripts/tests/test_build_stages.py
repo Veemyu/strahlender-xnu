@@ -208,8 +208,8 @@ class PreflightTests(unittest.TestCase):
         os.makedirs(os.path.join(self.tools, "pydeps", "UnityPy"))
         os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
         os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
-        write(os.path.join(self.root, "research", "LASRecomp", "tools", "gen.py"))
-        os.makedirs(os.path.join(self.root, "research", "LASRecomp", "runtime", "nvn"))
+        write(os.path.join(self.root, "scripts", "recomp", "upstream", "generator", "gen.py"))
+        write(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
         base = os.path.join(self.unity, bs.UNITY_VERSION)
         os.makedirs(os.path.join(base, "Unity.app"))
         os.makedirs(os.path.join(base, "Unity.app", "Contents", "PlaybackEngines", "MacStandaloneSupport",
@@ -303,8 +303,8 @@ class RecompStageTests(unittest.TestCase):
         write(os.path.join(self.work, "exefs", "main.npdm"), "npdm")
         os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
         os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
-        write(os.path.join(self.root, "research", "LASRecomp", "tools", "gen.py"))
-        os.makedirs(os.path.join(self.root, "research", "LASRecomp", "runtime", "nvn"))
+        write(os.path.join(self.root, "scripts", "recomp", "upstream", "generator", "gen.py"))
+        write(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
         write(os.path.join(self.root, "scripts", "recomp", "eh_gen.py"), "gen")
         write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){}")
         write(os.path.join(self.root, "scripts", "recomp", "app", "make_app.sh"), "#!/bin/sh")
@@ -338,14 +338,14 @@ class RecompStageTests(unittest.TestCase):
         self.assertEqual(len(missing), 1)
 
     def test_missing_clone_and_packages_get_german_hints(self):
-        os.rmdir(os.path.join(self.root, "research", "LASRecomp", "runtime", "nvn"))
+        os.remove(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
         os.rmdir(os.path.join(self.tools, "pydeps", "unicorn"))
         items = self.pf()
         self.assertEqual(sorted(self.missing(items)), ["Python-Pakete capstone, unicorn in tools/pydeps (Generator)",
-                                                       "research/LASRecomp (Generator und NVN-Schicht, MIT)"])
+                                                       "Vendorte LASRecomp-Teile (Generator, Header; MIT)"])
         _, missing, _ = bs.format_preflight(items)
         text = "\n".join(bs.install_list(missing))
-        self.assertIn("git clone https://github.com/peiikai/LASRecomp", text)
+        self.assertIn("git checkout -- scripts/recomp/upstream", text)
         self.assertNotIn("sudo ", text)
 
     def test_ios_target_does_not_check_mac_app_tools(self):

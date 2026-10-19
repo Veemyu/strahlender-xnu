@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Speicherbild eines NSO-Moduls für den Exception-Spike bauen (Relokationen angewandt, Importe -> HLE-Slots).
 
-Eigener Code. Liest research/LASRecomp/tools/nso.py nur zur Laufzeit. Schreibt unter --out (work/recomp/spike2):
-  <name>.img        flaches Bild, Modulbasis = --base (Relokationen RELATIVE/ABS64/GLOB_DAT/JUMP_SLOT angewandt)
+Eigener Code. Liest scripts/recomp/upstream/generator/nso.py. Schreibt unter --out (work/recomp/spike2):  <name>.img        flaches Bild, Modulbasis = --base (Relokationen RELATIVE/ABS64/GLOB_DAT/JUMP_SLOT angewandt)
   <name>.syms.json  {Exportname: absolute Gastadresse}
   hle.txt           Importnamen, Zeile i = HLE-Slot i (Adresse HLE_BASE + 16 * i); wird fortgeschrieben
 
@@ -16,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
-sys.path.insert(0, str(ROOT / "research" / "LASRecomp" / "tools"))
+sys.path.insert(0, str(ROOT / "scripts" / "recomp" / "upstream" / "generator"))
 sys.dont_write_bytecode = True
 from nso import Nso  # noqa: E402
 

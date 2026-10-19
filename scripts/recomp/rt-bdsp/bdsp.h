@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "cpu.h"        // rt/cpu.h (Exception-Erweiterung) und darüber research/LASRecomp/runtime/cpu.h
+#include "cpu.h"        // rt/cpu.h (Exception-Erweiterung) und darüber scripts/recomp/upstream/runtime/cpu.h
 #include "guestmem.h"
 
 #define LOG(...) fprintf(stderr, __VA_ARGS__)

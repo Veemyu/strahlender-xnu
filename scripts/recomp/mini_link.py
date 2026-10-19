@@ -5,7 +5,7 @@ Eigener Code, nur für synthetische Testprogramme (kein Spielcode). Es gibt kein
 auf dem Mac; dieser Linker legt alle Abschnitte mit SHF_ALLOC hintereinander, wendet die Relokationen an,
 erzeugt `.eh_frame_hdr` samt Suchtabelle (wie `ld --eh-frame-hdr`) und schreibt:
 
-  <out>.nso   NSO0-Datei (unkomprimiert, MOD0 mit eh_frame_hdr), lesbar von research/LASRecomp/tools/nso.py
+  <out>.nso   NSO0-Datei (unkomprimiert, MOD0 mit eh_frame_hdr), lesbar von scripts/recomp/upstream/generator/nso.py
   <out>.img   flaches Speicherbild (Modulbasis 0), mit bereits angewandten Relokationen
   <out>.json  Symbole (Name -> Offset), Abschnitte, Kopf-/Hdr-Lage
 

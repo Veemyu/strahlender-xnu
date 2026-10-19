@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generator-Erweiterung für C++-Exceptions und setjmp/longjmp (Phase-2-Spike, docs/recomp-spike-2.md).
 
-Eigener Code. Der Generator aus research/LASRecomp/tools (MIT, nur zur Laufzeit importiert, nichts kopiert)
+Eigener Code. Der Generator aus scripts/recomp/upstream/generator (MIT, unverändert vendort)
 wird nicht verändert, sondern hier zur Laufzeit erweitert:
 
 * `EhModule` ist eine Unterklasse von `gen.Module`. Jede erzeugte Gastfunktion, die einen Wiedereinstiegspunkt
@@ -15,7 +15,7 @@ wird nicht verändert, sondern hier zur Laufzeit erweitert:
   Sprung auf das Registerziel (der Standard-Lifter macht daraus ein `return`).
 
 Aufruf wie `gen.py`:  eh_gen.py gen <name> <nso> <basis> <ausgabeordner> [--chunk-bytes N] [--simd asm|c] [--limit N]
-Zusätzlich: --las-dir <Ordner mit gen.py> (Standard research/LASRecomp/tools).
+Zusätzlich: --las-dir <Ordner mit gen.py> (Standard scripts/recomp/upstream/generator).
 """
 import atexit
 import bisect
@@ -318,7 +318,7 @@ def main():
     import argparse
     import platform
     argv = sys.argv[1:]
-    las = ROOT / "research" / "LASRecomp" / "tools"
+    las = ROOT / "scripts" / "recomp" / "upstream" / "generator"
     if "--las-dir" in argv:
         i = argv.index("--las-dir")
         las = Path(argv[i + 1])

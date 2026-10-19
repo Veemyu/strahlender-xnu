@@ -41,8 +41,8 @@ O0_BYTES=$((O0_KB * 1000))
 [ -s "$ROOT/work/exefs/main" ] || die 10 "work/exefs/main fehlt: zuerst die Stufe extract (scripts/build_all.sh extract --xci … --keys …)"
 [ -d "$ROOT/work/romfs/Data" ] || die 10 "work/romfs/Data fehlt: zuerst die Stufe extract"
 [ -f "$ROOT/work/exefs/main.npdm" ] || die 10 "work/exefs/main.npdm fehlt: Stufe extract unvollständig"
-[ -f "$ROOT/research/LASRecomp/tools/gen.py" ] \
-  || die 10 "research/LASRecomp fehlt: git clone https://github.com/peiikai/LASRecomp research/LASRecomp (nur Generator-Werkzeuge, MIT; siehe scripts/recomp/rt-bdsp/NOTICE.md)"
+[ -f "$ROOT/scripts/recomp/upstream/generator/gen.py" ] \
+  || die 10 "scripts/recomp/upstream fehlt: git checkout -- scripts/recomp/upstream (vendorter Generator, MIT; siehe THIRD_PARTY_NOTICES.md)"
 
 hash_of() { $SP stage-hash --stage "$1" --root "$ROOT" --work "$WORK" | tail -n 1; }
 marker_ok() { $SP marker-check --work "$WORK" --stage "$1" --hash "$2"; }

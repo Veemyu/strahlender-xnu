@@ -1,5 +1,5 @@
 // Erweiterung von cpu.h für den Exception-Spike: Rahmeneinträge für Landing-Pads und setjmp-Rücksprünge.
-// Eigener Code. Liegt vor research/LASRecomp/runtime im Include-Pfad (-I scripts/recomp/rt -I <las>/runtime)
+// Eigener Code. Liegt vor scripts/recomp/upstream/runtime im Include-Pfad (-I scripts/recomp/rt -I scripts/recomp/upstream/runtime)
 // und zieht per #include_next die Original-cpu.h nach.
 #pragma once
 #include_next "cpu.h"

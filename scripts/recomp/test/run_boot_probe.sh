@@ -14,7 +14,7 @@ for m in main sdk subsdk0; do
   python3 scripts/recomp/mkimg.py work/exefs/$m $m --base "$(declare_base $m)" --out $S \
     --link $S/main.syms.json --link $S/sdk.syms.json --link $S/subsdk0.syms.json
 done
-clang -O1 -w -I scripts/recomp/rt -I research/LASRecomp/runtime -c scripts/recomp/test/boot_probe.c -o $S/boot_probe.o
+clang -O1 -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c scripts/recomp/test/boot_probe.c -o $S/boot_probe.o
 clang -o $S/boot_probe $S/boot_probe.o $OBJ/*.o
 START=$(python3 -c "
 import json
