@@ -57,6 +57,49 @@ void gate_report(FILE *f) {
         fprintf(f, "  Beobachtung %s @%llx: %llu Aufrufe über den Verteiler\n", watches[i].name, (unsigned long long)watches[i].addr, (unsigned long long)watches[i].hits);
 }
 
+// BDSP_IL2SYM=<tsv> (Adresse hex <TAB> Name, aufsteigend; erzeugt aus den IL2CPP-Metadaten): jede IL2CPP-Methode beim ersten Aufruf melden
+static struct { uint64_t addr; char *name; } *il2_syms;
+static char *il2_seen;
+static size_t il2_n;
+static void il2_load(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    size_t cap = 0;
+    char line[1024];
+    while (fgets(line, sizeof line, f)) {
+        char *tab = strchr(line, '\t');
+        if (!tab) continue;
+        *tab = 0;
+        tab++;
+        tab[strcspn(tab, "\n")] = 0;
+        if (il2_n == cap) { cap = cap ? cap * 2 : 1 << 16; il2_syms = realloc(il2_syms, cap * sizeof *il2_syms); }
+        il2_syms[il2_n].addr = strtoull(line, NULL, 16);
+        il2_syms[il2_n].name = strdup(tab);
+        il2_n++;
+    }
+    fclose(f);
+    il2_seen = calloc(il2_n + 1, 1);
+}
+static int il2_cmp(const void *a, const void *b) {
+    uint64_t x = ((const typeof(*il2_syms) *)a)->addr, y = ((const typeof(*il2_syms) *)b)->addr;
+    return x < y ? -1 : x > y;
+}
+static void il2_hit(uint64_t a) {
+    size_t lo = 0, hi = il2_n;
+    while (lo < hi) {
+        size_t m = (lo + hi) / 2;
+        if (il2_syms[m].addr < a) lo = m + 1; else hi = m;
+    }
+    if (lo >= il2_n || il2_syms[lo].addr != a) return;
+    if (__atomic_exchange_n(&il2_seen[lo], 1, __ATOMIC_RELAXED)) return;
+    KThread *kt = kernel_current_thread();
+    static uint64_t t0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t ms = (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    if (!t0) t0 = ms;
+    fprintf(stderr, "[il2] %6llu ms t%llu %s\n", (unsigned long long)(ms - t0), (unsigned long long)(kt ? kt->id : 0), il2_syms[lo].name);
+}
 // ---- Funktionsring (BDSP_FNPROF=1: jeder Funktionseintritt kostet einen Aufruf)
 #define RING 4096
 static __thread uint64_t ring_fn[RING], ring_lr[RING];
@@ -66,6 +109,7 @@ static int ring_nreg;
 void fnprof_hit(uint64_t a, uint64_t lr, uint64_t x0) {
     (void)x0;
     static __thread int registered;
+    if (il2_n) il2_hit(a);
     if (!registered) {
         registered = 1;
         KThread *kt = kernel_current_thread();
@@ -97,6 +141,11 @@ void dispatch_init(void) {
     tables[2] = (FnTable){subsdk0_fn_addrs, subsdk0_fn_ptrs, subsdk0_fn_count, subsdk0_fn_addrs[0], subsdk0_fn_addrs[subsdk0_fn_count - 1]};
     tables[3] = (FnTable){rtld_fn_addrs, rtld_fn_ptrs, rtld_fn_count, rtld_fn_addrs[0], rtld_fn_addrs[rtld_fn_count - 1]};
     if (getenv("BDSP_FNPROF")) g_fnprof = 1;
+    if (getenv("BDSP_IL2SYM")) {
+        il2_load(getenv("BDSP_IL2SYM"));
+        if (il2_n) qsort(il2_syms, il2_n, sizeof *il2_syms, il2_cmp);
+        g_fnprof = 1;
+    }
 }
 
 GuestFn dispatch_lookup(uint64_t addr) {

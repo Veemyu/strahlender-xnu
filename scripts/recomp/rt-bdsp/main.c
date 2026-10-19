@@ -58,6 +58,7 @@ static void rtld_init_main(Cpu *c) { module_init(c, &g_modules[0]); }
 static void rtld_nop(Cpu *c) { (void)c; LOG("[init] Fini-Rückruf nach nnMain erreicht\n"); }
 
 static volatile uint64_t g_start_ns;
+uint64_t g_proc_start_ns;   // Prozessstart (Zeitbasis des Eingabe-Testskripts in nvn/nvn_glue.c)
 static pthread_t g_main_thread_id;
 static volatile uint64_t g_stress_cycles;
 static void report(const char *why) {
@@ -166,6 +167,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--headless")) setenv("LARECOMP_HIDDEN", "1", 1);   // Fenster nie sichtbar, Rendern bleibt Metal
         else if (!strcmp(argv[i], "--window") && i + 1 < argc) setenv("LARECOMP_WINDOW", argv[++i], 1);
         else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // keine Grafik (nur Gate-1-Messung): NVN-Funktionen bleiben ungenutzt
+        else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) setenv("BDSP_INPUT_SCRIPT", argv[++i], 1);   // "Sekunde:TASTE[+TASTE]:Dauer,..." (nvn_glue.c)
+        else if (!strcmp(argv[i], "--save") && i + 1 < argc) setenv("BDSP_SAVE", argv[++i], 1);   // Speicherstand-Ordner (Standard work/recomp/save, siehe install_save.sh)
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) setenv("BDSP_TIMEOUT", argv[++i], 1);
         else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }
     }
@@ -175,6 +178,7 @@ int main(int argc, char **argv) {
     int timeout = g_timeout;
     fs_set_dirs(getenv("BDSP_ROMFS"), getenv("BDSP_SAVE"));
     g_start_ns = rt_now_ns();
+    g_proc_start_ns = g_start_ns;
     g_main_thread_id = pthread_self();
 
     uint32_t stack_size = 0x100000;

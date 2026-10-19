@@ -22,6 +22,7 @@ const char *g_save_dir = "work/recomp/save";
 void fs_set_dirs(const char *romfs, const char *save) {
     if (romfs) g_romfs_dir = romfs;
     if (save) g_save_dir = save;
+    user_id_load(g_save_dir);
 }
 
 // ------------------------------------------------------------------ RomFS-Abbild
@@ -396,6 +397,10 @@ static void host_filesystem(Service *s, IpcReq *req, IpcResp *resp) {
     HostFs *fs = s->state;
     char p[2048], p2[2048];
     host_path(fs, in_path(req, 0), p, sizeof p);
+    if (req->cmd <= 9 && strstr(fs->root, "save_")) {
+        static int nlog;
+        if (nlog++ < 200) LOG("[fs-save] cmd %u %s\n", req->cmd, p);
+    }
     switch (req->cmd) {
     case 0: {  // CreateFile(option, size)
         int fd = open(p, O_CREAT | O_EXCL | O_RDWR, 0644);

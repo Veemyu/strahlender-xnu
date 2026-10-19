@@ -20,4 +20,7 @@ cp shader_translator/translate.c "$DST/nvn/maxwell/translate.c"
 cp shader_translator/shader.h "$DST/nvn/maxwell/shader.h"
 cp -R "$HERE/shim/." "$DST/"
 if [ -f "$HERE/las-nvn.patch" ]; then (cd "$DST" && patch -p1 --quiet < "../../../$HERE/las-nvn.patch"); fi
+# fixes.patch: Korrekturen (Ring statt umhülltem Gastspeicher, Textur-/Sampler-Tabelle); debug.patch: Debug-Haken, nur mit NVN_DEBUG=1
+if [ -f "$HERE/fixes.patch" ]; then (cd "$DST" && patch -p1 --quiet < "../../../$HERE/fixes.patch"); fi
+if [ -n "${NVN_DEBUG:-}" ] && [ -f "$HERE/debug.patch" ]; then (cd "$DST" && patch -p1 --quiet < "../../../$HERE/debug.patch"); fi
 echo "NVN-Quellen: $DST"

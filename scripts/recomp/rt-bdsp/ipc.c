@@ -209,6 +209,7 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
                 target->name, req.cmd, req.data_size, req.nx, req.na, req.nb, req.nc, req.ncopy, req.nmove);
         ipc_count(target->name, req.cmd);
         target->handler(target, &req, &resp);
+        if (trace_ipc && resp.result) LOG("[ipc]   -> %s cmd %u Ergebnis 0x%x\n", target->name, req.cmd, resp.result);
     } else if (req.type == 5 || req.type == 7) {  // Steuerbefehle
         req.cmd = *(uint32_t *)(payload + 8);
         switch (req.cmd) {

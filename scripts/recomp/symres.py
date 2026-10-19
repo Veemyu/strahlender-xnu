@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Annotiert Gastadressen (70xxxxxxxx) auf stdin mit IL2CPP-Namen aus work/recomp/il2sym.tsv (erzeugt von il2sym.py)."""
+import bisect
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+pairs = []
+for line in open(os.path.join(ROOT, "work/recomp/il2sym.tsv")):
+    a, n = line.rstrip("\n").split("\t")
+    pairs.append((int(a, 16), n))
+pairs.sort()
+addrs = [p[0] for p in pairs]
+
+
+def sym(a):
+    i = bisect.bisect_right(addrs, a) - 1
+    if i >= 0 and a - addrs[i] < 0x4000:
+        return "%s+%x" % (pairs[i][1], a - addrs[i])
+    return None
+
+
+rx = re.compile(r"\b(70[0-9a-f]{8})\b")
+for line in sys.stdin:
+    print(rx.sub(lambda m: m.group(1) + (" <" + sym(int(m.group(1), 16)) + ">" if sym(int(m.group(1), 16)) else ""), line.rstrip("\n")))

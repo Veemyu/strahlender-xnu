@@ -1,0 +1,47 @@
+Korrekturen an renderer.m (nach las-nvn.patch angewandt; prepare.sh):
+ 1. Vertex-/Indexdaten gehen standardmäßig über den Ring (Kopie) statt über den umhüllten Gastspeicher (LARECOMP_GUEST_BUF=1 schaltet
+    das alte Verhalten zurück): die GPU sah im umhüllten Puffer alte (nie beschriebene) Seiten, alle indizierten Zeichenaufrufe blieben unsichtbar.
+ 2. Bindlose Texturen: Handles aus zwei Wörtern haben die Textur in der Tabelle ab 0x168 und den Sampler in der ab 0x568 (Fund des Vulkan-Strangs).
+--- a/nvn/renderer.m
++++ b/nvn/renderer.m
+@@ -645,8 +645,14 @@
+ static void ring_reset(void) { ring_off = 0; }
+ 
+ // Bind guest memory [addr, addr+size) as a buffer: zero-copy inside the heap, copied otherwise.
++static bool guest_heap_ok(uint64_t addr, uint64_t size) {
++    static int off = -1;  // Standard: Daten über den Ring kopieren; LARECOMP_GUEST_BUF=1 nutzt den umhüllten Gastspeicher (siehe docs/recomp-gate2.md: die GPU sah dort alte Seiten)
++    if (off < 0) off = getenv("LARECOMP_GUEST_BUF") == NULL;
++    return !off && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
++}
++
+ static void bind_guest(id<MTLRenderCommandEncoder> e, bool vertex_stage, uint64_t addr, uint64_t size, int index) {
+-    if (addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX && (addr & 3) == 0) {
++    if (guest_heap_ok(addr, size) && (addr & 3) == 0) {
+         if (vertex_stage) [e setVertexBuffer:g_guest_buffer offset:addr - HEAP_BASE atIndex:index];
+         else [e setFragmentBuffer:g_guest_buffer offset:addr - HEAP_BASE atIndex:index];
+         return;
+@@ -1107,12 +1113,13 @@
+         int slot = ((int)st_->handle_offset - 0x20) / 8;  // 64-bit handles from offset 0x20
+         return (slot >= 0 && slot < 32) ? st.tex[stage][slot] : 0;
+     }
+-    int ti = ((int)st_->bindless_offset - 0x568) / 8;
++    // Handles aus zwei Wörtern: die Textur steht in der Tabelle ab 0x168, der Sampler in der ab 0x568 (Fund des Vulkan-Strangs)
++    int ti = ((int)(st_->bindless_has_sampler ? st_->bindless_sampler_offset : st_->bindless_offset) - (st_->bindless_has_sampler ? 0x168 : 0x568)) / 8;
+     uint64_t th = (ti >= 0 && ti < 32) ? st.tex[stage][ti] : 0;
+     if (!th) return 0;
+     uint64_t sh = 0;
+     if (st_->bindless_has_sampler) {
+-        int si = ((int)st_->bindless_sampler_offset - 0x168) / 8;
++        int si = ((int)st_->bindless_offset - 0x568) / 8;
+         sh = (si >= 0 && si < 32) ? st.smp[stage][si] : 0;
+     }
+     return (th & 0xFFFFF) | (sh & 0xFFF00000ull);
+@@ -2112,7 +2119,7 @@
+             uint32_t isz = itype == 1 ? 2 : 4;
+             id<MTLBuffer> ib;
+             uint64_t ioff;
+-            if (iaddr >= HEAP_BASE && iaddr + (uint64_t)count * isz <= HEAP_BASE + HEAP_MAX && (iaddr % isz) == 0) {
++            if (guest_heap_ok(iaddr, (uint64_t)count * isz) && (iaddr % isz) == 0) {
+                 ib = g_guest_buffer; ioff = iaddr - HEAP_BASE;
+             } else {
+                 ioff = ring_alloc((void *)(uintptr_t)iaddr, (uint64_t)count * isz); ib = ring;

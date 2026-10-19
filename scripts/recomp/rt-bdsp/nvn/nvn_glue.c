@@ -4,6 +4,10 @@
 #ifdef __APPLE__
 #include <mach-o/getsect.h>
 #include <mach-o/ldsyms.h>
+#include <SDL3/SDL.h>
+#include <stdatomic.h>
+#include <string.h>
+#include <strings.h>
 #endif
 #include <time.h>
 #include <unistd.h>
@@ -104,6 +108,13 @@ HLE_FUNC("nvnDeviceGetProcAddress", nvn_device_get_proc_address) {
     c->x[0] = nvn_proc((const char *)G2HC(c->x[1]));
 }
 
+// ---- Videowiedergabe (Unity SwitchVideoPlayer -> Android-Stagefright im SDK): die Codec-Liste ist ohne Hardware-Decoder leer;
+// strcasecmp bekommt dort einen Null-Namen. Ein NULL-sicheres strcasecmp lässt die Suche leer enden (Codec nicht gefunden).
+HLE_FUNC("strcasecmp", libc_strcasecmp) {
+    const char *a = c->x[0] ? (const char *)G2HC(c->x[0]) : NULL, *b = c->x[1] ? (const char *)G2HC(c->x[1]) : NULL;
+    c->x[0] = (uint64_t)(int64_t)(!a || !b ? (a == b ? 0 : a ? 1 : -1) : strcasecmp(a, b));
+}
+
 // ---- Debug-Prüfpunkte des NVN-SDK (in der LAS-Schicht nicht vorhanden): wirkungslos
 HLE_FUNC("nvnCommandBufferInsertCheckpointDynamic", nvn_ckpt_dyn) { (void)c; }
 HLE_FUNC("nvnCommandBufferInsertCheckpointStatic", nvn_ckpt_static) { (void)c; }
@@ -172,12 +183,105 @@ const uint8_t *maxwell_dbg_code, *maxwell_dbg_vs;
 uint32_t maxwell_dbg_pc;
 int maxwell_dbg_reg;
 
+// ---- Eingabe (nn::hid): Tastatur aus dem Fenster und ein Testskript speisen den Npad-Zustand (Muster: runtime/hle/input.c des Klons).
+// Die SDK-Funktionen GetNpadState(s)/GetNpadStyleSet werden durch Host-Funktionen ersetzt; der hid-Dienst bleibt für Verbindung/Aktivierung zuständig.
+// Tasten: Eingabe/Leertaste/K = A, Rücktaste/J = B, X, Y, Pfeiltasten und WASD = Steuerkreuz, Q/E = L/R, P = Plus, O = Minus.
+// Testskript (--input-script / BDSP_INPUT_SCRIPT): "Sekunde:TASTE[+TASTE]:Dauer, ..." ab Prozessstart, z. B. "30:A:0.3,34:A+DOWN:0.2".
+enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
+static const char *const pad_names[16] = {"A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS", "MINUS", "LEFT", "UP", "RIGHT", "DOWN"};
+static _Atomic uint64_t key_buttons;
+static int64_t pad_sampling;
+extern uint64_t g_proc_start_ns;
+typedef struct { double at, len; uint32_t mask; } ScriptStep;
+static ScriptStep script[256];
+static int nscript = -1;
+
+static void script_load(void) {
+    nscript = 0;
+    const char *spec = getenv("BDSP_INPUT_SCRIPT");
+    static char buf[4096];
+    if (!spec) return;
+    snprintf(buf, sizeof buf, "%s", spec);
+    char *save1 = NULL;
+    for (char *tok = strtok_r(buf, ",", &save1); tok && nscript < 256; tok = strtok_r(NULL, ",", &save1)) {
+        double at = 0, len = 0.3;
+        char names[96] = "";
+        if (sscanf(tok, "%lf:%95[A-Z+]:%lf", &at, names, &len) < 2) continue;
+        uint32_t m = 0;
+        char *save2 = NULL;
+        for (char *n = strtok_r(names, "+", &save2); n; n = strtok_r(NULL, "+", &save2))
+            for (int i = 0; i < 16; i++) if (!strcmp(n, pad_names[i])) m |= 1u << i;
+        script[nscript++] = (ScriptStep){at, len, m};
+    }
+    LOG("[input] Testskript mit %d Schritten\n", nscript);
+}
+
+static uint64_t buttons_now(void) {
+    if (nscript < 0) script_load();
+    uint64_t b = key_buttons;
+    double t = (rt_now_ns() - g_proc_start_ns) / 1e9;
+    for (int i = 0; i < nscript; i++)
+        if (t >= script[i].at && t < script[i].at + script[i].len) b |= script[i].mask;
+    return b;
+}
+
+void input_handle_event(const void *ev) {
+    const SDL_Event *e = ev;
+    if (e->type != SDL_EVENT_KEY_DOWN && e->type != SDL_EVENT_KEY_UP) return;
+    int bit = -1;
+    switch (e->key.scancode) {
+    case SDL_SCANCODE_RETURN: case SDL_SCANCODE_SPACE: case SDL_SCANCODE_K: bit = PB_A; break;
+    case SDL_SCANCODE_BACKSPACE: case SDL_SCANCODE_J: bit = PB_B; break;
+    case SDL_SCANCODE_X: bit = PB_X; break;
+    case SDL_SCANCODE_Y: bit = PB_Y; break;
+    case SDL_SCANCODE_Q: bit = PB_L; break;
+    case SDL_SCANCODE_E: bit = PB_R; break;
+    case SDL_SCANCODE_P: bit = PB_PLUS; break;
+    case SDL_SCANCODE_O: bit = PB_MINUS; break;
+    case SDL_SCANCODE_LEFT: case SDL_SCANCODE_A: bit = PB_LEFT; break;
+    case SDL_SCANCODE_RIGHT: case SDL_SCANCODE_D: bit = PB_RIGHT; break;
+    case SDL_SCANCODE_UP: case SDL_SCANCODE_W: bit = PB_UP; break;
+    case SDL_SCANCODE_DOWN: case SDL_SCANCODE_S: bit = PB_DOWN; break;
+    default: return;
+    }
+    if (e->type == SDL_EVENT_KEY_DOWN) atomic_fetch_or(&key_buttons, 1ull << bit);
+    else atomic_fetch_and(&key_buttons, ~(1ull << bit));
+}
+
+// Npad-Zustand (alle Zustandstypen gleich aufgebaut): {s64 Abtastnummer, u64 Tasten, Stick L {s32 x, y}, Stick R, u32 Attribute}; Spieler 1 ist ein verbundener Pro Controller
+static void npad_fill(uint8_t *s) {
+    memset(s, 0, 0x28);
+    *(int64_t *)s = ++pad_sampling;
+    uint64_t b = buttons_now();
+    *(uint64_t *)(s + 8) = b;
+    *(uint32_t *)(s + 32) = 1;
+    static uint64_t last;
+    if (b != last && getenv("BDSP_TRACE_INPUT")) LOG("[input] Tasten %#llx\n", (unsigned long long)b);
+    last = b;
+}
+#define NPAD_STATE(sym, fn) HLE_FUNC(sym, fn) { if (*(uint32_t *)G2HC(c->x[1]) == 0) npad_fill((uint8_t *)G2H(c->x[0])); }
+#define NPAD_STATES(sym, fn) HLE_FUNC(sym, fn) {                          \
+    if (*(uint32_t *)G2HC(c->x[2]) != 0 || (int)c->x[1] < 1) { c->x[0] = 0; return; } \
+    npad_fill((uint8_t *)G2H(c->x[0]));                                  \
+    c->x[0] = 1;                                                         \
+}
+NPAD_STATE("_ZN2nn3hid12GetNpadStateEPNS0_16NpadFullKeyStateERKj", npad_s_full)
+NPAD_STATE("_ZN2nn3hid12GetNpadStateEPNS0_16NpadJoyDualStateERKj", npad_s_dual)
+NPAD_STATE("_ZN2nn3hid12GetNpadStateEPNS0_16NpadJoyLeftStateERKj", npad_s_left)
+NPAD_STATE("_ZN2nn3hid12GetNpadStateEPNS0_17NpadHandheldStateERKj", npad_s_hand)
+NPAD_STATE("_ZN2nn3hid12GetNpadStateEPNS0_17NpadJoyRightStateERKj", npad_s_right)
+NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_16NpadFullKeyStateEiRKj", npad_ss_full)
+NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_16NpadJoyDualStateEiRKj", npad_ss_dual)
+NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_16NpadJoyLeftStateEiRKj", npad_ss_left)
+NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_17NpadHandheldStateEiRKj", npad_ss_hand)
+NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_17NpadJoyRightStateEiRKj", npad_ss_right)
+HLE_FUNC("_ZN2nn3hid15GetNpadStyleSetERKj", npad_style) { c->x[0] = *(uint32_t *)G2HC(c->x[0]) == 0 ? 1 : 0; }  // nur Spieler 1, Stil „Pro Controller“
+
 // ---- Stummel für Hooks des Klons (Breitbild, Zelda-Effekte, Menü, Eingabe, Neustart im Prozess)
 void settings_load(void) {}
 void rt_window_icon(void *w) { (void)w; }
 int rt_reboot_requested(void) { return 0; }
 bool input_user_blocked(const void *e) { (void)e; return false; }
-void input_handle_event(const void *e) { (void)e; }
 bool menu_handle_event(const void *e) { (void)e; return false; }
 bool menu_is_open(void) { return false; }
 void menu_apply_window_requests(void *w) { (void)w; }

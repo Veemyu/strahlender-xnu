@@ -120,6 +120,7 @@ static int nregions;
 static uint64_t heap_size;
 static uint64_t phys_mapped, phys_peak;  // per MapPhysicalMemory abgebildete Bytes (aktuell, Spitze)
 static uint64_t phys_lo, phys_hi;        // Hüllbereich aller MapPhysicalMemory-Abbildungen (für den Metal-Puffer der NVN-Schicht)
+uint64_t g_phys_unmaps;                  // Zahl der UnmapPhysicalMemory-Aufrufe: danach zeigen umhüllte Seiten (Metal) auf verworfene Seiten
 void kernel_phys_range(uint64_t *lo, uint64_t *hi) { *lo = phys_lo; *hi = phys_hi; }
 static pthread_mutex_t g_rlock = PTHREAD_MUTEX_INITIALIZER;
 uint64_t kernel_heap_size(void) { return heap_size; }
@@ -290,6 +291,7 @@ static void waitlist_remove(KThread *t) {
 static uint32_t block_current(int64_t timeout_ns) {  // g_klock gehalten
     KThread *t = t_cur;
     struct timespec ts;
+    t->wait_since = rt_now_ns();
     if (timeout_ns >= 0) deadline(&ts, timeout_ns);
     waitlist_add(t);
     while (t->wait_kind != WAIT_NONE) {
@@ -425,6 +427,7 @@ static uint32_t svc_wait_synchronization(uint64_t handles_ptr, int32_t count, in
     if (timeout > 0) deadline(&ts, timeout);
     KThread *t = t_cur;
     uint32_t *hs = G2H32(handles_ptr);
+    t->wait_since = rt_now_ns(); t->wait_h0 = count > 0 ? hs[0] : 0; t->wait_n = count;
     uint32_t r;
     for (;;) {
         for (int i = 0; i < count; i++) {
@@ -502,7 +505,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc);
 void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) {
     KThread *t = t_cur;
     if (g_stop) { pthread_exit(NULL); }
-    if (t) { t->svc_last = imm; t->svc_calls++; }
+    if (t) { t->svc_last = imm; t->svc_calls++; t->svc_last_ns = rt_now_ns(); }
     uint64_t n = ++svc_count[imm & 255];
     if (n == 1) svc_first_seen[imm & 255] = pc;
     if (trace_svc < 0) trace_svc = getenv("BDSP_TRACE_SVC") ? atoi(getenv("BDSP_TRACE_SVC")) : 0;
@@ -747,6 +750,8 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x2D:  // UnmapPhysicalMemory: Seiten verwerfen (nächste Abbildung beginnt wieder mit Nullen)
         region_remove(x[0]);
         phys_mapped -= x[1] < phys_mapped ? x[1] : phys_mapped;
+        g_phys_unmaps++;
+        if (getenv("BDSP_TRACE_UNMAP")) LOG("[kernel] UnmapPhysicalMemory %llx + %llx (Nr. %llu)\n", (unsigned long long)x[0], (unsigned long long)x[1], (unsigned long long)g_phys_unmaps);
         mmap(G2H(x[0]), x[1], PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
         x[0] = R_OK;
         break;
@@ -808,6 +813,14 @@ void kernel_report(FILE *f) {
                 (unsigned long long)t->id, (unsigned long long)t->entry, t->finished ? "beendet" : (t->started ? "läuft" : "nicht gestartet"),
                 (unsigned)t->svc_last, svc_name((unsigned)t->svc_last), (unsigned long long)t->svc_calls, (unsigned long long)t->ipc_calls,
                 resident_stack_kib(t), (unsigned long long)(t->host_stack_size >> 10), (unsigned long long)t->cpu.sp);
+        if (getenv("BDSP_BT") || getenv("BDSP_WAIT")) {   // Wartezustand: Art, Adresse/Schlüssel, Dauer
+            uint64_t now = rt_now_ns();
+            const char *k = t->in_sync_wait ? "WaitSynchronization" : t->wait_kind == WAIT_MUTEX ? "Mutex" : t->wait_kind == WAIT_CONDVAR ? "ProcessWideKey" :
+                            t->wait_kind == WAIT_ARBITER ? "Arbiter" : "(läuft/schläft)";
+            fprintf(f, "      wartet: %s addr %llx mutex %llx handle0 %x/%d seit %.1f s, letzter SVC vor %.1f s\n", k, (unsigned long long)t->wait_addr,
+                    (unsigned long long)t->wait_mutex, t->wait_h0, t->wait_n, t->wait_since ? (now - t->wait_since) / 1e9 : 0.0,
+                    t->svc_last_ns ? (now - t->svc_last_ns) / 1e9 : 0.0);
+        }
         if (getenv("BDSP_BT") && t->svc_calls > 20) {   // Rücksprungadressen aus der Rahmenkette (x29), nur für Threads mit Betrieb
             uint64_t fp = t->cpu.x[29], off = 0;
             const char *s0 = loader_symbol_at(t->cpu.x[30], &off);

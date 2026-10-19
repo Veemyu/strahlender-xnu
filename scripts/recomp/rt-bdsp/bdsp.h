@@ -93,6 +93,8 @@ struct KThread {
     pthread_cond_t cond;
     jmp_buf unwind;        // thread_main: Ziel von ExitThread
     uint64_t svc_last, svc_calls, ipc_calls;
+    uint64_t wait_since, svc_last_ns;   // Beginn des aktuellen Wartens (ns), Zeit des letzten SVC
+    uint32_t wait_h0; int wait_n;       // WaitSynchronization: erstes Handle und Anzahl
     uint64_t host_stack_size;
     void *host_stack_lo;
 };
@@ -118,6 +120,7 @@ void kernel_run_main(KThread *t, uint64_t x0, uint64_t x1, uint64_t x2, uint64_t
 void kernel_region_add(uint64_t addr, uint64_t size, uint32_t type, uint32_t perm);
 uint64_t kernel_heap_size(void);
 void kernel_phys_range(uint64_t *lo, uint64_t *hi);   // Hülle der MapPhysicalMemory-Bereiche (0/0 = keine)
+extern uint64_t g_phys_unmaps;
 void kernel_report(FILE *f);   // Thread-/SVC-Zähler, Heap, Handles
 int kernel_thread_count(void);
 extern uint64_t g_program_id, g_system_resource_size;
@@ -235,5 +238,6 @@ void ipc_count(const char *svc, uint32_t cmd);
 const char *settings_language(void);
 extern const char *g_romfs_dir;
 extern const char *g_save_dir;
+void user_id_load(const char *save_dir);
 void fs_set_dirs(const char *romfs_dir, const char *save_dir);
 void fs_report(FILE *f);

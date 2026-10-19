@@ -74,7 +74,23 @@ static uint32_t msg_event_r, msg_event_w;
 static uint32_t msg_queue[16];
 static int msg_count;
 static bool preselected_popped;
-const uint8_t g_user_id[16] = {0x42, 0x44, 0x53, 0x50, 0x72, 0x65, 0x63, 0x6f, 0x6d, 0x70, 0x01, 0, 0, 0, 0, 0x01};
+uint8_t g_user_id[16] = {0x42, 0x44, 0x53, 0x50, 0x72, 0x65, 0x63, 0x6f, 0x6d, 0x70, 0x01, 0, 0, 0, 0, 0x01};
+// <Speicherstand-Ordner>/user_id.hex (32 Hexzeichen, von install_save.sh aus ExtraData0 gelesen): Besitzer des installierten Spielstands
+void user_id_load(const char *save_dir) {
+    char path[1024], hex[64] = "";
+    snprintf(path, sizeof path, "%s/user_id.hex", save_dir);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    size_t n = fread(hex, 1, sizeof hex - 1, f);
+    fclose(f);
+    if (n < 32) return;
+    for (int i = 0; i < 16; i++) {
+        unsigned v;
+        if (sscanf(hex + 2 * i, "%2x", &v) != 1) return;
+        g_user_id[i] = (uint8_t)v;
+    }
+    LOG("[acc] Benutzer-ID aus %s\n", path);
+}
 
 static void am_init_once(void) {
     if (msg_event) return;

@@ -38,5 +38,5 @@ for f in objects cmdbuf formats tegra astc; do build "$SRC/nvn/$f.c" "$O/$f.o" "
 build "$SRC/nvn/maxwell/translate.c" "$O/translate.o" "$@"
 for f in device exec shaders textures; do build "$SRC/nvn/vulkan/$f.c" "$O/vk_$f.o" "$@"; done
 build "$SRC/nvn/vulkan/vma.cpp" "$O/vk_vma.o" "$@"
-build "$HERE/nvn_glue.c" "$O/nvn_glue.o" -Dg_debug_frame=bdsp_glue_debug_frame "$@"  # (exec.c definiert g_debug_frame selbst)
+build "$HERE/nvn_glue.c" "$O/nvn_glue.o" -Dg_debug_frame=bdsp_glue_debug_frame -include SDL3/SDL.h -include stdatomic.h -include string.h -include strings.h "$@"  # (exec.c definiert g_debug_frame selbst; nvn_glue.c bindet SDL/stdatomic/string nur unter __APPLE__ ein, braucht sie aber auch hier für die Eingabeschicht)
 build "$HERE/vulkan/vk_glue.c" "$O/vk_glue.o" "$@"
