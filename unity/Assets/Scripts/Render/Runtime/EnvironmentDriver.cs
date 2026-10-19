@@ -15,10 +15,50 @@ namespace Xnu.Render
         public Func<float> HourProvider;                   // GameManager.elapsedTimeOfDay; ohne: Systemuhr
 
         GameGlobals _globals;
+        bool _sceneTried;
+
+        // Szenenwerte der Feldszene (Schattenentfernung 45, Wolken, RenderSettings …); ohne Vorgabe aus
+        // <XNU_MASTERDATA | GameData/masterdata>/EnvironmentScene.json (scripts/environment_export.py), falls vorhanden.
+        public EnvironmentSceneData SceneData;
+        public bool AutoLoadScene = true;
+        public const string SceneFileName = "EnvironmentScene.json";
 
         public EnvironmentLightOutput LastLight { get; private set; }
 
-        void OnEnable() => _globals = new GameGlobals(new UnityGlobalSink());
+        void OnEnable()
+        {
+            _globals = new GameGlobals(new UnityGlobalSink());
+            ShadowMapGuard.Install();
+            TryLoadScene();
+        }
+
+        public static string SceneFilePath
+        {
+            get
+            {
+                var env = Environment.GetEnvironmentVariable("XNU_MASTERDATA");
+                var dir = !string.IsNullOrEmpty(env) ? env : System.IO.Path.Combine(Xnu.Core.GameDataPaths.Root, "masterdata");
+                return System.IO.Path.Combine(dir, SceneFileName);
+            }
+        }
+
+        void TryLoadScene()
+        {
+            if (_sceneTried) return;
+            _sceneTried = true;
+            if (SceneData == null && AutoLoadScene)
+            {
+                try
+                {
+                    var p = SceneFilePath;
+                    if (System.IO.File.Exists(p)) SceneData = EnvironmentSceneData.FromJson(System.IO.File.ReadAllText(p));
+                }
+                catch (Exception e) { Debug.LogWarning("[Render] EnvironmentScene.json nicht lesbar: " + e.Message); }
+            }
+            if (SceneData == null) return;
+            State.Scene = SceneData.Params;
+            SceneRenderApply.Apply(SceneData.Render);
+        }
 
         public static float SystemHours() => TimeOfDay.ElapsedHours(DateTime.Now.Ticks, 0, 1);
 

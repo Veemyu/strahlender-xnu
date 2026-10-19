@@ -64,6 +64,10 @@ Tests: Unity EditMode **645 von 645** grün (vorher 638; neu 7 in `FieldStreamer
 6. Die Gier 180 im Freien ist aus dem Bild und den Locator-Daten abgeleitet (Haustür/Blick), nicht aus dem Original-Code; ein Kamerafall mit Systemflag `0x305` ist ungeklärt.
 7. Messung nur im Editor (Spielfenster, Gamma-RT-Bild 1280 × 720); Player-Zahlen und iPad stehen aus.
 
+## 4a. Nachtrag (Teil 4, `docs/sichtpruefung-2.md`)
+
+Zu den offenen Fehlern oben: (1) Figur und NPC tragen mit dem Materialumbau des Modellbundles jetzt erzeugte Shader (farbig; Aufruf im Feldcode steht noch aus). (2) **Ursache der 19 % Helligkeitsfehler gefunden und behoben:** `_ShadowMapTexture` blieb nach einer Zone mit Schattenkarte als freigegebener Verweis stehen (Schwarz = alles im Schatten); `ShadowMapGuard`. (4) Himmel: das Original hat kein Skybox-Material, die Kamera löscht mit Schwarz (Alpha 0), der Himmel ist eine Kugel mit `Delphis/Map/Sky`; Nachbearbeitung Bloom/Nebel/FXAA nachgebaut (`PostChain`), Tiefenschärfe und Farbkorrektur offen. Die Schatten in Zone 422 fehlten, weil die Schattenentfernung im Original aus der Szene kommt (45, Nahebene 15), nicht aus den Qualitätseinstellungen (20).
+
 ## 5. Reproduktion
 
 ```

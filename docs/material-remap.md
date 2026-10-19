@@ -207,6 +207,17 @@ Ausführlich in `docs/shader-globals.md`.
 
 Neu bei den Dateien: `scripts/environment_export.py`, `scripts/ghidra/{StringXrefs,CallersOf}.java`, `scripts/ghidra/run_headless.sh`; geändert: `shader_wrap.py` (`--also`, `--no-aux`, GrabPass/UsePass), `shader_wrap_all.py` (`--combine-shadow`), `material_export.py` (`--resolve-external`, `export_bundle` liefert `(Materialien, externe Pfade)`), `GameGlobals.cs` (`_GlobalLightPower`-Platzhalter 0), `MaterialCatalog.cs`, `ShaderVariantIndex.cs`, `Runtime/MaterialRemapper.cs`, `Runtime/UnityGlobalSink.cs` (Textur-Platzhalter).
 
+### 10c. Nachtrag 2026-10-19 (`ap-effects-fidelity`, Teil 4): Charaktere, Pokémon, Strippen
+
+Ausführlich: `docs/sichtpruefung-2.md` (Abschnitte 2, 3, 6).
+
+| Lücke aus Abschnitt 10 | Neuer Stand |
+|---|---|
+| 7 Strippen / nur `Environments/` exportiert | **Geschlossen für alle Gruppen.** Export Charaktere 412 Bundles / 2.105 Materialien, Pokémon 3.038 / 17.963, Effekte 2.716 / 13.629, UI und Rest 60 / 344 (alle externen Texturverweise aufgelöst). Deckung: Charaktere 2.105 von 2.105, Pokémon Feld und Kampf 15.232 von 15.232, Statuen 148 von 2.731 (2.583 `MitakeStandardPetrify`: `hlsl: subgroup shuffle`), Partikel 13.482 Materialien / 1.993 Varianten nicht erzeugt. Benutzte Varianten: Charaktere 13, Pokémon 10, zusammen mit Umgebung, UI, Dpr, Effekten ohne Partikel und Laufzeit-Schlüsselwörtern 120 (119 erzeugt, 119 kompilieren im Lab). |
+| neu: zur Laufzeit gesetzte Schlüsselwörter | `Material.EnableKeyword` im Code (Nebel `_FOGMODE_*`, Farbkorrektur `_GRADING_*`) steht in keinem Export; `scripts/runtime_variants.json` und `material_variants.py --extra-used/--exclude-shader` ergänzen sie. |
+| Figur/NPC/Pokémon | `PlayerAvatar.Create` mit `RemappedMaterials` des Modellbundles: Spielerfigur 13 Materialien (`Delphis/Character/Standard`), NPC 5, Pokémon 7 (`Mitake/MitakeStandardBumpShader`, zeichnet mit der Originaltextur schwarz/Cyan, Ursache offen). Der Katalog sucht nur im eigenen Bundle; Materialien aus Nachbarbundles (Fahrrad, Angelruten) fallen auf den Ersatz. |
+| Mitake-Shader | Spiegelung, Rand und Maske laufen über Float-Konstanten, nicht über Schlüsselwörter: nur 2 Varianten für alle Pokémon-Materialien. |
+
 ### 10b. Nachtrag 2026-10-19 (`ap-effects-fidelity`, Teil 2): Ursachen von „Bild schwarz“ und „Editor hing“
 
 Fragen aus `docs/feld-szene-2.md`, Kapitel 6: Warum war das Bild mit dem Umbau schwarz, und warum reagierte der Haupt-Editor im Spielmodus nicht mehr (> 8 Minuten, 175 % CPU, Hauptthread in der IMGUI-Zeichnung, Pipeline-Befehle in Zeitüberschreitung)? Alles im Lab (`work/unity-shader-lab`, eigener Editor, nur unsere 61 erzeugten Shader, kein Original-Shader geladen) nachgebaut: (a) Zone 422 aus Prefab + Materialumbau, (b) der echte `FieldController` (Quellen aus dem Repo ins Lab kopiert, `XNU_GENERATED_SHADERS=1`: „Umbau (Shader 61/61, 124 Materialeinträge)“, mit Spielerfigur, NPC-Markern, `DisplayController`, Streaming). Die Bilder entstehen per `RenderTexture` (1280 × 720, Alpha ignoriert); Hilfsklassen `Assets/Lab/ReproRunner.cs` und `Assets/Editor/{CompileBench,FirstDraw}.cs`, Konfiguration, Logs, Proben und Bilder unter `work/matremap/` (nicht im Repo).

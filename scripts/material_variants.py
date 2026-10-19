@@ -6,8 +6,9 @@ bilden (fuer scripts/shader_wrap_all.py --used) und Abdeckung/Luecken zahlenmaes
 Beide Umsetzungen (Python, C#) laufen gegen dieselben Testfaelle: unity/Assets/Tests/EditMode/Fixtures/variant_resolution_cases.json.
 
 Aufruf (Repo-Root):
-    python3 scripts/material_variants.py --materials work/materials --used-out work/materials/used_variants.json \
-        [--manifest work/shaders/build/variants.json] [--instancing] [--report work/materials/variants_report.json]
+        python3 scripts/material_variants.py --materials work/materials --used-out work/materials/used_variants.json \
+        [--manifest work/shaders/build/variants.json] [--instancing] [--report work/materials/variants_report.json] \
+        [--extra-used scripts/runtime_variants.json] [--exclude-shader FxSystem/Particle]
 Ohne --manifest wird die Variantenliste aus work/shaders/inventory.json abgeleitet (gleiche Aufzaehlung wie shader_wrap_all.py).
 """
 import argparse
@@ -96,6 +97,15 @@ def resolve(index, shader, p, material_keywords, instancing=False, env=None):
     return fill(best, full, "nearest")
 
 
+def merge_used(used, extras, exclude):
+    """used: Menge (Shader, Keyword-Tupel); extras: [{shader, keywords}] werden aufgenommen, Shader aus exclude entfernt."""
+    out = set(used)
+    for e in extras:
+        out.add((e["shader"], tuple(sorted(e["keywords"]))))
+    skip = set(exclude)
+    return {u for u in out if u[0] not in skip}
+
+
 def inventory_manifest(inventory):
     sys.path.insert(0, str(REPO / "scripts"))
     import shader_wrap_all as swa
@@ -111,6 +121,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--materials", required=True, help="Ordner mit den Exporten (*.json von material_export.py)")
     ap.add_argument("--used-out", required=True)
+    ap.add_argument("--extra-used", action="append", default=[],
+                    help="JSON [{shader, keywords}]: zur Laufzeit per Code gesetzte Keyword-Mengen (z. B. scripts/runtime_variants.json), "
+                         "werden unveraendert in die benutzte Menge uebernommen")
+    ap.add_argument("--exclude-shader", action="append", default=[],
+                    help="Shadername, dessen Varianten nicht in --used-out erscheinen (z. B. FxSystem/Particle: ~2.000 Varianten)")
     ap.add_argument("--manifest")
     ap.add_argument("--inventory", default=str(REPO / "work" / "shaders" / "inventory.json"))
     ap.add_argument("--instancing", action="store_true")
@@ -154,6 +169,9 @@ def main(argv=None):
                     stat[r["role"] + "_" + r["quality"]] += 1
                 if r["file"]:
                     used.add(keys[r["file"]])
+    for extra in a.extra_used:
+        used = merge_used(used, json.loads(Path(extra).read_text()), ())
+    used = merge_used(used, [], a.exclude_shader)
     Path(a.used_out).write_text(json.dumps([{"shader": s, "keywords": list(k)} for s, k in sorted(used)], indent=1))
     rep = {"stat": dict(stat), "benutzte_varianten": len(used), "verschiedene_material_keywordmengen": len(seen),
            "je_shader": {k: dict(v) for k, v in sorted(per_shader.items())}, "luecken": misses[:200]}

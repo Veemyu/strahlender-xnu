@@ -27,6 +27,7 @@ namespace Xnu.Render
         // EnvironmentDriver überschreibt Farbe, Intensität und Drehung je Bild mit den Spielwerten.
         public static Light Ensure(Transform parent = null, LightShadows shadows = LightShadows.None)
         {
+            ShadowMapGuard.Install();
             var l = FindActive();
             if (l != null) return l;
             var go = new GameObject("FieldSun");

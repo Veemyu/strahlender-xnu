@@ -34,6 +34,19 @@ class VariantCases(unittest.TestCase):
         self.assertEqual(mv.role_of({"SHADOWS_DEPTH"}, "FORWARDBASE"), "forward")
 
 
+class MergeUsed(unittest.TestCase):
+    def test_extras_and_exclude(self):
+        used = {("A", ("k1",)), ("FxSystem/Particle", ("p",))}
+        out = mv.merge_used(used, [{"shader": "B", "keywords": ["z", "a"]}], ["FxSystem/Particle"])
+        self.assertEqual({("A", ("k1",)), ("B", ("a", "z"))}, out)
+
+    def test_runtime_variants_file_is_valid(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime_variants.json")
+        entries = json.load(open(path))
+        self.assertTrue(all(e["shader"].startswith("Custom/") and e["keywords"] for e in entries))
+        self.assertEqual(7, len(entries))
+
+
 class Export(unittest.TestCase):
     def material(self):
         return {

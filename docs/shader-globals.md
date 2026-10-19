@@ -223,6 +223,17 @@ Ausführlich mit Methode und Logbelegen: `docs/material-remap.md`, Abschnitt 10b
 Folgerungen: (1) „Globals ungesetzt“ erklärt nie ein schwarzes Bild, sondern ein zu dunkles; ein **schwarzes** Bild ist in dieser Kette immer „kein/dunkles Licht“ (Regeln in `Render/RenderChecks.cs`, geprüft von `RenderChecksTests`). (2) Die Platzhalter taugen für Sichttests nur grob; Bildmessungen immer mit `EnvironmentDriver` und den Zonenwerten (Stunde wählbar). (3) Zeitbedarf der Globals: ein `Tick` ist reine Rechnung plus 21 `Shader.SetGlobal*`; keine Kompilierung, keine Variantenwahl – der Editor-Hänger der Haupt-Sitzung hatte mit Globals und Shadern nichts zu tun (Ursache: `run_tests` im Spielmodus).
 Lücken (unverändert): Szenenwerte des `EnvironmentController`, Nachbearbeitungs-Globals (9 offen), Switch-Referenzbild.
 
+### 10b. Nachtrag 2026-10-19 (`ap-effects-fidelity`, Teil 4): Szenenwerte, `_ShadowMapTexture`, Nachbearbeitung
+
+Ausführlich: `docs/sichtpruefung-2.md` (Abschnitte 5, 7, 8, 9).
+
+| Thema | Ergebnis |
+|---|---|
+| Szenenwerte des `EnvironmentController` (Lücke 1 aus Abschnitt 10) | **Gelesen** aus `Dpr/scenes/field` (`scripts/environment_export.py` → `EnvironmentScene.json`): Schattenentfernung **45**, Nahebene **15**, Normal-Bias 0, Wolken `_CloudSpeed` (0,5; 0,5), `_CloudTiling` (0,03; 0,03), `_CloudShadowBase` 0, `_EmissionScale` 1, `_WeatherMode` 0, Schattenfarbe (0,41; 0,46; 0,53); andere Szenen (`battle`, `gms`, …) 20 und 3. Texturen `_NoiseTex`, `_SnowTex`, `_SnowNormalTex`, `_EnvironmentMap` benannt, `_CloudShadowTex` nicht aufgelöst. `EnvironmentDriver` lädt die Datei selbst (`EnvironmentSceneData`). |
+| Schattenentfernung | Das Original überschreibt die Qualitätsstufe (20) je Bild mit dem Szenenwert 45; damit erscheinen die Schatten in Zone 422 (22,06 % der Pixel dunkler, Bildmittel (101,8 / 125,0 / 72,5) → (94,2 / 116,8 / 67,2)); mit 20 liegt die Bildmitte außerhalb (0 Pixel Unterschied). |
+| `_ShadowMapTexture` (neues, 36.) Global | Wird nur in Bildern mit Schattenkarte gesetzt; ohne Karte bleibt ein freigegebener Verweis stehen und bindet Schwarz („alles im Schatten“). Ursache der „19 % dunkler nach Zone 54“. `ShadowMapGuard` setzt vor jedem Kamerabild Weiß; Zone 422 nach 54 wieder (101, 124, 72). |
+| Offene Nachbearbeitungs-Globals (Teil 1: 9 offen) | `_BlurOffsetX/Y` **belegt** (Vektor (−2,2186; 2,2186; −0,6075; 0,6075), je Durchgang X oder Y, Bitmuster `0xC00DF8DF, 0x400DF8DF, 0xBF1B9852, 0x3F1B9852`) und im Bloom (`PostChain`) gesetzt; `_SubTex0..4` (Bloom-Ebenen) ebenfalls; weiter offen: `_FocusTex`, `_DelayFrameTexture`, `g_BackgroundTexture` (Tiefenschärfe, Rückkopplung, Partikel), `_UVOffset`, `_Corner`, `_RcpGridSize`, `_EnvMatrix`. |
+
 ## 11. Reproduktion
 
 ```sh
