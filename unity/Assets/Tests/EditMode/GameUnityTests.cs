@@ -143,6 +143,21 @@ namespace Xnu.Tests
             Assert.AreEqual("", GameOptions.Parse(null, null).ScriptPath);
         }
 
+        [Test]
+        public void OptionsParseTargetFpsAndPerfLog()
+        {
+            var env = new Dictionary<string, string> { ["XNU_TARGET_FPS"] = "60", ["XNU_PERF_LOG"] = "1" };
+            var o = GameOptions.Parse(null, k => env.TryGetValue(k, out var v) ? v : null);
+            Assert.AreEqual(60, o.TargetFps);
+            Assert.IsTrue(o.PerfLog);
+            var cli = GameOptions.Parse(new[] { "-xnuTargetFps", "120", "-xnuPerfLog" }, k => null);
+            Assert.AreEqual(120, cli.TargetFps);
+            Assert.IsTrue(cli.PerfLog);
+            Assert.AreEqual(0, GameOptions.Parse(new[] { "-xnuTargetFps", "abc" }, k => null).TargetFps, "ungültig: Standard bleibt");
+            Assert.AreEqual(0, GameOptions.Parse(new[] { "-xnuTargetFps", "9999" }, k => null).TargetFps);
+            Assert.IsFalse(GameOptions.Parse(null, null).PerfLog);
+        }
+
         // ---- Datenmodelle ----
 
         [Test]
@@ -427,8 +442,163 @@ namespace Xnu.Tests
                 var svc = new SaveSlotService(Path.Combine(dir, "ablage"), "");
                 Assert.IsFalse(svc.CanContinue);
                 Assert.Throws<FileNotFoundException>(() => svc.Load());
+                StringAssert.Contains("Slot-Ordner fehlt", svc.Problem);
             }
             finally { SaveTestSupport.Cleanup(dir); }
+        }
+
+        [Test]
+        public void ResolveRootUsesDocumentsAndKeepsLegacyAndExplicit()
+        {
+            var dir = SaveTestSupport.NewTempDir();
+            try
+            {
+                Assert.AreEqual("/x", SaveSlotService.ResolveRoot("/x", dir));
+                Assert.AreEqual(dir, SaveSlotService.ResolveRoot("", dir), "neu: Documents selbst, Slot unter Saves/main");
+                Directory.CreateDirectory(Path.Combine(dir, "Saves", "Saves", "main"));
+                Assert.AreEqual(Path.Combine(dir, "Saves"), SaveSlotService.ResolveRoot(null, dir), "ältere Läufe: Saves/Saves/main bleibt maßgebend");
+                Assert.Throws<System.ArgumentException>(() => SaveSlotService.ResolveRoot("", ""));
+            }
+            finally { SaveTestSupport.Cleanup(dir); }
+        }
+
+        // Der Weg aus devicectl/Dateien-App: Datei liegt nach „copy to Documents/Saves/main/SaveData.bin“ genau dort, wo der Dienst sucht.
+        [Test]
+        public void SlotFoundAtDocumentsSavesMainAfterExternalCopy()
+        {
+            var dir = SaveTestSupport.NewTempDir();
+            try
+            {
+                var docs = Path.Combine(dir, "Documents");
+                Directory.CreateDirectory(Path.Combine(docs, "Saves", "main"));
+                var bytes = NewSave(30, 4242).ToBytes();
+                File.WriteAllBytes(Path.Combine(docs, "Saves", "main", "SaveData.bin"), bytes);
+                var svc = new SaveSlotService(SaveSlotService.ResolveRoot("", docs), "", SaveSlotService.DropInSources(docs));
+                Assert.IsTrue(svc.HasSlot);
+                Assert.IsTrue(svc.CanContinue);
+                Assert.AreEqual(Path.Combine(docs, "Saves", "main"), svc.SlotPath);
+                Assert.AreEqual(4242, svc.Load().Money);
+                StringAssert.Contains("eigenen Slot", svc.Note);
+                Assert.IsTrue(string.Join("\n", svc.Diagnose()).Contains(bytes.Length + " Byte"));
+            }
+            finally { SaveTestSupport.Cleanup(dir); }
+        }
+
+        [Test]
+        public void TruncatedOrEmptySlotIsNotASlotAndSaysWhy()
+        {
+            var dir = SaveTestSupport.NewTempDir();
+            try
+            {
+                var docs = Path.Combine(dir, "Documents");
+                var slot = Path.Combine(docs, "Saves", "main");
+                Directory.CreateDirectory(slot);
+                var svc = new SaveSlotService(docs, "");
+                Assert.IsFalse(svc.HasSlot, "leerer Ordner");
+                StringAssert.Contains("weder SaveData.bin noch Backup.bin", svc.Problem);
+
+                var bytes = NewSave(30, 5).ToBytes();
+                var half = new byte[bytes.Length / 2];
+                System.Array.Copy(bytes, half, half.Length);
+                File.WriteAllBytes(Path.Combine(slot, "SaveData.bin"), half);
+                svc.Refresh();
+                Assert.IsFalse(svc.HasSlot, "halb übertragen");
+                Assert.IsFalse(svc.CanContinue);
+                StringAssert.Contains("SaveData.bin " + half.Length + " Byte", svc.Problem);
+                Assert.Throws<FileNotFoundException>(() => svc.Load());
+            }
+            finally { SaveTestSupport.Cleanup(dir); }
+        }
+
+        [Test]
+        public void LooseDropInFileIsImportedAndBrokenSlotIsReplacedWithBackup()
+        {
+            var dir = SaveTestSupport.NewTempDir();
+            try
+            {
+                var docs = Path.Combine(dir, "Documents");
+                var slot = Path.Combine(docs, "Saves", "main");
+                Directory.CreateDirectory(slot);
+                File.WriteAllBytes(Path.Combine(slot, "SaveData.bin"), new byte[] { 1, 2, 3 });
+                var good = NewSave(30, 321).ToBytes();
+                File.WriteAllBytes(Path.Combine(docs, "SaveData.bin"), good);
+
+                var svc = new SaveSlotService(docs, "", SaveSlotService.DropInSources(docs));
+                Assert.IsFalse(svc.HasSlot);
+                Assert.IsTrue(svc.CanContinue, "lose Datei in Documents ist gültige Quelle");
+                Assert.AreEqual(321, svc.Load().Money);
+                Assert.IsTrue(svc.HasSlot);
+                CollectionAssert.AreEqual(good, File.ReadAllBytes(Path.Combine(slot, "SaveData.bin")));
+                CollectionAssert.AreEqual(good, File.ReadAllBytes(Path.Combine(docs, "SaveData.bin")), "Quelle bleibt");
+                Assert.IsTrue(Directory.Exists(Path.Combine(docs, "Backups", "main")), "kaputter Vorgänger wurde gesichert");
+            }
+            finally { SaveTestSupport.Cleanup(dir); }
+        }
+
+        [Test]
+        public void NewDropInReplacesSlotOnceAndKeepsProgressOtherwise()
+        {
+            var dir = SaveTestSupport.NewTempDir();
+            try
+            {
+                var docs = Path.Combine(dir, "Documents");
+                Directory.CreateDirectory(docs);
+                var drop = Path.Combine(docs, "SaveData.bin");
+                File.WriteAllBytes(drop, NewSave(30, 100).ToBytes());
+                var svc = new SaveSlotService(docs, "", SaveSlotService.DropInSources(docs));
+                Assert.AreEqual(drop, svc.PendingDropIn);
+                var save = svc.Load();
+                Assert.AreEqual(100, save.Money);
+                StringAssert.Contains("abgelegter Datei", svc.Note);
+
+                save.Money = 555;
+                svc.Write(save);
+                var again = new SaveSlotService(docs, "", SaveSlotService.DropInSources(docs));
+                Assert.AreEqual("", again.PendingDropIn, "gleiche Datei wurde schon importiert");
+                Assert.AreEqual(555, again.Load().Money, "Fortschritt bleibt");
+                StringAssert.Contains("eigenen Slot", again.Note);
+
+                File.WriteAllBytes(drop, NewSave(30, 200).ToBytes());
+                var third = new SaveSlotService(docs, "", SaveSlotService.DropInSources(docs));
+                Assert.AreEqual(drop, third.PendingDropIn, "neue Datei ersetzt den Slot");
+                Assert.AreEqual(200, third.Load().Money);
+                StringAssert.Contains("vorheriger Slot gesichert", third.Note);
+                Assert.IsTrue(Directory.GetFiles(Path.Combine(docs, "Backups", "main"), "SaveData.bin", SearchOption.AllDirectories).Length >= 1);
+            }
+            finally { SaveTestSupport.Cleanup(dir); }
+        }
+
+        [Test]
+        public void InvalidSourceIsReportedNotUsed()
+        {
+            var dir = SaveTestSupport.NewTempDir();
+            try
+            {
+                var src = Path.Combine(dir, "SaveData.bin");
+                File.WriteAllBytes(src, new byte[100]);
+                var svc = new SaveSlotService(Path.Combine(dir, "ablage"), src);
+                Assert.IsFalse(svc.CanContinue);
+                StringAssert.Contains("Quelle ungültig", svc.Problem);
+                Assert.Throws<FileNotFoundException>(() => svc.Load());
+            }
+            finally { SaveTestSupport.Cleanup(dir); }
+        }
+
+        // ---- Info.plist (iPad: Dateien-App/Finder) ----
+
+        const string PlistSample = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n  <dict>\n    <key>CFBundleName</key>\n    <string>x</string>\n    <key>UIApplicationSceneManifest</key>\n    <dict>\n      <key>A</key>\n      <false />\n    </dict>\n    <key>UIFileSharingEnabled</key>\n    <false />\n  </dict>\n</plist>\n";
+
+        [Test]
+        public void InfoPlistPatchAddsReplacesAndIsIdempotent()
+        {
+            var once = Xnu.Core.InfoPlistPatch.EnableDocumentSharing(PlistSample);
+            Assert.IsTrue(Xnu.Core.InfoPlistPatch.HasBool(once, "UIFileSharingEnabled", true), "vorhandenes false wird true");
+            Assert.IsTrue(Xnu.Core.InfoPlistPatch.HasBool(once, "LSSupportsOpeningDocumentsInPlace", true), "fehlender Schlüssel wird ergänzt");
+            Assert.IsTrue(Xnu.Core.InfoPlistPatch.HasBool(once, "A", false), "verschachtelte Werte bleiben");
+            Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(once, "<key>UIFileSharingEnabled</key>").Count);
+            Assert.AreEqual(once, Xnu.Core.InfoPlistPatch.EnableDocumentSharing(once));
+            Assert.IsTrue(once.TrimEnd().EndsWith("</dict>\n</plist>"));
+            Assert.Throws<System.FormatException>(() => Xnu.Core.InfoPlistPatch.SetBool("<plist><array/></plist>", "K", true));
         }
 
         // ---- Treiber ----

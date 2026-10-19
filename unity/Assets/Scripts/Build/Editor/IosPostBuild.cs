@@ -27,6 +27,16 @@ namespace Xnu.Build.Editor
 #endif
         }
 
+        // Documents-Ordner in Dateien-App und Finder sichtbar machen (Spielstand-Austausch ohne Team-ID oder Xcode):
+        // UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace. Reiner Textschritt (Xnu.Core.InfoPlistPatch), idempotent.
+        [PostProcessBuild(101)]
+        public static void OnPostBuildDocumentSharing(BuildTarget target, string buildPath)
+        {
+            if (target != BuildTarget.iOS) return;
+            var path = Path.Combine(buildPath, "Info.plist");
+            File.WriteAllText(path, Xnu.Core.InfoPlistPatch.EnableDocumentSharing(File.ReadAllText(path)));
+        }
+
         [PostProcessBuild(100)]
         public static void OnPostBuild(BuildTarget target, string buildPath)
         {

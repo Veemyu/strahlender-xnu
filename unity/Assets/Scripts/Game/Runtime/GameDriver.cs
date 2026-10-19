@@ -8,6 +8,7 @@ using Xnu.Core;
 using Xnu.Data;
 using Xnu.Field;
 using Xnu.Input;
+using Xnu.Probe;
 using Xnu.Text;
 using Xnu.UI;
 using GameFrame = Xnu.Game.GameInput;
@@ -85,6 +86,10 @@ namespace Xnu.Game.Unity
         void Start()
         {
             Options = Options ?? GameOptions.Parse(Environment.GetCommandLineArgs(), Environment.GetEnvironmentVariable);
+            if (Options.TargetFps > 0) Application.targetFrameRate = Options.TargetFps;
+            Application.logMessageReceived += OnLogMessage;
+            Application.lowMemory += OnLowMemory;
+            Log("Start: Bildziel " + Application.targetFrameRate + " (vSync " + QualitySettings.vSyncCount + "), Anzeige " + Screen.currentResolution + ", Eingabe-Optionen: Skript " + (string.IsNullOrEmpty(Options.ScriptPath) ? "-" : Options.ScriptPath));
             if (string.IsNullOrEmpty(scriptPath)) scriptPath = Options.ScriptPath;
             if (Options.AutoContinue) autoContinue = true;
             _camera = Camera.main;
@@ -92,8 +97,8 @@ namespace Xnu.Game.Unity
             if (PadInput.Instance == null) new GameObject("GameInput").AddComponent<PadInput>();
             _override = new InputOverride();
 
-            var root = !string.IsNullOrEmpty(Options.SaveRoot) ? Options.SaveRoot : Path.Combine(Application.persistentDataPath, "Saves");
-            Saves = new SaveSlotService(root, ResolveSaveSource(Options.SaveSource));
+            var root = SaveSlotService.ResolveRoot(Options.SaveRoot, Application.persistentDataPath);
+            Saves = new SaveSlotService(root, ResolveSaveSource(Options.SaveSource), SaveSlotService.DropInSources(Application.persistentDataPath));
 
             var tb = new GameObject("Textbox");
             tb.transform.SetParent(transform, false);
@@ -132,7 +137,9 @@ namespace Xnu.Game.Unity
                 }
                 catch (Exception e) { Log("Eingabeskript nicht lesbar: " + e.Message); }
             }
-            Log("Start; Daten " + GameDataPaths.Root + "; Slot " + (Saves.HasSlot ? "vorhanden" : "keiner") + "; Quelle " + (string.IsNullOrEmpty(Saves.ImportSource) ? "-" : "vorhanden"));
+            Log("Start; Daten " + GameDataPaths.Root + "; Slot " + (Saves.HasSlot ? "vorhanden" : "keiner") + "; Quelle " + (Saves.CanContinue && !Saves.HasSlot ? "gültig" : "-") + "; Weiter " + (Saves.CanContinue ? "möglich" : "nicht möglich"));
+            foreach (var line in Saves.Diagnose()) Log("Spielstand: " + line);
+            if (!Saves.CanContinue) { StatusNote = "Kein gültiger Spielstand: " + Saves.Problem; RefreshTitle(); }
         }
 
         static string ResolveSaveSource(string explicitPath)
@@ -175,8 +182,9 @@ namespace Xnu.Game.Unity
             if (ui.MoveY != 0) { _titleCursor = (_titleCursor + (ui.MoveY > 0 ? 1 : 1)) % 2; RefreshTitle(); }
             if (autoContinue && Saves.CanContinue) { autoContinue = false; CurrentPhase = Phase.Loading; StatusNote = "Lade …"; RefreshTitle(); return; }
             if (!ui.ConfirmPressed) return;
+            Saves.Refresh();
             if (_titleCursor == 0 && Saves.CanContinue) { CurrentPhase = Phase.Loading; StatusNote = "Lade Stammdaten und Spielstand …"; RefreshTitle(); }
-            else { StatusNote = "Nicht verfügbar."; RefreshTitle(); }
+            else { StatusNote = _titleCursor == 0 ? "Kein gültiger Spielstand: " + Saves.Problem : "Nicht verfügbar."; if (_titleCursor == 0) foreach (var line in Saves.Diagnose()) Log("Spielstand: " + line); RefreshTitle(); }
         }
 
         // ---- Laden ----
@@ -230,6 +238,7 @@ namespace Xnu.Game.Unity
         void Update()
         {
             LatchRealInput();
+            PerfUpdate(Time.unscaledDeltaTime);
             if (CurrentPhase == Phase.Loading) { LoadGame(); return; }
             var dt = Mathf.Min(Time.unscaledDeltaTime, 0.25f);
             _accumulator += dt;
@@ -433,10 +442,18 @@ namespace Xnu.Game.Unity
             if (Session == null || Field == null || !Field.Loaded) return "nicht möglich";
             var m = Field.Mover;
             SavedPosition.Write(Session.Save, Field.ZoneIdNow, m.GridX, m.GridY, m.Facing);
-            var r = Saves.Write(Session.Save);
-            var s = "gespeichert: " + r.Bytes + " Byte, Backup " + (string.IsNullOrEmpty(r.BackupPath) ? "-" : Path.GetFileName(Path.GetDirectoryName(r.BackupPath)));
-            Log("Speichern " + s);
-            return s;
+            try
+            {
+                var r = Saves.Write(Session.Save);
+                var s = "gespeichert: " + r.Bytes + " Byte, Backup " + (string.IsNullOrEmpty(r.BackupPath) ? "-" : Path.GetFileName(Path.GetDirectoryName(r.BackupPath)));
+                Log("Speichern " + s);
+                return s;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is Xnu.Save.SaveFormatException)
+            {
+                Debug.LogError("[Game] Speichern fehlgeschlagen: " + e.GetType().Name + ": " + e.Message);
+                return "Speichern fehlgeschlagen: " + e.GetType().Name;
+            }
         }
 
         // ---- IScriptWorld ----
@@ -456,7 +473,22 @@ namespace Xnu.Game.Unity
             }
         }
 
+        // Ein Fehler in einem Skriptbefehl (z. B. Speichern ohne Schreibrecht) darf den Befehl nicht endlos wiederholen:
+        // sonst legte jeder Tick ein neues Backup an (auf dem iPad 11.190 Stück in 80 s). Fehler werden gezählt und gemeldet, der Befehl gilt als erledigt.
+        public int ScriptCommandErrors { get; private set; }
+
         public bool Execute(string command, string[] args)
+        {
+            try { return ExecuteCore(command, args); }
+            catch (Exception e)
+            {
+                ScriptCommandErrors++;
+                Debug.LogError("[Game] Skriptbefehl " + command + " fehlgeschlagen: " + e.GetType().Name + ": " + e.Message);
+                return true;
+            }
+        }
+
+        bool ExecuteCore(string command, string[] args)
         {
             switch (command)
             {
@@ -485,6 +517,10 @@ namespace Xnu.Game.Unity
                     return true;
                 case "report":
                     Log(Summary());
+                    return true;
+                case "mem":
+                    Log("Speicher: " + MemoryLine() + ", Fehlermeldungen " + ErrorLogs + ", lowMemory " + LowMemoryEvents);
+                    foreach (var e in _firstErrors) Log("Fehlermeldung (erste): " + e);
                     return true;
             }
             Log("Skript: unbekannter Befehl " + command);
@@ -595,6 +631,58 @@ namespace Xnu.Game.Unity
             return s;
         }
 
+        // ---- Messung (iPad, docs/ipad-durchstich-1.md) ----
+
+        public int ErrorLogs { get; private set; }
+        public int WarningLogs { get; private set; }
+        public int LowMemoryEvents { get; private set; }
+        readonly List<string> _firstErrors = new List<string>();
+        readonly long[] _vm = new long[7];
+        int _perfFrames;
+        float _perfTime, _perfWorst, _perfTotal;
+        float _loadStartedAt = -1f;
+        bool _fieldLoadLogged;
+
+        void OnLogMessage(string condition, string stackTrace, LogType type)
+        {
+            if (type == LogType.Warning) { WarningLogs++; return; }
+            if (type == LogType.Log) return;
+            ErrorLogs++;
+            if (_firstErrors.Count < 8 && !condition.StartsWith("[Game] ")) _firstErrors.Add(condition.Length > 160 ? condition.Substring(0, 160) : condition);
+        }
+
+        void OnLowMemory() { LowMemoryEvents++; Log("Systemwarnung: wenig Speicher (lowMemory) bei " + MemoryLine()); }
+
+        string MemoryLine()
+        {
+            NativeProbe.VmInfo(_vm);
+            return "footprintMiB=" + Mib(_vm[0]) + " peakMiB=" + Mib(_vm[1]) + " internalMiB=" + Mib(_vm[2]) + " compressedMiB=" + Mib(_vm[3]) +
+                   " availMiB=" + Mib(NativeProbe.AvailableMemory()) + " thermal=" + NativeProbe.ThermalState() + " lowPower=" + NativeProbe.LowPowerMode() +
+                   " unityMiB=" + Mib(UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong()) + " monoMiB=" + Mib(UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong());
+        }
+
+        static string Mib(long bytes) => bytes < 0 ? "-1" : (bytes / (1024.0 * 1024.0)).ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+
+        // Alle 5 s Echtzeit eine Zeile (nur mit -xnuPerfLog); die Zeit bis zum geladenen Feld immer, einmalig.
+        void PerfUpdate(float dt)
+        {
+            if (_loadStartedAt < 0f && CurrentPhase == Phase.Loading) _loadStartedAt = Time.realtimeSinceStartup;
+            if (!_fieldLoadLogged && _loadStartedAt >= 0f && Field != null && Field.Loaded)
+            {
+                _fieldLoadLogged = true;
+                Log("Zone geladen nach " + (Time.realtimeSinceStartup - _loadStartedAt).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " s seit „Weiter“; " + MemoryLine());
+            }
+            if (Options == null || !Options.PerfLog) return;
+            _perfFrames++;
+            _perfTime += dt;
+            _perfTotal += dt;
+            if (dt > _perfWorst) _perfWorst = dt;
+            if (_perfTime < 5f) return;
+            Log("XNUPERF|t=" + _perfTotal.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + "|state=" + StateName + "|fps=" + (_perfFrames / _perfTime).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) +
+                "|worstMs=" + (_perfWorst * 1000f).ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + "|ticks=" + Ticks + "|" + MemoryLine().Replace(' ', '|') + "|errors=" + ErrorLogs + "|warnings=" + WarningLogs + "|lowMemory=" + LowMemoryEvents);
+            _perfFrames = 0; _perfTime = 0f; _perfWorst = 0f;
+        }
+
         public string Summary()
         {
             if (Loop == null) return "Phase " + CurrentPhase;
@@ -602,11 +690,13 @@ namespace Xnu.Game.Unity
             return "Ticks " + Ticks + ", Schleife " + Loop.State + pos + ", Ereignisse " + Loop.EventsStarted + "/" + Loop.EventsFinished + ", Kämpfe " + Loop.BattlesStarted + "/" + Loop.BattlesFinished +
                    ", Zonenwechsel " + Adapter.ZoneChanges + ", Ansprechen " + Adapter.TalkRequests + ", Berühren " + Adapter.ContactRequests + ", Lücken-Aufrufe " + Loop.Host.GapCommandCalls +
                    ", Textfenster " + Loop.Host.Dialog.ShownPages + ", Kampfschritte " + Battle.BeatsShown + ", Kampfbefehle " + Battle.CommandsIssued + ", Speichern " + SavesWritten +
-                   ", Skript-Timeouts " + (Runner?.Timeouts ?? 0);
+                   ", Skript-Timeouts " + (Runner?.Timeouts ?? 0) + ", Fehlermeldungen " + ErrorLogs + ", Warnungen " + WarningLogs;
         }
 
         void OnDestroy()
         {
+            Application.logMessageReceived -= OnLogMessage;
+            Application.lowMemory -= OnLowMemory;
             if (PadInput.Instance != null && PadInput.Instance.Override == _override) PadInput.Instance.Override = null;
             Adapter?.Detach();
         }

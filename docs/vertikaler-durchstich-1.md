@@ -29,7 +29,7 @@ Neue Assembly **`Xnu.Game.Unity`** (`unity/Assets/Scripts/Game/Runtime`), Editor
 | `GameDriver` | MonoBehaviour: Titel, Laden, 30-Hz-Takt (`LogicStep`), Eingabe (Geräte oder Skript) als `GameInput`-Daten, Textbrücke, Kampfansicht, Speichern, Skriptwelt (`IScriptWorld`) |
 | `FieldHostAdapter` | `IFieldHost` + `IFieldInteractionHandler` + `IFieldFlags` für den `FieldController`: MAP_CHANGE → `BeginSwitchZone`, Ansprechen/Berühren → `FieldSignal`, Work-/Systemflags des Spielstands → Objektsichtbarkeit, Überblendung, Spielerposition |
 | `BattleView` | uGUI: Infotafeln mit KP-Balken, Platzhalter-Kästen statt Modelle, Meldungsfenster, Menüs; spielt `BattleBeat`-Schritte, gibt den Spielerbefehl zurück; Ersatz nach Besiegt automatisch |
-| `SaveSlotService`, `SavedPosition` | eigener Slot `main` im Save-Ordner der App (`-xnuSaveRoot`/`XNU_SAVE_ROOT`, sonst `persistentDataPath/Saves`); Import der Quelle (`XNU_SAVE_SOURCE` oder `<GameData>/../Ryujinx/…/0`), Backup vor jedem Überschreiben |
+| `SaveSlotService`, `SavedPosition` | eigener Slot `main` im Save-Ordner der App (`-xnuSaveRoot`/`XNU_SAVE_ROOT`, sonst `persistentDataPath`, Slot unter `Saves/main`; seit `docs/ipad-durchstich-1.md` nur bei gültiger Datei, mit Ablage-Datei `SaveData.bin` im Documents-Ordner); Import der Quelle (`XNU_SAVE_SOURCE` oder `<GameData>/../Ryujinx/…/0`), Backup vor jedem Überschreiben |
 | `GameDataLoader`, `GameBattleTexts` | Stammdaten, Texte (`msg_german` + `msg_common`), Namenstabellen; Namen und Originalmeldungen für den Kampf |
 | `GameOptions` | `-xnuInputScript`/`XNU_SCRIPTED_INPUT`, `-xnuSaveSource`, `-xnuSaveRoot`, `-xnuShotDir`, `-xnuAutoContinue` |
 
@@ -79,6 +79,8 @@ Reproduktion (Editor): Szene `Game` öffnen; per `unity command eval` `XNU_GAMED
 - **iPad:** Build, Installation und Start gelungen, Durchlauf nicht abgeschlossen (siehe Abschnitt 7).
 
 ## 7. iPad (teilweise durchgeführt, nicht abgeschlossen)
+
+**Aktualisiert (später am selben Tag):** Der Durchlauf läuft auf dem iPad ohne Hand-Eingabe bis zum Ende; Ursache von „Slot keiner“ (doppelter Ordner `Saves`, von `devicectl` angelegte Ordner mit Besitzer root), Verfahren zur Save-Übertragung (`scripts/ios_push_save.sh`) und Messwerte (Texturfehler 0, 30/60/120 FPS, Footprint ≤ 861 MiB) stehen in `docs/ipad-durchstich-1.md`. Der folgende Text ist der Stand vor der Behebung.
 
 - **Erweitert:** `scripts/subsets/ipad-start.txt` um `Environments/fields/area008` und `Environments/prefab_map/t02pc0101` (7 Bundles). `scripts/build_all.sh --only assets --target ios --texture-format 6x6 --bundle-subset scripts/subsets/ipad-start.txt`: 789 Dateien, **229 MB** (vorher 179 MB), 31 s inklusive ASTC-Umwandlung.
 - **Gebaut und installiert:** iOS-Build über das Menü (Zielwechsel des Haupteditors: 502–505 s, 1.107 MB), `scripts/ios_deploy.sh … --no-launch` 2 min 8 s.

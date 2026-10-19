@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Xnu.Field;
 using Xnu.Save;
@@ -51,42 +52,208 @@ namespace Xnu.Game.Unity
 
     // Spielstand-Ablage des Players: eigener Slot im Save-Ordner der App (SaveStore), Backup vor jedem Überschreiben.
     // Der echte Spielstand (Ryujinx-Ordner o. Ä.) wird nur gelesen (Import beim ersten „Weiter“), nie beschrieben.
+    // Ein Slot gilt nur, wenn SaveData.bin oder Backup.bin dort liegt und gültig ist (Größe, Version, Hash); ein leerer Ordner
+    // oder eine abgeschnittene Datei (halb übertragen) zählt nicht, sondern erscheint mit Grund in Diagnose().
     public sealed class SaveSlotService
     {
         public const string SlotName = "main";
+        // Unterordner im Ablageordner der App, in dem der Slot liegt (<Ablage>/Saves/<Slot>/SaveData.bin).
+        public const string SlotsFolder = "Saves";
+
+        readonly string[] _sources;
+        readonly string[] _dropIns;
+        bool _stateKnown;
+        bool _slotUsable;
+        string _slotProblem = "";
+        string _usableSource;
+        string _usableDrop;
+        string _pendingDrop;
+        string _pendingDropHash;
+        readonly List<string> _sourceProblems = new List<string>();
+
         public SaveStore Store { get; }
-        public string ImportSource { get; }
+        // Erste Importquelle, die gültig ist; sonst die erste angegebene (für Meldungen).
+        public string ImportSource { get { EnsureState(); return _usableSource ?? (_sources.Length > 0 ? _sources[0] : ""); } }
         public string Note { get; private set; } = "";
         public int Writes { get; private set; }
         public string LastBackup { get; private set; } = "";
+        // Warum es nichts zum Weiterspielen gibt (leer, wenn CanContinue).
+        public string Problem { get { EnsureState(); return CanContinue ? "" : (_slotProblem + (_sourceProblems.Count > 0 ? "; " + string.Join("; ", _sourceProblems) : "")).Trim(' ', ';'); } }
+        // Datei, mit der „Weiter“ den Slot beim nächsten Laden ersetzt (neue lose SaveData.bin), sonst leer.
+        public string PendingDropIn { get { EnsureState(); return _pendingDrop ?? ""; } }
 
-        public SaveSlotService(string root, string importSource)
+        // importSource: Quelle für den ersten Import, nur wenn es keinen gültigen Slot gibt (z. B. Ryujinx-Ordner).
+        // dropIns: lose Dateien, die der Nutzer ablegt (siehe DropInSources). Eine gültige Datei, deren SHA-256 vom zuletzt importierten Stand abweicht,
+        // ersetzt den Slot beim nächsten Laden (Backup vorher); danach merkt sich ImportedMarkerPath den Hash, bis die Datei wechselt.
+        public SaveSlotService(string root, string importSource, params string[] dropIns)
         {
             Store = new SaveStore(root);
-            ImportSource = importSource;
+            _sources = string.IsNullOrEmpty(importSource) ? new string[0] : new[] { importSource };
+            var list = new List<string>();
+            if (dropIns != null) foreach (var s in dropIns) if (!string.IsNullOrEmpty(s) && !list.Contains(s)) list.Add(s);
+            _dropIns = list.ToArray();
         }
 
-        public bool HasSlot
+        public string ImportedMarkerPath => Path.Combine(Store.Root, "ImportedDropIn.sha256");
+
+        // Ablageordner der App: -xnuSaveRoot, sonst persistentDataPath (iPadOS: Documents, sichtbar in der Dateien-App und im Finder → <Documents>/Saves/main).
+        // Ältere macOS-Läufe legten den Slot unter <persistentDataPath>/Saves/Saves/main an; ist dieser Ordner da, bleibt er maßgebend.
+        public static string ResolveRoot(string explicitRoot, string persistentDataPath)
         {
-            get
+            if (!string.IsNullOrEmpty(explicitRoot)) return explicitRoot;
+            if (string.IsNullOrEmpty(persistentDataPath)) throw new ArgumentException("persistentDataPath fehlt", nameof(persistentDataPath));
+            var legacy = Path.Combine(persistentDataPath, SlotsFolder);
+            return Directory.Exists(Path.Combine(legacy, SlotsFolder)) ? legacy : persistentDataPath;
+        }
+
+        // Stellen, an die man eine Datei ohne Ordnerstruktur legt (Dateien-App, Finder-Dateifreigabe, scripts/ios_push_save.sh): Documents/SaveData.bin, Documents/Import/SaveData.bin.
+        // Wichtig: devicectl legt fehlende Ordner mit Besitzer root an; die App darf dort nichts anlegen. Documents selbst gehört der App, daher kein Unterordner nötig.
+        public static string[] DropInSources(string persistentDataPath)
+        {
+            if (string.IsNullOrEmpty(persistentDataPath)) return new string[0];
+            return new[] { Path.Combine(persistentDataPath, SaveFileIO.MainFileName), Path.Combine(persistentDataPath, "Import", SaveFileIO.MainFileName) };
+        }
+
+        public string SlotPath => Store.SlotDirectory(SlotName);
+
+        // Zustand neu lesen (nach Dateiänderungen von außen).
+        public void Refresh() => _stateKnown = false;
+
+        void EnsureState()
+        {
+            if (_stateKnown) return;
+            _stateKnown = true;
+            _slotUsable = false;
+            _slotProblem = "";
+            _usableSource = null;
+            _usableDrop = null;
+            _pendingDrop = null;
+            _pendingDropHash = null;
+            _sourceProblems.Clear();
+            var dir = SlotPath;
+            if (!Directory.Exists(dir)) _slotProblem = "Slot-Ordner fehlt: " + dir;
+            else
             {
-                foreach (var s in Store.ListSlots()) if (s == SlotName) return true;
-                return false;
+                var ins = Store.Inspect(SlotName);
+                _slotUsable = ins.HasUsableSave;
+                if (!_slotUsable) _slotProblem = "Slot ohne gültige Datei: " + Describe(ins);
+                else if (!DirectoryWritable(dir)) _sourceProblems.Add("Slot-Ordner nicht beschreibbar (Besitzer root, z. B. von devicectl angelegt): Speichern schlägt fehl; Ordner löschen oder App neu installieren und die Datei als Documents/SaveData.bin ablegen");
+            }
+            var marker = ReadMarker();
+            foreach (var s in _sources) Probe(s, false, marker);
+            foreach (var s in _dropIns) Probe(s, true, marker);
+        }
+
+        void Probe(string s, bool dropIn, string marker)
+        {
+            if (!File.Exists(s) && !Directory.Exists(s)) { _sourceProblems.Add("Quelle fehlt: " + s); return; }
+            try
+            {
+                var ins = SaveInspector.Inspect(s, Store.Root);
+                if (!ins.HasUsableSave) { _sourceProblems.Add("Quelle ungültig: " + s + " (" + Describe(ins) + ")"); return; }
+                if (!dropIn) { if (_usableSource == null) _usableSource = s; return; }
+                if (_usableDrop == null) _usableDrop = s;
+                if (_pendingDrop == null)
+                {
+                    var hash = FullHash(s);
+                    if (hash != null && hash != marker) { _pendingDrop = s; _pendingDropHash = hash; }
+                }
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is InvalidDataException)
+            {
+                _sourceProblems.Add("Quelle nicht lesbar: " + s + " (" + e.GetType().Name + ")");
             }
         }
 
-        // Es gibt etwas zum Weiterspielen: eigener Slot oder importierbare Quelle.
-        public bool CanContinue => HasSlot || (!string.IsNullOrEmpty(ImportSource) && (Directory.Exists(ImportSource) || File.Exists(ImportSource)));
+        string ReadMarker()
+        {
+            try { return File.Exists(ImportedMarkerPath) ? File.ReadAllText(ImportedMarkerPath).Trim() : ""; }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return ""; }
+        }
+
+        static bool DirectoryWritable(string dir)
+        {
+            var probe = Path.Combine(dir, ".schreibtest-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            try
+            {
+                File.WriteAllBytes(probe, new byte[1]);
+                File.Delete(probe);
+                return true;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return false; }
+        }
+
+        static string FullHash(string path)
+        {
+            try
+            {
+                using (var sha = System.Security.Cryptography.SHA256.Create())
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    var h = sha.ComputeHash(fs);
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var b in h) sb.Append(b.ToString("x2"));
+                    return sb.ToString();
+                }
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return null; }
+        }
+
+        static string Describe(SaveInspection ins)
+        {
+            var parts = new List<string>();
+            foreach (var f in ins.Files)
+                parts.Add(f.Name + " " + f.Size + " Byte" + (f.IsValid ? " gültig" : f.Validation == null ? " unlesbar" : " ungültig: " + string.Join(", ", f.Validation.Problems)));
+            foreach (var n in ins.Notes) parts.Add(n);
+            return parts.Count == 0 ? "leer" : string.Join("; ", parts);
+        }
+
+        public bool HasSlot { get { EnsureState(); return _slotUsable; } }
+
+        // Es gibt etwas zum Weiterspielen: gültiger eigener Slot, gültige Importquelle oder gültige abgelegte Datei.
+        public bool CanContinue { get { EnsureState(); return _slotUsable || _usableSource != null || _usableDrop != null; } }
+
+        // Mehrzeiliger Befund für das Log: Ablageordner, Slot, Quellen (Pfade, Größen, Gültigkeit, Kurzhash; nie Inhalte).
+        public IReadOnlyList<string> Diagnose()
+        {
+            EnsureState();
+            var lines = new List<string> { "Ablage " + Store.Root, "Slot " + SlotPath + (HasSlot ? " gültig" : " unbrauchbar") };
+            if (!_slotUsable && _slotProblem.Length > 0) lines.Add("  " + _slotProblem);
+            if (Directory.Exists(SlotPath))
+                foreach (var f in Directory.GetFiles(SlotPath)) lines.Add("  Datei " + Path.GetFileName(f) + " " + new FileInfo(f).Length + " Byte " + ShortHash(f));
+            foreach (var s in _sources) lines.Add("Quelle " + s + (s == _usableSource ? " gültig" : File.Exists(s) || Directory.Exists(s) ? " unbrauchbar" : " fehlt"));
+            foreach (var s in _dropIns)
+                lines.Add("Ablage-Datei " + s + (s == _pendingDrop ? " gültig, neu (ersetzt den Slot beim Laden)" : s == _usableDrop ? " gültig, bereits importiert" : File.Exists(s) ? " unbrauchbar" : " fehlt") + (File.Exists(s) ? " " + new FileInfo(s).Length + " Byte " + ShortHash(s) : ""));
+            foreach (var p in _sourceProblems) lines.Add("  " + p);
+            return lines;
+        }
+
+        static string ShortHash(string path)
+        {
+            var h = FullHash(path);
+            return h == null ? "unlesbar" : "sha256:" + h.Substring(0, 12);
+        }
 
         public SaveData Load()
         {
-            if (!HasSlot)
+            EnsureState();
+            var src = _pendingDrop ?? (_slotUsable ? null : _usableDrop ?? _usableSource);
+            if (src != null)
             {
-                if (string.IsNullOrEmpty(ImportSource)) throw new FileNotFoundException("Kein Spielstand und keine Importquelle");
-                var r = Store.Import(ImportSource, SlotName);
-                Note = "Spielstand aus " + Path.GetFileName(Path.GetDirectoryName(ImportSource.TrimEnd('/', '\\'))) + " importiert (" + r.Bytes + " Byte, Quelle nur gelesen)";
+                var r = Store.Import(src, SlotName);
+                var isDrop = Array.IndexOf(_dropIns, src) >= 0;
+                Note = "Spielstand aus " + (isDrop ? "abgelegter Datei " + Path.GetFileName(src) : Path.GetFileName(Path.GetDirectoryName(src.TrimEnd('/', '\\')))) + " importiert (" + r.Bytes + " Byte, Quelle nur gelesen"
+                       + (r.BackupPath != null ? ", vorheriger Slot gesichert" : "") + ")";
+                if (isDrop)
+                {
+                    var hash = src == _pendingDrop ? _pendingDropHash : FullHash(src);
+                    try { if (hash != null) File.WriteAllText(ImportedMarkerPath, hash); }
+                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { Note += "; Merkdatei nicht schreibbar"; }
+                }
             }
-            else Note = "Spielstand aus dem eigenen Slot";
+            else if (_slotUsable) Note = "Spielstand aus dem eigenen Slot";
+            else throw new FileNotFoundException("Kein gültiger Spielstand: " + Problem);
+            Refresh();
             return Store.Load(SlotName);
         }
 
@@ -96,6 +263,7 @@ namespace Xnu.Game.Unity
             var r = Store.Write(SlotName, save, true);
             Writes++;
             LastBackup = r.BackupPath ?? "";
+            Refresh();
             return r;
         }
     }

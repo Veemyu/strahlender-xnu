@@ -62,6 +62,7 @@ Hält ein Unity-Editor das Projekt `unity/`, kann kein Batch-Build laufen (Proje
 1. iPad per USB anschließen, entsperren, Entwicklermodus an, Entwicklerprofil vertrauen.
 2. Team-ID bereitstellen: als Umgebungsvariable `TEAM_ID` oder als Zeile `TEAM_ID=<deine ID>` in `work/local.env` (gitignoriert). Die ID steht nie in `ProjectSettings`, Logs oder Markern (nur ein Hash).
 3. `scripts/build_all.sh --only deploy --target ios` baut mit Xcode und installiert. Mit `--launch` startet die App danach (sie ist standardmäßig stumm).
+4. Spielstand aufs iPad: `scripts/ios_push_save.sh` (Datei nach `Documents/SaveData.bin`, Prüfsumme vor und nach, Import beim nächsten „Weiter“; `--pull` holt den Stand zurück). Der Build trägt `UIFileSharingEnabled` ein, der Documents-Ordner erscheint damit in der Dateien-App. Verfahren, Ursachen und Messwerte: `docs/ipad-durchstich-1.md`.
 
 Ohne Team-ID bleibt es beim Xcode-Projekt unter `work/builds/ios/xnu/`; du kannst es in Xcode mit deinem eigenen Team öffnen. Ohne angeschlossenes iPad wird die Installation übersprungen. Ein kostenloses Apple-Team reicht; das Profil läuft nach 7 Tagen ab.
 
