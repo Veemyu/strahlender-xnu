@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.Field.Editor",
+  "rootNamespace": "Xnu.Field.Editor",
+  "references": ["Xnu.Field", "Xnu.Input", "Xnu.Core"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}

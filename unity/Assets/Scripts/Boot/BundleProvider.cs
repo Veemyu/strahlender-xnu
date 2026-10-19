@@ -21,6 +21,17 @@ namespace Xnu.Boot
         readonly Dictionary<BundleRecord, Loaded> _loaded = new Dictionary<BundleRecord, Loaded>();
 
         public bool UnloadAllLoadedObjects { get; set; } = true;
+
+        // Optional: Abhängigkeiten, für die der Filter false liefert, werden nicht geladen
+        // (z. B. das Shader-Bundle der Originalspiel-Shader, die nicht gerendert werden dürfen).
+        public Func<BundleRecord, bool> DependencyFilter { get; set; }
+
+        List<BundleRecord> Closure(BundleRecord record)
+        {
+            var chain = _catalog.GetDependencyClosure(record);
+            if (DependencyFilter != null) chain.RemoveAll(r => !DependencyFilter(r));
+            return chain;
+        }
         public BundleCatalog Catalog => _catalog;
         public int LoadedBundleCount => _loaded.Count;
 
@@ -47,7 +58,7 @@ namespace Xnu.Boot
         public IBundleHandle Acquire(string bundleName)
         {
             var record = _catalog.GetBundle(bundleName);
-            var chain = _catalog.GetDependencyClosure(record);
+            var chain = Closure(record);
             chain.Add(record);
 
             var acquired = new List<BundleRecord>(chain.Count);
@@ -88,7 +99,7 @@ namespace Xnu.Boot
             var record = _catalog.GetBundle(bundleName);
             if (!_loaded.ContainsKey(record))
                 throw new InvalidOperationException("Bundle ist nicht geladen: " + record.FullName);
-            var chain = _catalog.GetDependencyClosure(record);
+            var chain = Closure(record);
             Decrement(record);
             var unloaded = !_loaded.ContainsKey(record);
             foreach (var dep in chain) Decrement(dep);

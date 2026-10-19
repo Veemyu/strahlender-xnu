@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.Field",
+  "rootNamespace": "Xnu.Field",
+  "references": ["Xnu.Core", "Xnu.Data", "Xnu.Boot", "Xnu.Input", "Unity.InputSystem"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}

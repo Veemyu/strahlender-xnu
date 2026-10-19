@@ -124,7 +124,7 @@ Editor-Quelldateien, die im Bundle selbst nicht als Asset vorhanden sind (Beispi
 | `NrbfReader` | allgemeiner Leser für den benötigten NRBF-Ausschnitt (Klassen mit Typinfo, Strings, Arrays, Referenzen, Null-Läufe), mit Grenzprüfungen; Fehler → `FormatException` |
 | `BundleCatalog` | `FromFile`/`FromBytes` (Dpr.bin, nur Version 6), `FromDirectory` (Ersatz-Scan: UnityFS-Magic, Projekt = erstes Pfadsegment), Bundle-Suche (`Projekt/Name` oder nur Name, case-insensitiv), `GetDependencyClosure`, `TryResolveAsset` |
 | `AssetKey` | Normalisierung (Kleinschreibung, `/`, ohne `assets/` und Endung) |
-| `BundleProvider` | `Acquire`/`Release` mit Referenzzähler, Abhängigkeiten werden mitgezählt, Rollback bei Ladefehlern, `LoadAsset<T>(Schlüssel)`, `UnloadAll` |
+| `BundleProvider` | `Acquire`/`Release` mit Referenzzähler, Abhängigkeiten werden mitgezählt, Rollback bei Ladefehlern, `LoadAsset<T>(Schlüssel)`, `UnloadAll`; optional `DependencyFilter` (Abhängigkeiten überspringen, z. B. das Shader-Bundle, siehe `docs/feld-szene-1.md`) |
 | `IBundleSource`/`UnityBundleSource` | `AssetBundle.LoadFromFile`; in Tests durch Attrappe ersetzbar |
 | `BootSequence`/`BootLoader` | Pfade prüfen, Katalog lesen (Rückfall auf Scan mit Warnung), Konsistenz prüfen, Provider anlegen; `BootLoader` ist ein MonoBehaviour, das beim Start die Schritte nur ins Log schreibt (keine UI, nichts wird abgespielt/gerendert) |
 
