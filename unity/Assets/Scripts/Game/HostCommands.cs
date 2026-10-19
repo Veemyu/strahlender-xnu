@@ -88,6 +88,8 @@ namespace Xnu.Game
             Reg(289, "GET_BEFORE_ZONE_ID", A, S, (h, c) => { c.SetWork(1, h.Session.BeforeZoneId); return true; });
             Reg(554, "GET_TIME_ZONE", P, S, (h, c) => { c.SetWork(1, h.Session.PeriodOfDay); return true; });
             Reg(522, "GET_POKE_COUNT", P, S, (h, c) => { c.SetWork(1, h.Session.PartyCount); return true; });
+            // 523: nur aus der Pokécenter-Animation erschlossen (Schleife zählt Bälle bis zu diesem Wert) [A]: Anzahl der Teammitglieder.
+            Reg(523, "GET_POKE_COUNT_ANIM", A, S, (h, c) => { c.SetWork(1, h.Session.PartyCount); return true; });
             Reg(326, "FIRST_POKE_NO_GET", P, S, (h, c) => { c.SetWork(1, h.Session.DefaultPokeNo); return true; });
             Reg(563, "TEMOTI_POKE_CHK", P, S, (h, c) =>
             {

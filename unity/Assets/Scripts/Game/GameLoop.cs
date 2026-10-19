@@ -121,6 +121,14 @@ namespace Xnu.Game
             State = GameState.Field;
         }
 
+        // Kampf von außen auslösen (Prüfwerkzeuge, Begegnung der Feldschicht); nur im Zustand Field. false: abgelehnt oder nicht baubar.
+        public bool BeginBattle(BattleRequest request)
+        {
+            if (request == null || State != GameState.Field) return false;
+            StartBattle(request);
+            return State == GameState.Battle;
+        }
+
         void StartBattle(BattleRequest request)
         {
             BattlesStarted++;

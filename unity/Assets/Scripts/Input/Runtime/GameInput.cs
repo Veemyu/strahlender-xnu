@@ -56,9 +56,18 @@ namespace Xnu.Input
 
         public bool GamepadConnected => ConnectedGamepadCount() > 0;
 
-        public bool IsPressed(GameButton b) => _buttons[(int)b] != null && _buttons[(int)b].IsPressed();
-        public bool WasPressedThisFrame(GameButton b) => _buttons[(int)b] != null && _buttons[(int)b].WasPressedThisFrame();
+        public bool IsPressed(GameButton b) => (Override != null && Override.IsHeld(b)) || (_buttons[(int)b] != null && _buttons[(int)b].IsPressed());
+        public bool WasPressedThisFrame(GameButton b) => (Override != null && Override.WasPressed(b)) || (_buttons[(int)b] != null && _buttons[(int)b].WasPressedThisFrame());
         public bool WasReleasedThisFrame(GameButton b) => _buttons[(int)b] != null && _buttons[(int)b].WasReleasedThisFrame();
+
+        // Skript-/Testeingabe (null = nur echte Geräte). Bewegung: Override.Move ersetzt den Stick, solange es nicht null ist.
+        public InputOverride Override { get; set; }
+
+        // Skripteingabe sofort in Move übernehmen (der Treiber tickt die Logik außerhalb von Update).
+        public void ApplyOverrideNow()
+        {
+            if (Override != null && Override.Enabled) Move = Override.Move;
+        }
 
         private void Awake()
         {
@@ -97,6 +106,7 @@ namespace Xnu.Input
 
             var m = Process(_move);
             var l = Process(_look);
+            if (Override != null && Override.Enabled) m = new Stick2(Override.Move.x, Override.Move.y);
             Move = new Vector2(m.X, m.Y);
             Look = new Vector2(l.X, l.Y);
             MoveDirection = _quantizer.Update(m.X, m.Y);

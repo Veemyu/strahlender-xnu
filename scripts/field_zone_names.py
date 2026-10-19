@@ -18,14 +18,20 @@ ENUM_HEADER = "public enum ZoneID // TypeDefIndex"
 CONST_RE = re.compile(r"public const ZoneID (\w+) = (-?\d+);")
 
 
-def parse_zone_enum(text):
-    """Liest die Konstanten des Enums ZoneID aus dem Text von dump.cs."""
-    start = text.find(ENUM_HEADER)
+def parse_enum(text, name):
+    """Liest die Konstanten eines Enums (ZoneID, TrainerID) aus dem Text von dump.cs."""
+    start = text.find("public enum %s // TypeDefIndex" % name)
     if start < 0:
-        raise ValueError("Enum ZoneID nicht gefunden")
+        raise ValueError("Enum %s nicht gefunden" % name)
     end = text.find("\n}", start)
     body = text[start:end if end > 0 else len(text)]
-    return {m.group(1): int(m.group(2)) for m in CONST_RE.finditer(body)}
+    rx = re.compile(r"public const %s (\w+) = (-?\d+);" % name)
+    return {m.group(1): int(m.group(2)) for m in rx.finditer(body)}
+
+
+def parse_zone_enum(text):
+    """Liest die Konstanten des Enums ZoneID aus dem Text von dump.cs."""
+    return parse_enum(text, "ZoneID")
 
 
 def ignored(path):
@@ -42,10 +48,12 @@ def main(argv=None):
     if not ignored(out):
         print("Zielordner ist nicht gitignoriert: " + str(out), file=sys.stderr)
         return 2
-    names = parse_zone_enum(Path(args.dump).read_text(encoding="utf-8", errors="replace"))
+    text = Path(args.dump).read_text(encoding="utf-8", errors="replace")
+    names = parse_zone_enum(text)
+    trainers = parse_enum(text, "TrainerID")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"ZoneID": names}, indent=1, sort_keys=True), encoding="utf-8")
-    print("%d Zonennamen -> %s" % (len(names), out))
+    out.write_text(json.dumps({"ZoneID": names, "TrainerID": trainers}, indent=1, sort_keys=True), encoding="utf-8")
+    print("%d Zonennamen, %d Trainernamen -> %s" % (len(names), len(trainers), out))
     return 0
 
 

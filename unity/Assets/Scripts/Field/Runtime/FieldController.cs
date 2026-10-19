@@ -234,7 +234,7 @@ namespace Xnu.Field
             if (Data == null)
             {
                 Data = FieldDataSet.Load(FieldDataSet.DefaultDirectory);
-                Interaction = new FieldInteraction(Data.Placements, null) { Handler = Interaction?.Handler ?? new LoggingInteractionHandler { Log = Debug.Log } };
+                Interaction = new FieldInteraction(Data.Placements, Flags) { Handler = Interaction?.Handler ?? new LoggingInteractionHandler { Log = Debug.Log } };
                 Memory.Mark("Stammdaten (Zonen, Attribute, " + Data.Warps.WarpCount + " Warps, " + Data.Placements.Count + " Platzierungen) gelesen");
             }
             if (_fallback == null) _fallback = new FallbackMaterials();
@@ -255,23 +255,57 @@ namespace Xnu.Field
             if (_camera == null) { _camPitch = cam.Pitch; _camFov = cam.Fov; _camRange = cam.TargetRange; }
             var list = new List<PlacementRecord>();
             var key = string.IsNullOrEmpty(zone.AssetBundleName) ? "" : zone.AssetBundleName.Substring(zone.AssetBundleName.LastIndexOf('/') + 1).ToUpperInvariant();
-            foreach (var z in Data.ZonesWithMapName(key)) list.AddRange(Data.Placements.InZone(z));
+            // Innenräume teilen sich das Kartenbundle mit gleichartigen Räumen anderer Städte: nur die eigenen Platzierungen zeigen.
+            if (zone.IsField) foreach (var z in Data.ZonesWithMapName(key)) list.AddRange(Data.Placements.InZone(z));
             if (list.Count == 0) list.AddRange(Data.Placements.InZone(id));
             _mapPlacements = list;
             ApplyEnvironmentSettings();
         }
 
         // Wechselt zur Zone (mit Überblendung): lädt Karte und platziert den Spieler am Locator `spawnLocator`.
-        public IEnumerator SwitchZone(int newZoneId)
+        public IEnumerator SwitchZone(int newZoneId) => RunTransition(SwitchTransition(newZoneId));
+
+        ZoneTransition SwitchTransition(int newZoneId)
         {
             if (!Data.Router.TryResolveSpawn(newZoneId, spawnLocator, out var sp))
                 sp = new SpawnPoint(newZoneId, 0, 0, MoveDir.Down, spawnLocator);
-            var t = new ZoneTransition
+            return new ZoneTransition
             {
                 Kind = TransitionKind.Warp, FromZone = zoneId, TargetZone = newZoneId, HasSpawn = sp.GridX != 0 || sp.GridY != 0,
                 Spawn = sp, NeedsMapLoad = true, NeedsFade = true,
             };
-            return RunTransition(t);
+        }
+
+        // Zonenwechsel für den Spielkern (MAP_CHANGE): Locator der Zielzone, Überblendung, Karte neu laden. false: läuft schon einer.
+        public bool BeginSwitchZone(int newZoneId, int locator)
+        {
+            if (InTransition || Data == null) return false;
+            spawnLocator = locator;
+            BeginTransition(SwitchTransition(newZoneId));
+            return true;
+        }
+
+        // Spielerstart an einer Zelle statt am Locator (Spielstand laden); nur vor dem ersten Laden wirksam.
+        public void SetStartCell(int gx, int gy, MoveDir facing) => _spawn = new SpawnPoint(zoneId, gx, gy, facing, -1);
+
+        // Flaggen der Ereignisschicht (Work-Flags): bestimmen, welche Objekte aktiv/sichtbar sind.
+        public IFieldFlags Flags { get; set; }
+
+        // true: FieldController tickt die Logik nicht selbst; der Spielschleifen-Treiber ruft LogicTickExternal mit 30 Hz.
+        public bool ExternalTick { get; set; }
+
+        // Zonenwechsel (nach dem Laden und Einblenden): Zielzone.
+        public event Action<int> ZoneChanged;
+
+        public void RefreshNpcsNow() => RefreshNpcs();
+
+        // Ein Logikschritt des Treibers (Eingabe aus GameInput, inklusive A-Taste für Ansprechen).
+        public MoveEvents LogicTickExternal(float dt)
+        {
+            if (!Loaded) return MoveEvents.None;
+            var input = GameInput.Instance;
+            if (input != null) { input.ApplyOverrideNow(); if (input.WasPressedThisFrame(GameButton.A)) _aLatch = true; }
+            return LogicTick(dt);
         }
 
         // Shader-Bundles der Originalspiel-Shader dürfen nicht geladen werden (Switch-Binärcode, Editor-Absturz).
@@ -426,7 +460,7 @@ namespace Xnu.Field
             if (previous != null) { Mover.Bicycle = previous.Bicycle; Mover.Swim = previous.Swim; Mover.WalkSpeed = previous.WalkSpeed; Mover.RunSpeed = previous.RunSpeed; }
             Mover.Teleport(gx, gy, facing);
             _ground.SpawnSearch = false;
-            Mover.IsOccupied = (x, y) => Data.Placements.IsNpcAt(Data.Router.ZoneAtCell(zoneId, x, y), x, y);
+            Mover.IsOccupied = (x, y) => Data.Placements.IsNpcAt(Data.Router.ZoneAtCell(zoneId, x, y), x, y, Flags);
         }
 
         void ComputeLoadDistance()
@@ -531,7 +565,7 @@ namespace Xnu.Field
         void RefreshNpcs()
         {
             if (_npcs == null || Data == null) return;
-            _npcs.Refresh(_mapPlacements, Mover.GridX, Mover.GridY, EffectiveLoadDistance, null,
+            _npcs.Refresh(_mapPlacements, Mover.GridX, Mover.GridY, EffectiveLoadDistance, Flags,
                 (x, y) => _ground.TryGetHeight(FieldCoords.WorldX(x), FieldCoords.WorldZ(y), Mover.Height, out var h) ? h : Mover.Height);
         }
 
@@ -542,6 +576,7 @@ namespace Xnu.Field
             _fpsFrames++; _fpsTimer += Time.unscaledDeltaTime;
             if (_fpsTimer >= 0.5f) { _fps = _fpsFrames / _fpsTimer; _fpsFrames = 0; _fpsTimer = 0f; }
             var input = GameInput.Instance;
+            if (ExternalTick) return;
             if (input != null && input.WasPressedThisFrame(GameButton.A)) _aLatch = true;
 
             _accumulator += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
@@ -552,7 +587,7 @@ namespace Xnu.Field
             }
         }
 
-        void LogicTick(float dt)
+        MoveEvents LogicTick(float dt)
         {
             var held = MoveDir.None;
             var run = false;
@@ -569,7 +604,7 @@ namespace Xnu.Field
                 _aLatch = false;
                 if (!frozen && !Mover.IsMoving) Interaction?.TryTalk(Zone.ZoneId, Mover.GridX, Mover.GridY, Mover.Facing);
             }
-            TickLogic(dt, held, run);
+            return TickLogic(dt, held, run);
         }
 
         // Ein Logikschritt mit gegebener Eingabe (auch für Tests und Skripte).
@@ -675,6 +710,7 @@ namespace Xnu.Field
             while (Fade.Active) yield return null;
             InTransition = false;
             TransitionsDone++;
+            if (ok) ZoneChanged?.Invoke(zoneId);
             var report = t + (ok ? "" : " – FEHLER " + Error) + ": " + ((Time.realtimeSinceStartup - started) * 1000f).ToString("F0") + " ms" +
                          (Memory.Entries.Count > before ? "; " + Memory.Entries[Memory.Entries.Count - 1] : "");
             TransitionReports.Add(report);

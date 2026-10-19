@@ -66,6 +66,12 @@ namespace Xnu.Game
             if (_index >= _pages.Count) IsFinished = true;
         }
 
+        // Die Darstellung (Xnu.UI.TextboxFlow) hat alle Seiten gezeigt und bestätigt: das Fenster gilt als fertig.
+        public void ForceFinish()
+        {
+            if (IsOpen) IsFinished = true;
+        }
+
         // TALK_CLOSE: Fenster schließen.
         public void Close()
         {
@@ -102,6 +108,14 @@ namespace Xnu.Game
             if (input.Up) Cursor = (Cursor + n - 1) % n;
             if (input.Confirm) Result = Cursor;
             else if (input.Cancel) Result = CancelIndex < 0 || CancelIndex >= n ? n - 1 : CancelIndex;
+        }
+
+        // Die Darstellung hat gewählt (Index der Zeile).
+        public void Force(int index)
+        {
+            if (!IsOpen || Result >= 0 || Labels.Count == 0) return;
+            Cursor = index < 0 || index >= Labels.Count ? 0 : index;
+            Result = Cursor;
         }
 
         public void Close()

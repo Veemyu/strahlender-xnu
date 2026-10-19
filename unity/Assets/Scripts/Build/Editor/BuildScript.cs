@@ -23,6 +23,7 @@ namespace Xnu.Build.Editor
         internal static readonly string[] DefaultScenes =
         {
             BootSceneBuilder.ScenePath,
+            "Assets/Scenes/Game.unity",
             "Assets/Scenes/FieldTest2.unity",
             "Assets/Scenes/FieldTest.unity",
             "Assets/Scenes/UiTest.unity",

@@ -1,0 +1,8 @@
+# Bundle-Teilmenge für den vertikalen Durchstich (docs/vertikaler-durchstich-1.md): Pokécenter-Außenbereich (Zone 167), Innenraum (Zone 168), Spielerfigur, Textbox-Skin.
+# Namen relativ zu romfs/Data/StreamingAssets/AssetAssistant; der Katalog (Dpr.bin u. a.) wird immer mitkopiert.
+Environments/fields/area008
+Environments/prefab_map/t02pc0101
+Characters/persons/field/fc0001_00
+Characters/persons/field/fc0001_11
+Characters/persons/field/pc_parts
+UIs/shareduiassets/sharedui

@@ -7,3 +7,6 @@ Characters/persons/field/fc0001_11
 Characters/persons/field/pc_parts
 # Textbox-Skin der UI-Szene (UiTest)
 UIs/shareduiassets/sharedui
+# Vertikaler Durchstich (docs/vertikaler-durchstich-1.md): Zone 167 (Pokécenter außen, Karte area008) und Zone 168 (innen)
+Environments/fields/area008
+Environments/prefab_map/t02pc0101
