@@ -143,6 +143,7 @@ Die Zahlen „Klassen/Methoden“ umfassen nur die Namensfamilie; gemeinsame Hil
 - **Ton**: UI-Klänge (`SoundTag`, `MsgWindowSoundPlayer`, Wwise-Ereignisse in `PokemonVoice`) bleiben aus (Vorgabe: kein Ton, `AudioSafety`).
 
 ## 6. Strategie und Spike
+**Ergebnis des Spikes S1: siehe `docs/ui-spezifikation-2.md` (Variante A bestätigt, Bindung nur in `Assembly-CSharp`).**
 **Variante A (empfohlen): Original-Prefabs laden, Skripte nachbauen.** Die Bundles laden in Unity 6 (`docs/m0-bundle-kompatibilitaet.md`: alle 14.052 Bundles `ok`), uGUI-Komponenten und TMP-Schriften werden als Objekte erkannt. Die Prefabs verweisen auf `Dpr.UI.*` in `Assembly-CSharp.dll`.
 Hypothese [A]: Legen wir im Projekt Klassen mit **gleichem Namespace, Klassennamen und Feldnamen** in der Standard-Assembly (`Assembly-CSharp`) an, bindet Unity die serialisierten Felder beim Laden der Prefabs automatisch (so wie bei den Stammdaten die `XLSXContent`-Klassen fehlten, siehe `docs/masterdata.md`).
 Folgen: Layouts, Verdrahtung (`UINavigator`, Animatoren, Referenzen auf Sprites/Schriften) kommen 1:1 aus den Daten; nur die Logik wird geschrieben. Risiken: (a) Unity 6 vs. 2019.4 beim `UnityEngine.UI`-Skriptabgleich (`UnityEngine.UI.dll` vs. Paket `com.unity.ugui` 2.0.0, TMP darin), (b) Zwang zur Assembly-CSharp widerspricht der Aufteilung in `Xnu.*`-Assemblies (UI-Skripte liegen dann außerhalb), (c) `TMP_FontAsset`-Verweise auf eingebettete TTFs, (d) die Zuweisung der Original-Shader (Materialien müssen auf unsere portierten Shader zeigen).

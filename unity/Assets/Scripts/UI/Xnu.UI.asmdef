@@ -1,0 +1,9 @@
+{
+  "name": "Xnu.UI",
+  "rootNamespace": "Xnu.UI",
+  "references": ["Xnu.Core", "Xnu.Boot", "Xnu.Text", "Xnu.Input", "Unity.TextMeshPro", "UnityEngine.UI"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}
