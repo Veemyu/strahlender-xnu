@@ -1,0 +1,10 @@
+desc Ohne Spielstand: Sprachauswahl (Referenzbild ref_00b)
+save none
+timeout 300
+finish 8
+shots 90
+anchor sel OpeningController::OpenSelectLanguage
+mark Title::Start
+mark OpeningController::OpenSelectLanguage
+expect il2 OpeningController::OpenSelectLanguage
+sel+12 NONE 0.1

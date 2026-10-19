@@ -1,0 +1,17 @@
+desc Titel, A (Film überspringen), A (Weiter), 3D-Stadt des Spielstands (Zone 24), Spielfigur im Feld
+timeout 420
+finish 12
+shots 180
+anchor t0 Title::Start
+anchor titel <PlayTitle>d__34::MoveNext
+anchor feld EvDataManager::EnvironmentControllerCallBack
+mark Title::Start
+mark EndOpening
+mark <PlayTitle>d__34::MoveNext
+mark EndTitle
+mark EvDataManager::EnvironmentControllerCallBack
+expect il2 Title::Start
+expect il2 EvDataManager::EnvironmentControllerCallBack
+t0+6 A 0.4
+titel+4 A 0.4
+feld+10 NONE 0.1

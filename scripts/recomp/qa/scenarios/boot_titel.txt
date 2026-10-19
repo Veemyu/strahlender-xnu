@@ -1,0 +1,11 @@
+desc Start bis zum Titelbild (Eröffnungsfilm, Titelschleife), ohne Eingabe
+timeout 80
+shots 270
+mark Title::Start
+mark TitlePlayer::Play
+mark SaveSystem::Load
+mark OpeningController::OpenSelectLanguage
+expect il2 Title::Start
+expect il2 TitlePlayer::Play
+expect il2-not OpeningController::OpenSelectLanguage
+expect fps-min 25 ab 30

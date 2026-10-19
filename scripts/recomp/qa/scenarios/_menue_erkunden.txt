@@ -1,0 +1,15 @@
+desc Erkundung: X-Menü (Reihenfolge der Einträge)
+include weiter_stadt
+timeout 420
+finish 8
+shots 45
+feld+10 X 0.3
+feld+16 DOWN 0.3
+feld+20 DOWN 0.3
+feld+24 DOWN 0.3
+feld+28 DOWN 0.3
+feld+32 DOWN 0.3
+feld+36 DOWN 0.3
+feld+40 DOWN 0.3
+feld+44 B 0.3
+feld+50 NONE 0.1
