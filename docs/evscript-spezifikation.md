@@ -5,6 +5,8 @@ Stand: 2026-10-19. Nur Namen, Zahlen und Struktur; keine Spieltexte, keine Daten
 
 **Die Story-Reihenfolge der ersten Strecke ist nicht bestätigt.** Stellen, die davon abhängen, sind mit **[A]** (Annahme) markiert.
 
+Fortsetzung: Der konkrete Host für die Host-Befehle, die Spielschleife und der Echtdatenlauf bis zum ersten Kampf stehen in `docs/spielkern-1.md` (Assembly `Xnu.Game`).
+
 ## 1. Ergebnis in Kürze
 
 - Format und Laufzeitmodell des Originals (`EvDataManager.UpdateEvdata`, `RunEvCmd`, `CallLabel`, `ReturnEvData`) sind aus dem Pseudocode geklärt.
