@@ -207,8 +207,9 @@ static void dump_largest_textures(const char *why) {
     }
 }
 
-static uint64_t frames, total_frames;
-uint64_t renderer_present_count(void) { return total_frames; }
+static uint64_t frames, total_frames, wk_frames;  // wk_frames: Bilder aus Sicht des Übersetzungs-Workers
+bool renderer_on_worker(void);  // renderer.m
+uint64_t renderer_present_count(void) { return renderer_on_worker() ? wk_frames : total_frames; }
 
 // Output resolution: render targets the game sizes for the 1920x1080 screen are allocated at
 // (sx, sy) times their guest size. Shaders and the renderer keep working in guest ("logical") units.
@@ -230,8 +231,8 @@ bool renderer_texture_first_write(NvnTexture *t) {
     if (g_debug_frame && b && b->presented)
         LOG("[fw] tex %p %ux%u f%#x sx %.2f sy %.2f touched %llu now %llu\n", (void *)t, t->width, t->height, t->format,
             b->sx, b->sy, (unsigned long long)b->touched_frame, (unsigned long long)total_frames + 1);
-    if (!b || !b->presented || (b->sx == b->sy) || b->touched_frame == total_frames + 1) return false;
-    b->touched_frame = total_frames + 1;
+    if (!b || !b->presented || (b->sx == b->sy) || b->touched_frame == renderer_present_count() + 1) return false;
+    b->touched_frame = renderer_present_count() + 1;
     return true;
 }
 
@@ -258,8 +259,8 @@ bool renderer_texture_frame_fresh(NvnTexture *t) {
     static int on = -1;
     if (on < 0) on = getenv("BDSP_NO_FRAME_CLEAR") == NULL;
     TexBackend *b = t ? (TexBackend *)t->backend : NULL;
-    if (!on || !b || !b->scalable || b->frame_cleared == total_frames + 1) return false;
-    b->frame_cleared = total_frames + 1;
+    if (!on || !b || !b->scalable || b->frame_cleared == renderer_present_count() + 1) return false;
+    b->frame_cleared = renderer_present_count() + 1;
     return true;
 }
 
@@ -398,6 +399,8 @@ static void release_backend_texture(NvnTexture *t, TexBackend *b) {  // (also dr
 }
 
 void backend_texture_destroyed(NvnTexture *t) {
+    extern void renderer_xw_destroy_wait(void);
+    renderer_xw_destroy_wait();   // Worker-Modus (nur Diagnose BDSP_XW_DRAIN_DESTROY): erst die eingereihte Arbeit abwarten
     TexBackend *b = t->backend;
     renderer_texture_gone(t, NULL);  // its snapshot copy
     if (b) { reg_remove(b); release_backend_texture(t, b); free(b); }
@@ -993,12 +996,78 @@ void backend_represent(void) {
     else SDL_Delay(16);
 }
 
-void backend_present(NvnTexture *t) {
-    g_last_presented = t;
+// BDSP_FLICKER=1 (Diagnose): je Bild Helligkeit und Pixeländerungen gegenüber dem Vorgänger (gesamtes Spielbild, vor Menü und
+// Skalierung) plus Abstand der presentedTime. Trennt Pacing (Muster in dt) von Shader-Flackern (dpix bei ruhiger Szene).
+static NSMutableDictionary *flicker_capture(id<MTLCommandBuffer> cb, id<MTLTexture> tex, uint64_t frame, uint64_t draws, uint64_t skipped) {
+    if (!tex || tex.sampleCount != 1 || tex.textureType != MTLTextureType2D) return nil;
+    MTLPixelFormat pf = tex.pixelFormat;
+    if (pf != MTLPixelFormatRGBA8Unorm && pf != MTLPixelFormatRGBA8Unorm_sRGB && pf != MTLPixelFormatBGRA8Unorm &&
+        pf != MTLPixelFormatBGRA8Unorm_sRGB) return nil;
+    MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pf width:tex.width height:tex.height mipmapped:NO];
+    d.storageMode = MTLStorageModeShared;
+    d.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> copy = [dev newTextureWithDescriptor:d];
+    if (!copy) return nil;
+    id<MTLBlitCommandEncoder> bl = [cb blitCommandEncoder];
+    [bl copyFromTexture:tex toTexture:copy];
+    [bl endEncoding];
+    NSMutableDictionary *rec = [NSMutableDictionary dictionary];
+    bool bgra = pf == MTLPixelFormatBGRA8Unorm || pf == MTLPixelFormatBGRA8Unorm_sRGB;
+    [cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
+        (void)done;
+        static NSMutableData *prev;
+        static NSLock *lk;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{ lk = [NSLock new]; });
+        size_t w = copy.width, h = copy.height, n = w * h;
+        NSMutableData *cur = [NSMutableData dataWithLength:n * 4];
+        [copy getBytes:cur.mutableBytes bytesPerRow:w * 4 fromRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0];
+        const uint8_t *c = cur.bytes;
+        [lk lock];
+        const uint8_t *p = prev.length == cur.length ? prev.bytes : NULL;
+        double sum = 0, dsum = 0;
+        unsigned dpix = 0, dark = 0, ddark = 0, dmax = 0;
+        for (size_t i = 0; i < n; i++) {
+            const uint8_t *q = c + i * 4;
+            int r = bgra ? q[2] : q[0], g = q[1], b = bgra ? q[0] : q[2];
+            int y = (r * 54 + g * 183 + b * 19) >> 8;
+            sum += y;
+            if (y < 64) dark++;
+            if (p) {
+                const uint8_t *o = p + i * 4;
+                int m = abs(q[0] - o[0]);
+                int m1 = abs(q[1] - o[1]), m2 = abs(q[2] - o[2]);
+                if (m1 > m) m = m1;
+                if (m2 > m) m = m2;
+                if (m) { dpix++; dsum += m; if ((unsigned)m > dmax) dmax = (unsigned)m; if (y < 64) ddark++; }
+            }
+        }
+        prev = cur;
+        [lk unlock];
+        @synchronized(rec) {
+            rec[@"line"] = [NSString stringWithFormat:@"f%llu draws %llu skip %llu mean %.3f dpix %u (dunkel %u von %u) dmax %u dmean %.2f",
+                            (unsigned long long)frame, (unsigned long long)draws, (unsigned long long)skipped, sum / n, dpix, ddark, dark, dmax, dpix ? dsum / dpix : 0.0];
+            if (rec[@"pt"]) LOG("[flicker] %s dt %.2fms\n", [rec[@"line"] UTF8String], [rec[@"pt"] doubleValue]);
+        }
+    }];
+    return rec;
+}
+static void flicker_presented(NSMutableDictionary *rec, double pt) {
+    static double prev;
+    double dt = prev > 0 ? (pt - prev) * 1000 : 0;
+    if (pt > 0) prev = pt;
+    @synchronized(rec) {
+        rec[@"pt"] = @(dt);
+        if (rec[@"line"]) LOG("[flicker] %s dt %.2fms\n", [rec[@"line"] UTF8String], dt);
+    }
+}
+
+// GPU-Teil der Präsentation (committet die Frame-Arbeit, holt das Drawable, kodiert die Present-Pass). Läuft im Gast-Thread
+// oder (BDSP_EXEC_WORKER=1) im Übersetzungs-Worker; deshalb nur mit Werten, die beim Einreihen festgehalten wurden.
+// false: kein Drawable, das Bild entfällt.
+static bool present_gpu(uint64_t frame, id<MTLTexture> tex, bool has_wc, const float wc[4]) {
     extern void renderer_submit(void);
     renderer_submit();  // same queue: the present pass runs after the frame's work
-    TexBackend *b = t->backend;
-    if (b) b->presented = true;
     @autoreleasepool {
         uint64_t nd0 = SDL_GetTicksNS();
         id<CAMetalDrawable> drawable = [layer nextDrawable];
@@ -1007,7 +1076,7 @@ void backend_present(NvnTexture *t) {
             static int warned;
             if (warned++ < 20) LOG("[metal] nextDrawable blocked %llums\n", (unsigned long long)(nd / 1000000));
         }
-        if (!drawable) return;
+        if (!drawable) return false;
         id<MTLCommandBuffer> cb = [queue commandBuffer];
         MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
         rp.colorAttachments[0].texture = drawable.texture;
@@ -1018,7 +1087,7 @@ void backend_present(NvnTexture *t) {
         // Next frame's render resolution follows the window: the 1920x1080 image scaled to fit.
         double dw = drawable.texture.width, dh = drawable.texture.height;
         extern void widescreen_frame_end(uint64_t frame);
-        widescreen_frame_end(total_frames);
+        widescreen_frame_end(frame);
         extern void widescreen_set_factor(float f);
         extern bool widescreen_allowed(void);
         // render scale + placement in the window: runtime/nvn/output_scale.c (Video tab "Internal resolution")
@@ -1034,23 +1103,20 @@ void backend_present(NvnTexture *t) {
         // interiors / dungeons: their 16:9 centre, or the part inside a room wider than one screen
         extern void widescreen_present_crop(uint64_t, double, float *, double *, double *, double *, double *);
         float crop[4];  // uv origin and size
-        widescreen_present_crop(total_frames, shape, crop, &vx, &vy, &vw, &vh);
-        {   // der vom Spiel gesetzte Ausschnitt (nvnWindowSetCrop): 1280x720 im 1920x1080-Fensterbild
-            extern bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th);
-            if (t) nvn_window_crop(crop, t->width, t->height);
-        }
+        widescreen_present_crop(frame, shape, crop, &vx, &vy, &vw, &vh);
+        if (has_wc) memcpy(crop, wc, sizeof crop);  // der vom Spiel gesetzte Ausschnitt (nvnWindowSetCrop), beim Einreihen festgehalten
         widescreen_set_factor((float)shape);
         {   // (diagnostics) log output scale / drawable changes
             static double psx, psy, pdw, pdh;
             static int nlog;
             if ((sx != psx || sy != psy || dw != pdw || dh != pdh) && nlog++ < 200)
                 LOG("[scale] frame %llu drawable %.0fx%.0f -> render scale %.3fx%.3f (reshape %d)\n",
-                    (unsigned long long)total_frames, dw, dh, sx, sy, reshape);
+                    (unsigned long long)frame, dw, dh, sx, sy, reshape);
             psx = sx, psy = sy, pdw = dw, pdh = dh;
         }
         renderer_set_scale((float)sx, (float)sy);
-        if (b && b->tex) {
-            id<MTLTexture> src = raw_view(b->tex);
+        if (tex) {
+            id<MTLTexture> src = raw_view(tex);
             // SMAA (Video tab "Anti-aliasing"): first, at the game image's size (MetalFX then upscales its result)
             if (g_settings.antialias == AA_SMAA) {
                 [enc endEncoding];
@@ -1089,13 +1155,25 @@ void backend_present(NvnTexture *t) {
         [enc endEncoding];
         static long menu_at = -1;  // test hook: open the menu at this frame (BDSP_MENU_AT)
         if (menu_at < 0) menu_at = getenv("BDSP_MENU_AT") ? atol(getenv("BDSP_MENU_AT")) : 0;
-        if (menu_at && (long)total_frames + 1 == menu_at) { extern void menu_test_open(void); menu_test_open(); }
+        if (menu_at && (long)frame + 1 == menu_at) { extern void menu_test_open(void); menu_test_open(); }
         menu_render(dev, cb, drawable.texture);
+        static int flick = -1;
+        if (flick < 0) flick = getenv("BDSP_FLICKER") != NULL;
+        NSMutableDictionary *frec = nil;
+        if (flick) {
+            extern void renderer_draw_counts(uint64_t *draws, uint64_t *skipped);
+            static uint64_t pd, ps;
+            uint64_t d, s;
+            renderer_draw_counts(&d, &s);
+            frec = flicker_capture(cb, tex, frame, d >= pd ? d - pd : d, s >= ps ? s - ps : s);
+            pd = d; ps = s;
+        }
+        if (frec) [drawable addPresentedHandler:^(id<MTLDrawable> d) { flicker_presented(frec, d.presentedTime); }];
         static long win_shot = -1;  // BDSP_WINDOW_SHOT=<frame>: save the final window image (game + menu)
         if (win_shot < 0) win_shot = getenv("BDSP_WINDOW_SHOT") ? atol(getenv("BDSP_WINDOW_SHOT")) : 0;
         id<MTLTexture> shot_tex = nil;
         extern char g_window_shot_request[256];  // test hooks (runtime/hle/hookshot.c): save the next frame here
-        if ((win_shot && (long)total_frames + 1 == win_shot) || g_window_shot_request[0]) {
+        if ((win_shot && (long)frame + 1 == win_shot) || g_window_shot_request[0]) {
             MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:drawable.texture.pixelFormat
                                          width:drawable.texture.width height:drawable.texture.height mipmapped:NO];
             td.usage = MTLTextureUsageShaderRead;
@@ -1104,7 +1182,44 @@ void backend_present(NvnTexture *t) {
             [bl copyFromTexture:drawable.texture toTexture:shot_tex];
             [bl endEncoding];
         }
-        [cb presentDrawable:drawable];
+        static int pstats = -1;  // BDSP_PRESENT_STATS=1: tatsächlich angezeigte Drawables (Abstand der presentedTime) alle 2 s
+        static int pat = -1;     // BDSP_PRESENT_AT=min|grid: Präsentationszeitpunkt (Standard: sofort beim nächsten Vsync)
+        if (pstats < 0) pstats = getenv("BDSP_PRESENT_STATS") != NULL;
+        if (pat < 0) { const char *e = getenv("BDSP_PRESENT_AT"); pat = !e ? 0 : !strcmp(e, "min") ? 1 : !strcmp(e, "grid") ? 2 : 0; }
+        static _Atomic double vsync_anchor;  // letzte angezeigte presentedTime: legt das Raster der Anzeige fest
+        const double vper = 1.0 / 120.0;
+        if (pat == 1) [cb presentDrawable:drawable afterMinimumDuration:vper];
+        else if (pat == 2) {
+            // auf das Vsync-Raster legen: Ziel knapp vor dem nächsten Raster-Tick, damit genau dieser Tick getroffen wird
+            double a = atomic_load(&vsync_anchor), now = CACurrentMediaTime();
+            if (a > 0 && now > a) [cb presentDrawable:drawable atTime:a + (floor((now - a) / vper) + 1) * vper - vper * 0.5];
+            else [cb presentDrawable:drawable];
+        } else [cb presentDrawable:drawable];
+        if (pstats || pat == 2) {
+            [drawable addPresentedHandler:^(id<MTLDrawable> d) {
+                static double prev, t0, sum, sum2;
+                static unsigned n, hist[6], ncnt;
+                double pt = d.presentedTime;
+                if (pt <= 0) { hist[5]++; return; }   // verworfen, nie angezeigt
+                atomic_store(&vsync_anchor, pt);
+                if (!pstats) return;
+                if (prev > 0) {
+                    double ms = (pt - prev) * 1000;
+                    int k = (int)(ms / (vper * 1000) + 0.5);   // Anzahl Anzeigeintervalle zwischen zwei Bildern
+                    hist[k < 1 ? 0 : k > 4 ? 4 : k - 1]++;
+                    sum += ms; sum2 += ms * ms; ncnt++;
+                }
+                prev = pt;
+                n++;
+                if (!t0) t0 = pt;
+                if (pt - t0 >= 2) {
+                    double mean = ncnt ? sum / ncnt : 0, sd = ncnt ? sqrt(fmax(0, sum2 / ncnt - mean * mean)) : 0;
+                    LOG("[present] %.1f angezeigt/s, Intervalle zu 1/2/3/4+ Vsync: %u/%u/%u/%u, verworfen %u, Abstand Mittel %.2f ms sd %.2f ms\n",
+                        n / (pt - t0), hist[0], hist[1], hist[2], hist[3] + hist[4], hist[5], mean, sd);
+                    n = 0; t0 = pt; sum = sum2 = 0; ncnt = 0; memset(hist, 0, sizeof hist);
+                }
+            }];
+        }
         [cb commit];
         if (shot_tex) {
             if (!dbg_thread_enabled()) [cb waitUntilCompleted];  // (debug thread: renderer_save_texture queues its copy behind this buffer)
@@ -1120,9 +1235,31 @@ void backend_present(NvnTexture *t) {
             g_save_upright = false;
         }
     }
+    return true;
+}
+
+void backend_present(NvnTexture *t) {
+    extern bool renderer_worker_present(void (^job)(void));
+    g_last_presented = t;
+    TexBackend *b = t->backend;
+    if (b) b->presented = true;
+    id<MTLTexture> tex = b ? b->tex : nil;  // der Job hält die Textur, auch wenn der Gast sie danach freigibt
+    float wc[4];
+    extern bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th);
+    bool has_wc = nvn_window_crop(wc, t->width, t->height);
+    uint64_t frame = total_frames;
+    struct { float v[4]; } wcs;
+    memcpy(wcs.v, wc, sizeof wcs.v);
+    bool worker = renderer_worker_present(^{
+        // läuft im Worker; die Zähler, die exec_list sieht, laufen hier mit dem Bild weiter
+        present_gpu(frame, tex, has_wc, wcs.v);
+        wk_frames++;
+        g_frame_counter++;
+    });
+    if (!worker && !present_gpu(frame, tex, has_wc, wc)) return;
     frames++;
     total_frames++;
-    g_frame_counter++;
+    if (!worker) g_frame_counter++;
     extern void input_frame(uint64_t frame);
     input_frame(total_frames);
     static long slow_ms = -1;  // BDSP_SLOW_FRAME_MS=<ms>: sleep per presented frame (simulate a slow machine)
@@ -1152,6 +1289,7 @@ void backend_present(NvnTexture *t) {
         char path[256];
         const char *dir = getenv("BDSP_SHOT_DIR") ? getenv("BDSP_SHOT_DIR") : "work/recomp/shots";
         mkdir(dir, 0755);
+        if (worker) { extern void renderer_submit(void); renderer_submit(); }  // wartet, bis der Worker das Bild fertig hat
         snprintf(path, sizeof path, "%s/frame_%05llu.png", dir, total_frames);
         save_png(b->tex, path);
         if (getenv("BDSP_EXIT_AFTER_SHOT")) { dbg_thread_drain(); fflush(stderr); _exit(0); }

@@ -91,6 +91,21 @@ static int stat_compiles;
 static inline double now_ms(void) { return (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e6; }
 #define TIMED_COMPILE(expr) ({ double t0_ = now_ms(); __auto_type r_ = (expr); stat_compile_ms += now_ms() - t0_; stat_compiles++; r_; })
 
+void renderer_draw_counts(uint64_t *draws, uint64_t *skipped) { *draws = stat_draws; *skipped = stat_skipped; }
+// Diagnose: Zerstörungen von Texturen, solange der Worker noch Arbeit hat (BDSP_XW_DRAIN_DESTROY=1: dann warten)
+void renderer_xw_destroy_wait(void) {
+    if (!xw_enabled() || xw_is_worker) return;
+    static int drain = -1;
+    static uint64_t n, pending;
+    if (drain < 0) drain = getenv("BDSP_XW_DRAIN_DESTROY") != NULL;
+    n++;
+    pthread_mutex_lock(&xw_lock);
+    bool busy = xw_done < xw_tail;
+    pthread_mutex_unlock(&xw_lock);
+    if (busy) pending++;
+    if (n % 200 == 0 || n == 1) printf("[xw] Texturen zerstört %llu, davon bei laufendem Worker %llu\n", (unsigned long long)n, (unsigned long long)pending);
+    if (drain) xw_drain();
+}
 const char *renderer_stats(void) {
     static int dumps;
     if (dumps++ < 3) {
@@ -2678,7 +2693,7 @@ static void exec_list(uint64_t handle, int depth) {
             if (fence_flush < 0) fence_flush = getenv("BDSP_FENCE_FLUSH") ? 1 : 0;
             if (fence_flush) renderer_flush();
             extern void nvn_sync_set_seq(uint64_t guest, uint64_t seq);
-            if (r->x[1]) nvn_sync_set_seq(r->x[1], renderer_fence_seq());
+            if (r->x[1] && !xw_is_worker) nvn_sync_set_seq(r->x[1], renderer_fence_seq());   // im Worker setzt schon das Einreihen den Token (xw_prescan_fences)
             break;
         }
         case CMD_REPORT_COUNTER: {
@@ -2746,8 +2761,173 @@ void renderer_reset(void) {
     st_defaults();
 }
 
+// Worker-Modus: Fences, die in der Liste stehen (nvnCommandBufferFenceSync), bekommen ihren Token schon beim Einreihen.
+// Sonst liest ein nvnSyncWait im Gast noch den alten Stand, bevor der Worker die Fence-Anweisung ausgeführt hat, und
+// kehrt zu früh zurück; der Gast überschriebe dann Speicher, den der Worker noch liest.
+// Prüfsumme über alle Datensätze einer Liste (Sprünge und Aufrufe verfolgt); mit Fence-Token ≠ 0 setzt sie zugleich die Fences.
+static int xw_measure = -1;
+static struct { uint64_t n[3], uniq[3], bytes[3], ubytes[3], set[8192]; uint64_t frame, frames; } xw_ms;
+static void xw_measure_report(uint64_t pres) {   // je Bild: Zähler aufsummieren, alle 240 Bilder ausgeben, Menge leeren
+    if (xw_ms.frame == pres) return;
+    xw_ms.frame = pres;
+    memset(xw_ms.set, 0, sizeof xw_ms.set);
+    if (++xw_ms.frames % 240 == 0) {
+        static const char *nm[3] = {"Uniform", "Storage", "Vertex"};
+        for (int k = 0; k < 3; k++)
+            printf("[xw] %s je Bild: %llu Bindungen (%llu verschieden), gebunden %.1f KiB, verschieden %.1f KiB\n", nm[k],
+                   (unsigned long long)(xw_ms.n[k] / 240), (unsigned long long)(xw_ms.uniq[k] / 240), xw_ms.bytes[k] / 240 / 1024.0, xw_ms.ubytes[k] / 240 / 1024.0);
+        memset(xw_ms.n, 0, sizeof xw_ms.n); memset(xw_ms.uniq, 0, sizeof xw_ms.uniq);
+        memset(xw_ms.bytes, 0, sizeof xw_ms.bytes); memset(xw_ms.ubytes, 0, sizeof xw_ms.ubytes);
+    }
+}
+static uint64_t xw_walk(uint64_t handle, uint64_t token, int depth) {
+    extern void nvn_sync_set_seq(uint64_t guest, uint64_t seq);
+    uint64_t hsh = 1469598103934665603ull, p = handle;
+    for (int guard = 0; guard < 10000000; guard++) {
+        CmdRec *r = (CmdRec *)(uintptr_t)p;
+        const uint64_t *w = (const uint64_t *)r;
+        for (uint32_t i = 0; i + 8 <= r->size; i += 8) hsh = (hsh ^ *w++) * 0x100000001B3ull;
+        switch (r->op) {
+        case CMD_END: return hsh;
+        case CMD_JUMP: p = r->x[0]; continue;
+        case CMD_CALL: {
+            const uint64_t *h = (const uint64_t *)r->extra;
+            for (uint64_t i = 0; i < r->x[0] && depth < 8; i++) hsh = (hsh ^ xw_walk(h[i], token, depth + 1)) * 0x100000001B3ull;
+            break;
+        }
+        case CMD_FENCE_SYNC: if (token && r->x[1]) nvn_sync_set_seq(r->x[1], token); break;
+        case CMD_BIND_UNIFORM_BUFFERS: case CMD_BIND_STORAGE_BUFFERS: case CMD_BIND_VERTEX_BUFFERS:
+            if (xw_measure) {   // BDSP_XW_MEASURE=1: was ein Snapshot der gebundenen Bereiche kosten würde
+                uint64_t cnt = r->op == CMD_BIND_VERTEX_BUFFERS ? r->x[1] : r->x[2];
+                const uint64_t *rg = (const uint64_t *)r->extra;
+                int k = r->op == CMD_BIND_UNIFORM_BUFFERS ? 0 : r->op == CMD_BIND_STORAGE_BUFFERS ? 1 : 2;
+                for (uint64_t i = 0; i < cnt && i < 18; i++) {
+                    uint64_t a = rg[i * 2], sz = rg[i * 2 + 1];
+                    xw_ms.n[k]++; xw_ms.bytes[k] += sz;
+                    uint64_t key = (a * 0x9E3779B97F4A7C15ull) ^ (sz * 0xC2B2AE3D27D4EB4Full);
+                    unsigned slot = (unsigned)(key >> 40) & 8191;
+                    while (xw_ms.set[slot] && xw_ms.set[slot] != key) slot = (slot + 1) & 8191;
+                    if (!xw_ms.set[slot]) { xw_ms.set[slot] = key; xw_ms.uniq[k]++; xw_ms.ubytes[k] += sz; }
+                }
+            }
+            break;
+        default: break;
+        }
+        p += r->size;
+    }
+    return hsh;
+}
+static uint64_t xw_list_hash(uint64_t handle) { return xw_walk(handle, 0, 0); }
+
+// BDSP_XW_SNAP=1: Kopie der Liste für den Worker. Der Worker liest Uniform- und Indexdaten erst bei der Ausführung
+// (ring_alloc im Draw); bis dahin hat der Gast sie evtl. schon für das nächste Bild überschrieben. Darum kopiert das
+// Einreihen die Datensätze samt der gebundenen Uniform-Bereiche (höchstens 64 KiB je Bindung) und der Indexdaten.
+// Storage- und Vertexdaten liest die GPU über den umhüllten Gastspeicher (Adressen), sie bleiben unberührt.
+typedef struct { void **blk; int n, cap; } XwSnap;
+static void xw_snap_add(XwSnap *s, void *p) {
+    if (s->n == s->cap) { s->cap = s->cap ? s->cap * 2 : 64; s->blk = realloc(s->blk, s->cap * sizeof *s->blk); }
+    s->blk[s->n++] = p;
+}
+static void xw_snap_free(void *p) {
+    XwSnap *s = p;
+    for (int i = 0; i < s->n; i++) free(s->blk[i]);
+    free(s->blk);
+    free(s);
+}
+static struct { uint64_t gen, addr, len; void *ptr; } xw_dup_tab[4096];   // Erzeugungszähler statt Leeren
+static uint64_t xw_dup_gen;
+static uint64_t xw_snap_bytes;   // Diagnose: kopierte Bytes
+static void *xw_dup(XwSnap *s, uint64_t addr, uint64_t len) {
+    uint64_t key = (addr * 0x9E3779B97F4A7C15ull) ^ (len * 0xC2B2AE3D27D4EB4Full);
+    unsigned slot = (unsigned)(key >> 40) & 4095;
+    for (int probe = 0; probe < 8; probe++, slot = (slot + 1) & 4095)
+        if (xw_dup_tab[slot].gen == xw_dup_gen && xw_dup_tab[slot].addr == addr && xw_dup_tab[slot].len == len) return xw_dup_tab[slot].ptr;
+    void *c = malloc(len);
+    memcpy(c, (const void *)(uintptr_t)addr, len);
+    xw_snap_add(s, c);
+    xw_snap_bytes += len;
+    slot = (unsigned)(key >> 40) & 4095;
+    for (int probe = 0; probe < 8; probe++, slot = (slot + 1) & 4095)
+        if (xw_dup_tab[slot].gen != xw_dup_gen) { xw_dup_tab[slot].gen = xw_dup_gen; xw_dup_tab[slot].addr = addr; xw_dup_tab[slot].len = len; xw_dup_tab[slot].ptr = c; break; }
+    return c;
+}
+static uint8_t *xw_snap_list(XwSnap *s, uint64_t handle, int depth) {
+    size_t total = 0;
+    uint64_t p = handle;
+    for (int guard = 0; guard < 10000000; guard++) {
+        CmdRec *r = (CmdRec *)(uintptr_t)p;
+        if (r->op == CMD_JUMP) { p = r->x[0]; continue; }
+        total += r->size;
+        if (r->op == CMD_END) break;
+        p += r->size;
+    }
+    uint8_t *buf = malloc(total), *q = buf;
+    xw_snap_add(s, buf);
+    p = handle;
+    for (int guard = 0; guard < 10000000; guard++) {
+        CmdRec *r = (CmdRec *)(uintptr_t)p;
+        if (r->op == CMD_JUMP) { p = r->x[0]; continue; }
+        memcpy(q, r, r->size);
+        CmdRec *c = (CmdRec *)q;
+        q += r->size;
+        p += r->size;
+        switch (c->op) {
+        case CMD_END: return buf;
+        case CMD_CALL: {
+            uint64_t *h = (uint64_t *)c->extra;
+            for (uint64_t i = 0; i < c->x[0] && depth < 8; i++) h[i] = (uint64_t)(uintptr_t)xw_snap_list(s, h[i], depth + 1);
+            break;
+        }
+        case CMD_BIND_UNIFORM_BUFFERS: {
+            uint64_t *rg = (uint64_t *)c->extra;
+            for (uint64_t i = 0; i < c->x[2]; i++) {
+                uint64_t a = rg[i * 2], sz = rg[i * 2 + 1];
+                if (!a || !sz) continue;
+                if (sz > 0x10000) sz = 0x10000;
+                rg[i * 2] = (uint64_t)(uintptr_t)xw_dup(s, a, sz);
+                rg[i * 2 + 1] = sz;
+            }
+            break;
+        }
+        case CMD_DRAW_ELEMENTS: {
+            uint64_t cnt = c->x[2], isz = c->x[1] == 0 ? 1 : c->x[1] == 1 ? 2 : 4;
+            if (c->x[3] && cnt && cnt * isz <= (64u << 20)) c->x[3] = (uint64_t)(uintptr_t)xw_dup(s, c->x[3], cnt * isz);
+            break;
+        }
+        case CMD_UPDATE_UNIFORM_BUFFER:
+            // gilt in Befehlsreihenfolge: jetzt anwenden, so sehen die folgenden Kopien den neuen Stand (wie im Standardpfad beim
+            // Einreichen); die Anweisung selbst schreibt dann nichts mehr
+            if (c->x[3]) memcpy((void *)(uintptr_t)(c->x[0] + c->x[2]), c->extra, c->x[3]);
+            c->x[3] = 0;
+            xw_dup_gen++;
+            break;
+        default: break;
+        }
+    }
+    return buf;
+}
+
 void backend_execute(uint64_t handle) {
-    if (xw_enabled()) { xw_enqueue(handle); return; }
+    if (xw_enabled()) {
+        if (xw_measure < 0) xw_measure = getenv("BDSP_XW_MEASURE") != NULL;
+        if (xw_measure) xw_measure_report(xw_pres_enq);
+        uint64_t chk = xw_walk(handle, xw_next_token(), 0);
+        static int snapon = -1, snapdbg;
+        if (snapon < 0) snapon = getenv("BDSP_XW_SNAP") != NULL;
+        XwSnap *snap = NULL;
+        uint64_t h2 = handle;
+        if (snapon) {
+            xw_dup_gen++;
+            snap = calloc(1, sizeof *snap);
+            h2 = (uint64_t)(uintptr_t)xw_snap_list(snap, handle, 0);
+            if (xw_measure && ++snapdbg % 1000 == 0) printf("[xw] Snapshot kopiert insgesamt %.1f MiB in %d Listen\n", xw_snap_bytes / 1048576.0, snapdbg);
+        }
+        xw_enqueue(h2, xw_check && !snapon ? chk : 0, snap);
+        static int xsync = -1;  // BDSP_EXEC_SYNC=1 (Test auf Datenrennen): der Gast wartet nach jedem Einreihen auf den Worker
+        if (xsync < 0) xsync = getenv("BDSP_EXEC_SYNC") != NULL;
+        if (xsync) xw_drain();
+        return;
+    }
     static int prof = -1;
     if (prof < 0) prof = getenv("BDSP_PROFILE") != NULL;
     @autoreleasepool {

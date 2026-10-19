@@ -6,7 +6,7 @@ Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien
 
 - **Patch-Struktur abgebaut:** Die NVN-Schicht liegt jetzt als volle Quelle im Repo: `scripts/recomp/rt-bdsp/nvn/src/` (Metal) und `nvn/vulkan/src/` (Vulkan-Abweichungen). `prepare.sh` und `prepare_vk.sh` kopieren nur noch, sie wenden keine Patches mehr an. Entfernt: `las-nvn.patch`, `fixes.patch`, `dbgthread.patch`, `debug.patch`, `prof.patch`, `exec_worker.patch`, `las-vk.patch` und die Shim-Kopien (Inhalte stehen in `src/`). Der Übersetzer bleibt in `shader_translator/` (einzige Quelle).
 - **Lizenz:** Die NVN-Dateien sind gegenüber LASRecomp geändert; die NOTICE-Dateien sagen das jetzt ausdrücklich. Unverändertes Original als Vergleich: `scripts/recomp/upstream/runtime/`.
-- **Übersetzungs-Worker im Code:** `shim/exec_worker.inc` gibt es nicht mehr separat; der Code liegt in `src/exec_worker.inc` (Schalter `BDSP_EXEC_WORKER=1`, Standard aus).
+- **Übersetzungs-Worker im Code:** `shim/exec_worker.inc` gibt es nicht mehr separat; der Code liegt in `src/exec_worker.inc`. Auf dem Mac ist der Worker jetzt Standard (`BDSP_EXEC_WORKER=0` schaltet auf den alten synchronen Pfad). Präsentation, Fences und Pool-Einträge laufen in Reihenfolge der Warteschlange; die Schwarzblitze kamen vom Frame-Zähler (`total_frames + 1` im Worker), nicht von Gastdaten.
 
 - **Doku bereinigt:** `bauen.md` und `build-pipeline.md` nennen nur noch die aktuellen Stufen. Abschnitte zu den entfernten Unity-Stufen sind als historisch markiert. iPad-Anleitung führt jetzt über `scripts/recomp/ios/deploy_ios.sh`. Stand-Hinweis oben in beiden Dateien.
 - **Unity-Stufen aus Skripten entfernt:** siehe nächster Eintrag.

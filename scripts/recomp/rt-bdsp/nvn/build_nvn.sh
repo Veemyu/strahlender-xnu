@@ -14,7 +14,7 @@ INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I scripts/recomp/upstream/runtime
 W="-w"
 build() {  # Quelle Objekt [Zusatzflags]
   local f=$1 o=$2; shift 2
-  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/src" -name '*.h' -newer "$o" -print -quit)" ]; then
+  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/src" \( -name '*.h' -o -name '*.inc' \) -newer "$o" -print -quit)" ]; then
     # Objective-C mit dem Apple-Compiler: der Homebrew-LLVM erzeugt Klassen-Stubs, die der Apple-Linker nicht auflöst
     local cc=clang; case "$f" in *.m) cc=/usr/bin/clang;; esac
     $cc -O1 -g $W $INC "$@" -c "$f" -o "$o"

@@ -539,6 +539,21 @@ static NvnDescPool *desc_pool_init(uint64_t guest, uint64_t pool, uint64_t off, 
     return d;
 }
 
+// Metal-Worker (BDSP_EXEC_WORKER=1, exec_worker.inc) setzt den Haken: Pool-Einträge laufen dann in Reihenfolge der Warteschlange
+bool (*g_nvn_ordered)(void (*fn)(void *), void *arg);
+typedef struct { NvnDescPool *d; int id; NvnTexEntry e; NvnSamplerDesc s; } PoolOp;
+static void pool_apply_tex(void *p) { PoolOp *o = p; ((NvnTexEntry *)o->d->entries)[o->id] = o->e; free(o); }
+static void pool_apply_smp(void *p) { PoolOp *o = p; ((NvnSamplerDesc *)o->d->entries)[o->id] = o->s; free(o); }
+static void pool_set_sampler(NvnDescPool *d, int id, const NvnSamplerDesc *s) {
+    if (g_nvn_ordered) {
+        PoolOp *o = calloc(1, sizeof *o);
+        o->d = d; o->id = id; o->s = *s;
+        if (g_nvn_ordered(pool_apply_smp, o)) return;
+        free(o);
+    }
+    ((NvnSamplerDesc *)d->entries)[id] = *s;
+}
+
 NVN(nvnTexturePoolInitialize) {
     desc_pool_init(A(0), A(1), A(2), (int)A(3), sizeof(NvnTexEntry), g_texture_pools);
     RET(1);
@@ -552,10 +567,17 @@ static void register_texture(Cpu *c) {
     NvnDescPool *d = HOST(NvnDescPool, A(0));
     int id = (int)A(1);
     if (id < 0 || id >= d->count) return;
-    NvnTexEntry *e = &((NvnTexEntry *)d->entries)[id];
-    e->tex = HOST(NvnTexture, A(2));
-    e->has_view = A(3) != 0;
-    if (e->has_view) memcpy(&e->view, AP(3), sizeof e->view);
+    NvnTexEntry ne = {0};
+    ne.tex = HOST(NvnTexture, A(2));
+    ne.has_view = A(3) != 0;
+    if (ne.has_view) memcpy(&ne.view, AP(3), sizeof ne.view);
+    if (g_nvn_ordered) {
+        PoolOp *o = malloc(sizeof *o);
+        *o = (PoolOp){d, id, ne, {0}};
+        if (g_nvn_ordered(pool_apply_tex, o)) return;
+        free(o);
+    }
+    ((NvnTexEntry *)d->entries)[id] = ne;
 }
 NVN(nvnTexturePoolRegisterTexture) { register_texture(c); }
 NVN(nvnTexturePoolRegisterImage) { register_texture(c); }
@@ -572,12 +594,12 @@ NVN(nvnSamplerPoolGetSize) { RET(G(uint32_t, A(0), 24)); }
 NVN(nvnSamplerPoolRegisterSampler) {
     NvnDescPool *d = HOST(NvnDescPool, A(0));
     int id = (int)A(1);
-    if (id >= 0 && id < d->count) ((NvnSamplerDesc *)d->entries)[id] = *HOST(NvnSamplerDesc, A(2));
+    if (id >= 0 && id < d->count) pool_set_sampler(d, id, HOST(NvnSamplerDesc, A(2)));
 }
 NVN(nvnSamplerPoolRegisterSamplerBuilder) {
     NvnDescPool *d = HOST(NvnDescPool, A(0));
     int id = (int)A(1);
-    if (id >= 0 && id < d->count) ((NvnSamplerDesc *)d->entries)[id] = *(NvnSamplerDesc *)(AP(2) + 8);
+    if (id >= 0 && id < d->count) pool_set_sampler(d, id, (NvnSamplerDesc *)(AP(2) + 8));
 }
 
 NvnDescPool *nvn_find_pool(NvnDescPool **reg, uint64_t guest_pool) {
