@@ -1,31 +1,38 @@
-# Render-Treue: 1:1-Ziel (Stand 2026-10-18)
+# Rendering fidelity: the 1:1 goal (2026-10-18)
 
-**Vorgabe des Nutzers:** Shader und Effekte müssen **1:1** wie im Original aussehen. Annäherungen reichen nicht.
+Historical Unity-rebuild design note. That rebuild is deprecated; its pipeline and audio-safety decisions below are not current native-runtime instructions.
 
-## Gemessene Eigenschaften des Originals (aus `globalgamemanagers`, nur gelesen)
-| Einstellung | Wert im Original |
+**User requirement:** Shaders and effects must look **exactly like the original**. Approximations are insufficient.
+
+## Measured original settings (read-only inspection of `globalgamemanagers`)
+
+| Setting | Original value |
 |---|---|
-| Render-Pipeline | **Built-in** (`m_CustomRenderPipeline` leer, keine SRP) |
-| Farbraum | **Gamma** (`m_ActiveColorSpace` = 0) |
-| Qualitätsstufen | genau eine („Ultra“): Schatten an (Stufe 2), Schattenentfernung 20, **kein MSAA**, VSync-Zähler 2 (= jedes zweite Bild, 30 FPS auf der Switch) |
-| Lichtintensität | nicht linear, keine Farbtemperatur |
-| GPU-Skinning | an |
-| Standard-Fenster | 1024 × 768 (nur Standard, nicht die Switch-Auflösung) |
+| Render pipeline | **Built-in** (empty `m_CustomRenderPipeline`, no SRP) |
+| Color space | **Gamma** (`m_ActiveColorSpace` = 0) |
+| Quality levels | Exactly one (“Ultra”): shadows enabled (level 2), shadow distance 20, **no MSAA**, VSync count 2 (every second frame: 30 FPS on Switch) |
+| Light intensity | Not linear; no color temperature |
+| GPU skinning | Enabled |
+| Default window | 1024 × 768 (default only, not Switch resolution) |
 
-## Folgerung für die Pipeline
-- Wegen der Treue wird **die Built-in-Pipeline** eingesetzt, nicht URP. Die Original-Shader und ihre Beleuchtung gehen von Unitys Built-in-Konventionen (Constant Buffer, Licht, Nebel, Schatten) aus. Mit URP würde sich Beleuchtung und Schatten ändern.
-- **Gamma-Farbraum** wie im Original, kein MSAA, kein HDR-Display.
-- Risiko (nicht geprüft): Unity kündigt für die Built-in-Pipeline in späteren Versionen das Auslaufen an. Wir pinnen Unity 6.3 LTS und prüfen die Supportdauer.
+## Pipeline implications
 
-## Was „1:1“ für die Shader bedeutet
-- Die Bundles `Dpr/shaders` (63 Shader) und `Effects/fxparticle` (1 Shader) enthalten nur Switch-Binärcode (Plattform 19) und die geparsten ShaderLab-Daten (Eigenschaften, Passes, Render-States, Tags). Quelltext existiert nicht (`shader-audio-machbarkeit.md`).
-- Der **Ryujinx-Cache** enthält dieselben Programme als SPIR-V (5.937 Module, 2.971 Einträge). Das ist die genaueste verfügbare Beschreibung des Verhaltens, weil Ryujinx sie aus dem Switch-Binärcode erzeugt hat. `spirv-cross` übersetzt alle 5.932 Grafikmodule nach MSL.
-- Ziel: ein **treuer Port** je Shader (Eigenschaften, Passes, Render-States aus den geparsten Daten; Programmlogik aus SPIR-V), keine neu erfundenen Look-Alikes.
-- **Prüfverfahren (differenziell):** Dasselbe Eingabeset (Vertexdaten, Constant Buffer, Texturen) durch das Referenzprogramm (SPIR-V→MSL in einem kleinen Metal-Testprogramm) und durch den portierten Unity-Shader schicken, Ergebnisse pixelweise vergleichen. Zusätzlich Referenzbilder aus Ryujinx, falls der Nutzer welche erzeugt.
-- Offen: Wie bilden wir die Constant-Buffer-Layouts der Switch-Shader auf Unity 6 ab? Sie folgen Unity 2019.4; wir müssen die Werte pro Material und Frame selbst liefern. Das ist der aufwendigste Teil und noch nicht untersucht.
+- Fidelity requires the **Built-in pipeline**, not URP. Original shaders and lighting assume Unity Built-in conventions for constant buffers, lighting, fog, and shadows. URP would change lighting and shadows.
+- Match the original **Gamma color space**, without MSAA or an HDR display.
+- Unverified risk: Unity has announced eventual retirement of the Built-in pipeline in later versions. Pin Unity 6.3 LTS and check its support period.
 
-## Effekte
-Partikel (Bundle `fxparticle`, `Effects/*`), Timeline-Sequenzen und Post-Effekte (Bloom, Tiefenunschärfe) müssen zeitlich und optisch stimmen. Auch dafür gilt die differenzielle Prüfung (feste Zeitpunkte, feste Kamera, Bildvergleich).
+## What “1:1” means for shaders
 
-## Audio-Vorgabe (Nutzer)
-Alle Geräte stehen auf **lautlos und Lautstärke 0 %**. Wir fassen Gerätelautstärke nie an und erzeugen nie Ton. Als Sicherung ist die App standardmäßig **stumm** (`AudioSafety`, Editor-Mute), aktivierbar nur über das Compile-Symbol `XNU_ALLOW_AUDIO`.
+- The `Dpr/shaders` (63 shaders) and `Effects/fxparticle` (one shader) bundles contain only Switch binaries (platform 19) and parsed ShaderLab data: properties, passes, render states, and tags. Source text is unavailable (`shader-audio-machbarkeit.md`).
+- The **Ryujinx cache** contains the same programs as SPIR-V (5,937 modules, 2,971 entries). It is the most precise available behavioral description because Ryujinx generated it from the Switch binaries. `spirv-cross` translates all 5,932 graphics modules to MSL.
+- Goal: a **faithful port** of each shader, taking properties, passes, and render states from parsed data and program logic from SPIR-V; no invented look-alikes.
+- **Differential verification:** Run identical inputs (vertex data, constant buffers, textures) through the reference program (SPIR-V → MSL in a small Metal harness) and the ported Unity shader, then compare pixels. Also use Ryujinx reference images if supplied by the user.
+- Open question: How should Switch shader constant-buffer layouts map to Unity 6? They follow Unity 2019.4; we must supply per-material and per-frame values ourselves. This is the largest task and has not been investigated.
+
+## Effects
+
+Particles (`fxparticle` bundle, `Effects/*`), Timeline sequences, and post-processing (bloom and depth of field) must match visually and temporally. Use differential checks here too: fixed times, fixed camera, and image comparison.
+
+## User audio requirement at the time
+
+All devices were **silent at 0% volume**. Never change device volume or produce sound. As a safeguard, the app was **muted by default** (`AudioSafety`, Editor mute), enabled only by the `XNU_ALLOW_AUDIO` compile symbol. This historical restriction was superseded for the native audio work; see `recomp-audio.md`.

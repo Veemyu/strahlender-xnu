@@ -1,51 +1,51 @@
-# Shader-Übersetzer Maxwell → MSL (Stand 2026-10-18, Teil 1: Übernahme und Abdeckungsmessung; Teil 2: TEX.B, HSETP2, Ressourcenkarte, exakte Arithmetik, Treue-Test)
+# Maxwell-to-MSL Shader Translator (status 2026-10-18; Part 1: Adoption and Coverage Measurement; Part 2: TEX.B, HSETP2, Resource Map, Exact Arithmetic, Fidelity Test)
 
-Der Übersetzer aus LASRecomp (MIT, Herkunft und Änderungen in `shader_translator/NOTICE.md`, Hinweise in `THIRD_PARTY_NOTICES.md`) liegt als eigenständiges Kommandozeilenwerkzeug `maxwell2msl` im Repo. Teil 1 (Abschnitte 1 bis 6) beantwortete: Wie viele der Switch-Shader aus den Bundles kann er übersetzen, und was fehlt? Teil 2 (ab Abschnitt 8) schließt die Lücken und prüft die Übersetzung numerisch gegen die Ryujinx-Referenz. **Kurzergebnis Teil 2:** 100 % der Blobs werden erkannt (4.276 von 4.276, Vertex und Fragment), alle 8.552 erzeugten MSL-Dateien kompilieren mit Metal, und im Treue-Test mit 500 Programmpaaren liegen 85,8 % der aussagekräftigen Paare (332 von 387) innerhalb von 1/255 je Kanal; 155 davon sind bitgleich. Die restlichen Abweichungen gehen fast ganz auf eine Näherung der Referenz bei fp16 zurück (Abschnitt 11); rechnet man diese heraus, sind es 95,1 % (368 von 387). Die Analyse und der Übernahmeplan stehen in `docs/referenz-las-shader.md`. Kernziel, Gamma/Built-in-Pipeline und Differenztests: `docs/kernziel.md`, `docs/render-treue.md`, `docs/shader-harness.md`.
+The LASRecomp translator (MIT; provenance and changes in `shader_translator/NOTICE.md`, notes in `THIRD_PARTY_NOTICES.md`) is included in the repository as a standalone command-line tool, `maxwell2msl`. Part 1 (sections 1–6) asked how many Switch shaders from bundles it can translate and what is missing. Part 2 (section 8 onward) closes the gaps and checks translation numerically against the Ryujinx reference. **Part 2 summary:** 100% of blobs are recognized (4,276 of 4,276, vertex and fragment), all 8,552 generated MSL files compile with Metal, and in a fidelity test with 500 program pairs, 85.8% of informative pairs (332 of 387) are within 1/255 per channel; 155 are bit-identical. Almost all remaining differences come from the reference's fp16 approximation (section 11); excluding those gives 95.1% (368 of 387). The analysis and adoption plan are in `docs/referenz-las-shader.md`. Core goal, Gamma/Built-in pipeline, and difference tests: `docs/kernziel.md`, `docs/render-treue.md`, `docs/shader-harness.md`.
 
-Markierung: **belegt** = gemessen oder im Code gelesen, *vermutet* = Schluss ohne Test.
+Notation: **confirmed** = measured or read in code; *suspected* = inference without a test.
 
-**Rahmen:** Das Repo enthält nur Code und Doku. Die Shader-Binärdaten entstehen lokal unter `work/shaders/` (gitignored) aus den eigenen Bundles.
+**Scope:** The repository contains only code and documentation. Shader binaries are generated locally under ignored `work/shaders/` from the user's own bundles.
 
-## 1. Aufbau
+## 1. Structure
 
-| Datei (`shader_translator/`) | Herkunft | Inhalt |
+| File (`shader_translator/`) | Origin | Contents |
 |---|---|---|
-| `translate.c`, `shader.h` | LASRecomp, von uns geändert | Übersetzer Maxwell-Maschinencode → MSL (und GLSL, ungenutzt). |
-| `container.c`, `container.h` | eigen | Leser für Unity-Shaderprogramme (Magic `0x0C07513C`, Control `0x98761234`, Blob ab `0x12345678`). |
-| `main.c` | eigen | Werkzeug `maxwell2msl`. |
-| `survey_report.py` | eigen | Fasst Survey-Läufe zu einem Histogramm zusammen. |
-| `Makefile`, `tests/` | eigen | Bauen (clang, `-O2`, Warnungen), `make test`, `make asan`. |
-| `LICENSE-LASRecomp`, `NOTICE.md` | Original bzw. eigen | Lizenztext unverändert, Herkunft und Änderungsliste. |
+| `translate.c`, `shader.h` | LASRecomp, modified by us | Maxwell machine code → MSL translator (and GLSL, unused). |
+| `container.c`, `container.h` | original | Reader for Unity shader programs (magic `0x0C07513C`, control `0x98761234`, blob starts at `0x12345678`). |
+| `main.c` | original | `maxwell2msl` tool. |
+| `survey_report.py` | original | Aggregates survey runs into a histogram. |
+| `Makefile`, `tests/` | original | Build (clang, `-O2`, warnings), `make test`, `make asan`. |
+| `LICENSE-LASRecomp`, `NOTICE.md` | original / original | License text unchanged; provenance and change list. |
 
-Außerhalb: `scripts/shader_extract_blobs.py` (Extraktion aus den Bundles nach `work/shaders/blobs/`), `scripts/tests/test_shader_extract.py`, ab Teil 2 `scripts/shader_fidelity.py` (Treue-Test) mit `scripts/tests/test_shader_fidelity.py` (24 Tests, synthetisch).
+Outside the directory: `scripts/shader_extract_blobs.py` (extracts bundle shaders to `work/shaders/blobs/`), `scripts/tests/test_shader_extract.py`; from Part 2, `scripts/shader_fidelity.py` (fidelity test) with `scripts/tests/test_shader_fidelity.py` (24 synthetic tests).
 
-Datenfluss: Bundles (Unity, Plattform 19) → `shader_extract_blobs.py` → `work/shaders/blobs/<hash>.bin` + `index.json` → `maxwell2msl --survey --batch` → `survey.jsonl` → `survey_report.py` → Histogramm.
+Data flow: bundles (Unity, platform 19) → `shader_extract_blobs.py` → `work/shaders/blobs/<hash>.bin` + `index.json` → `maxwell2msl --survey --batch` → `survey.jsonl` → `survey_report.py` → histogram.
 
-## 2. Aufruf
+## 2. Usage
 
 ```sh
-make -C shader_translator            # baut build/maxwell2msl
-make -C shader_translator test       # 72 C-Prüfungen, 14 CLI-Tests, 6 Report-Tests (synthetisch)
-make -C shader_translator asan       # dieselbe CLI mit AddressSanitizer/UBSan
+make -C shader_translator            # builds build/maxwell2msl
+make -C shader_translator test       # 72 C checks, 14 CLI tests, 6 report tests (synthetic)
+make -C shader_translator asan       # same CLI with AddressSanitizer/UBSan
 
-# Eine Datei übersetzen (Unity-Programm: Stufe kommt aus dem Container; rohe Blobs brauchen --stage)
+# Translate one file (Unity program: stage comes from container; raw blobs need --stage)
 shader_translator/build/maxwell2msl prog.bin -o prog.metal --info prog.json
 shader_translator/build/maxwell2msl --stage fs blob.bin
 
-# Abdeckung: ein Shader als JSON, oder viele per Listendatei ('vs|fs|cs <Pfad>' je Zeile), eine JSON-Zeile je Shader
+# Coverage: one shader as JSON, or many using a list file ('vs|fs|cs <path>' per line), one JSON line per shader
 shader_translator/build/maxwell2msl --survey --stage fs blob.bin
 shader_translator/build/maxwell2msl --survey --batch list.txt -o survey.jsonl
 ```
 
-Optionen: `--stage vs|fs|cs`, `-o`, `--info` (Ressourcenkarte, Abschnitt 9), `--cbuf1 <Datei>` (Compiler-Konstanten, Abschnitt 9), `--survey`, `--batch`, `--attr-kind N=f|i|u`, `--rt-kind N=f|i|u`, `--vs-out-mask`, `--flip-y`, `--depth-minus-one`, `--rscale`, `--glsl`, `--annotate`, `--fast-math` (Pragmas aus, Abschnitt 10), `--half-compat` (Testorakel, Abschnitt 11). Die Schlüsselwerte (`ShaderKey`) entsprechen dem Original.
+Options: `--stage vs|fs|cs`, `-o`, `--info` (resource map, section 9), `--cbuf1 <file>` (compiler constants, section 9), `--survey`, `--batch`, `--attr-kind N=f|i|u`, `--rt-kind N=f|i|u`, `--vs-out-mask`, `--flip-y`, `--depth-minus-one`, `--rscale`, `--glsl`, `--annotate`, `--fast-math` (disable pragmas, section 10), `--half-compat` (test oracle, section 11). Key values (`ShaderKey`) match the original.
 
-Exit-Codes: 0 ok (Survey: keine Probleme), 1 Übersetzung fehlgeschlagen (Survey: Probleme gefunden), 2 falsche Bedienung, 3 Eingabe-/Ausgabefehler (Datei, unbekannter Container).
+Exit codes: 0 = success (survey: no issues), 1 = translation failed (survey: issues found), 2 = invalid usage, 3 = input/output error (file, unknown container).
 
-Eingabeformat: Maxwell-Blob (NVN-Kopf `0x12345678`, 0x30 Byte; SPH, 0x50 Byte; Code ab 0x80 in Vierergruppen aus einem Scheduling-Wort und drei Instruktionen; Compute: Code ab Dateianfang) oder ein komplettes Unity-Programm. Ein Konstantenpuffer wird nicht als Eingabe gelesen; die Konstantenpuffer-Informationen sind die **Ausgabe** (`--info`). Die Compiler-Konstanten hinter dem Code (Konstantenpuffer 1) liest der Übersetzer nicht selbst, `--cbuf1` schreibt sie aus (Abschnitt 9).
+Input format: Maxwell blob (NVN header `0x12345678`, 0x30 bytes; SPH, 0x50 bytes; code from 0x80 in groups of four: one scheduling word and three instructions; compute: code starts at file beginning) or a complete Unity program. Constant buffers are not read as input; constant-buffer information is part of output (`--info`). Translator does not read compiler constants after code; `--cbuf1` writes them out (section 9).
 
-Survey-JSON je Shader: `file`, `stage`, `bytes`, `insts`, `translatable`, `us`, `unknownOpcodes[]` (`name` = `op<obere 12 Bit>`, `bits`, `count`, `example`), `unsupportedForms[]` (`name`, `count`, `example`), optional `error`/`inputError`/`overflow`.
+Per-shader survey JSON: `file`, `stage`, `bytes`, `insts`, `translatable`, `us`, `unknownOpcodes[]` (`name` = `op<upper 12 bits>`, `bits`, `count`, `example`), `unsupportedForms[]` (`name`, `count`, `example`), optional `error`/`inputError`/`overflow`.
 
-Extraktion:
+Extraction:
 
 ```sh
 PYTHONPATH=tools/pydeps python3 scripts/shader_extract_blobs.py            # work/shaders/blobs (Dpr/shaders + Effects/fxparticle)
@@ -53,131 +53,131 @@ PYTHONPATH=tools/pydeps python3 scripts/shader_extract_blobs.py --extra --out wo
 python3 shader_translator/survey_report.py work/shaders/blobs/index.json work/shaders/blobs/survey.jsonl --json work/shaders/blobs/report.json
 ```
 
-## 3. Abweichungen vom Original (Kurzfassung, Details in `NOTICE.md`)
+## 3. Differences from upstream (summary; details in `NOTICE.md`)
 
-1. **Survey-Modus** (`maxwell_translate_ex`): sammelt alle unbekannten Opcodes und nicht unterstützten Formen statt beim ersten Fehler abzubrechen; meldet auch stille Platzhalter (`approx:`). Das Verhalten ohne Survey ist unverändert.
-2. **Fehler im Codeende behoben:** Das Padding hinter EXIT ist bei Unity-Shadern ein Sprung auf das davorliegende Scheduling-Wort (Verschiebung −16). Das Original kannte nur −8 und las dann Compiler-Konstanten als Instruktionen (in der ersten Messung 67 falsche „unbekannte Opcodes“; `op000` und `opbf1` waren Fließkommakonstanten).
-3. **Eingabeprüfung** auf Mindestgröße.
-4. **LAS-Spezifika entfernt:** Debug-Haken `maxwell_dbg_*`, `getenv`-Schalter, Tint-Epilog (Puffer 19).
-5. **`no_rscale`:** keine Auflösungsskalierung (Puffer 18); Standard im Werkzeug.
-6. **Noch unverändert:** GLSL-Zweig (TEX.B und `half_compat` nur für MSL, GLSL nicht getestet), `flip_x`, Global-Memory-Globals, nicht threadsichere statische Puffer, `sprintf` ohne Grenzen (Aufgaben unten).
-7. **Teil 2 (Abschnitte 8 bis 11):** TEX.B, HSETP2 (cbuf/imm), Ressourcenkarte, Pragmas gegen Fast-Math und FMA-Verschmelzung, `half_compat`. Jede Änderung ist im Quelltext mit `XNU:` und in `NOTICE.md` verzeichnet.
+1. **Survey mode** (`maxwell_translate_ex`): collects every unknown opcode and unsupported form instead of stopping at the first error; also reports silent placeholders (`approx:`). Normal mode is unchanged.
+2. **Fixed code-end handling:** Padding after EXIT in Unity shaders jumps to the preceding scheduling word (offset −16). Upstream knew only −8, then read compiler constants as instructions (first measurement showed 67 false “unknown opcodes”; `op000` and `opbf1` were floating-point constants).
+3. **Input validation** for minimum size.
+4. **Removed LAS-specific behavior:** debug hooks `maxwell_dbg_*`, `getenv` switch, tint epilogue (buffer 19).
+5. **`no_rscale`:** no resolution scaling (buffer 18); default in this tool.
+6. **Still unchanged:** GLSL path (TEX.B and `half_compat` are MSL-only, GLSL untested), `flip_x`, global-memory globals, non-thread-safe static buffers, unbounded `sprintf` (tasks below).
+7. **Part 2 (sections 8–11):** TEX.B, HSETP2 (cbuf/imm), resource map, pragmas against fast-math and FMA contraction, `half_compat`. Each change is marked `XNU:` in source and listed in `NOTICE.md`.
 
-## 4. Messergebnis (Teil 1, Stand vor TEX.B und HSETP2; neue Zahlen in Abschnitt 8)
+## 4. Measurement (Part 1, before TEX.B and HSETP2; updated numbers in section 8)
 
-Gemessen am 2026-10-18, Rechner M1 Pro, `clang` 23 (Homebrew), `-O2`. Alle Zahlen stammen aus `work/shaders/blobs/report.txt`.
+Measured 2026-10-18, M1 Pro, `clang` 23 (Homebrew), `-O2`. All numbers come from `work/shaders/blobs/report.txt`.
 
-### 4.1 Korpus
+### 4.1 Corpus
 
-| Größe | Wert |
+| Quantity | Value |
 |---|---|
-| Programme in `Dpr/shaders` + `Effects/fxparticle` | **13.710** (Vertex 6.878, Fragment 6.832); alle Container parsen |
-| davon `shaders` / `fxparticle` | 5.734 / 7.976 |
-| Eindeutige Maxwell-Blobs (ganzer Blob ab NVN-Kopf bis Programmende) | **4.276** (Vertex 683, Fragment 3.593) |
-| Eindeutige Codes (SPH + Code ohne Konstanten und Folgedaten) | **2.859** |
-| Blobgröße | Median 1.604 Byte, Maximum 9.352 Byte |
-| Mit `--extra` (plus `resources.assets`, `tmpshader`) | 13.918 Programme, 4.336 Blobs, 2.919 Codes (`work/shaders/blobs_extra`, Ergebnis fast identisch) |
+| Programs in `Dpr/shaders` + `Effects/fxparticle` | **13,710** (vertex 6,878, fragment 6,832); all containers parse |
+| Of which `shaders` / `fxparticle` | 5,734 / 7,976 |
+| Unique Maxwell blobs (whole blob from NVN header to program end) | **4,276** (vertex 683, fragment 3,593) |
+| Unique code bodies (SPH + code, without constants or trailing data) | **2,859** |
+| Blob size | median 1,604 bytes, max 9,352 bytes |
+| With `--extra` (plus `resources.assets`, `tmpshader`) | 13,918 programs, 4,336 blobs, 2,919 code bodies (`work/shaders/blobs_extra`, nearly identical results) |
 
-**Abweichung zu den bisher genannten 8.332 „eindeutigen Codes“ (belegt; Ursache *vermutet*):** Dieser Wert stammt aus dem Hash in `scripts/shader_map.py`, der den Code bis `dataOffset + dataSize` als absolute Position abschneidet. Schneide ich so ab, entstehen aus denselben Blobs 8.454 statt 4.276 verschiedene Werte. Vermutlich verschiebt sich der Bezugspunkt mit der Länge der Keyword-Liste, sodass gleiche Codes verschiedene Hashes bekommen. Außerdem bleibt bei diesem Schnitt in 254 Blobs weniger als eine Instruktionsgruppe übrig, obwohl der Code dahinter weitergeht. Deshalb schneidet `shader_extract_blobs.py` nicht ab, sondern exportiert bis zum Programmende, und der Übersetzer findet das Codeende selbst. `shader_map.py` wurde nicht geändert (gehört dem anderen Agenten). Das Ryujinx-Mapping über den Präfixvergleich ist nicht betroffen; nur die Zahl „eindeutige Codes“ ist dort zu hoch.
+**Difference from the previously reported 8,332 “unique code bodies” (confirmed; cause *suspected*):** That number came from the hash in `scripts/shader_map.py`, which truncates code at absolute position `dataOffset + dataSize`. Truncating the same blobs this way produces 8,454 rather than 4,276 distinct values. The reference point probably shifts with keyword-list length, giving identical code different hashes. Also, this truncation leaves fewer than one instruction group in 254 blobs even though code continues afterward. Therefore `shader_extract_blobs.py` does not truncate; it exports to program end and the translator detects code end itself. `shader_map.py` was not changed (owned by another agent). Ryujinx mapping by prefix comparison is unaffected; only its “unique code bodies” count is too high.
 
-### 4.2 Abdeckung („übersetzbar“ = kein unbekannter Opcode, keine nicht unterstützte Form, kein stiller Platzhalter)
+### 4.2 Coverage (“translatable” = no unknown opcode, unsupported form, or silent placeholder)
 
-| Stufe | Blobs | übersetzbar | Codes | übersetzbar | Programme | übersetzbar |
-|---|---|---|---|---|---|---|
-| alle | 4.276 | **684 (16,0 %)** | 2.859 | 670 (23,4 %) | 13.710 | 6.876 (50,2 %) |
-| Vertex | 683 | 675 (98,8 %) | 675 | 667 (98,8 %) | 6.878 | 6.842 (99,5 %) |
-| Fragment | 3.593 | **9 (0,3 %)** | 2.184 | 3 (0,1 %) | 6.832 | 34 (0,5 %) |
+| Stage | Blobs | Translatable | Code bodies | Translatable | Programs | Translatable |
+|---|---:|---:|---:|---:|---:|---:|
+| All | 4,276 | **684 (16.0%)** | 2,859 | 670 (23.4%) | 13,710 | 6,876 (50.2%) |
+| Vertex | 683 | 675 (98.8%) | 675 | 667 (98.8%) | 6,878 | 6,842 (99.5%) |
+| Fragment | 3,593 | **9 (0.3%)** | 2,184 | 3 (0.1%) | 6,832 | 34 (0.5%) |
 
-Nach Bundle (Blobs): `shaders` 1.154, davon 322 übersetzbar (Vertex 315 von 323, Fragment 7 von 831); `fxparticle` 3.122, davon 362 übersetzbar (Vertex 360 von 360, Fragment 2 von 2.762). Die 50 % bei den Programmen täuschen: Sie entstehen fast nur durch die Vertex-Shader. **Fragment-Shader sind heute praktisch nicht übersetzbar.**
+By bundle (blobs): `shaders` 1,154, 322 translatable (vertex 315/323, fragment 7/831); `fxparticle` 3,122, 362 translatable (vertex 360/360, fragment 2/2,762). The 50% program coverage is misleading: it comes almost entirely from vertex shaders. **Fragment shaders are practically untranslatable at this point.**
 
-### 4.3 Fehlende Befehle (je Blob gezählt; es gibt nur diese drei Gruppen)
+### 4.3 Missing instructions (counted per blob; only these three groups)
 
-| Problem | Blobs | Codes | Programme | Vorkommen | Stufe |
-|---|---|---|---|---|---|
-| `TEX.B` (bindlose Textur, Meldung „bindless tex“) | 3.592 (84,0 %) | 2.189 | 6.834 | 13.613 | 3.584 Fragment, 8 Vertex |
-| Opcode-Gruppe `0x7e8` = **HSETP2**, Konstantenpuffer-Form | 437 | 437 | 1.589 | 813 | Fragment |
-| Opcode-Gruppe `0x7e0` = **HSETP2**, Immediate-Form | 179 | 179 | 566 | 181 | Fragment |
+| Issue | Blobs | Code bodies | Programs | Occurrences | Stage |
+|---|---:|---:|---:|---:|---|
+| `TEX.B` (bindless texture, reported as “bindless tex”) | 3,592 (84.0%) | 2,189 | 6,834 | 13,613 | 3,584 fragment, 8 vertex |
+| Opcode group `0x7e8` = **HSETP2**, constant-buffer form | 437 | 437 | 1,589 | 813 | fragment |
+| Opcode group `0x7e0` = **HSETP2**, immediate form | 179 | 179 | 566 | 181 | fragment |
 
-Die Namen der beiden Gruppen habe ich in der öffentlichen Dekodertabelle eines Emulators nachgeschlagen (`maxwell.inc` des Projekts citron-neo/emulator; GPL, nur gelesen, nichts kopiert). *Vermutet*, bis ein Test es bestätigt: Der Übersetzer kann HSETP2 nur in der Registerform.
+I looked up the names of the two groups in a public emulator decoder table (`maxwell.inc` in citron-neo/emulator; GPL, read only, nothing copied). *Suspected* pending a test: translator supports HSETP2 only in register form.
 
-Reihenfolge nach Nutzen (greedy): `TEX.B` allein macht 3.152 Blobs übersetzbar (89,7 % der Blobs, 88,4 % der Programme), dazu HSETP2-cbuf 261 (95,8 %), HSETP2-imm 179 (100 %). **Nach diesen drei Punkten bleibt im Korpus kein unbekannter Befehl.** Das ist eine Aussage über „erkannt“, nicht über „richtig“ (4.6).
+Greedy priority by benefit: `TEX.B` alone makes 3,152 blobs translatable (89.7% of blobs, 88.4% of programs), then HSETP2-cbuf adds 261 (95.8%), and HSETP2-imm adds 179 (100%). **After these three items, no unknown instruction remains in the corpus.** This means “recognized,” not “correct” (section 4.6).
 
-Nicht gefunden (anders als in `referenz-las-shader.md` befürchtet): TLD4/TXD/TMML, Bildzugriffe, Atomics, indizierte IPA/LD, `mufu`-Varianten, PRMT-Modi, BFE.BREV, R2P.CC, CSET, TXQ-Typen. Entweder kommen sie in diesen Bundles nicht vor, oder ein anderes Muster erfasst sie fälschlich (4.6). Stille Platzhalter (`approx:`) traten nicht auf.
+Not found (unlike concerns in `referenz-las-shader.md`): TLD4/TXD/TMML, image accesses, atomics, indexed IPA/LD, `mufu` variants, PRMT modes, BFE.BREV, R2P.CC, CSET, TXQ types. Either they do not appear in these bundles, or another pattern misclassifies them (section 4.6). No silent placeholders (`approx:`) occurred.
 
-### 4.4 Laufzeit
+### 4.4 Runtime
 
-Der Lauf über alle 4.276 Blobs dauert in einem Prozess **0,5 s** (kalt 1,3 s), 639.844 Instruktionen; je Shader Mittel 88 µs, Median 48 µs, P95 237 µs, Maximum 398 µs. Der Übersetzer ist als Build-Schritt unkritisch. Derselbe Lauf mit `make asan` liefert identische Ergebnisse und keine Sanitizer-Meldung.
+Processing all 4,276 blobs takes **0.5 s** in one process (1.3 s cold), 639,844 instructions; mean 88 µs per shader, median 48 µs, P95 237 µs, max 398 µs. Translator is negligible as a build step. Same run with `make asan` produces identical results and no sanitizer report.
 
-### 4.5 Kompilierbarkeit der Ausgabe
+### 4.5 Output compilation
 
-Alle 684 übersetzbaren Blobs wurden mit `maxwell2msl` zu MSL übersetzt und mit dem Metal-Laufzeitcompiler (`scripts/shader_msl_check.swift`, Sprachversion 2.3, Apple M1 Pro) geprüft: **684 von 684** kompilieren (13 s). Das sagt nur etwas über die Syntax.
+All 684 translatable blobs were converted to MSL with `maxwell2msl` and checked with Metal runtime compiler (`scripts/shader_msl_check.swift`, language version 2.3, Apple M1 Pro): **684/684 compile** (13 s). This verifies syntax only.
 
-### 4.6 Grenzen der Messung
+### 4.6 Measurement limits
 
-- **„Erkannt“ ist nicht „richtig“.** Der Decoder ist eine Kette von Maskenmustern ohne Gegenprobe. Ein zu lockeres Muster würde einen anderen Befehl still falsch übersetzen und nie als unbekannt auftauchen. Die Absicherung ist der numerische Vergleich in Teil 2.
-- Die Instruktionsmischung (welche Befehle wie oft vorkommen) wurde nicht ausgewertet.
-- Ob Kontrollfluss mit `switch (pc)` vorkommt und wie er sich auf Metal-Compilezeit und Ableitungen auswirkt, wurde nicht gemessen.
-- Die 684 kompilierenden Shader sind fast alle Vertex-Shader.
-- Die Gegenprobe mit dem Ryujinx-Cache als Zweitkorpus (`referenz-las-shader.md`, Abschnitt 11, Punkt 7) steht aus.
+- **“Recognized” does not mean “correct.”** Decoder is a chain of mask patterns with no independent cross-check. A loose pattern could silently translate another instruction incorrectly, so it would never appear as unknown. Part 2's numerical comparison provides the cross-check.
+- Instruction mix (frequency of each instruction) was not analyzed.
+- Whether control flow using `switch (pc)` occurs, or its effect on Metal compile time and derivatives, was not measured.
+- The 684 compiling shaders are almost all vertex shaders.
+- Cross-check against Ryujinx cache as a second corpus (`referenz-las-shader.md`, section 11, item 7) remains open.
 
-## 5. Befunde für Teil 2 (Teil 1; Auflösung in Abschnitt 8)
+## 5. Findings for Part 2 (from Part 1; resolved in section 8)
 
-- **TEX.B ist der Hauptblocker.** Der Übersetzer hat die Felder für bindlose Texturen vorbereitet (`ShaderTexture.bindless`, `bindless_cbuf`, `bindless_offset`), die Umsetzung fehlt aber. Die Annahme in `referenz-las-shader.md` („bindlos wahrscheinlich nicht relevant“) ist damit widerlegt: Unity-NVN-Shader sampeln fast alle über Handles.
-- **Herkunft der Handles (belegt für 13.544 von 13.601 TEX.B in Fragment-Shadern):** Das Handle-Register wird unmittelbar vorher von einer Instruktion der Klasse `0x4c4x` (*vermutet*: logische Verknüpfung, Konstantenpuffer-Form) aus **cbuf 2** gesetzt. Die Offsets laufen in 8-Byte-Schritten von `0x568` bis `0x5c8` (13 Werte; `0x568` 3.822-mal, `0x570` 3.408-mal, abnehmend bis `0x5c8` 12-mal). *Vermutet:* cbuf 2 ist die Handle-Tabelle des Treibers, Textur k liegt bei `0x568 + 8k`. Die Zuordnung zu den Unity-Texturnamen kommt aus dem Parameter-Layout der Shaderdaten. **Teil 2 präzisiert das:** vor der `0x4c4x`-Instruktion (LOP.OR) steht ein MOV aus demselben Puffer; das Handle ist die ODER-Verknüpfung zweier Wörter (Abschnitt 8).
-- **Vertex-Shader sind fast fertig** (98,8 %): die 8 Ausnahmen sind Vertex-Textur-Zugriffe (TEX.B).
-- Pro Fragment-Blob kommen meist 2 bis 4 TEX.B vor (bis 20).
+- **TEX.B is the main blocker.** Translator had fields for bindless textures (`ShaderTexture.bindless`, `bindless_cbuf`, `bindless_offset`) but no implementation. This disproves the assumption in `referenz-las-shader.md` (“bindless probably irrelevant”): almost all Unity NVN shaders sample through handles.
+- **Handle origin** (confirmed for 13,544 of 13,601 TEX.B instructions in fragment shaders): the handle register is set immediately beforehand by an instruction in class `0x4c4x` (*suspected*: logical operation, cbuf form) from **cbuf 2**. Offsets use 8-byte increments from `0x568` to `0x5c8` (13 values; `0x568` occurs 3,822 times, `0x570` 3,408, declining to `0x5c8` 12 times). *Suspected:* cbuf 2 is the driver's handle table, texture k at `0x568 + 8k`. Unity shader parameter layout maps these to texture names. **Part 2 refines this:** before the `0x4c4x` instruction (LOP.OR) is a MOV from the same buffer; handle is bitwise OR of two words (section 8).
+- **Vertex shaders are nearly complete** (98.8%); eight exceptions are vertex texture accesses (TEX.B).
+- Fragment blobs usually contain 2–4 TEX.B instructions (up to 20).
 
-## 6. Aufgabenliste für Teil 2 (aus Teil 1) und ihr Stand
+## 6. Part 2 task list and status
 
-| Nr. | Aufgabe | Stand nach Teil 2 |
-|---|---|---|
-| 1 | TEX.B | **erledigt** (Abschnitt 8) |
-| 2 | HSETP2 cbuf/imm | **erledigt** (Abschnitt 8); HSET2 in diesen Formen kommt im Korpus nicht vor |
-| 3 | Numerische Treue-Tests | **erledigt für Gesamtshader** (Abschnitt 11); Einzelbefehl-Mikrotests und Gegenprobe des Decoders offen (Teil 3) |
-| 4 | Fast-Math aus | **erledigt** (Abschnitt 10); FTZ/Denormale offen |
-| 5 | `noperspective`/Interpolation | **offen**: in den 500 getesteten Referenzen kommt kein `flat`, `noperspective` oder `centroid` vor, der Fall wurde also nicht geprüft |
-| 6 | Unity-Konstantenpuffer abbilden | **teilweise**: Ressourcenkarte liefert Größen und Bereiche (Abschnitt 9); Namen aus dem Parameter-Layout offen (Teil 3) |
-| 7 | Compiler-Konstanten (cbuf 1) | **erledigt**: Lage hinter dem Code gefunden, `--cbuf1` (Abschnitt 9); Einbetten als `constant`-Array offen |
-| 8 | Keyword-Varianten | **offen** (Teil 3), Programm → Blob-Zuordnung liegt lokal in `work/shaders/prog_blob.json` |
-| 9 | Härtung | **offen**; der Lauf über alle 8.552 Übersetzungen mit AddressSanitizer/UBSan blieb ohne Meldung |
-| 10 | Kontrollfluss | **offen** |
-| 11 | Ausgabeform für Unity | **offen** (Teil 3) |
-| 12 | Restliche LAS-Spezifika | **offen** |
-| 13 | Erweiterte Messung | **teilweise**: Zweitkorpus (Ryujinx) ist jetzt der Treue-Test; Instruktionsmischung und Kontrollfluss-Statistik offen |
+| # | Task | Status after Part 2 |
+|---:|---|---|
+| 1 | TEX.B | **done** (section 8) |
+| 2 | HSETP2 cbuf/imm | **done** (section 8); HSET2 in these forms is absent from corpus |
+| 3 | Numerical fidelity tests | **done for full shaders** (section 11); instruction microtests and decoder cross-check remain (Part 3) |
+| 4 | Disable fast math | **done** (section 10); FTZ/denormals remain |
+| 5 | `noperspective`/interpolation | **open**: none of the 500 tested references contain `flat`, `noperspective`, or `centroid`, so this case was not tested |
+| 6 | Map Unity constant buffers | **partial**: resource map provides sizes and ranges (section 9); names from parameter layout remain (Part 3) |
+| 7 | Compiler constants (cbuf 1) | **done**: location after code found, `--cbuf1` (section 9); embedding as `constant` array remains |
+| 8 | Keyword variants | **open** (Part 3); program → blob mapping is local at `work/shaders/prog_blob.json` |
+| 9 | Hardening | **open**; running all 8,552 translations with AddressSanitizer/UBSan produced no report |
+| 10 | Control flow | **open** |
+| 11 | Output format for Unity | **open** (Part 3) |
+| 12 | Remaining LAS-specific behavior | **open** |
+| 13 | Expanded measurement | **partial**: second corpus (Ryujinx) is now fidelity test; instruction mix and control-flow statistics remain open |
 
-Der ursprüngliche Wortlaut der Aufgaben steht im Git-Verlauf dieser Datei.
+Original task wording is in Git history of this file.
 
-## 8. Teil 2: TEX.B, HSETP2 und Abdeckung
+## 8. Part 2: TEX.B, HSETP2, and coverage
 
-### 8.1 TEX.B (bindlose Textur)
+### 8.1 TEX.B (bindless texture)
 
-**Wie das Handle entsteht (belegt an allen 13.613 TEX.B des Korpus).** Der Unity-Compiler baut das Handle-Register aus zwei Wörtern des Konstantenpuffers 2: erst `MOV Rh, c[2][s]`, dann `LOP.OR Rh, Rh, c[2][t]`. Ein NVN-Handle trägt die Textur-ID in den unteren 20 und die Sampler-ID in den oberen 12 Bit; das Wort `t` liegt im Bereich ab `0x568`, das Wort `s` im Bereich ab `0x168`, beide im 8-Byte-Raster. Die Textur ist damit zur Übersetzungszeit bekannt, ein Laufzeit-Handle braucht die MSL nicht. Der Übersetzer verfolgt dazu für jedes Register, ob sein Wert aus Konstantenpuffer-Wörtern aufgebaut wurde (`prov_track()`; MOV c[][], LOP.OR, LDC, Register-MOV; jeder andere Schreibzugriff setzt zurück, ein bedingter Schreibzugriff ebenfalls). Wer das Handle nicht auflösen kann, bekommt weiter einen Fehler.
+**How the handle is built (confirmed for all 13,613 TEX.B instructions in corpus).** Unity compiler builds handle register from two words in constant buffer 2: first `MOV Rh, c[2][s]`, then `LOP.OR Rh, Rh, c[2][t]`. An NVN handle stores texture ID in lower 20 bits and sampler ID in upper 12 bits; word `t` is in range starting at `0x568`, word `s` starts at `0x168`, both on 8-byte boundaries. Texture is therefore known at translation time; MSL needs no runtime handle. Translator tracks for each register whether its value is built from constant-buffer words (`prov_track()`; MOV c[][], LOP.OR, LDC, register MOV; any other write resets, as does a predicated write). Unresolvable handles still produce an error.
 
-Feldlage von TEX.B (wie `TEX`, nur anders angeordnet): Ziel Bit 0..7, Koordinaten ab `Ra` (Bit 8..15), Handle-Register `Rb` (Bit 20..27), Dimension Bit 28..30 (Array, Ziel), Schreibmaske Bit 31..34, Offset-Flag Bit 36, LOD-Modus Bit 37..39, Tiefenvergleich Bit 50. Die Register hinter dem Handle liefern der Reihe nach LOD, Offset und Tiefenvergleichswert. Alle Formen aus `TEX` (1D/2D/3D/Cube, Array, Shadow, LOD-Modi, Offset) sind damit ohne zusätzlichen Code auch für TEX.B nutzbar; im Korpus kommen davon 2D und Cube mit den LOD-Modi „implizit“, `LL` und `LZ` vor (Cube nur 4-mal, Shadow, Array und Offset nie).
+TEX.B field layout (like `TEX`, differently arranged): destination bits 0..7, coordinates from `Ra` (bits 8..15), handle register `Rb` (bits 20..27), dimension bits 28..30 (array, target), write mask bits 31..34, offset flag bit 36, LOD mode bits 37..39, depth compare bit 50. Registers following handle provide LOD, offset, and depth comparison value in order. All forms supported by `TEX` (1D/2D/3D/Cube, array, shadow, LOD modes, offset) are therefore available for TEX.B without extra code; corpus uses 2D and Cube with LOD modes “implicit,” `LL`, and `LZ` (Cube only 4 times; shadow, array, offset never).
 
-**Messung über alle 4.276 Blobs (aus der Ressourcenkarte):** 3.592 Blobs haben Texturen, zusammen 13.134 verschiedene Texturslots (höchstens 13 je Blob), alle über cbuf 2, alle mit Samplerwort. 13.130 sind 2D, 4 Cube. Die Slots entstehen in der Reihenfolge der ersten Benutzung; zwei Slots sind gleich, wenn Wortpaar, Typ, Shadow- und Array-Flag gleich sind. Der Abstand Texturwort minus Samplerwort ist in 8.043 Fällen (61 %) genau `0x400`, sonst `0x3f8` (3.646), `0x408` (409), `0x410` (146) und weitere: Sampler und Textur sind also frei kombinierbar, der Sampler hat einen eigenen Tabellenindex. **Gegenprobe:** Der Ryujinx-Name einer bindlosen Textur kodiert dasselbe Wortpaar (`fp_tex_cb196610_1056805A` = Texturwort `0x568`, Samplerwort `0x168`). In allen 970 Stufen-Paaren des Treue-Tests (Vertex und Fragment von 500 Paaren) stimmt die Menge der (Textur, Sampler)-Schlüssel zwischen unserer Übersetzung und der Referenz überein.
+**Measurement over all 4,276 blobs (from resource map):** 3,592 blobs use textures, with 13,134 distinct texture slots total (up to 13 per blob), all from cbuf 2, all with sampler word. 13,130 are 2D, 4 Cube. Slots are assigned in first-use order; slots are equivalent when word pair, type, shadow, and array flags match. Texture-word minus sampler-word distance is exactly `0x400` in 8,043 cases (61%), otherwise `0x3f8` (3,646), `0x408` (409), `0x410` (146), and other values: sampler and texture combine independently, so sampler has its own table index. **Cross-check:** Ryujinx bindless texture name encodes same word pair (`fp_tex_cb196610_1056805A` = texture word `0x568`, sampler word `0x168`). Across all 970 stage pairs in fidelity test (vertex and fragment for 500 pairs), set of (texture, sampler) keys matches between our translation and reference.
 
-### 8.2 HSETP2 mit cbuf- und Immediate-Operand
+### 8.2 HSETP2 with cbuf and immediate operands
 
-Die Registerform war vorhanden. Die beiden anderen Formen (Gruppe `0x7e80`/`0x7f80` und `0x7e00`/`0x7f00`) haben dieselben Felder an anderer Stelle, weil Bit 20..38 den Operanden tragen: Vergleich Bit 49..52 (Registerform: 35..38), HAND Bit 53 (49), bei der cbuf-Form Negation Bit 56 und Betrag Bit 54, Operand als ein f32 (cbuf) bzw. als zwei Halbwerte mit eigenen Vorzeichen (imm, dieselbe Kodierung wie bei HADD2). Die Lage habe ich aus den Feldpositionen der HADD2/HMUL2-Formen der gleichen Befehlsfamilie angesetzt und an den Wörtern des Korpus gegengeprüft (Quellwörter: `0x7e85038c0457ff07`, `0x7e0883bc0f071207`); entscheidend ist die numerische Prüfung: 128 Paare mit der cbuf-Form und 73 mit der imm-Form kamen in den Treue-Test, im Rahmen von Abschnitt 11 bestehen 117 bzw. 71 davon. HSET2 in diesen Formen (Gruppe `0x7c..`) kommt im Korpus nicht vor und ist nicht umgesetzt.
+Register form already existed. The other forms (groups `0x7e80`/`0x7f80` and `0x7e00`/`0x7f00`) have same fields in different locations because bits 20..38 carry operand: comparison bits 49..52 (register form: 35..38), HAND bit 53 (49), for cbuf form negate bit 56 and absolute bit 54, operand as one f32 (cbuf) or two half values with separate signs (immediate; same encoding as HADD2). I inferred locations from HADD2/HMUL2 forms in same instruction family and cross-checked against corpus words (source words: `0x7e85038c0457ff07`, `0x7e0883bc0f071207`). Numerical test is decisive: 128 cbuf-form pairs and 73 immediate-form pairs were in fidelity test; per section 11, 117 and 71 pass. HSET2 in these forms (group `0x7c..`) does not occur in corpus and is not implemented.
 
-### 8.3 Abdeckung nach Teil 2
+### 8.3 Coverage after Part 2
 
-Erneut gemessen mit `--survey` über alle Blobs, Zahlen aus `survey_report.py`:
+Re-measured with `--survey` over all blobs; figures from `survey_report.py`:
 
-| Stufe | Blobs | erkannt | Codes | erkannt | Programme | erkannt |
-|---|---|---|---|---|---|---|
-| alle | 4.276 | **4.276 (100 %)** | 2.859 | 2.859 (100 %) | 13.710 | 13.710 (100 %) |
-| Vertex | 683 | 683 (100 %) | 675 | 675 | 6.878 | 6.878 |
-| Fragment | 3.593 | 3.593 (100 %) | 2.184 | 2.184 | 6.832 | 6.832 |
+| Stage | Blobs | Recognized | Code bodies | Recognized | Programs | Recognized |
+|---|---:|---:|---:|---:|---:|---:|
+| All | 4,276 | **4,276 (100%)** | 2,859 | 2,859 (100%) | 13,710 | 13,710 (100%) |
+| Vertex | 683 | 683 (100%) | 675 | 675 | 6,878 | 6,878 |
+| Fragment | 3,593 | 3,593 (100%) | 2,184 | 2,184 | 6,832 | 6,832 |
 
-Der Zusatzkorpus (`--extra`, plus `resources.assets` und `tmpshader`) ergibt 4.336 von 4.336 Blobs und 13.918 von 13.918 Programmen. Es bleiben keine unbekannten Opcodes und keine nicht unterstützten Formen; weitere Befehle (TLD.B, TLDS, TXQ.B) tauchten nach TEX.B nicht auf. Der Lauf dauert 0,5 s. **Alle 4.276 Blobs lassen sich übersetzen (`maxwell2msl` ohne Survey), und alle 8.552 erzeugten MSL-Dateien (Standardmodus und `--half-compat`) kompilieren mit dem Metal-Laufzeitcompiler** (`scripts/shader_msl_check.swift`, 98 s, M1 Pro). Derselbe Lauf mit AddressSanitizer/UBSan blieb ohne Meldung.
+Extra corpus (`--extra`, plus `resources.assets`, `tmpshader`) gives 4,336/4,336 blobs and 13,918/13,918 programs. No unknown opcodes or unsupported forms remain; further instructions (TLD.B, TLDS, TXQ.B) did not appear after TEX.B. Run takes 0.5 s. **All 4,276 blobs translate (`maxwell2msl` without survey), and all 8,552 generated MSL files (standard mode and `--half-compat`) compile with Metal runtime compiler** (`scripts/shader_msl_check.swift`, 98 s, M1 Pro). Same run with AddressSanitizer/UBSan produced no report.
 
-„Erkannt“ heißt weiter nur „kein unbekannter Befehl“. Ob ein Befehl richtig übersetzt ist, zeigt erst Abschnitt 11.
+“Recognized” still means only “no unknown instruction.” Section 11 tests whether translation is correct.
 
-## 9. Ressourcenkarte (`--info`)
+## 9. Resource map (`--info`)
 
-`maxwell2msl --info <datei.json>` schreibt eine maschinenlesbare Karte, mit der ein Treiber (Harness, später Unity) die Daten richtig bindet. Neu in Teil 2 sind `metal`, `compilerConstants`, `constantBuffers`, die erweiterten `textures` sowie `inputs` und `outputs`; die älteren Schlüssel (`cbufMask`, `cbufSize`, `attrMask`, `outMask` und weitere) bleiben. Beispiel für einen synthetischen Fragment-Shader mit einer bindlosen Textur (ohne Spielinhalt, gekürzt):
+`maxwell2msl --info <file.json>` writes a machine-readable map for a driver (harness, later Unity) to bind resources correctly. New in Part 2: `metal`, `compilerConstants`, `constantBuffers`, expanded `textures`, plus `inputs` and `outputs`; older keys (`cbufMask`, `cbufSize`, `attrMask`, `outMask`, etc.) remain. Example for a synthetic fragment shader with one bindless texture (no game content, shortened):
 
 ```json
 {
@@ -195,146 +195,146 @@ Der Zusatzkorpus (`--extra`, plus `resources.assets` und `tmpshader`) ergibt 4.3
 }
 ```
 
-Bedeutung:
+Meaning:
 
-- **`constantBuffers`:** je gelesenem Puffer der Index (= Metal-Pufferslot), die Größe (auf 256 Byte aufgerundet; bei Register-Index-Zugriff `dynamic: true`, dann den ganzen Puffer binden, bis 64 KB) und der Bereich der statisch adressierten Bytes (`staticMinOffset` bis `staticEndOffset`, ausschließlich). Daraus lässt sich ablesen, welche Teile eines Unity-Blocks der Shader wirklich liest.
-- **`textures`:** `slot` ist zugleich Metal-Texturindex und Sampler-Index. `textureWordOffset`/`samplerWordOffset` sind die Byte-Offsets der beiden Handle-Wörter in cbuf `handleCbuf` (immer 2). Der Index in der Tabelle des Treibers ergibt sich als `(textureWordOffset − 0x568) / 8` bzw. `(samplerWordOffset − 0x168) / 8` (`textureTableIndex`/`samplerTableIndex`; die Basiswerte sind eine aus den Shadern abgeleitete Annahme, -1 bei Abweichung). Der Treiber muss die Textur dieses Tabelleneintrags an `texture(slot)` und den Sampler an `sampler(slot)` legen. Typ (`typeName`, `shadow`, `array`) bestimmt die MSL-Deklaration (`texture2d<float>`, `texturecube<float>`, `depth…`).
-- **`inputs`/`outputs`:** Vertex: Eingabe-Locations mit gelesenen Komponenten (`[[attribute(i)]]`, alle als `float4` deklariert), Ausgaben mit geschriebenen Komponenten (`[[user(locn i)]]`). Fragment: Eingaben mit Interpolation (`flat`/`perspective`), Ausgaben als Farbziele mit Komponenten.
-- **`compilerConstants` und `--cbuf1 <datei>`:** Der Konstantenpuffer 1 enthält die vom Compiler erzeugten Konstanten. Sie liegen im Blob hinter dem Code, auf 0x100 aufgerundet (`blobOffset`). Belegt für alle 934 Shader, die cbuf 1 statisch lesen: an dieser Stelle steht jeweils Nicht-Null-Daten; die Zahl der gelesenen Bytes passt in den geprüften Fällen zu den Fließkommakonstanten (z. B. `1.0, 0.8, 0.05, 0.1, 0.5` bei 20 gelesenen Bytes). `--cbuf1` schreibt höchstens 64 KB ab dieser Stelle (der Rest ist Reflexionsdaten und Füllbytes, die der Shader nie liest). Die Größe der Konstanten steht nicht im Blob; der Bedarf folgt aus `constantBuffers`.
-- **Rollen der Puffer (Annahme, nicht von `maxwell2msl` ausgegeben):** cbuf 0 Treiber, 1 Compiler-Konstanten, 2 Handle-Tabellen, ab 3 Unity-Blöcke. Gelesene Puffer in den 4.276 Blobs: cbuf 0 in 180 Blobs, 1 in 934, 2 in 3.592, 3 in 3.615, 4 in 614, 5 in 118. Mit Register-Index (dynamisch) gelesen werden cbuf 5 in 118 und cbuf 4 in 7 Blobs (Instancing-Daten).
+- **`constantBuffers`:** for each buffer read, index (= Metal buffer slot), size (rounded up to 256 bytes; with register-index access `dynamic: true`, bind entire buffer, up to 64 KB), and range of statically addressed bytes (`staticMinOffset` to `staticEndOffset`, exclusive). This shows which portions of a Unity block the shader actually reads.
+- **`textures`:** `slot` is both Metal texture and sampler index. `textureWordOffset`/`samplerWordOffset` are byte offsets of handle words in cbuf `handleCbuf` (always 2). Driver-table index is `(textureWordOffset − 0x568) / 8` or `(samplerWordOffset − 0x168) / 8` (`textureTableIndex`/`samplerTableIndex`; base offsets are assumptions derived from shaders, −1 if mismatch). Driver must bind that table entry's texture to `texture(slot)` and sampler to `sampler(slot)`. Type (`typeName`, `shadow`, `array`) determines MSL declaration (`texture2d<float>`, `texturecube<float>`, `depth…`).
+- **`inputs`/`outputs`:** Vertex: input locations and read components (`[[attribute(i)]]`, all declared `float4`), outputs and written components (`[[user(locn i)]]`). Fragment: inputs and interpolation (`flat`/`perspective`), outputs as color targets with components.
+- **`compilerConstants` and `--cbuf1 <file>`:** constant buffer 1 contains compiler-generated constants. They are in blob after code, rounded up to 0x100 (`blobOffset`). Confirmed for all 934 shaders with static cbuf 1 reads: nonzero data is present there, and read byte count matches floating-point constants in checked cases (e.g. `1.0, 0.8, 0.05, 0.1, 0.5` for 20 bytes). `--cbuf1` writes at most 64 KB from that location (remainder is reflection data and padding never read by shader). Constant-buffer size is not stored in blob; required size comes from `constantBuffers`.
+- **Buffer roles** (assumption, not emitted by `maxwell2msl`): cbuf 0 driver, 1 compiler constants, 2 handle tables, 3+ Unity blocks. Buffers read across 4,276 blobs: cbuf 0 in 180, 1 in 934, 2 in 3,592, 3 in 3,615, 4 in 614, 5 in 118. Register-index (dynamic) reads occur in cbuf 5 in 118 blobs and cbuf 4 in 7 blobs (instancing data).
 
-Hinweis: Die MSL liest die Handle-Wörter in cbuf 2 weiterhin (das MOV/LOP des Compilers wird mitübersetzt); der Wert wird nie benutzt, der Puffer muss aber gebunden sein, solange der Metal-Compiler den toten Zugriff nicht entfernt. In den 500 Paaren des Treue-Tests liest unsere Übersetzung deshalb in 473 von 970 Stufen einen Puffer mehr als die Referenz.
+Note: MSL still reads handle words in cbuf 2 (compiler MOV/LOP instructions remain in output); values are never used, but buffer must be bound unless Metal compiler removes dead access. In 500-pair fidelity test, our translation therefore reads one more buffer than reference in 473 of 970 stages.
 
-## 10. Exakte Arithmetik (Fast-Math aus)
+## 10. Exact arithmetic (fast math disabled)
 
-**Was Metal standardmäßig tut:** Fast-Math (Umordnen, relaxierte NaN/Inf-Behandlung, schnelle Funktionen) und die Verschmelzung `a*b+c` zu einer FMA. Die Switch-GPU rundet jedes FMUL und jedes FADD einzeln. Beides ändert Ergebnisse in den letzten Bits und kann bei Schwellwerten und Rückkopplungen sichtbar werden.
+**Metal defaults:** fast math (reordering, relaxed NaN/Inf handling, fast functions) and contraction of `a*b+c` into FMA. Switch GPU rounds each FMUL and FADD separately. Both can change low bits and become visible at thresholds and feedback loops.
 
-**Was macOS 26 (Xcode 26.0.1, M1 Pro) akzeptiert (gemessen):**
+**What macOS 26 (Xcode 26.0.1, M1 Pro) accepts (measured):**
 
-- `MTLCompileOptions.mathMode = .safe` und `mathFloatingPointFunctions = .precise` werden auch mit Sprachversion 2.3 angenommen; vor macOS 15 bleibt `fastMathEnabled = false`.
-- Die Pragmas `#pragma METAL fp math_mode(safe)` und `#pragma METAL fp contract(off)` werden mit Sprachversion 2.3 ohne Fehler übersetzt.
-- **`mathMode = .safe` allein verhindert die FMA-Verschmelzung nicht:** Ein Test mit `a*b+c` (Operanden aus einem Puffer, so gewählt, dass einzeln gerundet 0, verschmolzen `2^-26` herauskommt) lieferte in beiden Modi das verschmolzene Ergebnis; erst `contract(off)` ergab das einzeln gerundete.
-- Die Optionen wirken: ein bewusst chaotischer Test-Shader (sin, exp2, Division, log2, multipliziert und mit `fract` verstärkt) unterscheidet sich zwischen `safe` und `fast` um bis zu 253 Stufen (PSNR 16,7 dB).
+- `MTLCompileOptions.mathMode = .safe` and `mathFloatingPointFunctions = .precise` are accepted with language version 2.3; before macOS 15 use `fastMathEnabled = false`.
+- Pragmas `#pragma METAL fp math_mode(safe)` and `#pragma METAL fp contract(off)` compile with language version 2.3.
+- **`mathMode = .safe` alone does not prevent FMA contraction:** test `a*b+c` (buffer operands chosen so separately rounded result is 0, fused result is `2^-26`) produced fused result in both modes; only `contract(off)` yielded separately rounded value.
+- Options have effect: deliberately chaotic test shader (sin, exp2, division, log2, multiplied and amplified with `fract`) differs between `safe` and `fast` by up to 253 levels (PSNR 16.7 dB).
 
-**Umsetzung:** `maxwell2msl` schreibt die beiden Pragmas an den Anfang jeder MSL (`--fast-math` lässt sie weg). Das Harness (`scripts/shader_harness`, `Render.swift`/`main.swift`, kommentiert) kompiliert standardmäßig mit `mathMode = .safe`, genauen Funktionen und stellt Quellen ohne `fp contract`-Pragma (die spirv-cross-Referenz) `#pragma METAL fp contract(off)` voran, damit Referenz und Übersetzung gleich behandelt werden; `--fast-math` schaltet das ab. Die Ausgabe nennt den Modus (`math=safe`).
+**Implementation:** `maxwell2msl` writes both pragmas at start of every MSL file (`--fast-math` omits them). Harness (`scripts/shader_harness`, `Render.swift`/`main.swift`, commented) compiles with `mathMode = .safe` and precise functions by default; it prepends `#pragma METAL fp contract(off)` to sources without an `fp contract` pragma (spirv-cross reference), so reference and translation receive same treatment. `--fast-math` disables this. Output reports mode (`math=safe`).
 
-**Offen:** FTZ- und Rundungsflags der Befehle werden nicht ausgewertet; das Verhalten bei Denormalen ist nicht gemessen. Wie Unity die Pragmas oder Optionen in seiner eigenen Shader-Pipeline bekommt, ist Teil 3.
+**Open:** instruction FTZ and rounding flags are not evaluated; denormal behavior unmeasured. How Unity's own shader pipeline receives these pragmas/options belongs to Part 3.
 
-## 11. Numerischer Treue-Test (`scripts/shader_fidelity.py`)
+## 11. Numerical fidelity test (`scripts/shader_fidelity.py`)
 
-### 11.1 Verfahren
+### 11.1 Method
 
-Aus `work/shaders/mapping.json` kommen 2.901 Cache-Einträge (2.900 verschiedene Blobpaare) mit Vertex und Fragment in beiden Quellen: Bundle-Blob und Ryujinx-SPIR-V. `prog_blob.json` (Programm → Blob-Hash, `shader_fidelity.py index`) verbindet beide. Für die Stichprobe werden die Paare abwechselnd über die Shader gezogen (deterministisch), damit nicht `Delphis/Map/Standard` mit 2.570 Einträgen alles füllt.
+`work/shaders/mapping.json` provides 2,901 cache entries (2,900 unique blob pairs) with vertex and fragment stages in both sources: bundle blob and Ryujinx SPIR-V. `prog_blob.json` (program → blob hash, `shader_fidelity.py index`) connects them. The sample alternates across shaders deterministically so `Delphis/Map/Standard` with 2,570 entries does not dominate.
 
-Je Paar:
+For each pair:
 
-1. **Referenz:** SPIR-V → MSL mit `spirv-cross` (MSL 2.3, ohne Zusatzflags), danach die Schnittstelle aus dem MSL-Kopf gelesen: Vertexattribute, Puffer (`vp_c<k>`/`fp_c<k>` = Hardware-Cbuf k), Texturen und Sampler samt Slots. Der Ryujinx-Name einer bindlosen Textur liefert den (Textur, Sampler)-Schlüssel.
-2. **Unsere Seite:** `maxwell2msl` für Vertex und Fragment (das Fragment mit `--vs-out-mask` des Vertex-Shaders), die Schnittstelle aus der Ressourcenkarte, die Compiler-Konstanten (cbuf 1) aus `--cbuf1`.
-3. **Gleiche Eingaben:** Ein Gitter aus 12×12 Zellen (169 Vertices, 288 Dreiecke) mit allen Attributen der Vereinigung beider Seiten als `float4` (kleinste Location = Position in ±0,9, alle anderen Verläufe in [0, 1]); Konstantenpuffer als 64-KB-Dateien aus einem von 42 deterministischen Profilen (`identity`: Einheitsmatrizen im 64-Byte-Raster, ggf. um 1 bis 3 Vektoren verschoben, auch je Puffer verschieden; `dense`, `hash`, `signed`, `small`, `half`); Texturen 64×64 mit Mipmaps (Schachbrett mit wechselndem Alpha oder Verlauf, Farben aus dem Hash des Texturworts), Sampler linear/linear/mip-linear/wiederholend. Das erste Profil, bei dem das Referenzbild aussagekräftig ist (mindestens 2 % der Pixel bedeckt und mindestens zwei Farben), gewinnt. Cbuf 1 ist die Blob-Konstante, nicht synthetisch.
-4. **Zustand:** 128×128, `rgba8Unorm`, keine Tiefe, kein Blending, kein Culling, eine Zeichnung, keine MSAA. Beide Seiten geben die Clip-Position des Gast-Shaders unverändert aus (`flip_y`/`depth_minus_one` bei uns aus, `--flip-vert-y`/`--fixup-clipspace` bei der Referenz aus); in den angesehenen Referenz-Modulen schreibt Ryujinx die Position unverändert, und 332 Paare stimmen ohne Raumkorrektur bis auf eine Stufe überein, der Zustand ist also gleich.
-5. **Vergleich:** `scripts/shader_compare.py` (RGBA, größte und mittlere Abweichung, Pixel über Schwelle, PSNR). Bei Abweichung zusätzlich zwei Mischvarianten (Referenz-VS + unser FS, unser VS + Referenz-FS), die den Fehler einer Stufe zuordnen.
+1. **Reference:** SPIR-V → MSL using `spirv-cross` (MSL 2.3, no extra flags), then parse MSL header for interface: vertex attributes, buffers (`vp_c<k>`/`fp_c<k>` = hardware cbuf k), textures and samplers with slots. Ryujinx name of bindless texture gives (texture, sampler) key.
+2. **Our output:** run `maxwell2msl` on vertex and fragment (fragment with vertex shader's `--vs-out-mask`), read interface from resource map, compiler constants (cbuf 1) from `--cbuf1`.
+3. **Same inputs:** 12×12 grid (169 vertices, 288 triangles), all attributes from union of both sides as `float4` (lowest location = position in ±0.9, others vary in [0, 1]); constant buffers are 64 KB files from one of 42 deterministic profiles (`identity`: identity matrices on 64-byte grid, possibly shifted by 1–3 vectors, and may differ per buffer; `dense`, `hash`, `signed`, `small`, `half`). Textures are 64×64 with mipmaps (checkerboard with alternating alpha or gradient, colors from texture-word hash); sampler linear/linear/mip-linear/repeat. First profile where reference image is informative (at least 2% pixels covered, at least two colors) wins. cbuf 1 is blob constant data, not synthetic.
+4. **State:** 128×128, `rgba8Unorm`, no depth, blending, culling, one draw, no MSAA. Both sides output guest clip position unchanged (`flip_y`/`depth_minus_one` off for ours, `--flip-vert-y`/`--fixup-clipspace` off for reference); inspected reference modules show Ryujinx writes position unchanged, and 332 pairs match within one level without coordinate correction, so state is equivalent.
+5. **Comparison:** `scripts/shader_compare.py` (RGBA, max/mean difference, pixels above threshold, PSNR). On mismatch, two mixed runs (reference VS + our FS; our VS + reference FS) attribute error to stage.
 
-**Schwellen:** *bestanden* = größte Abweichung ≤ 1 Stufe je Kanal (1/255). Begründung: `rgba8Unorm` rundet; zwei Fließkommawerte, die sich nur in den letzten Bits unterscheiden, können an einer Rundungsgrenze um genau eine Stufe auseinanderfallen. Mehr als eine Stufe zeigt einen echten Rechenunterschied. *Knapp* = ≤ 3 Stufen (z. B. verschiedene Näherungen von Funktionen), *durchgefallen* darüber. Zusätzlich werden Pixelzahl über 1 Stufe, mittlere Abweichung und PSNR gespeichert.
+**Thresholds:** *pass* = maximum difference ≤1 level per channel (1/255). Rationale: `rgba8Unorm` rounds; two floats differing only in low bits can differ by exactly one level at rounding boundary. More than one level indicates real arithmetic difference. *Near* = ≤3 levels (e.g. different function approximations), *fail* above. Also record pixel count over 1 level, mean difference, and PSNR.
 
-**Nicht aussagekräftig** sind Paare, deren Referenzbild bei allen 42 Profilen fast leer (alles verworfen oder außerhalb) oder einfarbig ist; sie zählen nicht mit. **Nicht unterstützt** sind Paare mit Cube-Texturen (Harness kann nur 2D) oder Speicherpuffern (`vp_s0`, die Instanzdaten von `FxSystem/Particle`).
+Pairs are **uninformative** if reference image remains almost empty (discarded/outside) or monochrome with all 42 profiles; excluded from totals. **Unsupported:** Cube textures (harness supports only 2D) or memory buffers (`vp_s0`, instancing data for `FxSystem/Particle`).
 
-### 11.2 Ergebnis (500 Paare, 62 Shader, Apple M1 Pro, Metal Safe-Math, `shader_fidelity.py run --count 500`)
+### 11.2 Results (500 pairs, 62 shaders, Apple M1 Pro, Metal safe math, `shader_fidelity.py run --count 500`)
 
-| Ergebnis | Paare |
-|---|---|
-| bestanden (≤ 1 Stufe) | **332** (davon 155 bitgleich, 177 mit höchstens 1 Stufe) |
-| knapp (≤ 3) | 11 |
-| durchgefallen | 44 |
-| nicht aussagekräftig | 98 (64 einfarbig, 34 fast leer; 47 davon `Delphis/Map/Standard`, der Rest Alphatest-, Masken-, DepthOnly- und ähnliche Shader) |
-| nicht unterstützt | 15 (11 Speicherpuffer, 4 Cube-Textur) |
-| **aussagekräftig** | **387** |
+| Result | Pairs |
+|---|---:|
+| Pass (≤1 level) | **332** (155 bit-identical, 177 within one level) |
+| Near (≤3) | 11 |
+| Fail | 44 |
+| Uninformative | 98 (64 monochrome, 34 almost empty; 47 are `Delphis/Map/Standard`, remainder alpha-test, mask, DepthOnly, similar shaders) |
+| Unsupported | 15 (11 memory buffer, 4 Cube texture) |
+| **Informative** | **387** |
 
-**Quote (aussagekräftige Paare): 85,8 % bestanden im Standardmodus** (332 von 387, 88,6 % einschließlich „knapp“). Mit der Ryujinx-Näherung bei fp16 herausgerechnet (nächster Abschnitt): **95,1 %** (368 von 387). Die aussagekräftigen Paare stammen aus 55 der 62 Shader. Die mittlere Abweichung über alle Kanalwerte beträgt bei den bestandenen Paaren im Mittel 0,008 Stufen (höchstens 0,21). Teilmengen (Standardmodus bzw. kompatibel): Paare mit TEX.B 331 von 386 bzw. 367, mit HSETP2 cbuf 89 von 128 bzw. 117, mit HSETP2 imm 50 von 73 bzw. 71, mit TEX.B im LOD-Modus `LL` 76 von 103 bzw. 93. Paare ohne gepackte Halbpräzisions-Ergebnisse bestehen zu 100 % (159 von 159).
+**Rate among informative pairs: 85.8% pass in standard mode** (332/387; 88.6% including “near”). Removing differences caused by Ryujinx fp16 approximation (next section): **95.1%** (368/387). Informative pairs come from 55 of 62 shaders. Mean difference across all channel values for passing pairs is 0.008 levels on average (maximum 0.21). Subsets (standard / compatibility mode): pairs with TEX.B 331/386 and 367; HSETP2 cbuf 89/128 and 117; HSETP2 imm 50/73 and 71; TEX.B in LOD `LL` 76/103 and 93. Pairs without packed-half results pass at 100% (159/159).
 
-Beispielbilder (Referenz, Übersetzung, Differenz ×8) liegen unter `work/shaders/out/fidelity/` und gehören nicht ins Repo. Alle Zahlen stehen in `work/shaders/fidelity_report.json` (lokal).
+Example images (reference, translation, difference ×8) are under `work/shaders/out/fidelity/` and must stay out of repository. All figures are in local `work/shaders/fidelity_report.json`.
 
-### 11.3 Ursachen der Abweichungen
+### 11.3 Causes of differences
 
-**1. Ryujinx rundet bei fp16 nicht (55 Paare, 52 davon nur im Fragment-Shader).** Unity-Shader nutzen auf der Switch `half`-Variablen; die Hardware rechnet HADD2/HMUL2/HFMA2 in fp16 und rundet jedes Ergebnis auf Halbpräzision. Der Ryujinx-Übersetzer entfernt das Pack/Unpack-Paar zwischen zwei Halb-Befehlen, die Referenz rechnet dort in fp32 ohne Rundung. Beleg:
+**1. Ryujinx does not round fp16 (55 pairs; 52 fragment-only).** Unity shaders use `half` variables on Switch; hardware runs HADD2/HMUL2/HFMA2 in fp16 and rounds every result to half precision. Ryujinx translator removes pack/unpack pair between half instructions, so reference computes in fp32 without rounding. Evidence:
 
-- Am Paar 2801 (`UI/Blur`, einfach, eine Textur) steht in der Referenz `fma(_54, -9.0, _48)` in fp32, wo unsere Übersetzung nach fp16 rundet. Rundet man in einer Kopie der Referenz diese zehn Werte (`float(half(x))`), sinkt die größte Abweichung von 16 auf 1 Stufe.
-- Der Schalter `--half-compat` bildet das Ryujinx-Verhalten nach (ein ungerundeter `float2`-Schatten je Register, das Halb-Befehle schreiben, `translate.c` `hstore()`). Damit bestehen 36 der 55 Paare, darunter bitgleiche.
-- Alle 55 Paare mit Abweichung benutzen Halb-Befehle mit gepacktem Ergebnis (in Vertex oder Fragment); die 159 Paare ohne solche bestehen alle.
+- Pair 2801 (`UI/Blur`, simple, one texture): reference has `fma(_54, -9.0, _48)` in fp32 where our translation rounds to fp16. Rounding these ten values in a copy of reference (`float(half(x))`) reduces max difference from 16 to 1 level.
+- `--half-compat` imitates Ryujinx behavior (unrounded `float2` shadow per register written by half instructions, `translate.c` `hstore()`). 36 of 55 pairs then pass, including bit-identical pairs.
+- All 55 differing pairs use packed-result half instructions in vertex or fragment; all 159 pairs without them pass.
 
-**Welche Seite ist „richtig“?** *Vermutet:* unsere (die Hardware rundet), aber es gibt keine Hardware-Referenz in diesem Test. Ryujinx ist eine Näherung, und auch `--half-compat` bildet sie nur grob nach (Ryujinx rundet an einigen Stellen doch, die Referenz enthält vereinzelt `half2(`). Für 1:1 gilt das Standardverhalten; der Treue-Test kann dafür keinen Beweis liefern. Ein Abgleich mit einem Referenzbild der Hardware oder eines Emulators mit fp16-Rundung steht aus (Teil 3).
+**Which side is “correct”?** *Suspected:* ours (hardware rounds), but this test has no hardware reference. Ryujinx is an approximation; `--half-compat` also only approximates it (Ryujinx does round in some places; reference occasionally contains `half2(`). Standard behavior is for 1:1 fidelity; this test cannot prove it. Hardware image or emulator reference with fp16 rounding remains open (Part 3).
 
-**2. Reste nach `--half-compat` (19 Paare, 4,9 %).**
+**2. Remainders after `--half-compat` (19 pairs, 4.9%).**
 
-- 3 Paare (`Mitake/MitakeStandardBumpShader` 73 und 74, `Delphis/Character/Standard` 106): 5 bis 6 Pixel von 16.384 (0,04 %) springen zwischen 0 und 255 (chaotischer Pfad, Kantenpixel); der Rest des Bildes ist ≤ 1 Stufe.
-- 15 Paare `Delphis/Map/Standard`: 61 oder 99 Pixel (0,4 bis 0,6 %) sind bei uns 0, in der Referenz farbig. **Per Bisektion** (Unterbrechen des Shaders nach Anweisung k und Ausgabe eines „irgendein Register ist NaN“-Flags) gilt am Paar 362: Die 61 abweichenden Pixel sind genau die Pixel, in denen unsere Übersetzung irgendwo NaN hat; das erste NaN entsteht in einer Kette aus Halb-Befehlen (`rsqrt` einer fp16-Summe, danach `inf * 0`). Das passt zu einem fp16-Überlauf bei den extremen synthetischen Werten, den die fp32-Referenz nicht hat. Nicht bewiesen, ob jede Instanz dieser Gruppe darauf beruht.
-- Paar 2452 (`Map/Standard`): größte Abweichung 6, 43 Pixel; nicht analysiert.
+- 3 pairs (`Mitake/MitakeStandardBumpShader` 73 and 74, `Delphis/Character/Standard` 106): 5–6 of 16,384 pixels (0.04%) flip between 0 and 255 (chaotic path, edge pixels); rest of image ≤1 level.
+- 15 `Delphis/Map/Standard` pairs: 61 or 99 pixels (0.4–0.6%) are 0 in ours and colored in reference. **By bisection** (stop shader after instruction k and output “any register is NaN” flag), for pair 362 the 61 mismatching pixels are exactly those where our translation has NaN somewhere; first NaN occurs in half-instruction chain (`rsqrt` of fp16 sum, then `inf * 0`). Consistent with fp16 overflow at extreme synthetic values, absent in fp32 reference. Not proven for every instance of this group.
+- Pair 2452 (`Map/Standard`): max difference 6, 43 pixels; unanalyzed.
 
-**3. Nicht die Ursache:** Bindung, Registerbelegung, Interpolation und Clip-Raum. Die Texturschlüssel stimmen in 970 von 970 Stufen überein, die Mischvarianten zeigen keine Schnittstellenfehler, und alle 332 + 36 bestandenen Paare nutzen dieselben Bindungen. `noperspective`/`flat`/`centroid` kommen in den 500 Referenzen nicht vor und sind damit ungeprüft.
+**3. Not the cause:** binding, register allocation, interpolation, clip space. Texture keys match in 970/970 stages, mixed variants show no interface errors, and all 332 + 36 passing pairs use same bindings. `noperspective`/`flat`/`centroid` do not occur in 500 references, so they remain untested.
 
-### 11.4 Grenzen des Tests
+### 11.4 Test limits
 
-- Synthetische Eingaben: Extreme (NaN, Inf, Überlauf) treten häufiger auf als im Spiel. Ein bestandener Test belegt Gleichheit mit der Referenz für diese Eingaben, keine Fehlerfreiheit.
-- Die Referenz ist Ryujinx (SPIR-V → spirv-cross → Metal), nicht die Hardware. Wo Ryujinx abweicht (fp16), kann sie nicht als Maß dienen.
-- 98 von 500 Paaren sind nicht aussagekräftig; `Delphis/Map/Standard` (2.570 der 2.901 Einträge) ist in der Stichprobe mit 180 Paaren, davon 133 aussagekräftig, vertreten, die Verteilung seiner Varianten wurde nicht untersucht. Ein Lauf über alle 2.901 Paare dauert mit der Profilsuche mehrere Stunden und wurde nach etwa 290 Paaren abgebrochen (Zwischenstand dort: 160 bestanden von 186 aussagekräftigen bei `Map/Standard`).
-- Eine Zeichnung, 2D-Texturen, `rgba8Unorm`, feste Sampler (kein Vergleichssampler, kein Rand), keine Tiefe/Stencil/Blend, keine Cube-/Array-/Shadow-Texturen, keine Speicherpuffer.
-- Die Eingabeprofile sind geraten (welcher Cbuf-Bereich eine Matrix ist, kennt der Test nicht).
+- Synthetic inputs: extremes (NaN, Inf, overflow) occur more often than in game. A passing result confirms equality with reference for those inputs, not bug-free behavior.
+- Reference is Ryujinx (SPIR-V → spirv-cross → Metal), not hardware. Where Ryujinx differs (fp16), it cannot serve as ground truth.
+- 98/500 pairs are uninformative. `Delphis/Map/Standard` (2,570 of 2,901 entries) has 180 sampled pairs, 133 informative; distribution of its variants was not analyzed. Running all 2,901 with profile search takes hours; stopped after about 290 pairs (at that point 160 of 186 informative `Map/Standard` pairs passed).
+- One draw, 2D textures, `rgba8Unorm`, fixed samplers (no comparison sampler, no border), no depth/stencil/blend, no Cube/array/shadow textures, no memory buffers.
+- Input profiles are guesses (test does not know which cbuf range contains a matrix).
 
-## 12. Offene Punkte
+## 12. Open items
 
-1. **fp16-Rundung gegen die Hardware prüfen** (11.3): Referenzbild vom Gerät oder aus einem Emulator, der in fp16 rundet; bis dahin Standardverhalten beibehalten.
-2. **Reste der Gruppe 11.3 Nr. 2** auf Befehlsebene klären (Bisektion für die übrigen Paare, Mikrotest für HFMA2/HMUL2 mit Überlauf).
-3. **Cube-, Array-, Shadow-Texturen und Speicherpuffer** im Harness ergänzen (vier Cube-Paare im Test, `FxSystem/Particle` braucht `vp_s0`).
-4. **`noperspective`, `flat`, `centroid`** gegen die Referenz absichern (`noperspective_mask` wird im Übersetzer weiter nie gesetzt).
-5. **Einzelbefehl-Mikrotests** (MUFU-Varianten, F2I-Rundung, SHF/BFE/PRMT/XMAD, FTZ/Denormale) und **Gegenprobe des Decoders**: Die Gesamtshader-Tests decken nur die Befehle ab, die im Korpus vorkommen und deren Ergebnis das Bild beeinflusst.
-6. **Härtung** (Aufgabe 9 oben), **GLSL-Zweig** (TEX.B/`half_compat` nur MSL).
-7. **Harness:** Ein Vertex-Shader ohne `[[stage_in]]` bringt den Renderer zum Absturz (`vertexAttributes!` ist `nil`); vorbestehend, nicht geändert.
-8. **Dead-Code der Handle-Wörter** (Abschnitt 9) aus der MSL entfernen.
+1. **Check fp16 rounding against hardware** (11.3): device reference image or emulator that rounds fp16; retain standard behavior until then.
+2. **Resolve section 11.3 item 2 remainder** at instruction level (bisect other pairs, microtest HFMA2/HMUL2 overflow).
+3. **Add Cube, array, shadow textures, and memory buffers** to harness (4 Cube pairs in test; `FxSystem/Particle` needs `vp_s0`).
+4. **Verify `noperspective`, `flat`, `centroid`** against reference (`noperspective_mask` remains unset in translator).
+5. **Instruction microtests** (MUFU variants, F2I rounding, SHF/BFE/PRMT/XMAD, FTZ/denormals) and **decoder cross-check**: full shader tests cover only corpus instructions whose result affects image.
+6. **Hardening** (task 9 above), **GLSL path** (TEX.B/`half_compat` are MSL only).
+7. **Harness:** vertex shader without `[[stage_in]]` crashes renderer (`vertexAttributes!` is nil); pre-existing, unchanged.
+8. **Dead handle-word accesses** (section 9) should be removed from MSL.
 
-## 13. Reproduktion (Teil 2)
+## 13. Reproduction (Part 2)
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-make -C shader_translator test                                   # 72 + 14 + 6 Prüfungen
+make -C shader_translator test                                   # 72 + 14 + 6 checks
 swift build -c release --package-path scripts/shader_harness --scratch-path work/shaders/build
-python3 -m unittest scripts/tests/test_shader_fidelity.py       # 24 Tests, synthetisch
-PYTHONPATH=tools/pydeps python3 scripts/shader_fidelity.py index # einmalig: work/shaders/prog_blob.json
-python3 scripts/shader_cache_extract.py                          # alle SPIR-V-Module nach work/shaders/spirv (203 MB)
-python3 scripts/shader_fidelity.py run --count 500 --jobs 4      # ca. 10 Minuten, Bericht work/shaders/fidelity_report.json
-python3 scripts/shader_fidelity.py run --only 2801 103           # einzelne Cache-Indizes
+python3 -m unittest scripts/tests/test_shader_fidelity.py       # 24 synthetic tests
+PYTHONPATH=tools/pydeps python3 scripts/shader_fidelity.py index # once: work/shaders/prog_blob.json
+python3 scripts/shader_cache_extract.py                          # all SPIR-V modules to work/shaders/spirv (203 MB)
+python3 scripts/shader_fidelity.py run --count 500 --jobs 4      # about 10 minutes, report work/shaders/fidelity_report.json
+python3 scripts/shader_fidelity.py run --only 2801 103           # individual cache indices
 ```
 
-Der Lauf legt je Paar unter `work/shaders/fidelity/<index>/` Spezifikationen, MSL und die Eingaben des gewählten Profils ab (zusammen etwa 150 MB bei 500 Paaren) und Bilder unter `work/shaders/out/fidelity/` (etwa 6 MB).
+For each pair, run creates specifications, MSL, and chosen-profile inputs under `work/shaders/fidelity/<index>/` (about 150 MB total for 500 pairs), and images under `work/shaders/out/fidelity/` (about 6 MB).
 
-## 14. Teil 3 (Vorschlag)
+## 14. Part 3 (proposal)
 
-**Stand Teil 4 (2026-10-19):** HLSL-Pfad umgesetzt (`docs/shader-unity-integration.md`); das HLSL-Backend liest jetzt globalen Speicher über `ByteAddressBuffer mx_gmem` (180 Partikel-Blobs; 4.272 von 4.276 Blobs übersetzbar, offen: 4 Fragment-Blobs mit Subgroup-Shuffle) und macht registerindizierte cbuf-Zugriffe als `mx_cbr<k>` ersetzbar (Instancing). Der Texturindex der Maxwell-Tabelle entspricht dem Inventar-Feld `sampler`, nicht `index` (Abschnitt 4.1 dort). MSL-Option `--gmem-base`/`--gmem-size` für den Harness.
+**Status of Part 4 (2026-10-19):** HLSL path implemented (`docs/shader-unity-integration.md`); HLSL backend now reads global memory through `ByteAddressBuffer mx_gmem` (180 particle blobs; 4,272/4,276 blobs translatable, 4 fragment blobs with subgroup shuffle remain) and makes register-indexed cbuf accesses replaceable as `mx_cbr<k>` (instancing). Maxwell texture-table index corresponds to inventory field `sampler`, not `index` (section 4.1 there). MSL options `--gmem-base`/`--gmem-size` are available for harness.
 
-**Unity-Integration**
+**Unity integration**
 
-- Ausgabeform entscheiden (`referenz-las-shader.md`, Abschnitt 9): HLSL-Backend für ShaderLab oder MSL als natives Plugin. Die Ressourcenkarte ist so gebaut, dass beides sie nutzen kann.
-- Konstantenpuffer benennen: cbuf 3 und höher gegen das Parameter-Layout der geparsten Shaderdaten (`UnityPerDraw`, `UnityPerCamera`, Material, Instancing) legen; Offsets in `staticMinOffset`/`staticEndOffset` zeigen, was gelesen wird. Compiler-Konstanten (cbuf 1) als `constant`-Array einbetten.
-- Texturbindung: Tabelleneintrag `(textureWordOffset − 0x568) / 8` auf die Textur-Eigenschaft des Materials abbilden; Sampler aus den Unity-Sampler-Zuständen (Filter, Wrap, Anisotropie) statt der festen Test-Sampler.
-- Y- und Tiefenkonventionen (`flip_y`, `depth_minus_one`) an Unity anpassen; die Pragmas oder Compile-Optionen aus Abschnitt 10 in Unitys Metal-Pipeline durchsetzen (oder die Wirkung prüfen).
+- Choose output format (`referenz-las-shader.md`, section 9): HLSL backend for ShaderLab, or MSL as native plugin. Resource map supports both.
+- Name constant buffers: map cbuf 3+ against parsed shader parameter layout (`UnityPerDraw`, `UnityPerCamera`, material, instancing); offsets in `staticMinOffset`/`staticEndOffset` show what is read. Embed compiler constants (cbuf 1) as `constant` array.
+- Texture binding: map driver-table entry `(textureWordOffset − 0x568) / 8` to material texture property; use sampler state from Unity (filter, wrap, anisotropy) instead of fixed test samplers.
+- Adapt Y and depth conventions (`flip_y`, `depth_minus_one`) to Unity; enforce pragmas or compile options from section 10 in Unity Metal pipeline (or verify their effect).
 
-**Varianten und Keywords**
+**Variants and keywords**
 
-- Zuordnung Programm → Blob-Hash (liegt lokal in `prog_blob.json`) in einen Build-Schritt übernehmen, Auswahl nach Unity-Keyword-Sätzen; 13.710 Programme → 4.276 Blobs → 2.859 Codes, Deduplizierung im Build. Der Test deckt je Cache-Eintrag eine Variante ab; die Verteilung innerhalb von `Delphis/Map/Standard` und `FxSystem/Particle` ist offen.
+- Move program → blob hash mapping (local `prog_blob.json`) into build stage; select by Unity keyword set; 13,710 programs → 4,276 blobs → 2,859 code bodies, deduplicated at build. Test covers one variant per cache entry; distribution inside `Delphis/Map/Standard` and `FxSystem/Particle` is open.
 
-**Effekte**
+**Effects**
 
-- Partikel (`FxSystem/Particle`: Instanzdaten im Speicherpuffer), Cube-Texturen (Reflexion), Post-Effekte und GrabPass brauchen Harness-Erweiterungen und feste Zeitpunkte für den Bildvergleich.
-- Treue-Test auf Zeitverläufe und mehrere Zeichnungen (Mehrpass, Tiefentest, Blending aus den geparsten Pass-Zuständen) ausdehnen.
+- Particles (`FxSystem/Particle`: instance data in memory buffer), Cube textures (reflection), post effects, and GrabPass need harness extensions and fixed capture points for image comparison.
+- Extend fidelity test to time sequences and multiple draws (multipass, depth testing, blending from parsed pass state).
 
-**Absicherung**
+**Verification**
 
-- Offene Punkte 1 bis 8 aus Abschnitt 12.
+- Open items 1–8 from section 12.
 
-## 15. Reproduktion (Teil 1)
+## 15. Reproduction (Part 1)
 
 ```sh
 make -C shader_translator test
 PYTHONPATH=tools/pydeps python3 scripts/shader_extract_blobs.py
-python3 - <<'EOF'   # Listendatei (Pfade relativ zum Repo-Root)
+python3 - <<'EOF'   # list file (paths relative to repository root)
 import json
 d = "work/shaders/blobs"
 with open(f"{d}/list.txt", "w") as f:
@@ -345,4 +345,4 @@ shader_translator/build/maxwell2msl --survey --batch work/shaders/blobs/list.txt
 python3 shader_translator/survey_report.py work/shaders/blobs/index.json work/shaders/blobs/survey.jsonl
 ```
 
-Testbestand: `shader_translator/tests/test_translate.c` (Kern und Container, Survey-Sammlung, Codeende), `tests/test_cli.py` (Exit-Codes, JSON, Batch, Schlüsseloptionen), `tests/test_report.py` (Histogramm), `scripts/tests/test_shader_extract.py` (Container-Parser, Codeende, Deduplizierung). Alle mit synthetischen Eingaben, ohne Spieldaten.
+Test files: `shader_translator/tests/test_translate.c` (core and container, survey collection, code end), `tests/test_cli.py` (exit codes, JSON, batch, key options), `tests/test_report.py` (histogram), `scripts/tests/test_shader_extract.py` (container parser, code end, deduplication). All use synthetic inputs and no game data.

@@ -1,94 +1,92 @@
-# Kampfablauf, Scheibe 5: Handler-Wirkungen, Seiten-/Feldeffekte, Sonderattacken, Preisgeld
+# Battle Flow, Slice 5: Handler Effects, Side/Field Effects, Special Moves, Prize Money
 
-Stand: Scheibe 5, aufbauend auf `docs/kampf-spezifikation-4.md` (Ablauf-Zustandsmaschine). Code: `unity/Assets/Scripts/BattleFlow`
-(`BattleEngine.Effects.cs`, `BattleEngine.SpecialMoves.cs`, `PrizeFormula.cs` neu; `BattleEngine*.cs`, `BattleMon.cs`, `FlowTypes.cs` erweitert).
-Prüfstufen **[O]**, **[OK]**, **[P]** wie in Spezifikation 2 (Abschnitt 0): **[P]** = aus Ghidra-Pseudocode gelesen, nicht vom Orakel bestätigt; **[A]** = Annahme ohne Beleg.
-Wichtig: Die Handler-Tabellen der Scheibe 3 wirken nur über Ereignisvariablen; die hier ergänzte **Section-Ebene** (Meldungen, Zustandsänderungen, Ereignisaufrufe) ist in C# nachgebaut und deshalb überwiegend **[P]**.
+As of slice 5, building on `docs/kampf-spezifikation-4.md` (flow state machine). Code: `unity/Assets/Scripts/BattleFlow`
+(`BattleEngine.Effects.cs`, `BattleEngine.SpecialMoves.cs`, `PrizeFormula.cs` added; `BattleEngine*.cs`, `BattleMon.cs`, `FlowTypes.cs` extended).
+Evidence levels **[O]**, **[OK]**, **[P]** as in spec 2 (section 0): **[P]** = read from Ghidra pseudocode, not confirmed by oracle; **[A]** = assumption without evidence.
+Important: slice 3 handler tables act only through event variables; the added **section layer** here (messages, state changes, event calls) is recreated in C# and therefore mostly **[P]**.
 
-## 1. Ergebnis in Zahlen
+## 1. Results in numbers
 
 | | |
 |---|---|
-| Tests (dotnet-Wegwerfprojekt, inkl. 101 bestehender Battle-Tests der Unity-Suite) | 157 grün (144 → 157; neu: 13 in `BattleFlowEffectTests`) |
-| Echte Trainerteams (lokal, `work/masterdata`) | **706** vorhanden; 694 ohne `NotImplemented` durchgespielt (98,3 %); die **ersten 60** Teams: **60/60** ohne `NotImplemented` |
-| Teams, deren Attacken alle unterstützt sind (statisch) | 667/706 (94,5 %); erste 60: 58/60 |
-| Sonderattacken der Kategorien 10–13 | ca. 57 Attackennummern in `ResolveSpecialMove` |
-| Neue Orakel-Fixtures | keine (siehe Abschnitt 6) |
+| Tests (throwaway dotnet project, including 101 existing Unity-suite battle tests) | 157 passing (144 → 157; 13 new in `BattleFlowEffectTests`) |
+| Real trainer teams (local, `work/masterdata`) | **706** available; 694 completed without `NotImplemented` (98.3%); the **first 60** teams: **60/60** without `NotImplemented` |
+| Teams whose moves are all supported (static analysis) | 667/706 (94.5%); first 60: 58/60 |
+| Special moves in categories 10–13 | about 57 move IDs in `ResolveSpecialMove` |
+| New oracle fixtures | none (see section 6) |
 
-Fehlend in Trainerteams (Nummer: Zahl Vorkommen in Teams): 164 Delegator (6), 102 Imitator (5), 214 Schlafrede (5), 580 Gras-Feld (5), 272 Rollentausch (4), 668 (4), 501 Schnellschutz (4), 277 Magiemantel (2), 494 (2), 356 Schwerkraft, 513, 118 Metronom, 286 Bann, 469 Rundumschutz, 472, 604 (je 1).
+Missing moves in trainer teams (ID: occurrences across teams): 164 Substitute (6), 102 Mimic (5), 214 Sleep Talk (5), 580 Grassy Terrain (5), 272 Skill Swap (4), 668 (4), 501 Quick Guard (4), 277 Magic Coat (2), 494 (2), 356 Gravity, 513, 118 Metronome, 286 Imprison, 469 Wide Guard, 472, 604 (one each).
 
-## 2. Handler-Wirkungen (Section-Ebene)
+## 2. Handler effects (section layer)
 
-Die Engine mischt die Tabellen der Scheibe 3 (`TokuseiHandlers`, `ItemHandlers`) mit eigenen Wirkungs-Handlern (`RegisterAbility`/`RegisterItem`; es läuft pro Faktor nur der erste Eintrag je Ereignis, daher `Merge` ohne Doppelungen).
+The engine merges slice 3 tables (`TokuseiHandlers`, `ItemHandlers`) with custom effect handlers (`RegisterAbility`/`RegisterItem`; only the first entry per event runs for each factor, so `Merge` avoids duplicates).
 
-| Bereich | Umsetzung | Stufe |
+| Area | Implementation | Level |
 |---|---|---|
-| Eintritt (Ereignis `MEMBER_IN`) | Wird bei Spielstart (nur wenn ein Anführer einen Eintritts-Effekt hat, damit die Zufallsfolge der Scheibe 4 unverändert bleibt), bei Wechsel und beim Ersatz aufgerufen. Bedroher 22 (Angriff −1 des Gegners), Wetterfähigkeiten 2/45/70/117 (Niesel, Sandsturm, Sonnenschein, Schneewarnung), Beeren 155/158 bei Eintritt | [P] |
-| Rundenende (Reihenfolge) | Wetter → Ereignis 145 (0x91) → Zustände → Seiten → Feld → Ereignis 146 (0x92) → Ereignis 147 (0x93); `Section_TurnCheck_Event` ruft erst global (ID 0x1f), dann je Pokémon in Initiativ-Reihenfolge | [P] |
-| Ereignis 145 | Resteessen 234 (1/16), Schlammbrühe 281 (Gift-Typ heilt 1/16, sonst Schaden 1/8), Wunsch (Positionseffekt), Zukunftsvorhersage (Positionseffekt, 3 Zählschritte) | [P] |
-| Ereignis 146 | Toxik-Orb 272 und Heiß-Orb 273 (Selbstvergiftung/Brand), Abstreifen 61 | [P] |
-| Ereignis 147 | Rundenende-Prüfung für Wirkungen nach 146 (Reihenfolge verdrahtet, keine eigenen Handler) | [P] |
-| Wetter-Reaktion (Ereignis 155) | Wetterschaden läuft über `Event_CheckWeatherReaction`: Variablen POKEID, WEATHER, `FAIL_FLAG` (Rewrite-Once), VOLUME; Fähigkeiten 8/159/81/142/98 (Schutz vor Sandsturm/Hagel) setzen `FAIL_FLAG`; Wetter-Heilung/-Schaden 115/44/87/94 | [P] |
-| Wetter-Initiative | 33/34/146/202 verdoppeln die Initiative bei passendem Wetter (Ereignis `CALC_AGILITY`) | [P] |
-| Schwebe | `IsFloating` (Levitation 26, Magnetflug): Boden-Attacken wirken nicht, Fallen (Stacheln usw.) treffen nicht | [P] |
-| Beeren | Sitrus 158 (25 % der KP), Orangebeere 155 (10 KP) nach Schaden/bei Eintritt; Verbrauch (`ConsumeItem`, Log `ItemConsumed`) | [P] |
-| Wahlitems | Wahlband/Wahlschal/Wahlglas (220/297/287): Sperre auf die erste Attacke (`ChoiceLock`), Sperre fällt beim Wechsel | [P] |
-| Lebensorb 270 | Rückstoß 1/10 der max. KP nach Schaden (Magieschutz 98 blockt) | [P]; der Teiler 1/10 ist aus dem Item-Handler gelesen |
-| Überlebens-Effekte | Ausdauer, Robustheit 5 (nur bei vollen KP), Fokusschärpe 275 (verbraucht), Fokusband 230 (Chance = `HoldPower`) | [P] |
-| Kontakt-Fähigkeiten | 9/38/49 (30 % Status beim Berührer), Steinhaupt 69 (kein Rückstoß) | [P] |
-| Weitere | Synchro 28, Aqua-Ring (Zustand 36, 1/16), Schutz vor Statussenkung durch 29/73/51/52, Immunitäts-Fähigkeiten 15/72/7/17/41/40/20, Heiligtum, Weißer Nebel, Lock-On (Zustand 29) und Tiefschlaf-/Treffsicherheits-Fähigkeit 99 | [P] |
+| Entry (event `MEMBER_IN`) | Called at battle start (only if a lead has an entry effect, preserving slice 4 random sequence), on switch, and on replacement. Intimidate 22 (opponent Attack −1), weather abilities 2/45/70/117 (Drizzle, Sand Stream, Drought, Snow Warning), berries 155/158 on entry | [P] |
+| End of turn (order) | Weather → event 145 (0x91) → status → sides → field → event 146 (0x92) → event 147 (0x93); `Section_TurnCheck_Event` first calls global (ID 0x1f), then each Pokémon in speed order | [P] |
+| Event 145 | Leftovers 234 (1/16), Black Sludge 281 (Poison type heals 1/16, otherwise takes 1/8 damage), Wish (position effect), Future Sight (position effect, 3 counters) | [P] |
+| Event 146 | Flame Orb 272 and Toxic Orb 273 (self-poison/burn), Shed Skin 61 | [P] |
+| Event 147 | End-of-turn check for effects following 146 (order wired; no dedicated handlers) | [P] |
+| Weather reaction (event 155) | Weather damage runs through `Event_CheckWeatherReaction`: variables POKEID, WEATHER, `FAIL_FLAG` (rewrite-once), VOLUME; abilities 8/159/81/142/98 (protection from sandstorm/hail) set `FAIL_FLAG`; weather healing/damage 115/44/87/94 | [P] |
+| Weather speed | 33/34/146/202 double Speed in matching weather (event `CALC_AGILITY`) | [P] |
+| Levitation | `IsFloating` (Levitate 26, Magnet Rise): Ground moves do not affect, entry hazards (Spikes, etc.) do not hit | [P] |
+| Berries | Sitrus 158 (25% HP), Oran 155 (10 HP) after damage/on entry; consumption (`ConsumeItem`, log `ItemConsumed`) | [P] |
+| Choice items | Choice Band/Scarf/Specs (220/297/287): lock to first move (`ChoiceLock`), lock clears on switch | [P] |
+| Life Orb 270 | recoil of 1/10 max HP after damage (Magic Guard 98 blocks it) | [P]; divisor 1/10 read from item handler |
+| Survival effects | Stamina, Sturdy 5 (only at full HP), Focus Sash 275 (consumed), Focus Band 230 (chance = `HoldPower`) | [P] |
+| Contact abilities | 9/38/49 (30% status on attacker), Rock Head 69 (no recoil) | [P] |
+| Other | Synchronize 28, Aqua Ring (condition 36, 1/16), protection from stat drops by 29/73/51/52, immunity abilities 15/72/7/17/41/40/20, Safeguard, Mist, Lock-On (condition 29), and sleep/accuracy ability 99 | [P] |
 
-## 3. Seiten-, Feld- und Sonderattacken
+## 3. Side, field, and special moves
 
-Seiteneffekt-Nummern des Originals (`work/battleevents/handler_map.json`): 0 Reflektor, 1 Lichtschild, 2 Heiligtum, 3 Weißer Nebel, 4 Rückenwind, 5 Zauberschild (nicht umgesetzt), 6 Stachler, 7 Giftspitzen, 8 Tarnsteine, 14 Klebenetz, 17 Aurorawall.
+Original side-effect IDs (`work/battleevents/handler_map.json`): 0 Reflect, 1 Light Screen, 2 Safeguard, 3 Mist, 4 Tailwind, 5 Crafty Shield (not implemented), 6 Spikes, 7 Toxic Spikes, 8 Stealth Rock, 14 Sticky Web, 17 Aurora Veil.
 
-| Effekt | Dauer / Regel | Stufe |
+| Effect | Duration / rule | Level |
 |---|---|---|
-| Reflektor, Lichtschild, Aurorawall | 5 Runden; Ereignis 90 mit Faktor 0x800 (Einzelkampf), nur bei passender Schadensart und ohne Volltreffer; einmal je Treffer (Hilfsvariablen 100/101) | [P] |
-| Heiligtum, Weißer Nebel | 5 Runden; Heiligtum blockt Hauptzustände und Verwirrung der Gegenseite, Nebel Statussenkungen | [P] |
-| Rückenwind | `MakeTurn(…,4)`, Initiative ×2 (Faktor 0x2000, Ereignis 19) | [P] |
-| Stachler | Schichten 1–3: 1/8, 1/6, 1/4 der max. KP beim Eintritt, nicht für Schwebende | [P] |
-| Giftspitzen | 1 Schicht Gift, 2 Schichten schweres Gift (`MakeMoudokuCont`); Gift-Typen nehmen sie auf | [P] |
-| Tarnsteine | Teiler aus der Tabelle `{256,256,128,64,32,16,8,4,2,1,1,1,1}` (Typ-Effektivität, aus der ELF `DAT_03e59d2c` gelesen) | [OK] (Tabelle gelesen), Anwendung [P] |
-| Klebenetz | Initiative −1 beim Eintritt | [P] |
-| Raum-Effekte | Bereich der Ordnung (433): FIELD-Faktor auf Ereignis 19 setzt `TRICK_FLAG`; Dauer 5 Runden; erneutes Einsetzen beendet ihn **[A]** | [P] |
+| Reflect, Light Screen, Aurora Veil | 5 turns; event 90 with factor 0x800 (single battle), only for matching damage category and no critical hit; once per hit (helper variables 100/101) | [P] |
+| Safeguard, Mist | 5 turns; Safeguard blocks major status and confusion from opponent's side, Mist blocks stat drops | [P] |
+| Tailwind | `MakeTurn(…,4)`, Speed ×2 (factor 0x2000, event 19) | [P] |
+| Spikes | Layers 1–3: 1/8, 1/6, 1/4 max HP on entry; does not affect levitating Pokémon | [P] |
+| Toxic Spikes | 1 layer poisons, 2 layers badly poison (`MakeMoudokuCont`); Poison types absorb them | [P] |
+| Stealth Rock | Divisor from table `{256,256,128,64,32,16,8,4,2,1,1,1,1}` (type effectiveness, read from ELF `DAT_03e59d2c`) | [OK] (table read); application [P] |
+| Sticky Web | Speed −1 on entry | [P] |
+| Room effects | Trick Room (433): FIELD factor on event 19 sets `TRICK_FLAG`; lasts 5 turns; setting it again ends it **[A]** | [P] |
 
-Sonderattacken (`BattleEngine.SpecialMoves.cs`): Schutz 197/182/596/673 (Wiederholung: Erfolg 1/3ⁿ, **[A]**; scheitert als Letzter der Runde), Ausdauer 203, Fluch 174 (Geist/Nicht-Geist), Verhöhner 269 (3 bzw. 4 Runden, Zug **[P]**),
-Fokusenergie 116, Erholung/Rest 156, Wasserring 392, Dunkelnebel 114, Fluchtverbot 212/335, Brüller/Wirbelwind 46/18 (Wildkampf: Kampfende `RunEnemy`), Zukunftsvorhersage 248, Stafette 226; Zugzwang (Zustand 23, 3 Runden **[A]**) und Aussetzer (Zustand 13, 4 Runden **[A]**) sperren in `ExecuteFight`/`CheckFirstFail`,
-sowie weitere Attacken der Nummern 194, 487, 100, 199, 170, 244, 384, 187, 504, 220, 273, 215, 432, 367, 180, 271, 415, 393, 262, 150 (Plätscher), 227, 50, 383, 254, 502/270/266 (ohne Partner: `NoTarget`).
-Die Zählung der Kategorien: Anteil der Attacken-Slots in Kategorien 10–13 in den 706 Teams ca. 11 %.
+Special moves (`BattleEngine.SpecialMoves.cs`): Protect 197/182/596/673 (repeat success 1/3ⁿ, **[A]**; fails if used last in turn), Endure 203, Curse 174 (Ghost/non-Ghost), Taunt 269 (3 or 4 turns, turn **[P]**), Focus Energy 116, Rest 156, Aqua Ring 392, Haze 114, trapping moves 212/335, Roar/Whirlwind 46/18 (wild battle: end battle with `RunEnemy`), Future Sight 248, Baton Pass 226; Torment (condition 23, 3 turns **[A]**) and Disable (condition 13, 4 turns **[A]**) block moves in `ExecuteFight`/`CheckFirstFail`, plus moves with IDs 194, 487, 100, 199, 170, 244, 384, 187, 504, 220, 273, 215, 432, 367, 180, 271, 415, 393, 262, 150 (Splash), 227, 50, 383, 254, 502/270/266 (without a partner: `NoTarget`).
+Share of move slots in categories 10–13 across the 706 teams is about 11%.
 
-## 4. Preisgeld und Wild-Begegnung
+## 4. Prize money and wild encounters
 
-**Preisgeld (`calc.CalcWinMoney`, 0x2076980 / `calcWinMoney_Sub` 0x2076900) [P]:** nur bei Gegner-Typ Trainer (`competitor == 1`):
-`(Gold & 0xFF) × Stufe des LETZTEN Mitglieds der Gegner-Party × 4`; im Doppelkampf (Partys mit ≥ 4 Plätzen) wird der Betrag des zweiten Gegners addiert. `Gold` ist `TrainerData.Gold`.
-Berechnet wird er beim Kampfstart (`MainModule.InitializeCoroutine`), hier beim Sieg (`BattleEngine.PrizeMoney`, Log `PrizeMoney`). Nicht abgebildet: Verdopplungs-Items (Münzamulett) und die Auszahlung — die liegen außerhalb des Kampf-Moduls und konnten nicht belegt werden.
+**Prize money (`calc.CalcWinMoney`, 0x2076980 / `calcWinMoney_Sub` 0x2076900) [P]:** only for trainer opponents (`competitor == 1`):
+`(Gold & 0xFF) × level of the LAST opposing party member × 4`; in double battles (parties with ≥ 4 slots), add the second opponent's amount. `Gold` is `TrainerData.Gold`.
+It is calculated when the battle starts (`MainModule.InitializeCoroutine`), but here on victory (`BattleEngine.PrizeMoney`, log `PrizeMoney`). Not modeled: money-doubling items (Amulet Coin) and payout, which are outside the battle module and could not be verified.
 
-**Niederlage (`CalcLoseMoney` → `CalcPenaltyMoney`, 0x2076c60) [P]:** höchste Stufe der Spieler-Party × `Tabelle[Orden]` × 4, begrenzt auf das vorhandene Geld; Orden außerhalb der Tabelle (Länge 9) wirft im Original einen Fehler.
-Die Tabelle ist ein statisch initialisiertes Byte-Feld (`RuntimeHelpers.InitializeArray`, Datenblock nicht ausgelesen). **[A]:** `{2,4,6,9,12,16,20,24,36}` aus den Vorgängerspielen — `BattleSetup.PenaltyTable` überschreibt sie, sobald die echten Werte gelesen sind.
+**Loss (`CalcLoseMoney` → `CalcPenaltyMoney`, 0x2076c60) [P]:** highest level in player's party × `Table[Badges]` × 4, capped at current money; badge count outside table (length 9) throws an error in the original.
+The table is a statically initialized byte array (`RuntimeHelpers.InitializeArray`, data block not read). **[A]:** `{2,4,6,9,12,16,20,24,36}` from predecessor games — `BattleSetup.PenaltyTable` will override it once actual values are read.
 
-**Wild-Begegnung (Lücke):** Die Generierung (Natur, Wertungen, Fähigkeit, Geschlecht, Begegnungsplatz-Zufall, Stufe) steckt in `EncountTool`/`Pml.PokePara.InitialSpec`, nicht im ausgewerteten Pseudocode (`work/decomp/battle_all` enthält nur `Dpr.Battle.*`).
-`PokemonFactory.CreateWild` bleibt Hilfswerkzeug **[A]**. Der Aufrufer muss Art, Form und Stufe vorgeben. Aufwand: ca. 1–2 Tage (Dekompilat der Begegnungsklassen, Orakel für `InitialSpec`).
+**Wild encounters (gap):** generation (nature, stats, ability, gender, encounter-slot randomization, level) is in `EncountTool`/`Pml.PokePara.InitialSpec`, not in the pseudocode analyzed (`work/decomp/battle_all` contains only `Dpr.Battle.*`).
+`PokemonFactory.CreateWild` remains a helper **[A]**. Caller must provide species, form, and level. Estimate: about 1–2 days (decompile encounter classes, oracle for `InitialSpec`).
 
-## 5. Gegner-KI (Lücke, mit Befund)
+## 5. Opponent AI (gap, with findings)
 
-Die Trainer-KI ist **kein Bytecode**, sondern kompilierter C#-Code: `AiScript.CreateScriptBase` (0x1bc08d0) erzeugt je nach Bit eine der Klassen `BtlAiBasic`, `BtlAiStrong`, `BtlAiExpert`, `BtlAiDouble`, `BtlAiAllowance`, `BtlAiItem`, `BtlAiPokeChange`.
-Umfang des Pseudocodes: Basic 541 KB, Expert 996 KB, Double 306 KB, Strong/Item/PokeChange je 20–31 KB; dazu `BattleAiCommand` (310 KB) und `AiWazaJudge` (47 KB).
-Ableitbar ist damit prinzipiell alles, aber nicht „klar und klein“: Es ist ein Punktesystem (Skript-Befehle erhöhen/senken die Wertung je Attacke, Auswahl nach Höchstwert mit Zufall bei Gleichstand) mit rund einhundert Befehlen und Dutzenden Abfragen (Typen-Effektivität, Schaden aus `BattleSimulator`, Wetter, Zustände).
-Das war in Scheibe 5 **nicht umgesetzt**; ab Scheibe 6 siehe `docs/kampf-spezifikation-6.md` (Struktur, Wertung, Basic/Strong/Allowance/Item/PokeChange umgesetzt und per Orakel geprüft; Expert und Double offen). `RandomEnemyBrain` bleibt der Standard, `IEnemyBrain` ist die Schnittstelle. Schätzung: Basic/Strong ca. 2 Tage, Expert + Double ca. 3–4 Tage, Item-/Wechsel-KI (`AiItemJudge`, `AiPokeChangeJudge`) ca. 1 Tag; Orakel nur für einzelne Rechenbefehle sinnvoll.
+Trainer AI is **not bytecode**; it is compiled C# code: `AiScript.CreateScriptBase` (0x1bc08d0) creates one of `BtlAiBasic`, `BtlAiStrong`, `BtlAiExpert`, `BtlAiDouble`, `BtlAiAllowance`, `BtlAiItem`, `BtlAiPokeChange` depending on bits.
+Pseudocode size: Basic 541 KB, Expert 996 KB, Double 306 KB, Strong/Item/PokeChange 20–31 KB each; plus `BattleAiCommand` (310 KB) and `AiWazaJudge` (47 KB).
+In principle, everything can be derived, but it is not “clear and small”: this is a scoring system (script commands raise/lower each move's score, select highest score with random tie-break) with about a hundred commands and dozens of checks (type effectiveness, damage from `BattleSimulator`, weather, status).
+This was **not implemented** in slice 5; see slice 6, `docs/kampf-spezifikation-6.md` (structure, scoring, Basic/Strong/Allowance/Item/PokeChange implemented and oracle-checked; Expert and Double were open). `RandomEnemyBrain` remains the default; `IEnemyBrain` is the interface. Estimate: Basic/Strong about 2 days, Expert + Double about 3–4 days, item/switch AI (`AiItemJudge`, `AiPokeChangeJudge`) about 1 day; oracle is useful only for individual calculation commands.
 
-## 6. Prüfung
+## 6. Verification
 
-- Orakel: für diese Scheibe **keine** neuen Fixtures — Section-Ebene und Preisgeld sind nur im Pseudocode belegt; die rein arithmetischen Teile (Tarnstein-Tabelle, 1/8·1/6·1/4, Preisgeld-Formel) sind einfache Ganzzahlformeln, getestet in `BattleFlowEffectTests`. Das Orakel (`scripts/battle_oracle_flow.py`, 5900 Fälle) bleibt unverändert grün.
-- Neue Tests (`BattleFlowEffectTests`, 13): Reflektor halbiert (Zufallsfolge gleich), Reflektor endet nach 5 Runden, Tarnsteine bei Eintritt, Stachler-Schichten, Schutz, Bereich der Ordnung, Bedroher, Niesel, Resteessen, Wahlitem-Sperre, Preisgeld (Trainer und Wild), Niederlage-Abzug.
-- Lokal (nicht im Repo-Test, weil `work/masterdata` gebraucht wird): `BattleFlowPlaythroughLocal` spielt alle 706 Teams, Ausgabe in `work/battleflow-playthrough.txt`.
+- Oracle: **no** new fixtures for this slice — section-level behavior and prize money are supported only by pseudocode; the arithmetic parts (Stealth Rock table, 1/8·1/6·1/4, prize formula) are simple integer formulas tested in `BattleFlowEffectTests`. Oracle (`scripts/battle_oracle_flow.py`, 5,900 cases) remains green.
+- New tests (`BattleFlowEffectTests`, 13): Reflect halves damage (same random sequence), Reflect ends after 5 turns, Stealth Rock on entry, Spikes layers, Protect, Trick Room, Intimidate, Drizzle, Leftovers, Choice lock, prize money (trainer and wild), loss penalty.
+- Local (not in repository test, because it needs `work/masterdata`): `BattleFlowPlaythroughLocal` runs all 706 teams, output in `work/battleflow-playthrough.txt`.
 
-## 7. Verbleibende Lücken und Aufwand
+## 7. Remaining gaps and estimates
 
-| Block | Stand | Schätzung |
+| Area | Status | Estimate |
 |---|---|---|
-| Delegator 164, Imitator 102, Schlafrede 214, Rollentausch 272, Magiemantel 277, Bann 286, Metronom 118, Schnell-/Rundumschutz 501/469, Gelände 580/604/472, Schwerkraft 356 | nicht umgesetzt | 1–2 Tage |
-| Restliche Items/Fähigkeiten (siehe `work/battleflow-coverage.txt`: u. a. Beeren mit Statuswirkung, Statuswert-Beeren, Trainer-Items) | teilweise | 2 Tage |
-| Gegner-KI | Abschnitt 5 | 6–8 Tage |
-| Wildgenerierung | Abschnitt 4 | 1–2 Tage |
-| Doppelkämpfe, Fang, Lernen, Entwicklung | wie Spezifikation 4, Abschnitt 12 | unverändert |
+| Substitute 164, Mimic 102, Sleep Talk 214, Skill Swap 272, Magic Coat 277, Imprison 286, Metronome 118, Quick/Wide Guard 501/469, terrain 580/604/472, Gravity 356 | not implemented | 1–2 days |
+| Remaining items/abilities (see `work/battleflow-coverage.txt`: e.g. status berries, stat berries, trainer items) | partial | 2 days |
+| Opponent AI | section 5 | 6–8 days |
+| Wild generation | section 4 | 1–2 days |
+| Double battles, capture, learning, evolution | as in spec 4, section 12 | unchanged |

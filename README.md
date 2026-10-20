@@ -1,4 +1,4 @@
-**Deutsche Fassung: [README.de.md](README.de.md)**
+German version: [README.de.md](README.de.md).
 
 # strahlender-xnu
 

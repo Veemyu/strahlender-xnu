@@ -1,164 +1,143 @@
-# Daten-Inventar (RomFS-Dump)
+# Data Inventory (RomFS Dump)
 
-Grundlage: lokaler, nur gelesener Dump `work/romfs/Data/StreamingAssets`. Alle Zahlen stammen aus
-`scripts/data_inventory.py` (nur Header werden gelesen, nichts wird entpackt oder verändert).
-Dieses Dokument enthält bewusst nur Namen, Zahlen und Header-Versionen, keine Spieldaten.
+Basis: local, read-only dump `work/romfs/Data/StreamingAssets`. All figures come from `scripts/data_inventory.py` (headers only; nothing is unpacked or changed). This document intentionally contains only names, numbers, and header versions—no game data.
 
-Hinweis: `docs/spielcode-inventar.md` existiert noch nicht. Die Lade-Hinweise unten stammen aus
-`work/il2cpp/dump.cs` und `stringliteral.json`. In `work/decomp/*.c` liegen bisher nur Save-Funktionen,
-daher gibt es von dort keine Hinweise zum Asset-Laden.
+Note: `docs/spielcode-inventar.md` does not yet exist. Loading notes below come from `work/il2cpp/dump.cs` and `stringliteral.json`. `work/decomp/*.c` currently contains only save functions, so it provides no asset-loading evidence.
 
-## 1. Verzeichnisstruktur
+## 1. Directory Structure
 
-| Ordner | Dateien | Größe | Dateitypen |
+| Directory | Files | Size | File types |
 |---|---:|---:|---|
-| `AssetAssistant` | 14 053 | 3930 MiB | 14 052 Unity-Bundles (ohne Endung, bei Bundles für UIs/GMS/Contest mit Sprachendung), 1× `.bin` |
-| `Audio/GeneratedSoundBanks/Switch` | 3 939 | 420 MiB | 3 241 `.wem`, 696 `.bnk`, `PluginInfo.xml`, `Wwise_IDs.h` |
+| `AssetAssistant` | 14,053 | 3930 MiB | 14,052 Unity bundles (no extension; UI/GMS/Contest bundles may have language suffix), 1 × `.bin` |
+| `Audio/GeneratedSoundBanks/Switch` | 3,939 | 420 MiB | 3,241 `.wem`, 696 `.bnk`, `PluginInfo.xml`, `Wwise_IDs.h` |
 | `Movie/dia` | 18 | 456 MiB | 18 `.webm` |
 
-Im `AssetAssistant`-Ordner steht außerdem `Dpr.bin` (5,3 MB, kein UnityFS; Anfangsbytes sehen nach .NET-BinaryFormatter
-aus, vermutlich die Bundle-Manifest-Datei, siehe offene Fragen). Auf Stammebene liegen nur die Unterordner.
+`AssetAssistant` also contains `Dpr.bin` (5.3 MB, not UnityFS; initial bytes look like .NET BinaryFormatter, probably bundle manifest; see open questions). At root level there are only subdirectories.
 
-Unterordner von `AssetAssistant` (Bundles, jede Datei ist ein Bundle):
+Subdirectories of `AssetAssistant` (bundles; each file is a bundle):
 
-| Unterordner | Bundles | Größe | Vermuteter Inhalt (nach Name) |
+| Subdirectory | Bundles | Size | Likely contents (based on name) |
 |---|---:|---:|---|
-| Environments | 644 | 2239,5 MiB | Karten, Hintergründe, Untergrund |
-| Characters | 414 | 642,8 MiB | Charaktermodelle |
-| Pokemon Database | 5 748 | 596,2 MiB | Pokémon-Modelle (`pokemons/...`) |
-| Effects | 2 987 | 252,4 MiB | Effekte, Seal-Daten |
-| UIs | 1 995 | 80,9 MiB | UI-Texturen, Sprach-Varianten |
-| Dpr | 141 | 66,6 MiB | Kernspiel: Szenen, Skripte, Shader, Einstellungen |
-| Message | 12 | 14,5 MiB | Texte je Sprache |
-| Battle | 1 411 | 6,8 MiB | Kampf-Kamera/Sequenzen, Kampf-Stammdaten |
-| Contest | 579 | 6,3 MiB | Wettbewerbe |
-| FureaiHiroba | 14 | 5,4 MiB | Freizeitbereich (Fureai-Plaza, Poffin) |
-| StatuePlacementEdit | 3 | 4,4 MiB | Statuen |
-| GMS | 87 | 3,1 MiB | Globale Tauschstation (GTS) |
-| Union | 4 | 2,9 MiB | Union-Raum |
-| DigFossil | 3 | 2,8 MiB | Fossilien-Minispiel |
-| UnderGround | 4 | 0,5 MiB | Untergrund |
-| Pml | 2 | 0,1 MiB | Pokémon-Bibliothek (Personal-Daten) |
-| LightStone, UgFather | je 2 | < 0,1 MiB | klein |
+| Environments | 644 | 2239.5 MiB | maps, backgrounds, Underground |
+| Characters | 414 | 642.8 MiB | character models |
+| Pokemon Database | 5,748 | 596.2 MiB | Pokémon models (`pokemons/...`) |
+| Effects | 2,987 | 252.4 MiB | effects, seal data |
+| UIs | 1,995 | 80.9 MiB | UI textures, language variants |
+| Dpr | 141 | 66.6 MiB | core game: scenes, scripts, shaders, settings |
+| Message | 12 | 14.5 MiB | text by language |
+| Battle | 1,411 | 6.8 MiB | battle camera/sequences, battle master data |
+| Contest | 579 | 6.3 MiB | contests |
+| FureaiHiroba | 14 | 5.4 MiB | recreation area (Fureai Plaza, Poffin) |
+| StatuePlacementEdit | 3 | 4.4 MiB | statues |
+| GMS | 87 | 3.1 MiB | Global Mission Station (GTS) |
+| Union | 4 | 2.9 MiB | Union Room |
+| DigFossil | 3 | 2.8 MiB | fossil minigame |
+| UnderGround | 4 | 0.5 MiB | Underground |
+| Pml | 2 | 0.1 MiB | Pokémon library (personal data) |
+| LightStone, UgFather | 2 each | < 0.1 MiB | small |
 
-## 2. Unity-Bundles (Header)
+## 2. Unity Bundles (Headers)
 
-| Merkmal | Wert |
+| Property | Value |
 |---|---|
-| Anzahl | 14 052 (alle `UnityFS`), 3925 MiB |
-| Format-Version | 7 (alle) |
-| Unity-Version / Revision | Plugin `5.x.x`, Revision `2019.4.27f1` (alle) |
-| Header-Flags | `0x43` (alle): Kompression der Blockinfo = LZ4HC, Blockinfo direkt hinter dem Header |
-| Größenangabe im Header | stimmt bei allen mit der Dateigröße überein |
-| Datenblock-Kompression | 87 104 Blöcke LZ4HC, 86 Blöcke unkomprimiert |
-| Knoten (innere Dateien) | 1 → 6 331 Bundles, 2 → 7 720, 4 → 1 |
-| Blockinfo nicht lesbar | 0 |
+| Count | 14,052 (all `UnityFS`), 3925 MiB |
+| Format version | 7 (all) |
+| Unity version / revision | plugin `5.x.x`, revision `2019.4.27f1` (all) |
+| Header flags | `0x43` (all): block info compression = LZ4HC, block info directly after header |
+| Header size field | matches file size in every case |
+| Data block compression | 87,104 LZ4HC blocks, 86 uncompressed |
+| Nodes (internal files) | 1 → 6,331 bundles, 2 → 7,720, 4 → 1 |
+| Unreadable block info | 0 |
 
-Größenverteilung (Dateigröße):
+Size distribution (file size):
 
-| Klasse | Bundles |
+| Class | Bundles |
 |---|---:|
 | < 1 KiB | 0 |
 | 1–4 KiB | 639 |
-| 4–16 KiB | 4 888 |
-| 16–64 KiB | 4 394 |
-| 64–256 KiB | 2 394 |
-| 256 KiB–1 MiB | 1 067 |
+| 4–16 KiB | 4,888 |
+| 16–64 KiB | 4,394 |
+| 64–256 KiB | 2,394 |
+| 256 KiB–1 MiB | 1,067 |
 | 1–4 MiB | 424 |
 | 4–16 MiB | 228 |
 | 16–64 MiB | 18 |
 | ≥ 64 MiB | 0 |
 
-Minimum 1 961 B, Median 31 299 B, Maximum 32,9 MiB. Blöcke pro Bundle: 1 Block bei 6 618 Bundles,
-2–9 Blöcke bei 6 189, ≥ 10 Blöcke bei 1 320.
+Minimum 1,961 B, median 31,299 B, maximum 32.9 MiB. Blocks per bundle: 1 block in 6,618 bundles; 2–9 blocks in 6,189; ≥10 blocks in 1,320.
 
-Stichprobe (kleine Bundles, bei 5 %, 15 % und 25 % der Größenreihenfolge):
+Sample (small bundles at 5%, 15%, and 25% of size order):
 
-| Bundle | Größe | Knoten | Blöcke (unkomp. → komp., Art) |
+| Bundle | Size | Nodes | Blocks (uncompressed → compressed, type) |
 |---|---:|---:|---|
-| `Battle/btlv/waza/sequence/ew306` | 4 196 B | 1 | 1: 12 800 → 4 067, LZ4HC |
-| `UIs/textures_mass/pokemon_dp/pm0136_00_00_00_dp` | 5 364 B | 2 | 1: 42 052 → 5 213, LZ4HC |
-| `Battle/btlv/waza/camera/wait/envcamera_w_f_138` | 10 527 B | 1 | 1: 36 740 → 10 398, LZ4HC |
+| `Battle/btlv/waza/sequence/ew306` | 4,196 B | 1 | 1: 12,800 → 4,067, LZ4HC |
+| `UIs/textures_mass/pokemon_dp/pm0136_00_00_00_dp` | 5,364 B | 2 | 1: 42,052 → 5,213, LZ4HC |
+| `Battle/btlv/waza/camera/wait/envcamera_w_f_138` | 10,527 B | 1 | 1: 36,740 → 10,398, LZ4HC |
 
-Die Blockinfo wurde nur in die Tabelle (wenige Dutzend Bytes) entpackt, die Nutzdaten blieben unberührt.
+Only block info (a few dozen bytes) was decompressed for the table; payload data remained untouched.
 
-## 3. Stammdaten (Master-Daten) und Laden
+## 3. Master Data and Loading
 
-Bundles mit Stammdaten laut Namen (Größe in Bytes):
+Bundles containing master data by name (size in bytes):
 
-| Bundle | Größe | Vermuteter Inhalt |
+| Bundle | Size | Likely contents |
 |---|---:|---|
-| `Pml/personal_masterdatas` | 125 957 | Pokémon-Grunddaten (Personal-Tabelle) |
-| `Dpr/masterdatas` | 449 274 | Haupt-Stammdaten des Spiels (Items, Moves, Trainer, Shops …) |
-| `Battle/battle_masterdatas` | 37 820 | Kampf |
-| `UIs/masterdatas/uimasterdatas` | 353 687 | UI-Daten |
-| `Effects/masterdatas/effectdatabase` | 38 342 | Effekt-Datenbank |
-| `Contest/md/contest_masterdatas` | 23 744 | Wettbewerb |
-| `GMS/md/gms_masterdatas` | 15 821 | GTS |
-| `FureaiHiroba/fureai/masterdata` | 153 624 | Freizeitbereich |
-| `UnderGround/masterdata` | 12 629 | Untergrund |
-| `Union/unionroom/masterdata` | 2 259 | Union-Raum |
-| `Dpr/scriptableobjects/gamesettings` | 18 056 668 | Einstellungen, ScriptableObjects (groß) |
-| `Message/*` | 1,2–1,5 MB je Sprache | Texte (siehe 6.) |
+| `Pml/personal_masterdatas` | 125,957 | basic Pokémon data (Personal table) |
+| `Dpr/masterdatas` | 449,274 | main game master data (items, moves, trainers, shops, …) |
+| `Battle/battle_masterdatas` | 37,820 | battle |
+| `UIs/masterdatas/uimasterdatas` | 353,687 | UI data |
+| `Effects/masterdatas/effectdatabase` | 38,342 | effect database |
+| `Contest/md/contest_masterdatas` | 23,744 | contest |
+| `GMS/md/gms_masterdatas` | 15,821 | GTS |
+| `FureaiHiroba/fureai/masterdata` | 153,624 | recreation area |
+| `UnderGround/masterdata` | 12,629 | Underground |
+| `Union/unionroom/masterdata` | 2,259 | Union Room |
+| `Dpr/scriptableobjects/gamesettings` | 18,056,668 | settings, ScriptableObjects (large) |
+| `Message/*` | 1.2–1.5 MB per language | text (see section 6) |
 
-Lade-Hinweise aus dem Code (Il2CppDumper-Ausgabe):
+Loading clues from code (Il2CppDumper output):
 
-- Der Asset-Zugriff läuft über die Klasse `SmartPoint.AssetAssistant.AssetManager` (`RequestAssetBundle`, `LoadAssetBundle`,
-  `LoadAsset(assetPath)`), konfiguriert über ein `AssetBundleDownloadManifest` (Version 6, Liste von `AssetBundleRecord`).
-  Bundle-Namen entsprechen den relativen Pfaden unter `AssetAssistant`.
-- `DataManager` (`StartUpLoad`, `Load(string assetBundleName)`) hält die statischen Tabellen (u. a. Trainer-, Shop-,
-  Turm-Tabellen) und lädt sie beim Start aus Bundles.
-- Tabellenklassen sind `ScriptableObject`s mit „Sheet“-Unterklassen: `PersonalTable`, `ItemTable`, `WazaTable`,
-  `GMSMasterData`. Das bestätigt, dass die Stammdaten als serialisierte ScriptableObjects im Bundle liegen und nicht als
-  eigenes Binärformat.
-- String-Literale nennen die Bundle-Namen `personal_masterdatas`, `battle_masterdatas`, `masterdatas`, `md/gms_masterdatas`,
-  `md/contest_masterdatas`, `masterdatas/uimasterdatas`, `masterdatas/effectdatabase`; ebenso `pokemons/battle/{0}`,
-  `pokemons/field/pm{0:D4}_00_00`.
-- Texte: `MessageManager` mit `MsgDataFileLoader`, Sprach-IDs wählen das Bundle (`GetFileNameByLanguageId`).
+- Asset access runs through `SmartPoint.AssetAssistant.AssetManager` (`RequestAssetBundle`, `LoadAssetBundle`, `LoadAsset(assetPath)`), configured by an `AssetBundleDownloadManifest` (version 6, list of `AssetBundleRecord`). Bundle names correspond to relative paths under `AssetAssistant`.
+- `DataManager` (`StartUpLoad`, `Load(string assetBundleName)`) holds static tables (including trainer, shop, and tower tables) and loads them from bundles at startup.
+- Table classes are `ScriptableObject`s with “Sheet” subclasses: `PersonalTable`, `ItemTable`, `WazaTable`, `GMSMasterData`. This confirms master data is serialized ScriptableObjects in bundles, not a separate binary format.
+- String literals name bundles `personal_masterdatas`, `battle_masterdatas`, `masterdatas`, `md/gms_masterdatas`, `md/contest_masterdatas`, `masterdatas/uimasterdatas`, `masterdatas/effectdatabase`; also `pokemons/battle/{0}`, `pokemons/field/pm{0:D4}_00_00`.
+- Text: `MessageManager` with `MsgDataFileLoader`; language IDs select the bundle (`GetFileNameByLanguageId`).
 
 ## 4. Audio (Wwise)
 
-| Merkmal | Wert |
+| Property | Value |
 |---|---|
-| `.bnk` | 696 Dateien, 56,5 MiB (kleinste 2 804 B, Median 39 457 B, größte 23,4 MiB) |
-| `.wem` | 3 241 Dateien, 361,5 MiB |
-| Gesamt Audio | 419,6 MiB (inkl. `PluginInfo.xml`, `Wwise_IDs.h`) |
-| Bank-Header | alle 696 Banks beginnen mit `BKHD`, Versionsfeld = **135** |
-| WEM-Container | alle RIFF/WAVE, `fmt`-Codec-Tag `0xFFFF` (Wwise-Vorbis) |
+| `.bnk` | 696 files, 56.5 MiB (smallest 2,804 B, median 39,457 B, largest 23.4 MiB) |
+| `.wem` | 3,241 files, 361.5 MiB |
+| Total audio | 419.6 MiB (including `PluginInfo.xml`, `Wwise_IDs.h`) |
+| Bank header | all 696 banks start with `BKHD`, version field = **135** |
+| WEM container | all RIFF/WAVE, `fmt` codec tag `0xFFFF` (Wwise Vorbis) |
 
-Bankversion 135 entspricht nach meiner Kenntnis Wwise 2019.2.x (nicht anhand des Dumps bestätigt).
-Im Code gibt es `AkSoundEngine`, `AkSwitchSettings`, `Init.bnk` und die Meldung zum Kopieren der Banks in StreamingAssets.
+To my knowledge, bank version 135 corresponds to Wwise 2019.2.x (not confirmed against dump). Code contains `AkSoundEngine`, `AkSwitchSettings`, `Init.bnk`, and a message about copying banks into StreamingAssets.
 
-## 5. Movie
+## 5. Movies
 
-18 Dateien, 456 MiB, alle `.webm` (EBML, DocType `webm`). In den ersten 64 KiB ist bei allen der
-Videocodec **VP8** (`V_VP8`) erkennbar, kein VP9. Eine Audiospur ist in diesem Bereich nicht
-gekennzeichnet (nicht geklärt).
+18 files, 456 MiB, all `.webm` (EBML, DocType `webm`). In first 64 KiB, **VP8** (`V_VP8`) is identifiable in all; no VP9. No audio track is identified in that region (unresolved).
 
-| Gruppe | Dateien | je Datei |
-|---|---:|---|
-| Opening je Sprache (`op`) | 9 | ca. 19,8–20,7 MB |
-| Opening-Loop | 1 | 0,97 MB |
-| Ending (`ed_female/male_00–03`) | 8 | ca. 37 MB |
+| Group | Files | Each file |
+|---|---:|---:|
+| Opening by language (`op`) | 9 | about 19.8–20.7 MB |
+| Opening loop | 1 | 0.97 MB |
+| Ending (`ed_female/male_00–03`) | 8 | about 37 MB |
 
-## 6. Texte und Lokalisierung
+## 6. Text and Localization
 
-Message-Bundles (12): `Message/Message` (3,7 KB, vermutlich Index), `common_msbt` (sprachunabhängig), sowie
-`jpn`, `jpn_kanji`, `english`, `french`, `german`, `italian`, `spanish`, `korean`, `simp_chinese`, `trad_chinese`.
-Das sind 10 Sprachvarianten (Japanisch in Kana und mit Kanji). Der Code kennt die Sprach-IDs JPN, USA, FRA, ITA, DEU,
-ESP, KOR, SCH, TCH (ID 6 fehlt).
+Message bundles (12): `Message/Message` (3.7 KB, likely index), `common_msbt` (language-independent), and `jpn`, `jpn_kanji`, `english`, `french`, `german`, `italian`, `spanish`, `korean`, `simp_chinese`, `trad_chinese`. These are 10 language variants (Japanese in kana and kanji). Code knows language IDs JPN, USA, FRA, ITA, DEU, ESP, KOR, SCH, TCH (ID 6 absent).
 
-Sprachendungen an Dateinamen, jeweils 9 Sprachen (`en`, `fr`, `ge`, `it`, `jp`, `ko`, `si`, `sp`, `tr`):
-UIs (10 Dateien je Sprache), GMS (9), Contest (1), alle 9 Opening-Movies. Die Kürzel `si`/`tr` stehen vermutlich für
-vereinfachtes/traditionelles Chinesisch (Vermutung).
+Filename language suffixes, 9 languages each (`en`, `fr`, `ge`, `it`, `jp`, `ko`, `si`, `sp`, `tr`): UIs (10 files per language), GMS (9), Contest (1), all 9 opening movies. Codes `si`/`tr` probably mean simplified/traditional Chinese (assumption).
 
-## 7. Offene Fragen
+## 7. Open Questions
 
-- ~~Was genau ist `Dpr.bin`?~~ Geklärt: Bundle-Katalog (`AssetBundleDownloadManifest`, .NET-BinaryFormatter, Version 6), siehe `docs/bundle-katalog.md`.
-- Welche Assets (Pfade) stecken in den Bundles? Dafür müssen die Blockdaten entpackt und die Serialisierung gelesen werden (Typbaum, TypeTree).
-- Wie `Message/Message` und `common_msbt` zusammenspielen, welches Format die Texte im Bundle haben (MSBT?).
-- In welchen Bundles liegen Items, Moves, Karten, Trainer genau (vermutlich `Dpr/masterdatas`, aber nicht verifiziert)?
-- Aufruferkette `DataManager.StartUpLoad` → konkrete Bundle-Namen ist noch nicht durch Decompile belegt.
-- Hat der Movie-Container eine Audiospur (Vorbis/Opus), Auflösung und Framerate?
-- Wwise-Version exakt, und Zuordnung `.wem` ↔ Bank (Event-IDs aus `Wwise_IDs.h`).
-- Dienen Bundles mit 4 Knoten (1 Stück) und die 86 unkomprimierten Blöcke einem Sonderzweck?
+- ~~What exactly is `Dpr.bin`?~~ Resolved: bundle catalog (`AssetBundleDownloadManifest`, .NET BinaryFormatter, version 6), see `docs/bundle-katalog.md`.
+- Which assets (paths) are inside bundles? Requires decompressing block data and reading serialization (TypeTree).
+- How do `Message/Message` and `common_msbt` work together, and what format is text in bundles (MSBT?)?
+- Exactly which bundles contain items, moves, maps, trainers (probably `Dpr/masterdatas`, but unverified)?
+- Caller chain `DataManager.StartUpLoad` → concrete bundle names is not yet confirmed by decompilation.
+- Does movie container have audio track (Vorbis/Opus), and what are resolution/frame rate?
+- Exact Wwise version and mapping `.wem` ↔ bank (event IDs from `Wwise_IDs.h`)?
+- Do bundles with 4 nodes (1 bundle) and 86 uncompressed blocks serve a special purpose?

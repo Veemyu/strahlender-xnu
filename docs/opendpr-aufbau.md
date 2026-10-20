@@ -1,70 +1,70 @@
-# opendpr-Projekt aus eigenem Dump zusammengebaut (2026-10-18)
+# Assembling the opendpr Project from a Personal Dump (2026-10-18)
 
-> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. `scripts/opendpr_build.sh` ist auf `main` entfernt (nur Branch `unity`). Die Schritte unten gelten nicht mehr für `main`.
+> **Historical (status 2026-10-20):** Unity path, discontinued. `scripts/opendpr_build.sh` has been removed from `main` (only on branch `unity`). The steps below no longer apply to `main`.
 
-Eigene Zusammenfassung. Nichts aus `opendpr` oder `Lumi_Small_Scripts` liegt im getrackten Repo.
-Das Projekt steht unter `work/opendpr-project/` (gitignored). Die Originale in `tools/` blieben unverändert.
-Alle Schritte laufen wiederholbar über `scripts/opendpr_build.sh` (eigenes Skript, bricht ab, wenn das Ziel schon existiert).
-Der Editor wurde nicht geöffnet.
+Original summary. Nothing from `opendpr` or `Lumi_Small_Scripts` is in the tracked repository.
+The project is under `work/opendpr-project/` (gitignored). Originals in `tools/` were left unchanged.
+All steps are repeatable with `scripts/opendpr_build.sh` (custom script; aborts if destination already exists).
+The Editor was not opened.
 
-## Protokoll
+## Log
 
-Freier Platz auf `/System/Volumes/Data` vor dem Lauf: 38 GiB (Grenze: 15 GiB). Nach dem Lauf ebenfalls 38 GiB (Messwert schwankt im Rahmen von ±1 GiB, die APFS-Clones kosten praktisch nichts). Der gesamte Lauf dauerte etwa 6 Sekunden.
+Free space on <DATA_VOLUME> before run: 38 GiB (threshold: 15 GiB). After run, also 38 GiB (measurement fluctuates within ±1 GiB; APFS clones cost practically nothing). Entire run took about 6 seconds.
 
-| # | Schritt | Befehl / Ergebnis | Platz |
+| # | Step | Command / result | Space |
 |---|---|---|---|
-| 1 | Repo kopieren | `cp -c -R tools/opendpr work/opendpr-project`, danach die kopierte `.git` entfernt. 221 MB, davon 139 MB Wwise | ca. 0 (Clone) |
-| 2a | Eingabe vorbereiten | Alle Ordner aus `work/ripper/out/ExportedProject/Assets` per `cp -c -R` nach `work/opendpr-stage/input`, **ohne** `StreamingAssets`, `.DS_Store` entfernt | ca. 0 |
-| 2b | Skript | `python3 …/asset_ripper_resources/fix_pathids.py` im Stage-Ordner. Lief ohne Fehler. Das Log (96 Zeilen) besteht nur aus „Ignoring …“ für `Scripts` und `Plugins`. Ergebnis `output/`: 29 MB (Stage) | 29 MB, danach gelöscht |
-| 3a | Löschen | `AkWwiseInitializationSettings`, `Mac`, `Switch`, `Windows` (je `.asset` + `.meta`) aus `MonoBehaviour` | – |
-| 3b | TextMeshPro | `fonts & materials`, `sprite assets`, `style sheets` und beide `LineBreaking …txt` (mit `.meta`) nach `Assets/TextMesh Pro/Resources/` | 1 MB |
-| 3c | Szene | `level0.unity` + `.meta` nach `Assets/` | – |
-| 3d | Rest | Der übrige Inhalt von `Resources` und die Ordner `AnimationClip`, `AnimatorController`, `Font`, `Material`, `MonoBehaviour`, `PrefabInstance`, `Texture2D` liegen jetzt unter `Assets/Resources/` | 3,2 MB |
-| 3e | Assembly-Name | `sed` auf `Assets/Resources/StartupSettings.asset`: 21 Ersetzungen, 0 Reste von „AssetAssistant, Version=0.0.0.0,“ | – |
-| 4 | Bundle-Ordner | `AssetBundles/Editor/` angelegt, leer (Blocker B1) | 0 |
-| 5 | StreamingAssets | `cp -c -R work/romfs/Data/StreamingAssets/. Assets/StreamingAssets/` (zusammengeführt mit dem vorhandenen Ordner `AK`). 18019 Dateien statt 18014 im RomFS (die 5 Extra-Dateien sind `AK` und `desc.txt` samt `.meta`). Stichprobe per `cmp` identisch | ca. 0 (Clone, 4,7 GB logisch) |
-| 6 | Soundbanks | `Audio/GeneratedSoundBanks/Switch` → `Windows` | 0 |
+| 1 | Copy repository | `cp -c -R tools/opendpr work/opendpr-project`, then removed copied `.git`. 221 MB, including 139 MB Wwise | about 0 (clone) |
+| 2a | Prepare input | Copied all directories from `work/ripper/out/ExportedProject/Assets` to `work/opendpr-stage/input` using `cp -c -R`, **excluding** `StreamingAssets`; removed `.DS_Store` | about 0 |
+| 2b | Script | Ran `python3 …/asset_ripper_resources/fix_pathids.py` in stage directory. No errors. Log (96 lines) contains only “Ignoring …” for `Scripts` and `Plugins`. Output: 29 MB (stage) | 29 MB, deleted afterward |
+| 3a | Delete | `AkWwiseInitializationSettings`, `Mac`, `Switch`, `Windows` (each `.asset` + `.meta`) from `MonoBehaviour` | – |
+| 3b | TextMeshPro | Moved `fonts & materials`, `sprite assets`, `style sheets`, and both `LineBreaking …txt` files (with `.meta`) to `Assets/TextMesh Pro/Resources/` | 1 MB |
+| 3c | Scene | Moved `level0.unity` + `.meta` to `Assets/` | – |
+| 3d | Remainder | Other contents of `Resources` and directories `AnimationClip`, `AnimatorController`, `Font`, `Material`, `MonoBehaviour`, `PrefabInstance`, `Texture2D` are now under `Assets/Resources/` | 3.2 MB |
+| 3e | Assembly name | Ran `sed` on `Assets/Resources/StartupSettings.asset`: 21 replacements, 0 remaining instances of “AssetAssistant, Version=0.0.0.0,” | – |
+| 4 | Bundle directory | Created `AssetBundles/Editor/`, left empty (blocker B1) | 0 |
+| 5 | StreamingAssets | `cp -c -R work/romfs/Data/StreamingAssets/. Assets/StreamingAssets/` (merged into existing `AK` directory). 18,019 files rather than 18,014 in RomFS (5 extra files are `AK` and `desc.txt` plus `.meta`). Sample checked with `cmp`, identical | about 0 (clone, 4.7 GB logical) |
+| 6 | Soundbanks | Renamed `Audio/GeneratedSoundBanks/Switch` → `Windows` | 0 |
 
-Aufgeräumt: `work/opendpr-stage` (nur Zwischenstand) wurde gelöscht.
+Cleanup: deleted `work/opendpr-stage` (intermediate only).
 
-## Auffälligkeiten
+## Observations
 
-- Der AssetRipper-Export enthielt trotz der Einstellung „StreamingAssets überspringen“ einen Ordner `StreamingAssets` mit 4,9 GB. Er wurde bewusst nicht in die Eingabe genommen, sonst hätte das Skript ihn per `shutil.copy` (ohne Clone) echt kopiert. Die Daten stammen aus dem RomFS (Schritt 5). Ursache nicht geklärt.
-- Die Skript-Schwächen (Dateiendung per `split('.')[1]`) wurden nicht ausgelöst: Es gibt keine Dateien ohne Punkt und keine binären `.asset`/`.prefab`.
-- Die Ordner `Scripts`, `Plugins`, `Shader` des Exports bleiben außen vor (vom Skript so vorgesehen). `.unity` wird nicht ersetzt.
-- Im Projektstamm liegt eine `.DS_Store` aus dem Klon, harmlos.
+- Despite “skip StreamingAssets” setting, AssetRipper export contained a `StreamingAssets` directory of 4.9 GB. It was deliberately excluded from input; otherwise script would copy it with `shutil.copy` (not a clone). Data came from RomFS (step 5). Cause unknown.
+- Script weakness (file extension via `split('.')[1]`) was not triggered: there are no files without a dot and no binary `.asset`/`.prefab` files.
+- Export directories `Scripts`, `Plugins`, `Shader` are excluded (as the script intends). `.unity` is not replaced.
+- A harmless `.DS_Store` from the clone is in project root.
 
-## Statische Prüfung
+## Static Checks
 
-- **GUIDs:** In 4503 `.meta`-Dateien definierte GUIDs gegen alle Verweise in `.asset`, `.prefab`, `.unity`, `.mat` (ohne Scripts, Wwise, Plugins, StreamingAssets). 35 unaufgelöste GUIDs:
-  - TextMeshPro-Skripte und -Shader (z. B. TMP_FontAsset, TMP_Settings, TMP_SDF-Material-Shader) und UnityEngine.UI (`EventSystem`, `StandaloneInputModule`): kommen aus den Paketen `textmeshpro` und `ugui`, nach dem Paketimport erwartbar.
-  - Szenen-GUIDs in `SceneDatabase.asset`: andere Szenen sind nicht im Projekt (nur `level0`).
-  - `0000…e000…`/`f000…`: Unity-interne Ressourcen.
-  - `level0.unity` selbst hat keine fehlenden Projekt-GUIDs.
-  Dass die per Skript ersetzten Spiel-GUIDs (GameManager, StartupSettings usw.) alle aufgelöst sind, spricht für ein funktionierendes Mapping.
-- **Pakete:** `Packages/manifest.json` hat 6 Registry-Pakete, die nicht im Editor stecken: `textmeshpro` 2.1.6, `timeline` 1.2.18, `test-framework` 1.1.24, `ide.rider` 1.2.1, `ide.vscode` 1.2.3 und (über die Lock-Datei) `ext.nunit` 1.0.6. Alle Modul-Pakete und `ugui` sind im Editor (`BuiltInPackages`) enthalten. Offline allein reicht es also **nicht**: Das erste Öffnen braucht Netz (`packages.unity.com` war per HEAD erreichbar, HTTP 200). Einen lokalen Paketcache haben wir nicht geprüft, um nicht außerhalb des Repos zu suchen.
-- Eine Kompilierung ist statisch nicht prüfbar (ca. 3800 Skripte, viele Platzhalter).
+- **GUIDs:** Compared GUIDs defined in 4,503 `.meta` files with all references in `.asset`, `.prefab`, `.unity`, `.mat` (excluding Scripts, Wwise, Plugins, StreamingAssets). 35 unresolved GUIDs:
+  - TextMeshPro scripts and shaders (e.g. TMP_FontAsset, TMP_Settings, TMP_SDF material shader) and UnityEngine.UI (`EventSystem`, `StandaloneInputModule`): supplied by `textmeshpro` and `ugui` packages; expected after package import.
+  - Scene GUIDs in `SceneDatabase.asset`: other scenes are not in project (only `level0`).
+  - `0000…e000…`/`f000…`: Unity internal resources.
+  - `level0.unity` itself has no missing project GUIDs.
+  All game GUIDs replaced by script (GameManager, StartupSettings, etc.) resolve, which supports the mapping.
+- **Packages:** `Packages/manifest.json` lists 6 registry packages not bundled in Editor: `textmeshpro` 2.1.6, `timeline` 1.2.18, `test-framework` 1.1.24, `ide.rider` 1.2.1, `ide.vscode` 1.2.3, and (via lock file) `ext.nunit` 1.0.6. All module packages and `ugui` are bundled in Editor (`BuiltInPackages`). Offline alone is therefore **not** enough: first open needs network (`packages.unity.com` responded to HEAD, HTTP 200). Local package cache was not checked to avoid searching outside the repository.
+- Static compilation could not be checked (about 3,800 scripts, many placeholders).
 
-## Bekannte Lücken
+## Known Gaps
 
-1. **B1:** `AssetBundles/Editor` ist leer. Der Editorpfad des `AssetManager` und der `EffectManager` suchen dort `fxparticle`/`shaders`. Zu erwarten sind Fehler in der Konsole beim Laden von Effekten und Materialien sowie rosa oder fehlende Shader. Das Projekt sollte sich trotzdem öffnen lassen (nicht belegt).
-2. Wwise-Soundbanks sind Switch-Format (nur umbenannt). Ton ist wahrscheinlich nicht abspielbar, fürs Öffnen irrelevant.
-3. TextMeshPro: Das TMP-Essentials-Material-Set kommt erst mit dem Paketimport. Beim ersten Öffnen eventuell „Import TMP Essentials“ bestätigen, falls Unity fragt (Hinweis: dieser Import legt Dateien unter `Assets/TextMesh Pro` an, kann also mit den verschobenen Dateien kollidieren).
-4. `StreamingAssets` enthält 18000 Dateien. Unity legt dafür beim Öffnen `.meta`-Dateien an und importiert zum Beispiel Filme. Das kann den ersten Start deutlich verlängern und den `Library`-Ordner aufblähen. Die `.meta`-Dateien entstehen dabei im Klon-Ziel und verändern das RomFS nicht.
-5. Mac statt Windows: Die Windows-Wwise-Plugins liegen im Projekt, der Mac-Editor nutzt aber die macOS-Plugins.
+1. **B1:** `AssetBundles/Editor` is empty. Editor path of `AssetManager` and `EffectManager` looks there for `fxparticle`/`shaders`. Expect console errors loading effects/materials and pink or missing shaders. Project should still open (not established).
+2. Wwise soundbanks are Switch format (renamed only). Audio probably will not play; irrelevant for opening project.
+3. TextMeshPro: TMP Essentials material set arrives only with package import. On first open, Unity may ask to “Import TMP Essentials” (note: this adds files under `Assets/TextMesh Pro`, possibly conflicting with moved files).
+4. `StreamingAssets` has 18,000 files. On open, Unity creates `.meta` files and imports items such as videos. This can greatly lengthen first launch and enlarge `Library`. These `.meta` files are created in clone target and do not alter RomFS.
+5. Mac rather than Windows: Windows Wwise plugins are in project, but Mac Editor uses macOS plugins.
 
-## Öffnen (vom Nutzer auszuführen)
+## Opening (For User to Run)
 
 ```
-open -n /Applications/Unity/Hub/Editor/2019.4.27f1/Unity.app --args -projectPath /Users/vee/Work/strahlender-xnu/work/opendpr-project
+open -n <UNITY_APP> --args -projectPath <REPO_ROOT>/work/opendpr-project
 ```
 
-Danach `Assets/level0.unity` von Hand öffnen (keine Szene in den Build-Einstellungen).
+Then open `Assets/level0.unity` manually (no scene in Build Settings).
 
-## Testergebnis im Unity-Editor (2019.4.27f1, Rosetta, 2026-10-18)
-- Das Projekt öffnet, kompiliert fehlerfrei (`Assembly-CSharp.dll` in ca. 12 s) und löst die Pakete auf.
-- `level0.unity` zeigt beim Start nur Schwarz. Der Log zeigt zwei Abbrüche beim Boot:
-  1. `NullReferenceException` in `GameManager.OnetimeInitializeOperation` (`GameManager.cs:249`): `UIManager.Instance` ist `null`. Ursache offen.
-  2. Das Bundle `shaders` fehlt in `AssetBundles/Editor` (Blocker B1): `AssetBundle.LoadFromFile` liefert `null`, danach `NullReferenceException` in `AssetManager.LoadAssetBundle`.
-- Offen: Ob die Switch-Bundles aus dem Dump im Mac-Editor ladbar sind, und warum `UIManager.Instance` fehlt.
-- Einschätzung: opendpr taugt als Referenz (Klassen, Boot-Ablauf), ist aber auf dem Mac nicht ohne Weiteres lauffähig.
+## Unity Editor Test Result (2019.4.27f1, Rosetta, 2026-10-18)
+- Project opens, compiles without errors (`Assembly-CSharp.dll` in about 12 s), and resolves packages.
+- At startup, `level0.unity` shows only black. Log shows two boot failures:
+  1. `NullReferenceException` in `GameManager.OnetimeInitializeOperation` (`GameManager.cs:249`): `UIManager.Instance` is `null`. Cause unknown.
+  2. Bundle `shaders` is missing from `AssetBundles/Editor` (blocker B1): `AssetBundle.LoadFromFile` returns `null`, followed by `NullReferenceException` in `AssetManager.LoadAssetBundle`.
+- Open questions: whether Switch bundles from dump can be loaded in Mac Editor, and why `UIManager.Instance` is missing.
+- Assessment: opendpr is useful as a reference (classes, boot sequence), but does not run on Mac without further work.

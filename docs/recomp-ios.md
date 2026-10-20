@@ -1,108 +1,368 @@
-# Rekompilation auf dem iPad (`ap-recomp` iPadOS)
+# Native recompilation on iPadOS
 
-Stand: 2026-10-19 17:30, Abbruch auf Wunsch des Nutzers; Stand siehe Abschnitt 4.3 (Offen). Grundlage: `docs/architektur-entscheidung.md` (Entscheidung 3), `docs/recomp-spike-2.md` (Speichermodell B), `docs/recomp-gate2.md`, `docs/ipad-messung-1.md`, `docs/ios-speicher-entitlements.md`. Gerät: iPad Pro 12,9" (6. Generation, M2, 8 GB, iPadOS 26.4.2), kostenloses Team, Increased-Memory-Limit-Entitlement (signiert, geprüft mit `codesign -d --entitlements`). Mac: M1 Pro, 16 GB. Nur Namen, Zahlen und Struktur; keine Spieldaten, kein erzeugter Code, keine Bilder, keine Team-ID im Repo (Logs, Bilder, Objekte liegen unter `work/`).
+Updated: 2026-10-20. Native ARM64 static recompilation, UIKit and Metal; no JIT.
+The Unity rebuild is deprecated and out of scope.
 
-**Kennzeichnung:** *gemessen* = Lauf mit Log unter `work/builds/` bzw. Bilder unter `work/visual/ipad-recomp/`; *vermutet* = Schluss ohne Test.
+## Current state
 
-## Ergebnis in Kürze
+The iPad app reaches the intro, title, imported save, and 3D field. The user has
+accepted the startup gate: only the shader-compilation counter appears at the
+upper left. Do not change this start path without agreement.
 
-| | |
-|---|---|
-| **Etappe 1, Speichermodell B (`--rebase32`)** | **erreicht (Mac)**: alle Gastadressen < 4 GiB, Zugriff `g_base + (uint32_t)ea`, Generator unverändert mit `--simd c`. Der Mac-Lauf in Variante B zeigt Eröffnungsfilm, Titelbild und danach **dieselbe Stadt wie Variante A** (`work/recomp/shots32/frame_05400.png` gegen `work/recomp/shots/frame_03600.png`: gleiche Szene, gleiche Figuren, nur der Schatten der Wolke steht anders), 45–47 Bilder/s (Variante A: 45), RSS-Spitze 1.153 MiB. |
-| **Etappe 2/3, iOS-Ziel und Build** | **erreicht**: native App `BDSP.app` (UIKit + `CAMetalLayer`), Gastcode und Laufzeit **statisch** gelinkt (kein JIT, kein dylib), Xcode-Projekt unter `scripts/recomp/ios/app/`, Build `scripts/recomp/ios/deploy_ios.sh build`. |
-| **Etappe 4, Lauf auf dem iPad** | **erreicht**: Eröffnungsfilm (VP8, FFmpeg-Software-Decoder), Titelbild, Spielstand, 3D-Stadt; **50–52 Bilder/s**, Footprint 1,6 GiB (Film/Titel) bis 2,1 GiB (Stadt), `os_proc_available_memory` mindestens 6,1 GiB, `thermalState` 0, kein Absturzbericht des Systems. Ton stumm. |
-| **Einschränkung** | Dem SDK stehen in Variante B **1,98 GiB** Anwendungsspeicher statt 3,14 GiB zur Verfügung (Grund: 4-GiB-Fenster, Abschnitt 1.3). Der gemessene Spitzenbedarf in Titel und Stadt liegt bei 1,7 GiB abgebildetem Speicher; ob längeres Spielen (Kämpfe, Höhlen) das Limit erreicht, ist **nicht gemessen**. |
-| **Offen** | Touch-Gamepad/Controller/Tastatur sind gebaut, auf dem Gerät aber nicht von Hand erprobt (nur Skripteingabe getestet); Wasser (Metal/NVN-Seite, siehe Abschnitt 5); Sporadische Stillstände beim Start (Abschnitt 4.3). |
+PCM16 output through Audio Queue Services and AVAudioSession is implemented.
+The user confirmed clean sound in one targeted 60-second run ending at 60 fps.
+See [audio](recomp-audio.md) for evidence and remaining tests.
 
-## 1. Etappe 1: Speichermodell B
+Original icons are generated from the user's dump, with English as the default.
+Available language variants are selectable in Settings → Apps → BDSP → App icon.
+All variants now use the user-approved full-bleed Icon Composer design: 1024px,
+100% scale, zero translation, no custom border. iPadOS provides the outer shape
+and glass effects from compiled layered assets. See [icons](recomp-icons.md).
 
-### 1.1 Änderungen
-| Datei | Änderung |
-|---|---|
-| `scripts/recomp/ios/gen32.sh` | erzeugt das C aller Module mit Basen < 4 GiB (`main` 0x0100_0000, `sdk` 0x0700_0000, `subsdk0` 0x0800_0000, `rtld` 0x0900_0000) und `--simd c`, baut die Modulbilder (`mkimg.py --hle-base 0x0A00_0000`, HLE-Liste `hle_nvn.txt`) und übersetzt für iPhoneOS arm64. Ausgabe `work/recomp/gen32`, `img32`, `obj32`. |
-| `scripts/recomp/ios/compile_chunk_ios.sh` | ein Chunk für iOS: `-O1` (Einzelfunktionen über 300 KB `-O0`), `-fno-fast-math -ffp-contract=off`, `-DREBASE32 -DRT32_GEN`, `-I rt32`. Die Objekte tragen die Plattform iOS; für den Mac-Test entfernt `vtool -remove-build-version` die Plattform (dann bindet sie auch macOS). |
-| `scripts/recomp/rt32/cpu.h` | zusätzlich: `memset` im erzeugten Code (DC ZVA des Lifters, `(void*)(uintptr_t)`) geht nur mit `-DRT32_GEN` über die Gastbasis. Im erzeugten C kommt DC ZVA nicht vor (kein Treffer in 2.303 Chunks), die Absicherung bleibt. |
-| `scripts/recomp/rt-bdsp/bdsp.h` | Variante B: Adressraum-Layout (1.2), `APP_MEMORY`, `HEAP_REPORT`, `ADDR_SPACE_END`. |
-| `scripts/recomp/rt-bdsp/main.c` | Fenster per `mmap` (4 GiB, `g_base`, erste 64 KiB `PROT_NONE`), `BDSP_WATCH=hexadresse,…` (Aufrufe mit x0–x2 und lr protokollieren, Fehlersuche), `#if` für iOS (`mach_vm.h` fehlt dort). |
-| `scripts/recomp/rt-bdsp/kernel.c` | `vm_region_64` statt `mach_vm_region` (iOS), `GetInfo` 2/3/6 per Umgebung überschreibbar (`BDSP_ALIAS_BASE/SIZE`, `BDSP_APPMEM`, Fehlersuche), **Race-Fix in `block_current`** (Abschnitt 4.3). |
-| `scripts/recomp/rt-bdsp/services_audio.c` | `GetReleasedAudioOutBuffer` ohne Treffer schreibt Tag 0 (Abschnitt 4.2). |
-| `scripts/recomp/rt-bdsp/nvn/nvn_glue.c` | nur Rückfallwerte der Alias-Region für B. |
-| `scripts/recomp/ios/nvn_rebase32.py` | schreibt die kopierten LAS-NVN-Quellen (`work/recomp/nvn-src`) in eine Kopie `nvn-src32` um: jede Gastadresse, die der Klon mit `(uintptr_t)` als Zeiger benutzt, geht durch `GA()` = `(uintptr_t)G2H()` (**78 Stellen**, Hostzeiger in Befehlssätzen bleiben unberührt; jede Regel muss treffen, sonst bricht das Skript ab); `movie_glue.c` wird als `movie_glue32.c` umgeschrieben (Hostzeiger, die der Gast liest, kommen in den Gastspeicher: `H2G`, `gstr`). Die Dateien in `scripts/recomp/rt-bdsp/nvn/` bleiben für Variante A unverändert. |
-| `scripts/recomp/ios/build_rt32.sh` | `mac`: Laufzeit + NVN (Metal, SDL3, FFmpeg) in Variante B zu `work/recomp/bdsp_boot32`; `ios`: dasselbe für iPhoneOS zu `libbdsp_rt.a` (ohne SDL, Fenster und Eingabe liefert die App; `metal_ios.m` und `renderer_ios.m` erzeugt `nvn_ios.py`). |
+## Build and deployment
 
-### 1.2 Adressraum (Variante B, `bdsp.h`)
-`0x0100_0000` main (82 MiB), `0x0700_0000` sdk, `0x0800_0000` subsdk0, `0x0900_0000` rtld, `0x0A00_0000` HLE-Slots, TLS `0x0A10_0000`, HLE-Heap 96 MiB ab `0x0A20_0000`, Heap-Region (`SetHeapSize`) 1 MiB bei `0x1030_0000` (**BDSP ruft `SetHeapSize` nicht auf**, gemessen: Heap 0 MiB in allen Läufen), Thread-Stacks 252 MiB ab `0x1040_0000`, Alias-Region `0x2000_0000` bis `0x1_0000_0000` (3,5 GiB).
+Requirements: Xcode, paired/unlocked device, extracted modules and main.npdm in
+work/exefs, generated model-B guest objects, and TEAM_ID in ignored work/local.env.
+Do not commit personal signing settings in project.pbxproj or workspace user data.
 
-### 1.3 Gefundene Hindernisse (Ursache, Behebung)
-| # | Symptom | Ursache | Behebung |
-|---|---|---|---|
-| 1 | Abbruch in `StandardAllocator::Initialize` (Adresse 0) | `nninitStartup` verlangt per `AllocateAddressRegion` den Anwendungsspeicher (`GetInfo` 6/21 minus 64 MiB) am Stück; `AddressSpaceAllocator::AllocateSpace` setzt ihn **zufällig auf eine 2-GiB-Grenze** der Alias-Region (Variante A: `0x72_0000_0000`). Im 4-GiB-Fenster passt nur der Block `0x8000_0000` bis `0xFF00_0000`. | `APP_MEMORY` = `0x8300_0000` (1,98 GiB), Alias-Region ab `0x2000_0000` (mit Beginn `0x4000_0000` oder `0x7F00_0000` scheitert die spätere 32-MiB-Zuteilung des Dateicaches, gemessen mit `BDSP_ALIAS_BASE/SIZE`). |
-| 2 | Abbruch in `ThreadManager::CreateThread` beim 20. Thread | das SDK legt Thread-Stacks per `MapMemory` in die Stack-Region (`GetInfo` 14/15); 32 MiB reichten für 19 | Stack-Region 252 MiB (39 Threads laufen) |
-| 3 | `[tex]`/Metal-Puffer | Der Metal-Puffer umhüllt die Hülle aller `MapPhysicalMemory`-Bereiche: 3.583 MiB, **unter `maxBufferLength` = 4.096 MiB** des iPad (gemessen, Sondenbau) | in B konstruktionsbedingt ≤ 3,5 GiB; A hatte 5.069 MiB |
-| 4 | Kein BC-Problem | `supportsBCTextureCompression` = 1 auf dem M2 (gemessen); kein BC-Decoder nötig | – |
-
-### 1.4 Messung Mac, Variante B (`work/builds/mac-b-run9.log`)
-Bis zum Titel wie A; 45–47 Bilder/s (A: 45), 39 Threads, RSS-Spitze 1.153 MiB, Metal-Puffer 2.0–2.2 GiB belegt. Der Zusatz `g_base`-Rechnung ist in dieser Messung **nicht sichtbar** (Bildrate gleich); eine Mikromessung existiert nur aus dem Spike (+5 % im Exception-Test).
-
-## 2. Gerätedaten (Sondenbau, `deploy_ios.sh build-stub`)
-iPad Pro M2: Metal „Apple M2 GPU“, BC-Texturen 1, ASTC 1, `maxBufferLength` 4.096 MiB, `recommendedMaxWorkingSetSize` 5.461 MiB, `os_proc_available_memory` 8.183 MiB (mit Entitlement). Anonymer `mmap` von 4, 5,2, 6 und 12,8 GiB gelingt (`MAP_NORESERVE` nicht nötig, nur berührte Seiten zählen: 256 MiB beschrieben = Footprint 266 MiB); ein Metal-Puffer um 4 GiB gelingt. Damit trägt iPadOS das 4-GiB-Fenster ohne Extended-Virtual-Addressing.
-
-## 3. App und Build (Etappen 2 und 3)
-- **`scripts/recomp/ios/app/`**: `app.m` (UIKit, `CAMetalLayer`, Touch-Gamepad: Steuerkreuz, A/B/X/Y nach Konsolenlage, L/R/ZL/ZR, +/−, Mehrfachberührung; GameController-Controller (Tastenlage nach Position, Sticks, blendet das Touch-Pad aus); Hardware-Tastatur wie am Mac (Pfeile/WASD, Eingabe/Leertaste = A, Rücktaste = B …); Spielstand-Import; Messzeilen alle 5 s mit Footprint, `os_proc_available_memory`, `thermalState`), `Info.plist` (nur iPad, Querformat, Vollbild, `UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`, `UIRequiredDeviceCapabilities` arm64/metal), `BDSP.entitlements` (`com.apple.developer.kernel.increased-memory-limit`), von Hand geschriebenes `BDSP.xcodeproj` (Schema geteilt).
-- **Laufzeit statisch**: `libbdsp_rt.a` (1,8 MiB, `-Dmain=bdsp_runtime_main`, läuft auf einem Thread mit 8 MiB Stack) und `libgame.a` (352 MiB, 2.303 Objekte) werden mit `-force_load` gelinkt (NVN-Funktionen stehen in einem Mach-O-Abschnitt und würden sonst entfallen). Das App-Binary ist 308 MB, das Bundle 398 MB (davon 105 MiB Modulbilder in `res/`). Die Mach-Teile (`thread_suspend`/`thread_get_state` für den GC auf **eigenen** Threads) laufen ohne Entitlement: SVC 0x32/0x33 wurden im Lauf 344/135 Mal benutzt, kein Fehler.
-- **FFmpeg** (`build_ffmpeg_ios.sh`, FFmpeg 9.0.2 von ffmpeg.org nach `work/ios`): minimal, **VP8- und VP9-Decoder (nativ, Software)**, Parser, Matroska/WebM-Demuxer, Datei-Protokoll, ohne swscale (die Laufzeit liefert dem Gast YUV, die Umrechnung macht der Gast-Shader). VideoToolbox kann kein VP8, darum Software; bei 720p/30 gemessen ohne Ausfälle (Bildrate im Film 50–52, größte Lücke 25 ms, 4 Decoder-Threads von FFmpeg).
-- **Zeiten:** Generator 74 s (`main` 57 s, 1.795 Chunks, 916 MB C); Übersetzung **2.303 Dateien in ca. 37 min** bei 3 Jobs auf einer mit 40–50 Last (zwei Agenten) überbuchten Maschine (Summe der Einzelzeiten 6.074 s CPU, davon 55 Dateien mit `-O0`; die längste Datei 273 s); Objekte 395 MB. Inkrementell (nur geänderte Chunks) und Linken des App-Binaries: ca. 13 s.
-- **Stufe `recomp-ios` für `scripts/build_all.sh`** (ohne Umbau von `build_all.sh`): `scripts/recomp/ios/gen32.sh all 3` (Erzeugen, Bilder, Übersetzen), `scripts/recomp/ios/build_ffmpeg_ios.sh`, `scripts/recomp/ios/deploy_ios.sh build`, danach `install`/`run`. Voraussetzung: `DEVELOPER_DIR` auf Xcode, `work/exefs` (Module + `main.npdm`), `work/local.env` mit `TEAM_ID=…`.
-
-## 4. Etappe 4: Deploy, Messung, Fehlersuche
-
-### 4.1 Wege
-`scripts/recomp/ios/deploy_ios.sh`: `build`, `install`, `run [Sekunden]` (`devicectl … --console`, Log `work/builds/ipad-recomp-<Zeit>.log`, Umgebung über `RUN_ENV`-JSON, z. B. `BDSP_INPUT_SCRIPT`, `BDSP_SCREENSHOT_EVERY`), `data` (RomFS: `devicectl copy to … Documents/GameData/romfs`, 4,7 GB, 18.028 Dateien, **unter 3 min** über USB; devicectl legt die Ordner als `root` an, die App liest nur), `save` (SaveData.bin/Backup.bin/`user_id.hex` als **Dateien** nach `Documents/`, die App importiert sie nach `Documents/Saves/save_1`, Hash-Merkdatei, Sicherung des alten Stands nach `Documents/Backups`), `shots` (`Documents/Shots` nach `work/visual/ipad-recomp/`), `files`. Das iPad lässt nur drei Apps mit kostenlosem Profil zu: für `dev.local.xnubdsp` wurde die eigene Messsonde `dev.local.xnumemprobe` deinstalliert.
-
-### 4.2 Messung (Läufe ohne Berührung, Skripteingabe nur für den Spielstand)
-| Größe | Wert |
-|---|---|
-| Start bis Eröffnungsfilm | Bild 1 nach wenigen Sekunden (Laden: Module 105 MiB, RomFS-Index 18.022 Dateien in unter 1 s), Footprint 0,7 GiB nach 5 s, 1,57 GiB nach 10 s |
-| Film → Titel | Titelbild mit „Drücke den A-Knopf“ nach 4.500–6.000 Bildern (`work/visual/ipad-recomp/frame_06000.png`, gesehen: Logo, Dialga-Silhouette, Sterne, richtig) |
-| Bildrate | 50–52 (Film, Titel, Stadt), Spitzen-Lücke 24 ms; bei Szenenwechsel kurz 35 Bilder/s |
-| Footprint | 1,56 GiB (Film/Titel), 2,07 GiB (Stadt, 130.000 Zeichenaufrufe je 5 s), Spitze 2.051 MiB; `os_proc_available_memory` ≥ 6.101 MiB |
-| Thermik | `thermalState` 0 in allen Läufen (längster Lauf 300 s) |
-| Speicher im Gast | 1.718 MiB per `MapPhysicalMemory` abgebildet (Spitze, Stadt) von 1,98 GiB |
-| Stadtbild | `work/visual/ipad-recomp/frame_04500.png`: Spielfigur mit roter Mütze, NPC, Haus mit blauem Dach, Nadelbäume, Schatten; **gleiche Szene wie Mac** (Abschnitt 1.4) |
-
-**Audio-Fehler (gefunden, behoben):** nach ca. 100 s Stillstand im Feld. Ursache: `nn::audio::GetReleasedAudioOutBuffer` liest den Tag aus einem nicht vorbelegten Stack-Slot; lieferte der Dienst keinen fertigen Puffer, blieb der alte Tag stehen, die Spielschleife (`while (GetReleased())`) lief endlos und hielt dabei die Wwise-Sperre des Hauptthreads. Jetzt schreibt der Dienst bei leerer Antwort Tag 0 (Log vorher: „74.000 leere Abfragen“, nachher 0).
-
-### 4.3 Stillstand beim Eröffnungsfilm und unzuverlässiger Start (Nutzerbericht 16:55)
-**Befund:** Kein Absturzbericht des Systems (`devicectl copy from --domain-type systemCrashLogs`: heute weder BDSP-Absturz noch Jetsam-Ereignis), die Entitlement-Datei ist signiert. Der Gast **hängt** (Bildschirm steht): in 3 von 5 Läufen **vor** der Korrektur nach 200–712 Bildern, Hauptthread in `ArbitrateLock`. Mit `BDSP_BT=1 BDSP_WAIT=1` (Ergebnisbericht): der Mutex `0x601f40c` trägt **seinen eigenen Besitzer** (Handle von Thread 113, der gerade `ArbitrateLock` darauf aufruft) – **Selbstverklemmung in `TimedWait`** (`nn::os::TimedWaitEvent` im Filmpfad).
-**Ursache:** `block_current` (kernel.c) meldete nach `pthread_cond_timedwait` = `ETIMEDOUT` immer `R_TIMEOUT`, auch wenn der Waker (`SignalProcessWideKey`/`mutex_release`) den Wartezustand schon beendet und **den Mutex an diesen Thread übergeben** hatte. Der SDK-Code sperrt nach einem Zeitablauf den Mutex selbst noch einmal → Thread wartet auf sich selbst. Die Überschneidung ist selten, bei 39 Threads und mehreren Kernen auf dem iPad aber häufig im Film (zeitgesteuerte Warten des Decoders); auf dem Mac war sie nicht aufgefallen.
-**Fix:** hat der Waker den Zustand schon beendet (`wait_kind == WAIT_NONE`), gilt sein Ergebnis. **Beleg:** vorher 3 von 5 Läufen mit Stillstand, nachher 9 Läufe (4 × 45 s, 2 × 130 s bis zum Titel, 3 × 40 s) ohne Stillstand bei dieser Ursache (Bildzahl 1.480–6.089). Der Nutzerbericht „stürzt ab, wenn das Intro nicht sofort mit A übersprungen wird“ und „2–3 Starts“ passen dazu: mit A kommt der Film nicht in die Warteschleife.
-**Offen (zweiter Stillstand, NICHT behoben):** nach der Korrektur trat ein **zweiter, früherer** Stillstand auf: 0 Bilder, Footprint 526 MiB, Hauptthread (80) und Thread 113 (Audio) beide in `SendSyncRequest` (Hauptthread im `hid`-Aufruf der Touch-Abfrage, seit 31–36 s ohne SVC), alle anderen Threads in Warteschlangen, Logs `work/builds/ipad-recomp-20261019-171301.log` und `…-171815.log`. Zähler: SVC 0x32 = 140, 0x33 = 68–70 (die Anhalten-/Fortsetzen-Aufrufe des GC sind nicht ausgeglichen). **Vermutung (nicht belegt):** der GC (Boehm, über SVC 0x32/0x33 und `thread_suspend`) hält den Hauptthread mitten in einem IPC an, während dieser eine Host-Sperre (`seen_lock` in `ipc_count`, malloc) hält; der Anhalter ruft danach selbst IPC auf und verklemmt an dieser Sperre. Ein Gegenversuch (Anhalten nur außerhalb von SVC-Abschnitten, `in_svc`/`suspend_pending`) wurde gebaut und auf dem iPad in 8 Läufen erprobt: **3 von 8 Läufen blieben bei 0 Bildern stehen** (Logs `loop1.log`), das ist nicht besser (vorher 1 von 12 und 1 von 7 mit dieser Ursache) und **nicht validiert**; die Änderung wurde auf Anweisung des Nutzers **zurückgenommen** (`kernel.c`/`bdsp.h` stehen wieder auf dem Stand mit nur dem Timeout-Fix). **Achtung:** die zuletzt auf das iPad installierte App enthält noch den zurückgenommenen Versuch; ein neuer Build aus dem Repo ist nötig. Nächster Schritt: Stillstand mit `BDSP_TRACE_SYNC` und einem Zähler „angehaltene Threads“ im Ergebnisbericht eindeutig einem angehaltenen Thread zuordnen, bevor ein Fix gebaut wird; Stressprobe `BDSP_SUSPEND_STRESS=1` auf dem Mac für die Reproduktion verwenden.
-**Start:** die App zeigt während des Starts nur den Zähler „Shader-Kompilierung n / N“ oben links (das Gate, siehe `docs/recomp-ios.md`); die Laufzeit startet nach `viewDidAppear` auf einem eigenen Thread, der Hauptthread blockiert nicht (Watchdog-Zeit ausgeschlossen: `FootprintMiB` 0,7 GiB nach 5 s, kein Jetsam).
-
-### 4.4 Alternative HEVC/VideoToolbox
-Nicht umgesetzt: der Software-Decoder (VP8, 720p, 30 Bilder/s) läuft ohne Bildausfall (50–52 Bilder/s im Film, größte Lücke 24 ms). Die Umwandlung bleibt als Rückfall: `scripts/video_convert.sh` (libx265 CRF 18, `hvc1`, +41 % Größe) plus VideoToolbox in `movie_glue` (HLE tauscht intern die Datei, Gast-Dauer und Bildzahl müssen gleich bleiben) – Aufwand ca. 1–2 Tage, erst nötig, wenn die CPU-Last beim Film die Bildrate drückt.
-
-## 5. Offene Punkte und Lücken
-- **Wasser**: gleicher Renderer (`renderer.m`/`metal.m` aus dem Klon, auf iOS unverändert bis auf Depth24-Format und Fenster) – ein Unterschied zum Mac ist durch den Code **nicht** zu erwarten; auf dem iPad nicht nachgestellt (Stadt am Wasser nicht angefahren). Das Fehlerbild gehört zur Metal-/NVN-Seite (`ap-recomp-qa`).
-- **1,98 GiB statt 3,14 GiB** Gastspeicher; Langzeit-/Kampftest fehlt.
-- Touch/Controller/Tastatur nur gebaut; Skripteingabe über `g_ext_buttons` getestet (A-Tasten, Laufen).
-- **Startstillstand (4.3, „Offen“): nicht behoben, ca. 1 von 8–12 Läufen bleibt bei 0 Bildern stehen** (Ursache vermutet: GC-Anhalten mitten in einem IPC).
-- Laden aus der Dateien-App: `UIFileSharingEnabled` gesetzt, nicht angesehen.
-- Das Spiel läuft bei 50–52 Bildern/s (nicht 60, nicht 30 gedeckelt): das Ziel „30“ ist übererfüllt, die Bildrate ist nicht an die ProMotion-Anzeige gebunden.
-
-## 6. Reproduktion
+```sh
+scripts/recomp/ios/gen32.sh all 3
+scripts/recomp/ios/build_ffmpeg_ios.sh
+scripts/recomp/shader_bin.sh iphoneos
+scripts/recomp/ios/deploy_ios.sh build
+scripts/recomp/ios/deploy_ios.sh install
 ```
-scripts/recomp/ios/gen32.sh all 3                  # Erzeugen, Bilder, Übersetzen (ca. 40 min)
-scripts/recomp/ios/build_ffmpeg_ios.sh 9.0.2 2     # FFmpeg für iOS (Quelltext nach work/ios laden)
-scripts/recomp/ios/build_rt32.sh mac               # Mac-Test, Variante B
+
+The deploy helper supports:
+
+| Command | Purpose |
+|---|---|
+| build | Build static runtime/game libraries, Xcode app, icons, shader resources, then sign and verify |
+| install | Install the app and ensure the RomFS manifest matches |
+| data | Explicitly replace the device RomFS with work/romfs |
+| save | Copy local save import files into Documents; the app validates/imports them |
+| run [seconds] | Launch with console log; an optional duration terminates the process |
+| files [path] | List container files, default Documents |
+| shots | Copy device captures into ignored work/visual/ipad-recomp |
+
+RUN_ENV supplies launch environment as JSON. Logs go to
+work/builds/ipad-recomp-<timestamp>.log. Do not use repeated iPad launch loops.
+Back up device saves before installation. Recent in-place installs preserved
+saves and RomFS; verify rather than assuming preservation or blindly overwriting
+them. Data/save commands can replace user state and are not routine test steps.
+
+Output bundle:
+`work/builds/ios-recomp-derived/Build/Products/Release-iphoneos/BDSP.app`.
+The final bundle is signed after resource modifications and checked with
+`codesign --verify --deep --strict`.
+
+## Memory model and architecture
+
+Model B reserves a 4-GiB guest window, translates addresses as
+g_base + (uint32_t)ea, and places guest modules below 4 GiB. Static game and runtime
+archives are force-loaded. UIKit hosts CAMetalLayer; the runtime runs on its own
+thread, not the UI main thread.
+
+Main: 0x01000000; SDK: 0x07000000; subsdk0: 0x08000000; rtld: 0x09000000;
+HLE slots: 0x0A000000. Thread stacks occupy 252 MiB from 0x10400000.
+The alias region starts at 0x20000000. SDK allocation constraints leave about
+1.98 GiB of application memory versus 3.14 GiB in model A.
+
+nvn_rebase32.py rewrites guest-address uses in copied NVN sources under work/,
+preserving host pointers. Rules must match or generation aborts.
+build_rt32.sh supports Mac validation and iPhoneOS static-library builds.
+FFmpeg provides software VP8/VP9 decoding and Matroska/WebM demuxing; the guest
+shader converts YUV. The source movies have no audio streams.
+
+The tested device is an M2 iPad Pro with 8 GB RAM. BC compression is supported;
+maxBufferLength is 4 GiB. The increased-memory-limit entitlement is signed and
+verified. Early field runs reached about 2.1 GiB footprint and thermalState 0.
+These historical figures and the earlier 50–52 fps measurements are not current
+performance guarantees.
+
+## Known issues and regression evidence
+
+The empty released-audio-buffer response must write tag zero; stale tags caused
+a guest Wwise loop and field freeze. Preserve duration-based release pacing.
+
+A kernel timed-wait race was fixed: if a waker already completed the wait and
+transferred mutex ownership, its result wins over ETIMEDOUT. Otherwise the SDK
+could lock a mutex it already owned.
+
+A separate early zero-frame stall involving GC thread suspension and IPC remains
+unresolved. Its host-lock explanation is a hypothesis, not a proven cause.
+The earlier suspension experiment was reverted; do not reintroduce it or use
+device repetition loops. Additional diagnostic changes remain uncommitted.
+
+Remaining manual checks include touch/controller/keyboard hardware behavior,
+audio interruptions/device changes, extended play/battles and the guest memory
+limit, and shader/rendering differences such as water. Do not infer a successful
+alternate-icon switch from merely seeing the default icon.
+
+Full historical measurements, address tables, and investigation notes are
+preserved in [recomp-ios.de.md](recomp-ios.de.md). Historical statements about
+silent output or an old installed build describe that earlier state.
+
+## Historical findings (research snapshot, 2026-10-19)
+
+This section preserves the detailed measurements and implementation notes from
+the original research log. Values below describe that dated test state, not
+current performance guarantees. The log marked a result *measured* when it had
+a run log under `work/builds/` or images under `work/visual/ipad-recomp/`, and
+*suspected* when it was an inference without a test. The work was stopped at the
+user's request at 17:30 on 2026-10-19. Its references were
+`docs/architektur-entscheidung.md` (decision 3), `docs/recomp-spike-2.md` (memory
+model B), `docs/recomp-gate2.md`, `docs/ipad-messung-1.md`, and
+`docs/ios-speicher-entitlements.md`. The tested device was a 12.9-inch, 6th
+generation M2 iPad Pro (8 GB, iPadOS 26.4.2), signed with a free team and the
+increased-memory-limit entitlement, verified by `codesign -d --entitlements`;
+the Mac was an M1 Pro with 16 GB. The repository contained names, numbers, and
+structure only: no game data, generated code, images, or team ID; logs, images,
+and objects were kept under `work/`.
+
+The archived 2026-10-20 icon update described an opaque icon image with 6.25%
+inset, with iPadOS supplying the outer rounding. That records an earlier
+design iteration; the current icon design and language selection are described
+at the top of this guide and in [recomp-icons.md](recomp-icons.md).
+
+### Model B implementation details
+
+The `gen32.sh` pipeline generated all modules below 4 GiB (`main` at
+`0x01000000`, `sdk` at `0x07000000`, `subsdk0` at `0x08000000`, and `rtld` at
+`0x09000000`) with `--simd c`, made module images using
+`mkimg.py --hle-base 0x0A000000` and the `hle_nvn.txt` HLE list, then compiled
+for iPhoneOS arm64. Outputs were `work/recomp/gen32`, `img32`, and `obj32`.
+`compile_chunk_ios.sh` used `-O1` except that individual functions larger than
+300 KB used `-O0`, plus `-fno-fast-math -ffp-contract=off`,
+`-DREBASE32 -DRT32_GEN`, and `-I rt32`. Objects were tagged for iOS; the Mac
+validation removed that platform tag with `vtool -remove-build-version` so the
+objects could also link on macOS. Generated `memset` calls for the lifter's DC
+ZVA operation go through the guest base under `-DRT32_GEN` using
+`(void *)(uintptr_t)`. DC ZVA did not occur in generated C (zero matches across
+2,303 chunks), but the guard remained.
+
+The 4 GiB `mmap` window used `g_base`, with the first 64 KiB marked
+`PROT_NONE`. `BDSP_WATCH=hexaddress,…` logged calls with x0–x2 and lr for
+debugging. iOS used a conditional path because `mach_vm.h` is unavailable
+there; `kernel.c` used `vm_region_64` instead of `mach_vm_region`. `GetInfo`
+values 2, 3, and 6 could be overridden for diagnosis with
+`BDSP_ALIAS_BASE/SIZE` and `BDSP_APPMEM`. `nvn_glue.c` supplied only fallback
+alias-region values for model B. The model-B runtime header also defined
+`APP_MEMORY`, `HEAP_REPORT`, and `ADDR_SPACE_END` for its layout and reporting.
+
+`nvn_rebase32.py` copied LAS NVN sources from `work/recomp/nvn-src` to
+`nvn-src32`. It rewrote 78 uses where the clone treated a guest address as a
+`(uintptr_t)` pointer through `GA()` (`(uintptr_t)G2H()`); host pointers in
+command buffers remained untouched. Every rewrite rule had to match or the
+script aborted. It separately rewrote `movie_glue.c` as `movie_glue32.c`,
+placing host pointers read by the guest into guest memory through `H2G` and
+`gstr`. The checked-in `scripts/recomp/rt-bdsp/nvn/` sources stayed unchanged
+for model A. `build_rt32.sh mac` made the model-B runtime and NVN (Metal, SDL3,
+FFmpeg) at `work/recomp/bdsp_boot32`; `build_rt32.sh ios` made the iPhoneOS
+`libbdsp_rt.a` without SDL, since the app supplied the window and input. The
+`nvn_ios.py` generator produced `metal_ios.m` and `renderer_ios.m`.
+
+The model-B address layout was: main `0x01000000` (82 MiB), SDK `0x07000000`,
+subsdk0 `0x08000000`, rtld `0x09000000`, HLE slots `0x0A000000`, TLS
+`0x0A100000`, and a 96 MiB HLE heap beginning at `0x0A200000`. The 1 MiB
+`SetHeapSize` region began at `0x10300000`; BDSP never called `SetHeapSize`, and
+measured guest heap use was 0 MiB in every run. Thread stacks occupied 252 MiB
+from `0x10400000`. The alias region ran from `0x20000000` to `0x100000000`
+(3.5 GiB).
+
+The 4 GiB window constrained SDK application memory to `0x83000000` (1.98
+GiB), versus 3.14 GiB in model A. `nninitStartup` requested one contiguous
+application-memory allocation through `AllocateAddressRegion` (`GetInfo` 6/21
+minus 64 MiB); `AddressSpaceAllocator::AllocateSpace` placed it at a random
+2 GiB boundary in the alias region (model A example: `0x7200000000`). In the
+4 GiB window only the block from `0x80000000` to `0xFF000000` fit. Starting
+the alias region at `0x40000000` or `0x7F000000` caused the later 32 MiB file
+cache allocation to fail, measured using `BDSP_ALIAS_BASE/SIZE`.
+`ThreadManager::CreateThread` first failed on thread 20 because the SDK mapped
+thread stacks in the stack region (`GetInfo` 14/15); 32 MiB held 19 threads,
+while 252 MiB allowed 39. The Metal buffer wrapping all `MapPhysicalMemory`
+areas was 3,583 MiB, below the iPad's measured 4,096 MiB `maxBufferLength`;
+model A had 5,069 MiB. BC texture compression was supported on M2
+(`supportsBCTextureCompression == 1`), so no BC decoder was needed.
+
+On the Mac model-B run (`work/builds/mac-b-run9.log`), the game reached the
+title as in model A, at 45–47 fps (model A: 45), with 39 threads, peak RSS of
+1,153 MiB, and 2.0–2.2 GiB of Metal buffer occupied. The extra `g_base`
+address calculation was not visible in this measurement; the only
+microbenchmark was from the spike and showed a 5% increase in an exception
+test.
+
+### Device probe, app, and build measurements
+
+The `deploy_ios.sh build-stub` probe reported an Apple M2 GPU, BC and ASTC
+support, `maxBufferLength` 4,096 MiB, `recommendedMaxWorkingSetSize` 5,461 MiB,
+and `os_proc_available_memory` 8,183 MiB with the entitlement. Anonymous
+`mmap` allocations of 4, 5.2, 6, and 12.8 GiB succeeded without
+`MAP_NORESERVE`; only touched pages counted (writing 256 MiB gave a 266 MiB
+footprint). A Metal buffer around 4 GiB also succeeded. This showed that
+iPadOS could host the 4 GiB window without Extended Virtual Addressing.
+
+The hand-written app used UIKit and `CAMetalLayer`. Its touch pad had a
+direction pad, console-positioned A/B/X/Y, L/R/ZL/ZR, plus/minus, and
+multitouch. GameController support mapped buttons by position, supported
+sticks, and hid the touch pad when connected. Hardware keyboard mapping
+matched the Mac (arrows/WASD, Return/Space for A, Backspace for B, and other
+keys). The app imported saves and emitted footprint, available-memory, and
+thermal-state measurements every five seconds. `Info.plist` limited the app
+to iPad and landscape full-screen mode, enabled file sharing and opening
+documents in place, and required arm64/Metal. `BDSP.entitlements` carried
+`com.apple.developer.kernel.increased-memory-limit`; the Xcode project and
+shared scheme were hand-written.
+
+`libbdsp_rt.a` was 1.8 MiB, built with `-Dmain=bdsp_runtime_main`, and ran on a
+thread with an 8 MiB stack. `libgame.a` was 352 MiB with 2,303 objects. Both
+were linked with `-force_load` because NVN functions in a Mach-O section would
+otherwise be discarded. The app executable was 308 MB and the bundle 398 MB,
+including 105 MiB of module images in `res/`. Mach support for the Boehm GC
+(`thread_suspend`/`thread_get_state` on its own threads) worked without an
+entitlement: SVC 0x32/0x33 were called 344/135 times in the run, without
+errors.
+
+The iOS FFmpeg build used FFmpeg 9.0.2 fetched from ffmpeg.org into
+`work/ios`. It enabled native software VP8/VP9 decoders, parsers,
+Matroska/WebM demuxing, and the file protocol, but not swscale: runtime code
+gave YUV to the guest and the guest shader converted it. VideoToolbox could
+not decode VP8. At 720p/30, playback had no dropped frames; the film ran at
+50–52 fps with a maximum 25 ms frame gap and four FFmpeg decoder threads.
+The source movies had no audio streams.
+
+Generation took 74 seconds (57 seconds for `main`, 1,795 chunks, 916 MB of C
+source). Compiling 2,303 files took about 37 minutes with three jobs on an
+overloaded machine (load 40–50 with two agents); cumulative individual CPU
+time was 6,074 seconds, 55 files used `-O0`, the longest file took 273 seconds,
+and objects totaled 395 MB. Incremental compilation of changed chunks and
+linking the app executable took about 13 seconds. The proposed `recomp-ios`
+stage for `scripts/build_all.sh` did not modify that script; the sequence was
+`gen32.sh all 3`, `build_ffmpeg_ios.sh`, then `deploy_ios.sh build`, followed
+by `install`/`run`. It required `DEVELOPER_DIR` pointed at Xcode,
+`work/exefs` with modules and `main.npdm`, and `TEAM_ID` in
+`work/local.env`.
+
+### Deployment and measured iPad run
+
+The deployment helper's `run [seconds]` used `devicectl … --console`, wrote
+`work/builds/ipad-recomp-<timestamp>.log`, and accepted its environment as
+`RUN_ENV` JSON, including `BDSP_INPUT_SCRIPT` and `BDSP_SCREENSHOT_EVERY`.
+The `data` command copied the 4.7 GB RomFS (18,028 files) to
+`Documents/GameData/romfs` using `devicectl copy to`; USB transfer took under
+three minutes. `devicectl` created those directories as root, and the app only
+read them. The `save` command copied `SaveData.bin`, `Backup.bin`, and
+`user_id.hex` as files into `Documents/`; the app imported them into
+`Documents/Saves/save_1`, recorded a hash marker, and backed up the previous
+save under `Documents/Backups`. `shots` copied `Documents/Shots` to
+`work/visual/ipad-recomp/`. The free provisioning profile allowed only three
+apps on the iPad, so the user's `dev.local.xnumemprobe` memory probe was
+uninstalled to make room for `dev.local.xnubdsp`.
+
+The measured runs had no touch input; scripted input was used only for the
+save. The first frame appeared within a few seconds. Loading 105 MiB of module
+images and indexing 18,022 RomFS files took under one second. Footprint was
+0.7 GiB at five seconds and 1.57 GiB at ten seconds. The title prompt “Press
+the A button” appeared after 4,500–6,000 frames; the capture at
+`work/visual/ipad-recomp/frame_06000.png` showed the logo, Dialga silhouette,
+and stars correctly. Film, title, and city ran at 50–52 fps; the largest frame
+gap was 24 ms, with a brief drop to 35 fps at a scene change. Footprint was
+1.56 GiB in film/title and 2.07 GiB in the city (130,000 draw calls per five
+seconds), peaking at 2,051 MiB; available memory stayed at or above 6,101 MiB.
+`thermalState` remained 0 in all runs, the longest lasting 300 seconds. Peak
+guest memory mapped by `MapPhysicalMemory` was 1,718 MiB of the 1.98 GiB
+available. The image at `frame_04500.png` showed the red-capped player, an NPC,
+a blue-roofed house, conifers, and shadows, and depicted the same city scene as
+the Mac capture (aside from the cloud shadow noted above).
+
+### Additional investigation and unresolved behavior
+
+The historical audio freeze appeared after about 100 seconds in the field.
+`nn::audio::GetReleasedAudioOutBuffer` read a tag from an uninitialized stack
+slot; when the service had no completed buffer, the stale tag made the guest
+loop (`while (GetReleased())`) run indefinitely while holding the main
+thread's Wwise lock. The service was changed to return tag zero on an empty
+response. The earlier log recorded about 74,000 empty polls; after the change
+the count was zero. Release pacing remained duration based.
+
+The timed-wait race fix in `block_current` addressed one intro freeze. Before
+the fix, three of five runs froze after 200–712 frames with the main thread in
+`ArbitrateLock`; a `BDSP_BT=1 BDSP_WAIT=1` report showed mutex `0x601f40c`
+owned by thread 113, which was calling `ArbitrateLock` on that same mutex.
+This was a self-deadlock in `TimedWait` (`nn::os::TimedWaitEvent`) on the film
+path. After `pthread_cond_timedwait` returned `ETIMEDOUT`, `block_current`
+reported `R_TIMEOUT` even if the waker (`SignalProcessWideKey`/
+`mutex_release`) had already ended the wait and transferred mutex ownership to
+the waiter. The SDK then attempted to lock the mutex again. The race was rare,
+but frequent in the film with 39 threads on the iPad's multiple cores; it had
+not appeared on the Mac. The fix lets the waker's result win when
+`wait_kind == WAIT_NONE`. Nine subsequent runs (four × 45 seconds, two × 130
+seconds to title, three × 40 seconds) did not show this failure, at 1,480–6,089
+frames. The user report that the app “crashes” unless A skips the intro
+immediately, after two or three starts, was consistent with skipping the
+timed-wait path. No system crash or Jetsam report was found via
+`devicectl copy from --domain-type systemCrashLogs`; the guest had hung rather
+than crashed, and the entitlement was signed.
+
+A separate, earlier zero-frame freeze remained unresolved. After the race fix,
+two logs (`work/builds/ipad-recomp-20261019-171301.log` and
+`…-171815.log`) showed a 526 MiB footprint; main thread 80 and audio thread
+113 were both in `SendSyncRequest`. The main thread was in the touch-query
+`hid` call, with no SVC for 31–36 seconds; other threads were queued. SVC
+0x32 counted 140 calls and SVC 0x33 counted 68–70, so the Boehm GC's
+suspend/resume calls were unbalanced. The proposed explanation was
+unconfirmed: the GC may suspend the main thread during IPC while it holds a
+host lock (`seen_lock` in `ipc_count`, or malloc), then the suspending thread
+may call IPC and deadlock on that lock. A trial that suspended only outside
+SVC sections (`in_svc`/`suspend_pending`) froze at zero frames in three of
+eight iPad runs, no improvement over the earlier one in twelve and one in
+seven with this symptom. That change was reverted at the user's direction;
+`kernel.c` and `bdsp.h` returned to the timeout-fix-only state. The last app
+installed on the iPad still contained the reverted trial, so a fresh repo
+build was required. The next diagnostic proposed was `BDSP_TRACE_SYNC` plus a
+count of suspended threads in the result report, to identify a suspended
+thread before attempting another fix; `BDSP_SUSPEND_STRESS=1` on Mac was the
+suggested reproduction probe. The dated estimate was one such freeze per
+8–12 starts, with the cause only suspected as GC suspension during IPC.
+
+At startup, the approved path displayed only “shader compilation n / N” at
+the upper left. Runtime started on its own thread after `viewDidAppear`, so
+the UI main thread did not block. Watchdog time was excluded; footprint was
+0.7 GiB after five seconds with no Jetsam event. The trial observations do not
+authorize changing that startup gate or repeating device launch loops.
+
+The alternative HEVC path was not implemented because software VP8 at 720p/30
+had no dropped frames. The retained fallback proposal was
+`scripts/video_convert.sh` with libx265 CRF 18 and `hvc1` (41% larger files),
+plus VideoToolbox in `movie_glue`; HLE would swap the file internally while
+preserving guest duration and frame count. Estimated effort was one to two
+days, only if film CPU load reduced the frame rate.
+
+Other dated gaps: water had not been visited on iPad. The renderer was the
+same cloned `renderer.m`/`metal.m`, unchanged on iOS except for Depth24 format
+and the window, so code inspection did not predict a Mac/iPad difference; the
+issue belonged to the Metal/NVN side (`ap-recomp-qa`). Long play and battles
+had not tested the 1.98 GiB guest-memory limit. Touch, controller, and keyboard
+hardware behavior had not been manually tested; scripted `g_ext_buttons`
+input covered A presses and walking. Opening files through the Files app was
+not checked despite `UIFileSharingEnabled`. Performance was not capped at 60
+or 30 fps: 50–52 fps exceeded the 30 fps target but was not tied to the
+ProMotion refresh rate.
+
+The historical Mac reproduction used:
+
+```sh
+scripts/recomp/ios/gen32.sh all 3
+scripts/recomp/ios/build_ffmpeg_ios.sh 9.0.2 2
+scripts/recomp/ios/build_rt32.sh mac
 BDSP_IMG=work/recomp/img32 work/recomp/bdsp_boot32 --headless --save work/recomp/save --timeout 170 \
   --input-script "100:A:0.4,110:A:0.4,120:A:0.4,130:A:0.4" --screenshot-after 600
-scripts/recomp/ios/deploy_ios.sh build && scripts/recomp/ios/deploy_ios.sh install
-scripts/recomp/ios/deploy_ios.sh data && scripts/recomp/ios/deploy_ios.sh save   # einmalig
-RUN_ENV='{"BDSP_TIMEOUT":"130"}' scripts/recomp/ios/deploy_ios.sh run
 ```
 
-## 7. Regelverstöße und Hinweise
-- Einmal `sed -i` auf `scripts/recomp/ios/app/app.m` (Typkorrektur) statt `edit`; Inhalt geprüft.
-- Die eigene Messsonde `dev.local.xnumemprobe` wurde vom iPad deinstalliert (Platz für das dritte Profil).
-- Mehrere Hintergrundläufe starben beim Tool-Ende; sie wurden mit `nohup` neu gestartet.
+The device sequence was `deploy_ios.sh build && deploy_ios.sh install`, then
+`deploy_ios.sh data && deploy_ios.sh save` once, followed by
+`RUN_ENV='{"BDSP_TIMEOUT":"130"}' scripts/recomp/ios/deploy_ios.sh run`.
+The historical notes also recorded one `sed -i` type correction in
+`scripts/recomp/ios/app/app.m` instead of the preferred `edit` operation (the
+content was checked), and background jobs that died when the tool ended and
+were restarted with `nohup`.

@@ -1,85 +1,84 @@
-# Rekompilation, Qualitätssicherung (`ap-recomp-qa`)
+# Recompilation QA (`ap-recomp-qa`)
 
-Stand: 2026-10-19, Zwischenstand (wird nach jedem Szenario fortgeschrieben). Grundlage: `docs/recomp-gate2.md`, `docs/architektur-entscheidung.md` (Entscheidung 3: Rekompilation ist Hauptweg), `docs/visuelle-pruefung.md`. Auftrag: die rekompilierte Laufzeit (`work/recomp/bdsp_boot`, Metal, headless) systematisch testen, Fehler finden und beheben, Bild gegen die Ryujinx-Referenz messen. **Kein Ton** (die Audiodienste sind stumm), keine Spielbytes, Saves oder Screenshots im Repo (alles unter `work/recomp/qa/`).
+Status: 2026-10-19, interim (to be updated after each scenario). Based on `docs/recomp-gate2.md`, `docs/architektur-entscheidung.md` (decision 3: recompilation is the main path), and `docs/visuelle-pruefung.md`. Task: systematically test the recompiled runtime (`work/recomp/bdsp_boot`, Metal, headless), find and fix errors, and compare images with the Ryujinx reference. **No audio** (audio services are silent); no game binaries, saves, or screenshots in the repository (everything is under `work/recomp/qa/`).
 
-**Kennzeichnung:** **gemessen** = in den Läufen unter `work/recomp/qa/<lauf>/` ermittelt; *vermutet* = Schluss ohne Test. **Messbedingung:** M1 Pro, 16 GB. Während der Läufe baute und testete ein anderer Agent parallel (Last des Macs im Mittel 25 bis 55, zeitweise lief eine zweite Spielinstanz); **Bildraten dieser Läufe sind deshalb nicht aussagekräftig** (Abschnitt Dauerlauf). Jeder Bericht enthält Last und Prozess-CPU.
+**Labels:** **measured** = recorded in runs under `work/recomp/qa/<run>/`; *suspected* = inference without a test. **Test conditions:** M1 Pro, 16 GB. Another agent was building and testing in parallel during these runs (Mac load averaged 25–55; at times a second game instance was running), so **frame rates from these runs are not representative** (see long run). Each report includes load and process CPU.
 
 ## Harness (`scripts/recomp/qa/`)
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `qa_run.sh <szenario>` | Einstieg: `qa_run.sh --list`, `qa_run.sh <szenario> [--bin PFAD] [--img ORDNER] [--no-il2sym] [--timeout S] [--label TEXT]`, `qa_run.sh --report <lauf>` (Bericht neu erzeugen). Exit-Code 0 bestanden, 1 Prüfung gescheitert, 2 Aufruffehler, 3 Platte < 15 GB. Es läuft nur ein Lauf zugleich (Sperrdatei). |
-| `qa_run.py` | Szenario laden, `bdsp_boot --headless` starten, RSS/CPU/Last alle 2 s messen, Eingaben einspeisen, Log auswerten, `report.md` und `report.json` schreiben, Kontaktbögen der Screenshots erzeugen |
-| `scenarios/*.txt` | Szenarien (Syntax im Kopf von `qa_run.py`); Namen mit `_` sind Hilfsdateien oder Erkundungen |
-| `patches/` | Vorschläge für Änderungen an Dateien, die andere Agenten gerade bearbeiten |
+| `qa_run.sh <scenario>` | Entry point: `qa_run.sh --list`, `qa_run.sh <scenario> [--bin PATH] [--img DIR] [--no-il2sym] [--timeout S] [--label TEXT]`, `qa_run.sh --report <run>` (regenerate report). Exit code 0 passed, 1 check failed, 2 usage error, 3 disk has <15 GB free. Only one run at a time (lock file). |
+| `qa_run.py` | Loads scenario, starts `bdsp_boot --headless`, samples RSS/CPU/load every 2 s, sends inputs, analyzes log, writes `report.md` and `report.json`, creates screenshot contact sheets |
+| `scenarios/*.txt` | Scenarios (syntax documented at the top of `qa_run.py`); names beginning with `_` are helper files or explorations |
+| `patches/` | Proposed changes to files other agents are editing |
 
-**Ablauf eines Laufs:** (1) Der Ausgangsspielstand `work/recomp/qa/save_base` (Stadt-Spielstand, `SaveData.bin` sha256 `0396a4a62735…`) wird je Lauf kopiert; der Ausgangsstand bleibt unverändert. (2) `bdsp_boot --headless --save <Lauf>/save --screenshot-after N --input-script …` mit `BDSP_IL2SYM` (jede Spielmethode beim ersten Aufruf mit Namen im Log), `BDSP_BT=1`, `BDSP_TRACE_SYNC=300`, `BDSP_DUMP=7004f91f60:24` (Wartezustände, Mutex-Besitzer, Synchronisationsfolge und Ereigniszustand im Bericht; kostet nur beim Beenden). (3) Auswertung.
+**Run sequence:** (1) Copy baseline save `work/recomp/qa/save_base` (city save, `SaveData.bin` SHA-256 `0396a4a62735…`) for each run; the baseline remains unchanged. (2) Run `bdsp_boot --headless --save <run>/save --screenshot-after N --input-script …` with `BDSP_IL2SYM` (log each game method's name on its first call), `BDSP_BT=1`, `BDSP_TRACE_SYNC=300`, `BDSP_DUMP=7004f91f60:24` (wait states, mutex owners, synchronization sequence, and event state in the report; only costs time at shutdown). (3) Analyze.
 
-**Eingaben, ereignisgesteuert.** Das Eingabeskript der Laufzeit (`--input-script "Sekunde:TASTE:Dauer"`) rechnet ab Prozessstart. Die Ladezeit bis zum Titel schwankt aber von 31 s bis über 120 s (Fremdlast, Shader-Cache, Platte), absolute Zeiten treffen deshalb nicht. Das Harness kennt **Anker** (`anchor feld EvDataManager::EnvironmentControllerCallBack`): Zeit des ersten Aufrufs einer Spielmethode (aus dem IL2CPP-Namensprotokoll); Eingaben stehen dann als `feld+12 UP 2.0` im Szenario. Es schreibt die Tastenmaske in eine Steuerdatei (`BDSP_INPUT_CTL`, neu in `nvn_glue.c`, wird bei jeder Npad-Abfrage gelesen und mit Skript und Tastatur verodert). `finish <s>` beendet den Lauf (SIGINT, die Laufzeit schreibt den Bericht) so viele Sekunden nach der letzten Eingabe, das Zeitlimit bleibt nur Sicherung. Das Skript der Laufzeit kann jetzt bis 8.192 Schritte haben und per `@datei` geladen werden (Dauerlauf).
+**Event-driven input.** The runtime input script (`--input-script "second:BUTTON:duration"`) counts from process start. But loading to the title varies from 31 s to over 120 s (other load, shader cache, disk), so absolute times are unreliable. The harness supports **anchors** (`anchor field EvDataManager::EnvironmentControllerCallBack`): the time of the first call to a game method (from the IL2CPP name log); inputs can then be specified in the scenario as `field+12 UP 2.0`. It writes the button mask to a control file (`BDSP_INPUT_CTL`, new in `nvn_glue.c`), read at every Npad poll and ORed with scripted and keyboard input. `finish <s>` ends the run (SIGINT; the runtime writes its report) that many seconds after the last input; the timeout remains a fallback. The runtime script now supports up to 8,192 steps and can be loaded through `@file` (long run).
 
-**Was der Bericht prüft (immer):** Absturz (Exit-Code, `*** Signal`, `FATAL`, fehlender Ergebnisbericht, Harness-Abbruch) mit Host-Rückverfolgung und **letztem Gast-Stack, symbolisiert mit IL2CPP-Namen** (`il2sym.tsv`) und den zuletzt erstmals aufgerufenen Spielmethoden; **Bildstillstand** (> 12 s ohne Bild) mit Thread-Zuständen, Mutex-Besitzern, Synchronisationsfolge und Gastspeicher; **unbehandelte IPC-Befehle** (Dienst:Befehl, Häufigkeit), nicht umgesetzte SVCs, NVN-Funktionen ohne Host-Umsetzung; auffällige Logzeilen (`unimplemented`, `nicht umgesetzt`, `failed`, `mismatch`, …) nach Muster gezählt; Bildrate (Median, p5, Minimum) und RSS-Verlauf; Screenshots (schwarz, unverändert zum Vorgänger); Spielstand (`bdsp_save.py check`, geändert?). Je Szenario kommen `expect`-Prüfungen dazu.
+**Checks included in every report:** crashes (exit code, `*** Signal`, `FATAL`, missing result report, harness abort), with host backtrace and **last guest stack symbolized with IL2CPP names** (`il2sym.tsv`) plus the most recently first-called game methods; **frozen image** (>12 s without a frame), with thread states, mutex owners, synchronization sequence, and guest memory; **unhandled IPC commands** (service:command, count), unimplemented SVCs, NVN functions without host implementation; notable log lines (`unimplemented`, `not implemented`, `failed`, `mismatch`, …) counted by pattern; frame rate (median, p5, minimum) and RSS history; screenshots (black, unchanged from previous); save (`bdsp_save.py check`, changed?). Each scenario adds `expect` checks.
 
-## Szenarien
+## Scenarios
 
-Stand beim Abbruch auf Wunsch des Nutzers (2026-10-19, ca. 17:25, vorzeitig statt 19:00). **Es wurden nur die ersten Szenarien kalibriert; `menue`, `wildkampf`, `speichern_laden` und `dauerlauf` sind NICHT umgesetzt/gemessen** (`_menue_erkunden.txt` ist nur eine Erkundung, kein Szenario). Insgesamt 26 Läufe unter `work/recomp/qa/<lauf>/` (Berichte `report.md`/`report.json`). Läufe vor 16:44 liefen mit Fehlern, die unten beschrieben und behoben sind; die Fassungen davor werden nicht mitgezählt.
+Status when paused at the user's request (2026-10-19, about 17:25, early instead of 19:00). **Only the first scenarios were calibrated; `menu`, `wild_battle`, `save_load`, and `long_run` are NOT implemented/measured** (`_menu_explore.txt` is exploration only, not a scenario). In total, 26 runs under `work/recomp/qa/<run>/` (reports `report.md`/`report.json`). Runs before 16:44 had errors described and fixed below; those earlier versions are not counted.
 
-| Szenario | Datei | Ergebnis | Beleg |
+| Scenario | File | Result | Evidence |
 |---|---|---|---|
-| Sprachauswahl (ohne Spielstand) | `sprachauswahl.txt` | **nicht gelaufen** (nur geschrieben) | – |
-| boot_titel | `boot_titel.txt` | **nicht aussagekräftig**: einziger Lauf `boot_titel-…-a2` stürzte durch einen Fehler meiner eigenen Zwischenänderung ab (Signal 11, siehe Fehler 3); danach nicht wiederholt. Titel wurde in allen `weiter_stadt`-Läufen erreicht (Titelbild gesehen). | `work/recomp/qa/boot_titel-20261019-164130-a2/` |
-| weiter_stadt | `weiter_stadt.txt` | **bestanden** (mit Fassung v2 und v5: Title::Start 21–86 s je nach Last, Stadt 36–102 s) | `weiter_stadt-…-161239-v2`, `…-171256-skipws2`, `…-171924-wlog2` |
-| laufen_stadt | `laufen_stadt.txt` | **nicht bestanden/nicht erneut gemessen**: die fünf Läufe `laufen_stadt-…-rep1..5` (Zeitskript, vor der Audio-Korrektur) hingen zweimal (Fehler 1); mit ereignisgesteuerten Eingaben und korrigierter Laufzeit **nicht** wiederholt | `work/recomp/qa/laufen_stadt-2026101916*` |
-| pokecenter | `pokecenter.txt` | **bestanden** (3 von 3 Läufen mit Audio-Pacing: Tür betreten, Innenraum gezeichnet (Halle, Schwester, Ja/Nein-Dialog „Guten Tag! Willkommen im Pokémon-Center!“, Heilung, Bildschirm mit Pokémon), 0 Hänger). Ein Lauf vorher (k1, ohne Pacing) hing im Innenraum (Fehler 2). | `pokecenter-…-162752-k2`, `…-164447-a3`, `…-164824-a4` |
-| menue | – | **nicht umgesetzt**; Erkundung `_menue_erkunden-…-165203-m1`: X öffnet das Menü (Pokédex, Pokémon, Beutel, Trainerpass, Karte, Kapsel-Deko, Einstellungen, Geheimgeschenk; Hinweis „Speichern R“, „Karte öffnen +“), B schließt es; 0 Fehler. Speichern wurde nicht getestet. | `work/recomp/qa/_menue_erkunden-20261019-165203-m1/` |
-| wildkampf | – | **nicht umgesetzt** | – |
-| speichern_laden | – | **nicht umgesetzt** (Harness kennt `phase`, `save-valid`, `save-changed`; ungetestet) | – |
-| dauerlauf (30 min) | – | **nicht gelaufen**: keine Speicherleck- und FPS-Dauerzahlen | – |
+| Language selection (no save) | `sprachauswahl.txt` | **not run** (written only) | — |
+| boot_title | `boot_titel.txt` | **inconclusive**: the only run, `boot_titel-…-a2`, crashed due to my own intermediate change (signal 11, see issue 3); not repeated. The title was reached in all `weiter_stadt` runs (title screen seen). | `work/recomp/qa/boot_titel-20261019-164130-a2/` |
+| continue_city | `weiter_stadt.txt` | **passed** (versions v2 and v5: Title::Start at 21–86 s depending on load, city at 36–102 s) | `weiter_stadt-…-161239-v2`, `…-171256-skipws2`, `…-171924-wlog2` |
+| walk_city | `laufen_stadt.txt` | **failed/not retested**: two of five runs, `laufen_stadt-…-rep1..5` (timed script, before audio fix), hung (issue 1); not repeated with event-driven inputs and corrected runtime | `work/recomp/qa/laufen_stadt-2026101916*` |
+| Pokémon Center | `pokecenter.txt` | **passed** (3/3 runs with audio pacing: entered door, interior rendered (hall, nurse, yes/no dialog “Hello! Welcome to the Pokémon Center!”, healing, Pokémon screen), 0 hangs). An earlier run (k1, without pacing) hung inside (issue 2). | `pokecenter-…-162752-k2`, `…-164447-a3`, `…-164824-a4` |
+| menu | — | **not implemented**; exploration `_menue_erkunden-…-165203-m1`: X opens menu (Pokédex, Pokémon, Bag, Trainer Card, Map, Capsule Decoration, Settings, Mystery Gift; prompts “Save R”, “Open map +”), B closes it; 0 errors. Saving was not tested. | `work/recomp/qa/_menue_erkunden-20261019-165203-m1/` |
+| wild battle | — | **not implemented** | — |
+| save_load | — | **not implemented** (harness supports `phase`, `save-valid`, `save-changed`; untested) | — |
+| long run (30 min) | — | **not run**: no sustained memory-leak or FPS data | — |
 
-**Messwerte (gemessen, jeweils ein Lauf):** `pokecenter-…-164447-a3` (Mac fast leer, Last 3): Bildrate Median 46,6, p5 33,3, Minimum 11,8, 5.684 Bilder in 137 s; RSS Spitze 1.968 MiB, Median 869 MiB, CPU 138 %; 58.231 IPC, 2,35 Mio. SVC. `…-164824-a4`: Median 51,2, p5 29,4; RSS Spitze 1.882 MiB. Bei Fremdlast (Last 25–55 durch parallele Compiler/Unity) fiel die Rate auf Median 17–35 mit Minimum 0,5; **diese Läufe sagen nichts über die Laufzeit aus**. Kein Absturz in der Stadt/im Pokécenter mit Fassung ab v4.
+**Measurements (measured, one run each):** `pokecenter-…-164447-a3` (Mac nearly idle, load 3): median 46.6 FPS, p5 33.3, minimum 11.8, 5,684 frames in 137 s; peak RSS 1,968 MiB, median 869 MiB, CPU 138%; 58,231 IPC, 2.35 million SVCs. `…-164824-a4`: median 51.2, p5 29.4; peak RSS 1,882 MiB. Under other load (25–55 from parallel compilers/Unity), rate fell to median 17–35 with minimum 0.5; **these runs say nothing about runtime performance**. No crashes in the city/Pokémon Center with version v4 or later.
 
-## Gefundene Fehler
+## Issues found
 
-| Nr. | Fehler | Ursache | Stand |
+| # | Issue | Cause | Status |
 |---|---|---|---|
-| 1 | **Hänger im Spiel** (Bild bleibt stehen, 2 von 5 Läufen `laufen_stadt` (rep1, rep2), 1 von 2 `pokecenter`): Hauptthread wartet in `AkGameObj::SetPosition` auf die Wwise-Sperre (Mutex `700501f008`), Besitzer ist Thread 113, die Audio-Schleife `GetReleasedAudioOutBuffer` (50.000 IPC) | **belegt** (Thread-Zustand und Mutex-Besitzer im Bericht): `audout_obj` gab jeden angehängten Puffer sofort zurück; die Wwise-Audioschleife sah dadurch immer freie Puffer und rechnete ohne Pause weiter, hielt dabei die globale Wwise-Sperre. Außerdem war `ntags` ohne Sperre (zwei Gastthreads: Anhängen/Abfragen) | **behoben** in `services_audio.c`: Sperre je `AudOut`, Puffer werden erst nach ihrer Spieldauer (aus `dataSize`, mindestens 5 ms) zurückgegeben, Zeitgeber-Thread meldet das Ereignis. Danach 3 Läufe ohne Hänger. Kein Ton. |
-| 2 | Selbstverklemmung des Kernels nach Zeitablauf, der mit einem Weckruf zusammenfällt (Thread besitzt Mutex und sperrt ihn selbst erneut; Lauf `weiter_stadt-…-170620-skipws` hing bei 23 s, Thread 113 `ArbitrateLock` auf eigenen Mutex `700501f40c = 4000015e`) | **belegt** (Mutex-Besitzer im Bericht) | In `kernel.c` hat der Strang `ap-recomp-ios` zeitgleich dieselbe Korrektur eingebaut (`block_current`: gilt der Weckruf des Wakers). Von mir nicht angefasst. Mit Fassung v5 (enthält sie) kein weiterer Hänger in 5 Läufen. |
-| 3 | Absturz Signal 11 beim Start (`GetAudioOutBufferDataPointer`, Adresse 0x30) | **belegt**: meine erste Pacing-Fassung gab den Tag schon nach 0 ms zurück, bevor das Gastsystem den Puffer in seine Warteschlange eingetragen hatte | **behoben** (Mindestdauer 5 ms), Zwischenfassung nie committet |
-| 4 | Harness: ereignisgesteuerte Eingaben nötig (Ladezeit 21–120 s) | – | behoben (Anker, `BDSP_INPUT_CTL`) |
+| 1 | **Game hangs** (image freezes; 2/5 `walk_city` runs (rep1, rep2), 1/2 Pokémon Center runs): main thread waits in `AkGameObj::SetPosition` for Wwise lock (mutex `700501f008`), owned by thread 113, the audio loop `GetReleasedAudioOutBuffer` (50,000 IPC) | **Verified** (thread state and mutex owner in report): `audout_obj` returned every queued buffer immediately, so Wwise's audio loop always saw free buffers and ran without pausing, while holding the global Wwise lock. Also, `ntags` was unlocked (two guest threads append/query it). | **Fixed** in `services_audio.c`: per-`AudOut` lock; buffers are returned only after their playback duration (from `dataSize`, at least 5 ms); timer thread signals the event. Then 3 runs without hangs. No audio. |
+| 2 | Kernel self-deadlock after timeout coincides with wakeup (thread owns mutex then tries to lock it again; run `weiter_stadt-…-170620-skipws` hung at 23 s, thread 113 `ArbitrateLock` on its own mutex `700501f40c = 4000015e`) | **Verified** (mutex owner in report) | The `ap-recomp-ios` branch made the same fix in `kernel.c` at the same time (`block_current`: account for the waker's wakeup). I did not touch it. Version v5 includes it; no further hang in 5 runs. |
+| 3 | Signal 11 crash at startup (`GetAudioOutBufferDataPointer`, address 0x30) | **Verified:** my first pacing version returned the tag after 0 ms, before the guest system had queued the buffer | **Fixed** (minimum duration 5 ms); intermediate version was never committed |
+| 4 | Harness needs event-driven input (loading takes 21–120 s) | — | Fixed (anchors, `BDSP_INPUT_CTL`) |
 
-## Bildvergleich gegen Ryujinx (`scripts/visual_ref.py import --source recomp` / `refs`, bereits im Arbeitsbaum vorhanden; ich habe nichts daran geändert)
+## Image comparison against Ryujinx (`scripts/visual_ref.py import --source recomp` / `refs`; already present in the worktree, I did not change it)
 
-- Stadt Zone 24 (`ref_01_feld_weiter`): bestes Recomp-Bild (Bild 1440, `pokecenter-…-164447-a3`) gegen die Ryujinx-Referenz: **SSIM 0,708 (angeglichen 0,704), MAD 16,0 (16,6), 17,8 % geänderte Pixel, 10 von 64 Rasterzellen schlecht**, Helligkeitsverhältnis 1,02. Sichtbar gleich: Haus, Figuren, Bäume, Straßenmuster. **Abweichung: Wasser links** (siehe unten). Kamerazeitpunkt weicht ab (28 Pixel), deshalb SSIM begrenzt.
-- **Tageszeit:** die Beleuchtung folgt der Uhr des Rechners (Lauf um 16:xx ergibt violette/blaue Dämmerungsfarben, Lauf um 17:xx rötlich). Ein Vergleich mit der Referenz (Spielstunde ≈ 12) ist nur bedingt fair; für reproduzierbare Messungen müsste die Uhr (`ITimeZoneService`/`ISystemClock`) fest eingestellt werden (nicht umgesetzt).
-- Heatmap: `work/visual/ref/recomp_vs_ryujinx/` (lokal).
+- City, zone 24 (`ref_01_feld_weiter`): best recomp image (frame 1440, `pokecenter-…-164447-a3`) versus Ryujinx reference: **SSIM 0.708 (aligned 0.704), MAD 16.0 (16.6), 17.8% changed pixels, 10/64 grid cells poor**, brightness ratio 1.02. House, characters, trees, and road pattern look the same. **Difference: water on the left** (below). Camera time differs (28 pixels), limiting SSIM.
+- **Time of day:** lighting follows the computer clock (runs around 16:xx yield violet/blue dusk colors; runs around 17:xx are reddish). Comparison with the reference (in-game time about 12:00) is only partly fair; reproducible measurements would require fixing the clock (`ITimeZoneService`/`ISystemClock`), which was not implemented.
+- Heatmap: `work/visual/ref/recomp_vs_ryujinx/` (local).
 
-## Wasser (Priorität 1, nicht fertig)
+## Water (priority 1, unfinished)
 
-Belegt durch Auslassen von Fragment-Shadern (`BDSP_SKIP_FSHASH`, Läufe `…-skipwater`, `…-skipws2`): das weiße Wasser links im Stadtbild kommt **nicht** von `Delphis/Map/FlowmapWater` (Hash `87bfeb6485a0650a`, Auslassen ändert nichts am Bild), sondern von **`Delphis/WaterSimulation/WaterSurface`** (Hash `81f72a1870a4930f`, ein Zeichenaufruf, 6 Mal je Messbild). Ohne diesen Shader erscheint an der Stelle ein violett-blauer Untergrund, mit ihm ein überbelichtetes Weiß. Eingänge des Shaders (4 Texturen laut Übersetzung, aus `BDSP_LOG_WATER` in einer lokalen Debug-Fassung): #0 512×512 RG8 (`0xd`), #1 1280×720 Tiefe/Stencil (`0x35`, = `_OpaqueDepthTexture`), #2 1280×720 R11G11B10F (`0x3f`, Szenenfarbe, kopiert aus 1920×1080 `0x25`), #3 512×512 RGBA8 (`0x25`, Reflexions-/Simulationstextur). Die gespeicherten Abzüge zeigen **#0 komplett 0** (Normal-/Strömungsabbild der Wassersimulation nie beschrieben oder nicht sichtbar) und #2 in den ersten Zeichenaufrufen fast schwarz, später hell (Mittel ≈ 213); ob die Abzüge zeitlich stimmen (der Metal-Befehlspuffer ist beim Speichern evtl. noch nicht ausgeführt), ist **nicht geklärt**. **Vermutung (nicht belegt):** Die Texturen der Simulation (`Custom/WaterInteration/DynamicNormalMap`, `WaterSimulation`, je 1 Zeichenaufruf) werden in einem Rendertarget geschrieben, das der Wasser-Shader leer/ohne Ladeaktion liest (Load/Store oder Reihenfolge der Durchgänge im Metal-Pfad). Nächster Schritt: Abzug erst nach `renderer_flush()` und Vergleich mit Ryujinx-Wasserbildern `free_wasser_a/b` (Zielwerte siehe `docs/wasser.md`: Mittel ≈ 87/127/210).
+Verified by skipping fragment shaders (`BDSP_SKIP_FSHASH`, runs `…-skipwater`, `…-skipws2`): the white water on the left of the city image does **not** come from `Delphis/Map/FlowmapWater` (hash `87bfeb6485a0650a`; skipping it does not change the image), but from **`Delphis/WaterSimulation/WaterSurface`** (hash `81f72a1870a4930f`, one draw call, 6 times per measured frame). Without this shader the area shows a violet-blue ground; with it, overexposed white. Shader inputs (4 textures according to translation, from `BDSP_LOG_WATER` in a local debug build): #0 512×512 RG8 (`0xd`), #1 1280×720 depth/stencil (`0x35`, = `_OpaqueDepthTexture`), #2 1280×720 R11G11B10F (`0x3f`, scene color, copied from 1920×1080 `0x25`), #3 512×512 RGBA8 (`0x25`, reflection/simulation texture). Saved dumps show **#0 entirely zero** (simulation normal/flow map never written or not visible), and #2 nearly black in the first draw calls, then bright (mean ≈213); whether dumps are timed correctly (Metal command buffer might not have executed when saved) is **unresolved**. **Hypothesis (unverified):** simulation textures (`Custom/WaterInteration/DynamicNormalMap`, `WaterSimulation`, one draw call each) are written to a render target that the water shader reads empty/without a load action (load/store or pass ordering in Metal path). Next: dump only after `renderer_flush()` and compare with Ryujinx water images `free_wasser_a/b` (targets in `docs/wasser.md`: means ≈87/127/210).
 
-## Pokécenter-Innenraum (Meldung `ap-recomp-macapp`: einfarbig blau, dunkle Striche)
+## Pokémon Center interior (report from `ap-recomp-macapp`: solid blue with dark lines)
 
-**Nicht reproduziert:** in 3 Läufen (v3, v4, v5, jeweils Titel → Stadt → Pokécenter) zeigt der Innenraum die richtige orange/gelbe Halle mit Schwester, Dialogfenster und Heilbildschirm (`contact_p1_03/04.png` unter `pokecenter-…-164824-a4/`). Der gemeldete Fehler gehört vermutlich zu einer anderen Fassung (App-Hülle/anderes Bild-Verzeichnis) oder zu einer anderen Tageszeit; ungeklärt.
+**Not reproduced:** in 3 runs (v3, v4, v5, each title → city → Pokémon Center), the interior shows the correct orange/yellow hall, nurse, dialog box, and healing screen (`contact_p1_03/04.png` under `pokecenter-…-164824-a4/`). The reported issue likely belongs to another build (app wrapper/different image directory) or another time of day; unresolved.
 
-## Offene Punkte (Priorität)
+## Open items (priority order)
 
-1. **Wasser `WaterSurface`** (P1, siehe oben).
-2. `laufen_stadt` mit der korrigierten Laufzeit wiederholen, Szenarien `menue` (inkl. Speichern), `speichern_laden`, `wildkampf`, `dauerlauf` schreiben und messen (P2); das Harness ist dafür vorbereitet.
-3. Spieluhr festlegen (reproduzierbare Beleuchtung) (P2).
-4. Kleinere Befunde: `[tex] type mismatch` (29 Meldungen je Lauf, Dummy-Textur), `[texdump]` gibt „3555734656959,2 MB“ aus (Ausgabefehler im Debug-Text), unbehandelte IPC: `ICommonStateGetter:66` ×7, `IParentalControlService:1`, `acc:u0:130`, `IAudioController:0` (alle seit Gate 2 bekannt, ohne sichtbare Folge) (P3).
+1. **Water `WaterSurface`** (P1, above).
+2. Repeat `walk_city` with corrected runtime; write and measure `menu` (including saving), `save_load`, `wild_battle`, and `long_run` scenarios (P2); the harness is ready.
+3. Fix the in-game clock (reproducible lighting) (P2).
+4. Smaller findings: `[tex] type mismatch` (29 messages per run, dummy texture), `[texdump]` prints “3555734656959.2 MB” (debug text formatting error), unhandled IPC: `ICommonStateGetter:66` ×7, `IParentalControlService:1`, `acc:u0:130`, `IAudioController:0` (all known since Gate 2, with no visible effect) (P3).
 
-## Geänderte Dateien (Stand Abbruch)
+## Files changed (at pause)
 
-Alle bauen (Fassung v5 und die lokale Debug-Fassung wurden aus diesem Stand gelinkt).
+All build; version v5 and the local debug build were linked from this state.
 
-| Datei | Änderung | Status |
+| File | Change | Status |
 |---|---|---|
-| `scripts/recomp/qa/qa_run.sh`, `qa_run.py` | Harness (Anker, Steuerdatei, Berichte, Kontaktbögen) | fertig, nur an den Szenarien oben erprobt |
-| `scripts/recomp/qa/scenarios/*.txt` | 7 Dateien (2 Erkundungen mit `_`, `sprachauswahl` ungetestet) | teilweise fertig |
-| `scripts/recomp/rt-bdsp/services_audio.c` | Audio-Pacing, Sperre, Zeitgeber, `BDSP_TRACE_AUDIO` | fertig (Fehler 1 behoben) |
-| `scripts/recomp/rt-bdsp/nvn/nvn_glue.c` | Eingabeskript bis 8.192 Schritte, `@datei`, `BDSP_INPUT_CTL` (der Strang `ap-recomp-macapp` hat im selben Abschnitt `g_ext_buttons` ergänzt, beides vereinbar) | fertig |
-| `scripts/recomp/rt-bdsp/kernel.c` | nur Bericht: Mutex-Besitzer im Thread-Zustand (`BDSP_BT`); die Zeitablauf-Korrektur stammt von `ap-recomp-ios` | fertig |
-| `docs/recomp-qa.md` | dieses Dokument | fertig (Stand wie beschrieben) |
-| `work/recomp/nvn-qa/nvn/renderer.m` (nicht im Repo) | Debug-Ausgabe `BDSP_LOG_WATER` | nur lokal, **kein** Patch im Repo (`scripts/recomp/qa/patches/` leer) |
+| `scripts/recomp/qa/qa_run.sh`, `qa_run.py` | Harness (anchors, control file, reports, contact sheets) | done, tested only with scenarios above |
+| `scripts/recomp/qa/scenarios/*.txt` | 7 files (2 explorations prefixed with `_`; `sprachauswahl` untested) | partly done |
+| `scripts/recomp/rt-bdsp/services_audio.c` | Audio pacing, lock, timer, `BDSP_TRACE_AUDIO` | done (issue 1 fixed) |
+| `scripts/recomp/rt-bdsp/nvn/nvn_glue.c` | Input script up to 8,192 steps, `@file`, `BDSP_INPUT_CTL` (the `ap-recomp-macapp` branch also added `g_ext_buttons` in the same area; compatible) | done |
+| `scripts/recomp/rt-bdsp/kernel.c` | Report only: mutex owners in thread state (`BDSP_BT`); timeout fix came from `ap-recomp-ios` | done |
+| `docs/recomp-qa.md` | This document | done (status as described) |
+| `work/recomp/nvn-qa/nvn/renderer.m` (not in repo) | Debug output `BDSP_LOG_WATER` | local only, **no** repo patch (`scripts/recomp/qa/patches/` empty) |
 
-Nicht im Repo: Läufe, Spielstandkopien, Screenshots, Binärkopien unter `work/recomp/qa/` (ca. 300 MB; `bdsp_v5`, `bdsp_dbg`). Keine Prozesse mehr aktiv, Sperrdatei entfernt, Ryzen nicht benutzt.
-
+Not in the repository: runs, save copies, screenshots, and binary copies under `work/recomp/qa/` (about 300 MB; `bdsp_v5`, `bdsp_dbg`). No processes remain active, lock file removed, Ryzen not used.

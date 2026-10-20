@@ -1,101 +1,101 @@
-# iPad-Durchstich 1: Titel → Weiter → Feld → Tür → Schwester → Wildkampf → Speichern auf dem iPad (Todo `ap-ipad-slice`)
+# iPad Vertical Slice 1: Title → Continue → Field → Door → Sister → Wild Battle → Save on iPad (Todo `ap-ipad-slice`)
 
-> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. Die Stufe `assets` und `scripts/bundle_retarget.py` sind auf `main` entfernt (nur Branch `unity`); die Befehle unten laufen dort nicht mehr.
+> **Historical (status 2026-10-20):** Unity path, discontinued. The `assets` stage and `scripts/bundle_retarget.py` have been removed from `main` (only on the `unity` branch); the commands below no longer run there.
 
-Stand: 2026-10-19, iPad Pro 12,9" (6. Generation, `iPad14,6`, M2, 8 GB, iPadOS 26), Unity 6000.3.26f1, IL2CPP, Metal, Built-in RP, Release-Build, Teilmenge `scripts/subsets/ipad-start.txt` (789 Dateien, 229 MB, ASTC 6×6). Nur Namen, Zahlen und Struktur; keine Spieltexte, keine echten Saves, keine Bilder im Repo (Logs und Bilder unter `work/`, gitignoriert). **Ton blieb aus** (`AudioSafety`, Lautstärke des Geräts nicht angefasst; das Gerät wurde nur gestartet und beendet). Prüfstufen wie in `docs/spielkern-1.md`: **[A]** Annahme, **[P]** belegt.
+Status: 2026-10-19, iPad Pro 12.9-inch (6th generation, `iPad14,6`, M2, 8 GB, iPadOS 26), Unity 6000.3.26f1, IL2CPP, Metal, Built-in RP, Release build, subset `scripts/subsets/ipad-start.txt` (789 files, 229 MB, ASTC 6×6). Names, numbers, and structure only; no game text, real saves, or images in the repository (logs and images under gitignored `work/`). **Audio stayed off** (`AudioSafety`; device volume untouched; device was only started and stopped). Verification levels as in `docs/spielkern-1.md`: **[A]** assumption, **[P]** documented.
 
-## 1. Ergebnis in Kürze
+## 1. Summary
 
-| Frage | Ergebnis |
+| Question | Result |
 |---|---|
-| Durchlauf ohne Hand-Eingabe | **Läuft auf dem iPad bis zum Ende** (Eingabeskript per Datei im Container, 3 vollständige Durchläufe und 3 Kurzläufe, jeweils `quit`, Exit-Code 0): Titel → „Weiter“ → Zone 167 → Tür (Zonenwechsel 167 → 168) → Schwester (4 Textfenster, 1 Auswahl, Ereignis 1/1) → Wildkampf (9 Protokollschritte, 1 Befehl, Kämpfe 1/1) → Speichern (979.108 Byte). |
-| Ursache „Slot keiner“ | **Pfad verdoppelt** (App suchte `Documents/Saves/Saves/main`, die Datei lag in `Documents/Saves/main`) **und** ein von `devicectl` angelegter Ordner gehört `root`, die App durfte dort nichts anlegen (Abschnitt 2). Beides behoben. |
-| Texturfehler der Zone | **0** (vorher 1.884 BC-Fehlschläge); 0 Fehlermeldungen in allen Läufen. Die Bilder zeigen die Texturen richtig (Abschnitt 5). |
-| Ladezeit | Stammdaten 1,3 s; Zone 167 steht **2,4 s** (Ersatzmaterial) bzw. **3,2 bis 3,4 s** (mit erzeugten Shadern, Umbau 61/61) nach „Weiter“; Tür 167 → 168 rund 4,2 bis 4,6 s bis die Innenkarte steht. |
-| Bildrate | Ziel 30: **30,0 FPS**; Ziel 60: **60,0**; Ziel 120: **119,9** (auch mit der Außenkarte, 2.431 Renderer). Ohne gesetztes Ziel liefert Unity 30 (wie in `docs/ipad-messung-1.md`). |
-| Speicher | Footprint **736 bis 861 MiB** (Spitze 861,2 MiB), `os_proc_available_memory` mindestens **7.342 MiB** (Limit 8.192 MiB mit Entitlement), `lowMemory` 0, kein Leck in 190 s Feldbetrieb. |
-| Thermik | `thermalState` **0** (nominal) in allen Läufen; nur 3 bis 4 Minuten Spiellast, kein Dauertest. |
-| Absturzfreiheit | 6 Läufe von 50 bis 190 s ohne Absturz. |
-| Tests | **696 von 696 grün** (688 vorher, 8 neue). |
+| Run without manual input | **Runs to completion on iPad** (input script supplied as a file in the container; 3 complete runs and 3 short runs, each ending with `quit`, exit code 0): title → “Continue” → Zone 167 → door (transition 167 → 168) → sister (4 text windows, 1 choice, event 1/1) → wild battle (9 log steps, 1 command, battles 1/1) → save (979,108 bytes). |
+| Cause of “no slot” | **Duplicated path** (app looked in `Documents/Saves/Saves/main`, file was in `Documents/Saves/main`) **and** a directory created by `devicectl` belonged to `root`, so the app could not write there (section 2). Both fixed. |
+| Zone texture errors | **0** (previously 1,884 BC failures); zero error messages in all runs. Images show textures correctly (section 5). |
+| Load time | Master data 1.3 s; Zone 167 ready **2.4 s** (fallback materials) or **3.2–3.4 s** (generated shaders, remap 61/61) after “Continue”; door 167 → 168 about 4.2–4.6 s until interior map is ready. |
+| Frame rate | Target 30: **30.0 FPS**; target 60: **60.0**; target 120: **119.9** (also with outdoor map, 2,431 renderers). Without a target Unity delivers 30 (as in `docs/ipad-messung-1.md`). |
+| Memory | Footprint **736–861 MiB** (peak 861.2 MiB), `os_proc_available_memory` at least **7,342 MiB** (8,192 MiB limit with entitlement), `lowMemory` 0, no leak over 190 s of field operation. |
+| Thermals | `thermalState` **0** (nominal) in every run; only 3–4 minutes of gameplay, no sustained test. |
+| Crash-free runs | 6 runs of 50–190 s, no crash. |
+| Tests | **696 of 696 passing** (688 before, 8 new). |
 
-## 2. Ursache der fehlenden Slot-Erkennung **[P]**
+## 2. Cause of Missing Slot Detection **[P]**
 
-Gesucht wurde auf dem Gerät in `Application.persistentDataPath` (iPadOS: `/var/mobile/Containers/Data/Application/<UUID>/Documents`). Vier Fehler, in dieser Reihenfolge gefunden:
+The device was checked at `Application.persistentDataPath` (iPadOS: `/var/mobile/Containers/Data/Application/<UUID>/Documents`). Four issues were found, in this order:
 
-1. **Doppelter Ordner `Saves`.** `GameDriver` übergab `persistentDataPath/Saves` als Ablage, `SaveStore` hängt selbst `Saves/<Slot>` an: der Slot lag erwartet unter `Documents/Saves/Saves/main/SaveData.bin`. Die frühere Übertragung legte die Datei nach `Documents/Saves/main/SaveData.bin` – dort schaute niemand nach. Auf dem Mac fiel das nicht auf, weil dort der Slot von der App selbst angelegt wurde. Jetzt: Ablage = `persistentDataPath` (neu `SaveSlotService.ResolveRoot`), der Slot liegt unter **`Documents/Saves/main`**. Ist ein älterer Mac-Slot `…/Saves/Saves/main` vorhanden, bleibt dieser Ordner maßgebend.
-2. **Slot = „Ordner vorhanden“.** `HasSlot` prüfte nur, dass ein Ordner `main` existiert; ein leerer Ordner oder eine halb übertragene Datei galt als Spielstand und ließ „Weiter“ später mit unklarem Fehler scheitern. Jetzt gilt ein Slot nur mit gültiger `SaveData.bin` oder `Backup.bin` (Version, Größe, MD5-Hash); sonst gibt es einen Grund im Log und auf dem Titel („Kein gültiger Spielstand: …“). `SaveSlotService.Diagnose()` schreibt beim Start Pfade, Größen, Kurzhash (SHA-256, 12 Zeichen) und Gründe ins Log (`[Game] Spielstand: …`); „Weiter“ liest den Zustand neu, wenn die Datei erst nach dem Start eintrifft.
-3. **Ordner mit Besitzer `root`.** `devicectl device copy to … --destination Documents/Saves/main/SaveData.bin` legt fehlende Zwischenordner mit `ownerUid 0`, Modus 755 an (per `devicectl device info files --json-output` gesehen); die Datei selbst gehört dem Nutzer `501`. Die App (Nutzer `mobile`, 501) darf in `Saves/main` dann nichts anlegen: `SaveFileIO.WriteAtomic` scheiterte beim Schreiben der Temp-Datei mit `UnauthorizedAccessException`, Speichern war unmöglich. Folge: siehe 4. Jetzt legt `scripts/ios_push_save.sh` die Datei **ohne Zwischenordner** nach `Documents/SaveData.bin` (Documents gehört der App); die App importiert sie in einen **selbst angelegten** Slot (richtiger Besitzer). Ist ein Slot-Ordner trotzdem nicht beschreibbar, meldet `Diagnose()` das („Slot-Ordner nicht beschreibbar (Besitzer root …)“).
-4. **Fehler in Skriptbefehlen wiederholten sich endlos.** Das fehlgeschlagene `save` wurde in jedem Tick erneut versucht und legte dabei jedes Mal ein Backup an: **11.190 Backups (rund 10,7 GB) in 80 s** auf dem iPad, dazu 2.289 Fehlermeldungen in 120 s. Jetzt fängt `GameDriver.Execute` Ausnahmen je Befehl ab (Meldung, `ScriptCommandErrors`, Befehl gilt als erledigt), `SaveNow` meldet Schreibfehler als Text. Der Test-Container wurde danach durch Deinstallation geleert.
+1. **Duplicate `Saves` directory.** `GameDriver` passed `persistentDataPath/Saves` as the storage root, and `SaveStore` itself appends `Saves/<Slot>`: expected location was `Documents/Saves/Saves/main/SaveData.bin`. The previous transfer placed the file at `Documents/Saves/main/SaveData.bin`, where nothing looked for it. This went unnoticed on Mac because the app created the slot itself. Now the root is `persistentDataPath` (new `SaveSlotService.ResolveRoot`), and the slot is under **`Documents/Saves/main`**. If an older Mac slot exists at `…/Saves/Saves/main`, that directory remains authoritative.
+2. **Slot meant “directory exists.”** `HasSlot` checked only that a `main` directory existed; an empty directory or partially transferred file counted as a save, causing “Continue” to fail later with an unclear error. Now a slot is valid only with a valid `SaveData.bin` or `Backup.bin` (version, size, MD5); otherwise the reason is logged and shown on the title screen (“No valid save: …”). `SaveSlotService.Diagnose()` logs paths, sizes, short hash (SHA-256, 12 characters), and reasons at startup (`[Game] Save: …`); “Continue” rereads the state if the file arrives after startup.
+3. **Directory owned by `root`.** `devicectl device copy to … --destination Documents/Saves/main/SaveData.bin` creates missing intermediate directories with `ownerUid 0`, mode 755 (observed with `devicectl device info files --json-output`); the file itself belongs to user 501. The app (user `mobile`, 501) then cannot write into `Saves/main`: `SaveFileIO.WriteAtomic` failed when writing a temporary file with `UnauthorizedAccessException`, making saves impossible. Result: see issue 4. Now `scripts/ios_push_save.sh` copies the file to `Documents/SaveData.bin` **without intermediate directories** (Documents belongs to the app); the app imports it into a slot it creates itself (correct owner). If a slot directory is still not writable, `Diagnose()` reports that (“Slot directory not writable (owner root …)”).
+4. **Script-command errors retried forever.** The failed `save` was retried every tick, creating another backup each time: **11,190 backups (about 10.7 GB) in 80 s** on iPad, plus 2,289 error messages in 120 s. Now `GameDriver.Execute` catches exceptions per command (reports the error, increments `ScriptCommandErrors`, marks the command complete), and `SaveNow` reports write failures as text. The test container was then cleared by uninstalling the app.
 
-Nebenbefund: Argumente nach dem Bundle (`devicectl device process launch … dev.local.xnum0 -- -xnuPerfLog`) kommen in der App **nicht** an (Startzeile ohne Option, kein `XNUPERF`); **Umgebungsvariablen** per `--environment-variables '{…}'` funktionieren (alle Optionen haben eine Variable: `XNU_START_SCENE`, `XNU_SCRIPTED_INPUT`, `XNU_PERF_LOG`, `XNU_TARGET_FPS`, `XNU_GENERATED_SHADERS`, `XNU_ENV_HOUR`). Das Eingabeskript wird relativ zu `Documents` aufgelöst (`XNU_SCRIPTED_INPUT=run-ipad.txt`).
+Side finding: arguments after the bundle ID (`devicectl device process launch … dev.local.xnum0 -- -xnuPerfLog`) **do not reach the app** (launch line lacks option; no `XNUPERF`). **Environment variables** via `--environment-variables '{…}'` work (each option has a variable: `XNU_START_SCENE`, `XNU_SCRIPTED_INPUT`, `XNU_PERF_LOG`, `XNU_TARGET_FPS`, `XNU_GENERATED_SHADERS`, `XNU_ENV_HOUR`). Input script paths are resolved relative to `Documents` (`XNU_SCRIPTED_INPUT=run-ipad.txt`).
 
-## 3. Verfahren: Spielstand aufs iPad **[P]**
+## 3. Save Transfer to iPad **[P]**
 
-Quelle bleibt unverändert (`Ryujinx/bis/user/save/0000000000000006/0/SaveData.bin`, 979.108 Byte, gitignoriert; nur gelesen). Ausgaben nennen nur Größen und Hashes.
+Source remains unchanged (`Ryujinx/bis/user/save/0000000000000006/0/SaveData.bin`, 979,108 bytes, gitignored; read only). Output reports only sizes and hashes.
 
-**(a) `scripts/ios_push_save.sh`** (Standardweg, getestet)
-- `scripts/ios_push_save.sh [--source Datei] [--bundle-id ID] [--reimport] [--dry-run]`; Gerät aus `xcrun devicectl list devices` (erstes verbundenes iPad, `DEVICE_NAME` optional), Bundle-ID `dev.local.xnum0`; die Team-ID wird nicht gebraucht und nicht ausgegeben.
-- Ablauf: Quelle prüfen (Größe ≤ 1 MiB, SHA-256) → vorhandenen Slot vom Gerät nach `work/ipad-save-backup/<Zeit>/` sichern → Datei nach `Documents/SaveData.bin` kopieren → zurückholen, Größe und SHA-256 vergleichen (Prüfsumme vor und nach).
-- Beim nächsten **„Weiter“** importiert die App die Datei in `Documents/Saves/main`, sichert einen vorhandenen Slot unter `Documents/Backups/main/<Zeitstempel>/` und schreibt den SHA-256 der Datei in `Documents/ImportedDropIn.sha256`. Dieselbe Datei wird danach **nicht noch einmal** importiert, der Fortschritt im Slot bleibt. Eine **andere** Datei ersetzt den Slot (mit Backup). `--reimport` setzt die Merkdatei zurück (gleiche Datei ersetzt den Slot wieder, z. B. für Wiederholungsläufe).
-- `scripts/ios_push_save.sh --pull [--dest Ordner]` holt `Saves/main/SaveData.bin` und `Backup.bin` zurück (nur nach `work/`).
-- Nach dem Speichern auf dem Gerät: `Documents/Saves/main/SaveData.bin` und `Backup.bin` je 979.108 Byte (gültig, Besitzer 501), vorheriger Stand in `Documents/Backups/main/<Zeitstempel>/SaveData.bin`.
+**(a) `scripts/ios_push_save.sh`** (standard path, tested)
+- `scripts/ios_push_save.sh [--source FILE] [--bundle-id ID] [--reimport] [--dry-run]`; device selected from `xcrun devicectl list devices` (first connected iPad, optionally `DEVICE_NAME`), bundle ID `dev.local.xnum0`; no team ID needed or printed.
+- Flow: validate source (size ≤ 1 MiB, SHA-256) → back up existing device slot to `work/ipad-save-backup/<time>/` → copy file to `Documents/SaveData.bin` → retrieve it and compare size/SHA-256 (checksum before and after).
+- On the next **“Continue,”** the app imports the file into `Documents/Saves/main`, backs up any existing slot under `Documents/Backups/main/<timestamp>/`, and writes the file's SHA-256 to `Documents/ImportedDropIn.sha256`. The same file is **not** imported again, so progress in the slot is preserved. A **different** file replaces the slot (with backup). `--reimport` resets the marker (the same file replaces the slot again, e.g. for repeat runs).
+- `scripts/ios_push_save.sh --pull [--dest DIRECTORY]` retrieves `Saves/main/SaveData.bin` and `Backup.bin` (only into `work/`).
+- After saving on the device: `Documents/Saves/main/SaveData.bin` and `Backup.bin`, each 979,108 bytes (valid, owner 501); previous save in `Documents/Backups/main/<timestamp>/`.
 
-**(b) Dateien-App und Finder** (`IosPostBuild`, **[A]** im Gerät nicht angesehen)
-- Der Build-Schritt `OnPostBuildDocumentSharing` trägt in die `Info.plist` `UIFileSharingEnabled` und `LSSupportsOpeningDocumentsInPlace` ein (reiner Textschritt `Xnu.Core.InfoPlistPatch`, idempotent, ohne Team-ID; `plutil -lint` des Build-Ergebnisses: OK). Damit erscheint der Documents-Ordner der App in der Dateien-App („Auf meinem iPad“) und im Finder; eine dort abgelegte **`SaveData.bin` im Documents-Ordner** (oder in `Documents/Import/`) wird wie in (a) beim nächsten „Weiter“ importiert. Dass der Ordner in der Dateien-App wirklich erscheint, wurde **nicht** am Gerät geprüft (Bedienung der Oberfläche war nicht Teil des Auftrags).
+**(b) Files app and Finder** (`IosPostBuild`, **[A]** not viewed on device)
+- Build step `OnPostBuildDocumentSharing` adds `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` to `Info.plist` (plain-text step `Xnu.Core.InfoPlistPatch`, idempotent, no team ID; `plutil -lint` on build result: OK). This exposes the app's Documents directory in the Files app (“On My iPad”) and Finder; a dropped `SaveData.bin` in Documents (or `Documents/Import/`) is imported on the next “Continue,” as in (a). Whether the directory really appears in Files was **not checked on-device** (UI interaction was outside the task).
 
-**(c) In-App-Import über den Dokumentenwähler:** nicht umgesetzt (braucht ein natives Plugin und Bedienung am Gerät; (a) und (b) decken den Bedarf).
+**(c) In-app import through document picker:** not implemented (requires a native plugin and device interaction; (a) and (b) cover the need).
 
-## 4. Aufbau der Messung
+## 4. Measurement Setup
 
-- **Build/Deploy (Zeiten):** `scripts/build_all.sh --target ios --texture-format 6x6 --only assets --bundle-subset scripts/subsets/ipad-start.txt --force`: 33 s, 789 Dateien, 229 MB. Unity-iOS-Build über `Xnu/Build/iOS und iPadOS (Xcode-Projekt)`: 18 bis 26 s (Zielwechsel des Editors vorher rund 1,5 Minuten). `scripts/ios_deploy.sh work/builds/ios/xnu --no-launch`: 1 min 9 s. Danach wurde der Editor auf **macOS** zurückgestellt und `unity/Assets/StreamingAssets/GameData` gelöscht. Wichtig: `IosPostBuild` ist `#if UNITY_IOS`; nach einem Zielwechsel braucht es einen zweiten Build, weil der erste noch ohne die iOS-Nachbearbeitung (Entitlement, Info.plist) lief.
-- **Messcode** (neu, `GameDriver`): Skriptbefehl `mem`; mit `XNU_PERF_LOG=1` alle 5 s Echtzeit eine Zeile `XNUPERF|t|state|fps|worstMs|ticks|footprintMiB|peakMiB|internalMiB|compressedMiB|availMiB|thermal|lowPower|unityMiB|monoMiB|errors|warnings|lowMemory` (Zähler aus `Xnu.Probe`/`os_proc_available_memory`, `phys_footprint`, `thermalState`); Zähler für Fehler- und Warnmeldungen (`Application.logMessageReceived`), `Application.lowMemory`; `XNU_TARGET_FPS` setzt `Application.targetFrameRate`; `report` nennt Fehlermeldungen. Einmalig: „Zone geladen nach … s seit ‚Weiter‘“ mit Speicherzeile.
-- **Start:** `xcrun devicectl device process launch --device <ID> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"Game","XNU_SCRIPTED_INPUT":"run-ipad.txt","XNU_PERF_LOG":"1","XNU_GENERATED_SHADERS":"1","XNU_ENV_HOUR":"12"}' dev.local.xnum0 > work/builds/ipad-run-N.log`. Das Skript (`work/ipad-run/run-ipad*.txt`, Befehle wie `work/vslice/run5.txt`, dazu `shot` und `mem`) liegt per `devicectl device copy to` in `Documents/`. Bilder: der Skriptbefehl `shot` rendert die Spielkamera in eine RenderTexture (1280 × 720) und schreibt PNG nach `Documents/Shots`; geholt mit `devicectl device copy from` nach `work/visual/ipad/` (nur dort).
-- Läufe: 1 (vor der Behebung, Speichern scheiterte, von Hand beendet), 2 (Ersatzmaterial, 50 s), 3 (Umbau, 190 s, Start im Innenraum), 4 (Umbau, Außenkarte, 50 s), 60-FPS-Lauf, 120-FPS-Lauf innen, 120-FPS-Lauf außen.
+- **Build/deploy times:** `scripts/build_all.sh --target ios --texture-format 6x6 --only assets --bundle-subset scripts/subsets/ipad-start.txt --force`: 33 s, 789 files, 229 MB. Unity iOS build through `Xnu/Build/iOS und iPadOS (Xcode-Projekt)`: 18–26 s (editor target switch took about 1.5 minutes beforehand). `scripts/ios_deploy.sh work/builds/ios/xnu --no-launch`: 1 min 9 s. The Editor was then switched back to **macOS** and `unity/Assets/StreamingAssets/GameData` deleted. Important: `IosPostBuild` is behind `#if UNITY_IOS`; after a target switch, build again because the first build does not yet include iOS post-processing (entitlement, Info.plist).
+- **Measurement code** (new, `GameDriver`): script command `mem`; with `XNU_PERF_LOG=1`, every 5 seconds of real time it writes `XNUPERF|t|state|fps|worstMs|ticks|footprintMiB|peakMiB|internalMiB|compressedMiB|availMiB|thermal|lowPower|unityMiB|monoMiB|errors|warnings|lowMemory` (counters from `Xnu.Probe`/`os_proc_available_memory`, `phys_footprint`, `thermalState`); error/warning counters (`Application.logMessageReceived`), `Application.lowMemory`; `XNU_TARGET_FPS` sets `Application.targetFrameRate`; `report` reports errors. One-time log: “Zone loaded after … s since ‘Continue’” with memory line.
+- **Launch:** `xcrun devicectl device process launch --device <ID> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"Game","XNU_SCRIPTED_INPUT":"run-ipad.txt","XNU_PERF_LOG":"1","XNU_GENERATED_SHADERS":"1","XNU_ENV_HOUR":"12"}' dev.local.xnum0 > work/builds/ipad-run-N.log`. Script (`work/ipad-run/run-ipad*.txt`, commands such as `work/vslice/run5.txt`, plus `shot` and `mem`) is copied into `Documents/` with `devicectl device copy to`. Images: script command `shot` renders the game camera into a 1280 × 720 RenderTexture and writes PNGs to `Documents/Shots`; retrieved with `devicectl device copy from` to `work/visual/ipad/` (only there).
+- Runs: 1 (before fix, save failed, stopped manually), 2 (fallback materials, 50 s), 3 (remap, 190 s, started indoors), 4 (remap, outdoor map, 50 s), 60-FPS run, 120-FPS indoor run, 120-FPS outdoor run.
 
-## 5. Messwerte **[P]**
+## 5. Measurements **[P]**
 
-| Messgröße | Wert |
+| Metric | Value |
 |---|---|
-| Stammdaten laden („Weiter“) | 1,3 s (707 Trainer, 183 Zonen, 209 Textdateien, 856 Skriptdateien, 12.985 Labels; auf dem Mac 2,2 bis 2,6 s im Editor) |
-| Zone 167 steht, seit „Weiter“ | 2,4 s (Ersatzmaterial), 3,2 bis 3,4 s (Umbau mit erzeugten Shadern, „Shader 61/61, 109 Materialeinträge“, 2.431 Renderer, 4 Blöcke) |
-| Tür 167 → 168 | 4,2 bis 4,6 s bis „Karte gebaut“ der Innenkarte (61 Renderer, 32 Materialeinträge), Überblendung 634 ms |
-| Texturfehler der Zone | **0** (Fehlermeldungen in allen Läufen 0; 39 bis 125 Warnungen sind „referenced script … is missing“ der Original-Komponenten, wie auf dem Mac) |
-| Texturspeicher (Unity-Zähler) | Außenkarte 25 MB, Innenkarte 27 bis 29 MB (Mac mit BC: 40 MB) |
-| Bildrate 30 / 60 / 120 | 30,0 (Fenster 29,2 bis 30,0) / 60,0 (längste Bildzeit 17 ms) / 119,9 (längste 8 bis 12 ms, einmal 100 ms beim Laden) |
-| Erstes Fenster nach „Weiter“ | bei Ziel 30 nur 10 bis 15 FPS im ersten 5-s-Fenster, weil eine Bildzeit 2,2 bis 3,4 s dauert (synchrones Laden der Zone, kein Streaming im Lauf) |
-| Footprint | 726 MiB direkt nach der Zone (Innenraum, Umbau) bis 818 MiB (Außenkarte); während der Läufe 736 bis 861 MiB, Spitze 861,2 MiB (`peak`); `internal` 605 bis 705 MiB; `compressed` 0 |
-| `os_proc_available_memory` | 7.342 bis 7.466 MiB (Limit 8.192 MiB mit Entitlement) |
-| Managed-Heap (Mono) | 266 bis 335 MiB, im 190-s-Lauf 286 → 315 → 296 MiB (GC arbeitet, kein Wachstum), Unity-Allokator 92 bis 107 MiB |
-| Dauer ohne Auffälligkeit | 190 s Feld/Kampf/Innenraum (Lauf 3): Footprint konstant 766,7 bis 795,1 MiB, 30,0 FPS, `thermalState` 0, `lowMemory` 0 |
-| Thermik | `thermalState` 0, `lowPower` 0 in allen Läufen (3 bis 4 Minuten, kurz) |
-| Speichern auf dem Gerät | `Documents/Saves/main/SaveData.bin` und `Backup.bin` je 979.108 Byte, Hash gültig (Validierung beim nächsten Start), Backup des alten Stands in `Documents/Backups/main/…`; je Speichern ein Backup-Ordner |
-| Gerätespeicher nach Lauf 1 (Fehler) | 11.190 Backups ≈ 10,7 GB, per Deinstallation beseitigt |
-| Ergebnisgleichheit mit dem Mac **[A]** | Der Stand nach dem Durchlauf (Zone 168, gleiche Zelle) hat denselben SHA-256 (`082a7fb0…`) wie die frühere Gerätedatei, die aus dem Mac-Lauf stammte: der iPad-Lauf speichert byteweise dasselbe wie der macOS-Player (gleiche Eingabe, gleicher Ort). Gesehen in Lauf 2; keine weitere Prüfung. |
+| Load master data (“Continue”) | 1.3 s (707 trainers, 183 zones, 209 text files, 856 script files, 12,985 labels; on Mac 2.2–2.6 s in Editor) |
+| Zone 167 ready, since “Continue” | 2.4 s (fallback materials), 3.2–3.4 s (remap with generated shaders, “Shader 61/61, 109 material entries,” 2,431 renderers, 4 blocks) |
+| Door 167 → 168 | 4.2–4.6 s until interior “map built” (61 renderers, 32 material entries), transition 634 ms |
+| Zone texture errors | **0** (zero errors in all runs; 39–125 warnings were “referenced script … is missing” for original components, as on Mac) |
+| Texture memory (Unity counter) | Outdoor map 25 MB, interior 27–29 MB (Mac with BC: 40 MB) |
+| Frame rate 30 / 60 / 120 | 30.0 (window 29.2–30.0) / 60.0 (longest frame 17 ms) / 119.9 (longest 8–12 ms, one 100 ms during loading) |
+| First window after “Continue” | At target 30, only 10–15 FPS in first 5-s window, because one frame takes 2.2–3.4 s (synchronous zone load, no runtime streaming) |
+| Footprint | 726 MiB right after zone load (interior, remap) to 818 MiB (outdoor); during runs 736–861 MiB, peak 861.2 MiB (`peak`); `internal` 605–705 MiB; `compressed` 0 |
+| `os_proc_available_memory` | 7,342–7,466 MiB (8,192 MiB limit with entitlement) |
+| Managed heap (Mono) | 266–335 MiB; in 190-s run 286 → 315 → 296 MiB (GC working, no growth); Unity allocator 92–107 MiB |
+| Stable duration | 190 s field/battle/interior (run 3): footprint constant at 766.7–795.1 MiB, 30.0 FPS, `thermalState` 0, `lowMemory` 0 |
+| Thermals | `thermalState` 0, `lowPower` 0 in all runs (3–4 minutes, brief) |
+| Save on device | `Documents/Saves/main/SaveData.bin` and `Backup.bin`, each 979,108 bytes, valid hash (validated on next launch), previous save under `Documents/Backups/main/…`; one backup directory per save |
+| Device storage after failed run 1 | 11,190 backups ≈ 10.7 GB, removed by uninstall |
+| Result matches Mac **[A]** | Save after the run (Zone 168, same cell) has same SHA-256 (`082a7fb0…`) as earlier device file originating from Mac run: iPad saves byte-for-byte the same as macOS player (same input, same location). Observed in run 2; not checked again. |
 
-**Bildbefunde** (nur lokal, sachlich beschrieben; Bildgröße 1280 × 720):
-- *Außenkarte (Lauf 4, `f0_feld`):* Pokécenter von oben mit roter Dachfläche und weißem Ball-Zeichen, felsige Terrassen und Kanten in Beige/Braun mit sichtbarer Textur (Risse, Steinkanten), dunklerer Boden rechts unten; Helligkeit mittel, kontrastreich, ohne Schwarzflächen oder Magenta. Die Figur steht grau (Ersatz-Shader).
-- *Innenraum (`f1_innen`):* Tresen mit Heilgerät, Pflanze, Regal, Kissen und Teppiche in Rot, Blau und Gelb, gekachelter Boden mit Ball-Zeichen, Holzwände mit Verlauf; Texturen und Helligkeit passend zum Mac-Lauf; NPC-Marker als blaue Kapseln; Spielerfigur grau.
-- *Textfenster (Lauf 2, `f2_textbox`):* Original-Rahmen aus `sharedui` (hellgraue Fläche, dunkle Umrandung, Weiter-Zeichen unten rechts), zwei Zeilen Text in dunkler Serifenlosschrift, Umlaute korrekt (Pokémon); Karte dahinter im Lauf 2 noch ohne Umbau (graues Ersatzmaterial, Himmelblau).
-- *Kampf (Lauf 4, `f4_kampf_befehl`):* Platzhalter-Kästen (#396 rot, #407 blau) statt Modellen auf zweifarbigem Grün, zwei Infotafeln mit Name, Stufe und grünem KP-Balken (eigene Seite mit Zahl), Befehlsmenü mit Kampf/Beutel/Pokémon/Flucht und Cursor, dunkle Meldungsleiste; lesbar, Layout wie auf dem Mac.
+**Image observations** (local only, factual description; image size 1280 × 720):
+- *Outdoor map (run 4, `f0_feld`):* Pokémon Center from above with red roof and white ball symbol; rocky beige/brown terraces and edges with visible texture (cracks, stone edges); darker ground at lower right; medium brightness, high contrast, no black or magenta areas. Character is gray (fallback shader).
+- *Interior (`f1_innen`):* counter with healing device, plant, shelf, cushion, and rugs in red, blue, and yellow; tiled floor with ball symbol; wood walls with gradient; textures and brightness match Mac run; NPC markers are blue capsules; player character gray.
+- *Text window (run 2, `f2_textbox`):* original frame from `sharedui` (light gray field, dark outline, continue indicator at lower right), two lines of dark sans-serif text, umlauts correct (Pokémon); map behind it was still unremapped in run 2 (gray fallback material, sky blue).
+- *Battle (run 4, `f4_kampf_befehl`):* placeholder boxes (#396 red, #407 blue) instead of models on two-tone green; two info panels with name, level, and green HP bar (own side also has number); command menu with Fight/Bag/Pokémon/Run and cursor; dark message bar; readable, layout like Mac.
 
-## 6. Lücken (ehrlich)
+## 6. Gaps (Honestly)
 
-- **Ersatz-Shader der Spielerfigur** (grau) und **Platzhalter im Kampf** bleiben (wie `docs/vertikaler-durchstich-1.md`); der Umbau der Karte läuft mit `XNU_GENERATED_SHADERS=1` (nicht Standard, siehe `docs/feld-szene-2.md`); ohne die Variable bleibt die Karte grau (Lauf 2).
-- **Dateien-App/Finder** (Abschnitt 3 b) am Gerät nicht angesehen; **Dokumentenwähler** (3 c) fehlt.
-- **Ladehänger:** Das Laden der Zone ist synchron, das erste Bild steht 2,2 bis 3,4 s; ebenso die Tür (4,2 bis 4,6 s). Kein Ladebildschirm, kein Streaming im Lauf.
-- **Außenkarte bei 60 FPS nicht einzeln gemessen** (30 und 120 ja; 120 hält, 60 liegt dazwischen); Innenraum bei allen drei Raten gemessen. Kein Last- oder Dauertest über 190 s; **Thermik** nominal, aber ohne Aussagewert für 30 Minuten Spielzeit; Raumtemperatur und Ladezustand nicht erfasst.
-- **Nur ein Gerät, eine iPadOS-Version, eine Zone** (Pokécenter außen und innen), Teilmenge der Bundles (229 MB, nicht die vollen 4,9 GB); keine Tests mit anderen Zonen, kein Trainerkampf, keine Gras-Begegnung (wie am Mac).
-- **Argumente** an die App kommen über `devicectl` nicht an (nur Umgebungsvariablen); die Option `-xnuPerfLog` o. ä. wirkt daher auf dem iPad nur per Variable.
-- Der Merkdatei-Mechanismus kennt **eine** zuletzt importierte Datei; wer zwischen mehreren Ablage-Dateien wechselt, braucht `--reimport`. Frühere Läufe ohne Merkdatei starten beim ersten Mal mit dem vorhandenen Slot, falls er gültig ist (Ablage-Datei ersetzt ihn nur bei anderem Hash).
-- **Messprobe im Spiel-Build:** `Xnu.Game.Unity` hängt jetzt an `Xnu.Probe` (natives Plugin `XnuMemoryProbe.m` ist in jedem iOS-Build enthalten).
+- **Player-character fallback shader** (gray) and **battle placeholders** remain (as in `docs/vertikaler-durchstich-1.md`); map remap runs with `XNU_GENERATED_SHADERS=1` (not default, see `docs/feld-szene-2.md`); without the variable the map remains gray (run 2).
+- **Files app/Finder** (section 3b) was not inspected on device; **document picker** (3c) is missing.
+- **Loading stalls:** zone loading is synchronous and the first image stalls for 2.2–3.4 s; same for door transition (4.2–4.6 s). No loading screen, no streaming during run.
+- **Outdoor map at 60 FPS was not measured separately** (30 and 120 were; 120 holds, 60 lies between); interior measured at all three rates. No load or sustained test beyond 190 s; **thermals** nominal but say nothing about 30 minutes of play; room temperature and charge level not recorded.
+- **Only one device, one iPadOS version, one zone** (Pokémon Center outside and inside), bundle subset (229 MB, not the full 4.9 GB); no other zones, trainer battle, or grass encounter tests (same as Mac).
+- **Arguments** do not reach the app via `devicectl` (environment variables only); options such as `-xnuPerfLog` therefore work on iPad only through a variable.
+- The marker mechanism remembers only **one** last-imported file; switching between multiple drop-in files requires `--reimport`. Earlier runs without the marker start with an existing slot if valid (drop-in file replaces it only if hash differs).
+- **Measurement probe in game build:** `Xnu.Game.Unity` now references `Xnu.Probe` (native plugin `XnuMemoryProbe.m` is included in every iOS build).
 
-## 7. Nächste Schritte
+## 7. Next Steps
 
-1. Zonenladen im Hintergrund (kein 2- bis 4-Sekunden-Bild) und Ladebildschirm; Streaming je Block statt synchron.
-2. Außenkarte bei 60 FPS und 30-Minuten-Lauf mit Thermik; weitere Zonen aus der Teilmenge (Feldwege, Höhlen) und vollständige Bundle-Menge.
-3. Dokumentenwähler oder Dateien-App-Test am Gerät (Abschnitt 3).
-4. Spielerfigur und NPC-Modelle, Kampf-Modelle und Original-UI (siehe `docs/vertikaler-durchstich-1.md`, Abschnitt 8).
+1. Load zones in the background (no 2–4-second stall) and show a loading screen; stream by block instead of synchronously.
+2. Measure outdoor map at 60 FPS and run 30 minutes with thermal monitoring; test additional zones from subset (field paths, caves) and full bundle set.
+3. Test document picker or Files app on device (section 3).
+4. Add player-character and NPC models, battle models, and original UI (see `docs/vertikaler-durchstich-1.md`, section 8).
 
-## 8. Geänderte und neue Dateien
+## 8. Changed and New Files
 
-`unity/Assets/Scripts/Game/Runtime/SaveSlotService.cs` (Slot-Prüfung, `ResolveRoot`, `DropInSources`, Merkdatei, `Diagnose`), `GameDriver.cs` (Ablage, Diagnose, Messung, Fehlerbehandlung der Skriptbefehle), `GameOptions.cs` (`XNU_TARGET_FPS`, `XNU_PERF_LOG`), `Xnu.Game.Unity.asmdef` (Verweis `Xnu.Probe`); `unity/Assets/Scripts/Core/InfoPlistPatch.cs` (neu); `unity/Assets/Scripts/Build/Editor/IosPostBuild.cs` (Info.plist); `unity/Assets/Tests/EditMode/GameUnityTests.cs` (8 neue Tests: Wurzel, Slot nach externer Kopie, abgeschnittener/leerer Slot, lose Datei und kaputter Slot, neue Ablage-Datei ersetzt den Slot einmal, ungültige Quelle, Info.plist, Optionen); `scripts/ios_push_save.sh` (neu).
+`unity/Assets/Scripts/Game/Runtime/SaveSlotService.cs` (slot validation, `ResolveRoot`, `DropInSources`, marker, `Diagnose`), `GameDriver.cs` (drop-in, diagnosis, measurement, script-command error handling), `GameOptions.cs` (`XNU_TARGET_FPS`, `XNU_PERF_LOG`), `Xnu.Game.Unity.asmdef` (reference to `Xnu.Probe`); `unity/Assets/Scripts/Core/InfoPlistPatch.cs` (new); `unity/Assets/Scripts/Build/Editor/IosPostBuild.cs` (Info.plist); `unity/Assets/Tests/EditMode/GameUnityTests.cs` (8 new tests: root, slot after external copy, truncated/empty slot, loose file and corrupt slot, new drop-in replaces slot once, invalid source, Info.plist, options); `scripts/ios_push_save.sh` (new).

@@ -1,21 +1,27 @@
-# NOTICE: Vulkan-Fassung der NVN-Schicht (`nvn/vulkan/`)
+# NOTICE: Vulkan NVN layer
 
-Wie die Metal-Fassung (siehe `../../NOTICE.md`, Abschnitt „NVN-Schicht“) **übernimmt** die Vulkan-Fassung Quelltext des Klons LASRecomp mit ausdrücklicher Freigabe des Nutzers, unter dessen MIT-Lizenz (Copyright (c) 2026 Peiikai, Lizenztext in [`../../../upstream/LICENSE`](../../../upstream/LICENSE)).
+Like the Metal backend (see ../../NOTICE.md), this backend uses LASRecomp source
+with the user's explicit approval, under its MIT license:
+Copyright (c) 2026 Peiikai. The license text is in ../../../upstream/LICENSE.
 
-| | |
-|---|---|
-| Projekt | LASRecomp, https://github.com/peiikai/LASRecomp |
-| Stand | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` |
-| Übernommen (geändert, Quellen `nvn/vulkan/src/` und `nvn/src/`) | `device.c`, `exec.c`, `shaders.c`, `shaders.h`, `textures.c`, `vk.h`, `vma.cpp`; `prepare_vk.sh` kopiert `nvn/src/` und `nvn/vulkan/src/` nach `work/recomp/nvn-src-vk` (keine Patches mehr). Der gemeinsame Teil (`objects.c`, `cmdbuf.c`, `formats.c`, `tegra.c`, `astc.c`, Übersetzer) kommt wie beim Metal-Weg aus `../prepare.sh`. || Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten. Alles übrige (u. a. `imgui_glue.cpp`, `texpatch.c`, `output_scale.c`, `smaa_data.c`) liegt vollständig unter `scripts/recomp/upstream/runtime/` || Eigen | `prepare_vk.sh`, `build_vk.sh`, `vk_glue.c`, `shim/*`, `las-vk.patch` (Änderungen: trennbare Programme, bindlose Texturen und getrennte Sampler, Offscreen-Betrieb `--headless`, Pfade unter `work/recomp/`, Entfernung der Zelda-Hooks) |
+Upstream: https://github.com/peiikai/LASRecomp
+Reference commit: 09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5.
 
-**Drittkomponenten, die nur zur Bauzeit gebraucht werden und nicht im Repo liegen** (`scripts/recomp/ryzen/vk_sync_deps.sh` überträgt nur Header auf den Linux-Rechner; kein Quelltext davon im Repo):
+The adapted backend sources are device.c, exec.c, shaders.c/.h, textures.c,
+vk.h, and vma.cpp under src/. prepare_vk.sh copies shared NVN and Vulkan sources
+into ignored work/recomp/nvn-src-vk. Shared objects/command buffers/formats,
+Tegra/ASTC handling, and translation originate from the same runtime.
+Our integration provides separate programs, bindless texture/sampler handling,
+headless output, work/ paths, and removal of unrelated game hooks.
 
-| Komponente | Lizenz | Verwendung |
-|---|---|---|
-| Vulkan-Headers (Khronos) | Apache-2.0 / MIT | `vulkan/*.h` |
-| VulkanMemoryAllocator (AMD, `vk_mem_alloc.h`) | MIT | Speicherverwaltung der Vulkan-Fassung (`vma.cpp`) |
-| SDL3 | zlib | Fenster, PNG-Ausgabe (Laufzeitbibliothek `libSDL3.so.0`) |
-| shaderc (Google) | Apache-2.0 | GLSL → SPIR-V zur Laufzeit (`libshaderc_shared.so.1`, nur die C-Schnittstelle `shaderc.h` als Header) |
-| Vulkan-Loader | Apache-2.0 | `libvulkan.so.1` (Systembibliothek) |
+No new copies of third-party library headers or binaries are vendored here.
+The Linux build uses distribution development packages via pkg-config:
+Vulkan headers/loader (Apache-2.0 or MIT, as applicable), VMA (MIT), SDL3 (zlib),
+shaderc (Apache-2.0), Qt6 (its applicable Qt license), and FFmpeg (its applicable
+build license). These components retain their own licenses. The user's original
+game content is not included. Existing approved runtime source and its notices
+remain intact.
 
-Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus; davon ist nichts enthalten.
+See docs/BUILD.md section 6 and scripts/recomp/linux/deps.sh for the dependency
+checks. The previous automatic VMA download and Homebrew-header copying scripts
+have been removed; package installation is the user's responsibility.

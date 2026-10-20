@@ -1,74 +1,74 @@
-# NOTICE: übernommener Code (LASRecomp)
+# NOTICE: adapted code (LASRecomp)
 
-Dieses Verzeichnis enthält Code, der aus einem fremden Projekt übernommen und von uns verändert wurde.
+This directory contains code adapted from another project and modified by us.
 
 | | |
 |---|---|
-| Projekt | LASRecomp |
+| Project | LASRecomp |
 | Repository | https://github.com/peiikai/LASRecomp |
-| Stand der Übernahme | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (kurz `09f8e5e`, einziger Commit des Klons) |
-| Urheber | Peiikai |
-| Lizenz | MIT, „Copyright (c) 2026 Peiikai“. Der Lizenztext liegt unverändert in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Übernommene Dateien | `runtime/nvn/maxwell/translate.c` → `translate.c`, `runtime/nvn/maxwell/shader.h` → `shader.h` |
-| Nicht übernommen | alles andere des Originals (Laufzeit, NVN-Renderer, `third_party/`, UI, Schriften, Rekompilierer, Tests) |
+| Revision used | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (short `09f8e5e`, the clone's only commit) |
+| Author | Peiikai |
+| License | MIT, “Copyright (c) 2026 Peiikai.” License text is unchanged in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
+| Adapted files | `runtime/nvn/maxwell/translate.c` → `translate.c`, `runtime/nvn/maxwell/shader.h` → `shader.h` |
+| Not included | Everything else from upstream (runtime, NVN renderer, `third_party/`, UI, fonts, recompiler, tests) |
 
-Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten in dessen `third_party/` ausdrücklich aus. Davon ist hier nichts enthalten. Der Nutzer des Repositories hat die Übernahme ausdrücklich freigegeben.
+The upstream license explicitly excludes Nintendo property and third-party components in its `third_party/` directory. None of those are included here. The repository user explicitly approved this adaptation.
 
-Die beiden übernommenen Dateien trugen im Original keinen eigenen Copyright-Kommentar. Wir haben je einen Herkunftskommentar mit Verweis auf Lizenz und Commit an den Dateianfang gesetzt.
+The two adapted files had no individual copyright notices upstream. We added a source comment at the beginning of each file that identifies its origin and refers to the license and commit.
 
-## Hinweis des Originals zur Entstehung
+## Upstream statement about how it was created
 
-Das README des Originals bezeichnet das Projekt als „almost exclusively“ mit einer KI (Anthropic Claude über Claude Code) erstellt und von einem Menschen gelenkt, getestet und geprüft. Der Klon hat nur einen Commit, eine Entstehungsgeschichte gibt es nicht. Der Code kommt daher ohne Gewähr; wir prüfen ihn mit eigenen Tests und, in Teil 2, mit numerischen Vergleichen gegen die Ryujinx-Referenz.
+The upstream README describes the project as created “almost exclusively” with an AI (Anthropic Claude through Claude Code) and directed, tested, and reviewed by a human. The clone has only one commit and no development history. The code is provided without warranty; we check it with our own tests and, in part 2, numerical comparisons against the Ryujinx reference.
 
-In Kommentaren von `translate.c` werden die Decoder des Ryujinx-Projekts als Quelle für einzelne Feldlayouts genannt (HADD2/HMUL2/HFMA2, XMAD, LDC). Das README des Originals führt Ryujinx nicht als Quelle auf. Welche Teile aus Fremdwerken (Ryujinx, envytools) in Struktur oder Tabellen eingeflossen sind, lässt sich aus dem Klon nicht klären. Wir nennen beide deshalb in `../THIRD_PARTY_NOTICES.md`.
+Comments in `translate.c` identify Ryujinx decoders as sources for individual field layouts (HADD2/HMUL2/HFMA2, XMAD, LDC). The upstream README does not list Ryujinx as a source. It is not possible to determine which parts of the structure or tables derive from other works (Ryujinx, envytools); both are therefore listed in `../THIRD_PARTY_NOTICES.md`.
 
-## Unsere Änderungen
+## Our changes
 
-Alle Änderungen in den übernommenen Dateien sind mit `XNU:` kommentiert.
+All changes to adapted files are marked with `XNU:` comments.
 
 ### `translate.c`
 
-1. **Abdeckungsmodus (`--survey`).** Neue Funktion `maxwell_translate_ex()` mit optionalem `Survey`-Zeiger. Ist er gesetzt, bricht `fail()` nicht beim ersten Problem ab, sondern trägt es in die Survey ein (Name, Beispielwort, Anzahl) und die Übersetzung läuft weiter. Unbekannte Opcodes werden nach den oberen 12 Bit gruppiert (`op<hex>`). Zusätzlich meldet `approx()` im Survey-Modus Stellen, an denen der Übersetzer still einen Platzhalter erzeugt (unbekannte Attributadresse). `maxwell_translate()` behält Signatur und Verhalten.
-2. **Codeende.** Der Übersetzer erkannte das Padding hinter dem letzten EXIT (unbedingter Sprung auf sich selbst) nur mit der Verschiebung −8. Der Unity-Compiler schreibt das Ziel auf das davorliegende Scheduling-Wort (−16). Dann wurden die Compiler-Konstanten hinter dem Code als Instruktionen gelesen. Jetzt gilt: unbedingtes BRA, dessen normiertes Ziel die eigene Position ist.
-3. **Eingabeprüfung.** Zu kleine Blobs ergeben einen Fehler statt eines Zugriffs außerhalb des Puffers.
-4. **Entfernt, weil LAS-spezifisch:** die Debug-Haken `maxwell_dbg_*` (Registerausgabe in ein Farbziel, Positions-Dump-Puffer 29), das `getenv("LARECOMP_NO_DISCARD")`, der „Tint“-Epilog für Farbziel 0 samt Puffer 19 und `uses_tint`.
-5. **`LARECOMP_SAVE_MSL` → `ShaderKey.annotate`.** Die Kommentierung der Instruktionen (pc und Wort) kommt aus dem Schlüssel statt aus einer Umgebungsvariablen.
-6. **`ShaderKey.no_rscale`.** Mit diesem Schalter liest der Übersetzer die Auflösungsskalierungs-Tabelle (Puffer 18) nicht: Fensterkoordinaten, Texel-Abrufe (TLD/TLDS) und Größenabfragen (TXQ) bleiben unskaliert. Das Werkzeug `maxwell2msl` setzt ihn standardmäßig; `--rscale` stellt das Original-Verhalten wieder her.
+1. **Coverage mode (`--survey`).** Added `maxwell_translate_ex()` with optional `Survey` pointer. When set, `fail()` no longer stops at the first problem; it records the issue (name, example word, count) in the survey and translation continues. Unknown opcodes are grouped by their upper 12 bits (`op<hex>`). Additionally, `approx()` reports cases where translator silently emits a placeholder (unknown attribute address) in survey mode. `maxwell_translate()` retains its signature and behavior.
+2. **End of code.** Translator recognized padding after final EXIT (unconditional branch to itself) only with offset −8. Unity compiler targets the preceding scheduling word (−16), so compiler constants after code were read as instructions. Now accepts unconditional BRA whose normalized target is its own position.
+3. **Input validation.** Too-small blobs now return an error rather than reading past the buffer.
+4. **Removed because LAS-specific:** debug hooks `maxwell_dbg_*` (register output to color target, position dump buffer 29), `getenv("LARECOMP_NO_DISCARD")`, tint epilogue for color target 0 and buffer 19, and `uses_tint`.
+5. **`LARECOMP_SAVE_MSL` → `ShaderKey.annotate`.** Instruction annotations (PC and word) now come from the key instead of an environment variable.
+6. **`ShaderKey.no_rscale`.** This switch prevents the translator from reading resolution-scale table (buffer 18): window coordinates, texel fetches (TLD/TLDS), and size queries (TXQ) remain unscaled. `maxwell2msl` sets it by default; `--rscale` restores upstream behavior.
 
-Teil 2 (2026-10-18):
+Part 2 (2026-10-18):
 
-7. **TEX.B (bindlose Textur).** Das Original brach bei diesem Befehl mit „bindless tex“ ab. Jetzt verfolgt `prov_track()` für jedes Register, ob sein Wert aus Konstantenpuffer-Wörtern aufgebaut wurde (MOV c[][], LOP.OR mit c[][], LDC, MOV Rb; jeder andere Schreibzugriff setzt zurück, erkannt am erzeugten Text). `emit_tex()` liest damit das Handle-Register von TEX.B; die Textur ist durch das Wortpaar (Samplerwort | Texturwort) bestimmt und bekommt einen Slot (`bindless_slot()`, Reihenfolge der ersten Benutzung). Die Register hinter dem Handle liefern LOD, Offset und Tiefenvergleich. Fehlt die Herkunft, bleibt der Befehl ein Fehler („bindless handle not from cbuf words“). `ShaderTexture` bekam `bindless_has_sampler` und `bindless_sampler_offset`.
-8. **HSETP2 mit Konstantenpuffer- und Immediate-Operand** (0x7e80/0x7f80 und 0x7e00/0x7f00). Die Registerform war im Original vorhanden und wurde verallgemeinert: Vergleichsfeld Bit 49..52 statt 35..38, HAND Bit 53 statt 49, Operand B als ein f32 (cbuf) bzw. zwei Halbwerte (imm).
-9. **Daten für die Ressourcenkarte:** statisch adressierter Bereich je Konstantenpuffer (`cbuf_min_off`/`cbuf_end_off`, gesetzt in `cbuf_ref()`), Komponentenmasken der Ein- und Ausgaben (`in_comp`/`out_comp`), `flat_mask`/`noperspective_mask`, Beginn der Compiler-Konstanten im Blob (`cbuf1_blob_offset`: auf 0x100 aufgerundetes Codeende).
-10. **Exakte Arithmetik.** Die MSL beginnt jetzt mit `#pragma METAL fp math_mode(safe)` und `#pragma METAL fp contract(off)` (Schlüssel `fast_math` schaltet das ab). Das Original ließ Fast-Math und die FMA-Verschmelzung von Metal an.
-11. **`ShaderKey.half_compat`** (nur als Testorakel): hält zu Registern, die Halb-Befehle schreiben, einen ungerundeten `float2`-Schatten, wie Ryujinx es durch das Entfernen von Pack/Unpack-Paaren tut. Standard ist die Rundung auf fp16 wie auf der Hardware.
+7. **TEX.B (bindless texture).** Upstream aborted on this instruction with “bindless tex.” Now `prov_track()` tracks, for each register, whether its value was built from constant-buffer words (MOV c[][], LOP.OR with c[][], LDC, MOV Rb; any other write resets tracking, based on generated text). `emit_tex()` uses this to read TEX.B handle register; texture is determined by word pair (sampler word | texture word) and assigned a slot (`bindless_slot()`, first-use order). Registers following handle supply LOD, offset, and depth comparison. If provenance is missing, instruction remains an error (“bindless handle not from cbuf words”). Added `bindless_has_sampler` and `bindless_sampler_offset` to `ShaderTexture`.
+8. **HSETP2 with constant-buffer and immediate operands** (0x7e80/0x7f80 and 0x7e00/0x7f00). Register form existed upstream and was generalized: compare field bits 49..52 instead of 35..38, HAND bit 53 instead of 49, operand B is one f32 (cbuf) or two half values (immediate).
+9. **Resource-map metadata:** statically addressed region per constant buffer (`cbuf_min_off`/`cbuf_end_off`, set in `cbuf_ref()`), input/output component masks (`in_comp`/`out_comp`), `flat_mask`/`noperspective_mask`, beginning of compiler constants in blob (`cbuf1_blob_offset`: code end rounded up to 0x100).
+10. **Exact arithmetic.** MSL now starts with `#pragma METAL fp math_mode(safe)` and `#pragma METAL fp contract(off)` (key `fast_math` disables these). Upstream left Metal fast math and FMA fusion enabled.
+11. **`ShaderKey.half_compat`** (test oracle only): keeps an unrounded `float2` shadow for registers written by half instructions, as Ryujinx does when removing pack/unpack pairs. Default behavior rounds to fp16, as hardware does.
 
 ### `shader.h`
 
-`Survey`/`SurveyItem` und `maxwell_translate_ex()` ergänzt; `ShaderKey.no_rscale`, `ShaderKey.annotate` ergänzt; `uses_tint`, die `maxwell_dbg_*`-Deklarationen und der Tint-Eintrag im Schnittstellenkommentar entfernt; Herkunftskommentar ergänzt. Teil 2: `ShaderKey.fast_math`, `ShaderKey.half_compat`; `ShaderTexture.bindless_has_sampler`/`bindless_sampler_offset`; `ShaderInfo.cbuf_min_off`, `cbuf_end_off`, `cbuf1_blob_offset`, `in_comp`, `out_comp`, `flat_mask`, `noperspective_mask`.
+Added `Survey`/`SurveyItem` and `maxwell_translate_ex()`; added `ShaderKey.no_rscale`, `ShaderKey.annotate`; removed `uses_tint`, `maxwell_dbg_*` declarations, and tint from interface comment; added provenance comment. Part 2: `ShaderKey.fast_math`, `ShaderKey.half_compat`; `ShaderTexture.bindless_has_sampler`/`bindless_sampler_offset`; `ShaderInfo.cbuf_min_off`, `cbuf_end_off`, `cbuf1_blob_offset`, `in_comp`, `out_comp`, `flat_mask`, `noperspective_mask`.
 
-Teil 3 (2026-10-19): `ShaderKey.hlsl` und der Schnittstellenkommentar „HLSL contract“ (Strukturen, Namen der Konstantenpuffer/Texturen, Grenzen).
+Part 3 (2026-10-19): added `ShaderKey.hlsl` and “HLSL contract” interface comment (structures, constant-buffer/texture names, limits).
 
-### `translate.c`, Teil 3: HLSL-Ausgabe für Unity (`ShaderKey.hlsl`, Werkzeug: `--lang hlsl`)
+### `translate.c`, part 3: HLSL output for Unity (`ShaderKey.hlsl`, tool option `--lang hlsl`)
 
-Alle Stellen sind mit `XNU:` oder im Kopfkommentar der Datei markiert. Die MSL- und GLSL-Ausgabe bleibt byteidentisch (an 500 zufälligen Blobs mit je drei Optionssätzen gegen die Vorversion geprüft).
+All changes are marked with `XNU:` or in the file's header comment. MSL and GLSL output remain byte-identical (checked against previous version on 500 random blobs with three option sets each).
 
-12. **Neuer Zweig `hlsl_rewrite()` / `hlsl_prelude` / `hlsl_finish()`** nach dem Muster des GLSL-Zweigs: Der Befehlsrumpf entsteht weiter in der MSL-Schreibweise und wird tokenweise umgeschrieben (`as_type<float/uint/int>` → `asfloat/asuint/asint`, `fmin/fmax` → `min/max`, `rint` → `round`, `fma` → `mx_fma` (= `mad`), `isnan` → `mx_isnan` (Bittest, weil FXC `isnan` wegfaltet), `popcount` → `countbits`, `char()/short()` → `sx8/sx16`, `in`/`out` → `i_`/`o_`, `cb<k>` → `mx_cb<k>`; nicht abbildbare Bezeichner wie `ulong`, `half`, `gmem`, `simd_shuffle*` brechen mit einer „hlsl:“-Meldung ab). Die Hilfsfunktionen (Bitfelder, `mulhi`, `clz`, `prmt`, `hx`/`hpack` über `f16tof32`/`f32tof16`, 32-Bit-Übertrag `mx_adc3`, Trichterverschiebung `mx_shf_*`, `fswzadd` mit Lane aus der Pixelposition) liegen im Prelude, das eine Include-Wache trägt (Vertex und Fragment teilen ein Programm).
-13. **Pro Dialekt neu erzeugt:** Texturabrufe (`hlsl_sample()`: `Sample/SampleLevel/SampleBias/SampleCmp(LevelZero)`, Register-Offsets über Koordinatenverschiebung, weil HLSL nur Literal-Offsets kennt), `TLDS` als `Load`, `TXQ` über `tsize<i>()`/`tlevels<i>()` (GetDimensions), 16-Bit-Packen in `TEXS.F16`/`F2F`/`F2I`/`I2F`, `IADD32I`/`IADD3` mit Übertrag und `SHF` ohne 64-Bit-Ganzzahlen, `KIL` → `discard`, Deklarationen und Einstiegspunkte (`mx_vs`, `mx_fs`, Strukturen ohne Semantik; die Semantik setzt der Wrapper).
-14. **Zustandsautomat für Sprünge:** HLSL (FXC) verträgt weder `continue` im `switch` noch Zuweisungen an die `switch`-Variable in einer Schleife („l-value expected“). Der `switch (pc)` wird daher als Kette `if (pc == N) { … pc = nächste; }` erzeugt (Durchfall = Setzen von `pc`, Sprung = `pc = X; continue;`).
-15. **`ShaderKey.hlsl`** schließt sich mit `glsl` aus; Compute, `half_compat`, globaler Speicher, Auflösungsskalierung, Punktkoordinate und Subgroup-Befehle werden mit einer Meldung abgelehnt.
-16. **`main.c`** (eigener Code): `--lang msl|glsl|hlsl`, `--hlsl`, Schlüssel `language` in der Ressourcenkarte. Tests: 16 neue C-Prüfungen (`test_hlsl_backend`) und ein CLI-Test.
+12. **New `hlsl_rewrite()`/`hlsl_prelude`/`hlsl_finish()` branch** following GLSL branch pattern: instruction body is still emitted in MSL syntax, then rewritten token by token (`as_type<float/uint/int>` → `asfloat/asuint/asint`, `fmin/fmax` → `min/max`, `rint` → `round`, `fma` → `mx_fma` (= `mad`), `isnan` → `mx_isnan` (bit test, because FXC folds away `isnan`), `popcount` → `countbits`, `char()/short()` → `sx8/sx16`, `in`/`out` → `i_`/`o_`, `cb<k>` → `mx_cb<k>`; unsupported names such as `ulong`, `half`, `gmem`, `simd_shuffle*` abort with an “hlsl:” message). Helpers (bitfields, `mulhi`, `clz`, `prmt`, `hx`/`hpack` via `f16tof32`/`f32tof16`, 32-bit carry `mx_adc3`, funnel shifts `mx_shf_*`, `fswzadd` with lane from pixel position) are in prelude, which has an include guard (vertex and fragment share a program).
+13. **Regenerated per dialect:** texture fetches (`hlsl_sample()`: `Sample/SampleLevel/SampleBias/SampleCmp(LevelZero)`; register offsets become coordinate shifts because HLSL accepts only literal offsets), `TLDS` as `Load`, `TXQ` via `tsize<i>()`/`tlevels<i>()` (`GetDimensions`), 16-bit packing for `TEXS.F16`/`F2F`/`F2I`/`I2F`, `IADD32I`/`IADD3` with carry and `SHF` without 64-bit integers, `KIL` → `discard`, declarations and entry points (`mx_vs`, `mx_fs`, structures without semantics; wrapper supplies semantics).
+14. **Control-flow state machine:** HLSL (FXC) supports neither `continue` inside `switch` nor assignments to `switch` variable inside loop (“l-value expected”). Therefore `switch (pc)` is emitted as an `if (pc == N) { … pc = next; }` chain (fallthrough sets `pc`; branch sets `pc = X; continue;`).
+15. **`ShaderKey.hlsl`** excludes GLSL; compute, `half_compat`, global memory, resolution scaling, point coordinates, and subgroup instructions are rejected with a message.
+16. **`main.c`** (our own code): `--lang msl|glsl|hlsl`, `--hlsl`, `language` key in resource map. Tests: 16 new C checks (`test_hlsl_backend`) and one CLI test.
 
-Teil 4 (2026-10-19, Instancing und Speicherpuffer):
+Part 4 (2026-10-19, instancing and storage buffers):
 
-17. **Registerindizierte Konstantenpuffer-Lesezugriffe** erscheinen in HLSL als `mx_cbr<k>(Offset)` statt `cbr(mx_cb<k>, Offset)`. `hlsl_finish()` legt je Puffer eine ersetzbare Standard-Definition (`#ifndef mx_cbr<k>`) an; der Wrapper ersetzt sie bei Instancing-Feldern (`cbuf_ref()`, `hlsl_finish()`). MSL und GLSL unverändert.
-18. **Globaler Speicher (LDG) in HLSL.** Der Zweig „hlsl: global memory“ wurde durch einen eigenen Pfad ersetzt: 32-, 64-, 128-Bit- und Teilwort-Lesezugriffe über `ByteAddressBuffer mx_gmem` (Adresse = Byte-Offset, weil der Wrapper die Puffer-Adresse in Treiber-cbuf 0 auf Null lässt; hohes Adresswort ≠ 0 liest 0). STG und mehrere Speicherpuffer bleiben abgelehnt („hlsl: global memory store“). Ein Sprungziel `insn_done:` am Ende von `emit_insn()` lässt den HLSL-Pfad die gemeinsame Nachbehandlung (Prädikat) durchlaufen.
-19. **`main.c`:** `--gmem-base`/`--gmem-size` für die MSL-/GLSL-Ausgabe (Testbank des Harness; Standard unverändert 0/0). Tests: fünf neue C-Prüfungen (LDG, STG-Ablehnung).
+17. **Register-indexed constant-buffer reads** now appear in HLSL as `mx_cbr<k>(Offset)` rather than `cbr(mx_cb<k>, Offset)`. `hlsl_finish()` emits a replaceable default definition per buffer (`#ifndef mx_cbr<k>`); wrapper replaces it for instanced fields (`cbuf_ref()`, `hlsl_finish()`). MSL and GLSL unchanged.
+18. **Global memory (LDG) in HLSL.** Replaced “hlsl: global memory” error with a dedicated path: 32-, 64-, 128-bit and subword reads via `ByteAddressBuffer mx_gmem` (address is byte offset because wrapper leaves buffer address in driver cbuf 0 as zero; a nonzero high address word reads 0). STG and multiple storage buffers remain rejected (“hlsl: global memory store”). An `insn_done:` branch target at end of `emit_insn()` lets HLSL path run shared postprocessing (predicate).
+19. **`main.c`:** `--gmem-base`/`--gmem-size` for MSL/GLSL output (harness test bank; default remains 0/0). Tests: five new C checks (LDG, STG rejection).
 
-### Bewusst (noch) unverändert
+### Deliberately unchanged (for now)
 
-Globale Variablen `maxwell_gmem_base/size`, `flip_x`, der GLSL-Zweig (TEX.B und `half_compat` gelten nur für MSL; der GLSL-Zweig wurde nicht getestet), statische Puffer in `RSC2` (nicht threadsicher; die Übersetzung läuft in einem Thread), `sprintf` ohne Längenprüfung. Siehe `docs/shader-translator.md`, Aufgabenliste für Teil 3.
+Global variables `maxwell_gmem_base/size`, `flip_x`, GLSL branch (TEX.B and `half_compat` are MSL-only; GLSL branch untested), static buffers in `RSC2` (not thread-safe; translation runs in one thread), and `sprintf` without length check. See part 3 task list in `docs/shader-translator.md`.
 
-## Eigener Code in diesem Verzeichnis (kein Fremdcode)
+## Our own code in this directory (not third-party)
 
-`main.c` (Werkzeug `maxwell2msl`; Teil 2: Ressourcenkarte in `--info`, `--cbuf1`, `--fast-math`, `--half-compat`; Teil 3: `--lang`), `container.c`/`container.h` (Leser für Unity-Shaderprogramme), `Makefile`, `survey_report.py`, `tests/`. Außerhalb des Verzeichnisses: `scripts/shader_fidelity.py` (Treue-Test), `scripts/tests/test_shader_fidelity.py`; Teil 3: `scripts/shader_wrap.py` (ShaderLab-Wrapper-Generator), `scripts/tests/test_shader_wrap.py`, `docs/shader-unity-integration.md`.
+`main.c` (tool `maxwell2msl`; part 2: resource map via `--info`, `--cbuf1`, `--fast-math`, `--half-compat`; part 3: `--lang`), `container.c`/`container.h` (Unity shader-program reader), `Makefile`, `survey_report.py`, `tests/`. Outside this directory: `scripts/shader_fidelity.py` (fidelity test), `scripts/tests/test_shader_fidelity.py`; part 3: `scripts/shader_wrap.py` (ShaderLab wrapper generator), `scripts/tests/test_shader_wrap.py`, `docs/shader-unity-integration.md`.

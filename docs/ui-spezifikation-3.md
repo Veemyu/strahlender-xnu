@@ -1,49 +1,49 @@
-# UI-Spezifikation 3: Stubs im Hauptprojekt, Original-Fenster im Spiel, Kampf-UI
+# UI Specification 3: Stubs in the Main Project, Original Windows In-Game, Battle UI
 
-> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. `scripts/stub_gen.py` ist auf `main` entfernt (nur Branch `unity`); die Stufe `stubs` gibt es auf `main` nicht mehr.
+> **Historical (as of 2026-10-20):** Unity approach discontinued. `scripts/stub_gen.py` has been removed from `main` (it remains only on branch `unity`); the `stubs` stage no longer exists on `main`.
 
-Stand: 2026-10-19, Todo `ap-ui`, Scheibe 2. Nur Zahlen, Verfahren und eigener Code; keine Spielinhalte, Texte oder Bilder im Repo (Aufnahmen und Dumps unter `work/`, gitignoriert). Die Logik ist von Hand in eigener Formulierung geschrieben, nichts maschinell aus Pseudocode übersetzt.
-Messung: Haupteditor Unity 6000.3.26f1 (Metal), Spielstand und Daten lokal, Spielmodus im Editor mit Eingabeskript. Kein Ton.
+As of 2026-10-19, todo `ap-ui`, slice 2. Numbers, methods, and original code only; no game content, text, or images in the repository (captures and dumps under `work/`, gitignored). The logic was written by hand in original wording, not mechanically translated from pseudocode.
+Measurement: main editor Unity 6000.3.26f1 (Metal), local save and data, game mode in the editor with an input script. No audio.
 
-## 1. Ergebnis in Kürze
-- **Stubs laufen im Hauptprojekt:** `stub_gen.py gen` nach `unity/Assets/XnuStubs` (gitignoriert, 887 Dateien, 5 MB), 0 Compilerfehler, vorhandene Tests unverändert grün (696/696 vor den neuen Tests). Konflikte mit `Xnu.*`: 0 gleiche volle Namen.
-- **Schalter:** `XNU_STUBS` per `unity/Assets/csc.rsp` (gitignoriert, gilt nur für Assembly-CSharp). Ohne die Datei fehlen die Hooks (`Assets/Scripts/DprHooks`, alles in `#if XNU_STUBS`), das Projekt baut ohne Stubs.
-- **Original-UI im Spiel (Editor):** Hauptmenü (8 Einträge im Raster), Party (6 Pokémon: Name, Stufe, KP-Balken, Geschlecht, Icon), Beutel (8 Taschen, Items und Mengen aus dem Spielstand, Beschreibung, Geld), Auswahlfenster (Ja/Nein aus dem Original-Kontextmenü) und Kampf-Statusfenster/Attackenliste aus den Original-Prefabs. Alle Texte aus den lokalen Textdateien, Sprites aus den Bundles, Original-Shader nie geladen.
-- **Tests:** `UiScreensTests` (Cursor, Menü-, Party-, Beutel-Modell, Bundle-Filter, Textbindung, Datenbindung aus dem Spielstand), 54 neue Tests.
+## 1. Summary of results
+- **Stubs run in the main project:** `stub_gen.py gen` into `unity/Assets/XnuStubs` (gitignored, 887 files, 5 MB), 0 compiler errors, existing tests still passing (696/696 before the new tests). Conflicts with `Xnu.*`: 0 identical fully qualified names.
+- **Switch:** `XNU_STUBS` via `unity/Assets/csc.rsp` (gitignored, applies only to Assembly-CSharp). Without this file, the hooks are absent (`Assets/Scripts/DprHooks`, all under `#if XNU_STUBS`), and the project builds without stubs.
+- **Original UI in-game (Editor):** main menu (8 grid entries), party (6 Pokémon: name, level, HP bar, gender, icon), bag (8 pockets, items and quantities from the save, description, money), choice window (Yes/No from the original context menu), and battle status window/move list from the original prefabs. All text comes from local text files, sprites from bundles; original shaders were never loaded.
+- **Tests:** `UiScreensTests` (cursor, menu/party/bag models, bundle filter, text binding, save data binding), 54 new tests.
 
-## 2. Build-Reihenfolge
-`tools extract il2cpp masterdata shaders video audio assets stubs unity-build deploy`. Die Stufe `stubs` schreibt `XnuStubs` **und** `csc.rsp`; die Stufe `unity-build` löscht `csc.rsp`, wenn `XnuStubs/manifest.json` fehlt. Hält ein Editor das Projekt, überspringt `stubs` (neue Dateien lösen Neukompilierung aus). Ohne Dump: Stufe auslassen, Projekt baut ohne Original-Prefabs; die Fenster fallen auf die eigenen (Textbox-Menü, Platzhalter-Kampfansicht) zurück (`UiWindowManager.IsAvailable`). `link.xml` hält Assembly-CSharp und die Stub-Assemblen (IL2CPP-Stripping; im Player ungeprüft).
+## 2. Build order
+`tools extract il2cpp masterdata shaders video audio assets stubs unity-build deploy`. The `stubs` stage writes both `XnuStubs` **and** `csc.rsp`; the `unity-build` stage deletes `csc.rsp` if `XnuStubs/manifest.json` is missing. If an editor has the project open, `stubs` is skipped (new files trigger recompilation). Without a dump, skip the stage; the project builds without original prefabs, and windows fall back to the custom textbox menu and placeholder battle view (`UiWindowManager.IsAvailable`). `link.xml` preserves Assembly-CSharp and the stub assemblies (IL2CPP stripping; untested in the player).
 
-## 3. Aufbau
-| Teil | Inhalt |
+## 3. Structure
+| Part | Contents |
 |---|---|
-| `Xnu.UI/Logic/ListCursor.cs`, `ScreenModels.cs` | `ListCursor`, `GridCursor`, `MainMenuModel`, `PartyScreenModel`, `BagScreenModel`, `HpStages`, Zeilenmodelle ohne Unity-Typen |
-| `Xnu.UI/Runtime/UiBridge.cs` | Schnittstellen zu den Stubs (Textfeld, Menü, Party, Beutel, Kontextmenü, Kampf-UI) |
-| `Scripts/DprHooks/UiBridgeHooks.cs` | partial-Teile der Stubs (Assembly-CSharp, nur `XNU_STUBS`): reichen serialisierte Felder durch, keine Logik |
-| `UiBundles` | Provider für UI-Bundles: keine Shader-Bundles, nur Sprachvariante `.ge`, Atlas-Nachlieferung (`SpriteAtlasManager.atlasRequested`), Pokémon-Icons (`textures_mass/pokemon_dp`) |
-| `OriginalWindowFactory`, `UiMaterialFixer`, `UiTextBinder` | Prefab instanziieren, Canvas auf 1280×720/Breitenabgleich, Materialien ohne Shader durch eigene Shader (`XnuUiAdd`, `XnuUiGray`) oder Standardmaterial ersetzen, Schrift = TMP-Standard, Beschriftungen aus Datei+Label füllen |
-| `OriginalViews`, `UiWindowManager`, `BattleUiSkin` | Ansichten und Fensterstapel (Menü → Party/Beutel → Auswahl/Hinweis), Kampf-Skin |
-| `Game.Unity/GameUiData`, `GameDriver`, `BattleView` | Daten aus Spielstand und Texten; Menü-Taste öffnet das Hauptmenü, Plus im Menü fragt „Speichern“; Kampfansicht nutzt das Skin |
+| `Xnu.UI/Logic/ListCursor.cs`, `ScreenModels.cs` | `ListCursor`, `GridCursor`, `MainMenuModel`, `PartyScreenModel`, `BagScreenModel`, `HpStages`, row models without Unity types |
+| `Xnu.UI/Runtime/UiBridge.cs` | Interfaces to stubs (textbox, menu, party, bag, context menu, battle UI) |
+| `Scripts/DprHooks/UiBridgeHooks.cs` | Partial stub implementations (Assembly-CSharp, `XNU_STUBS` only): pass through serialized fields, no logic |
+| `UiBundles` | UI bundle provider: no shader bundles, only `.ge` language variant, atlas fallback (`SpriteAtlasManager.atlasRequested`), Pokémon icons (`textures_mass/pokemon_dp`) |
+| `OriginalWindowFactory`, `UiMaterialFixer`, `UiTextBinder` | Instantiate prefabs, set canvas to 1280×720/match width, replace materials without shaders with custom shaders (`XnuUiAdd`, `XnuUiGray`) or standard material, use TMP default font, fill labels from file+label |
+| `OriginalViews`, `UiWindowManager`, `BattleUiSkin` | Views and window stack (menu → party/bag → choice/notice), battle skin |
+| `Game.Unity/GameUiData`, `GameDriver`, `BattleView` | Data from save and text; menu button opens main menu, Plus in menu prompts “Save”; battle view uses the skin |
 
-## 4. Beobachtungen und Lücken
-- **Meldungsfenster:** hat im Original kein Prefab (`resources.assets`); die eigene `TextboxView` mit Original-Rahmen bleibt.
-- **Animator-Zustände** der Fenster sind in den Bundles nicht benennbar (kein Editor-Controller); die Fenster-Animatoren werden abgeschaltet, kein Öffnen/Schließen-Effekt. DOTween-Animationen laufen nicht (Farbbänder oben in der Party stehen still).
-- **Kampf:** Statusfenster und Attackenliste aus dem Original; die **Befehlsliste** (`BUIActionList`) steht im Prefab an der Ausblendposition (Position nur im Code), bis dahin das eigene Textmenü. Kein Ziel-/Beutel-/Pokémon-Wechsel-Fenster aus dem Original, Meldungen weiter eigene Box. Typ-Grafik der Attacken nimmt den Typindex der Stammdaten an [A]. Pokémon-Modelle im Kampf: **nicht umgesetzt** (Platzhalter-Kästen).
-- **Sprites zur Laufzeit belegt:** Beutel-Symbol im Hauptmenü, Taschen-Kopfbild, Geschlechtsgrafik der Party sind im Prefab leer und werden ausgeblendet bzw. nur eingefärbt; Item-Symbole fehlen (Quelle in den Bundles nicht gefunden). Status (Vergiftung usw.) wird nicht angezeigt.
-- **Schrift:** TMP-Standard (LiberationSans); japanische Reststrings aus Prefabs erscheinen als Kästchen (Warnungen „Unicode … nicht gefunden“); Originalschrift nicht angebunden.
-- **Party/Beutel-Unterseiten:** Auswahl in Party/Beutel tut nichts (Kontextmenü, Item-Verwendung, Status fehlen). Pokédex, Trainerpass, Karte, Kapsel-Deko, Einstellungen, Geheimgeschenk: nur Rahmen, nicht anwählbar.
-- **Beschriftungen:** unbelegte Platzhalter `{n:m}` werden geleert; im Beutel überlagert sich noch ein statischer Text („Kampf“) mit der Beschreibung.
-- **Player-Test (macOS) und iPad:** **nicht durchgeführt** (Zeit). Bundles für den Player: `UIs/ui/uiresidentwindow` 8,15 MB, `UIs/ui/prefab/battleviewuisystem` 1,05 MB, dazu deren Abhängigkeiten (Atlanten, `.ge`-Varianten); in `scripts/subsets/vslice-start.txt` vermerkt, Gesamtgröße der Abhängigkeiten ungemessen. Ob die Stufe `assets` Abhängigkeiten mitkopiert und ob `bundle_retarget` die UI-Bundles unverändert lässt, ist ungeprüft.
-- **Neuer Testspielstand (Stadt):** Die Szenarien oben liefen noch mit dem alten Stand (Zone 167); Umstellung auf die Ablagezone aus dem Save steht aus.
+## 4. Observations and gaps
+- **Message window:** the original has no prefab (`resources.assets`); the custom `TextboxView` with the original frame remains.
+- **Animator states** for windows cannot be identified in bundles (no editor controller); window animators are disabled, so there is no open/close effect. DOTween animations do not run (party HP bars remain still).
+- **Battle:** status window and move list are original; the **command list** (`BUIActionList`) is at the prefab's hidden position (position is set only in code), so the custom text menu is used until then. No original target/bag/Pokémon-switch windows; messages still use the custom box. Move type graphic assumes the type index from master data [A]. Battle Pokémon models: **not implemented** (placeholder boxes).
+- **Runtime sprites verified:** the bag icon in the main menu, pocket header image, and party gender graphic are empty in the prefab and are hidden or only tinted; item icons are missing (source not found in bundles). Status conditions (poisoning, etc.) are not displayed.
+- **Font:** TMP default (LiberationSans); Japanese strings left in prefabs appear as boxes (warnings “Unicode … not found”); original font is not connected.
+- **Party/bag subpages:** selecting in party/bag does nothing (context menu, item use, and status are missing). Pokédex, Trainer Card, map, capsule decoration, settings, and Mystery Gift: frame only, not selectable.
+- **Labels:** unsupported placeholders `{n:m}` are cleared; in the bag, static text (“Battle”) still overlaps the description.
+- **Player test (macOS) and iPad:** **not performed** (time). Player bundles: `UIs/ui/uiresidentwindow` 8.15 MB, `UIs/ui/prefab/battleviewuisystem` 1.05 MB, plus their dependencies (atlases, `.ge` variants); listed in `scripts/subsets/vslice-start.txt`, total dependency size not measured. Whether the `assets` stage copies dependencies and whether `bundle_retarget` leaves UI bundles unchanged is unverified.
+- **New save (town):** the scenarios above still used the old save (zone 167); switching to the save's storage zone remains pending.
 
-## 5. Nächste Screens
-1. Befehlsliste des Kampfs (Position, Ein-/Ausblendung), Ziel- und Beutelfenster; danach Modelle der Pokémon (Katalog `Pokemon Database/pokemons/battle/pmNNNN_FF_00`, 1.304 Prefabs) mit `MaterialRemapper`.
-2. Party-Kontextmenü, Pokémon-Status (`pokestatus`), Item-Verwendung, Statusanzeige.
-3. Original-Schrift und Zeilenbreiten, Fensteranimation (DOTween-Ersatz), Player-/iPad-Lauf mit Subset und Größenmessung.
+## 5. Next screens
+1. Battle command list (position, show/hide), target and bag windows; then Pokémon models (catalog `Pokemon Database/pokemons/battle/pmNNNN_FF_00`, 1,304 prefabs) using `MaterialRemapper`.
+2. Party context menu, Pokémon status (`pokestatus`), item use, status display.
+3. Original font and line widths, window animation (DOTween replacement), player/iPad run with subset and size measurement.
 
-## 6. Reproduktion
+## 6. Reproduction
 ```
-python3 scripts/stub_gen.py gen --out unity/Assets/XnuStubs          # oder scripts/build_all.sh --only stubs
-unity command … recompile ; scripts/unity_safe.sh test               # Tests
-# Spielmodus: Szene Game, Umgebungsvariablen XNU_GAMEDATA/XNU_SCRIPTED_INPUT/XNU_SHOT_DIR, Eingabeskript (Tasten Plus, A, B, Pfeile; shot NAME)
+python3 scripts/stub_gen.py gen --out unity/Assets/XnuStubs          # or scripts/build_all.sh --only stubs
+unity command … recompile ; scripts/unity_safe.sh test               # tests
+# game mode: Game scene, environment variables XNU_GAMEDATA/XNU_SCRIPTED_INPUT/XNU_SHOT_DIR, input script (Plus, A, B, arrows; shot NAME)
 ```

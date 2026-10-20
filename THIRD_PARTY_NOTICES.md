@@ -1,25 +1,25 @@
-# Hinweise zu Fremdcode
+# Third-party notices
 
-Dieses Repository enthält eigenen Code und folgende übernommene Teile. Das Repository enthält keine Spieldaten, Keys oder daraus abgeleitete Inhalte.
+This repository contains original code and the components listed below. It contains no game data, keys, or content derived from them.
 
 ## LASRecomp (MIT)
 
-- **Wo:** `shader_translator/translate.c`, `shader_translator/shader.h` (verändert, Änderungen in `shader_translator/NOTICE.md`)
-- **Quelle:** https://github.com/peiikai/LASRecomp, Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`
-- **Urheber/Lizenz:** Copyright (c) 2026 Peiikai, MIT-Lizenz. Der Lizenztext liegt unverändert in `shader_translator/LICENSE-LASRecomp`.
-- **Hinweis des Originals:** Das README nennt den Code „almost exclusively“ KI-erstellt (Claude über Claude Code), von einem Menschen gelenkt und geprüft.
-- **Weitere Quellen darin (nur Kommentare des Originals, keine Dateien von dort):** Feldlayouts nach den Decodern des Ryujinx-Projekts und der envytools-Dokumentation (Lizenzen dieser Projekte hier nicht geprüft). Welche Teile des Originals daraus stammen, ist nicht geklärt.
-- **Eigene Ergänzungen (Teil 2, kein Fremdcode):** TEX.B, HSETP2 (cbuf/imm), Ressourcenkarte, Fast-Math-Pragmas. Die Feldlage von TEX.B und HSETP2 habe ich aus dem Gedächtnis nach dem Aufbau der Ryujinx-Decoder-Tabellen angesetzt und ausschließlich numerisch gegen die Ryujinx-Referenz geprüft (`scripts/shader_fidelity.py`); es wurde kein Ryujinx-Quelltext kopiert oder gelesen.
+- **Location:** `shader_translator/translate.c`, `shader_translator/shader.h` (modified; changes documented in `shader_translator/NOTICE.md`).
+- **Source:** https://github.com/peiikai/LASRecomp, commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`.
+- **Copyright/license:** Copyright (c) 2026 Peiikai, MIT. The unchanged license text is in `shader_translator/LICENSE-LASRecomp`.
+- **Upstream disclosure:** The README describes the code as “almost exclusively” AI-generated (Claude through Claude Code), with human direction and review.
+- **Other sources mentioned upstream (comments only; no files copied from those projects):** Field layouts based on Ryujinx decoders and envytools documentation. Their licenses have not been reviewed here; the extent of their contribution to upstream is unresolved.
+- **Original additions (part 2, not third-party code):** TEX.B, HSETP2 (cbuf/immediate), resource map, and fast-math pragmas. TEX.B and HSETP2 field positions were reconstructed from memory of the Ryujinx decoder-table layout and checked only numerically against the Ryujinx reference (`scripts/shader_fidelity.py`); no Ryujinx source was copied or read.
 
-## LASRecomp, weitere Teile (MIT, Copyright (c) 2026 Peiikai)
+## Other LASRecomp components (MIT, Copyright (c) 2026 Peiikai)
 
-- **Wo:** `scripts/recomp/rt-bdsp/` (Entwurf der Laufzeit, teils wörtlich übernommen; Abgleich und Details in `scripts/recomp/rt-bdsp/NOTICE.md`; Lizenztext `scripts/recomp/rt-bdsp/LICENSE-LASRecomp`), `scripts/recomp/rt-bdsp/nvn/movie_glue.c` (nach `runtime/hle/movie.c`).
-- **Header und Generator:** `cpu.h`, `simd.h`, `simd_fp.h` unverändert in `scripts/recomp/upstream/runtime/`; Generator-Werkzeuge in `scripts/recomp/upstream/generator/` (Lizenz `scripts/recomp/upstream/LICENSE`).
-- **NVN-Grafikschicht (Metal und Vulkan):** geändert gegenüber LASRecomp (Lizenz `scripts/recomp/upstream/LICENSE`, Commit `09f8e5e`); Quellen unter `scripts/recomp/rt-bdsp/nvn/src/`, Original zum Vergleich in `scripts/recomp/upstream/runtime/`. Details: `scripts/recomp/rt-bdsp/NOTICE.md`, `scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md`.
-- **Vollständig vendort:** Laufzeit `runtime/` (einschließlich `hle/`, `services/`, `platform/`, `ui/`, `nvn/`) und Generator `generator/` (einschließlich `rando/`), jeweils unverändert.
-- **Nicht übernommen:** `third_party/` des Originals (eigene Lizenzen, u. a. imgui, smaa, Schriften, LAS-Randomizer; Nintendo-Ausschluss laut Original-LICENSE), `fonts/`, Klon-Metadaten (`.git`, Makefile, README, CONTRIBUTING, `docs/`). Ohne `third_party/` bauen die UI-Teile von `runtime/ui/` nicht; wir bauen sie nicht.
+- **Location:** `scripts/recomp/rt-bdsp/` (runtime design, including verbatim portions; comparison and details in `scripts/recomp/rt-bdsp/NOTICE.md`; license in `scripts/recomp/rt-bdsp/LICENSE-LASRecomp`), and `scripts/recomp/rt-bdsp/nvn/movie_glue.c` (based on `runtime/hle/movie.c`).
+- **Headers and generator:** Unmodified `cpu.h`, `simd.h`, and `simd_fp.h` in `scripts/recomp/upstream/runtime/`; generator tools in `scripts/recomp/upstream/generator/` (license: `scripts/recomp/upstream/LICENSE`).
+- **NVN graphics layer (Metal and Vulkan):** Modified from LASRecomp (license: `scripts/recomp/upstream/LICENSE`, commit `09f8e5e`); sources in `scripts/recomp/rt-bdsp/nvn/src/`, upstream reference in `scripts/recomp/upstream/runtime/`. Details: `scripts/recomp/rt-bdsp/NOTICE.md` and `scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md`.
+- **Vendored in full:** Unmodified `runtime/` (including `hle/`, `services/`, `platform/`, `ui/`, and `nvn/`) and `generator/` (including `rando/`).
+- **Not included:** Upstream `third_party/` (separate licenses, including imgui, smaa, fonts, and the LAS randomizer; Nintendo exclusion in the upstream LICENSE), `fonts/`, and clone metadata (`.git`, Makefile, README, CONTRIBUTING, `docs/`). The `runtime/ui/` components cannot build without `third_party/`; we do not build them.
 
-## Weitere Drittkomponenten (nur Verweis)
+## Other third-party dependencies (references only)
 
-- **FFmpeg** (LGPL/GPL je nach Bauart): wird bei der Filmwiedergabe gelinkt, nicht mitgeliefert. Die Bauart ist in `docs/bauen.md` zu prüfen.
-- **Build-Werkzeuge** `capstone`, `unicorn`, `lz4` (`tools/pydeps`): nur lokal genutzt, nicht mitgeliefert.
+- **FFmpeg** (LGPL/GPL depending on its build configuration): Linked for video playback, not distributed here. Check the build configuration as described in `docs/bauen.md`.
+- **Build tools** `capstone`, `unicorn`, and `lz4` (`tools/pydeps`): Used locally, not distributed.

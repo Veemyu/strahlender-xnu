@@ -1,124 +1,117 @@
-# Save-Kompatibilität: Schreibpfad, Import/Export, Ablage
+# Save Compatibility: Write Path, Import/Export, and Storage
 
-Todos `ap-save-write` und `ap-save-compat`. Kennzeichnung wie in `docs/save-spec-entwurf.md`: **[belegt]** = am lokalen Save, im Disassembly/Pseudocode
-oder durch einen laufenden Test nachgewiesen, **[vermutet]** = Schluss aus Struktur/Benennung, **[nicht geprüft]** = aus öffentlichen Beschreibungen oder
-Erinnerung, lokal nicht nachgeprüft, **[offen]** = nicht geklärt. Am echten Save wurde nur gelesen; Zahlen statt Inhalte.
+Todos `ap-save-write` and `ap-save-compat`. Labels follow `docs/save-spec-entwurf.md`: **[verified]** = demonstrated on the local save, in disassembly/pseudocode, or by a running test; **[inferred]** = conclusion from structure/naming; **[not checked]** = taken from public descriptions or recollection, not checked locally; **[open]** = unresolved. The real save was only read; figures are used instead of contents.
 
-## 1. Überblick (C#, Assembly `Xnu.Save`, Ordner `unity/Assets/Scripts/Save`)
+## 1. Overview (C#, assembly `Xnu.Save`, directory `unity/Assets/Scripts/Save`)
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `SaveData.cs` | `SaveData`: lädt/kopiert ein Abbild (nur Version 0x34), ändert Teilbereiche, `ToBytes()`/`Seal()` setzen den MD5 neu. Spieler-Basisdaten, Geld, Items |
+| `SaveData.cs` | `SaveData`: loads/copies an image (version 0x34 only), edits regions, `ToBytes()`/`Seal()` recompute the MD5. Player basics, money, items |
 | `SavePlayerLayout.cs` | Offsets in `PLAYER_DATA`, `rivalName`, `SaveItem` |
-| `SaveFileIO.cs` | Lesen mit Größenlimit, Backup vor dem Überschreiben, atomares Schreiben mit Rücklesen |
-| `SaveInspector.cs` | Erkennen/Validieren von Ordnern, Einzeldateien und Zips; Konventionen Ryujinx/yuzu/JKSV/Checkpoint/App; begrenzte Suche |
-| `RyujinxSaveIndex.cs` | `imkvdb.arc` lesen → Save-ID-Ordner eines Titels |
-| `SaveExporter.cs` | Export nach Ryujinx (`0` und `1`), generische Ordner, Pfadbildung für JKSV/Checkpoint |
-| `SaveStore.cs` | Eigene Ablage (Slots, Backups) |
-| `../PokePara/SaveDataPokemon.cs` | Erweiterungen auf `SaveData`: Party und Boxen über `Xnu.PokePara` (`SetParty`, `SetBox`, `GetBox`, `VerifySlots`) |
+| `SaveFileIO.cs` | Read with size limit, backup before overwrite, atomic write with read-back verification |
+| `SaveInspector.cs` | Detect/validate directories, individual files, and ZIPs; Ryujinx/yuzu/JKSV/Checkpoint/app conventions; bounded search |
+| `RyujinxSaveIndex.cs` | Read `imkvdb.arc` → a title's save-ID directory |
+| `SaveExporter.cs` | Export to Ryujinx (`0` and `1`), generic directories, path construction for JKSV/Checkpoint |
+| `SaveStore.cs` | App-managed storage (slots, backups) |
+| `../PokePara/SaveDataPokemon.cs` | `SaveData` extensions: party and boxes through `Xnu.PokePara` (`SetParty`, `SetBox`, `GetBox`, `VerifySlots`) |
 
-`Xnu.Save` kennt `Xnu.PokePara` nicht (PokePara hängt von Save ab); der Pokémon-Zugriff liegt deshalb als Erweiterungsmethoden in `Xnu.PokePara`.
-Beide Assemblies sind ohne UnityEngine und kompilieren gegen `netstandard2.1` (Unity: `apiCompatibilityLevel 6`; mit einem netstandard2.1-Wegwerfprojekt gebaut, 0 Warnungen/Fehler).
+`Xnu.Save` does not depend on `Xnu.PokePara` (PokePara depends on Save); Pokémon access is therefore implemented as extension methods in `Xnu.PokePara`.
+Both assemblies are independent of UnityEngine and compile against `netstandard2.1` (Unity: `apiCompatibilityLevel 6`; built in a throwaway netstandard2.1 project, 0 warnings/errors).
 
-## 2. Bearbeitbare Bereiche und Herkunft der Offsets
+## 2. Editable regions and source of offsets
 
-Alle Offsets in `PLAYER_DATA` stammen aus der Marshal-Routine `0x2e9050` (verwaltet → nativ; `bool` = 4 Byte, `string` = festes UTF-16-Feld),
-Disassembly mit `work/dotnet-savewrite/disasm_marshal.py` (Capstone, ELF-Datei `work/elf/main.patched.elf`; Ghidra-Adresse − 0x100000 = virtuelle Adresse).
-Das Hilfsskript liegt nur im (nicht eingecheckten) `work/`.
+All offsets in `PLAYER_DATA` come from the Marshal routine `0x2e9050` (managed → native; `bool` = 4 bytes, `string` = fixed UTF-16 field), disassembled with `work/dotnet-savewrite/disasm_marshal.py` (Capstone, ELF file `work/elf/main.patched.elf`; Ghidra address − 0x100000 = virtual address).
+The helper script exists only in the untracked `work/` directory.
 
-| Feld | Datei-Offset | Größe | Beleg |
+| Field | File offset | Size | Evidence |
 |---|---|---|---|
-| Spielername (`MYSTATUS.name`) | 0x79B74 + 0x40 = 0x79BB4 | 13 UTF-16-Zeichen (26 Byte), NUL-terminiert, höchstens 12 sichtbar | Disassembly: Stringkopie mit Länge 0xD ins native Feld; am Save: 5 Zeichen, NUL, dahinter alte Reste **[belegt]**; die Obergrenze 12 ergibt sich aus 13 Zeichen inkl. NUL **[vermutet]** |
-| Trainer-ID (`id`) | +0x5C | u32 | Disassembly **[belegt]** |
-| Geld (`gold`) | +0x60 | i32 | Disassembly **[belegt]**; `PlayerWork.SetMoney` (0x2defc80) schreibt verwaltet bei `PlayerWork+0xEC` = `_saveData`(0x18) + `playerData`(0x90) + `mystatus`(0x38) + `gold`(0xC) **[belegt, Rechnung]**; `MoneyWork.Set` (0x207d350) klemmt auf 0..999999 (`MAX_MOENY`) **[belegt]** |
-| Geschlecht (`sex`, bool) | +0x64 | 4 Byte (0/1) | Disassembly; Zuordnung 0/1 ↔ Geschlecht nicht belegt, daher `SexRaw` **[offen]** |
-| Orden (`badge`) | +0x69 | Byte | Rohwert `BadgeRaw`; ob Anzahl oder Maske, nicht belegt **[offen]** |
-| Spielzeit | +0x90 / +0x92 / +0x93 | u16 Stunden, Byte Minuten, Byte Sekunden | Disassembly **[belegt]**; am Save plausible Werte (Stunden zweistellig, Minuten/Sekunden < 60) **[belegt]** |
-| Rivale (`rivalName`) | 0x55F4 | 32 UTF-16-Zeichen (64 Byte) | Top-Level-Feld, „Lutz“ als UTF-16 am Save gefunden **[belegt]**; Obergrenze des Spiels nicht bekannt, `SaveData` erlaubt höchstens 12 Zeichen **[Entscheidung]** |
-| Items (`saveItem[3000]`) | 0x563C + 16·Index | 16 Byte je Eintrag | Eintragslayout aus `0x2af6d0`: Count u32 @0, VanishNew (4) @4, Favorite @8, ShowWazaName @9, Dummy @10/11, SortNumber u16 @12 **[belegt]**; Obergrenze 999 (`ItemMaxCount`) **[belegt]** |
-| Item-Index = Item-Nummer | | | Am Save sind 171 Einträge mit Anzahl > 0, größter Index 644, alle Anzahlen ≤ 999 und die kleinen Indizes passen zu bekannten Item-IDs; ein Beweis über `ItemWork` fehlt **[vermutet]** |
-| Party | 0x14098 | 6 × 344 Byte + Anzahl + Markierung | `docs/pokepara-spezifikation.md` **[belegt]** |
-| Boxen | 0x14EF4 | 40 × 30 × 344 Byte | dito **[belegt]**; wie viele Ablagen freigeschaltet sind (`trayMax`), liest `TrayMax()`; das Schreiben prüft das nicht |
+| Player name (`MYSTATUS.name`) | 0x79B74 + 0x40 = 0x79BB4 | 13 UTF-16 characters (26 bytes), NUL-terminated, at most 12 visible | Disassembly: string copied into native field with length 0xD; save contains 5 characters, NUL, then old residue **[verified]**; limit of 12 follows from 13 characters including NUL **[inferred]** |
+| Trainer ID (`id`) | +0x5C | u32 | Disassembly **[verified]** |
+| Money (`gold`) | +0x60 | i32 | Disassembly **[verified]**; `PlayerWork.SetMoney` (0x2defc80) writes managed value at `PlayerWork+0xEC` = `_saveData`(0x18) + `playerData`(0x90) + `mystatus`(0x38) + `gold`(0xC) **[verified, calculated]**; `MoneyWork.Set` (0x207d350) clamps to 0..999999 (`MAX_MOENY`) **[verified]** |
+| Gender (`sex`, bool) | +0x64 | 4 bytes (0/1) | Disassembly; mapping of 0/1 to gender is not established, so exposed as `SexRaw` **[open]** |
+| Badges (`badge`) | +0x69 | byte | Raw value `BadgeRaw`; whether it is a count or mask is unverified **[open]** |
+| Play time | +0x90 / +0x92 / +0x93 | u16 hours, byte minutes, byte seconds | Disassembly **[verified]**; plausible values in save (two-digit hours, minutes/seconds < 60) **[verified]** |
+| Rival (`rivalName`) | 0x55F4 | 32 UTF-16 characters (64 bytes) | Top-level field; “Lutz” found as UTF-16 in save **[verified]**; game's limit unknown, `SaveData` permits at most 12 characters **[decision]** |
+| Items (`saveItem[3000]`) | 0x563C + 16·Index | 16 bytes per entry | Entry layout from `0x2af6d0`: Count u32 @0, VanishNew (4) @4, Favorite @8, ShowWazaName @9, Dummy @10/11, SortNumber u16 @12 **[verified]**; maximum count 999 (`ItemMaxCount`) **[verified]** |
+| Item index = item number | | | Save has 171 entries with count > 0, highest index 644, all counts ≤ 999, and low indices match known item IDs; proof via `ItemWork` is missing **[inferred]** |
+| Party | 0x14098 | 6 × 344 bytes + count + marker | `docs/pokepara-spezifikation.md` **[verified]** |
+| Boxes | 0x14EF4 | 40 × 30 × 344 bytes | Same source **[verified]**; `TrayMax()` reads how many boxes are unlocked; writes do not check this |
 
-`SaveData` ändert nur die jeweils benannten Bytes; Tests vergleichen die Datei vor/nach der Änderung Byte für Byte und lassen nur den Zielbereich plus Hashfeld zu.
-Der Name wird beim Setzen mit NUL abgeschlossen und der Rest des 13-Zeichen-Felds genullt (die alten Reste im Original werden dabei **nicht** erhalten, die zwei Paddingbytes dahinter bleiben unberührt).
-Nicht bearbeitbar (nur als Rohbytes über `Buffer`): alle übrigen Top-Level-Felder (Flags, Zukan, Rekorde, Kleidung usw.).
+`SaveData` edits only the named bytes; tests compare the file byte-for-byte before and after, allowing changes only in the target region plus hash field.
+When setting a name, it is NUL-terminated and the rest of the 13-character field is zeroed (old residue in the original is **not** retained; the two padding bytes after it are left untouched).
+Other top-level fields (flags, Pokédex, records, clothing, etc.) are not editable except as raw bytes through `Buffer`.
 
-## 3. Roundtrip am echten Save
+## 3. Round trip against the real save
 
-Test `SaveWriteTests.RealSaveRoundTripIsByteIdentical` (je `SaveData.bin` und `Backup.bin`, nur lesend, Rechnen im Speicher): `SaveData.FromBytes` → `ToBytes()` ergibt **byte-identische** Dateien
-(Länge 979108, SHA-256 beider Seiten gleich, Hash im Save gültig) **[belegt]**. Weitere Läufe am echten Save, jeweils im Speicher bzw. in einem Wegwerfordner:
+Test `SaveWriteTests.RealSaveRoundTripIsByteIdentical` (both `SaveData.bin` and `Backup.bin`, read-only, processing in memory): `SaveData.FromBytes` → `ToBytes()` produces **byte-identical** files (length 979108, same SHA-256 on both sides, valid save hash) **[verified]**. Further runs against the real save, in memory or in a throwaway directory:
 
-- Alle 1206 Slots (6 Party + 1200 Boxen) über `SaveData.SetPartyMember/SetBox` neu geschrieben → Datei byte-identisch; 1206/1206 Prüfsummen gültig **[belegt]**.
-- Geld, Item-Anzahl, Spielstunden und Item des ersten Party-Mitglieds geändert → nur diese Bytes + Hash weichen ab; nach `WriteAtomic` und Neuladen stimmen die Werte; Zurücksetzen der vier Werte ergibt wieder die Originaldatei **[belegt]**.
-- Namensänderung bleibt innerhalb des Namensfelds **[belegt]**.
-- Das Original und sein Zeitstempel blieben unverändert (SHA-256-Präfix von `SaveData.bin`/`Backup.bin` vor und nach allen Läufen identisch).
+- Rewrote all 1206 slots (6 party + 1200 boxes) using `SaveData.SetPartyMember/SetBox` → file remained byte-identical; all 1206/1206 checksums valid **[verified]**.
+- Changed money, item count, play hours, and the first party member's item → only those bytes and the hash differ; after `WriteAtomic` and reloading, values match; restoring the four values reproduces the original file **[verified]**.
+- Name changes stay within the name field **[verified]**.
+- The original files and timestamps remained unchanged (SHA-256 prefixes for `SaveData.bin`/`Backup.bin` matched before and after all runs).
 
-Nicht gezeigt: dass das **Spiel** (oder Ryujinx/Switch) einen veränderten Stand lädt. Dafür müsste das Spiel laufen **[offen]**; belegt ist nur, dass unser Prüfer (MD5, Größe, Version) den Stand akzeptiert und
-die Slot-Prüfsummen stimmen. Die Rechtmäßigkeit der Pokémon-Werte (Legalität) wird nicht geprüft.
+Not demonstrated: that the **game** (or Ryujinx/Switch) loads a modified save. This requires running the game **[open]**; only our validator accepting the save (MD5, size, version) and valid slot checksums are established. Pokémon legality is not checked.
 
-## 4. Ordner- und Containerkonventionen
+## 4. Directory and container conventions
 
-### Ryujinx **[belegt]** (am lokalen Datenordner)
-- Save-Index `bis/system/save/8000000000000000/0/imkvdb.arc`: `"IMKV"`, u32, u32 Anzahl (12); je Eintrag 0x8C Byte: `"IMEN"`, u32 Key-Größe (0x40), u32 Wert-Größe (0x40), Key = `SaveDataAttribute`
-  (Programm-ID u64 @0, Benutzer-ID 16 Byte @8 **[vermutet, Horizon-Layout]**, Typ u8 @0x20), Wert beginnt mit der Save-ID (u64 LE). Für `0100000011D90000` stehen hier zwei Typ-1-Einträge (Save-ID 6 und 7) und ein Typ-2-Eintrag (12) **[belegt]**.
-  `RyujinxSaveIndex.FindSaveDirectories` liefert daraus `bis/user/save/<SaveId 16 Hex>`; Test am lokalen Ordner findet `…0006`.
-- Der Save liegt in `bis/user/save/<SaveId>/0/` (`SaveData.bin`, `Backup.bin`), daneben `1/`, `ExtraData0`, `ExtraData1`. Lokal enthalten `0/` und `1/` dieselbe `SaveData.bin` (gleicher SHA-256); `Backup.bin` ist je Ordner gleich, aber **nicht** identisch mit `SaveData.bin` (älterer, ebenfalls gültiger Stand) **[belegt]**.
-- Export: `SaveExporter.ExportToRyujinx` schreibt `SaveData.bin` nach `0/` und – falls vorhanden – `1/`; `Backup.bin` nur auf Wunsch (`WriteBackupFile`). Dass Ryujinx `0` als maßgebliche (committete) Kopie behandelt und `1` beim Mounten daraus erneuert **[vermutet]**; deshalb werden beide beschrieben.
-  Ryujinx muss beim Schreiben beendet sein (das lässt sich im Code nicht erkennen) **[nicht geprüft]**. `ExtraData0/1` werden nicht angefasst; sie hängen von Größe/Typ, nicht vom Inhalt ab **[vermutet]**.
-- Datenordner des Emulators (Standard unter macOS `~/Library/Application Support/Ryujinx`, Linux `~/.config/Ryujinx`, Windows `%AppData%\Ryujinx`; im Portable-Modus ein Ordner `portable`) **[nicht geprüft]**; der lokale Ordner liegt im Repo-Root (`Ryujinx/`, ignoriert).
+### Ryujinx **[verified]** (local data directory)
+- Save index `bis/system/save/8000000000000000/0/imkvdb.arc`: `"IMKV"`, u32, u32 count (12); entries are 0x8C bytes each: `"IMEN"`, u32 key size (0x40), u32 value size (0x40), key = `SaveDataAttribute` (program ID u64 @0, user ID 16 bytes @8 **[inferred, Horizon layout]**, type u8 @0x20), value starts with save ID (u64 LE). For `0100000011D90000`, it has two type-1 entries (save IDs 6 and 7) and one type-2 entry (12) **[verified]**.
+  `RyujinxSaveIndex.FindSaveDirectories` derives `bis/user/save/<SaveId 16 Hex>`; a test on the local directory finds `…0006`.
+- The save is in `bis/user/save/<SaveId>/0/` (`SaveData.bin`, `Backup.bin`), alongside `1/`, `ExtraData0`, `ExtraData1`. Locally, `0/` and `1/` contain identical `SaveData.bin` files (same SHA-256); `Backup.bin` matches between directories but is **not** identical to `SaveData.bin` (an older, also valid save) **[verified]**.
+- Export: `SaveExporter.ExportToRyujinx` writes `SaveData.bin` to `0/` and, if present, `1/`; `Backup.bin` only when requested (`WriteBackupFile`). That Ryujinx treats `0` as the authoritative (committed) copy and refreshes `1` from it when mounting is **[inferred]**; both are therefore written.
+  Ryujinx must be closed while writing (the code cannot detect this) **[not checked]**. `ExtraData0/1` are untouched; they depend on size/type, not contents **[inferred]**.
+- Emulator data directory (defaults: macOS `~/Library/Application Support/Ryujinx`, Linux `~/.config/Ryujinx`, Windows `%AppData%\Ryujinx`; in portable mode, a `portable` directory) **[not checked]**; local directory is under the repository root (`Ryujinx/`, ignored).
 
-### yuzu und Forks **[nicht geprüft]**
-- `<Datenordner>/nand/user/save/0000000000000000/<Benutzer-ID 32 Hex>/<Titel-ID 16 Hex>/` mit direkt darin `SaveData.bin`, `Backup.bin`. Diese Form ist aus Erinnerung/öffentlichen Beschreibungen übernommen; es gibt lokal kein yuzu.
-  `SaveInspector` erkennt sie, `ExportToDirectory` schreibt in einen bestehenden Titelordner.
+### yuzu and forks **[not checked]**
+- `<DataDirectory>/nand/user/save/0000000000000000/<UserId 32 Hex>/<TitleId 16 Hex>/` with `SaveData.bin`, `Backup.bin` directly inside. This layout is based on memory/public descriptions; yuzu is not installed locally.
+  `SaveInspector` recognizes it, and `ExportToDirectory` writes into an existing title directory.
 
-### Switch-Werkzeuge (JKSV, Checkpoint) **[nicht geprüft; öffentliche Beschreibungen]**
-- JKSV: `<SD>/JKSV/<Spielname>/<Backup-Name>/` mit den Save-Dateien; JKSV kann auch Zips anlegen. Checkpoint: `<SD>/switch/Checkpoint/saves/0x<TitelID> <Spielname>/<Backup-Name>/`.
-- Inhalt eines Backups ist laut Beschreibungen der Inhalt des gemounteten Saves, bei BD/SP also `SaveData.bin` (+ `Backup.bin`); ob weitere Metadaten-Dateien dazukommen, ist nicht geprüft. `SaveInspector` erkennt die Ordner an Pfad **und** Dateien (`Jksv`, `Checkpoint`),
-  `Zip` per Eintragsname (kürzester Pfad), und liest nie mehr als `MaxFileSize` (1 MiB) je Datei/Eintrag (Zip-Bomben-Schutz). `SwitchBackupFolder` bildet neue Backup-Pfade nach diesen Konventionen (nur Pfadbildung, Namen werden FAT-tauglich bereinigt).
-- Ob JKSV/Checkpoint auf echter Hardware einen so erzeugten Ordner wiederherstellen und ob der Save an Konsole/Benutzerkonto gebunden ist, wurde nicht getestet **[offen]**. In `SaveData.bin` selbst gibt es keinen Konto- oder Konsolenbezug außer dem Hash **[belegt für die Datei, nicht für das Switch-Dateisystem]**.
+### Switch tools (JKSV, Checkpoint) **[not checked; public descriptions]**
+- JKSV: `<SD>/JKSV/<GameName>/<BackupName>/` with save files; JKSV can also create ZIPs. Checkpoint: `<SD>/switch/Checkpoint/saves/0x<TitleID> <GameName>/<BackupName>/`.
+- According to descriptions, a backup contains the mounted save contents, for BD/SP `SaveData.bin` (+ `Backup.bin`); whether additional metadata files are included is unchecked. `SaveInspector` recognizes directories by both path **and** files (`Jksv`, `Checkpoint`), ZIPs by entry name (shortest path), and never reads more than `MaxFileSize` (1 MiB) per file/entry (ZIP-bomb protection). `SwitchBackupFolder` constructs new backup paths according to these conventions (path construction only; names are sanitized for FAT).
+- Whether JKSV/Checkpoint can restore a generated directory on real hardware, and whether the save is tied to a console/user account, has not been tested **[open]**. `SaveData.bin` itself has no account or console association besides the hash **[verified for the file, not the Switch filesystem]**.
 
-### Titel-IDs
-- Brilliant Diamond `0100000011D90000` **[belegt]** (Index und Ordner lokal; `scripts/tests`). Shining Pearl `010018E011D92000` **[nicht geprüft]**; ob das Format bei SP gleich ist, wurde nicht untersucht **[offen]**.
+### Title IDs
+- Brilliant Diamond `0100000011D90000` **[verified]** (local index and directory; `scripts/tests`). Shining Pearl `010018E011D92000` **[not checked]**; whether SP uses the same format has not been investigated **[open]**.
 
-### Eigene Ablage (App)
+### App-managed storage
 ```
 <Root>/Saves/<Slot>/SaveData.bin (+ Backup.bin)
-<Root>/Backups/<Slot>/<UTC-Zeitstempel>/<Datei>        vor jedem Überschreiben
+<Root>/Backups/<Slot>/<UTC-Timestamp>/<File>        before each overwrite
 ```
-- `Root` = `Application.persistentDataPath` im Unity-Player (`Xnu.Save` bekommt den Pfad vom Aufrufer): macOS Application Support (`~/Library/Application Support/<Firma>/<Produkt>`), iPadOS `…/Documents` im App-Container **[nicht geprüft; Unity-Dokumentation]**.
-  Damit der Nutzer auf dem iPad Saves im Dateien-Programm sieht, braucht die App `UIFileSharingEnabled` und `LSSupportsOpeningDocumentsInPlace` in der Info.plist **[nicht geprüft; Apple-Dokumentation, noch nicht in der Build-Pipeline gesetzt, offen]**.
-- Slot-Namen: `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` ohne `..` (kein Pfadausbruch); andere Namen werden abgelehnt.
+- `Root` = `Application.persistentDataPath` in the Unity player (`Xnu.Save` receives the path from its caller): macOS Application Support (`~/Library/Application Support/<Company>/<Product>`), iPadOS `…/Documents` in the app container **[not checked; Unity documentation]**.
+  To make saves visible in the iPad Files app, the app needs `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` in Info.plist **[not checked; Apple documentation, not yet set in the build pipeline, open]**.
+- Slot names: `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` and no `..` (prevents path traversal); other names are rejected.
 
-## 5. Erkennen, Validieren, Schreiben
+## 5. Detect, validate, write
 
-- **Erkennen** (`SaveInspector.Inspect(pfad)`): Ordner, Save-ID-Ordner (→ `0`), Einzeldatei oder `.zip`; Ergebnis mit Art, Titel-ID/Benutzer-ID/Save-ID (soweit im Pfad), je Datei Größe/Version/Prüfung (`Validate`: Version, Größe, MD5), Hinweisen; wirft bei fehlerhaften Dateien nicht.
-  `Find(root, maxDepth, maxResults, maxDirectories)` sucht begrenzt unter einem angegebenen Wurzelordner (kein Scan des Datenträgers).
-- **Auswahl** (`ReadBest`): `SaveData.bin`, sonst `Backup.bin` – nur gültige Dateien; `preferBackup` kehrt die Reihenfolge um. Das entspricht der Reihenfolge Haupt-/Backup-Datei aus der Spec (Zuordnung dort nur [vermutet]).
-- **Schreiben** (`SaveFileIO.WriteAtomic`): (1) Daten prüfen (ungültig → `SaveFormatException`, Ziel unverändert; `AllowInvalid` nur ausdrücklich), (2) existiert das Ziel, ist `BackupDirectory` Pflicht und das Ziel wird nach `<Backups>/<Zeitstempel>/<Name>` kopiert und verglichen,
-  (3) Temp-Datei im selben Ordner (`CreateNew`, `Flush(true)`), (4) `File.Replace` (Rückfall Löschen+Verschieben bei `PlatformNotSupportedException`), (5) Rücklesen und Vergleich, bei Abweichung Rückspielen aus dem Backup, (6) Temp-Datei wird immer entfernt.
-  Fehlende Zielordner werden nur mit `CreateDirectory` angelegt (Emulator-Ordner nie).
-- Grenzen: `File.Replace` ist unter Unix ein `rename` (atomar), unter iOS/Mono nicht getestet; ein `fsync` des Ordners erfolgt nicht **[offen]**. Zwei Prozesse gleichzeitig (Emulator läuft) werden nicht erkannt.
-- Nur Version 0x34 ist bearbeitbar. Ältere Stände (0x25–0x33) lädt `SaveData` nicht; das Hochziehen (`TakeOverOldVersion` des Spiels) ist nicht nachgebaut **[offen]**.
+- **Detection** (`SaveInspector.Inspect(path)`): directory, save-ID directory (→ `0`), individual file, or `.zip`; returns kind, title ID/user ID/save ID (when available in path), per-file size/version/validation (`Validate`: version, size, MD5), and notes; does not throw for invalid files.
+  `Find(root, maxDepth, maxResults, maxDirectories)` searches within bounds under the specified root (does not scan the disk).
+- **Selection** (`ReadBest`): `SaveData.bin`, otherwise `Backup.bin`—valid files only; `preferBackup` reverses the order. This follows the main/backup file order in the spec (the mapping there is only [inferred]).
+- **Writing** (`SaveFileIO.WriteAtomic`): (1) validate data (invalid → `SaveFormatException`, destination unchanged; `AllowInvalid` only when explicitly requested), (2) if destination exists, `BackupDirectory` is required and the destination is copied to `<Backups>/<Timestamp>/<Name>` and verified,
+  (3) create a temp file in the same directory (`CreateNew`, `Flush(true)`), (4) `File.Replace` (fallback to delete+move on `PlatformNotSupportedException`), (5) read back and compare; on mismatch restore from backup, (6) always remove temp file.
+  Missing destination directories are created only with `CreateDirectory` (never emulator directories).
+- Limitations: `File.Replace` is a `rename` on Unix (atomic); untested on iOS/Mono; directory `fsync` is not performed **[open]**. Concurrent processes (emulator running) are not detected.
+- Only version 0x34 is editable. `SaveData` does not load older saves (0x25–0x33); migration (`TakeOverOldVersion` in the game) is not implemented **[open]**.
 
 ## 6. Tests
 
-Entwickelt im Wegwerfprojekt `work/dotnet-savewrite` (`dotnet test`, Temp-Ordner per `TMPDIR` im Projektordner): **56 Tests grün** (35 neue + 21 bestehende `SaveValidatorTests`); davon 6 am lokalen Save (`Real*`, laufen ohne Datei über `Assert.Ignore` als übersprungen – dieser Pfad wurde in dotnet nicht ausgeführt, da der lokale Save vorhanden war).
-Zusätzlich Übersetzung von `Save`, `PokePara`, `Battle`, `Data` gegen `netstandard2.1` ohne Fehler. Der Lauf im Unity-Editor (`Xnu.Tests.EditMode`) steht aus.
+Developed in throwaway project `work/dotnet-savewrite` (`dotnet test`, temp directory via `TMPDIR` in project directory): **56 tests passing** (35 new + 21 existing `SaveValidatorTests`); 6 exercise the local save (`Real*`, skipped via `Assert.Ignore` if the file is absent—the dotnet run did execute this path because the local save was present).
+Also compiled `Save`, `PokePara`, `Battle`, `Data` against `netstandard2.1` without errors. Running `Xnu.Tests.EditMode` in the Unity Editor remains pending.
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `unity/Assets/Tests/EditMode/SaveWriteTests.cs` | Änderungen (Name, ID, Geld, Zeit, Items, Party, Boxen), Bereichsprüfung, Roundtrip, 6 Tests am echten Save |
-| `unity/Assets/Tests/EditMode/SaveStorageTests.cs` | Erkennung aller Konventionen, Zip, Größenlimit, Suche, Ryujinx-Index, Backup/atomares Schreiben, Export, App-Ablage, Slot-Namen, 1 Test am echten Ordner |
-| `unity/Assets/Tests/EditMode/SaveTestSupport.cs` | Synthetische Saves (deterministisches Rauschen + leere kodierte Slots), Diff-Helfer, Suche des lokalen Saves (`XNU_REAL_SAVE` oder `Ryujinx/bis/user/save/0000000000000006/0/` aufwärts) |
+| `unity/Assets/Tests/EditMode/SaveWriteTests.cs` | Edits (name, ID, money, time, items, party, boxes), range checks, round trip, 6 real-save tests |
+| `unity/Assets/Tests/EditMode/SaveStorageTests.cs` | Detect all conventions, ZIP, size limit, search, Ryujinx index, backup/atomic write, export, app storage, slot names, 1 test on real directory |
+| `unity/Assets/Tests/EditMode/SaveTestSupport.cs` | Synthetic saves (deterministic noise + empty encoded slots), diff helpers, local-save lookup (`XNU_REAL_SAVE` or search upward for `Ryujinx/bis/user/save/0000000000000006/0/`) |
 
-`Xnu.Tests.EditMode.asmdef` brauchte keine Änderung (Verweise auf `Xnu.Save`, `Xnu.PokePara` vorhanden).
+`Xnu.Tests.EditMode.asmdef` required no changes (references to `Xnu.Save`, `Xnu.PokePara` already existed).
 
-## 7. Offene Punkte
-- Lauf der Tests im Unity-Editor; Lauf der neuen Dateien in der Unity-Kompilierung (nur gegen netstandard2.1 geprüft).
-- Akzeptanz veränderter Saves durch das echte Spiel, Ryujinx und Switch-Hardware; Verhalten von Ryujinx mit der Kopie `1/`.
-- Echte Layouts von yuzu, JKSV und Checkpoint gegen Installationen prüfen.
-- Bedeutung von `sex` (0/1), `badge`, `region_code`, `rom_code`, Item-Index-Zuordnung über `ItemWork`; ob `MoneyWork`-Grenzen beim Laden erneut klemmen.
-- Aufhebung der Einschränkung „nur 0x34“ (Aufwärtsmigration älterer Stände).
-- iPadOS: Info.plist-Schlüssel für Dateizugriff, Verhalten von `File.Replace` unter Mono/iOS.
-- Shining Pearl: gleiche Struktur? (Titel-ID nur aus öffentlichen Angaben).
+## 7. Open items
+- Run tests in the Unity Editor; compile the new files in Unity (only checked against netstandard2.1 so far).
+- Acceptance of modified saves by the real game, Ryujinx, and Switch hardware; Ryujinx behavior with copy `1/`.
+- Check actual yuzu, JKSV, and Checkpoint layouts against installations.
+- Meaning of `sex` (0/1), `badge`, `region_code`, `rom_code`, item-index mapping via `ItemWork`; whether `MoneyWork` limits are clamped again on load.
+- Remove the “0x34 only” restriction (migration of older saves).
+- iPadOS: Info.plist keys for file access, behavior of `File.Replace` under Mono/iOS.
+- Shining Pearl: same structure? (title ID only from public sources).

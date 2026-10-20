@@ -1,94 +1,94 @@
-# Kampfablauf, Scheibe 7: Gegner-KI vollständig (Double, Expert, Basic-Rest, Strong-Doppelzweig)
+# Battle Flow, Slice 7: Complete Opponent AI (Double, Expert, Remaining Basic, Strong Double Branch)
 
-Stand: Scheibe 7, aufbauend auf `docs/kampf-spezifikation-6.md` (dort: Basic/Strong/Allowance/Item/PokeChange; offen waren Double, Expert, 115 Basic-Seq-Funktionen und der Strong-Doppelzweig).
-Code: `unity/Assets/Scripts/BattleFlow/Ai/` (von Hand: `TrainerAi.cs`, `AiWorld.cs`, `AiScriptBase.cs`, `AiScriptBasic.cs`, `AiScriptsOther.cs`; **erzeugt**: `Generated/AiScriptDouble.cs`, `AiScriptExpert.cs`, `AiScriptBasicGen.cs`, `AiScriptStrongFull.cs`).
-Werkzeug: `scripts/ai_translate/` (Pseudocode → C#), Orakel: `scripts/battle_oracle_ai.py` (Unicorn, echte ARM64-Funktionen). Prüfstufen wie in Spezifikation 6 (**[O]** vom Orakel bestätigt, **[P]** aus Pseudocode gelesen, **[A]** Annahme, **[N]** nicht modelliert).
+As of slice 7, building on `docs/kampf-spezifikation-6.md` (Basic/Strong/Allowance/Item/PokeChange implemented there; open items were Double, Expert, 115 Basic-Seq functions, and the Strong double branch).
+Code: `unity/Assets/Scripts/BattleFlow/Ai/` (handwritten: `TrainerAi.cs`, `AiWorld.cs`, `AiScriptBase.cs`, `AiScriptBasic.cs`, `AiScriptsOther.cs`; **generated**: `Generated/AiScriptDouble.cs`, `AiScriptExpert.cs`, `AiScriptBasicGen.cs`, `AiScriptStrongFull.cs`).
+Tool: `scripts/ai_translate/` (pseudocode → C#); oracle: `scripts/battle_oracle_ai.py` (Unicorn, real ARM64 functions). Evidence levels as in spec 6 (**[O]** oracle-confirmed, **[P]** read from pseudocode, **[A]** assumption, **[N]** not modeled).
 
-**Repo-Regel (Entscheidung des Nutzers: eigene Formulierung, kein übersetzter Spielcode im Repo):** `Generated/` ist maschinell aus dem Pseudocode übersetzt und deshalb gitignoriert; es entsteht beim Bauen aus dem eigenen Dump (vorgesehene Build-Stufe `ai_translate`, Ghidra-Pseudocode-Export vorausgesetzt). Im Repo liegen nur der Übersetzer, das Orakel, Zahlen-Fixtures und die von Hand geschriebenen Teile. `AiGenerated.Create` lädt die erzeugten Klassen per Reflection (`link.xml` behält `Assembly-CSharp`; die Battle-Assembly ist Projektcode); fehlen sie, baut das Spiel weiter, die Orakeltests werden übersprungen und Trainer mit Expert/Double-Bits bekommen diese KI-Stufe nicht.
+**Repository rule (user decision: original formulation only, no translated game code in the repository):** `Generated/` is mechanically translated from pseudocode and therefore gitignored; it is produced at build time from the user's own dump (planned build stage `ai_translate`, requires Ghidra pseudocode export). The repository contains only the translator, oracle, numeric fixtures, and handwritten parts. `AiGenerated.Create` loads generated classes via reflection (`link.xml` preserves `Assembly-CSharp`; the battle assembly is project code); if they are missing, the game still builds, oracle tests are skipped, and trainers with Expert/Double bits do not get that AI layer.
 
-## 1. Ergebnis in Zahlen
+## 1. Results in numbers
 
-| | Spezifikation 6 | Scheibe 7 |
+| | Spec 6 | Slice 7 |
 |---|---|---|
-| Skriptklassen umgesetzt (Bits der 706 Trainerteams) | Basic, Strong (nur Einzelkampf), Allowance, Item, PokeChange | **alle sieben**: zusätzlich **Double (706 Trainer)**, **Expert (83)**, Strong mit Doppel- und G-Zweig |
-| Per Orakel bestätigte Funktionen (Einträge) | 66 | **505 Funktionen**: Basic 167 (alle erreichbaren 148 Seq-Funktionen + 15 Hilfsfunktionen + `main_proc`), Double 65, Expert 255, Strong 3, Allowance 1, Item 6, PokeChange 8 |
-| Verglichene Orakel-Fälle (Pseudo-Welten) | 4220 | **11 300**, 0 Abweichungen, 0 übersprungene |
-| Basic: umgesetzte Seq-Funktionen | 33 von 148 (7,6 % der Attacken-Slots liefen ins Leere) | **148 von 148**: 119 erzeugt, 33 von Hand; Slots ohne Wirkung: 0 |
-| Skriptumfang als C# | ca. 60 KB von Hand | + 137 KB Double, 361 KB Expert, 92 KB Basic-Rest, 15 KB Strong (erzeugt) |
-| `UnimplementedScriptBits` (gesetzte, nicht umgesetzte KI-Skripte) | 2 (Expert, Double) | **0** |
-| Tests im dotnet-Wegwerfprojekt (alle Battle-Tests der Unity-Suite) | 169 | **174 grün** (neu: 4 Orakel-Tests Double/Expert/Strong/Basic-Seq, 1 Ablauf-Test mit allen Skripten) |
+| Script classes implemented (bits in 706 trainer teams) | Basic, Strong (singles only), Allowance, Item, PokeChange | **all seven**: plus **Double (706 trainers)**, **Expert (83)**, Strong with double and G branches |
+| Oracle-confirmed functions (entries) | 66 | **505 functions**: Basic 167 (all 148 reachable Seq functions + 15 helpers + `main_proc`), Double 65, Expert 255, Strong 3, Allowance 1, Item 6, PokeChange 8 |
+| Oracle cases compared (pseudo-worlds) | 4,220 | **11,300**, 0 mismatches, 0 skipped |
+| Basic: Seq functions implemented | 33 of 148 (7.6% of move slots were no-ops) | **148 of 148**: 119 generated, 33 handwritten; slots with no effect: 0 |
+| Script volume as C# | about 60 KB handwritten | +137 KB Double, 361 KB Expert, 92 KB remaining Basic, 15 KB Strong (generated) |
+| `UnimplementedScriptBits` (set AI scripts not implemented) | 2 (Expert, Double) | **0** |
+| Tests in throwaway dotnet project (all Unity-suite battle tests) | 169 | **174 passing** (4 new oracle tests for Double/Expert/Strong/Basic-Seq, 1 flow test with all scripts) |
 
-Lauf über alle 706 Teams (Spiegelteam, gieriger Spieler; Messhilfe `BattleAiPlaythroughLocal`, nicht im Repo, weil `work/masterdata` gebraucht wird):
+Run across all 706 teams (mirror teams, greedy player; measurement helper `BattleAiPlaythroughLocal`, not in repository because `work/masterdata` is required):
 
-| | Gegner siegt | Spieler siegt | unentschieden | nicht beendet | Runden Ø | NotImplemented | Items | Wechsel |
-|---|---|---|---|---|---|---|---|---|
-| Zufallsgegner | 111 | 587 | 8 | 0 | 15,7 | 91 | – | – |
-| Trainer-KI Scheibe 6 | 143 | 558 | 5 | 0 | 15,2 | 101 | 66 | 49 |
-| **Trainer-KI Scheibe 7** | **163** | 537 | 6 | **0** | 15,0 | **83** | 69 | 46 |
+| | Opponent wins | Player wins | Draws | Unfinished | Avg. turns | NotImplemented | Items | Switches |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Random opponent | 111 | 587 | 8 | 0 | 15.7 | 91 | – | – |
+| Slice 6 trainer AI | 143 | 558 | 5 | 0 | 15.2 | 101 | 66 | 49 |
+| **Slice 7 trainer AI** | **163** | 537 | 6 | **0** | 15.0 | **83** | 69 | 46 |
 
-Erste 60 Teams: Zufallsgegner 8 Siege / Ø 22,3 Runden; Trainer-KI Scheibe 6: 13 Siege / Ø 18,9; **Scheibe 7: 16 Siege / Ø 18,8**, NotImplemented 4 (vorher 8).
+First 60 teams: random opponent 8 wins / 22.3 average turns; slice 6 trainer AI: 13 wins / 18.9 average; **slice 7: 16 wins / 18.8**, NotImplemented 4 (previously 8).
 
-**NotImplemented** ist ein Zähler der Kampf-**Engine** (`FailCause.NotImplemented`: die gewählte Attacke braucht Handler/Sections, die es noch nicht gibt), nicht der KI-Skripte; die KI-Skripte selbst haben seit dieser Scheibe keine Lücke mehr. Der Zähler ist beim Zufallsgegner mit 91 praktisch gleich hoch (die KI wählt nicht häufiger Unfertiges). Es sind nur **11 verschiedene Attacken** (Nummern, gezählt über alle 706 Teams mit Trainer-KI): 214 (30×), 272 (12×), 118 (10×), 164 (8×), 102 (6×), 286 (6×), 580 (4×), 604 (3×), 277 (2×), 494 (1×), 668 (1×). Sie zu beheben ist Sache der Engine-Seite (`BattleEngine.SpecialMoves`), nicht der KI.
+`NotImplemented` counts battle-**engine** failures (`FailCause.NotImplemented`: the selected move needs a handler/section that does not yet exist), not AI scripts; all AI scripts themselves have been covered since this slice. Random opponents show nearly the same count at 91 (the AI does not choose unfinished moves more often). There are only **11 distinct moves** (IDs across all 706 teams using trainer AI): 214 (30×), 272 (12×), 118 (10×), 164 (8×), 102 (6×), 286 (6×), 580 (4×), 604 (3×), 277 (2×), 494 (1×), 668 (1×). Fixing them belongs to the engine (`BattleEngine.SpecialMoves`), not AI.
 
-## 2. Methode: Pseudocode → C# (statt 440 Funktionen von Hand)
+## 2. Method: pseudocode → C# (instead of hand-writing 440 functions)
 
-Handübersetzung ist für 440 weitere Funktionen (Double 65, Basic 115, Expert 256) nicht zu leisten und nicht prüfbar. Die Skripte sind aber selbst in C# geschriebener Code, der als IL2CPP-Pseudocode vorliegt; deshalb übersetzt ein Werkzeug (`scripts/ai_translate/`: `ghc_parse.py` Parser und Rauschentfernung, `ghc_emit.py` Ausgabe, `ai_translate.py` Klassen) den Pseudocode, und das **Orakel prüft jede Funktion einzeln gegen die echte ARM64-Funktion**. Das Werkzeug liest nur `work/decomp/battle_all` (Pseudocode, nicht im Repo) und das Orakel (statische Zahlenfelder aus dem ELF); die erzeugten Dateien enthalten Befehlsfolgen, Konstanten und Kontrollfluss der Skripte, keine Daten oder Texte des Spiels.
+Hand translation is not feasible or verifiable for another 440 functions (Double 65, Basic 115, Expert 256). The scripts themselves are C# code represented as IL2CPP pseudocode; a tool (`scripts/ai_translate/`: `ghc_parse.py` parser and noise removal, `ghc_emit.py` emitter, `ai_translate.py` class generation) translates it, and the **oracle checks each function individually against the real ARM64 function**. The tool reads only `work/decomp/battle_all` (pseudocode, not in repository) and the oracle (static numeric fields from ELF); generated files contain command sequences, constants, and script control flow, no game data or text.
 
-Was das Werkzeug tut:
+What the tool does:
 
-- **Parser** für die verwendete C-Teilmenge (Ausdrücke mit Casts, Zeigerzugriffen, Komma-Operator; `if/else`, `goto`, Marken, `switch`).
-- **Rauschen entfernen**: Klassen-Initialisierung (`DAT_… & 1`, `FUN_00359b58`, Zugriffe auf +0x12e/+0xe0), Debug-Ausgabe (`PRINTF`, `String.Format`, Boxing) – ausgenommen `CurrentWazaNo`-Aufrufe in der Debug-Ausgabe, die als echter `AI_CMD` mitlaufen (ohne sie weicht die Aufruffolge von `BtlAiDouble.main` ab, vom Orakel gefunden); Grenzprüfungen der Argument-Arrays (`if (len < 3 || (arr[2] = x, len == 3)) goto FEHLER`) werden zu den enthaltenen Zuweisungen; Fehler-Tails (`thunk_FUN_0035c83c; FUN_003afbc0`) fallen weg.
-- **Arrays verschmelzen**: `a = new long[n]; a[0] = x; …; r = Call(cmd, a)` → `r = C(cmd, n, x, …)` (die Länge `n` zählt in der Aufruffolge mit); ist das nicht eindeutig möglich (Array über Marken hinweg wiederverwendet), bleibt ein echtes Array `aA`. Statische Zahlenfelder (`InitializeArray`) liest das Orakel aus dem ELF und setzt sie als Konstanten ein; ebenso die Wertungstabellen der Expert-Typprüfung (11 Tabellen mit Werten −1/+1).
-- **Typtreue**: Ghidra-Variablentypen (int/uint/long/ulong) bleiben erhalten; `x - 0x68U < 0x3d` bleibt vorzeichenlos; Bitmasken-Idiome `(1L << (x & 0x3f)) & M` werden zu `Bit(x, M)`.
-- **Kontrollfluss goto-treu**: C# erlaubt `goto` nur in umschließende Blöcke; ein `if`-Block bleibt strukturiert, wenn alle in ihm sichtbaren Marken nur von innen angesprungen werden, sonst wird er zu `if (!c) goto …` abgeflacht. `switch` (Sprungtabellen des Originals) wird zu `switch … goto` mit zusammengelegten Fällen.
-- Einsprungstellen (`Run(name)`) und Namensliste (`Functions`) sind erzeugt, keine Reflexion (wegen IL2CPP-Stripping).
+- **Parser** for the C subset used here (expressions with casts, pointer access, comma operator; `if/else`, `goto`, labels, `switch`).
+- **Noise removal**: class initialization (`DAT_… & 1`, `FUN_00359b58`, accesses to +0x12e/+0xe0), debug output (`PRINTF`, `String.Format`, boxing)—except `CurrentWazaNo` calls inside debug output, which execute as real `AI_CMD`s (without them, call order differs from `BtlAiDouble.main`; oracle found this); argument-array bounds checks (`if (len < 3 || (arr[2] = x, len == 3)) goto ERROR`) become the included assignments; error tails (`thunk_FUN_0035c83c; FUN_003afbc0`) are removed.
+- **Array flattening**: `a = new long[n]; a[0] = x; …; r = Call(cmd, a)` → `r = C(cmd, n, x, …)` (length `n` remains part of call order); if it cannot be done unambiguously (array reused across labels), keep a real array `aA`. The oracle reads static numeric fields (`InitializeArray`) from ELF and inserts them as constants; it also supplies the Expert type-check score tables (11 tables with values −1/+1).
+- **Type fidelity**: preserve Ghidra variable types (int/uint/long/ulong); `x - 0x68U < 0x3d` stays unsigned; bit-mask idioms `(1L << (x & 0x3f)) & M` become `Bit(x, M)`.
+- **Goto-faithful control flow**: C# allows `goto` only into enclosing blocks; an `if` stays structured if all labels visible in it are only targeted from within, otherwise flatten to `if (!c) goto …`. Original jump-table `switch` becomes `switch … goto` with merged cases.
+- Entry points (`Run(name)`) and name list (`Functions`) are generated; no reflection (to avoid IL2CPP stripping).
 
-Der Aufruf `PYTHONPATH=tools/pydeps python3 scripts/ai_translate/ai_translate.py` schreibt nach `unity/Assets/Scripts/BattleFlow/Ai/Generated/`. Eine einzige Stelle ließ sich nicht automatisch lesen: `DoubleAI_Friend_Main` ruft für die KI-Nummern 0x181–0x189 über eine Sprungtabelle (Ghidra: „indirect jump“); die Zuordnung (385, 386→309, 388, 391, 393→309) hat das Orakel gemessen und ist im Werkzeug festgehalten.
+Invocation `PYTHONPATH=tools/pydeps python3 scripts/ai_translate/ai_translate.py` writes to `unity/Assets/Scripts/BattleFlow/Ai/Generated/`. One location could not be read automatically: `DoubleAI_Friend_Main` dispatches AI IDs 0x181–0x189 through a jump table (Ghidra: “indirect jump”); oracle measured the mapping (385, 386→309, 388, 391, 393→309), which is encoded in the tool.
 
-## 3. Double (Bit 3, alle 706 Trainer) — [O]
+## 3. Double (bit 3, all 706 trainers) — [O]
 
-`BtlAiDouble.main` (0x1d0b560): `IF_MIKATA_ATTACK` (Ziel ist der Partner) → `DoubleAI_Friend_Main`, sonst `DoubleAI_Enemy_Main`. Im **Einzelkampf** ist `IF_MIKATA_ATTACK` immer 0, es läuft also nur der Enemy-Zweig; der Friend-Zweig ist trotzdem umgesetzt und geprüft (für Doppelkämpfe).
+`BtlAiDouble.main` (0x1d0b560): `IF_MIKATA_ATTACK` (target is partner) → `DoubleAI_Friend_Main`, otherwise `DoubleAI_Enemy_Main`. In **single battles**, `IF_MIKATA_ATTACK` is always 0, so only the Enemy branch runs; the Friend branch is still implemented and tested for doubles.
 
-- `DoubleAI_Enemy_Main`: Vorspann mit Fähigkeitsprüfungen des Gegenübers (Blitzableiter 31, Sturmsog 114, Magiespiegel 156 u. a.: −10 bei passenden Attackentypen und KI-Nummern, mehrere Zufallswürfe), dann Verteiler über die KI-Nummer (`switch` über Bereiche) auf die Enemy-Seq-Funktionen. 42 KI-Nummern verteilen auf 41 Enemy-Funktionen (`BattleAiDispatchDouble.json`, Schlüssel `BtlAiDouble.Enemy`, vom Orakel gemessen); größte: 111 (18 KB), 195 (22 KB mit Unterfunktion), 147, 172, 378.
-- `DoubleAI_Friend_Main`: 21 KI-Nummern auf 20 Friend-Funktionen (Partner-Unterstützung, z. B. Heilattacken auf den Partner, Windattacken).
-- Das Orakel läuft jede der 66 Funktionen mit je 16 Pseudo-Welten; für beide Verteiler zusätzlich mit **festgelegter KI-Nummer** (`DoubleAI_Enemy_Main@62=k` für 44, `DoubleAI_Friend_Main@62=k` für 22 Nummern), damit jede Verzweigung des Verteilers wirklich läuft: 131 Einträge, **2096 Fälle, 0 Abweichungen**.
+- `DoubleAI_Enemy_Main`: preamble checks opponent abilities (Lightning Rod 31, Storm Drain 114, Magic Bounce 156, etc.; −10 for matching move types and AI IDs, several random rolls), then dispatch by AI ID (`switch` across ranges) to Enemy Seq functions. 42 AI IDs map to 41 Enemy functions (`BattleAiDispatchDouble.json`, key `BtlAiDouble.Enemy`, measured by oracle); largest: 111 (18 KB), 195 (22 KB with subfunction), 147, 172, 378.
+- `DoubleAI_Friend_Main`: 21 AI IDs map to 20 Friend functions (partner support, e.g. healing moves on partner, wind moves).
+- Oracle runs all 66 functions in 16 pseudo-worlds each; both dispatchers additionally run with **fixed AI ID** (`DoubleAI_Enemy_Main@62=k` for 44, `DoubleAI_Friend_Main@62=k` for 22 IDs), ensuring every dispatcher branch actually executes: 131 entries, **2,096 cases, 0 mismatches**.
 
-## 4. Basic-Rest und Strong-Doppelzweig — [O]
+## 4. Remaining Basic and Strong double branch — [O]
 
-Die 115 fehlenden Basic-Seq-Funktionen sind erzeugt (`AiScriptBasicGen.cs`, 119 Funktionen inkl. Hilfsfunktionen, registriert über `partial void RegisterGenerated()`); die 33 von Hand geschriebenen bleiben und werden von den erzeugten aufgerufen (`Seq0NN`). Fixture `BattleAiScriptsBasicSeq.json` (152 Seq-Funktionen, 1824 Fälle) und die alte `BattleAiScripts.json` (48 Funktionen, jetzt **ohne** übersprungene Fälle statt vorher 4) stimmen. Die größten bisher fehlenden Funktionen (067, 175, 023, 266, 167, 090, 242) sind enthalten.
+The 115 missing Basic Seq functions are generated (`AiScriptBasicGen.cs`, 119 functions including helpers, registered through `partial void RegisterGenerated()`); the 33 handwritten functions remain and are called by generated code (`Seq0NN`). Fixture `BattleAiScriptsBasicSeq.json` (152 Seq functions, 1,824 cases) and the older `BattleAiScripts.json` (48 functions, now with **no** skipped cases, previously 4) match. Largest formerly missing functions (067, 175, 023, 266, 167, 090, 242) are included.
 
-`BtlAiStrong` ist jetzt vollständig (`AiScriptStrongFull`, 3 Funktionen, 192 Fälle ohne festgelegte Befehlsantworten, also **mit** Doppelkampf-Zweig `CHECK_BTL_RULE = 1` und G-Zweig). Die handgeschriebene `AiScriptStrong` (nur Einzelkampf) bleibt als Referenz mit ihrem alten Test; `TrainerAi` nutzt `AiScriptStrongFull`.
+`BtlAiStrong` is now complete (`AiScriptStrongFull`, 3 functions, 192 cases without fixed command responses, therefore **including** double branch `CHECK_BTL_RULE = 1` and G branch). Handwritten `AiScriptStrong` (single battles only) remains as a reference with its old test; `TrainerAi` uses `AiScriptStrongFull`.
 
-## 5. Expert (Bit 2, 83 Trainer) — [O]
+## 5. Expert (bit 2, 83 trainers) — [O]
 
-`ExpertAI.main_proc` (0x1d1ab60): langer Vorspann (Item-, Fähigkeits- und Zustandsprüfungen), Verteiler über 294 KI-Nummern auf 223 Funktionen; `ExpertAI_TypeCheck(param)` (25 Aufrufe) wertet je Wetter/Typ-Gruppe mit 11 Wertungstabellen. **Alle 257 Funktionen** sind umgesetzt (Seq-Funktionen, Unterfunktionen, `…Pokemon`-Hilfsfunktionen wie `CopyPokemonTokusei`, `MegaShinkaPokemon`); Orakel: 255 Funktionen, 3060 Fälle, 0 Abweichungen (`TypeCheck` wird über seine Aufrufer mitgeprüft). Damit ist die in Spezifikation 6 geschätzte Lückenliste (46 % der Expert-Attacken-Slots ohne Funktion) gegenstandslos. Gefundene Fehler während der Entwicklung (alle vom Orakel): `break` in verschachtelten `if` im `switch`, Argument-Typ `byte` von `TypeCheck` (Abschneiden von 0x50e0a09 auf 9), Längenvariable, die zugleich als Attackennummer dient (`iVar2 = *(int*)(arr+0x18)` → Konstante).
+`ExpertAI.main_proc` (0x1d1ab60): long preamble (item, ability, and status checks), dispatch from 294 AI IDs to 223 functions; `ExpertAI_TypeCheck(param)` (25 calls) evaluates 11 score tables per weather/type group. **All 257 functions** are implemented (Seq functions, subfunctions, `…Pokemon` helpers such as `CopyPokemonTokusei`, `MegaShinkaPokemon`); oracle: 255 functions, 3,060 cases, 0 mismatches (`TypeCheck` is checked through its callers). The gap list estimated in spec 6 (46% of Expert move slots without a function) is now obsolete. Bugs found during development (all by oracle): `break` in nested `if` inside `switch`, `byte` argument type for `TypeCheck` (truncation of 0x50e0a09 to 9), length variable also used as move ID (`iVar2 = *(int*)(arr+0x18)` → constant).
 
-## 6. AiWorld (Abfragebefehle) und Schaden
+## 6. AiWorld (query commands) and damage
 
-**Schaden [P]:** `COMP_POWER`, `GET_MAX_WAZA_POWER` und das neue `IF_WAZA_HINSHI` rechnen mit dem echten `DamageCalculator` (`BattleEngine.EstimateDamageForAi`: `Launcher.BuildDamageInput` mit Wetter, Stufen, STAB, Typenwirkung, Brand; **fester Zufallsfaktor 85, kein Volltreffer**, `DamageInput.FixedRoll` – im Original setzt nur der KI-Simulator das Flag). Die frühere Näherung entfällt. Nicht enthalten sind Fähigkeits-/Item-Handler außerhalb der Wirkungs-ID, soweit der Launcher sie nicht berücksichtigt **[A]**.
+**Damage [P]:** `COMP_POWER`, `GET_MAX_WAZA_POWER`, and new `IF_WAZA_HINSHI` use the real `DamageCalculator` (`BattleEngine.EstimateDamageForAi`: `Launcher.BuildDamageInput` with weather, stages, STAB, type effectiveness, burn; **fixed random factor 85, no critical hit**, `DamageInput.FixedRoll`—in the original only the AI simulator sets this flag). The previous approximation is removed. Ability/item handlers outside the effect ID are not included unless the launcher accounts for them **[A]**.
 
-**Neue Befehle:** `IF_WAZA_HINSHI`/`IFN_` (Schaden ≥ KP des Gegners) [P], `IF_HINSHI`, `IF_HAVE_WAZA`/`IF_HAVE_WAZA_SEQNO` (eigene Seite: alle Attacken, Gegenüber nur bereits eingesetzte – `CheckWazaStored`, aus dem Kampfprotokoll) [P], `IF_COMMONRND_*` (gemeinsamer Zufallswert der Runde) [P/A], `CHECK_AGI_RANK`, `CHECK_MAMORU_COUNT`, `CHECK_LAST_WAZA_KIND`, `CHECK_STATUS`, `IF_DMG_PHYSIC_*` (Angriff gegen Sp.-Angriff mit Stufen) [P], `IF_DOKUDOKU` (Gift mit Moudoku-Zähler), `IF_BENCH_PPDEC`. Von den 100 Befehlen, die die Skripte tatsächlich aufrufen, hat jetzt jeder einen `case` (vorher fehlten mehrere). Insgesamt 110 von 130 Befehlsnummern haben einen `case` (die 20 ohne `case` ruft kein Skript auf; sie liefern 0); **[N]** (bewusst 0, 16 Befehle): `IF_CONTFLG`, 18/19 (Abgesang), `IF_BENCH_DAMAGE_MAX`, `CHECK_SLOWSTART_TURN`, `GET_MEZAME_TYPE`, `IF_WAZAHIDE`, `IF_ALREADY_MORAIBI`, `COMP_POWER_WITH_PARTNER`, `CHECK_NEKODAMASI`, `CHECK_RECYCLE_ITEM`, `IF_TOTTEOKI`, `IF_MIGAWARI`, `IF_EXIST_GROUND`, `CHECK_WAZA_NO_EFFECT_BY_TOKUSEI`, `IF_ZIDANDA_POWERUP`.
+**New commands:** `IF_WAZA_HINSHI`/`IFN_` (damage ≥ opponent HP) [P], `IF_HINSHI`, `IF_HAVE_WAZA`/`IF_HAVE_WAZA_SEQNO` (own side: all moves, opponent: only moves already used—`CheckWazaStored`, from battle log) [P], `IF_COMMONRND_*` (shared random value for the turn) [P/A], `CHECK_AGI_RANK`, `CHECK_MAMORU_COUNT`, `CHECK_LAST_WAZA_KIND`, `CHECK_STATUS`, `IF_DMG_PHYSIC_*` (physical attack vs. Sp. Atk with stages) [P], `IF_DOKUDOKU` (poison with badly-poisoned counter), `IF_BENCH_PPDEC`. Every one of the 100 commands actually called by scripts now has a `case` (several were missing before). Overall 110 of 130 command IDs have a `case` (the 20 without one are never called by scripts; they return 0); **[N]** (intentionally return 0, 16 commands): `IF_CONTFLG`, 18/19 (Perish Song), `IF_BENCH_DAMAGE_MAX`, `CHECK_SLOWSTART_TURN`, `GET_MEZAME_TYPE`, `IF_WAZAHIDE`, `IF_ALREADY_MORAIBI`, `COMP_POWER_WITH_PARTNER`, `CHECK_NEKODAMASI`, `CHECK_RECYCLE_ITEM`, `IF_TOTTEOKI`, `IF_MIGAWARI`, `IF_EXIST_GROUND`, `CHECK_WAZA_NO_EFFECT_BY_TOKUSEI`, `IF_ZIDANDA_POWERUP`.
 
-**Orakel für die Befehle: nicht umgesetzt.** Die `CMDFUNC_*` greifen über `GetBppByAISide` auf `BTL_POKEPARAM` (Kernparameter +0x10 mit KP bei +0x26, Zustandsarray +0x48, Attackenliste +0x30, Rangwerte +0x18/+0x20 …) und das `BattleSimulator` zu. Im Emulator liefen sie nur mit einem im Gastspeicher aufgebauten Pokémon samt Kampfumgebung (`GuestHeap` aus `battle_oracle_heap.py` kann Objekte nach dem Dump anlegen; für `BTL_POKEPARAM` fehlt die Konsistenz der verschachtelten Felder). Aufwand grob 1–2 Tage für etwa 40 reine Lesebefehle (Typ, Fähigkeit, KP, Rang, Zustand, Attackenliste); Schaden/Reihenfolge brauchen zusätzlich `BattleSimulator`. Bis dahin ist die Befehls-Seite weiter die größte Fehlerquelle der Treue (unverändert aus Spezifikation 6).
+**Command oracle: not implemented.** `CMDFUNC_*` access `BTL_POKEPARAM` through `GetBppByAISide` (core parameters +0x10 with HP at +0x26, status array +0x48, move list +0x30, rank values +0x18/+0x20 …) and `BattleSimulator`. In the emulator they ran only with a Pokémon and battle environment built in guest memory (`GuestHeap` from `battle_oracle_heap.py` can construct objects from the dump; nested fields in `BTL_POKEPARAM` are not yet consistent). Roughly 1–2 days for about 40 read-only commands (type, ability, HP, rank, status, move list); damage/order also require `BattleSimulator`. Until then the command layer remains the largest source of fidelity errors (unchanged from spec 6).
 
-## 7. Zufall
+## 7. Randomness
 
-Der Zufallsgenerator der KI ist der Xoroshiro128+ des Originals (`Dpr.Battle.Logic.Random`, bereits `BattleRandom`). **[P]** `BattleAi.ctor` (0x20eb…) erzeugt ein **eigenes** `Random` und initialisiert es mit dem `randSeed` des Kampf-Setups (`Random.Initialize(setup+0x28)`), kein Mischen mit einer Konstante; `TrainerAi` seedet jetzt mit `BattleSetup.Seed` (bisher `Seed ^ 0xA1A1A1A1`). Der gemeinsame Wert für `IF_COMMONRND_*` kommt im Original aus dem Zufall von `BTL_CLIENT` (+0x90, `GetValue(0x100)`); dessen Seed und die genaue Abfolge der Würfe je Attacke/Skript (Reihenfolge von `wazaScore_DecideBest`, Skript-Würfen, Tokusei-Raten) sind **[A]**: gleiche Entscheidungen, aber nicht Wurf für Wurf wie im Original. Das ableiten zu können, bräuchte das Kampf-Setup des Originals (Reihenfolge der Judge-Aufrufe, `BTL_CLIENT`-Seed).
+The AI random generator is the original's Xoroshiro128+ (`Dpr.Battle.Logic.Random`, already `BattleRandom`). **[P]** `BattleAi.ctor` (0x20eb…) creates its **own** `Random` and initializes it from the battle setup's `randSeed` (`Random.Initialize(setup+0x28)`), not by mixing with a constant; `TrainerAi` now seeds with `BattleSetup.Seed` (previously `Seed ^ 0xA1A1A1A1`). The shared value for `IF_COMMONRND_*` comes in the original from `BTL_CLIENT` randomness (+0x90, `GetValue(0x100)`); its seed and exact order of rolls per move/script (order of `wazaScore_DecideBest`, script rolls, ability rates) are **[A]**: decisions match, but not roll-for-roll with the original. Deriving that would require the original battle setup (order of judge calls, `BTL_CLIENT` seed).
 
-## 8. Lücken
+## 8. Gaps
 
-| Block | Stand |
+| Area | Status |
 |---|---|
-| Orakel für die 130 `CMDFUNC_*` (Befehls-Seite von `AiWorld`) | nicht umgesetzt (Abschnitt 6); 16 Befehle bewusst [N] (liefern 0) |
-| KI-Zufallsfolge Wurf für Wurf | Generator und Seed [P], Reihenfolge der Würfe und `BTL_CLIENT`-Zufall [A] |
-| Schaden: Fähigkeits-/Item-Handler im `BattleSimulator.CalcDamage` | nur was `Launcher.BuildDamageInput` berücksichtigt |
-| Doppelkampf in `TrainerAi` (Zielwahl, `IF_MIKATA_ATTACK`) | die Skripte sind umgesetzt und geprüft; `AiWorld`/`TrainerAi` bilden nur den Einzelkampf ab |
-| Engine-NotImplemented (11 Attacken, Abschnitt 1) | Engine, nicht KI |
-| Wild-/Safari-KI, Raid-Boss | wie Spezifikation 6, außerhalb des Umfangs |
+| Oracle for 130 `CMDFUNC_*` (`AiWorld` command layer) | not implemented (section 6); 16 commands intentionally [N] (return 0) |
+| AI random sequence, roll-for-roll | generator and seed [P], roll order and `BTL_CLIENT` randomness [A] |
+| Damage: ability/item handlers in `BattleSimulator.CalcDamage` | only those handled by `Launcher.BuildDamageInput` |
+| Double battles in `TrainerAi` (target selection, `IF_MIKATA_ATTACK`) | scripts implemented and checked; `AiWorld`/`TrainerAi` model singles only |
+| Engine `NotImplemented` (11 moves, section 1) | engine issue, not AI |
+| Wild/Safari AI, raid boss | as in spec 6, out of scope |
 
-## 9. Prüfung
+## 9. Verification
 
-- `BattleAiScriptOracleTests`: Basic (48 Funktionen, 3072 Fälle), Basic-Rest/Seq (152, 1824), Double (131, 2096), Expert (255, 3060), Strong (3, 96) und Strong voll (3, 192), Allowance, Item, PokeChange; Verteilertabelle; jede Verteilerzahl führt auf eine umgesetzte Funktion.
-- `BattleAiFlowTests`: zusätzlich ein ganzer Kampf mit allen sieben Skripten (reproduzierbar, `UnimplementedScriptBits == 0`).
-- Fixtures (nur Zahlen): `BattleAiScriptsDouble/Expert/StrongFull/BasicSeq.json`, `BattleAiDispatchDouble.json`. Erzeugung siehe Kopf von `scripts/battle_oracle_ai.py` (Aufrufe je Klasse mit `--suffix`; Einträge der Include-Dateien dürfen Muster enthalten, `name@62=k` legt die KI-Nummer fest). Erneutes Erzeugen liefert bytegleiche Dateien.
-- Lokal: `BattleAiPlaythroughLocal` (60 Teams, alle 706 Teams, Zufallsgegner und Trainer-KI, NotImplemented je Attacke).
+- `BattleAiScriptOracleTests`: Basic (48 functions, 3,072 cases), remaining Basic/Seq (152, 1,824), Double (131, 2,096), Expert (255, 3,060), Strong (3, 96) and full Strong (3, 192), Allowance, Item, PokeChange; dispatch table; every dispatch ID maps to an implemented function.
+- `BattleAiFlowTests`: one full battle using all seven scripts (reproducible, `UnimplementedScriptBits == 0`).
+- Fixtures (numbers only): `BattleAiScriptsDouble/Expert/StrongFull/BasicSeq.json`, `BattleAiDispatchDouble.json`. Generation instructions are at the top of `scripts/battle_oracle_ai.py` (per-class calls with `--suffix`; include-file entries may be patterns, `name@62=k` fixes the AI ID). Regeneration produces byte-identical files.
+- Local: `BattleAiPlaythroughLocal` (60 teams, all 706 teams, random opponent and trainer AI, NotImplemented per move).

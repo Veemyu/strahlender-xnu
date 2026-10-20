@@ -1,120 +1,122 @@
-# Sichtprüfung 3: Feldoptik mit erzeugten Shadern, Figur/NPCs, Pokémon, Stadt-Spielstand (Todo `ap-effects-fidelity`, Teil 5)
+# Visual Review 3: Field Rendering with Generated Shaders, Player/NPCs, Pokémon, and Town Save (Todo `ap-effects-fidelity`, Part 5)
 
-Stand: 2026-10-19, Unity 6000.3.26f1 (Labor `work/unity-shader-lab` und Haupteditor `unity/`), Built-in-Pipeline, Gamma, Metal, Apple M1 Pro. Es werden nur unsere erzeugten Shader gezeichnet (kein Original-Shader geladen), kein Ton. Bilder, Exporte und erzeugte Shader liegen unter `work/` (`work/visual/fieldrender/`, `…/stadt/`), nicht im Repo; hier stehen Zahlen und Beschreibungen. Aufnahme: Hauptkamera in eine `RenderTexture` 1280 × 720 am Bildende (`FieldShot.CaptureAtFrameEnd`, Haupteditor) bzw. `EffectsRunner` (Labor).
+> **Historical report:** This describes the deprecated Unity rebuild. The native static recompilation is the current product; this report is retained as project history.
 
-Markierung: **belegt** = gemessen/gesehen, *vermutet* = Schluss ohne Test.
+Status: 2026-10-19, Unity 6000.3.26f1 (lab `work/unity-shader-lab` and main Editor `unity/`), Built-in Render Pipeline, Gamma, Metal, Apple M1 Pro. Only our generated shaders are drawn (no original shader loaded), no audio. Images, exports, and generated shaders live under `work/` (`work/visual/fieldrender/`, `…/stadt/`), not in the repository; this document records measurements and findings. Capture: main camera to a 1280 × 720 `RenderTexture` at end of frame (`FieldShot.CaptureAtFrameEnd`, main Editor) or `EffectsRunner` (lab).
 
-## 1. Ergebnis in Kürze
+Notation: **confirmed** = measured/observed; *suspected* = inference without a test.
 
-| Frage | Ergebnis |
+## 1. Summary
+
+| Question | Result |
 |---|---|
-| Standard | Material-Umbau mit erzeugten Shadern ist **Standard** (`useGeneratedShaders = true`; `XNU_GENERATED_SHADERS=0` schaltet aus, `=1` erzwingt). Ohne `variants.json`, ohne auffindbare Shader oder ohne Materialexport sauberer Rückfall auf das Ersatzmaterial, `MaterialMode` nennt den Grund. |
-| Kamera-Ausstattung | Neu `FieldRenderRig`: Tiefentexturen (`_OpaqueDepthTexture`, `_GlobalDepthTexture`), Reflexionskamera (`_ReflectionTex`), Nachbearbeitung (Bloom, Nebel, FXAA), Hintergrund Schwarz wie im Original. |
-| Spielerfigur und NPCs | Figur und alle NPC-Modelle mit erzeugten Shadern (farbig). NPCs sind Charaktermodelle mit Ruhe-Animation, Marker nur als Rückfall. |
-| NPC-Modelle auflösbar | Gesamt: von 4.197 Platzierungen 1.639 mit Figurenindex (alle 130 verschiedenen Modellbundles liegen vor), 1.365 mit Objekt-Index ≥ 142 (nicht aufgelöst), 1.193 unsichtbar. Zonen: 422: 5 von 5; 425: 2 von 2; 54: 14 Figuren, 12 Objekte; 367: 18 Figuren, 10 Objekte; Zone 24 (Stadt): 12 Figuren, 4 Objekte. |
-| Vertexdaten | Unauffällig (Abschnitt 4). Das „Kaputte“ kam nicht von den Netzen. |
-| Pokémon schwarz/Cyan | **Ursache gefunden und behoben**: Ganzzahl-Uniforms im Shader-Wrapper (Abschnitt 5). Kein NaN-Problem des Übersetzers. |
-| Zone 167 (Nutzer-Screenshot) | weiße Quads, flaches Wasser, verschmierte Felswände: mit erzeugten Shadern und Kamera-Ausstattung behoben (Abschnitt 3). |
-| Stadt-Spielstand (Zone 24) | Position aus `PLAYER_DATA` gelesen (57, 729); Bildschirmschatten fiel unter iOS-Ziel aus, behoben (Abschnitt 6). |
-| Tests | Unity EditMode **763 von 763** (Haupteditor), Labor 63 von 63, `test_shader_wrap` 40 von 40. |
+| Default | Material remapping with generated shaders is **the default** (`useGeneratedShaders = true`; `XNU_GENERATED_SHADERS=0` disables it, `=1` forces it). Without `variants.json`, a matching shader, or a material export, it falls back cleanly to the replacement material; `MaterialMode` reports the reason. |
+| Camera setup | New `FieldRenderRig`: depth textures (`_OpaqueDepthTexture`, `_GlobalDepthTexture`), reflection camera (`_ReflectionTex`), post-processing (bloom, fog, FXAA), black background as in original. |
+| Player and NPCs | Player character and all NPC models render with generated shaders (in color). NPCs use character models with idle animations; markers remain fallback. |
+| NPC model resolution | Overall: of 4,197 placements, 1,639 have a character index (all 130 distinct model bundles are available), 1,365 have object index ≥142 (unresolved), 1,193 are invisible. Zones: 422: 5/5; 425: 2/2; 54: 14 characters, 12 objects; 367: 18 characters, 10 objects; zone 24 (town): 12 characters, 4 objects. |
+| Vertex data | Looks correct (section 4). The “broken” appearance did not come from the meshes. |
+| Black/cyan Pokémon | **Cause found and fixed:** integer uniforms in shader wrapper (section 5). Not a translator NaN issue. |
+| Zone 167 (user screenshot) | White quads, flat water, smeared rock walls: fixed with generated shaders and camera setup (section 3). |
+| Town save (zone 24) | Position read from `PLAYER_DATA` (57, 729); screen-space shadows failed under iOS target, fixed (section 6). |
+| Tests | Unity EditMode **763/763** (main Editor), lab 63/63, `test_shader_wrap` 40/40. |
 
-## 2. Prüfliste zum Nutzer-Screenshot (Zone 167, Mac-Vorschau)
+## 2. User screenshot checklist (zone 167, Mac preview)
 
-| # | Beobachtung | Ursache | Fix | Beleg |
-|---|---|---|---|---|
-| 1 | weiße rechteckige Flächen am Pokécenter-Eingang | Standard war das Ersatzmaterial: die Glas/Fade-Flächen (`M_C_001_Grad_01`, `_ALPHABLEND_ON`, `_DEPTHDENSITY_ON`) wurden ohne Alpha-Mischung weiß gezeichnet (*vermutet*, aus dem Materialdump und dem Bildvergleich) | erzeugte Shader als Standard (Variante mit `_ALPHABLEND_ON`) | Labor, gleiche Zelle (840–846, 599): vorher weiße Quads, nachher Tür mit Glas |
-| 2 | Wasser einfarbig blau | Ersatz-Shader kennt kein Wasser; mit erzeugtem `FlowmapWater` ohne Tiefentexturen zeichnete der Shader nur eine Flächenfarbe | `FieldRenderRig` (Tiefe, Reflexion); Wasser zeigt Wellen, Funkeln und Tiefenfarbe | Bilder `after_167`, `after2_167`, Stadt `z24_fix` |
-| 3 | Felswände gestreckt, verschmiert, diagonales Dreiecksband | Ersatz-Shader mit nur einer Haupttextur statt der `_Cascade`-Mischung über zwei UV-Sätze (*vermutet*, nicht einzeln isoliert); keine Vertexdaten-Störung (Abschnitt 4) | erzeugte Shader (`_CASCADE_*`-Varianten) | `before_167` (Ersatz) gegen `after_167`: Felsstufen mit Steinstruktur, kein Band |
-| 4 | Spielfigur weiß/grau | Ersatz-Shader der Figur | Materialumbau des Modellbundles (13 Materialien umgebaut, 8 Ersatz für ausgeschaltete Teile) | rote Mütze, Gesicht, Kleidung farbig |
-| 5 | HUD-Text überdruckt | zwei `FieldController` bzw. zwei `OnGUI`-Zeichnungen übereinander; in der Spielszene zusätzlich der Debug-Text | nur eine Instanz zeichnet (`HudAllowed`), mit externer Spielschleife (`ExternalTick`) gar nicht; `showHud` | Quelltext, nicht am Bild gemessen |
-| 6 | schwarze Balken links/rechts | Absicht: `DisplayController` begrenzt die Kamera auf 16:9 (`AspectMath.Fit`), Hintergrundkamera schwarz | keine Änderung (Zielverhältnis des Spiels) | Kamera-`rect` (0,09/0,83) im Fenster 1814 × 934 |
+| # | Observation | Cause | Fix | Evidence |
+|---:|---|---|---|---|
+| 1 | White rectangular areas at Pokémon Center entrance | Replacement material was the default: glass/fade surfaces (`M_C_001_Grad_01`, `_ALPHABLEND_ON`, `_DEPTHDENSITY_ON`) rendered white without alpha blending (*suspected*, from material dump and image comparison) | Generated shaders as default (variant with `_ALPHABLEND_ON`) | Lab, same cells (840–846, 599): white quads before, glass door after |
+| 2 | Water is a flat blue color | Replacement shader has no water support; generated `FlowmapWater` without depth textures rendered a flat color | `FieldRenderRig` (depth, reflection); waves, sparkles, and depth color now appear | Images `after_167`, `after2_167`, town `z24_fix` |
+| 3 | Rock walls stretched/smeared, diagonal triangle band | Replacement shader uses one main texture instead of the two-UV `_Cascade` blend (*suspected*, not isolated); no vertex-data fault (section 4) | Generated shaders (`_CASCADE_*` variants) | `before_167` (replacement) vs. `after_167`: stone texture on rock steps, no band |
+| 4 | Player character is white/gray | Replacement character shader | Remap model bundle materials (13 remapped, 8 replacements for inactive parts) | Red cap, face, and clothing render in color |
+| 5 | HUD text overdrawn | Two `FieldController` instances or two `OnGUI` draws overlap; game scene also has debug text | Only one instance draws (`HudAllowed`); none with external game loop (`ExternalTick`); `showHud` | Source inspection; not measured in image |
+| 6 | Black bars left and right | Intentional: `DisplayController` constrains camera to 16:9 (`AspectMath.Fit`), background camera is black | No change (game target aspect ratio) | Camera `rect` (0.09/0.83) in 1814 × 934 window |
 
-Die Prüfstelle (Zelle 840/599) gehört dem alten Spielstand. Der Nutzer-Screenshot zeigt Zone 167 bei (88x, 599).
+Checkpoint cell (840, 599) belongs to the old save. User screenshot shows zone 167 at (88x, 599).
 
-## 3. Standard, Rig, Build
+## 3. Defaults, render rig, build
 
-- `FieldController`: `GeneratedShadersWanted()`, `LoadShaderIndex()` (einmal, mit Zählung auffindbarer Shader), `CreateModelMaterials(bundle)` für Figur und NPCs (Katalog über `GeneratedShaderLibrary.FindMaterialFile`: Materialordner, sonst Nachbarordner `<…>_all`), `AttachRenderRig()`. Auf einer von außen übergebenen Kamera (`cameraOverride`, Spielszene mit Oberfläche) läuft die Nachbearbeitung nicht (`postOnSharedCamera`), weil Bloom/FXAA die Oberfläche mit verändern würden.
-- `GeneratedShaderLibrary`: Suchreihenfolge der Shader `combined_all`, `combined`, Wurzel; `GeneratedShaderSync.FindSourceDirectory`, `GeneratedShaderBuildSync` (Vorbau-Schritt: kopiert die Shader vor jedem Player-Build nach `Assets/XnuGenerated/Resources`; fehlt die Quelle, nur Warnung).
-- `scripts/build_all.sh`: Stufe `assets` kopiert zusätzlich die Charakter-Materialexporte (`work/materials_all/Characters__*.json`, 412 Dateien, 7,7 MB) nach `materials/`, damit der Player Figur und NPCs umbauen kann. Pokémon-Exporte (Statuen, Kampf) bleiben draußen.
-- Debug-Haken `XNU_FIELD_START="Zone,gx,gy[,Blick]"` startet das Feld an einer Zelle (für Prüfläufe).
+- `FieldController`: `GeneratedShadersWanted()`, `LoadShaderIndex()` (once, with count of available shaders), `CreateModelMaterials(bundle)` for player and NPCs (catalog via `GeneratedShaderLibrary.FindMaterialFile`: material folder, then sibling `<…>_all`), `AttachRenderRig()`. When an external camera is provided (`cameraOverride`, game scene with UI), post-processing is disabled (`postOnSharedCamera`) to avoid changing the UI with bloom/FXAA.
+- `GeneratedShaderLibrary`: shader search order `combined_all`, `combined`, root; `GeneratedShaderSync.FindSourceDirectory`, `GeneratedShaderBuildSync` (pre-build step copies shaders to `Assets/XnuGenerated/Resources` before every player build; if source is missing, warn only).
+- `scripts/build_all.sh`: `assets` stage additionally copies character material exports (`work/materials_all/Characters__*.json`, 412 files, 7.7 MB) to `materials/` so the player can remap player/NPCs. Pokémon exports (statues, battle) stay out.
+- Debug hook `XNU_FIELD_START="Zone,gx,gy[,facing]"` starts the field at a cell (for verification runs).
 
-## 4. Vertexdaten (belegt, Labor und Haupteditor)
+## 4. Vertex data (confirmed, lab and main Editor)
 
-Scan über alle Netze der geladenen Karte und Modelle (`EffectsRunner.MeshScan`, Zone 54: 105 Netze, 20 Skinned; Zone 167: 96 Netze):
+Scan of all meshes in loaded map and models (`EffectsRunner.MeshScan`, zone 54: 105 meshes, 20 skinned; zone 167: 96 meshes):
 
-- **Kanäle:** Karte `Position Float32x3, Normal Float32x3 (oder Float16x4), Tangent Float32x4 (oder Float16x4), Color UNorm8x4, TexCoord0 Float32x2 (oder Float16x2), TexCoord1 Float32x2`; Wasser `Position, [Color], TexCoord0 Float16x2` ohne Normalen; Figuren/Pokémon Stream 0 `Position/Normal/Tangent`, Stream 1 `Color UNorm8x4, TexCoord0`, Stream 2 `BlendWeight Float32x2/x4, BlendIndices UInt32x2/x4`. Alle Layouts sind gültige Unity-Formate; Index 16 Bit (0 Netze mit 32 Bit), 203 Submeshes.
-- **Werte:** 0 Netze mit NaN/Inf, 0 ohne Normalen, 0 ohne UV0, keine UV-Werte über 64, Tangenten-W ±1, Normalenlänge in Ordnung (nur die lesbaren Netze: 2 von 96, die übrigen sind nicht lesbar markiert, Netze liegen im GPU-Speicher; Auswertung über `isReadable` also begrenzt, *vermutet*: gleiche Güte).
-- **Eingänge der Shader:** `POSITION, NORMAL, TANGENT, COLOR, TEXCOORD0, TEXCOORD1` (Karte) bzw. ohne COLOR (Mitake, Pokémon: `a0..a4 = POSITION, NORMAL, TANGENT, TEXCOORD0, TEXCOORD1`). Die Zuordnung der erzeugten Wrapper stimmt mit den Netzkanälen überein; fehlende Kanäle (Wasser ohne Normalen) liest Unity als 0.
-- **Collider-Netze:** 10 `MeshCollider` hängen an sichtbaren Renderern (Himmel-Planes und `P_C_001_InOut_01`, Ebene 0); Bodenebene 10: 27 Renderer, alles Boden (Treppen, Boden), keine reinen Collider-Netze sichtbar. `FieldMapBuilder` baut Renderer nur mit `MeshFilter` + `MeshRenderer`; Collider-only-Objekte werden nicht gezeichnet.
-- **Schluss:** Die „vertex collision“-Optik (gestreckte, diagonale Flächen) entstand durch den Ersatz-Shader (falsche Textur und Mischung), nicht durch Vertexdaten; mit erzeugten Shadern verschwinden sie.
+- **Channels:** map: `Position Float32x3, Normal Float32x3 (or Float16x4), Tangent Float32x4 (or Float16x4), Color UNorm8x4, TexCoord0 Float32x2 (or Float16x2), TexCoord1 Float32x2`; water: `Position, [Color], TexCoord0 Float16x2` without normals; characters/Pokémon stream 0 `Position/Normal/Tangent`, stream 1 `Color UNorm8x4, TexCoord0`, stream 2 `BlendWeight Float32x2/x4, BlendIndices UInt32x2/x4`. All layouts are valid Unity formats; indices are 16-bit (0 meshes with 32-bit indices), 203 submeshes.
+- **Values:** 0 meshes with NaN/Inf, 0 without normals, 0 without UV0, no UV values above 64, tangent W ±1, normal lengths are valid (among readable meshes only: 2 of 96; remaining meshes are marked unreadable and live in GPU memory, so `isReadable` limits the inspection; *suspected*: equally valid).
+- **Shader inputs:** `POSITION, NORMAL, TANGENT, COLOR, TEXCOORD0, TEXCOORD1` (map), or without COLOR (Mitake, Pokémon: `a0..a4 = POSITION, NORMAL, TANGENT, TEXCOORD0, TEXCOORD1`). Generated wrapper mapping matches mesh channels; Unity reads missing channels (water has no normals) as zero.
+- **Collider meshes:** 10 `MeshCollider`s are attached to visible renderers (sky planes and `P_C_001_InOut_01`, layer 0); ground layer 10: 27 renderers, all ground (stairs, floor), no collider-only meshes visible. `FieldMapBuilder` builds renderers only with `MeshFilter` + `MeshRenderer`; collider-only objects are not drawn.
+- **Conclusion:** the “vertex collision” look (stretched, diagonal surfaces) came from the replacement shader (wrong texture/blending), not vertex data; generated shaders remove it.
 
-## 5. Pokémon schwarz/Cyan: Ganzzahl-Uniforms im Wrapper
+## 5. Black/cyan Pokémon: integer uniforms in wrapper
 
-**Befund.** `Mitake/MitakeStandardBumpShader` zeichnete das Pokémon schwarz mit Cyan (Zone 54 bei Mittag: 3 Cyan-Pixel in der Textur-Schleife, sonst schwarze Silhouette). Eingrenzung: Texturen auf Weiß (je Slot), Globals (`_CloudShadowTex`, `_ShadowMapTexture`), Material-Floats, Kugel/Kapsel statt Modell, Bloom/FXAA ab: alles ohne Wirkung; die Ausgabe des Shaders war die Ursache.
+**Finding.** `Mitake/MitakeStandardBumpShader` rendered the Pokémon black with cyan (zone 54 at noon: 3 cyan pixels in texture loop, otherwise black silhouette). Testing white textures (per slot), globals (`_CloudShadowTex`, `_ShadowMapTexture`), material floats, sphere/capsule instead of model, and disabling bloom/FXAA had no effect; shader output was the cause.
 
-**Ursache (belegt).** Das Original liest manche Material-Konstanten als Ganzzahl (`float(int(mx_cb3[2][1]))` für `_SpecularMaskEnable`, `_BaseColorAddEnable`, `_EmissionMaskUse`, `_SphereMaskEnable`, `_RimMaskEnable`, `_ColorMapUvIndex`, `_Layer1UvIndex`, …). Der Wrapper füllte den Konstantenpuffer mit den **Bits der Fließkommazahl** (`asuint(1.0)` = 1065353216); der Shader machte daraus `int` 1065353216, multiplizierte damit und erzeugte Inf/NaN. Betroffen: 55 von 119 erzeugten Shadern (Mitake-Pokémon, Charakter-Varianten und die Mehrzahl der `Delphis/Map/Standard`-Varianten, die `_Cascade` als Ganzzahl lesen; Aufteilung nicht einzeln gezählt).
+**Cause (confirmed).** Original reads some material constants as integers (`float(int(mx_cb3[2][1]))` for `_SpecularMaskEnable`, `_BaseColorAddEnable`, `_EmissionMaskUse`, `_SphereMaskEnable`, `_RimMaskEnable`, `_ColorMapUvIndex`, `_Layer1UvIndex`, …). Wrapper populated constant buffer with the **floating-point bit pattern** (`asuint(1.0)` = 1065353216); shader converted this to integer 1065353216, multiplied by it, and produced Inf/NaN. Affected: 55 of 119 generated shaders (Mitake Pokémon, character variants, and most `Delphis/Map/Standard` variants that read `_Cascade` as integer; breakdown was not counted individually).
 
-**Fix.** `scripts/shader_wrap.py` (`build_stage_block`): Wörter, die der Shader als `int`/`uint` liest, werden als `asuint(int(<Eigenschaft>))` geschrieben (Erkennung aus dem HLSL, keine Namensliste). Test `test_int_uniform_words_are_converted`; 55 Dateien neu erzeugt (`work/shaders/combined_all`).
+**Fix.** `scripts/shader_wrap.py` (`build_stage_block`): words read as `int`/`uint` by shader are written as `asuint(int(<property>))` (detected from HLSL, no name list). Test `test_int_uniform_words_are_converted`; 55 files regenerated (`work/shaders/combined_all`).
 
-**Beleg.** Pokémon `pm0387_00_00` (Chelast) im Labor, Zone 54: vorher schwarze Silhouette (Bild `pk54_orig`), danach grün-braun mit Blatt (Bild `probe1`/`pkBF`). Pixel (805, 385): (35, 34, 34) → (163, 178, 117).
+**Evidence.** Pokémon `pm0387_00_00` (Turtwig) in lab, zone 54: black silhouette before (`pk54_orig`), green-brown with leaf after (`probe1`/`pkBF`). Pixel (805, 385): (35, 34, 34) → (163, 178, 117).
 
-**Offen.** Die frühere Vermutung „fp16-Überlauf im Übersetzer“ (`docs/shader-translator.md`, Abschnitt 11.3, 15 `Map/Standard`-Paare) ist damit für die Mitake-Gruppe widerlegt; ob dieselbe Ursache auch die 15 Harness-Paare erklärt, ist nicht geprüft (der Harness setzt die Uniforms selbst).
+**Open.** Earlier “fp16 overflow in translator” hypothesis (`docs/shader-translator.md`, section 11.3, 15 `Map/Standard` pairs) is disproved for Mitake group; whether the same cause explains those 15 harness pairs has not been checked (harness sets uniforms itself).
 
-## 6. Stadt-Spielstand (SaveData sha256 0396a4a62735)
+## 6. Town save (SaveData SHA-256 0396a4a62735)
 
-**Position.** Im Stadt-Stand: `zoneID` (0x5634) = 24 (C02), `PLAYER_DATA` (0x79BF4/0x79BF8) = (57, 729), Höhe 1,0; `TownMapLocation` (0x8FB04+0x54) = Zone 416, (−789, 355) ist veraltet. Alter Stand: Zone 167, `PLAYER_DATA` (852, 599) mit Höhe 6,0, `TownMapLocation` (842, 597): die Höhe 6,00 der Zone 167 im Bild und die Zeile 599 sprechen für `PLAYER_DATA` *[A]*. `SavedPosition.Read` bevorzugt jetzt `PLAYER_DATA` + `zoneID`, `TownMapLocation` nur als Rückfall (Richtung nur, wenn deren Zone passt); `Write` schreibt beide Stellen. 6 neue Tests (`SavedPositionTests`), einer liest den lokalen Stand (ohne Datei ignoriert).
+**Position.** Town save: `zoneID` (0x5634) = 24 (C02), `PLAYER_DATA` (0x79BF4/0x79BF8) = (57, 729), height 1.0; `TownMapLocation` (0x8FB04+0x54) = zone 416, (−789, 355), stale. Older save: zone 167, `PLAYER_DATA` (852, 599), height 6.0, `TownMapLocation` (842, 597): height 6.00 in zone 167 image and row 599 support `PLAYER_DATA` *[A]*. `SavedPosition.Read` now prefers `PLAYER_DATA` + `zoneID`, with `TownMapLocation` as fallback (facing only if its zone matches); `Write` writes both locations. Six new tests (`SavedPositionTests`), one reads local save (skipped if file absent).
 
-**Rendern (Haupteditor, Zone 24, Stunde 12).** Karte mit 4 bis 6 Blöcken (1.068 Renderer), Spawn (57, 729) funktioniert (das 0/6-Bild im Labor war die falsche Zelle 789/355). Zahlen: Draw-Calls 389, SetPass 201, 335.620 Dreiecke, 280.980 Vertices (Editor-Spielfenster). Bild: Wasser mit Wellen links, Pflaster violett-grau, blaues Dach mit türkiser Tür, Pokécenter oben, Nadelbäume rechts, NPC (braune Haare) und Figur farbig, Schatten klar.
+**Rendering (main Editor, zone 24, hour 12).** Map with 4–6 blocks (1,068 renderers), spawn at (57, 729) works (lab image at 0/6 used wrong cell 789/355). Counts: 389 draw calls, 201 SetPass, 335,620 triangles, 280,980 vertices (Editor game window). Image: waves on water at left, gray-violet paving, blue roof with turquoise door, Pokémon Center above, evergreens to right, brown-haired NPC and colorful player, clear shadows.
 
-**Fehler: Bildschirmschatten fiel aus (Ursache gefunden und behoben).** Im Haupteditor mit aktivem Build-Ziel **iOS** war das ganze Bild zu dunkel (Zone 24 Mittel 62/74/82, Zone 422 64/71/43 statt 87/102/111 bzw. 99/110/64 im Labor mit Ziel macOS). Alle Eingriffe (Qualität, Kaskaden, Bias, Nahebene, Rig, Post, Himmel, jeder Schattenwerfer) änderten nichts, nur „Schatten aus“ gab das helle Bild. Die Projektdateien unterscheiden sich in den **Graphics Tiers**: für iOS ist `cascadedShadowMaps` aus. Dann erzeugt Unity keinen Bildschirmschatten-Pass, die Shader lesen `_ShadowMapTexture` ohne Entsprechung und zeichnen alles im Schatten. Test: Labor auf iOS umgestellt: (62, 74, 82) wie im Haupteditor; mit `cascadedShadowMaps = true`: (87, 102, 110). Fix: `RenderProjectSettings` (Editor, beim Laden, idempotent) schaltet die Stufe für iOS und macOS ein (`ProjectSettings/GraphicsSettings.asset`), Test `IosStufenSchaltenCascadedShadowsFuerDenBildschirmschattenEin`. Das betrifft auch die iPad-App (*vermutet*, auf dem Gerät nicht geprüft) und erklärt, warum der Schatten in der Mac-Vorschau „zu dunkel“ wirkte.
+**Issue: screen-space shadows failed (cause found and fixed).** In main Editor with **iOS** build target active, entire image was too dark (zone 24 mean 62/74/82, zone 422 64/71/43 vs. 87/102/111 and 99/110/64 under macOS target in lab). Quality, cascades, bias, near plane, rig, post-processing, sky, and each shadow caster changed nothing; only “shadows off” produced a bright image. Project files differ in **Graphics Tiers**: for iOS, `cascadedShadowMaps` is off. Unity then creates no screen-space shadow pass, while shaders still read `_ShadowMapTexture`; everything renders in shadow. Test: change lab to iOS: (62, 74, 82), same as main Editor; set `cascadedShadowMaps = true`: (87, 102, 110). Fix: `RenderProjectSettings` (Editor, on load, idempotent) enables the tier for iOS and macOS (`ProjectSettings/GraphicsSettings.asset`), test `IosStufenSchaltenCascadedShadowsFuerDenBildschirmschattenEin`. This also affects iPad app (*suspected*, not tested on device) and explains why shadows looked “too dark” in Mac preview.
 
-## 7. Vergleich mit dem Ryujinx-Bild (`ref_01_feld_weiter`, Zone 24, Stunde 12,4)
+## 7. Comparison with Ryujinx image (`ref_01_feld_weiter`, zone 24, hour 12.4)
 
-Referenz geholt (`scripts/ryujinx_fetch_shots.sh fetch`, 2 neue Bilder), Vergleich `visual_compare.py ref compare`:
+Fetched reference (`scripts/ryujinx_fetch_shots.sh fetch`, 2 new images), comparison `visual_compare.py ref compare`:
 
-| Maß | vor dem Tier-Fix | nach dem Tier-Fix |
+| Metric | Before tier fix | After tier fix |
 |---|---|---|
-| Bildmittel RGB Referenz | 106,2 / 120,0 / 118,3 | – |
-| Bildmittel RGB Unity | 62,4 / 75,0 / 82,7 | 87,1 / 102,2 / 110,6 |
-| SSIM (angeglichen) | 0,408 | 0,394 (Versatz der Kamera/Figuren) |
-| MAD roh → angeglichen | 34,9 → 26,8 | 35,2 → 27,1 |
-| Helligkeit Unity/Referenz | 0,82 | 0,82 |
+| Reference RGB mean | 106.2 / 120.0 / 118.3 | – |
+| Unity RGB mean | 62.4 / 75.0 / 82.7 | 87.1 / 102.2 / 110.6 |
+| SSIM (matched) | 0.408 | 0.394 (camera/character offset) |
+| MAD raw → matched | 34.9 → 26.8 | 35.2 → 27.1 |
+| Unity/reference brightness | 0.82 | 0.82 |
 
-Beschreibung (links Referenz, Mitte Unity, rechts Heatmap): Aufbau gleich (Haus mit blauem Dach, Pflanzkübel, Baumreihe, Pflaster in zwei Violetttönen, Pokécenter oben). Größte Abweichungen: (1) **Wasser** links oben: Referenz türkis mit hellem Schaum, Unity blauer und dunkler mit Funkeln; (2) **Helligkeit/Kontrast**: Unity etwa 18 % dunkler, Pflaster bei Referenz (141/129/165), bei Unity (113/108/138): Schatten- und Lichtstärke (`_ShadowColor`, Lichtfarbe) sind nur abgeleitet *[A]*, Bloom und Farbkorrektur (LUT) fehlen; (3) **Bäume**: Referenz heller und gelbgrüner (52/105/37 gegen 46/88/36); (4) **Kameraversatz** (−68, −24) Pixel: Figuren stehen anders (Referenz: NPC rechts neben der Figur, bei uns weiter rechts), also andere Zelle/Animationsphase; der SSIM bleibt damit klein. Die Kamera (Neigung 40°, FOV 18°, Gier 180) entspricht dem Original nach Stammdaten, die Perspektive stimmt im Bild.
+Description (left: reference, center: Unity, right: heatmap): same layout (blue-roofed house, planter, row of trees, two shades of violet paving, Pokémon Center above). Largest differences: (1) **Water** at upper left: reference turquoise with bright foam; Unity bluer/darker with sparkles. (2) **Brightness/contrast:** Unity about 18% darker, paving reference (141/129/165), Unity (113/108/138). Shadow/light strength (`_ShadowColor`, light color) is inferred *[A]*; bloom and color grading LUT are missing. (3) **Trees:** reference brighter and more yellow-green (52/105/37 vs. 46/88/36). (4) **Camera offset** (−68, −24) px: characters stand differently (reference NPC beside player, ours farther right), likely a different cell/animation phase; SSIM remains low as a result. Camera (pitch 40°, FOV 18°, yaw 180) matches original game data; perspective looks correct.
 
-Nicht behoben: Farbkorrektur-LUT (`ColorGradingLookup`), Tiefenschärfe, HDR-Bloom (Abschnitt 5.4 in `docs/sichtpruefung-2.md`) und die Wasserfarbe (Reflexion/Umgebung `_EnvironmentMap` fehlt als Textur). Die Helligkeitslücke von 18 % ist damit das größte offene Maß dieser Stufe; *vermutet*: LUT und HDR-Bloom machen den größten Teil.
+Still missing: color grading LUT (`ColorGradingLookup`), depth of field, HDR bloom (section 5.4 in `docs/sichtpruefung-2.md`), and water color (reflection/environment texture `_EnvironmentMap` unavailable). The 18% brightness gap is the largest open metric at this stage; *suspected*: LUT and HDR bloom account for most of it.
 
-Das zweite Referenzbild (`ref_05_vor_pokecenter`, Pokécenter mit braunem Kupferdach, weißen Streben und Glasfront) zeigt ein **anderes Gebäude** als das Pokécenter unserer Zone 24 (rotes Dach mit Kuppel, `SM_C_001_PokeCen_01`). *Vermutet:* ein anderer Standort (anderes Gebäudemodell der Stadt); nicht geklärt, ob das Referenzbild im selben Gebiet entstand. Kein Vergleich möglich.
+Second reference image (`ref_05_vor_pokecenter`, Pokémon Center with brown copper roof, white supports, and glass front) shows a **different building** from the Pokémon Center in our zone 24 (red roof with dome, `SM_C_001_PokeCen_01`). *Suspected:* different location (another town building model); it is unclear whether the reference image was taken in the same area. No comparison possible.
 
-## 8. NPCs: Zahlen, Technik
+## 8. NPCs: counts and implementation
 
-- `CharacterGraphicsTable` (`dpr_masterdatas/CharacterGraphics.json`, 142 Einträge: `FieldGraphic`, `Scale`) löst `ObjectGraphicIndex` 0 bis 141 zum Bundle `Characters/persons/field/fcNNNN_00` auf; `NpcModels` baut je Platzierung ein Modell (Materialumbau je Modellbundle, `PlayerAvatar.Create` mit Namen und Skalierung). Animation: `idling_f`, sonst Clip mit „idl“/„wait“ im Namen, sonst der erste Clip; viele NPC-Bundles haben nur 1 von 3 Clips (Laufen/Gehen fehlen), Laufmuster werden nicht abgespielt.
-- Lab-Läufe: Zone 422: 3 von 3 Platzierungen als Modell (3 Modelle); 54: 5 von 5; 367: 3 von 4 (1 nicht auflösbar: Objekt-Index 500 usw.). Zone 24: 12 Platzierungen mit Figurenindex, alle Modellbundles vorhanden (im Bild sichtbar: Figur mit NPC, Frau mit Haarschmuck als Modell, Kapsel für das Objekt); die Anzahl gleichzeitig gebauter Modelle wurde dort nicht gezählt.
-- Nicht aufgelöst: Objekt-Indizes ≥ 142 (500 Item-Ball, 501 Fällbaum, 502/503 …, 556 Wand, 540000 Entenmodell, 4221100 …): 1.365 Platzierungen mit 132 verschiedenen Indizes; Zuordnung zu `Characters/objects/obNNNN` (128 Bundles) und zu den Pokémon-Modellen ist offen. Sie erscheinen weiter als Marker (blaue Kapsel, z. B. `C02_KODUCK` in der Stadt).
+- `CharacterGraphicsTable` (`dpr_masterdatas/CharacterGraphics.json`, 142 entries: `FieldGraphic`, `Scale`) resolves `ObjectGraphicIndex` 0–141 to bundle `Characters/persons/field/fcNNNN_00`; `NpcModels` builds a model per placement (material remapping per model bundle, `PlayerAvatar.Create` with name and scale). Animation: `idling_f`, otherwise clip containing “idl”/“wait”, otherwise first clip; many NPC bundles have only 1 of 3 clips (no run/walk), and walking patterns are not played.
+- Lab runs: zone 422: 3 of 3 placements as models (3 models); 54: 5/5; 367: 3/4 (one unresolved: object index 500 etc.). Zone 24: 12 placements with character index, all model bundles available (visible: player with NPC, woman with hair ornament as model, capsule for object); count of simultaneously built models was not measured.
+- Unresolved: object indices ≥142 (500 item ball, 501 cut tree, 502/503 …, 556 wall, 540000 duck model, 4221100 …): 1,365 placements with 132 distinct indices; mapping to `Characters/objects/obNNNN` (128 bundles) and Pokémon models remains open. They still appear as markers (blue capsule, e.g. `C02_KODUCK` in town).
 
-## 9. Zahlen (Labor, Ziel macOS, 1280 × 720, Mittag)
+## 9. Measurements (lab, macOS target, 1280 × 720, noon)
 
-| Zone | Zustand | Draw-Calls | SetPass | Dreiecke | Bildmittel RGB | Frame-Zeit |
-|---|---|---|---|---|---|---|
-| 422 | vorher (Ersatz) | 98 | 29 | 32.351 | 96/104/63 | 1,5 ms (Editor ohne Vsync) |
-| 422 | nachher (erzeugt, Rig) | 904 | 204 | 281.504 | 99/110/64 | 4,1 ms |
-| 425 | vorher | 105 | 49 | 16.458 | 120/139/163 | 1,3 ms |
-| 425 | nachher | 692 | 267 | 123.942 | 52/42/28 (Raum vor Schwarz) | 3,1 ms |
-| 54 | vorher | 146 | 62 | 66.740 | 148/133/102 | 1,3 ms |
-| 54 | nachher | 1.141 | 340 | 484.957 | 144/128/98 | 3,3 ms |
-| 24 (Haupteditor) | nachher | 389 | 201 | 335.620 | 87/102/111 | Vsync-begrenzt 30 Bilder/s |
+| Zone | State | Draw calls | SetPass | Triangles | RGB mean | Frame time |
+|---|---|---:|---:|---:|---|---|
+| 422 | before (replacement) | 98 | 29 | 32,351 | 96/104/63 | 1.5 ms (Editor, no VSync) |
+| 422 | after (generated, rig) | 904 | 204 | 281,504 | 99/110/64 | 4.1 ms |
+| 425 | before | 105 | 49 | 16,458 | 120/139/163 | 1.3 ms |
+| 425 | after | 692 | 267 | 123,942 | 52/42/28 (room against black) | 3.1 ms |
+| 54 | before | 146 | 62 | 66,740 | 148/133/102 | 1.3 ms |
+| 54 | after | 1,141 | 340 | 484,957 | 144/128/98 | 3.3 ms |
+| 24 (main Editor) | after | 389 | 201 | 335,620 | 87/102/111 | VSync-limited 30 fps |
 
-Die Frame-Zeit ist die reine Aufnahme (CPU und GPU auf M1 Pro im Editor, kein Player). Der Mehraufwand der erzeugten Shader (Faktor 3 bis 8 bei Draw-Calls, Schattenwerfer 244 bis 475) bleibt weit unter dem 30-Bilder/s-Ziel (33 ms). Messung am iPad steht aus.
+Frame time is capture only (CPU and GPU on M1 Pro in Editor, not a player build). Generated shaders cost 3–8× more draw calls, with 244–475 shadow casters, still well below 30 fps target (33 ms). iPad measurement pending.
 
-## 10. Geänderte Dateien
+## 10. Changed files
 
-`Field/Runtime/{FieldController,FieldNpcView,PlayerAvatar,FieldDataSet,NpcModels (neu)}.cs`, `Field/Logic/CharacterGraphicsTable.cs` (neu), `Field/Editor/FieldShot.cs` (`CaptureAtFrameEnd`), `Render/Runtime/{GeneratedShaderLibrary,FieldRenderRig (neu)}.cs`, `Render/Editor/{GeneratedShaderSync,GeneratedShaderBuildSync (neu),RenderProjectSettings (neu)}.cs`, `Game/Runtime/SaveSlotService.cs` (`SavedPosition`), `scripts/shader_wrap.py`, `scripts/build_all.sh`, `unity/ProjectSettings/GraphicsSettings.asset`, Tests `FieldFidelityTests`, `SavedPositionTests`, `test_shader_wrap.py`.
+`Field/Runtime/{FieldController,FieldNpcView,PlayerAvatar,FieldDataSet,NpcModels (new)}.cs`, `Field/Logic/CharacterGraphicsTable.cs` (new), `Field/Editor/FieldShot.cs` (`CaptureAtFrameEnd`), `Render/Runtime/{GeneratedShaderLibrary,FieldRenderRig (new)}.cs`, `Render/Editor/{GeneratedShaderSync,GeneratedShaderBuildSync (new),RenderProjectSettings (new)}.cs`, `Game/Runtime/SaveSlotService.cs` (`SavedPosition`), `scripts/shader_wrap.py`, `scripts/build_all.sh`, `unity/ProjectSettings/GraphicsSettings.asset`, tests `FieldFidelityTests`, `SavedPositionTests`, `test_shader_wrap.py`.
 
-## 11. Lücken
+## 11. Gaps
 
-1. Farbkorrektur-LUT, Tiefenschärfe, HDR-Bloom; Wasserfarbe gegen Referenz.
-2. Objekt-Platzierungen (Index ≥ 142) und Pokémon-Begleiter bleiben Marker.
-3. NPC-Animationen: nur Ruhe; Laufmuster, Blickrichtungs-Animation fehlen.
-4. Player- und iPad-Messung der neuen Standardeinstellung (Shader in `Resources`, Tier-Fix) stehen aus; erster Mac-Player-Test durch den Hauptagenten.
-5. Zweites Referenzbild (anderes Pokécenter) ungeklärt.
-6. Die Nachbearbeitung läuft nur mit eigener Kamera; in der Spielszene (Kamera mit Oberfläche) ist sie aus (Compositor-Trennung fehlt).
+1. Color grading LUT, depth of field, HDR bloom; water color versus reference.
+2. Object placements (index ≥142) and Pokémon companions remain markers.
+3. NPC animation: idle only; movement patterns and facing-direction animation are missing.
+4. Player/iPad measurements of new defaults (shaders in `Resources`, tier fix) pending; first Mac player test by main agent.
+5. Second reference image (different Pokémon Center) unresolved.
+6. Post-processing runs only on own camera; disabled in game scene (camera with UI) because compositor separation is missing.

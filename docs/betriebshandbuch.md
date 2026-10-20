@@ -1,103 +1,103 @@
-# Betriebshandbuch (Wiederaufnahme ohne Gesprächsverlauf)
+# Operations Manual (Resume Without Conversation History)
 
-Stand: 2026-10-19 17:20. Ergänzt `docs/arbeitsstand-2026-10-19.md` (Technik, Messwerte, Entscheidungen). Dieses Dokument hält fest, was **nicht** in den Technikdokumenten steht: Arbeitsregeln, Befehle, Spielstand-Verteilung, Agenten- und Todo-Stand, unbelegte Annahmen und die Reihenfolge nach einem Neustart der Sitzung.
+Status: 2026-10-19 17:20. Complements `docs/arbeitsstand-2026-10-19.md` (technical details, measurements, decisions). This document records what is **not** in the technical docs: work rules, commands, save distribution, agent/todo status, unsupported assumptions, and the order of work after restarting a session.
 
-## 1. Arbeitsregeln des Nutzers (gelten dauerhaft für dieses Projekt)
+## 1. User Work Rules (Apply Permanently to This Project)
 
-| Bereich | Regel |
+| Area | Rule |
 |---|---|
-| Rechte | Kein `sudo`, keine Umgehungen. Was Admin-Rechte braucht, wird als Installationsliste an den Nutzer gegeben. Plattenscan verboten (nur Repo und bekannte Ordner anfassen). |
-| Ton | Früher verboten, jetzt freigegeben (Nutzer, 2026-10-19): Ton wird erforscht und darf umgesetzt und getestet werden (Todo `rc-audio`). Bis dahin sind die Audiodienste stumme Stummel. |
-| Git | Commit nur mit der Identität des Nutzers (`Veemyu`), **kein Co-Author-Trailer**, nach jedem Commit `git push` (origin/main). Der Pre-Commit-Hook führt `scripts/repo_check.py` aus. Nur gezielt `git add <Datei>`, nie `-A`. |
-| Repo-Inhalt | Nie Spieldaten, Keys, Dumps, erzeugten Code, Saves, Screenshots, Team-ID. Erzeugtes C und Binaries bleiben unter `work/`. Fremdprojekte nur als Klon in `research/` (gitignored), Zusammenfassungen in eigenen Worten, maschinell übersetzter Spielcode wird nie committet. Team-ID nur in `work/local.env`. |
-| Dateien ändern | Repo-Dateien nur mit `edit`/`create`, nicht per `sed -i`, Heredoc oder Python-Schreibskript. Prozesse nur mit `kill <PID>` beenden, kein `pkill`/`killall`. Lange Läufe: `nohup`/`setsid` mit Logdatei. |
-| Sprache | Dokumente und Antworten auf Deutsch, UTF-8 mit ä ö ü ß (keine Umschreibung). Code-Kommentare kurz, nur wo nötig. Antworten kurz. |
-| Modelle | Nicht mit Kanonen auf Spatzen schießen: kleine Aufgaben (Läufe, Messungen, Sichtung, Doku) an `claude-haiku-5.5` oder `gpt-6-luna`; Fehlersuche und zentraler Code an Sonnet. Höchstens zwei große Agenten gleichzeitig. Agenten committen nie. |
-| Platz | Mac: mindestens 15 GB frei halten (zuletzt ca. 36 GB). Bei weniger stoppen und melden. |
-| Strategie | Unity-Rebuild ist deprecated (Entscheidung 4, `unity/DEPRECATED.md`): keine weitere Arbeit, nur Referenz. Es gibt einen Strang, die Rekompilation. Nicht drei Dinge parallel entwickeln. |
-| Ryzen | Nur über `ssh <RZ_HOST>` (Host steht in `work/local.env` als `RZ_HOST`, nicht im Repo), nur unter `~/xnu-recomp` (und Ryujinx-Screenshots lesen), kein sudo, kein Internet. Tasten nur an Ryujinx senden (`ryzen_keys.py`, Fokusprüfung); Bewegungs- und Menütasten erst nach Freigabe des Nutzers. |
+| Permissions | No `sudo` or workarounds. Anything requiring admin rights is given to the user as an installation list. Whole-disk scan prohibited (touch only repository and known directories). |
+| Audio | Previously prohibited, now allowed (user, 2026-10-19): audio may be investigated, implemented, and tested (Todo `rc-audio`). Until then audio services are silent stubs. |
+| Git | Commit only with user's identity (`Veemyu`), **no co-author trailer**, `git push` (origin/main) after each commit. Pre-commit hook runs `scripts/repo_check.py`. Add specific files only with `git add <file>`, never `-A`. |
+| Repository contents | Never include game data, keys, dumps, generated code, saves, screenshots, or team ID. Generated C and binaries stay under `work/`. Third-party projects only as clones in gitignored `research/`; summarize in your own words; never commit machine-translated game code. Team ID only in `work/local.env`. |
+| Editing files | Repository files only via `edit`/`create`, not `sed -i`, heredoc, or Python write scripts. Stop processes only with `kill <PID>`, never `pkill`/`killall`. Long runs: `nohup`/`setsid` with a log file. |
+| Language | Default repository documentation is English. German originals are retained as `.de.md` files. Use UTF-8; code comments are short and only when needed. |
+| Models | Use small models (`claude-haiku-5.5` or `gpt-6-luna`) for runs, measurements, inspection, docs; Sonnet for debugging and central code. At most two large agents at once. Agents never commit. |
+| Space | Keep at least 15 GB free on Mac (last observed about 36 GB). Stop and report if less. |
+| Strategy | Unity rebuild is deprecated (decision 4, `unity/DEPRECATED.md`): no further work, reference only. There is one track: recompilation. Do not develop three things in parallel. |
+| Ryzen | Only via `ssh <RZ_HOST>` (host is in `work/local.env` as `RZ_HOST`, not in repo), only under `~/xnu-recomp` (and read Ryujinx screenshots), no sudo, no internet. Send keypresses only to Ryujinx (`ryzen_keys.py`, verify focus); movement and menu keys only after user approval. |
 
-## 2. Befehls-Spickzettel (aus den Kopfzeilen der Skripte, Stand geprüft)
+## 2. Command Cheat Sheet (Checked Against Script Headers)
 
-macOS-Werkzeuge sind BSD-Varianten (`ls --time-style` und GNU-Optionen fehlen). Xcode über `DEVELOPER_DIR`.
+macOS tools are BSD variants (`ls --time-style` and GNU options are unavailable). Xcode is selected through `DEVELOPER_DIR`.
 
-| Zweck | Befehl |
+| Purpose | Command |
 |---|---|
-| Repo-Prüfung und Tests | `python3 scripts/repo_check.py` · `python3 -m unittest discover -s scripts/tests` (zuletzt 358–370 grün) |
-| Gesamtbau (Stufen) | `scripts/build_all.sh` (Stufen in `scripts/build_stages.py`; Unity-Stufen sind deprecated, Stufe `recomp-ios` fehlt noch) |
-| Mac, headless | `work/recomp/bdsp_boot --headless --save <Ordner> --timeout S --input-script "Sek:TASTE:Dauer,…" --screenshot-after N` (Bilder nach `BDSP_SHOT_DIR`); Symbole mit `BDSP_IL2SYM`/`work/recomp/il2sym.tsv` |
-| Mac-App | `work/builds/macos-recomp/BDSP.app` (`docs/recomp-macapp.md`) |
-| Spielstand in die Laufzeit | `scripts/recomp/rt-bdsp/install_save.sh` (Quelle `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`, Ziel `work/recomp/save`) |
-| iPad bauen/starten | `scripts/recomp/ios/deploy_ios.sh build|install|run [Sek]|data|save|shots|files`; Lauf-Umgebung per `RUN_ENV='{"BDSP_TIMEOUT":"40","BDSP_BT":"1","BDSP_WAIT":"1"}'`; Logs `work/builds/ipad-recomp-<Zeit>.log` (`docs/recomp-ios.md` Abschnitt 6) |
-| iPad-Spielstand | `scripts/ios_push_save.sh [--source DATEI] [--reimport] [--dry-run]` |
-| Ryujinx-Spielstand | `scripts/ryujinx_sync_save.sh status|push|pull|restore <tar>` (findet den Profilordner über `ExtraData0`) |
-| Ryujinx-Referenzbilder | `scripts/ryujinx_fetch_shots.sh`, `scripts/ryujinx_record.sh`, Tastenspieler `ryzen_keys.py` (auf dem Ryzen) |
-| Ryzen-Farm | `scripts/recomp/ryzen/sync.sh`, `build.sh [--neu|--detach|--jobs=N]`, `run_probe.sh`, `vk_*.sh`, Logs `~/xnu-recomp/logs/` |
-| Bildvergleich | `scripts/visual_auto.sh run|compare|accept [--ref ryujinx|recomp|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
-| QA-Szenarien | `scripts/recomp/qa/qa_run.sh <szenario>|--list|--report <ordner>` (Sperrdatei, Spielstand-Kopie aus `work/recomp/qa/save_base`) |
-| Unity (deprecated, nur falls je wieder nötig) | `scripts/unity_safe.sh open|restart|status|test|watch` liegt nur auf Branch `unity` (auf `main` fehlt es; `visual_auto.sh` braucht es für den Editor-Start); Tests nie im Play-Modus (hängt), vorher `editor_stop` |
+| Repository check and tests | `python3 scripts/repo_check.py` · `python3 -m unittest discover -s scripts/tests` (most recently 358–370 passing) |
+| Full build (stages) | `scripts/build_all.sh` (stages in `scripts/build_stages.py`; Unity stages deprecated, `recomp-ios` stage still missing) |
+| Mac, headless | `work/recomp/bdsp_boot --headless --save <directory> --timeout S --input-script "SEC:KEY:DURATION,…" --screenshot-after N` (images to `BDSP_SHOT_DIR`); symbols via `BDSP_IL2SYM`/`work/recomp/il2sym.tsv` |
+| Mac app | `work/builds/macos-recomp/BDSP.app` (`docs/recomp-macapp.md`) |
+| Install save into runtime | `scripts/recomp/rt-bdsp/install_save.sh` (source `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`, destination `work/recomp/save`) |
+| Build/start iPad | `scripts/recomp/ios/deploy_ios.sh build|install|run [SEC]|data|save|shots|files`; runtime environment via `RUN_ENV='{"BDSP_TIMEOUT":"40","BDSP_BT":"1","BDSP_WAIT":"1"}'`; logs `work/builds/ipad-recomp-<time>.log` (`docs/recomp-ios.md`, section 6) |
+| iPad save | `scripts/ios_push_save.sh [--source FILE] [--reimport] [--dry-run]` |
+| Ryujinx save | `scripts/ryujinx_sync_save.sh status|push|pull|restore <tar>` (finds profile directory via `ExtraData0`) |
+| Ryujinx reference images | `scripts/ryujinx_fetch_shots.sh`, `scripts/ryujinx_record.sh`, key driver `ryzen_keys.py` (on Ryzen) |
+| Ryzen farm | `scripts/recomp/linux/sync.sh`, `build.sh [--neu|--detach|--jobs=N]`, `run_probe.sh`, `vk_*.sh`; logs `~/xnu-recomp/logs/` |
+| Image comparison | `scripts/visual_auto.sh run|compare|accept [--ref ryujinx|recomp|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
+| QA scenarios | `scripts/recomp/qa/qa_run.sh <scenario>|--list|--report <directory>` (lock file, save copy from `work/recomp/qa/save_base`) |
+| Unity (deprecated, only if ever needed again) | `scripts/unity_safe.sh open|restart|status|test|watch` is only on branch `unity` (absent on `main`; `visual_auto.sh` needs it to start Editor); never test in Play mode (hangs), run `editor_stop` first |
 
-Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `BDSP_WAIT` (Warteberichte), `BDSP_WATCH`, `BDSP_ALIAS_BASE/SIZE`, `BDSP_APPMEM`, `BDSP_SHOT_DIR`, `BDSP_SCREENSHOT_*`.
+Known runtime helper variables: `BDSP_TIMEOUT`, `BDSP_BT` (backtrace), `BDSP_WAIT` (wait reports), `BDSP_WATCH`, `BDSP_ALIAS_BASE/SIZE`, `BDSP_APPMEM`, `BDSP_SHOT_DIR`, `BDSP_SCREENSHOT_*`.
 
-## 3. Standard-Testspielstand und Verteilung
+## 3. Standard Test Save and Distribution
 
-- **Inhalt:** Ryujinx-Spielstand des Nutzers von 2026-10-19: Stadt in Zone 24 (Fleetburg-Gegend), Spielzeit 69:08:16, 79.996 Geld, 179 Gegenstände, gleiche Trainer-ID. SaveData sha256 beginnt mit `0396a4a62735`, Backup `7a324b865ea9`. Stand vor der Siegesstraße ist archiviert unter `work/save-archive/`.
-- **Position:** `PLAYER_DATA` bei 0x79BF4/0x79BF8 = Gitterzelle (57, 729); `zoneID` bei 0x5634 = 24; `TownMapLocation` ist veraltet (Zone 416, nicht verwenden). Nächste Übereinstimmung mit dem Ryujinx-Bild: Zelle (58, 729), aber nur ein Bild als Beleg.
-- **Installiert in** (jeweils mit Sicherung des alten Stands):
+- **Contents:** user's Ryujinx save from 2026-10-19: city in Zone 24 (Canalave City area), play time 69:08:16, 79,996 money, 179 items, same trainer ID. SaveData SHA-256 starts `0396a4a62735`, backup `7a324b865ea9`. Save before Victory Road archived at `work/save-archive/`.
+- **Position:** `PLAYER_DATA` at 0x79BF4/0x79BF8 = grid cell (57, 729); `zoneID` at 0x5634 = 24; `TownMapLocation` is stale (Zone 416; do not use). Closest match to Ryujinx image is cell (58, 729), based on only one image.
+- **Installed at** (old save backed up each time):
 
-| Ziel | Pfad |
+| Target | Path |
 |---|---|
-| Mac Ryujinx-Ordner | `Ryujinx/bis/user/save/0000000000000006/{0,1}` |
-| Rekompilation Mac | `work/recomp/save/save_1` (über `install_save.sh`) |
-| Rekompilation Ryzen | `~/xnu-recomp/work/recomp/save/save_1` |
-| Ryujinx auf dem Ryzen | Profilordner `…0e/{0,1}` (Sicherung als tar in `~/xnu-recomp/backup/`) |
-| iPad | `Documents/SaveData.bin` (Ablage; wird beim nächsten „Weiter“ nach `Documents/Saves/save_1` importiert, Sicherung unter `work/ipad-save-backup/`) |
-| Unity-Editor (deprecated) | `~/Library/Application Support/DefaultCompany/xnu/Saves/Saves/main` |
+| Mac Ryujinx folder | `Ryujinx/bis/user/save/0000000000000006/{0,1}` |
+| Mac recompilation | `work/recomp/save/save_1` (via `install_save.sh`) |
+| Ryzen recompilation | `~/xnu-recomp/work/recomp/save/save_1` |
+| Ryujinx on Ryzen | profile directory `…0e/{0,1}` (backup as tar in `~/xnu-recomp/backup/`) |
+| iPad | `Documents/SaveData.bin` (drop-in; imported on next “Continue” to `Documents/Saves/save_1`, backup under `work/ipad-save-backup/`) |
+| Unity Editor (deprecated) | `~/Library/Application Support/DefaultCompany/xnu/Saves/Saves/main` |
 
-- **Falle, die schon einmal zuschlug:** Ryujinx legt je Profil einen eigenen Ordner an. Lag der Spielstand im Ordner `…04`, das aktive Profil las aber `…0e`, erschien „Select the language“. Der Skript-Weg über `ExtraData0` (Benutzer-ID in Bytes 8–23, jede 8-Byte-Hälfte byteweise umgedreht) wählt den richtigen Ordner.
-- Mit Spielstand überspringt das Spiel die Sprachauswahl: Titel nach ca. 22 s, „Weiter“, Stadt nach ca. 91 s.
+- **A previous pitfall:** Ryujinx creates a separate directory for each profile. If save was in `…04` but active profile read `…0e`, the game showed “Select the language.” Script path via `ExtraData0` (user ID in bytes 8–23, each 8-byte half byte-reversed) selects the correct directory.
+- With a save, game skips language selection: title after about 22 s, “Continue,” city after about 91 s.
 
-## 4. Stand der Agenten, offene Arbeit, Todos (Session-Daten, nicht im Repo)
+## 4. Agent Status, Open Work, Todos (Session Data, Not in Repository)
 
-**Laufend (beide Sonnet, harte Endzeit 19:00):**
-- `ap-recomp-qa`: Testharness `scripts/recomp/qa/`, `docs/recomp-qa.md`. Priorität 1 Wasser (Metal), danach Pokécenter-Innenraum (einfarbig blau mit dunklen Streifen). Verdacht: Render-Target-Texturen `_OpaqueDepthTexture`/`_ReflectionTex` werden im Metal-Pfad falsch gelesen.
-- `ap-recomp-ios`: `scripts/recomp/ios/`, `docs/recomp-ios.md`. Reproduktion des seltenen Startstillstands: Schleife über bis zu 8 Läufe mit `BDSP_TIMEOUT=40`, Abbruch mit „HANG“, wenn das letzte Metal-Bild unter 600 liegt (um 17:12 waren 22 Läufe im Log, keiner mit Absturzsignal, zwei ohne Filmstart). Bereits behoben: Selbstverklemmung in `block_current` (`kernel.c`), Audio-Endlosschleife (`services_audio.c`). Das iPad muss dabei entsperrt bleiben.
-- Alle weiteren Agenten (ca. 55) sind inaktiv. Das Modell der `ap-recomp-*`-Agenten ist der Standard der Umgebung (vermutlich Sonnet, nicht geprüft).
+**In progress (both Sonnet, hard deadline 19:00):**
+- `ap-recomp-qa`: test harness `scripts/recomp/qa/`, `docs/recomp-qa.md`. Priority 1: water (Metal), then Pokémon Center interior (solid blue with dark stripes). Suspected: render-target textures `_OpaqueDepthTexture`/`_ReflectionTex` are read incorrectly in Metal path.
+- `ap-recomp-ios`: `scripts/recomp/ios/`, `docs/recomp-ios.md`. Reproduce rare startup hang: loop up to 8 runs with `BDSP_TIMEOUT=40`, mark “HANG” if last Metal image is below 600 (at 17:12 there were 22 runs in log, none with crash signal, two without video start). Already fixed: self-deadlock in `block_current` (`kernel.c`), audio infinite loop (`services_audio.c`). iPad must remain unlocked.
+- All other agents (about 55) are inactive. Model for `ap-recomp-*` agents is environment default (probably Sonnet, not verified).
 
-**Nicht committet (gehört den laufenden Agenten, erst nach deren Bericht prüfen):** `scripts/recomp/ios/`, `scripts/recomp/qa/`, `docs/recomp-ios.md`, `docs/recomp-qa.md`, Änderungen an `rt-bdsp/kernel.c`, `rt-bdsp/nvn/nvn_glue.c`, `rt-bdsp/services_audio.c`, `rt32/cpu.h`. Ablauf: Bericht lesen, Tests und `repo_check.py` laufen lassen, Dateien einzeln `git add`, committen (nur Nutzer-Identität), pushen.
+**Uncommitted (belongs to active agents; review only after their report):** `scripts/recomp/ios/`, `scripts/recomp/qa/`, `docs/recomp-ios.md`, `docs/recomp-qa.md`, changes in `rt-bdsp/kernel.c`, `rt-bdsp/nvn/nvn_glue.c`, `rt-bdsp/services_audio.c`, `rt32/cpu.h`. Process: read report, run tests and `repo_check.py`, add files individually, commit (user identity only), push.
 
-**Todos (SQL der Sitzung, bei Verlust hier rekonstruierbar):**
-- Erledigt: 43 (Extraktion, Analyse, Unity-Slices, Rekompilation Gate 1/2, Bildprüfung).
-- Blockiert wegen Unity-Stilllegung (19): `ap-audio`, `ap-battle`, `ap-cutscenes-video`, `ap-effects-fidelity`, `ap-field`, `ap-ipad-perf`, `ap-localization`, `ap-packaging`, `ap-qa-ci`, `ap-resolution-framerate`, `ap-save-compat`, `ap-save-io`, `ap-settings-ui`, `ap-shaders`, `ap-ui`, `todo-ai`, `todo-astc`, `todo-host-cmds`, `todo-ui-screens`. Sie müssen für die Rekompilation neu zugeschnitten werden, falls noch relevant (Teile wie Auflösung/Bildrate, Packaging, Save-Import entstehen dort neu).
-- `ap-build-all` (läuft weiter, Ziel: Ein-Befehl-Bau, jetzt mit Stufe `recomp`/`recomp-ios`). `ap-shader-unity` und `ryzen-optional` waren veraltet und sind als erledigt/blockiert markiert.
+**Todos (session SQL, reconstructable here if lost):**
+- Complete: 43 (extraction, analysis, Unity slices, recompilation gates 1/2, image inspection).
+- Blocked due to Unity retirement (19): `ap-audio`, `ap-battle`, `ap-cutscenes-video`, `ap-effects-fidelity`, `ap-field`, `ap-ipad-perf`, `ap-localization`, `ap-packaging`, `ap-qa-ci`, `ap-resolution-framerate`, `ap-save-compat`, `ap-save-io`, `ap-settings-ui`, `ap-shaders`, `ap-ui`, `todo-ai`, `todo-astc`, `todo-host-cmds`, `todo-ui-screens`. Re-scope for recompilation if still relevant (resolution/frame rate, packaging, save import are being developed there).
+- `ap-build-all` (continues: one-command build, now with `recomp`/`recomp-ios` stages). `ap-shader-unity` and `ryzen-optional` were obsolete and marked complete/blocked.
 
-## 5. Unbelegtes und Annahmen (nicht als Tatsache weitergeben)
+## 5. Unsupported Claims and Assumptions (Do Not Repeat as Facts)
 
-- **Entscheidung des Nutzers (2026-10-19, nachmittags): keine Wiederholungsläufe mehr.** Der frühere Absturz kam vom VP8-Film, der läuft seit langem stabil. Den seltenen Startstillstand (0–40 Bilder, in den letzten Läufen ca. 4 von 9) jagen wir nicht weiter, er ist ein Randfall mit niedriger Priorität. Kein Agent startet dafür Schleifen auf dem iPad. Nur wieder aufnehmen, wenn er im echten Spielbetrieb stört.
-- Der **iPad-Absturz bei nicht übersprungenem Intro** ist nicht reproduziert; die Selbstverklemmung ist die belegte, aber nicht bewiesene Ursache. Ein einzelner Stillstand (2 Bilder) nach der Korrektur ist ungeklärt.
-- **32-Bit-Modell (`rebase32`) auf dem Gerät:** läuft laut `recomp-ios.md`, aber nur 1,98 GiB statt 3,14 GiB Gastspeicher; Langzeit und Kämpfe ungemessen.
-- **Bildvergleich:** Kameraversatz 28 px (vermutlich Timing), Zellenzuordnung (58,729) aus einem Bild, Zuordnung der Spieluhr zur Tageszeit in Ryujinx angenommen.
-- **FPSR/QC-Flags** der ARM64-Gleitkomma-Einheit sind nicht modelliert (`recomp-diff.md`).
-- **Vulkan/Linux:** Lauf mit Film und Spielstand nicht wiederholt; die Mac-Fixes (Ringpuffer für Vertex-/Indexdaten, Crop 1280×720 in 1920×1080) sind nicht überall übertragen. Gemeinsame Include-Zeilen in `nvn_glue.c` wurden aus dem `__APPLE__`-Block gezogen (Ryzen-Bau scheiterte vorher).
-- **Wasser-Ursache** ist eine Hypothese; Zielwerte der Region: Mittel RGB ≈ 87/127/210, Streuung ≈ 26/17/25, ≈ 0,3 % sehr helle Pixel (`docs/wasser.md`).
-- **Rechtslage** für eine öffentliche Weitergabe ist offen. opendpr verbietet generative KI: nur Referenz, kein Code übernommen. LASRecomp ist MIT (Hinweise in `shader_translator/NOTICE.md`).
-- Free-Team-Signatur der iPad-App läuft nach 7 Tagen ab; nur drei Apps mit kostenlosem Profil erlaubt (Messsonde wurde deshalb entfernt).
+- **User decision (2026-10-19 afternoon): no more repetition runs.** Earlier crash came from VP8 video, which has been stable for a long time. We will not pursue the rare startup hang (0–40 images, about 4 of 9 recent runs); it is a low-priority edge case. No agent should start iPad loops for this. Resume only if it affects real gameplay.
+- The **iPad crash when intro is not skipped** has not been reproduced; self-deadlock is a documented but unproven cause. One hang (2 images) after fix is unexplained.
+- **32-bit model (`rebase32`) on device:** reported working in `recomp-ios.md`, but with only 1.98 GiB rather than 3.14 GiB guest memory; long sessions and battles unmeasured.
+- **Image comparison:** camera offset 28 px (probably timing), cell mapping (58,729) from one image, mapping Ryujinx game clock to time of day assumed.
+- **ARM64 floating-point FPSR/QC flags** are not modeled (`recomp-diff.md`).
+- **Vulkan/Linux:** run with video and save not repeated; Mac fixes (vertex/index ring buffer, crop 1280×720 inside 1920×1080) not ported everywhere. Shared include lines in `nvn_glue.c` were moved out of `__APPLE__` block (Ryzen build had failed before).
+- **Water cause** is a hypothesis; target region values: RGB mean ≈ 87/127/210, standard deviation ≈ 26/17/25, ≈ 0.3% very bright pixels (`docs/wasser.md`).
+- **Legal status** of public distribution is unresolved. opendpr prohibits generative AI: reference only, no code reused. LASRecomp is MIT (notices in `shader_translator/NOTICE.md`).
+- Free-team iPad app signature expires after 7 days; only three apps with free profile allowed (measurement probe was therefore removed).
 
-## 6. Verlauf in Kürze
+## 6. Brief History
 
-1. 2026-10-18: Setup, Extraktion (Titel `0100000011d90000`, Update `…800`, Master-Key-Rev 0xC), Ghidra (166.095 Funktionen), Il2CppDumper, Save-Spec, Weg D (Unity 6.3) beschlossen.
-2. Unity-Rebuild mit Emulations-Orakel (763 Tests grün), Shader-Übersetzer, Player-Builds für macOS und iPad.
-3. 2026-10-19: Rekompilations-Spike, Gate 1 (Boot bis NVN), Gate 2 (Metal zeichnet, Film, Eingabe, Stadt mit 45 Bildern/s), Vulkan, bitgenauer Differenztest, Ryzen-Farm, Bildprüfung gegen Ryujinx.
-4. Nutzerbeobachtungen auf dem iPad: „sieht super aus“; Wasser falsch; Start brauchte 2–3 Versuche; Absturz, wenn das Intro nicht sofort mit A übersprungen wird. Das Intro-Video läuft per VP8-Software-Decoder (FFmpeg, `movie::`-HLE).
-5. Entscheidung 4 (16:57): Unity deprecated. Seitdem arbeiten zwei Agenten (QA/Wasser, iPad).
+1. 2026-10-18: setup, extraction (title `0100000011d90000`, update `…800`, Master Key Rev 0xC), Ghidra (166,095 functions), Il2CppDumper, save spec; chose path D (Unity 6.3).
+2. Unity rebuild with emulation oracle (763 tests passing), shader translator, macOS and iPad player builds.
+3. 2026-10-19: recompilation spike, Gate 1 (boot through NVN), Gate 2 (Metal renders, video, input, city at 45 fps), Vulkan, bit-exact differential test, Ryzen farm, image check against Ryujinx.
+4. User observations on iPad: “looks great”; water wrong; startup took 2–3 attempts; crash if intro is not immediately skipped with A. Intro video plays through VP8 software decoder (FFmpeg, `movie::` HLE).
+5. Decision 4 (16:57): Unity deprecated. Since then two agents are working (QA/water, iPad).
 
-## 7. Reihenfolge nach einem Neustart der Sitzung
+## 7. Order After Restarting a Session
 
-1. `git status`, `git log -3`, `git log origin/main -1`: ist alles gepusht?
-2. `docs/README.md` und `docs/arbeitsstand-2026-10-19.md` lesen, dann dieses Handbuch.
-3. Berichte von `ap-recomp-qa` und `ap-recomp-ios` abholen (Agentenliste); bei fehlenden Berichten die Dateien in Abschnitt 4 prüfen.
-4. Prüfen, ob noch ein iPad-Lauf oder ein Ryzen-Prozess läuft (`ps`, nur eigene PIDs beenden).
-5. Tests, `repo_check.py`, gezieltes `git add`, Commit, Push.
-6. Danach Abschnitt 8 des Arbeitsstands abarbeiten (Wasser, Innenraum, iPad-Start, QA-Szenarien, Touch/Controller, Vulkan-Lauf, Stufe `recomp-ios`).
+1. `git status`, `git log -3`, `git log origin/main -1`: is everything pushed?
+2. Read `docs/README.md` and `docs/arbeitsstand-2026-10-19.md`, then this manual.
+3. Get reports from `ap-recomp-qa` and `ap-recomp-ios` (agent list); if missing, inspect files in section 4.
+4. Check whether an iPad run or Ryzen process is still active (`ps`; stop only own PIDs).
+5. Run tests, `repo_check.py`, add specific files, commit, push.
+6. Then follow section 8 of project status (water, interior, iPad startup, QA scenarios, touch/controller, Vulkan run, `recomp-ios` stage).
 
-Außerhalb des Repos liegen nur: Sitzungs-Checkpoints (`~/.copilot/session-state/…/checkpoints/`), die Todo-Tabelle der Sitzung und gespeicherte Memories. Alles Übrige steht in `docs/`.
+Outside the repository there are only session checkpoints (`~/.copilot/session-state/…/checkpoints/`), session todo table, and saved memories. Everything else is in `docs/`.

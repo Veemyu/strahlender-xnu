@@ -1,8 +1,14 @@
+# Historischer Linux-Build-Bericht
+
+Dieser Bericht hält frühere Messungen fest. Aktuelle Paketvoraussetzungen und
+Befehle: [BUILD.md](BUILD.md), Abschnitt 6. Die früheren Header-Kopierwege sind
+nicht mehr der reguläre Build-Pfad.
+
 # Der Linux-Rechner (Ryzen) als Build- und Testfarm für die Rekompilation (`ap-recomp-farm`)
 
 Stand: 2026-10-19 (Endstand der Aufgabe `ap-recomp-farm`; die Messungen entstanden von 10:48 bis 12:20 Uhr, Generatorstand je Lauf siehe Abschnitte 4 und 5). Grundlage: `docs/recomp-spike-2.md` (Phase 2, Mac-Zahlen), `docs/recomp-gate1.md` (Arbeitsstand `ap-recomp-3`), `research/LASRecomp` (MIT, nur gelesen/zur Laufzeit importiert).
 
-**Kennzeichnung:** **gemessen** = mit den Skripten unter `scripts/recomp/ryzen/` am lokalen Dump auf dem Ryzen ermittelt (Rohzahlen in `~/xnu-recomp/logs/*.stats|*.times`, mit `fetch.sh holen` nach `work/recomp/ryzen/logs/` geholt). *vermutet* = Schluss ohne Test. Im Repo steht **kein** Spielinhalt: erzeugtes C, Objekte, Bibliotheken und NSOs liegen nur auf dem Ryzen (`~/xnu-recomp/work/`) bzw. unter `work/` (gitignoriert); hier stehen nur Hashes (Kurzform) und Größen.
+**Kennzeichnung:** **gemessen** = mit den Skripten unter `scripts/recomp/linux/` am lokalen Dump auf dem Ryzen ermittelt (Rohzahlen in `~/xnu-recomp/logs/*.stats|*.times`, mit `fetch.sh holen` nach `work/recomp/linux/logs/` geholt). *vermutet* = Schluss ohne Test. Im Repo steht **kein** Spielinhalt: erzeugtes C, Objekte, Bibliotheken und NSOs liegen nur auf dem Ryzen (`~/xnu-recomp/work/`) bzw. unter `work/` (gitignoriert); hier stehen nur Hashes (Kurzform) und Größen.
 
 ## 1. Ergebnis in Kürze
 
@@ -33,12 +39,12 @@ Mac ── fetch.sh status|holen|log|stop ◄── ssh/rsync (nur Logs und Zahl
 
 Jobs laufen entkoppelt (`setsid nohup … &`, Ein-/Ausgabe umgeleitet), überleben also das Ende der ssh-Verbindung. Zwei „Bahnen“ (`a` Erzeugen/Bauen, `b` Proben) verhindern, dass sich zwei schwere Jobs derselben Art überlappen; ein belegter Bahn-Slot ergibt eine Fehlermeldung mit dem Namen des laufenden Jobs. `build.sh` und `run_probe.sh` warten standardmäßig auf das Ende (Abfrage alle 5 s, Zeitlimit 90 min, zeigen die jeweils letzte Logzeile) oder kehren mit `--detach` sofort zurück. Der Ryzen wird nur per ssh/rsync benutzt; geschrieben wird ausschließlich unter `~/xnu-recomp`; `pip install --user` für `lz4`, `capstone`, `unicorn` (in `~/.local`); kein sudo, kein Ton, keine Grafik, kein Plattenscan.
 
-### 2.2 Skripte (`scripts/recomp/ryzen/`, alle neu; bestehende Skripte unverändert)
+### 2.2 Skripte (`scripts/recomp/linux/`, alle neu; bestehende Skripte unverändert)
 
 | Datei | Aufgabe |
 |---|---|
 | `lib.sh` | Mac-Seite: Einstellungen am Anfang (`RZ_HOST` = einziger Bezug auf den Rechner; Pflicht, steht in `work/local.env` (gitignoriert) oder in der Umgebung, nie im Repo; ohne Wert bricht das Skript ab, `RZ_DIR=xnu-recomp`, Bahnen, Zeitlimit), `rz_run`/`rz_dispatch`/`rz_wait`, deutsche Fehlermeldungen |
-| `sync.sh` | Mac → Ryzen, idempotent: nur `work/exefs/{rtld,main,sdk,subsdk0}` (keine NPDM, Keys, NCA, XCI, NSP, Saves), `research/LASRecomp` (ohne `.git`, `third_party`, `fonts`, `docs`), `scripts/recomp` (ohne `rt-bdsp`, außer `--mit-rt-bdsp`), `scripts/recomp_survey.py`; Schutz gegen Dateien > 2 MB in `scripts/recomp`; schreibt die sha256-Liste (`work/recomp/ryzen/exefs.sha256`), kopiert sie und prüft sie auf dem Ryzen (`setup.sh`) |
+| `sync.sh` | Mac → Ryzen, idempotent: nur `work/exefs/{rtld,main,sdk,subsdk0}` (keine NPDM, Keys, NCA, XCI, NSP, Saves), `research/LASRecomp` (ohne `.git`, `third_party`, `fonts`, `docs`), `scripts/recomp` (ohne `rt-bdsp`, außer `--mit-rt-bdsp`), `scripts/recomp_survey.py`; Schutz gegen Dateien > 2 MB in `scripts/recomp`; schreibt die sha256-Liste (`work/recomp/linux/exefs.sha256`), kopiert sie und prüft sie auf dem Ryzen (`setup.sh`) |
 | `build.sh` | Generator + Übersetzung + Link (Job `build`, Bahn a). Optionen `--neu`, `--nur-gen`, `--nur-compile`, `--tag=`, `--schwelle=`, `--jobs=`, `--sync`, `--detach`; `--inkrementell` misst Neubauten, `--las-runtime` baut den Linux-Pfad der LAS-Laufzeit |
 | `run_probe.sh` | Proben/Tests (Bahn b): `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `boot-las`, `bdsp`, `alle` |
 | `fetch.sh` | `status` (Bahnen, letzte Jobs, Last/RAM), `holen` (nur `*.log|stats|times|rc|sec`, höchstens 3 MB je Datei), `log <job>`, `stop <bahn>` |
@@ -136,7 +142,7 @@ Nicht übertragen: `main.npdm`, Schlüssel, NCA/XCI/NSP, RomFS, Saves, `third_pa
 
 ## 7. Gate-1-Laufzeit (`rt-bdsp`) auf dem Ryzen
 
-Von den neun Quelldateien der Laufzeit von `ap-recomp-3` (Stand 11:46) übersetzen **sieben unverändert** unter Linux; `kernel.c` und `main.c` brauchen Mach-Aufrufe an vier Stellen: Zeit (`mach_absolute_time`), Anhalten fremder Threads (`thread_suspend`/`resume`, Boehm-GC), Stackgröße (`pthread_get_stacksize_np`) und Speichermessung (`mach_vm_region`, `task_info`, `mach_vm_allocate` für die Fensterreservierung). `scripts/recomp/ryzen/compat/mach/*.h` ersetzt sie (nur für die Farm; kein Ersatz für die Semantik auf dem Mac), die Dateien selbst blieben unberührt (`-I scripts/recomp/ryzen/compat`). Ergebnis (Stand 11:46, `bdsp_boot` aus Laufzeit und den `c`-Objekten, 351 MB, `mkimages.sh` für die Bilder): die Laufzeit lädt `main`/`sdk`/`subsdk0`, führt die 115 SDK-Konstruktoren aus, legt den ersten Gast-Thread an (`CreateThread`), beantwortet `IParentalControlService` mit der Standardantwort, führt die 417 `init_array`-Einträge von `main` aus, der Gast erreicht **`nnMain`** (Rückverfolgung `nnMain+164` → `nn::fs::QueryMountRomCacheSize` → `CanMountRomForDebug` → `SendSyncRequest`) und die Laufzeit bricht dann mit `FATAL: RomFS-Ordner work/romfs nicht lesbar` ab (Lauf 11 s, 172 MB RSS; danach meldet der Absturzhandler ein SIGSEGV an Hostadresse 0x39 beim Beenden, Ursache nicht untersucht, vermutlich Aufräumpfad). **Das RomFS-Ende ist gewollt:** RomFS und `main.npdm` wurden nicht übertragen (Auftrag: keine Spielinhalte außer den NSOs). Weiter als bis zum ersten RomFS-Zugriff lässt sich Gate 1 auf dem Ryzen also nicht fahren, solange der Nutzer nicht ausdrücklich Daten freigibt.
+Von den neun Quelldateien der Laufzeit von `ap-recomp-3` (Stand 11:46) übersetzen **sieben unverändert** unter Linux; `kernel.c` und `main.c` brauchen Mach-Aufrufe an vier Stellen: Zeit (`mach_absolute_time`), Anhalten fremder Threads (`thread_suspend`/`resume`, Boehm-GC), Stackgröße (`pthread_get_stacksize_np`) und Speichermessung (`mach_vm_region`, `task_info`, `mach_vm_allocate` für die Fensterreservierung). `scripts/recomp/linux/compat/mach/*.h` ersetzt sie (nur für die Farm; kein Ersatz für die Semantik auf dem Mac), die Dateien selbst blieben unberührt (`-I scripts/recomp/linux/compat`). Ergebnis (Stand 11:46, `bdsp_boot` aus Laufzeit und den `c`-Objekten, 351 MB, `mkimages.sh` für die Bilder): die Laufzeit lädt `main`/`sdk`/`subsdk0`, führt die 115 SDK-Konstruktoren aus, legt den ersten Gast-Thread an (`CreateThread`), beantwortet `IParentalControlService` mit der Standardantwort, führt die 417 `init_array`-Einträge von `main` aus, der Gast erreicht **`nnMain`** (Rückverfolgung `nnMain+164` → `nn::fs::QueryMountRomCacheSize` → `CanMountRomForDebug` → `SendSyncRequest`) und die Laufzeit bricht dann mit `FATAL: RomFS-Ordner work/romfs nicht lesbar` ab (Lauf 11 s, 172 MB RSS; danach meldet der Absturzhandler ein SIGSEGV an Hostadresse 0x39 beim Beenden, Ursache nicht untersucht, vermutlich Aufräumpfad). **Das RomFS-Ende ist gewollt:** RomFS und `main.npdm` wurden nicht übertragen (Auftrag: keine Spielinhalte außer den NSOs). Weiter als bis zum ersten RomFS-Zugriff lässt sich Gate 1 auf dem Ryzen also nicht fahren, solange der Nutzer nicht ausdrücklich Daten freigibt.
 
 **Stand 12:18 und später:** `ap-recomp-3` hat `rt-bdsp/nvn/` (NVN-Schicht, Metal, SDL, `ui_run`, `nvn_glue_init`) für Gate 2 ergänzt. Das ist macOS-spezifisch und linkt unter Linux nicht; `run_probe.sh bdsp` bricht dann mit einer klaren Meldung ab (der Lauf des Standes 11:46 ist in `~/xnu-recomp/logs/bdsp-stand-1146.log` festgehalten). Die Farm bleibt für Generator, Bau und die Proben des CPU-Teils zuständig; die Laufzeit selbst ist ab Gate 2 Sache des Macs. Die vier Mach-Stellen (Zeit, Thread-Anhalten, Stack, Speicherbericht) hinter eine kleine Plattformschicht zu legen, wäre die Voraussetzung, den Boot-Teil weiter auf dem Ryzen laufen zu lassen.
 
@@ -200,14 +206,14 @@ Für die Rekompilationsfarm selbst fehlt **nichts** (alles vorhanden; `pip --use
 ## 12. Reproduktion
 
 ```
-scripts/recomp/ryzen/sync.sh                       # Eingaben + Skripte übertragen, Prüfsummen auf dem Ryzen prüfen
-scripts/recomp/ryzen/build.sh                      # Generator (c) + Übersetzen (10 Jobs) + Link, wartet auf das Ende
-scripts/recomp/ryzen/build.sh --nur-compile --tag=j3 --jobs=3 --schwelle=1000000   # Vergleich mit dem Mac-Spike
-scripts/recomp/ryzen/build.sh --inkrementell       # Neubauten nach kleinen Änderungen
-scripts/recomp/ryzen/build.sh --las-runtime        # Linux-Pfad der LAS-Laufzeit
-scripts/recomp/ryzen/run_probe.sh alle             # eh, eh-real, rebase32, gc, bench, boot, boot-las
-scripts/recomp/ryzen/run_probe.sh bdsp             # nach sync.sh --mit-rt-bdsp
-scripts/recomp/ryzen/fetch.sh status | holen | log <job> | stop a|b
+scripts/recomp/linux/sync.sh                       # Eingaben + Skripte übertragen, Prüfsummen auf dem Ryzen prüfen
+scripts/recomp/linux/build.sh                      # Generator (c) + Übersetzen (10 Jobs) + Link, wartet auf das Ende
+scripts/recomp/linux/build.sh --nur-compile --tag=j3 --jobs=3 --schwelle=1000000   # Vergleich mit dem Mac-Spike
+scripts/recomp/linux/build.sh --inkrementell       # Neubauten nach kleinen Änderungen
+scripts/recomp/linux/build.sh --las-runtime        # Linux-Pfad der LAS-Laufzeit
+scripts/recomp/linux/run_probe.sh alle             # eh, eh-real, rebase32, gc, bench, boot, boot-las
+scripts/recomp/linux/run_probe.sh bdsp             # nach sync.sh --mit-rt-bdsp
+scripts/recomp/linux/fetch.sh status | holen | log <job> | stop a|b
 ```
 
-Alle Auswertungszahlen (`*.stats`, `*.times`) liegen nach `fetch.sh holen` unter `work/recomp/ryzen/logs/` (gitignoriert).
+Alle Auswertungszahlen (`*.stats`, `*.times`) liegen nach `fetch.sh holen` unter `work/recomp/linux/logs/` (gitignoriert).

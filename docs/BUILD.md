@@ -1,6 +1,6 @@
 # Build guide: BDSP recompilation
 
-**Deutsche Fassung: [BUILD.de.md](BUILD.de.md)**
+German version: [BUILD.de.md](BUILD.de.md).
 
 ## 1. Overview
 
@@ -13,15 +13,16 @@ services and a graphics backend (Metal on macOS, Vulkan on Linux, Metal on iPadO
 - You need your own dump of the game: the base `.xci` (optional `.nsp` update) and your `prod.keys`
   (plus `title.keys`). Keep them outside the repository. The scripts only read them.
 - Everything the scripts produce goes to `work/`, which is git-ignored. Never commit `work/`.
-- Targets: macOS app (most complete), iPadOS app (no sound), Linux with Vulkan (work in progress, section 6).
+- Targets: macOS app (most complete), iPadOS app, Linux with Vulkan (work in progress, section 6).
 
 ## 2. Common prerequisites
 
 | Item | Needed for | Check |
 |---|---|---|
-| Xcode (in `/Applications/Xcode.app`), license accepted | macOS and iPadOS builds | `xcodebuild -version` |
+| Xcode 26 or newer (in `/Applications/Xcode.app`), including Icon Composer, license accepted | macOS and iPadOS builds and native Liquid Glass icon compilation | `xcodebuild -version` |
 | Command Line Tools | Compilers, `codesign`, `otool`, `iconutil` | `xcode-select -p` |
 | Python 3.9 or newer | `build_all.sh`, helper scripts | `python3 --version` |
+| Pillow in the selected Python environment | Deterministic original-icon conversion | `python3 -c 'from PIL import Image'` |
 | Homebrew packages `llvm`, `sdl3`, `ffmpeg`, `pkg-config` | macOS app (`recomp` stage) | `pkg-config --exists sdl3 libavcodec libavformat libavutil` |
 | Python packages `capstone`, `unicorn` in `tools/pydeps` | Code generator (`recomp` stage) | `ls tools/pydeps` |
 | `git`, `make`, `cc` | Stage `tools` (builds `hactool`) | `command -v git make cc` |
@@ -79,6 +80,10 @@ scripts/build_all.sh --only recomp --target macos
 
 Result: `work/builds/macos-recomp/BDSP.app` (arm64, Metal, ad hoc signed).
 
+Original icons and their language variants are generated only from user-provided
+game data. Artwork and generated assets remain under ignored `work/`.
+See [recomp-icons.md](recomp-icons.md) for extraction, selection, and platform styling.
+
 The first build takes about 28 minutes under load (measured, see `docs/recomp-macapp.md`). Later builds
 reuse the markers and are much faster (section 7).
 
@@ -111,7 +116,7 @@ BDSP_FPS=60 work/builds/macos-recomp/BDSP.app/Contents/MacOS/BDSP
 From a terminal the log stays on screen. From the Finder it goes to the log folder (`BDSP_LOG_STDOUT=1` forces
 terminal output). Configuration file, save data, and cache paths: see `docs/recomp-macapp.md`.
 
-Limits: no sound and no network. The first launch may need right-click → Open (Gatekeeper, ad hoc signature).
+Limits: no network. The first launch may need right-click → Open (Gatekeeper, ad hoc signature).
 
 ## 5. iPadOS app (`scripts/recomp/ios/deploy_ios.sh`)
 
@@ -156,87 +161,88 @@ Work in progress. Not playable yet. See section 6.4 for the known limits.
 
 ### 6.1 Requirements
 
-You run the commands on a Mac. A Linux x86-64 machine builds and runs the game in `~/xnu-recomp`.
-Set `RZ_HOST` in `work/local.env` (section 3) to the ssh alias of that machine.
+Use a Linux x86-64-v3 (AVX2) build host with a Vulkan-capable GPU and its driver.
+The Mac needs SSH and rsync, not Linux library headers copied from Homebrew.
+RZ_HOST in ignored work/local.env selects the host; never put a concrete alias,
+IP address, or username in versioned configuration.
 
-**Linux machine**
+Install development packages on Linux yourself. Scripts check them and do not
+install packages or download/copy third-party headers. Qt, SDL3, Vulkan, shaderc,
+and FFmpeg use installed system headers/libraries through pkg-config. No copied
+include-vk/ or deps/include/ fallback is used. Runtime-only packages are not enough.
 
-- x86-64 CPU with the `x86-64-v3` level (AVX2), because the build uses `-march=x86-64-v3`.
-- Vulkan loader and Vulkan driver. Tested GPU: NVIDIA GeForce RTX 2080 Ti with Vulkan 1.4.
-- `clang`.
-- Runtime libraries (needed to run; the build dependencies below are separate): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
-  `/usr/lib64/libshaderc_shared.so.1`.
-- For film playback: `libavformat.so.62`, `libavcodec.so.62`, `libavutil.so.60`. Optional: without them,
-  build with `BDSP_NO_MOVIE=1`.
-
-**Mac**
-
-- ssh with key authentication (no password prompt), `rsync`, `curl`.
-- Homebrew packages `vulkan-headers`, `sdl3`, `shaderc` (headers only).
-- Optional: Homebrew `ffmpeg` for the FFmpeg headers (see step 2 in section 6.2).
-
-#### Build dependencies
-
-The Qt host (menu bar and window) needs these packages on the Linux machine. Install them yourself. The scripts
-install nothing.
-
-| Item | Debian/Ubuntu (apt) | Fedora (dnf) | Arch Linux (pacman) |
+| Dependency | Debian/current Ubuntu | Fedora | Arch Linux |
 |---|---|---|---|
-| Qt 6 Widgets development files | `qt6-base-dev` | `qt6-qtbase-devel` | `qt6-base` |
-| CMake | `cmake` | `cmake` | `cmake` |
-| pkg-config | `pkg-config` | `pkgconf` | `pkgconf` |
-| Vulkan headers | `libvulkan-dev` | `vulkan-headers` | `vulkan-headers` |
-| SDL3 development files | `libsdl3-dev` | `SDL3-devel` | `sdl3` |
-| shaderc development files | `libshaderc-dev` | `shaderc-devel` | `shaderc` |
+| Qt 6 Widgets development | qt6-base-dev | qt6-qtbase-devel | qt6-base |
+| C/C++ tools, CMake, pkg-config | clang, build-essential, cmake, pkg-config | clang, gcc-c++, cmake, pkgconf-pkg-config | clang, base-devel, cmake, pkgconf |
+| Vulkan headers and loader development | libvulkan-dev | vulkan-headers, vulkan-loader-devel | vulkan-headers, vulkan-icd-loader |
+| SDL3 development | libsdl3-dev | SDL3-devel | sdl3 |
+| shaderc development | libshaderc-dev | libshaderc-devel | shaderc |
+| Vulkan Memory Allocator headers | libvulkan-memory-allocator-dev | VulkanMemoryAllocator-devel | vulkan-memory-allocator (AUR, not official) |
+| FFmpeg development | libavcodec-dev, libavformat-dev, libavutil-dev | libavcodec-free-devel, libavformat-free-devel, libavutil-free-devel | ffmpeg |
+| Icon conversion | python3-pil | python3-pillow | python-pillow |
 
-Install command per distribution:
-
-```sh
-# Debian/Ubuntu
-sudo apt install qt6-base-dev cmake pkg-config libvulkan-dev libsdl3-dev libshaderc-dev
-```
+These are user-run commands; use your normal administrator workflow:
 
 ```sh
 # Fedora
-sudo dnf install qt6-qtbase-devel cmake pkgconf vulkan-headers SDL3-devel shaderc-devel
+dnf install clang gcc-c++ cmake pkgconf-pkg-config qt6-qtbase-devel vulkan-headers vulkan-loader-devel SDL3-devel libshaderc-devel VulkanMemoryAllocator-devel libavcodec-free-devel libavformat-free-devel libavutil-free-devel python3-pillow
+
+# Debian / sufficiently recent Ubuntu
+apt install clang build-essential cmake pkg-config qt6-base-dev libvulkan-dev libsdl3-dev libshaderc-dev libvulkan-memory-allocator-dev libavcodec-dev libavformat-dev libavutil-dev python3-pil
+
+# Arch official packages; VMA must be installed separately after reviewing its AUR package
+pacman -S --needed clang base-devel cmake pkgconf qt6-base vulkan-headers vulkan-icd-loader sdl3 shaderc ffmpeg python-pillow
 ```
 
-```sh
-# Arch Linux
-sudo pacman -S qt6-base cmake pkgconf vulkan-headers sdl3 shaderc
-```
+SDL3/VMA availability depends on the Debian/Ubuntu release. Do not replace missing
+packages with automatic repository downloads. On Fedora-derived distributions,
+use development packages matching the FFmpeg provider already installed; do not
+blindly replace or mix providers. BDSP_NO_MOVIE=1 explicitly omits movie support
+and its FFmpeg requirement, but the intro path is then unsupported.
 
-Verification status: the Arch Linux names (`qt6-base`, `sdl3`, `shaderc`, `vulkan-headers`, `cmake`) are
-confirmed in the official `extra` repository. The Debian names (`qt6-base-dev`, `libsdl3-dev`, `libshaderc-dev`,
-`libvulkan-dev`) are confirmed on packages.debian.org (stable). The Fedora `qt6-qtbase-devel` is confirmed in the
-Fedora package index; `SDL3-devel`, `shaderc-devel` and `vulkan-headers` are the names in use on the Fedora build
-host (`docs/recomp-ryzen.md`, section 11). Ubuntu uses the Debian names; whether `libsdl3-dev` exists depends on the
-release (not verified for every Ubuntu version).
-PySide6 is not in the table. Whether the Qt 6 packages above are enough for PySide6 is not verified.
+Native Wayland also needs the Qt platform plugin (Debian qt6-wayland; Fedora
+qt6-qtwayland). X11 uses the xcb plugin and may need its distribution's cursor
+support package. No Qt private-devel headers, PySide6, or vendored Qt is required.
 
-The Qt host runs as an X11 client (`QT_QPA_PLATFORM=xcb`). Under Wayland it runs through Xwayland. The
-game window is embedded through X11: the host starts the game with `SDL_VIDEODRIVER=x11`.
+Verified primary package references:
+[Fedora Qt](https://packages.fedoraproject.org/pkgs/qt6-qtbase/qt6-qtbase-devel/),
+[Vulkan loader](https://packages.fedoraproject.org/pkgs/vulkan-loader/vulkan-loader-devel/),
+[SDL3](https://packages.fedoraproject.org/pkgs/SDL3/SDL3-devel/),
+[shaderc](https://packages.fedoraproject.org/pkgs/shaderc/libshaderc-devel/),
+[VMA](https://packages.fedoraproject.org/pkgs/VulkanMemoryAllocator/VulkanMemoryAllocator-devel/),
+[FFmpeg](https://packages.fedoraproject.org/pkgs/ffmpeg/).
+Debian lists [SDL3](https://packages.debian.org/forky/libsdl3-dev) and
+[VMA](https://packages.debian.org/sid/armhf/libvulkan-memory-allocator-dev).
+The Arch official package search does not list VMA; its AUR recipe is not an
+official Arch binary package and is never installed by these scripts.
 
 ### 6.2 Build and run
 
-Run these steps on the Mac, in this order:
+All host scripts now live under scripts/recomp/linux/. The legacy RZ_HOST/RZ_DIR
+environment variable names remain compatible; concrete values stay local.
 
-1. Copy the headers to the Linux machine (once): `scripts/recomp/ryzen/vk_sync_deps.sh`
-   - On the first run, the script downloads `vk_mem_alloc.h` from GitHub, unless it is already in
-     `work/recomp/deps-vk/`.
-2. Copy the sources and your own data (RomFS, `main.npdm`): `scripts/recomp/ryzen/vk_sync.sh --daten`
-   - If `work/recomp/img_gfx` is missing, the script prints the command to create it (`mkimages.sh`).
-   - Optional, for film playback: `scripts/recomp/ryzen/sync_deps.sh` copies the FFmpeg headers and the SDL3
-     headers from Homebrew to `~/xnu-recomp/deps/include`. Set `FFMPEG_PREFIX` if ffmpeg is not in
-     `/opt/homebrew/opt/ffmpeg`.
-3. Translate the four modules on the Linux machine into `~/xnu-recomp/work/recomp/obj4-c`:
-   `scripts/recomp/ryzen/build.sh` (host prerequisites: `docs/recomp-ryzen.md`).
-4. Build the Vulkan runtime: `scripts/recomp/ryzen/vk_build.sh` (result: `work/recomp/bdsp_boot_vk` on the Linux machine).
-5. Run without a window (default): `scripts/recomp/ryzen/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300`
-6. Fetch screenshots and logs to `work/recomp/ryzen/` on the Mac: `scripts/recomp/ryzen/vk_fetch.sh`
+1. Install the Linux development packages above. Ensure Python generator
+   dependencies lz4, capstone, and unicorn are installed as well.
+2. Copy sources and your own data: scripts/recomp/linux/vk_sync.sh --daten.
+   This transfers no keys or system libraries.
+3. Check installed dependencies: scripts/recomp/linux/check_deps.sh --qt.
+4. Generate/compile guest modules: scripts/recomp/linux/build.sh.
+5. Build the native in-process Qt host: scripts/recomp/linux/vk_build.sh --qt.
+   Result: work/recomp/bdsp_boot_vk_qt on the Linux machine.
+6. Launch with scripts/recomp/linux/vk_qt.sh and the session environment below.
+   This selects the in-process host when available.
 
-`--headless` needs no display. It renders into offscreen images. The screenshots are written to
-`work/recomp/shots/frame_NNNNN.png` on the Linux machine, and step 6 fetches them.
+For the separate-process X11 host, build with
+scripts/recomp/linux/vk_qt_build.sh and launch using BDSP_QT_PROCESS=1.
+That fallback embeds the SDL X11 window; it needs Xwayland on a Wayland desktop.
+The in-process host creates its own Vulkan surface and supports native Wayland
+or X11 without embedding a foreign window.
+
+For headless renderer checks use scripts/recomp/linux/vk_build.sh, then
+scripts/recomp/linux/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300.
+Fetch captures/logs with scripts/recomp/linux/vk_fetch.sh into work/recomp/linux/.
+No display is required for headless rendering. Generated code/data remain under work/.
 
 ### 6.3 Run with a window (Wayland)
 
@@ -244,7 +250,7 @@ A window opens on the desktop of the Linux machine. Pass the session variables o
 with the run. Get the user ID with `id -u` on the Linux machine. Without these variables no window can open.
 
 ```sh
-scripts/recomp/ryzen/vk_run.sh --tag=win XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
+scripts/recomp/linux/vk_run.sh --tag=win XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
   SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
 ```
 
@@ -255,7 +261,7 @@ Settings for window runs only (they have no effect with `--headless`):
 
 - Start size: `--window 1280x720` or `BDSP_WINDOW=1920x1080` (default 1280×720).
 - Frame rate: `BDSP_FPS=30`, `BDSP_FPS=60` or `BDSP_FPS=120`. Pass it after the script name, for example
-  `scripts/recomp/ryzen/vk_run.sh BDSP_FPS=60 --tag=win ...`.
+  `scripts/recomp/linux/vk_run.sh BDSP_FPS=60 --tag=win ...`.
 - MangoHud overlay (fps, frame time, CPU and GPU): `BDSP_MANGOHUD=1`. Needs the `mangohud` package on the
   Linux machine. It is needed only at run time, not for the build. Off by default.
 - Run time: `--timeout N` in seconds (default 120).
@@ -268,20 +274,27 @@ Keys in the window:
 
 X11 is not tested.
 
-### 6.3a Menu bar (in progress, Qt host)
+### 6.3a Qt menu bar and native Wayland
 
-A menu bar with File, Edit, View, Window and Help is in progress, as part of a Qt host. It is not delivered
-yet, and the Qt host is not in the repository. Use the keys in section 6.3 until then.
+The in-process Qt host supplies menus, keyboard input, pause, window sizes,
+frame-rate choices, and original-icon language selection. For native Wayland:
+
+```sh
+scripts/recomp/linux/vk_qt.sh XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland
+```
+
+Use QT_QPA_PLATFORM=xcb with a valid DISPLAY/XAUTHORITY for X11.
+Never commit concrete session IDs, authentication paths, or host aliases.
 
 ### 6.4 Known limitations
 
 - **Player character missing, vertex explosions, window fill:** fixed in the last test run (field scene with
   player character, NPCs and water; window fully filled). Not yet verified across sessions.
-- **Texture outside the guest window:** the runtime logs `[vk] Textur außerhalb des Gastfensters` and skips
-  the upload (guard in `textures.c`). Effect on the picture not verified. Open.
+- **Texture outside the guest window:** the runtime logs `[vk] Textur außerhalb des Gastfensters`
+  (“texture outside the guest window”) and skips the upload (guard in `textures.c`). Effect on the picture not verified. Open.
 - **Rare hangs on the loading screen:** open. Cause not known.
-- **FFmpeg header version:** not matched to the runtime libraries yet. If film playback fails, build with
-  `BDSP_NO_MOVIE=1`.
+- FFmpeg headers/libraries now come from matching installed development packages.
+  A new package-only full build must still be verified after the host prerequisites are installed.
 - **Frame rate:** `BDSP_FPS` caps the frame rate (30, 60, 120). Measured in a window only; not verified across sessions.
 - No sound. Input state is not reported. Compute workloads are not supported.
 - Windows is not supported. X11 and full screen (F11) are not tested.
@@ -334,15 +347,15 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 
 | Symptom | Cause and fix |
 |---|---|
-| `NVN-Stempel passt nicht` (from `prepare.sh --check`) | The copy in `work/recomp/nvn-src` is out of date. Run `scripts/recomp/rt-bdsp/nvn/prepare.sh`. Normal builds do this automatically. |
+| `NVN-Stempel passt nicht` (“NVN stamp does not match”; from `prepare.sh --check`) | The copy in `work/recomp/nvn-src` is out of date. Run `scripts/recomp/rt-bdsp/nvn/prepare.sh`. Normal builds do this automatically. |
 | Build uses old NVN code | `NVN_KEEP=1` is set, so `prepare.sh` was skipped. Unset it or run `prepare.sh`. |
-| `Marker passt, übersprungen` / stage skipped | Inputs did not change. Use `--force` to rebuild. |
-| `work/exefs/main fehlt` (exit 10) | Run stage `extract` first. |
+| `Marker passt, übersprungen` (“marker matches, skipped”) / stage skipped | Inputs did not change. Use `--force` to rebuild. |
+| `work/exefs/main fehlt` (“work/exefs/main is missing”; exit 10) | Run stage `extract` first. |
 | Not enough disk space (exit 8) | Free space or lower the requirement with `--min-free-gb N`. The macOS build needs tens of GB. |
 | Compile fails (exit 4), memory error | Use `--recomp-jobs 2`. Check `work/logs/recomp-compile.log`. |
-| `RZ_HOST fehlt` | Add `RZ_HOST=<RZ_HOST>` to `work/local.env`, or export it. |
-| `… ist über den ssh-Alias … nicht erreichbar` | Test with `ssh <RZ_HOST> true`. The host must be on, and key authentication must work. |
-| `Kein verbundenes, entsperrtes iPad gefunden.` | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
+| `RZ_HOST fehlt` (“RZ_HOST is missing”) | Add `RZ_HOST=<RZ_HOST>` to `work/local.env`, or export it. |
+| `… ist über den ssh-Alias … nicht erreichbar` (“… is not reachable via the SSH alias …”) | Test with `ssh <RZ_HOST> true`. The host must be on, and key authentication must work. |
+| `Kein verbundenes, entsperrtes iPad gefunden.` (“No connected, unlocked iPad found.”) | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
 | Build fails in `xcodebuild` (signing) | Read `work/builds/ios-recomp-xcodebuild.log`. Set `TEAM_ID` and sign in with your account in Xcode. |
 | macOS app blocked on first start | Right-click the app, then Open. |
 

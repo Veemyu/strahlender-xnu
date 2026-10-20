@@ -1,155 +1,94 @@
-# Cpp2IL-Bewertung (BDSP-Dump, ARM64-NSO)
+# Cpp2IL Assessment (BDSP Dump, ARM64 NSO)
 
-Stand: 2026-10-18. Frage: Kann Cpp2IL aus `work/exefs/main` + `global-metadata.dat`
-lesbare C#-Rümpfe rekonstruieren, die unseren Ghidra-Pseudocode ersetzen oder ergänzen?
+Status: 2026-10-18. Question: can Cpp2IL reconstruct readable C# method bodies from `work/exefs/main` + `global-metadata.dat` to replace or supplement our Ghidra pseudocode?
 
-**Kurzfazit:** Nein, nicht als Ersatz. Cpp2IL liefert für alle Methoden *formal* einen Rumpf,
-aber die Rümpfe sind für die Save-Logik größtenteils unbrauchbar (statische Felder, Feldzugriffe
-und viele Aufrufe fehlen). Als **Ergänzung** ist der ISIL-Dump nützlich (aufgelöste
-Methodennamen, Parameter, Feldnamen).
+**Short answer:** Not as a replacement. Cpp2IL produces a body *formally* for every method, but most are useless for save logic (static fields, field accesses, and many calls are missing). As a **supplement**, the ISIL dump is useful (resolved method names, parameters, field names).
 
-## Eingaben und Aufbau
+## Inputs and Setup
 
-| Punkt | Wert |
+| Item | Value |
 |---|---|
-| Binary | `work/exefs/main` (NSO, unverändert) |
-| Metadata | `work/romfs/Data/Managed/Metadata/global-metadata.dat`, von Cpp2IL als v24.5 erkannt |
+| Binary | `work/exefs/main` (NSO, unchanged) |
+| Metadata | `work/romfs/Data/Managed/Metadata/global-metadata.dat`, detected by Cpp2IL as v24.5 |
 | Unity | 2019.4.27 (`--force-unity-version 2019.4.27`) |
-| Aufruf | `--force-binary-path`, `--force-metadata-path`, `--force-unity-version`, `--output-as <Format>` |
-| Ausgabe | `work/cpp2il/{il_recovery,diffable-cs,isil}`, Logs `work/cpp2il/run-*.log` |
+| Invocation | `--force-binary-path`, `--force-metadata-path`, `--force-unity-version`, `--output-as <Format>` |
+| Output | `work/cpp2il/{il_recovery,diffable-cs,isil}`, logs `work/cpp2il/run-*.log` |
 
-## Installation: Stolpersteine
+## Installation: Pitfalls
 
-1. Der Pre-Release-Asset `Cpp2IL-2022.1.0-pre-release.21-OSX-ARM64` (nach `tools/Cpp2IL/`) wird von macOS
-   mit `Killed: 9` beendet, weil das Binary nicht signiert ist (Quarantäne-Attribut war nicht
-   gesetzt, nur `com.apple.provenance`). `codesign --force --sign -` auf genau dieser Datei
-   behebt das; `--help` läuft danach.
-2. **Der Lauf auf unserem NSO scheitert mit diesem Release.** Ausnahme
-   `NSO: Address 0x2CF6A30 is not present in any of the segments`: Die letzte Methode am Ende
-   von `.text` (0x2CF6A00) wird bis zur Segmentgrenze und darüber hinaus disassembliert. Der
-   Fehler liegt in Cpp2IL, nicht in unseren Daten (Pre-Release 21 ist der neueste Release;
-   der Fix für die Grenzbehandlung steht nur auf `master`).
-3. Abhilfe: `master` (b5ad444) geklont und mit `dotnet build -c Release -f net10.0` nach
-   `tools/Cpp2IL/build/` gebaut (.NET 10 SDK ist vorhanden). Danach scheiterte derselbe Fall noch
-   einmal im Pfad „unmanaged Funktion“ (liest ohne Segmentprüfung weiter bis zum ersten `B`).
-   **Lokaler Ein-Zeilen-Patch** in `NewArm64Utils.cs` (Abbruch an der Segmentgrenze), liegt
-   nur unter `tools/Cpp2IL/src`. Der 2022.0.7-Stable wurde nicht probiert, da älter.
-   Das ist ein wichtiger Punkt für jeden Folgeeinsatz: ohne eigenen Build läuft es nicht.
-4. Für die Ansicht der `dll_il_recovery`-DLLs wurde `ilspycmd` 11.1 lokal nach `tools/ilspy/`
-   installiert (`dotnet tool install --tool-path`).
+1. macOS terminates prerelease asset `Cpp2IL-2022.1.0-pre-release.21-OSX-ARM64` (under `tools/Cpp2IL/`) with `Killed: 9` because the binary is unsigned (quarantine attribute was absent; only `com.apple.provenance` was set). `codesign --force --sign -` on that exact file fixes it; `--help` then runs.
+2. **This release fails on our NSO.** Exception: `NSO: Address 0x2CF6A30 is not present in any of the segments`: the last method at end of `.text` (0x2CF6A00) is disassembled up to and beyond the segment boundary. This is a Cpp2IL bug, not our data (prerelease 21 is newest release; boundary fix is only on `master`).
+3. Workaround: cloned `master` (b5ad444) and built with `dotnet build -c Release -f net10.0` into `tools/Cpp2IL/build/` (.NET 10 SDK is available). Same case then failed again in the “unmanaged function” path (reads past segment without checking until first `B`). **Local one-line patch** to `NewArm64Utils.cs` (stop at segment boundary), only under `tools/Cpp2IL/src`. Did not try 2022.0.7 stable because it is older. Important for future use: it does not run without a custom build.
+4. For viewing `dll_il_recovery` DLLs, installed `ilspycmd` 11.1 locally under `tools/ilspy/` (`dotnet tool install --tool-path`).
 
-## Messwerte
+## Measurements
 
-| Format | Laufzeit | Peak-RSS | Ausgabegröße |
-|---|---|---|---|
-| `dll_il_recovery` | 24 s | 2,4 GB | 38 MB (DLLs) |
-| `diffable-cs` | 11 s | 2,3 GB | 32 MB |
-| `isil` | 36 s | 2,4 GB | 334 MB |
-| ILSpy-Dekompilat von Assembly-CSharp.dll (Hilfsschritt) | 31 s | 2,4 GB | 106 MB, 3764 `.cs`-Dateien |
+| Format | Runtime | Peak RSS | Output size |
+|---|---:|---:|---:|
+| `dll_il_recovery` | 24 s | 2.4 GB | 38 MB (DLLs) |
+| `diffable-cs` | 11 s | 2.3 GB | 32 MB |
+| `isil` | 36 s | 2.4 GB | 334 MB |
+| ILSpy decompilation of Assembly-CSharp.dll (helper step) | 31 s | 2.4 GB | 106 MB, 3,764 `.cs` files |
 
-Das 6-GB-Limit wurde nie erreicht; Platz auf dem Datenvolume nach den Läufen: 76 GB frei.
+6-GB limit was never reached; free space on data volume after runs: 76 GB.
 
-Methodenzahlen:
+Method counts:
+- Metadata: 11,812 types; Cpp2IL assigned 71,155 code pointers to method definitions (Assembly-CSharp: 48,084 pointers).
+- `dll_il_recovery` reports “100% decompiled (48,645 / 48,645).” This means only that a body was generated, not that it is correct. 6 methods were skipped as too large (static constructors for text lists/tables, e.g. `Pml.DebugViewTable::.cctor`, 540 KB).
+- `diffable-cs` contains **no** method bodies, only signatures with `{ }` and length comment (`PlayerWork.cs`: 1,818 lines, every method empty). Not a Ghidra replacement; useful only as a type/field overview with offsets.
+- Analysis of Assembly-CSharp ILSpy decompilation (script heuristic `work/cpp2il/stats.py`, counts 35,888 regular methods; property accessors and special forms omitted):
 
-- Metadata: 11 812 Typen; Cpp2IL ordnete 71 155 Code-Zeiger Methodendefinitionen zu
-  (Assembly-CSharp: 48 084 Zeiger).
-- `dll_il_recovery` meldet „100 % decompiled (48 645 / 48 645)“. Diese 100 % bedeuten nur „es wurde
-  ein Rumpf erzeugt“, nicht Korrektheit. 6 Methoden wurden als zu groß übersprungen
-  (statische Konstruktoren der Textlisten/Tabellen, z. B. `Pml.DebugViewTable::.cctor`, 540 KB).
-- `diffable-cs`: enthält **keine** Rümpfe, nur Signaturen mit `{ }` und Längenkommentar
-  (`PlayerWork.cs`: 1818 Zeilen, alle Methoden leer). Als Ersatz für Ghidra ungeeignet,
-  nur als Typ-/Feldübersicht mit Offsets brauchbar.
-- Auswertung des ILSpy-Dekompilats von Assembly-CSharp (Heuristik per Skript
-  `work/cpp2il/stats.py`, erfasst 35 888 reguläre Methoden; Property-Accessoren und einzelne
-  Sonderformen fallen heraus):
+| Category | Count | Share |
+|---|---:|---:|
+| Methods counted | 35,888 | 100% |
+| Empty body | 1,563 | 4.4% |
+| Body without placeholders (“clean”) | 9,998 | 27.9% |
+| Body with placeholders + real code | 23,519 | 65.5% |
+| Body made only of placeholders | 808 | 2.3% |
 
-| Kategorie | Anzahl | Anteil |
-|---|---|---|
-| Methoden erfasst | 35 888 | 100 % |
-| Rumpf leer | 1 563 | 4,4 % |
-| Rumpf ohne Platzhalter („sauber“) | 9 998 | 27,9 % |
-| Rumpf mit Platzhaltern + echtem Code | 23 519 | 65,5 % |
-| Rumpf nur aus Platzhaltern | 808 | 2,3 % |
+  Overall 330,241 `NoteDecompilerIssue` lines in 1.86 million code lines (about 18%). ILSpy also failed on 2 constructors (`INL1.PacketWriter/Reader`). “Clean” bodies are mostly small getters/setters and delegate stubs.
 
-  Insgesamt 330 241 `NoteDecompilerIssue`-Zeilen auf 1,86 Mio. Codezeilen (ca. 18 %).
-  ILSpy scheiterte zusätzlich an 2 Konstruktoren (`INL1.PacketWriter/Reader`).
-  „Sauber“ sind überwiegend kleine Getter/Setter und Delegat-Stubs.
+## Quality of Save Methods (PlayerWork)
 
-## Qualität bei den Save-Methoden (PlayerWork)
+All four bodies are non-empty. Line counts exclude comments.
 
-Nicht-leere Rümpfe: alle vier. Gezählt sind Codezeilen ohne Kommentare.
+| Method | Cpp2IL (`il_recovery`) | Placeholder lines | Real calls | Ghidra (`PlayerWork.c`) |
+|---|---:|---:|---:|---|
+| `SaveAsync` | 16 | 4 | 0 (only `DataSave`) | 18 lines, fully readable |
+| `LoadAsync` | 39 | 10 | 0 | 27 lines |
+| `DataSave` | 244 | 60 | 3 | 144 lines |
+| `VerifySaveData` | 927 | 115 | 4 | 167 lines |
 
-| Methode | Cpp2IL (il_recovery) | davon Platzhalter | echte Aufrufe | Ghidra (`PlayerWork.c`) |
-|---|---|---|---|---|
-| `SaveAsync` | 16 | 4 | 0 (nur `DataSave`) | 18 Zeilen, vollständig lesbar |
-| `LoadAsync` | 39 | 10 | 0 | 27 Zeilen |
-| `DataSave` | 244 | 60 | 3 | 144 Zeilen |
-| `VerifySaveData` | 927 | 115 | 4 | 167 Zeilen |
+Assessment in our own words:
+- **`SaveAsync`:** Cpp2IL correctly recognizes call `DataSave(isAsync: true, writeMain, writeBackup)` including parameter names from metadata. The rest is IL2CPP class initialization and static check (flag bit 1 and field at +0xE0), represented as “Unmanaged memory load” with constant 0. Ghidra shows same structure more concisely, including actual offsets and parameter link (`& 1`).
+- **`LoadAsync`:** body consists of initialization check, a tangle of `goto` labels, and two “Method not found” calls (addresses 0x2324910 / 0x2324AE0). Main logic (read save through `PlayerPrefsProvider<PlayerWork>`, flag `fromBackup`) is completely missing. Ghidra shows call `…PlayerWork___Load` and setting backup flag at field offset 0x829. Ghidra is clearly better here.
+- **`DataSave`:** named calls found: `FieldWalkingManager.UpdatePartnerPokeIndex`, `PlayReportManager.SaveRecordDataEvent`, `SystemTimeWork.GetSaveTime`. Static fields (`PlayerWork` singleton, instance fields) and field assignments (e.g. `writeMain`/`writeBackup` flags at 0x828/0x829 of `PlayerPrefsProvider` singleton) are **not** reconstructed; method reads like a sequence of zeros. Ghidra provides more useful structure.
+- **`VerifySaveData`:** 927 lines with 100 “Unmanaged memory load” and only 4 named calls; checksum/length logic is not understandable. Also IL comments “Expected Obj, but got I4”: type conflicts in generated IL.
+- Positive: ISIL renders `CustomSaveAsyncOperation` as `SaveSystem.SaveAsync(this._writeSrcBuffer, …Flags)` with field names; IL recovery only partially does so (recognizes `makeSaveDataHash(ref buf)`, not calls to special addresses).
 
-Bewertung in eigenen Worten:
+## Typical Failure Patterns
 
-- **`SaveAsync`:** Cpp2IL erkennt den Aufruf `DataSave(isAsync: true, writeMain, writeBackup)` korrekt
-  samt Parameternamen aus den Metadaten. Der Rest ist die IL2CPP-Klasseninitialisierung und der
-  Static-Check (Flag-Bit 1 und Feld bei +0xE0), der als Folge von „Unmanaged memory load“ mit
-  Konstante 0 erscheint. Ghidra zeigt dieselbe Struktur kompakter, inklusive
-  tatsächlicher Offsets und der Verknüpfung der Parameter (`& 1`).
-- **`LoadAsync`:** Der Rumpf besteht aus der Initialisierungsprüfung, einem Gewirr von `goto`-Sprungmarken
-  und zwei „Method not found“-Aufrufen (Adressen 0x2324910 / 0x2324AE0). Die
-  Hauptsache (Lesen der Save-Daten über `PlayerPrefsProvider<PlayerWork>`, Flag
-  `fromBackup`) fehlt vollständig. Ghidra zeigt den Aufruf `…PlayerWork___Load` und
-  das Setzen des Backup-Flags an Feldoffset 0x829. Hier ist Ghidra klar besser.
-- **`DataSave`:** Gefunden werden die benannten Aufrufe `FieldWalkingManager.UpdatePartnerPokeIndex`,
-  `PlayReportManager.SaveRecordDataEvent`, `SystemTimeWork.GetSaveTime`. Statische Felder
-  (`PlayerWork`-Singleton, Instanzfelder) und Feldzuweisungen (z. B. die Flags `writeMain`/`writeBackup`
-  an 0x828/0x829 des `PlayerPrefsProvider`-Singletons) werden **nicht** rekonstruiert; die Methode liest sich wie eine Folge
-  von Konstanten 0. Ghidra liefert hier die brauchbarere Gliederung.
-- **`VerifySaveData`:** 927 Zeilen mit 100 „Unmanaged memory load“ und nur 4 benannten
-  Aufrufen; die Prüfsummen-/Längenlogik ist nicht nachvollziehbar. Zusätzlich
-  die IL-Kommentare „Expected Obj, but got I4“: Typkonflikte im erzeugten IL.
-- Positiv: `CustomSaveAsyncOperation` wird im ISIL-Dump als
-  `SaveSystem.SaveAsync(this._writeSrcBuffer, …Flags)` mit Feldnamen wiedergegeben, im
-  IL-Recovery-Pfad dagegen nur teilweise (`makeSaveDataHash(ref buf)` wird erkannt, die
-  Aufrufe an die Spezialadressen nicht).
+1. `Unmanaged memory load: [address]` replaces every singleton or static-field read; value is treated as 0, so subsequent accesses (`->0x12F`, `->0xE0`) look constant.
+2. `Method not found @address`: calls to helper functions not mapped to metadata methods (e.g. IL2CPP runtime functions such as `il2cpp_codegen_initialize_method`, internal helpers, type initialization, marshalling).
+3. `Indirect call` (virtual/interface dispatch via class vtable) is not resolved.
+4. Loops full of `goto` and helper variables typed as `object` instead of actual types.
+5. Generic instantiations are only roughly resolved; `PlayerPrefsProvider<PlayerWork>` does not appear with type arguments.
 
-## Typische Fehlerbilder
+## Limits of This Assessment
 
-1. `Unmanaged memory load: [Adresse]` ersetzt jede Lesung eines Singletons oder statischen Felds; der
-   Wert wird als 0 behandelt, die Folgezugriffe (`->0x12F`, `->0xE0`) sehen wie Konstanten aus.
-2. `Method not found @Adresse`: Aufrufe an Hilfsfunktionen, die keiner Metadaten-Methode zugeordnet
-   sind (z. B. IL2CPP-Runtime-Funktionen wie `il2cpp_codegen_initialize_method`, interne Helfer,
-   Typinitialisierung, Marshalling).
-3. `Indirect call` (Virtual/Interface-Dispatch über Klassen-Vtable) wird nicht aufgelöst.
-4. `goto`-lastige Schleifen und `object`-getypte Hilfsvariablen statt echter Typen.
-5. Generische Instanziierungen werden nur grob aufgelöst; `PlayerPrefsProvider<PlayerWork>` taucht nicht
-   mit Typargumenten auf.
+- Statistics are a text heuristic over ILSpy output, not an exact metadata count; they cover about 74% of 48,645 methods (the remainder includes property accessors, operators, special forms).
+- Built `master` (b5ad444) with local patch, not a release; behavior may differ from `2022.1.0-pre-release.21`.
+- ISIL format was inspected only by sample (`PlayerWork`).
+- Game-code output is only under gitignored `work/cpp2il/` and is not copied into this document.
 
-## Einschränkungen dieser Bewertung
+## Recommendation
 
-- Die Statistik ist eine Textheuristik auf ILSpy-Ausgabe, keine exakte Metadaten-Zählung; sie erfasst
-  ca. 74 % der 48 645 Methoden (der Rest sind u. a. Property-Accessoren, Operatoren und
-  Sonderformen).
-- Gebaut wurde `master` (b5ad444) mit lokalem Patch, nicht der Release; das Verhalten kann sich von
-  `2022.1.0-pre-release.21` unterscheiden.
-- Das ISIL-Format wurde nur stichprobenhaft (`PlayerWork`) angesehen.
-- Spielcode-Ausgaben liegen nur unter `work/cpp2il/` (gitignored) und sind nicht in dieses
-  Dokument kopiert.
-
-## Empfehlung
-
-- **Für die Rekonstruktion der C#-Logik: Ghidra-Pseudocode bleibt die Hauptquelle.** Cpp2IL-`dll_il_recovery`
-  ist (Stand dieser Messung) kein Ersatz; es ist stark zerlückt, v. a. dort, wo die Logik über
-  statische Felder/Singletons und Feldzugriffe läuft, also bei der gesamten Save-Kette.
-- **Nützlich als Zusatz:**
-  - `diffable-cs` für Typen, Feldoffsets und Methodensignaturen samt Parameternamen
-    (ergänzt `dump.cs` von Il2CppDumper, das wir bereits haben).
-  - `isil` zum Querlesen: es löst direkte Aufrufe und Instanzfelder (`this._isMainSave`)
-    mit Namen auf, die in Ghidra als `param_1 + 0x…` erscheinen.
-- **Ablauf, falls wir es einsetzen:**
-  1. `tools/Cpp2IL/build/Cpp2IL` (selbstgebaut, mit Patch) mit `--output-as isil` und
-     `diffable-cs` laufen lassen (≈ 50 s, ≈ 2,4 GB).
-  2. Pro Zielmethode ISIL-Block und Ghidra-Funktion nebeneinander lesen; Offsets aus Ghidra,
-     Namen aus ISIL übernehmen.
-  3. Ergebnis in unsere Spec (`docs/save-spec-entwurf.md`) und Testvektoren überführen und mit
-     dem Save-Validator gegen echte Saves prüfen.
-  4. Bei Bedarf Cpp2IL-Version/Patch erneuern, sobald ein Release erscheint, der die
-     NSO-Segmentgrenze beherrscht.
+- **Ghidra pseudocode remains the primary source for reconstructing C# logic.** As of this measurement, Cpp2IL `dll_il_recovery` is not a replacement; it is badly fragmented, especially where logic uses static fields/singletons and field accesses—that is, throughout the save chain.
+- **Useful as a supplement:**
+  - `diffable-cs` for types, field offsets, and method signatures with parameter names (complements existing Il2CppDumper `dump.cs`).
+  - `isil` for cross-reading: resolves direct calls and instance fields (`this._isMainSave`) to names that appear in Ghidra as `param_1 + 0x…`.
+- **Workflow if used:**
+  1. Run `tools/Cpp2IL/build/Cpp2IL` (custom-built, patched) with `--output-as isil` and `diffable-cs` (about 50 s, about 2.4 GB).
+  2. Read each target method's ISIL block alongside Ghidra function; use offsets from Ghidra and names from ISIL.
+  3. Put result into our spec (`docs/save-spec-entwurf.md`) and test vectors; validate against real saves with save validator.
+  4. Update Cpp2IL version/patch when a release supports NSO segment boundaries.

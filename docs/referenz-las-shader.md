@@ -1,244 +1,244 @@
-# Referenz: Shader-Pipeline von LASRecomp und Übernahmeplan (Stand 2026-10-18)
+# Reference: LASRecomp Shader Pipeline and Adaptation Plan (as of 2026-10-18)
 
-Eigene Analyse des lokalen Klons `research/LASRecomp` (gitignored, nur gelesen; Commit `09f8e5e`, einziger Commit, Autor „Peiikai“). Alle Aussagen sind in eigenen Worten; Zitate nur als Datei- und Funktionsnamen mit Zeilen. Nichts aus `research/` wurde ins Repo kopiert, nichts committet.
-Markierung: **belegt** = im Code/Dokument/Messwert gelesen, *vermutet* = Schluss ohne Test.
+Independent analysis of the local clone `research/LASRecomp` (gitignored, read-only; commit `09f8e5e`, its only commit, author “Peiikai”). All statements are in our own words; references are limited to file and function names with line numbers. Nothing from `research/` was copied into the repository or committed.
+Labels: **verified** = read in code/documentation or measured; *inferred* = conclusion without a test.
 
-**Stand der Freigabe:** Der Nutzer hat die Übernahme von LASRecomp-Code (MIT) ausdrücklich erlaubt. Dieses Dokument beschreibt deshalb zusätzlich einen Übernahmeplan (Abschnitt 8 bis 11). Das Kopieren und Committen erledigt der Hauptagent.
+**Permission status:** The user explicitly approved adapting LASRecomp code (MIT). This document therefore also describes an adaptation plan (sections 8–11). The main agent handles copying and committing.
 
 ---
 
-## 1. Wie kommen die Guest-Shader in die Runtime (belegt)
+## 1. How Guest Shaders Reach the Runtime (verified)
 
-LASRecomp ist kein Emulator, sondern eine statische Rekompilation: Der Spielcode ruft NVN-Funktionen, die die Runtime selbst implementiert. Shader werden nicht aus Dateien gelesen, sondern aus dem Speicher des Spiels, sobald es sie an NVN übergibt.
+LASRecomp is not an emulator; it statically recompiles the game. Game code calls NVN functions implemented by the runtime. Shaders are not read from files: they are taken from the game's memory when the game passes them to NVN.
 
-| Schritt | Beleg | Befund |
+| Step | Evidence | Finding |
 |---|---|---|
-| Programm setzen | `runtime/nvn/objects.c:565-599` (`set_shaders`, `nvnProgramSetShaders`, `…Ext`) | Eintrag je Stufe: 64-Bit-Adresse des Codes und Zeiger auf die Control-Section. Schrittweite 16 Byte (Ext: 24, mit Debug-Hash). |
-| Stufe bestimmen | `objects.c:578-588` | Bits 10 bis 13 des ersten Worts des Programm-Headers (SPH, bei Code + 0x30): 1 Vertex, 5 Fragment, 4 Geometry, 2 Tess-Control, 3 Tess-Eval. Fehlt das Magic-Wort `0x12345678` am Codeanfang, gilt es als Compute. |
-| Container | `translate.c:1927-1940`, `shader.h:97` | Blob = NVN-Kopf (0x30 Byte, beginnt mit `0x12345678`), SPH (0x50 Byte, Grafik), danach Maxwell-Code ab Offset 0x80. Compute: Code direkt am Blobanfang, kein SPH. Code in Vierergruppen zu 64 Bit: ein Scheduling-Wort, drei Instruktionen. |
-| Control-Section | `objects.c:591-592`, `nvn.h:60-69`, `renderer.m:1346` | Dort liegen: Offset und Größe der „Compiler-Konstanten“ (`+0x700`, `+0x6FC`), bei Compute die Workgroup-Größe (`+0x748`). Die Compiler-Konstanten folgen dem Code im selben Blob und dienen zugleich als Obergrenze beim Instruktions-Scan. |
-| Ausgabe-Register | `translate.c:1933-1936` | Aus dem SPH werden nur die Ausgabemasken gelesen (Farbziele `+0x48`, Tiefe `+0x4C` Bit 1). Interpolations- und Eingabemasken des SPH werden **nicht** gelesen; sie ergeben sich aus den Instruktionen (IPA) und aus `vs_out_mask` des Vertex-Shaders. |
-| Konstantenpuffer | `renderer.m:610`, `renderer.m:1274-1313` (`bind_cbufs`) | Hardware-cbuf 0 = Treiberkonstanten (Storage-Buffer-Tabelle, Workgroup-Zahl), cbuf 1 = Compiler-Konstanten hinter dem Code, cbuf `k >= 3` = NVN-Uniform-Binding `k - 3` (`cbuf_base = 3`, per Umgebungsvariable änderbar). Puffer werden pro Draw in einen Ring kopiert (Snapshot). Maximal 18 cbufs (`shader.h:62-63`). |
-| Texturen | `translate.c:451-480` (`tex_slot`), `renderer.m:1098-1103`, `1176-1180` | Der TEX-Befehl trägt einen 13-Bit-Index in die Handle-Tabelle; Byte-Offset `index*4`, Slot = `(Offset - 0x20) / 8`. Ein 64-Bit-Handle enthält 20 Bit Texturindex (TIC) und 12 Bit Sampler (TSC) und wird im Texturpool des Spiels nachgeschlagen. Maximal 31 Texturen je Shader. Der Typ (1D/2D/3D/Cube/Array/Shadow) ergibt sich aus dem Befehl (Zielbits), bei reinen Größenabfragen erst aus dem späteren Sample („weak“). |
-| Attribute | `renderer.m:654-727`, `1613-1620`, `1830-1870` | Pro Vertex-Attribut wird nur die Art (Float/Int/UInt, `attr_kind`) in den Schlüssel übernommen; das Vertexformat selbst steckt im Metal-Vertex-Descriptor. Fragment-Eingänge: `vs_out_mask` des gerade verwendeten Vertex-Shaders. |
-| Zustände | `renderer.m:1613-1620` | `ShaderKey` = Attributarten, Render-Target-Arten, `depth_minus_one`, `flip_y`, `flip_x`, `vs_out_mask`, `glsl`. Ein Programm wird je (Code-Adressen, Schlüssel) einmal übersetzt. |
+| Bind program | `runtime/nvn/objects.c:565-599` (`set_shaders`, `nvnProgramSetShaders`, `…Ext`) | One entry per stage: 64-bit code address and pointer to the control section. 16-byte stride (24 for Ext, which includes a debug hash). |
+| Determine stage | `objects.c:578-588` | Bits 10–13 of the first word in the program header (SPH, at code + 0x30): 1 Vertex, 5 Fragment, 4 Geometry, 2 Tess-Control, 3 Tess-Eval. If the code does not start with magic word `0x12345678`, it is treated as Compute. |
+| Container | `translate.c:1927-1940`, `shader.h:97` | Blob = NVN header (0x30 bytes, starts with `0x12345678`), SPH (0x50 bytes for graphics), then Maxwell code from offset 0x80. Compute has no SPH and code starts at the beginning of the blob. Code is grouped in fours of 64-bit words: one scheduling word and three instructions. |
+| Control section | `objects.c:591-592`, `nvn.h:60-69`, `renderer.m:1346` | Contains the offset and size of “compiler constants” (`+0x700`, `+0x6FC`) and, for Compute, workgroup size (`+0x748`). Compiler constants follow the code in the same blob and also bound the instruction scan. |
+| Output registers | `translate.c:1933-1936` | Only output masks are read from SPH (color targets at `+0x48`, depth at bit 1 of `+0x4C`). SPH interpolation and input masks are **not** read; they are derived from instructions (IPA) and the vertex shader's `vs_out_mask`. |
+| Constant buffers | `renderer.m:610`, `renderer.m:1274-1313` (`bind_cbufs`) | Hardware cbuf 0 = driver constants (storage-buffer table, workgroup count); cbuf 1 = compiler constants after the code; cbuf `k >= 3` = NVN uniform binding `k - 3` (`cbuf_base = 3`, configurable by environment variable). Buffers are copied into a ring per draw (snapshot). Maximum 18 cbufs (`shader.h:62-63`). |
+| Textures | `translate.c:451-480` (`tex_slot`), `renderer.m:1098-1103`, `1176-1180` | TEX instruction carries a 13-bit index into the handle table; byte offset `index*4`, slot = `(offset - 0x20) / 8`. A 64-bit handle contains a 20-bit texture index (TIC) and 12-bit sampler (TSC), looked up in the game's texture pool. Up to 31 textures per shader. Type (1D/2D/3D/Cube/Array/Shadow) comes from the instruction's target bits; for size queries alone, it is inferred later from the sample (“weak”). |
+| Attributes | `renderer.m:654-727`, `1613-1620`, `1830-1870` | Only each vertex attribute's type (Float/Int/UInt, `attr_kind`) goes into the key; the vertex format itself is in the Metal vertex descriptor. Fragment inputs come from the active vertex shader's `vs_out_mask`. |
+| State | `renderer.m:1613-1620` | `ShaderKey` = attribute types, render-target types, `depth_minus_one`, `flip_y`, `flip_x`, `vs_out_mask`, `glsl`. A program is translated once per (code addresses, key) pair. |
 
-**Folgerung (belegt):** Die Schnittstelle von `translate.c` ist schmal: Eingabe = Blobzeiger + Obergrenze + Stufe + `ShaderKey`, Ausgabe = `ShaderInfo` mit Quelltext und Metadaten. Sie ist von der restlichen Runtime unabhängig (siehe 8).
+**Implication (verified):** The `translate.c` interface is narrow: input = blob pointer + upper bound + stage + `ShaderKey`; output = `ShaderInfo` with source and metadata. It is independent of the rest of the runtime (see section 8).
 
-## 2. Der Übersetzer `runtime/nvn/maxwell/translate.c` (2165 Zeilen, 126 KB) und `shader.h` (103 Zeilen)
+## 2. Translator: `runtime/nvn/maxwell/translate.c` (2,165 lines, 126 KB) and `shader.h` (103 lines)
 
-### 2.1 Struktur (belegt)
+### 2.1 Structure (verified)
 
-- **Decoder:** Eine lange `if/else`-Kette `emit_insn` (`translate.c:824-1624`), jede Instruktion über Muster `OPM(Wert, Maske)` auf das 64-Bit-Wort. Halbpräzisions-Befehle getrennt in `emit_half` (`:332`), Texturen in `emit_tex`/`emit_texs` (`:753`, `:672`). Keine Zwischendarstellung (kein SSA, keine Kontrollflussgraph-Analyse).
-- **Registerabbildung:** Alle 255 Register als `uint rN`, Prädikate P0..P6 als `bool pN`, `PT` = true, RZ = `0u`. Fließkomma über `as_type<float>` (MSL) bzw. `as_f/as_u` (GLSL). Carry-/Zero-/Sign-Flags als `cc/ccz/ccs` (nur wenn benutzt).
-- **Prädikate:** Jede Instruktion mit Guard wird in `if (pN) { … }` verpackt (`:824-840`).
-- **Kontrollfluss:** Ohne Sprünge linearer Code in `do { } while(false)`. Mit Sprüngen eine Zustandsmaschine `switch (pc)` in einer Schleife (Wächter 100000 Durchläufe), mit expliziten Stapeln für SSY, PBK, PCNT (je 16 Einträge). Unterstützt: BRA, SSY, PBK, PCNT, SYNC, BRK, CONT, BRX (Sprungtabelle, dann jedes Wort ein Ziel), EXIT, KIL. Das ist robust, aber nicht strukturiert; es führt zu langem, langsam zu kompilierendem Zielcode.
-- **Interpolation:** IPA-Modi pass/multiply/constant (`:874-900`). Konstant → `flat`. „pass“ liefert attr/w, „multiply“ multipliziert mit einem Register (`attr_load`, `:224-276`). Das Feld `noperspective_mask` ist deklariert, wird aber im Code **nie gesetzt** (nur gelesen, `:69`, `:1849`, `:2038`): `noperspective` wird also nie erzeugt. Zentroid-/Sample-Flags der IPA werden nicht ausgewertet. Für Unity ohne MSAA (render-treue.md) *vermutlich* unkritisch.
-- **Ausgaben:** Vertex: `out.pos`, `out.v<i>`, Punktgröße. Fragment: Farbziele aus dem SPH (`omap_target`), je Ziel Float/Int/UInt, optional `depth`. Epilog im Vertex-Shader: `flip_y`, `flip_x`, `depth_minus_one` (z = (z+w)/2, NVN-Tiefe −1..1 → Metal 0..1) (MSL `:2113-2115`, GLSL `:1886-1888`).
-- **Zielsprachen:** Zwei. MSL (Metal) ist die Primärausgabe. GLSL 460 für Vulkan entsteht aus demselben MSL-artigen Text durch ein token-basiertes Umschreiben (`glsl_rewrite`, `:1640`, Prelude `:1724`) plus eigene Zweige für Texturen, Speicher und Einstieg; die GLSL-Schnittstelle (Bindings, Locations) steht im Kopf von `shader.h:1-27`. SPIR-V entsteht erst zur Laufzeit per shaderc in `runtime/nvn/vulkan/shaders.c` (**nicht** im Übersetzer). HLSL gibt es nicht.
-- **Laufzeit-Zusätze, spielspezifisch (belegt):** „Tint“-Epilog für das Farbziel 0 (`:1817`, `:2070`, für markierte Töpfe im Spiel), `flip_x` (Spiegelmodus), Auflösungsskalierung `rscale` (Puffer 18, beeinflusst Fragmentkoordinaten und Texel-Fetches), `maxwell_dbg_*`-Hooks, `getenv("BDSP_NO_DISCARD")` und `BDSP_SAVE_MSL` (`:847`, `:1984`). Eine IPA-Sonderbehandlung für den Nebel eines Spiel-Levels steht im Kommentar bei `:258-262`; der Code dazu ist allgemein.
+- **Decoder:** A long `if/else` chain, `emit_insn` (`translate.c:824-1624`), matches each 64-bit instruction word using `OPM(value, mask)` patterns. Half-precision instructions are handled separately in `emit_half` (`:332`); texture instructions in `emit_tex`/`emit_texs` (`:753`, `:672`). There is no intermediate representation (no SSA or control-flow graph analysis).
+- **Register mapping:** All 255 registers are represented as `uint rN`; predicates P0–P6 as `bool pN`; `PT` = true; RZ = `0u`. Floating point uses `as_type<float>` (MSL) or `as_f/as_u` (GLSL). Carry/zero/sign flags use `cc/ccz/ccs` (only when needed).
+- **Predicates:** Every guarded instruction is wrapped in `if (pN) { … }` (`:824-840`).
+- **Control flow:** Without branches, code is linear inside `do { } while(false)`. With branches, it becomes a `switch (pc)` state machine inside a loop (100,000-iteration guard), with explicit 16-entry stacks for SSY, PBK, and PCNT. Supported: BRA, SSY, PBK, PCNT, SYNC, BRK, CONT, BRX (jump table, then each word is a target), EXIT, KIL. This is robust but unstructured, producing long target code that compiles slowly.
+- **Interpolation:** IPA modes pass/multiply/constant (`:874-900`). Constant → `flat`. “pass” returns attr/w; “multiply” multiplies by a register (`attr_load`, `:224-276`). `noperspective_mask` is declared but **never set** in the code (only read at `:69`, `:1849`, `:2038`), so `noperspective` is never emitted. IPA centroid/sample flags are not evaluated. This is *probably* harmless for Unity without MSAA (`render-treue.md`).
+- **Outputs:** Vertex: `out.pos`, `out.v<i>`, point size. Fragment: color targets from SPH (`omap_target`), each Float/Int/UInt, and optional `depth`. Vertex-shader epilogue: `flip_y`, `flip_x`, `depth_minus_one` (z = (z+w)/2, NVN depth −1..1 → Metal 0..1) (MSL `:2113-2115`, GLSL `:1886-1888`).
+- **Target languages:** Two. MSL (Metal) is the primary output. GLSL 460 for Vulkan is derived from the same MSL-like text by token-based rewriting (`glsl_rewrite`, `:1640`, prelude `:1724`) plus separate paths for textures, memory, and entry points; the GLSL interface (bindings, locations) is at the top of `shader.h:1-27`. SPIR-V is generated at runtime by shaderc in `runtime/nvn/vulkan/shaders.c` (**not** by the translator). There is no HLSL output.
+- **Game-specific runtime additions (verified):** “Tint” epilogue for color target 0 (`:1817`, `:2070`, for marked pots in the game), `flip_x` (mirror mode), resolution scaling `rscale` (buffer 18, affects fragment coordinates and texel fetches), `maxwell_dbg_*` hooks, `getenv("BDSP_NO_DISCARD")`, and `BDSP_SAVE_MSL` (`:847`, `:1984`). An IPA special case for fog in one game level appears in the comment at `:258-262`; the code itself is general.
 
-### 2.2 Abdeckung
+### 2.2 Coverage
 
-**Unterstützt (belegt, aus den Kommentaren/Mustern in `emit_insn`, `emit_half`):**
+**Supported (verified from comments/patterns in `emit_insn`, `emit_half`):**
 
-| Gruppe | Instruktionen |
+| Group | Instructions |
 |---|---|
-| Fließkomma | FADD, FADD32I, FMUL, FMUL32I (mit Skalierung), FFMA, FFMA32I, FMNMX, FSET, FSETP, FCMP, MUFU (COS, SIN, EX2, LG2, RCP, RSQ, SQRT), RRO (als No-op), F2F, F2I, I2F, FSWZADD |
-| Halb (SM53) | HADD2, HMUL2, HFMA2, HSET2, HSETP2 (Registerformen für SET/SETP, alle Formen für ADD/MUL/FMA), Merge-/Swizzle-Modi |
-| Ganzzahl | IADD (+CC/X), IADD32I, IADD3 (+CC/X), ISCADD, ISCADD32I, ISET, ISETP, ICMP, IMNMX, SHL, SHR, SHF, LOP, LOP32I, LOP3, BFE, BFI, XMAD (alle vier Formen), IMUL, IMUL32I, FLO, POPC, I2I, PRMT, SEL, MOV, MOV32I |
-| Prädikate/Flags | PSETP, PSET, R2P, P2R (inkl. CC), CSETP (nur Z/S) |
-| Speicher | LD c[…] (LDC, auch mit Register-Index), LDL/STL (Local, 1 KB), LDG/STG (Global, über Guest-Heap-Puffer), IPA, LD/ST Attribut (nur konstante Adresse) |
-| Textur | TEX (1D/2D/3D/Cube, Array, Shadow, LOD-Modi, Offset), TEXS, TLDS (Teilmenge der Info-Werte), TXQ (nur Dimension/Mip-Anzahl) |
-| Sonstiges | S2R (Y-Richtung, Thread-/Block-Id), SHFL, BAR, KIL, DEPBAR/NOP/MEMBAR (ignoriert) |
+| Floating point | FADD, FADD32I, FMUL, FMUL32I (with scaling), FFMA, FFMA32I, FMNMX, FSET, FSETP, FCMP, MUFU (COS, SIN, EX2, LG2, RCP, RSQ, SQRT), RRO (no-op), F2F, F2I, I2F, FSWZADD |
+| Half (SM53) | HADD2, HMUL2, HFMA2, HSET2, HSETP2 (register forms for SET/SETP; all forms for ADD/MUL/FMA), merge/swizzle modes |
+| Integer | IADD (+CC/X), IADD32I, IADD3 (+CC/X), ISCADD, ISCADD32I, ISET, ISETP, ICMP, IMNMX, SHL, SHR, SHF, LOP, LOP32I, LOP3, BFE, BFI, XMAD (all four forms), IMUL, IMUL32I, FLO, POPC, I2I, PRMT, SEL, MOV, MOV32I |
+| Predicates/flags | PSETP, PSET, R2P, P2R (including CC), CSETP (Z/S only) |
+| Memory | LD c[…] (LDC, including register index), LDL/STL (local, 1 KB), LDG/STG (global, via guest-heap buffer), IPA, LD/ST attribute (constant address only) |
+| Texture | TEX (1D/2D/3D/Cube, Array, Shadow, LOD modes, offset), TEXS, TLDS (subset of info values), TXQ (dimension/mip count only) |
+| Other | S2R (Y direction, thread/block ID), SHFL, BAR, KIL, DEPBAR/NOP/MEMBAR (ignored) |
 
-**Nicht unterstützt (belegt: `fail(...)`-Stellen und fehlende Muster):**
+**Not supported (verified from `fail(...)` sites and missing patterns):**
 
-| Lücke | Beleg | Für BDSP relevant? |
+| Gap | Evidence | Relevant to BDSP? |
 |---|---|---|
-| TLD (volle Form), TLD4/TLD4S (Gather), TXD (explizite Ableitungen), TMML | kein Muster in `emit_insn`; Ergebnis „unknown instruction“ (`:1624`) | *vermutet*: einzeln möglich (Gather/Fetch in Post-Effekten), zu messen |
-| Bildzugriffe SULD/SUST, Atomics ATOM/RED/ATOMS, Shared-Memory LDS/STS | kein Muster | gering (nur 5 Compute-Programme im Ryujinx-Cache) |
-| TEX.B (bindless) | `:760` „bindless tex“ | *vermutet* nein (Unity bindet Texturen klassisch) |
-| TXQ andere Typen als Dimension | `:954` | möglich |
-| MUFU RCP64H/RSQ64H und weitere Funktionen | `:967` | gering |
-| IPA mit Index, LD a[] mit Register-Index | `:878`, `:892`, `:226` | gering außerhalb Geometry/Tess |
-| BFE.BREV, PRMT-Sondermodi, R2P.CC, CSET | `:1246`, `:1377`, `:1566`, `:1618` | PRMT-Modi *vermutet* selten, zu messen |
-| TLDS/TEXS: nicht aufgeführte Info-Werte | `:645`, `:665`, `:726`, `:746` | möglich |
-| Weitere Maxwell-Befehle ohne Muster (z. B. LEA, CS2R, PIXLD, VOTE, FCHK, DADD/DMUL/DFMA, VMAD, ISBERD) | nur aus dem Fehlen abgeleitet | *vermutet* teils selten; Messung nötig |
-| Geometry-/Tessellation-Stufen | Stufen existieren als Konstanten (`shader.h:33`), `attr_load`/`attr_store` liefern dort Nullen/Kommentare (`:277-282`) | nach Ryujinx-Cache **nein** (nur Vertex+Fragment+5 Compute, `shader-audio-machbarkeit.md:44`) |
-| Speicherfehler-Gefahr | `cbuf_ref` schreibt `cbuf_size[idx]` und `cbuf_need[idx]` ohne Obergrenzen-Prüfung (`:126`, `:909`); Arrays haben 18 Einträge | zu härten, falls Eingaben nicht vertrauenswürdig sind |
+| TLD (full form), TLD4/TLD4S (gather), TXD (explicit derivatives), TMML | no pattern in `emit_insn`; result is “unknown instruction” (`:1624`) | *inferred*: may occur occasionally (gather/fetch in post-effects); measure |
+| Image access SULD/SUST, atomics ATOM/RED/ATOMS, shared-memory LDS/STS | no pattern | low (only 5 Compute programs in Ryujinx cache) |
+| TEX.B (bindless) | `:760` “bindless tex” | *inferred*: no (Unity binds textures conventionally) |
+| TXQ types other than dimension | `:954` | possible |
+| MUFU RCP64H/RSQ64H and other functions | `:967` | low |
+| Indexed IPA, LD a[] with register index | `:878`, `:892`, `:226` | low outside Geometry/Tessellation |
+| BFE.BREV, PRMT special modes, R2P.CC, CSET | `:1246`, `:1377`, `:1566`, `:1618` | PRMT modes are *inferred* to be rare; measure |
+| TLDS/TEXS: unlisted info values | `:645`, `:665`, `:726`, `:746` | possible |
+| Other Maxwell instructions without a pattern (e.g. LEA, CS2R, PIXLD, VOTE, FCHK, DADD/DMUL/DFMA, VMAD, ISBERD) | inferred only from absence | *inferred*: some are rare; measure |
+| Geometry/Tessellation stages | Stage constants exist (`shader.h:33`); `attr_load`/`attr_store` return zeros/comments there (`:277-282`) | **No** in Ryujinx cache (Vertex + Fragment + 5 Compute only, `shader-audio-machbarkeit.md:44`) |
+| Memory-safety risk | `cbuf_ref` writes `cbuf_size[idx]` and `cbuf_need[idx]` without bounds checks (`:126`, `:909`); arrays have 18 entries | harden if inputs are untrusted |
 
-**Bekannte Abweichungen/Eigenheiten (belegt bzw. *vermutet*):**
-- Das Metal-Fast-Math ist bei den Laufzeit-Optionen nicht abgeschaltet (`renderer.m:862`, `:834`: nur `preserveInvariance` für den Vertex-Shader, Fragment-Optionen leer). Für Treue 1:1 **müssen** wir `fastMathEnabled=NO` bzw. entsprechende Modi prüfen (*vermutet*, nicht getestet).
-- FTZ- und Rundungsflags der Befehle werden nicht ausgewertet; Maxwell-Verhalten bei Denormalen kann abweichen (*vermutet*).
-- RRO ist ein No-op und MUFU.SIN/COS rechnet im Bogenmaß; ob das mit dem Shadercode von glslc stimmt (Faktor 1/2π im Shader), ist **ein Testfall** (*vermutet* korrekt, weil das Spiel läuft).
-- Die Halb-Zusammenführung musste umgeschrieben werden, weil der Metal-Compiler eine Maskenform auf M1 falsch übersetzte (Kommentar `:2014-2017`); GLSL rechnet Halbwerte absichtlich per Bitoperationen (Kommentar `:1758-1762`). Das zeigt: Compiler-Eigenheiten sind real und müssen mit Differenztests gefangen werden.
-- Unsicher bei „unknown instruction“: Der Übersetzer bricht beim **ersten** Fehler ab (`fail`, `:84-91`); für ein Histogramm muss er „alle unbekannten“ sammeln (siehe 11).
+**Known differences and quirks (verified or *inferred*):**
+- Metal fast math is not disabled in runtime options (`renderer.m:862`, `:834`: only `preserveInvariance` for the vertex shader; fragment options are empty). For 1:1 fidelity, we **must** check `fastMathEnabled=NO` or equivalent modes (*inferred*, untested).
+- FTZ and instruction rounding flags are not evaluated; Maxwell behavior for denormals may differ (*inferred*).
+- RRO is a no-op and MUFU.SIN/COS use radians; whether that matches glslc shader code (factor 1/2π in the shader) needs **a test case** (*inferred* to be correct because the game runs).
+- Half merging had to be rewritten because Metal compiler mistranslated one mask form on M1 (comment `:2014-2017`); GLSL deliberately computes half values with bitwise operations (comment `:1758-1762`). Compiler quirks are real and must be caught with differential tests.
+- “Unknown instruction” handling is limited: the translator stops at the **first** error (`fail`, `:84-91`); a histogram requires collecting all unknowns (see section 11).
 
-### 2.3 Tests und Validierung (belegt)
+### 2.3 Tests and Validation (verified)
 
-| Werkzeug | Was es prüft | Was es **nicht** prüft |
+| Tool | What it checks | What it does **not** check |
 |---|---|---|
-| `tools/test_translate.c`/`.sh` | Fuzz: synthetisiert Programme aus allen Mustern in `translate.c`; (1) MSL muss byteidentisch zu einem Referenzstand des Übersetzers sein (Regression), (2) GLSL muss mit shaderc kompilieren und von SPIRV-Tools validiert werden. | Keine numerische Wahrheit gegen Hardware oder Ryujinx. |
-| `tools/test_shaders.c`/`.m` | Zerlegt gedumpte Shader (`BDSP_DUMP_SHADERS`), übersetzt, kompiliert mit `xcrun metal` bzw. `newLibraryWithSource`. | Nur Kompilierbarkeit. |
-| `tools/test_vk_pipelines.c`/`.sh` | Gefuzzte Programme → GLSL → echte Vulkan-Pipelines unter Validation-Layer. | Windows-/Vulkan-spezifisch; keine Bildprüfung. |
-| `runtime/ui/shader_tour.mm` (70 Zeilen) | Kein Test: ein „Shader-Rundgang“. Warpt durch alle Warp-Punkte des Spiels, damit alle Shader beim Spieler einmal übersetzt und kompiliert werden und im Metal-Plattencache landen. | — |
-| `tools/test_lift.py`, `test_simd.py` | Differenztests des **CPU**-Lifters gegen Unicorn, nicht der Shader. | — |
+| `tools/test_translate.c`/`.sh` | Fuzzing: synthesize programs from every pattern in `translate.c`; (1) MSL must be byte-identical to a translator reference revision (regression), (2) GLSL must compile with shaderc and validate with SPIRV-Tools. | No numeric comparison against hardware or Ryujinx. |
+| `tools/test_shaders.c`/`.m` | Split dumped shaders (`BDSP_DUMP_SHADERS`), translate, compile with `xcrun metal` or `newLibraryWithSource`. | Compileability only. |
+| `tools/test_vk_pipelines.c`/`.sh` | Fuzzed programs → GLSL → real Vulkan pipelines under the validation layer. | Windows/Vulkan-specific; no image checks. |
+| `runtime/ui/shader_tour.mm` (70 lines) | Not a test: a “shader tour.” Warps through all game warp points so each shader is translated and compiled once during play, populating Metal's disk cache. | — |
+| `tools/test_lift.py`, `test_simd.py` | Differential tests of the **CPU** lifter against Unicorn, not shaders. | — |
 
-Treue wird bei LASRecomp also über das Spielen und Screenshots geprüft (`tools/shot.sh`, `tools/frames.sh`, Debug-Hook `BDSP_DBG_FS`, der ein Register an einer Programmstelle als Grauwert ausgibt). Einen Vergleich gegen ein Referenzergebnis (Ryujinx, Hardware) habe ich im Klon **nicht gefunden**.
+LASRecomp therefore checks fidelity by playing and taking screenshots (`tools/shot.sh`, `tools/frames.sh`, debug hook `BDSP_DBG_FS`, which displays a register at a program location as grayscale). I **did not find** a comparison against a reference result (Ryujinx or hardware) in the clone.
 
-### 2.4 Caching und Laufzeitkosten (belegt)
+### 2.4 Caching and Runtime Cost (verified)
 
-- Ein Programm wird beim ersten Draw übersetzt (`renderer.m:878-950`), MSL im Verzeichnis `cache/shaders/` abgelegt (`:814-826`). Beim Start werden alle dort liegenden Quellen im Hintergrund kompiliert (`shader_cache_warm`, `:827-856`), damit Metals eigener Plattencache gefüllt ist.
-- Kompilierung läuft asynchron; Draws mit noch nicht bereitem Programm werden übersprungen (`:951-960`). Der Quelltext-Kommentar nennt etwa 40 ms je Erstkompilierung (`:807`, `:951`), danach etwa 0,1 ms. Das ist eine Angabe des Projekts, nicht von mir gemessen.
-- Diese Laufzeitkompilierung ist für uns **keine Option**: Auf iPadOS ist `newLibraryWithSource` zwar verfügbar (Metal-Compiler im System), aber für uns ist Build-Zeit-Übersetzung vorgesehen (Kernziel, kein Spielcode in der App, reproduzierbar). Außerdem laufen wir in Unity, das seine Shader selbst kompiliert (siehe 9).
+- A program is translated on its first draw (`renderer.m:878-950`), and MSL is saved under `cache/shaders/` (`:814-826`). At startup, all sources there are compiled in the background (`shader_cache_warm`, `:827-856`) to populate Metal's own disk cache.
+- Compilation is asynchronous; draws using a program that is not ready yet are skipped (`:951-960`). A source comment estimates about 40 ms for first compilation (`:807`, `:951`), then about 0.1 ms. This is a project estimate, not my measurement.
+- This runtime compilation is **not an option for us**: although `newLibraryWithSource` is available on iPadOS (the Metal compiler is in the OS), our design calls for translation at build time (core requirement: no game code in the app, reproducible builds). We also run inside Unity, which compiles its own shaders (see section 9).
 
-## 3. Metal-Renderer (`renderer.m` 2701 Zeilen/148 KB, `metal.m` 1191 Zeilen/67 KB)
+## 3. Metal Renderer (`renderer.m`, 2,701 lines/148 KB; `metal.m`, 1,191 lines/67 KB)
 
-| Thema | Befund (belegt) | Relevanz für uns |
+| Topic | Finding (verified) | Relevance to us |
 |---|---|---|
-| Pipeline-Zustand | Pro Draw Hash über Programm, Zielformate, Blend, Vertexformate/-streams, Kanalmaske, Alpha-to-Coverage (`renderer.m:1582-1605`, `:1767`), danach `MTLRenderPipelineState` asynchron (`:1784-1815`). | Gering: Unity erledigt das selbst. |
-| Blend/Depth/Stencil | Tabellen NVN → Metal: `blend_factor` (`:729`), `blend_op`, `compare_fn` (`:768`), `stencil_op` (`:781`). Zustände kommen aus NVN-Befehlen, nicht aus ShaderLab. | Nützlich als Vergleichstabelle für die Zuordnung der im Bundle geparsten Render-States (Unity-Enum → Metal), sonst gering. |
-| cbuf-Bindung | siehe 1 (cbuf 0/1/≥3, Ringpuffer-Snapshot). | Die cbuf-Nummern sind das Bindeglied zu Unity-Konstantenpuffern (siehe 9). |
-| Sampler | `sampler_for` (`:959-1020`): Filter, Mip-Filter, Wrap-Modi inkl. Border/MirrorClamp, LOD-Grenzen, Anisotropie, Vergleichssampler. Der LOD-Bias der Switch-Sampler wird **nicht** übernommen. | Vergleichstabelle für Sampler-Treue. |
-| Clip-Space/Y-Flip | `flip_y` bei unterem linken Fensterursprung, `depth_minus_one` bei NVN-Tiefenmodus −1..1; Front-Face-Winding wird bei `flip_y` gedreht (`renderer.m:1613-1616`, Cull `:1868`). Vulkan nutzt eine Viewport mit negativer Höhe (`shader.h:21-23`). | Unity verwaltet Projektion selbst; wir müssen Konventionen der **Original-Matrix** in Unity-Shadern wahren (siehe 10). |
-| Gamma/sRGB | sRGB-Formate werden gemappt (`metal.m:78-140`). Die Bildschirmausgabe samplet sRGB-Ziele über einen Nicht-sRGB-View, „zeigt, was das Spiel geschrieben hat“ (`metal.m:650-661`). Kopien können roh erfolgen (`BDSP_COPY_RAW_SRGB`, `renderer.m:2223`). | Passt zu unserer Gamma-Vorgabe: Das Spiel rechnet in Gamma, ohne Zwischen-Linearisierung. In Unity 6.3 Farbraum Gamma + keine sRGB-Ziele erzwingen. |
-| SMAA | SMAA 1x (MIT, `third_party/smaa`, 1,2 MB) über die SMAA-Portierungsmakros, Kompilierung je neuer Bildgröße (`metal.m:700-815`). | **Nicht relevant**: Das Original hat kein Anti-Aliasing (kein MSAA, render-treue.md). |
-| MetalFX | Räumlicher Skalierer, „Perceptual“-Modus (`metal.m:663-698`). Dynamische Auflösung `output_scale.c` (93 Zeilen). | **Nicht relevant** für 1:1; optional später als Qualitätsoption, nicht Teil der Treue. |
-| Rückkopplung | Wird eine Textur gelesen, die zugleich Ziel ist, wird eine Kopie angelegt (`resolve_feedback`, `:1113`). | Hinweis: Original-Shader lesen u. U. ihren Tiefenpuffer; in Unity über GrabPass/Kopie lösen (*vermutet*). |
-| Spielspezifisch | Widescreen-Umbau, Spiegelmodus, Topf-Tint, Texturpatches (`texpatch.c`, 1043 Zeilen), Button-Prompts. | Nicht übernehmen. |
+| Pipeline state | Per draw, hash program, target formats, blend, vertex formats/streams, channel mask, alpha-to-coverage (`renderer.m:1582-1605`, `:1767`), then asynchronously create `MTLRenderPipelineState` (`:1784-1815`). | Low: Unity handles this. |
+| Blend/depth/stencil | NVN → Metal tables: `blend_factor` (`:729`), `blend_op`, `compare_fn` (`:768`), `stencil_op` (`:781`). States come from NVN commands, not ShaderLab. | Useful when mapping render states parsed from bundles (Unity enum → Metal); otherwise low. |
+| cbuf binding | See section 1 (cbuf 0/1/≥3, ring-buffer snapshot). | cbuf numbers connect to Unity constant buffers (see section 9). |
+| Samplers | `sampler_for` (`:959-1020`): filter, mip filter, wrap modes including Border/MirrorClamp, LOD limits, anisotropy, comparison samplers. Switch sampler LOD bias is **not** preserved. | Reference for sampler fidelity. |
+| Clip space/Y flip | `flip_y` for a bottom-left window origin, `depth_minus_one` for NVN depth mode −1..1; front-face winding flips with `flip_y` (`renderer.m:1613-1616`, culling at `:1868`). Vulkan uses a negative-height viewport (`shader.h:21-23`). | Unity manages projection itself; Unity shaders must preserve **original matrix** conventions (see section 10). |
+| Gamma/sRGB | sRGB formats are mapped (`metal.m:78-140`). Screen output samples sRGB targets through a non-sRGB view, “showing what the game wrote” (`metal.m:650-661`). Copies can be raw (`BDSP_COPY_RAW_SRGB`, `renderer.m:2223`). | Matches our Gamma requirement: the game computes in Gamma without intermediate linearization. Force Gamma color space and no sRGB targets in Unity 6.3. |
+| SMAA | SMAA 1x (MIT, `third_party/smaa`, 1.2 MB) via SMAA port macros, compiled for each new image size (`metal.m:700-815`). | **Not relevant**: the original has no anti-aliasing (no MSAA, `render-treue.md`). |
+| MetalFX | Spatial scaler, “Perceptual” mode (`metal.m:663-698`). Dynamic resolution in `output_scale.c` (93 lines). | **Not relevant** to 1:1 fidelity; could be an optional quality setting later. |
+| Feedback | If a texture is read while also used as a target, a copy is made (`resolve_feedback`, `:1113`). | Note: original shaders may read their depth buffer; *inferred* Unity solution is GrabPass/copy. |
+| Game-specific | Widescreen changes, mirror mode, pot tint, texture patches (`texpatch.c`, 1,043 lines), button prompts. | Do not port. |
 
 ## 4. Link's Awakening vs. BDSP
 
-| Aspekt | LAS (belegt aus Klon, README) | BDSP (belegt aus unseren Docs/Messungen) |
+| Aspect | LAS (verified from clone/README) | BDSP (verified from our docs/measurements) |
 |---|---|---|
-| Engine | Eigenengine von Grezzo (Sekundärquelle, `docs/recomp-referenzen.md`) | Unity 2019.4.27f1, IL2CPP (`docs/extraktion.md`) |
-| Shader-Herkunft | Fertige NVN-Programme (glslc-Binärdaten) im Spiel selbst; Spielcode ruft `nvnProgramSetShaders` | Unity kompiliert ShaderLab zur Build-Zeit zu NVN-Programmen und legt sie in Bundle-Shader-Objekten ab (Plattform 19). Zur Laufzeit gibt es dort keinen Quelltext (`shader-audio-machbarkeit.md:21-28`). |
-| Konstantenpuffer | Eigene Layouts des Spiels (per Reverse Engineering) | Unity-Layouts (`UnityPerDraw`, `UnityPerCamera`, …) mit Namen in den geparsten Shaderdaten (*vermutet* anhand der dort gefundenen Uniform-Namen wie `unity_MatrixVP`, `_MainTex_ST`, `shader-audio-machbarkeit.md:27`). |
-| Varianten | Wenige, vom Spiel gewählt | Keyword-Varianten: In `work/shaders/mapping.json` (unser Skript `scripts/shader_map.py`): 13.710 Programme (6.878 Vertex, 6.832 Fragment), 8.332 verschiedene Code-Hashes, 0 bis 17 Keywords je Programm, Blobgröße 2.516 bis 12.300 Byte, Median 6.316 Byte. |
-| Nvn-Laufzeit im Spiel | Spiel linkt NVN-Treiber des Systems; Runtime ersetzt ihn | `sdk`, `subsdk0` liegen im ExeFS (`docs/extraktion.md:17`). **Offen:** Ob dort ein Laufzeit-Shaderkompilierer (z. B. glslc-Bibliothek) liegt, ist **nicht untersucht**. *Vermutet:* nein, weil Unity die Shader offline als Binärcode liefert und nur über `nvnProgramSetShaders` bindet; `sdk` ist *vermutlich* die Nintendo-SDK-Bibliothek ohne Shader-Compiler. Prüfung: Zeichenketten/Symbole in `sdk`/`subsdk0` (nur Namen notieren). |
-| letsgo-recomp | Baut auf LASRecomp auf (README: „built on the runtime and recompiler of LAS Recomp“), NVN auf **Vulkan**, Maxwell→SPIR-V zur Laufzeit, SMAA, Shader-Cache auf Platte (SPIR-V und Pipeline-Cache). Laut README Windows-only. | Unser früheres Doc `recomp-referenzen.md` nannte Let's Go „keine Unity-Spiele“; die Websuche stützt: Game-Freak-Eigenengine mit YEBIS-3-Middleware (Sekundärquelle, nicht direkt geprüft). Beide Zielspiele sind also Nicht-Unity; **BDSP wäre der erste Unity-Fall**. |
+| Engine | Grezzo's custom engine (secondary source, `docs/recomp-referenzen.md`) | Unity 2019.4.27f1, IL2CPP (`docs/extraktion.md`) |
+| Shader source | Finished NVN programs (glslc binaries) are in the game itself; game code calls `nvnProgramSetShaders`. | Unity compiles ShaderLab into NVN programs at build time and stores them in bundle shader objects (platform 19). No source code is present there at runtime (`shader-audio-machbarkeit.md:21-28`). |
+| Constant buffers | Game-specific layouts (reverse engineered) | Unity layouts (`UnityPerDraw`, `UnityPerCamera`, …) are named in parsed shader data (*inferred* from uniform names found there, such as `unity_MatrixVP`, `_MainTex_ST`, `shader-audio-machbarkeit.md:27`). |
+| Variants | Few, selected by the game | Keyword variants: `work/shaders/mapping.json` (our `scripts/shader_map.py`): 13,710 programs (6,878 Vertex, 6,832 Fragment), 8,332 distinct code hashes, 0–17 keywords per program, blob size 2,516–12,300 bytes, median 6,316 bytes. |
+| NVN runtime in game | Game links the system NVN driver; runtime replaces it | `sdk`, `subsdk0` are in ExeFS (`docs/extraktion.md:17`). **Open:** whether they contain a runtime shader compiler (e.g. glslc library) has **not been investigated**. *Inferred*: no, because Unity supplies offline-compiled shader binaries and binds them only with `nvnProgramSetShaders`; `sdk` is *probably* Nintendo's SDK library without a shader compiler. Check strings/symbols in `sdk`/`subsdk0` (record names only). |
+| letsgo-recomp | Based on LASRecomp (README: “built on the runtime and recompiler of LAS Recomp”); NVN on **Vulkan**, Maxwell → SPIR-V at runtime, SMAA, on-disk shader cache (SPIR-V and pipeline cache). README says Windows-only. | Our earlier `recomp-referenzen.md` described Let's Go as non-Unity; web research supports a Game Freak custom engine with YEBIS 3 middleware (secondary source, not checked directly). Both target games are therefore non-Unity; **BDSP would be the first Unity case**. |
 
-**Wichtigster Unterschied (belegt):** Unser Container ist bekannt. `scripts/shader_map.py` zeigt: Jedes Bundle-Programm beginnt mit dem Magic `0x0C07513C`, danach Version, Keyword-Liste (Anzahl bei `+0x18`), ein Control-Kopf mit Magic `0x98761234` (bei `Kopf+0x14`), dann der GLSLC-Datenteil mit `0x12345678` für den Programmstart; SPH = Position des Magics + 0x30 (`scripts/shader_map.py:parse_nvn`). Das ist exakt das Eingabeformat von `maxwell_translate` (Blob ab `0x12345678`, SPH bei `+0x30`, Code bei `+0x80`). Von den 1.388 Guest-Einträgen des Ryujinx-Caches (401 Vertex, 982 Fragment, 5 Compute) stimmen 1.288 byteweise mit Bundle-Programmen überein (`mapping.json`: `guestMatchedFull`). Das ist die Brücke für Treuetests. Ein separates `docs/shader-inventar.md` existiert noch nicht (nicht vorhanden, geprüft).
+**Key difference (verified):** We know our container format. `scripts/shader_map.py` shows that each bundle program starts with magic `0x0C07513C`, followed by a version, keyword list (count at `+0x18`), a control header with magic `0x98761234` (at `header+0x14`), then the GLSLC data section with `0x12345678` marking the program start; SPH = magic position + 0x30 (`scripts/shader_map.py:parse_nvn`). This is exactly the input format for `maxwell_translate` (blob from `0x12345678`, SPH at `+0x30`, code at `+0x80`). Of the 1,388 guest entries in the Ryujinx cache (401 Vertex, 982 Fragment, 5 Compute), 1,288 match bundle programs byte-for-byte (`mapping.json`: `guestMatchedFull`). This is the bridge for fidelity tests. No separate `docs/shader-inventar.md` existed at the time (checked).
 
-## 5. Übertragbarkeit (Antworten auf die Fragen 5a bis 5d)
+## 5. Portability (answers to questions 5a–5d)
 
-**(a) Maxwell→MSL/SPIR-V als Build-Schritt:** *Technisch plausibel*, weil Eingabeformat und Stufen passen (V/F, kein Geometry/Tess). Offen ist die Abdeckung, siehe 11. Der Übersetzer erzeugt aber Registermaschinen-Code, keinen lesbaren ShaderLab-Quelltext (siehe 9 zu den Folgen).
+**(a) Maxwell → MSL/SPIR-V as a build step:** *Technically plausible* because the input format and stages match (Vertex/Fragment, no Geometry/Tessellation). Coverage remains open; see section 11. The translator produces register-machine code, not readable ShaderLab source (see section 9 for implications).
 
-**(b) Was wir selbst schreiben müssten:** Container-Parser (liegt als Python-Skript vor, in C/CLI nachzubauen), Zuordnung cbuf-Offsets/Texturslots ↔ Unity-Namen aus den geparsten Daten, ShaderLab-/HLSL-Hülle, Keyword-Auswahl, Fehlende Instruktionen, Differenztest-Anbindung, Entkopplung der Spielspezifika.
+**(b) What we would need to write:** container parser (already exists as a Python script, to be reimplemented in C/CLI); map cbuf offsets and texture slots to Unity names from parsed data; ShaderLab/HLSL wrapper; keyword selection; missing instructions; differential-test integration; removal of game-specific behavior.
 
-**(c) MIT-Lizenz (keine Rechtsberatung):** Die Lizenz erlaubt Nutzung, Änderung und Weitergabe, **wenn der Copyright-Hinweis „Copyright (c) 2026 Peiikai“ und der Lizenztext in allen Kopien oder wesentlichen Teilen erhalten bleiben**. Die Datei `LICENSE` nimmt Nintendo-Eigentum und die Drittkomponenten in `third_party/` ausdrücklich aus. Hinweise zu Qualität/Provenienz (nüchtern): Das README gibt an, dass der Code „fast ausschließlich“ mit einer KI (Claude über Claude Code) geschrieben und von einem Menschen gelenkt, getestet und geprüft wurde (`README.md:4-8`); der Klon hat nur einen Commit, eine Historie zur Entstehung gibt es also nicht. Der Übersetzer zitiert in Kommentaren Ryujinx (Feldlayouts HADD2/HMUL2/HFMA2/XMAD/LDC, `translate.c:355`, `386`, `900`, `1265`) und das README nennt envytools; Ryujinx wird im README **nicht** als Quelle aufgeführt (Suche ohne Treffer). Die Frage, ob und welche Teile aus Fremdwerken (Ryujinx, envytools) in Struktur oder Tabellen eingeflossen sind, lässt sich aus dem Klon nicht beantworten; wir sollten beim Weiterentwickeln Ryujinx und envytools in den Hinweisen mit nennen. Das ist eine Risikoeinschätzung, keine Wertung.
+**(c) MIT license (not legal advice):** The license permits use, modification, and redistribution **provided the “Copyright (c) 2026 Peiikai” notice and license text remain in all copies or substantial portions**. The `LICENSE` explicitly excludes Nintendo property and third-party components in `third_party/`. Neutral notes on quality/provenance: the README says the code was written “almost entirely” with AI (Claude via Claude Code), under human direction, testing, and review (`README.md:4-8`); the clone has only one commit, so there is no development history. Translator comments cite Ryujinx (HADD2/HMUL2/HFMA2/XMAD/LDC field layouts, `translate.c:355`, `386`, `900`, `1265`) and the README mentions envytools; the README does **not** list Ryujinx as a source (search returned no matches). The clone does not establish whether, or which, structures or tables draw on third-party works (Ryujinx, envytools); future notices should mention Ryujinx and envytools. This is a risk assessment, not a judgment.
 
-**(d) Treuprüfung 1:1:** Referenz = Ryujinx-SPIR-V (und der Guest-Code derselben Programme). Siehe 10.
+**(d) 1:1 fidelity check:** Reference = Ryujinx SPIR-V (and guest code for the same programs). See section 10.
 
-## 6. Empfehlung (8 Sätze, Optionen A, B, C)
+## 6. Recommendation (eight points, options A, B, C)
 
-1. **Option B (LASRecomp-Übersetzer als Basis, MIT, mit Anpassungen)** ist mit der Freigabe die schnellste Route zu einem Build-Schritt, der ohne Ryujinx-Cache auskommt, weil die Eingabeformate exakt passen (Abschnitt 4).
-2. **Option A (eigener Übersetzer)** wäre sauberer (SSA, strukturierter Kontrollfluss, direkt HLSL), kostet aber Monate und müsste dieselben Opcode-Details neu herleiten; sinnvoll erst, wenn B an Treue oder Laufzeit scheitert.
-3. **Option C (Ryujinx-Referenz lokal, Shader händisch portieren)** bleibt für die Treueprüfung zwingend, taugt aber nicht als einziger Weg, weil der Cache nicht jedem Nutzer vorliegt und 13.710 Programme nicht von Hand zu portieren sind.
-4. Empfohlen: **B als Kern plus C als Prüfstand**, A nur für gezielte Teile (z. B. strukturierter Kontrollfluss), falls nötig.
-5. Zuerst die **Abdeckung messen** (Abschnitt 11), bevor Code übernommen wird; sie entscheidet, ob B überhaupt trägt.
-6. Den Übersetzer als eigenständiges C-Werkzeug mit klarer Schnittstelle abtrennen, alle LAS-Spezifika entfernen und Lizenz/Hinweise mitführen (Abschnitt 8).
-7. Die Ausgabe zunächst als MSL für den Prüfstand erzeugen und danach eine HLSL-/ShaderLab-Hülle für Unity bauen; ob Unity-Metal die erzeugte Struktur treu übersetzt, ist ein Risiko (Abschnitt 9).
-8. Entscheidend bleiben Texturslot- und cbuf-Zuordnung zu Unity-Namen und die Differenztests gegen die Ryujinx-SPIR-V-Referenz; ohne sie kein 1:1-Nachweis.
+1. **Option B (use the LASRecomp translator as a base, MIT, with changes)** is the fastest route to a build step that does not need the Ryujinx cache, now that permission has been granted, because the input formats match exactly (section 4).
+2. **Option A (write our own translator)** would be cleaner (SSA, structured control flow, direct HLSL), but would take months and require deriving the same opcode details again; consider it only if B fails on fidelity or runtime.
+3. **Option C (use a local Ryujinx reference and port shaders by hand)** remains essential for fidelity checks, but cannot be the only route because users will not all have the cache and 13,710 programs cannot be ported manually.
+4. Recommended: **B as the core, C as the test oracle**, and A for targeted parts (e.g. structured control flow) only if needed.
+5. **Measure coverage first** (section 11), before adapting code; that determines whether B is viable at all.
+6. Isolate the translator as a standalone C tool with a clear interface, remove all LAS-specific behavior, and retain license/notices (section 8).
+7. First generate MSL for the test harness, then build an HLSL/ShaderLab wrapper for Unity; whether Unity's Metal compiler translates the generated structure faithfully is a risk (section 9).
+8. Texture-slot and cbuf mapping to Unity names and differential tests against the Ryujinx SPIR-V reference remain decisive; without them there is no 1:1 evidence.
 
 ---
 
-## 7. Hinweis zu Repo-Regeln (belegt)
+## 7. Repository-rule Note (verified)
 
-`.gitignore` schließt die Ordner `tools/`, `research/`, `work/`, `Ryujinx/`, `nsp/` aus. Ein Zielordner `tools/shader_translator/` wäre damit **nicht versioniert**. Entweder wird der Übersetzer außerhalb von `tools/` abgelegt (Vorschlag: `shader_translator/` im Repo-Wurzelverzeichnis) oder die Ignore-Regel wird gezielt aufgehoben (`!tools/shader_translator/`). Die Entscheidung liegt beim Hauptagenten.
+`.gitignore` excludes the `tools/`, `research/`, `work/`, `Ryujinx/`, and `nsp/` directories. A destination at `tools/shader_translator/` would therefore **not be versioned**. Either place the translator outside `tools/` (suggestion: `shader_translator/` at the repository root) or selectively override the ignore rule (`!tools/shader_translator/`). The main agent decides.
 
-## 8. Übernahmeplan: Was als Basis taugt und was nicht
+## 8. Adaptation Plan: What Is Suitable as a Base
 
-Größen gemessen (Bytes, `wc -c`/`du`).
+Sizes measured in bytes with `wc -c`/`du`.
 
-### 8.1 Geeignet (Basis)
+### 8.1 Suitable
 
-| Datei | Größe | Verwendung |
+| File | Size | Use |
 |---|---|---|
-| `runtime/nvn/maxwell/translate.c` | 126.050 B / 2.165 Z. | Kern. Nur libc (`math.h`, `stdio.h`, `stdlib.h`, `string.h`, `stdarg.h`; `malloc.h` nur Windows), **keine** Abhängigkeit zur Runtime (belegt: `#include`-Liste `:15-23`). |
-| `runtime/nvn/maxwell/shader.h` | 6.765 B / 103 Z. | Öffentliche Schnittstelle (`ShaderKey`, `ShaderInfo`, `maxwell_translate`, `maxwell_free`). |
-| `tools/test_translate.c` + `.sh` | 15.157 B + 1.941 B | Fuzz-/Regressionstest; Muster werden aus `translate.c` gelesen. Das Skript braucht einen Referenzstand (`git show $REF:…`) und shaderc/SPIRV-Tools; muss an unser Repo angepasst werden. |
-| `tools/test_shaders.c` / `.m` | 1.230 B / 2.032 B | Dumps → MSL → Metal kompilieren; als Vorlage für unseren Abdeckungs-/Kompiliertest (Eingabeformat anpassen). |
-| `tools/test_vk_pipelines.*` | 16.514 B + 891 B | Nur bei Vulkan-Ausgabe; auf macOS *vermutet* nicht benötigt. |
-| `runtime/nvn/vulkan/shaders.c` | 24.622 B | Ideen für GLSL→SPIR-V und Reflexion, falls wir eine SPIR-V-Ausgabe brauchen; nicht übernehmen, nur lesen. |
-| Ideen aus `renderer.m`/`metal.m` | 147.860 B / 66.506 B | **Nicht kopieren.** Lesen als Referenz: Tabellen für Blend/Compare/Stencil/Sampler, cbuf-Konventionen (`cbuf_base = 3`), Textur-Handle-Auflösung, Compile-Optionen. |
+| `runtime/nvn/maxwell/translate.c` | 126,050 B / 2,165 lines | Core. libc only (`math.h`, `stdio.h`, `stdlib.h`, `string.h`, `stdarg.h`; `malloc.h` on Windows only), **no** runtime dependency (verified from `#include` list at `:15-23`). |
+| `runtime/nvn/maxwell/shader.h` | 6,765 B / 103 lines | Public interface (`ShaderKey`, `ShaderInfo`, `maxwell_translate`, `maxwell_free`). |
+| `tools/test_translate.c` + `.sh` | 15,157 B + 1,941 B | Fuzz/regression test; reads patterns from `translate.c`. The script needs a reference revision (`git show $REF:…`) and shaderc/SPIRV-Tools; adapt it to our repository. |
+| `tools/test_shaders.c` / `.m` | 1,230 B / 2,032 B | Compile dumps → MSL → Metal; use as a template for our coverage/compile test (adapt input format). |
+| `tools/test_vk_pipelines.*` | 16,514 B + 891 B | Only needed for Vulkan output; *inferred* not to be needed on macOS. |
+| `runtime/nvn/vulkan/shaders.c` | 24,622 B | Ideas for GLSL → SPIR-V and reflection if we need SPIR-V output; read only, do not port. |
+| Ideas from `renderer.m`/`metal.m` | 147,860 B / 66,506 B | **Do not copy.** Read as reference for blend/compare/stencil/sampler tables, cbuf convention (`cbuf_base = 3`), texture-handle lookup, and compile options. |
 
-### 8.2 Nicht übernehmen
+### 8.2 Do Not Port
 
-| Bereich | Größe | Grund |
+| Area | Size | Reason |
 |---|---|---|
-| `third_party/LAS-Randomizer` | 864 KB | LAS-Randomizer, eigene Lizenz(en), Spielinhalt-nah |
-| `third_party/imgui` | 7,2 MB | UI-Bibliothek, nicht nötig |
-| `third_party/fonts`, `fonts/` | 660 KB / 4 KB | Schriften, Spielbezug |
-| `third_party/smaa` + `runtime/nvn/smaa_data.c` | 1,2 MB | SMAA gibt es im Original nicht |
-| `runtime/ui/` | 392 KB | Menüs, Cheats, Randomizer, Shader-Rundgang |
-| `runtime/hle/`, `runtime/services/` | 356 KB / 120 KB | Switch-OS-Ersatz und Spielpatches |
-| `runtime/*.c` (Kernel, Loader, Dispatch, …) | 2,1 MB gesamt `runtime/` | Rekompilations-Laufzeit |
-| `tools/gen.py`, `lifter.py`, `passes.py`, `patches.py`, … | `tools/` 1,5 MB | ARM64→C-Rekompilierer, hier nicht relevant (BDSP-Weg ist Unity-Neuaufbau, `architektur-entscheidung.md`) |
-| `runtime/nvn/{astc,texpatch,tegra,objects,cmdbuf,formats}.c` | 147.412 B zusammen | NVN-Objektmodell, Textur-Entschlüsselung (für Unity nicht nötig, Unity dekodiert Texturen selbst), Spielpatches |
-| `docs/`, `docs/icon` | 1,6 MB | LAS-spezifisch |
+| `third_party/LAS-Randomizer` | 864 KB | LAS randomizer, separate license(s), closely tied to game content |
+| `third_party/imgui` | 7.2 MB | UI library, not needed |
+| `third_party/fonts`, `fonts/` | 660 KB / 4 KB | Fonts, game-related |
+| `third_party/smaa` + `runtime/nvn/smaa_data.c` | 1.2 MB | SMAA is not in the original |
+| `runtime/ui/` | 392 KB | Menus, cheats, randomizer, shader tour |
+| `runtime/hle/`, `runtime/services/` | 356 KB / 120 KB | Switch OS replacement and game patches |
+| `runtime/*.c` (kernel, loader, dispatch, …) | 2.1 MB for all of `runtime/` | Recompilation runtime |
+| `tools/gen.py`, `lifter.py`, `passes.py`, `patches.py`, … | `tools/` 1.5 MB | ARM64 → C recompiler, not relevant here (BDSP path is a Unity rebuild, `architektur-entscheidung.md`) |
+| `runtime/nvn/{astc,texpatch,tegra,objects,cmdbuf,formats}.c` | 147,412 B total | NVN object model, texture decoding (not needed for Unity, which decodes textures itself), game patches |
+| `docs/`, `docs/icon` | 1.6 MB | LAS-specific |
 
-## 9. Zielstruktur und Entkopplung
+## 9. Target Structure and Decoupling
 
-Vorschlag (Ort siehe Abschnitt 7):
+Proposal (location: see section 7):
 
 ```
 shader_translator/
-  LICENSE-LASRecomp          (Lizenztext unverändert, inkl. Copyright (c) 2026 Peiikai)
-  THIRD_PARTY_NOTICES.md     (LASRecomp MIT; Hinweis auf Ryujinx, envytools als Quellen der Feldlayouts/Dokumentation)
-  README.md                  (Herkunft, Änderungen gegenüber dem Original, KI-Hinweis des Originals)
-  include/maxwell.h          (≙ shader.h, bereinigt)
-  src/translate.c           (aus translate.c)
-  src/container.c           (Unity-NVN-Container: Magic 0x0C07513C / 0x98761234 / 0x12345678)
+  LICENSE-LASRecomp          (license text unchanged, including Copyright (c) 2026 Peiikai)
+  THIRD_PARTY_NOTICES.md     (LASRecomp MIT; note Ryujinx/envytools as sources for field layouts/documentation)
+  README.md                  (origin, changes from upstream, original AI disclosure)
+  include/maxwell.h          (cleaned-up equivalent of shader.h)
+  src/translate.c           (from translate.c)
+  src/container.c           (Unity NVN container: magic 0x0C07513C / 0x98761234 / 0x12345678)
   src/main.c                (CLI)
-  tests/…                   (Fuzz, Abdeckung, Differenztest)
+  tests/…                   (fuzz, coverage, differential tests)
 Makefile                    (clang, macOS)
 ```
 
-**Schnittstelle:**
-- Eingabe: Bundle-Programmblob (oder bereits ausgeschnittener Maxwell-Blob ab `0x12345678`), Stufe (aus Control-Kopf `Kopf+4`, in `shader_map.py` „stage“), optional `cbuf`-Info und `ShaderKey`.
-- Ausgabe: Quelltext (MSL; optional HLSL/GLSL) plus Metadaten (benutzte cbufs und -Größen, Texturslots mit Typ/Shadow, Attribut-/Varyingmasken, Ausgabemaske, Flags).
-- CLI-Beispiel: `shader_translator --stage vs --target msl --in prog.bin --out prog.metal --info prog.json`. Als Bibliothek derselbe Ablauf über `maxwell_translate`.
+**Interface:**
+- Input: bundle program blob (or an already-extracted Maxwell blob starting at `0x12345678`), stage (from control header `header+4`, called “stage” in `shader_map.py`), optional cbuf info and `ShaderKey`.
+- Output: source (MSL; HLSL/GLSL optional) plus metadata (cbufs used and their sizes, texture slots with type/shadow, attribute/varying masks, output mask, flags).
+- CLI example: `shader_translator --stage vs --target msl --in prog.bin --out prog.metal --info prog.json`. A library call uses the same flow through `maxwell_translate`.
 
-**Entkopplungs-Aufgaben (konkret):**
-1. `translate.c` ist bereits frei von Runtime-Headern (siehe 8.1). Zu entfernen: Tint-Epilog (`:1817`, `:2070`) samt `uses_tint`, `flip_x`, `rscale`-Pfade (`uses_rscale`, `RSC2`, `rsc()`), `maxwell_dbg_*`-Variablen und -Hooks, `getenv`-Aufrufe (`:847`, `:1984`), globale `maxwell_gmem_base/size` (als Parameter oder entfernen, da V/F-Shader kein Global Memory brauchen sollten).
-2. Globale statische Puffer (`RSC2` mit `static char bufs[4][1024]`, `:526`) und `alloca`-Makros thread-sicher machen (für parallele Übersetzung von 13.710 Programmen).
-3. Eingabeprüfung: Obergrenzen für cbuf-Index (`cbuf_ref`), `reg_used` (Register > 255), Blobgröße.
-4. Container-Parser aus `scripts/shader_map.py` nach C übertragen und Stufe/Keywords/Konstantenoffset liefern. **Zu prüfen:** ob `Control+0x700/0x6FC` (Offset/Größe der Compiler-Konstanten) im Unity-Container an gleicher Stelle stehen; sonst Obergrenze über „Ende des Codes“ (`:1964-1971`).
-5. Ausgabe-Backends: MSL ist vorhanden. Für Unity eine **HLSL**-Ausgabe analog `glsl_rewrite` (Token-Umschreiber), aber mit `asuint/asfloat`, `mad`, `rsqrt`, `[loop]`-Schalter. **Risiko (*vermutet*):** implizite Ableitungen (`Sample`) innerhalb der `switch(pc)`-Zustandsmaschine; HLSL-/Metal-Compiler können sie als nicht-uniformen Kontrollfluss ablehnen oder falsch behandeln. Lösung: zuerst Kontrollfluss strukturieren (Dominatoren, if/else, Schleifen), oder LOD-Berechnung herausziehen.
-6. Reproduzierbarkeit: Der Build-Schritt liest nur lokale Bundles (Kernziel Schritt 4 „Shader durch eigene ersetzen“) und erzeugt Ausgabe unter `work/` (nicht im Repo).
+**Decoupling tasks (concrete):**
+1. `translate.c` already has no runtime headers (see section 8.1). Remove: tint epilogue (`:1817`, `:2070`) and `uses_tint`, `flip_x`, `rscale` paths (`uses_rscale`, `RSC2`, `rsc()`), `maxwell_dbg_*` variables/hooks, `getenv` calls (`:847`, `:1984`), and global `maxwell_gmem_base/size` (make parameters or remove them; Vertex/Fragment shaders should not need global memory).
+2. Make global static buffers (`RSC2` with `static char bufs[4][1024]`, `:526`) and `alloca` macros thread-safe for parallel translation of 13,710 programs.
+3. Validate inputs: bounds for cbuf index (`cbuf_ref`), `reg_used` (register > 255), and blob size.
+4. Port the container parser from `scripts/shader_map.py` to C and return stage/keywords/constant offset. **Check:** whether `Control+0x700/0x6FC` (compiler-constant offset/size) have the same positions in Unity's container; otherwise bound the scan by “end of code” (`:1964-1971`).
+5. Output backends: MSL exists. Add **HLSL** for Unity, analogous to `glsl_rewrite` (token rewriting), but using `asuint/asfloat`, `mad`, `rsqrt`, and `[loop]` controls. **Risk (*inferred*):** implicit derivatives (`Sample`) inside the `switch(pc)` state machine; HLSL/Metal compilers may reject them as non-uniform control flow or handle them incorrectly. First structure control flow (dominators, if/else, loops), or move LOD calculation out.
+6. Reproducibility: the build step reads only local bundles (core goal step 4, “replace shaders with our own”) and writes output under `work/` (never into the repository).
 
-**Unity-spezifische Frage zur Ausgabeform (zu entscheiden):** (i) Übersetzte Programme als ShaderLab-`HLSLPROGRAM` einbinden: Unity kompiliert sie dann für Metal selbst (Fast-Math, Reihenfolge der Operationen und `precise` entscheiden über Treue); (ii) MSL direkt über ein natives Metal-Plugin: höchste Treue, aber Unity-Beleuchtung/Schatten/Pipeline müssten wir umgehen. Ich empfehle zunächst (i) für die Machbarkeit und (ii) nur als Prüfstand.
+**Unity-specific output question (decision required):** (i) Embed translated programs as ShaderLab `HLSLPROGRAM`, letting Unity compile them for Metal (fast math, operation ordering, and `precise` determine fidelity); or (ii) use MSL directly through a native Metal plugin, for maximum fidelity but bypassing Unity lighting, shadows, and pipeline. I recommend (i) first to test feasibility and (ii) only as a test harness.
 
-## 10. Weiterentwicklungsaufgaben für BDSP (grob priorisiert)
+## 10. BDSP Follow-up Tasks (Roughly Prioritized)
 
-| Prio | Aufgabe | Begründung / Nachweis |
+| Priority | Task | Rationale / evidence |
 |---|---|---|
-| 1 | **Abdeckung messen** (siehe 11) und alle unbekannten Opcodes sammeln statt beim ersten abzubrechen. | `fail` bricht beim ersten Fehler ab (`:89-95`). |
-| 2 | Container-Parser in C, Programmextraktion für alle 13.710 Programme, Parallelisierung. | Aus `shader_map.py` bekannt. |
-| 3 | Fehlende Instruktionen ergänzen, nach Häufigkeit: zuerst solche in Fragment-Shadern (TLD, TLD4, TXD, weitere TEXS/TLDS-Infos, PRMT-Modi, MUFU-Varianten). | Siehe 2.2. |
-| 4 | **Treue-Test gegen Ryujinx-SPIR-V** im vorhandenen Harness `scripts/shader_harness`: gleiche Eingaben (Vertexdaten, cbuf, Texturen) in Referenz (SPIR-V→MSL) und unseren Übersetzer, pixel-/wertweise vergleichen. 1.288 Programme mit Gegenstück (Abschnitt 4). | Referenz laut `render-treue.md`. |
-| 5 | Numerik: Fast-Math aus, FTZ/Denormale, MUFU-Genauigkeit (RCP, RSQ, SIN, COS), Rundung F2I/F2F, Halbpräzision; je ein Mikrotest pro Befehl gegen die Referenz. | Siehe 2.2 (Abweichungen). |
-| 6 | **Unity-Konstantenpuffer:** Abbildung cbuf-Nr. und Offset auf Namen (`UnityPerDraw`, `UnityPerCamera`, Material-Properties) aus den geparsten Shaderdaten (`scripts/shader_inventory.py` liest die Parameter-Layouts). Texturslot → Property-Name. Prüfen, ob `cbuf_base = 3` auch für Unity-glslc gilt (*vermutet*, da derselbe Compiler). | Kernaufwand laut `render-treue.md` („Offen“). |
-| 7 | **Keyword-Varianten:** Jedes Programm trägt seine Keywords (bis 17). Zuordnung Variante → Material-Keywords in Unity; Umgang mit 8.332 eindeutigen Codes statt 13.710 Programmen (Deduplikation per Hash). | `mapping.json`. |
-| 8 | Strukturierter Kontrollfluss statt `switch(pc)` (Übersetzungszeit, Treue von Ableitungen, HLSL-Kompatibilität). | Siehe 9. |
-| 9 | Compute (5 Programme, *vermutet* Skinning/Effekt) prüfen; Geometry/Tessellation nur wenn Messung welche zeigt (nach Cache: keine). | `shader-audio-machbarkeit.md:44`. |
-| 10 | Absicherung: Fuzz gegen Abstürze, Eingabegrenzen, Tests in CI-ähnlichem Skript. | 2.2 „Speicherfehler-Gefahr“. |
+| 1 | **Measure coverage** (see section 11) and collect all unknown opcodes instead of stopping at the first. | `fail` stops at the first error (`:89-95`). |
+| 2 | C container parser, extract all 13,710 programs, parallelize. | Known from `shader_map.py`. |
+| 3 | Add missing instructions by frequency, starting with Fragment shaders (TLD, TLD4, TXD, more TEXS/TLDS info values, PRMT modes, MUFU variants). | See section 2.2. |
+| 4 | **Fidelity test against Ryujinx SPIR-V** in existing harness `scripts/shader_harness`: feed identical inputs (vertex data, cbuf, textures) to the reference (SPIR-V → MSL) and our translator, compare pixel/value outputs. 1,288 programs have a matching counterpart (section 4). | Reference described in `render-treue.md`. |
+| 5 | Numerics: disable fast math; test FTZ/denormals, MUFU accuracy (RCP, RSQ, SIN, COS), F2I/F2F rounding, and half precision; one microtest per instruction against the reference. | See section 2.2 (differences). |
+| 6 | **Unity constant buffers:** map cbuf number and offset to names (`UnityPerDraw`, `UnityPerCamera`, material properties) from parsed shader data (`scripts/shader_inventory.py` reads parameter layouts). Map texture slots to property names. Check whether `cbuf_base = 3` also applies to Unity glslc (*inferred* because it is the same compiler). | Main effort according to `render-treue.md` (“Open”). |
+| 7 | **Keyword variants:** each program carries its keywords (up to 17). Map variants to Unity material keywords; handle 8,332 unique codes instead of 13,710 programs (deduplicate by hash). | `mapping.json`. |
+| 8 | Structured control flow instead of `switch(pc)` (translation time, derivative fidelity, HLSL compatibility). | See section 9. |
+| 9 | Check Compute (5 programs, *inferred* to be skinning/effects); check Geometry/Tessellation only if measurements find any (none in the cache). | `shader-audio-machbarkeit.md:44`. |
+| 10 | Hardening: fuzz for crashes, validate input bounds, add tests in a CI-like script. | Section 2.2 “Memory-safety risk.” |
 
-## 11. Messung der Instruktionsabdeckung für BDSP
+## 11. Measuring Instruction Coverage for BDSP
 
-**Ziel:** Für jedes der 13.710 Bundle-Programme (8.332 eindeutige Codes) feststellen, welche Maxwell-Instruktionen vorkommen und welche `translate.c` nicht kennt.
+**Goal:** For each of the 13,710 bundle programs (8,332 unique codes), identify which Maxwell instructions occur and which are unsupported by `translate.c`.
 
-Vorgehen (alles lokal, Ausgabe nur Zahlen/Namen unter `work/`, keine Binärdaten im Repo):
-1. **Extrahieren:** Mit der bekannten Container-Struktur (Abschnitt 4) je Programm den Maxwell-Blob ab `0x12345678` ausschneiden (Skript `scripts/shader_map.py` liefert Programm-Id, Stufe, Keyword-Liste, `codeHash`). Nach `codeHash` deduplizieren.
-2. **Histogramm A (Instruktion):** Für jede Instruktion (jedes Wort, dessen Index nicht durch 4 teilbar ist) die Opcode-Klasse über die Muster `OPM(Wert,Maske)` aus `translate.c` bestimmen (die Muster lassen sich wie in `test_translate.c:load_patterns` aus dem Quelltext lesen). Zählung getrennt nach Stufe: Wörter pro Opcode, Programme pro Opcode, Anteil Programme, die **vollständig** durch bekannte Opcodes abgedeckt sind.
-3. **Histogramm B (Unbekannte):** Alle Wörter ohne Treffer nach den obersten 12 Bit (und Opcode-Familie) gruppieren, mit Beispiel-Programm-Id und Stelle; dann gegen die Maxwell-Opcode-Tabelle (envytools/Ryujinx-Dokumentation) benennen. Dazu `fail` im Übersetzer so erweitern, dass es sammelt statt abzubrechen.
-4. **Histogramm C (Teilfunktionen):** `fail`-Meldungen (z. B. „mufu 6“, „prmt mode“, „texs info N“) je Meldung zählen; sie decken Opcodes ab, die erkannt, aber nur teilweise unterstützt sind.
-5. **Kompilierbarkeit:** Alle übersetzbaren Programme per Metal-Laufzeitcompiler (`newLibraryWithSource`) prüfen (Vorlage `tools/test_shaders.m`) und Zeit/Quelltextgröße pro Programm messen.
-6. **Gewichtung:** Ergebnis zusätzlich nach Shader-Namen (`perShader` in `mapping.json`) und danach, ob die Variante im Ryujinx-Cache vorkommt (gespielte Pfade zuerst).
-7. **Zweitkorpus:** Die 1.388 Ryujinx-Guest-Programme (davon 1.288 mit Bundle-Gegenstück) als Kreuzprüfung, ob die Messung auf den Bundles dasselbe liefert.
+Method (all local; write only counts/names under `work/`, no binary data in the repository):
+1. **Extract:** use the known container structure (section 4) to slice each Maxwell blob starting at `0x12345678` (`scripts/shader_map.py` supplies program ID, stage, keyword list, and `codeHash`). Deduplicate by `codeHash`.
+2. **Histogram A (instructions):** for each instruction (each word whose index is not divisible by 4), identify its opcode class from the `OPM(value, mask)` patterns in `translate.c` (read patterns from source as in `test_translate.c:load_patterns`). Count by stage: words per opcode, programs per opcode, and share of programs **fully** covered by known opcodes.
+3. **Histogram B (unknowns):** group unmatched words by top 12 bits (and opcode family), with sample program ID and location; identify them against a Maxwell opcode table (envytools/Ryujinx documentation). Extend translator `fail` to collect errors instead of stopping.
+4. **Histogram C (partially supported forms):** count `fail` messages (e.g. “mufu 6”, “prmt mode”, “texs info N”) by message; they identify opcodes that are recognized but only partly supported.
+5. **Compileability:** use Metal runtime compiler (`newLibraryWithSource`) to check every translatable program (template: `tools/test_shaders.m`); measure time and source size per program.
+6. **Weighting:** also group results by shader name (`perShader` in `mapping.json`) and whether the variant occurs in Ryujinx cache (prioritize played paths).
+7. **Second corpus:** use the 1,388 Ryujinx guest programs (1,288 have bundle counterparts) to cross-check whether bundle measurements yield the same results.
 
-**Messgrößen (Abnahmekriterium):** (a) Anteil Programme mit 0 unbekannten Opcodes, (b) Rangliste der fehlenden Opcodes nach Programmzahl, (c) Anteil kompilierbarer MSL-Ausgaben, (d) für die 1.288 abgestimmten Programme: Bildvergleich gegen die Ryujinx-SPIR-V-Referenz mit Toleranzvorgabe (zu definieren).
+**Metrics (acceptance criteria):** (a) share of programs with zero unknown opcodes, (b) missing opcodes ranked by program count, (c) share of compilable MSL outputs, (d) image comparison against Ryujinx SPIR-V reference for the 1,288 matched programs, with tolerance to be defined.
 
-**Offene Punkte:** Layout und Offset der Compiler-Konstanten im Unity-Container; Bedeutung einzelner Felder des Control-Kopfes; ob `sdk`/`subsdk0` einen Shader-Compiler enthalten; ob Unity-Metal die erzeugte HLSL treu übersetzt; Messwerte zur Abdeckung (bisher keine).
+**Open questions:** layout and offset of compiler constants in the Unity container; meaning of some control-header fields; whether `sdk`/`subsdk0` contain a shader compiler; whether Unity Metal faithfully translates generated HLSL; coverage measurements (none yet).

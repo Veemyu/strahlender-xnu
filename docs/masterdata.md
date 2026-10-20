@@ -1,349 +1,259 @@
-# Stammdaten (Masterdata) aus den Bundles
+# Master Data in the Bundles
 
-Stand: Todo `ap-masterdata`. Alle Aussagen stammen aus dem eigenen Dump (UnityFS v7, Unity 2019.4.27f1) und aus
-`work/il2cpp/dump.cs`. Es stehen hier nur Klassen-/Feldnamen und Zahlen, keine Spielinhalte.
+Status: `ap-masterdata` task. All statements come from our own dump (UnityFS v7, Unity 2019.4.27f1) and
+`work/il2cpp/dump.cs`. This document contains class/field names and numbers only, no game content.
 
-## 1. Ergebnis in Kürze
+## 1. Summary
 
-- Die Stammdaten-Bundles enthalten **vollständige TypeTrees**. Sie lassen sich ohne Unity und ohne die Skript-DLL
-  lesen; es genügt das Python-Paket UnityPy (MIT), installiert nur unter `tools/pydeps`
-  (`pip install --target tools/pydeps UnityPy`).
-- Jede Tabelle ist ein `MonoBehaviour` (ScriptableObject, Assembly `Assembly-CSharp.dll`) mit einer oder mehreren
-  Listen („Sheets“), deren Zeilen flache Strukturen mit Zahlen, Strings und Zahlenlisten sind.
-- Für alle 88 Datenklassen und alle verschachtelten Zeilenklassen (eine Ebene tief) stimmen Feldnamen und
-  Reihenfolge mit `dump.cs` überein (0 Abweichungen). Damit sind auch die Speicher-Offsets bekannt.
-- Der Grund für „`LoadAllAssets` liefert 0 Objekte“ in Unity 6: Die Klassen (`XLSXContent.*`) existieren im neuen
-  Projekt nicht. Das ist kein Defekt der Bundles. Wir lesen deshalb JSON statt Unity-Objekte.
+- The master-data bundles contain **complete TypeTrees**. They can be read without Unity or the script DLL; the UnityPy Python package (MIT), installed only under `tools/pydeps`, is sufficient (`pip install --target tools/pydeps UnityPy`).
+- Each table is a `MonoBehaviour` (ScriptableObject, assembly `Assembly-CSharp.dll`) with one or more lists (“Sheets”), whose rows are flat structures containing numbers, strings, and numeric arrays.
+- For all 88 data classes and their nested row classes (one level deep), field names and order match `dump.cs` (zero differences). This also establishes memory offsets.
+- Why does `LoadAllAssets` return zero objects in Unity 6? The classes (`XLSXContent.*`) are absent from the new project. This is not a bundle defect, so we read JSON instead of Unity objects.
 
-## 2. Werkzeug und Datenfluss
+## 2. Tool and data flow
 
 ```
-Bundle (UnityFS) --UnityPy/TypeTree--> scripts/masterdata_export.py --> work/masterdata/<bundle>/<Klasse>.json
+Bundle (UnityFS) --UnityPy/TypeTree--> scripts/masterdata_export.py --> work/masterdata/<bundle>/<Class>.json
                                                                     --> Xnu.Data.MasterDataReader (C#, POCOs)
 ```
 
 `scripts/masterdata_export.py`:
 
-| Befehl | Wirkung |
+| Command | Effect |
 |---|---|
-| `survey [--messages]` | listet je Bundle Objekte/Klassen/Zeilen, gleicht mit `dump.cs` ab, schreibt `work/masterdata/_survey.json` (Feldschema je Klasse inkl. Dump-Offsets) |
-| `export [--messages]` | schreibt je Klasse eine JSON-Datei nach `work/masterdata/<kurzname>/<Klasse>.json` |
+| `survey [--messages]` | Lists objects/classes/rows per bundle, compares against `dump.cs`, writes `work/masterdata/_survey.json` (field schema per class, including dump offsets) |
+| `export [--messages]` | Writes a JSON file per class to `work/masterdata/<shortname>/<Class>.json` |
 
-Es werden nur `MonoScript` und `MonoBehaviour` angefasst; Audio-, Textur- und Mesh-Objekte werden nie gelesen.
-`work/` ist gitignored. Laufzeit des gesamten Exports: wenige Sekunden, rund 72 MB mit Texten.
+Only `MonoScript` and `MonoBehaviour` objects are touched; audio, texture, and mesh objects are never read.
+`work/` is gitignored. A full export takes a few seconds and is about 72 MB including text.
 
-### JSON-Format
+### JSON format
 
 ```json
-{"class":"<Skriptklasse>","namespace":"XLSXContent","assembly":"Assembly-CSharp.dll","bundle":"<Pfad relativ zu AssetAssistant>",
- "instances":[{"name":"<m_Name>","data":{"<Sheetname>":[{<Zeile>}, ...]}}]}
+{"class":"<ScriptClass>","namespace":"XLSXContent","assembly":"Assembly-CSharp.dll","bundle":"<path relative to AssetAssistant>",
+ "instances":[{"name":"<m_Name>","data":{"<SheetName>":[{<row>}, ...]}}]}
 ```
 
-- `data` enthält alle serialisierten Felder außer Unity-Boilerplate (`m_GameObject`, `m_Enabled`, `m_Script`, `m_Name`).
-- Zeilen sind Objekte mit den Originalfeldnamen; Zahlenlisten sind JSON-Arrays; verschachtelte Structs (z. B.
-  `Vector3f`) sind Objekte.
-- Klassen mit mehreren Instanzen (z. B. `MapWarp`, `PlaceData`, `MsbtData`) haben mehrere Einträge in `instances`.
-- Ausgabeordner je Bundle: `dpr_masterdatas`, `pml_personal`, `battle_masterdatas`, `ui_masterdatas`, `effect_database`,
+- `data` contains all serialized fields except Unity boilerplate (`m_GameObject`, `m_Enabled`, `m_Script`, `m_Name`).
+- Rows are objects with original field names; numeric arrays are JSON arrays; nested structs (e.g. `Vector3f`) are objects.
+- Classes with multiple instances (e.g. `MapWarp`, `PlaceData`, `MsbtData`) have multiple entries in `instances`.
+- Per-bundle output directories: `dpr_masterdatas`, `pml_personal`, `battle_masterdatas`, `ui_masterdatas`, `effect_database`,
   `contest_masterdatas`, `gms_masterdatas`, `fureai_masterdata`, `underground_masterdata`, `union_masterdata`;
-  mit `--messages`: `msg_english`, `msg_german`, `msg_common`.
+  with `--messages`: `msg_english`, `msg_german`, `msg_common`.
 
-## 3. Befund je Bundle
+## 3. Findings by bundle
 
-„Objekte“ = MonoBehaviour-Instanzen (ohne MonoScript/AssetBundle). `Dpr/masterdatas` hat 1118 Container-Einträge,
-aber 1141 MonoBehaviours; die Differenz ist nicht weiter untersucht.
+“Objects” means MonoBehaviour instances (excluding MonoScript/AssetBundle). `Dpr/masterdatas` has 1,118 container entries
+but 1,141 MonoBehaviours; this difference has not been investigated.
 
-| Bundle | Objekte | Klassen | Klassen (Zeilen je Haupt-Sheet) |
+| Bundle | Objects | Classes | Classes (rows in main sheet) |
 |---|---:|---:|---|
-| `Pml/personal_masterdatas` | 16 | 16 | `PersonalTable` (560), `WazaTable` (827), `ItemTable` (1823 + 201 Maschinen), `EvolveTable` (560), `WazaOboeTable` (560), `TamagoWazaTable` (560), `AddPersonalTable` (651), `GrowTable` (8), `TamaTable`, `PedestalTable`, `SealTable`, `StoneStatuEeffect`, `UgItemTable`, `UgFather{Expansion,Pos,ShopTable}` |
-| `Dpr/masterdatas` | 1141 | 34 | `TrainerTable` (6 Sheets, 707 Trainer), `PlaceData` (484 Instanzen), `MapWarp` (552 Inst.), `StopData` (53 Inst.), `ShopTable` (10 Shops), `PokemonInfo` (1959), `FieldCommonParam`, `MsgWindowData`, `Tower*`, `Kinomi*`, `HoneyTree`, `TvDataTable`, `TvSchedule`, `ZenmetuZone`, `UgJumpPos`, `CharcterAnime{Event,Table}`, `CharacterGraphics`, `GimmickGraphics`, … |
-| `Battle/battle_masterdatas` | 4 | 4 | `BattleDataTable` (19 Sheets, u. a. 828 Zeilen Waza-Daten, 1013 Nachrichtenrahmen), `BattleDefaultPlacementData`, `BattleSetupEffectLots`, `BattleWaitCameraData` |
-| `UIs/masterdatas/uimasterdatas` | 6 | 6 | `UIDatabase` (32 Sheets), `PlaceNameTable` (774), `TownMapTable` (218), `TownMapGuideTable` (135), `DistributionTable`, `InputLimitTable` |
-| `Effects/masterdatas/effectdatabase` | 1 | 1 | `EffectDatabase` (4 Sheets, 2168 Kampfeffekte) |
-| `Contest/md/contest_masterdatas` | 2 | 2 | `ContestMasterDatas` (12 Sheets), `ContestConfigDatas` (9) |
-| `GMS/md/gms_masterdatas` | 1 | 1 | `GMSMasterData` (10 Sheets) |
-| `FureaiHiroba/fureai/masterdata` | 20 | 20 | `FreeSanpo*`, `Poffin*`, `PokeWalking*`, `Monohiroi*`, `HirobaPokeTalk`, … (je ein Sheet) |
-| `UnderGround/masterdata` | 36 | 2 | `UnderGroundFossilNum`, `UnderGroundFossilPos` (35 Inst.) |
+| `Pml/personal_masterdatas` | 16 | 16 | `PersonalTable` (560), `WazaTable` (827), `ItemTable` (1,823 + 201 machines), `EvolveTable` (560), `WazaOboeTable` (560), `TamagoWazaTable` (560), `AddPersonalTable` (651), `GrowTable` (8), `TamaTable`, `PedestalTable`, `SealTable`, `StoneStatuEeffect`, `UgItemTable`, `UgFather{Expansion,Pos,ShopTable}` |
+| `Dpr/masterdatas` | 1,141 | 34 | `TrainerTable` (6 sheets, 707 trainers), `PlaceData` (484 instances), `MapWarp` (552), `StopData` (53), `ShopTable` (10 shops), `PokemonInfo` (1,959), `FieldCommonParam`, `MsgWindowData`, `Tower*`, `Kinomi*`, `HoneyTree`, `TvDataTable`, `TvSchedule`, `ZenmetuZone`, `UgJumpPos`, `CharcterAnime{Event,Table}`, `CharacterGraphics`, `GimmickGraphics`, … |
+| `Battle/battle_masterdatas` | 4 | 4 | `BattleDataTable` (19 sheets, including 828 move-data rows and 1,013 message frames), `BattleDefaultPlacementData`, `BattleSetupEffectLots`, `BattleWaitCameraData` |
+| `UIs/masterdatas/uimasterdatas` | 6 | 6 | `UIDatabase` (32 sheets), `PlaceNameTable` (774), `TownMapTable` (218), `TownMapGuideTable` (135), `DistributionTable`, `InputLimitTable` |
+| `Effects/masterdatas/effectdatabase` | 1 | 1 | `EffectDatabase` (4 sheets, 2,168 battle effects) |
+| `Contest/md/contest_masterdatas` | 2 | 2 | `ContestMasterDatas` (12 sheets), `ContestConfigDatas` (9) |
+| `GMS/md/gms_masterdatas` | 1 | 1 | `GMSMasterData` (10 sheets) |
+| `FureaiHiroba/fureai/masterdata` | 20 | 20 | `FreeSanpo*`, `Poffin*`, `PokeWalking*`, `Monohiroi*`, `HirobaPokeTalk`, … (one sheet each) |
+| `UnderGround/masterdata` | 36 | 2 | `UnderGroundFossilNum`, `UnderGroundFossilPos` (35 instances) |
 | `Union/unionroom/masterdata` | 2 | 2 | `UnionCharacterTable`, `UnionNpcColorTable` |
-| `Message/<sprache>` | 119 | 1 | `MsbtData` (`Dpr.Message`), pro Textdatei ein Objekt; `Message/common_msbt`: 90 Objekte |
+| `Message/<language>` | 119 | 1 | `MsbtData` (`Dpr.Message`), one object per text file; `Message/common_msbt`: 90 objects |
 
-Alle Klassen liegen im Namespace `XLSXContent` (Ausnahme: `TagPlaceData` ohne Namespace, `MsbtData` in `Dpr.Message`).
-Die Zeilenklassen heißen im TypeTree `Sheet<Name>` (oder `Sheet1`) und im Dump `Tabelle.Sheet<Name>`.
+All classes are in namespace `XLSXContent`, except `TagPlaceData` (no namespace) and `MsbtData` in `Dpr.Message`.
+In TypeTree, row classes are called `Sheet<Name>` (or `Sheet1`); in the dump they are `Table.Sheet<Name>`.
 
-## 4. Zuordnung zu dump.cs
+## 4. Mapping to dump.cs
 
-- Tabellenklasse: `public class WazaTable : ScriptableObject` im Namespace `XLSXContent`; ihre Felder sind Arrays
-  der Zeilenklasse, erstes Feld bei Offset `0x18` (nach dem 0x18 großen ScriptableObject-Kopf).
-- Zeilenklasse: verschachtelt als `WazaTable.SheetWaza` (leerer Namespace); Felder beginnen bei `0x10`
-  (il2cpp-Objektkopf). Einige Sheets erben Felder von einer Basisklasse (`SheetBuyBase`, `SheetDistributionTable`);
-  der Abgleich löst die Vererbung auf.
-- Feldnamen im TypeTree entsprechen exakt den Dump-Feldnamen (Groß-/Kleinschreibung, Tippfehler des Originals
-  wie `StoneStatuEeffect` inklusive). Typabbildung: `byte/sbyte/ushort/short/int/uint/float/string` 1:1, Arrays als
-  JSON-Listen. Zahlen sind im Dump `byte`, auch wenn sie Flags oder Enums sind.
-- Wichtige Offsets (Auszug, Zeilenklassen): `SheetPersonal.monsno` 0x14, `.basic_hp` 0x1C, `.tokusei1` 0x34;
-  `SheetWaza.wazaNo` 0x10, `.power` 0x18, `.flags` 0x34; `SheetItem.no` 0x10, `.price` 0x18. Alle weiteren stehen
-  in `work/masterdata/_survey.json` (`dump.nested.<Sheet>.offsets`).
+- Table class: `public class WazaTable : ScriptableObject` in namespace `XLSXContent`; its fields are arrays of the row class, with the first field at offset `0x18` (after the 0x18-byte ScriptableObject header).
+- Row class: nested as `WazaTable.SheetWaza` (empty namespace); fields begin at `0x10` (IL2CPP object header). Some sheets inherit fields from a base class (`SheetBuyBase`, `SheetDistributionTable`); the comparison resolves inheritance.
+- TypeTree field names exactly match dump field names (case included, as are original typos such as `StoneStatuEeffect`). Type mapping is 1:1 for `byte/sbyte/ushort/short/int/uint/float/string`; arrays become JSON arrays. Values are `byte` in the dump even when they represent flags or enums.
+- Key offsets (sample, row classes): `SheetPersonal.monsno` 0x14, `.basic_hp` 0x1C, `.tokusei1` 0x34; `SheetWaza.wazaNo` 0x10, `.power` 0x18, `.flags` 0x34; `SheetItem.no` 0x10, `.price` 0x18. All others are in `work/masterdata/_survey.json` (`dump.nested.<Sheet>.offsets`).
 
-## 5. Gewählte Kerntypen und C#-Modelle
+## 5. Selected core types and C# models
 
-Code: `unity/Assets/Scripts/Data` (Assembly `Xnu.Data`, keine Unity-Abhängigkeit).
+Code: `unity/Assets/Scripts/Data` (assembly `Xnu.Data`, no Unity dependency).
 
-| Gebiet | Original (Bundle) | Eigenes Modell | Anmerkung |
+| Area | Original (bundle) | Model | Notes |
 |---|---|---|---|
-| Pokémon-Grunddaten | `PersonalTable.SheetPersonal` (Pml) | `SpeciesRecord` | 43 Felder; 560 Zeilen (Arten + Formen) |
-| Attacken | `WazaTable.SheetWaza` (Pml) | `MoveRecord` | 33 Felder; die je drei Stufenfelder `rankEff*1..3` sind Arrays |
-| Items | `ItemTable.SheetItem` / `SheetWazaMachine` | `ItemRecord`, `MachineRecord` | `wk_*`-Wirkungsbytes als `Effects`-Wörterbuch |
-| Entwicklung | `EvolveTable.SheetEvolve` | `EvolutionRecord` | `ar` ist ein flaches Zahlenfeld, Bedeutung der Gruppen noch zu klären |
-| Texte | `Dpr.Message.MsbtData` (Message/*) | `MessageFile`, `MessageLabel`, `MessageWord` | Style-/Tag-Daten noch nicht abgebildet |
+| Pokémon base data | `PersonalTable.SheetPersonal` (Pml) | `SpeciesRecord` | 43 fields; 560 rows (species + forms) |
+| Moves | `WazaTable.SheetWaza` (Pml) | `MoveRecord` | 33 fields; the three `rankEff*1..3` stage fields are arrays |
+| Items | `ItemTable.SheetItem` / `SheetWazaMachine` | `ItemRecord`, `MachineRecord` | `wk_*` effect bytes stored in an `Effects` dictionary |
+| Evolution | `EvolveTable.SheetEvolve` | `EvolutionRecord` | `ar` is a flat numeric field; group meanings remain to be determined |
+| Text | `Dpr.Message.MsbtData` (Message/*) | `MessageFile`, `MessageLabel`, `MessageWord` | style/tag data not yet represented |
 
-`MasterDataReader` (`LoadSpecies/Moves/Items/Machines/Evolutions/Messages`) liest die JSON-Dateien und prüft
-Klassenname und Instanzzahl; `Parse*`-Methoden arbeiten auf Strings (testbar ohne Dateien). `MiniJson` ist ein kleiner
-eigener Parser (Unity bringt kein System.Text.Json mit); er versteht auch `NaN`/`Infinity` aus Pythons JSON-Ausgabe.
-Die Property-Namen sind eigene, aus den japanischen Kürzeln abgeleitete Bezeichnungen. Unsichere Deutungen:
+`MasterDataReader` (`LoadSpecies/Moves/Items/Machines/Evolutions/Messages`) reads JSON and validates class name and instance count; `Parse*` methods operate on strings (testable without files). `MiniJson` is a small custom parser (Unity does not include System.Text.Json); it also understands `NaN`/`Infinity` in Python JSON output.
+Property names are local names derived from Japanese abbreviations. Uncertain interpretations:
 `ExpValue`/`GiveExp` (`exp_value`/`give_exp`), `EggBirth`, `Rank`, `EggFormHeldStone*` (`…kawarazunoishi`),
-`HoldEffect`/`HoldPower`/`ThrowPower` (`eqp`/`atc`/`nage_atc`). Sie sind durch die Feldnamen gedeckt, aber nicht
-durch Verhalten verifiziert.
+`HoldEffect`/`HoldPower`/`ThrowPower` (`eqp`/`atc`/`nage_atc`). Field names support these interpretations, but behavior has not verified them.
 
-Verifikation gegen die echte Extraktion (nur Zähler): 560 Arten, 827 Attacken, 1823 Items, 201 Maschinen,
-560 Entwicklungszeilen, 119 Textdateien mit 42 557 Labels (Englisch) werden fehlerfrei geladen.
+Verification against the actual extraction (counts only): 560 species, 827 moves, 1,823 items, 201 machines,
+560 evolution rows, and 119 text files with 42,557 English labels load successfully.
 
 ## 6. Tests
 
-- Python: `python3 -m unittest scripts/tests/test_masterdata.py` (synthetische TypeTree-Knoten, Dump-Auszug, Export).
-- C# EditMode: `unity/Assets/Tests/EditMode/DataMasterDataTests.cs` (synthetisches JSON; MiniJson, alle Parser,
-  Fehlerfälle, Verzeichnisleser). Die Datei wurde zusätzlich außerhalb von Unity mit .NET und NUnit gebaut und ausgeführt
-  (9 Tests grün); im Unity-Test-Runner ist sie noch nicht gelaufen.
+- Python: `python3 -m unittest scripts/tests/test_masterdata.py` (synthetic TypeTree nodes, dump excerpt, export).
+- C# EditMode: `unity/Assets/Tests/EditMode/DataMasterDataTests.cs` (synthetic JSON; MiniJson, all parsers, errors, directory reader). It was also built and run outside Unity with .NET and NUnit (9 tests passed); it has not yet run in Unity's test runner.
 
-## 7. Offene Fragen (Stand Teil 1; Aktualisierung in Abschnitt 14)
+## 7. Open questions (Part 1 status; updated in section 14)
 
-1. **Typentabelle**: Es gibt keine Tabelle im Bundle. `Pml.Battle.TypeAffinity.TYPE_AFF_TBL` ist ein statisches
-   `byte[][]`, das im Klassen-Konstruktor (`.cctor`) aufgebaut wird (Werte x0/xH/x1/x2 = 0/2/4/8). Auslesen erfordert
-   Ghidra-Analyse des `.cctor` oder Nachbau nach bekannter Wirkungsmatrix.
-2. **Tokusei/Fähigkeiten**: Es gibt keine Datentabelle, nur das Enum `TokuseiNo` und Verhalten im Code; Namen und
-   Beschreibungen stehen in den Message-Dateien (`*_ss_tokusei`, `*_ss_tokuseiinfo`). Die Zuordnung Enum-Wert ↔
-   Text-Label ist noch zu prüfen.
-3. **Namen**: Pokémon-, Attacken-, Item- und Typnamen liegen nur in Message-Dateien (`*_ss_monsname`,
-   `*_ss_wazaname`, `*_ss_itemname`, `*_ss_typename`; Pokémon-Texte in `Message/common_msbt`). Das Label-zu-ID-Schema
-   (`labelIndex` gegen Label-Namen) ist zu bestätigen.
-4. **Karten/Zonen**: Hier liegen Platzierungsdaten (`PlaceData`, `MapWarp`, `StopData`, `ZenmetuZone`,
-   `PlaceNameTable`), aber keine Kartengeometrie und keine Zonen-Metatabelle. `ZoneID` ist ein Enum im Code; die
-   eigentlichen Zonendaten und die Begegnungstabellen stehen vermutlich in `Dpr/scriptableobjects`, `Dpr/field` oder
-   `ev_script` und sind nicht untersucht.
-5. `EvolveTable.ar`: Gruppierung der Zahlen (Methode/Parameter/Ziel) fehlt; vermutlich Dreiergruppen.
-6. Ob Pml-Tabellen (`ItemTable`, `WazaTable`) dieselben Zeilen wie die Kampf-Tabelle `BattleDataTable.BattleWazaData`
-   (828 Zeilen) erweitern, ist ungeklärt.
-7. Der Abgleich prüft nur eine Verschachtelungsebene; tiefere Strukturen (z. B. `StyleInfo`, `TagData`) sind
-   per TypeTree vorhanden, aber nicht gegen `dump.cs` verglichen.
-8. Nicht im Unity-Editor getestet (Vorgabe: Editor nicht über Tools verändern); der Test-Runner und die automatisch
-   erzeugten `.meta`-Dateien stehen noch aus.
+1. **Type chart:** no bundle table exists. `Pml.Battle.TypeAffinity.TYPE_AFF_TBL` is a static `byte[][]` built in the class constructor (`.cctor`) (values x0/xH/x1/x2 = 0/2/4/8). Reading it requires Ghidra analysis of the `.cctor` or reconstruction from a known effectiveness chart.
+2. **Tokusei/abilities:** no data table, only the `TokuseiNo` enum and behavior in code; names and descriptions are in message files (`*_ss_tokusei`, `*_ss_tokuseiinfo`). The mapping from enum values to text labels still needs confirmation.
+3. **Names:** Pokémon, move, item, and type names exist only in message files (`*_ss_monsname`, `*_ss_wazaname`, `*_ss_itemname`, `*_ss_typename`; Pokémon text in `Message/common_msbt`). The label-to-ID scheme (`labelIndex` versus label names) needs confirmation.
+4. **Maps/zones:** these bundles contain placement data (`PlaceData`, `MapWarp`, `StopData`, `ZenmetuZone`, `PlaceNameTable`), but no map geometry or zone metadata table. `ZoneID` is an enum in code; actual zone data and encounter tables are likely in `Dpr/scriptableobjects`, `Dpr/field`, or `ev_script` and have not been investigated.
+5. `EvolveTable.ar`: grouping of numbers (method/parameter/target) is unknown; likely groups of three.
+6. It is unclear whether Pml tables (`ItemTable`, `WazaTable`) add rows to the battle table `BattleDataTable.BattleWazaData` (828 rows).
+7. The comparison checks only one nesting level; deeper structures (e.g. `StyleInfo`, `TagData`) are present in TypeTree but not compared against `dump.cs`.
+8. Not tested in Unity Editor (instruction: do not modify the Editor through tools); the test runner and automatically generated `.meta` files remain outstanding.
 
-## 8. Aufwandsschätzung für die restlichen Typen
+## 8. Estimated effort for remaining types
 
-- Bis zu 88 Datenklassen mit etwa 215 Sheets sind bereits fehlerfrei exportiert; es fehlen nur C#-Modelle und Leser.
-- Handgeschriebene Modelle wie die fünf oben: je Sheet etwa 0,5 bis 1 Stunde inklusive Test. Für Trainer
-  (`TrainerTable`, 157-Felder-Sheet `TrainerPoke`), Shops, Wildbegegnungen und Kampfdaten (`BattleDataTable`) rechne ich
-  mit 1 bis 2 Tagen.
-- Zeitsparender Weg: ein Generator, der aus `_survey.json` POCOs und Reader erzeugt (ca. 1 Tag), danach nur noch
-  Feintuning der Namen. Für UI-, Effekt-, Kontest-, GTS- und Freizeitdaten reicht diese automatische Variante
-  voraussichtlich aus; sie werden meist erst später gebraucht.
-- Größere Lücken sind nicht die Bundles, sondern die Code-seitigen Tabellen (Typentabelle, Fähigkeiten-Verhalten,
-  Entwicklungsregeln): je 1 bis 3 Tage Ghidra-/Dump-Arbeit.
+- Up to 88 data classes with about 215 sheets have already been exported successfully; only C# models and readers are missing.
+- Handwritten models such as the five above take roughly 0.5–1 hour per sheet, including tests. Trainer data (`TrainerTable`, its 157-field `TrainerPoke` sheet), shops, wild encounters, and battle data (`BattleDataTable`) are estimated at 1–2 days.
+- A faster route is a generator that creates POCOs and readers from `_survey.json` (about 1 day), followed by name refinement. This should be sufficient for UI, effects, contests, GTS, and leisure data, which are mostly needed later.
+- The larger gaps are not the bundles but code-side tables (type chart, ability behavior, evolution rules): 1–3 days of Ghidra/dump work each.
 
 ---
 
-# Teil 2: Trainer, Begegnungen, Karten, Skripte (Todo `ap-masterdata`, Fortsetzung)
+# Part 2: Trainers, Encounters, Maps, and Scripts (Task `ap-masterdata`, continued)
 
-Auch hier nur Namen, Zahlen und Struktur; keine Spieltexte, keine Daten im Repo (alles unter `work/`).
-Die in Abschnitt 7 offenen Punkte 2, 4 und 5 sind in Teil 2 beantwortet (siehe 14).
+Here too, only names, numbers, and structure are included; no game text or data is in the repository (everything remains under `work/`).
+Open items 2, 4, and 5 from section 7 are answered in Part 2 (see section 14).
 
-## 9. Wo die weiteren Tabellen liegen
+## 9. Where the additional tables are
 
-Der neue Befehl `scan` öffnet alle Bundles unter `AssetAssistant` außer `Environments` (2,2 GB Karten-/Objektmodelle)
-und `Pokemon Database` (Modelle) und liest dort nur die `MonoScript`-Objekte. Ergebnis (`work/masterdata/_scan.json`):
-71 Bundles enthalten Tabellenklassen (`XLSXContent.*`, `Dpr.Message.MsbtData`, `EvData`, `TagPlaceData`). Neu gegenüber
-Teil 1 sind folgende Bundles (Option `--set extra`, Ausgabe unter `work/masterdata/<kurzname>/`):
+The new `scan` command opens all bundles under `AssetAssistant` except `Environments` (2.2 GB of map/object models)
+and `Pokemon Database` (models), and reads only `MonoScript` objects. Result (`work/masterdata/_scan.json`):
+71 bundles contain table classes (`XLSXContent.*`, `Dpr.Message.MsbtData`, `EvData`, `TagPlaceData`). New relative to
+Part 1 are these bundles (option `--set extra`, output under `work/masterdata/<shortname>/`):
 
-| Bundle | Kurzname | Klassen (Instanzen → Zeilen) |
+| Bundle | Short name | Classes (instances → rows) |
 |---|---|---|
-| `Dpr/scriptableobjects/gamesettings` | `gamesettings` | `FieldEncountTable` (2 Inst.: je 183 Zonen), `MapInfo` (658 Zonen + 658 Kameras), `ZoneTable` (2 Raster), `AttributeBlock` (2878), `AttributeMatrix` (614), `MapAttributeTable` (256 Codes), `MapAttributeExTable` (114), `CalenderEncTable` (69 Tage, 366 Wettertage), `ArenaInfo` (106), `WaterSettings` (5) |
-| `Dpr/ev_script` | `ev_script` | `EvData` (856 Dateien, 13 139 Skripte, 64 745 Befehle) |
-| `UnderGround/data/ugdata` | `ug_data` | `UgEncount` (12 Inst., 491 Zeilen), `UgPokemonData` (493), `UgSpecialPokemon` (77), `UgRandMark` (20), `UgEncountLevel` (9), `UgMiniMap`, `UgNpc{List,Pos,Talk}` (50/42/73), `UgPokemonPos` (75), `UgTamagoWazaIgnoreTable` (113) |
-| `LightStone/uglightstonedata`, `UnderGround/lightstone/prefabs/lightstonemanager` | `lightstone`, `lightstone_ug` | `LightStonePosTable` (35), `LightStoneTable` (6); zwei Fassungen, nur `lightstone_ug` passt zum Dump (siehe 10) |
-| `Dpr/spfishing` | `spfishing` | `RareFishTable` (531 Rasterpunkte) |
+| `Dpr/scriptableobjects/gamesettings` | `gamesettings` | `FieldEncountTable` (2 instances, 183 zones each), `MapInfo` (658 zones + 658 cameras), `ZoneTable` (2 grids), `AttributeBlock` (2,878), `AttributeMatrix` (614), `MapAttributeTable` (256 codes), `MapAttributeExTable` (114), `CalenderEncTable` (69 days, 366 weather days), `ArenaInfo` (106), `WaterSettings` (5) |
+| `Dpr/ev_script` | `ev_script` | `EvData` (856 files, 13,139 scripts, 64,745 commands) |
+| `UnderGround/data/ugdata` | `ug_data` | `UgEncount` (12 instances, 491 rows), `UgPokemonData` (493), `UgSpecialPokemon` (77), `UgRandMark` (20), `UgEncountLevel` (9), `UgMiniMap`, `UgNpc{List,Pos,Talk}` (50/42/73), `UgPokemonPos` (75), `UgTamagoWazaIgnoreTable` (113) |
+| `LightStone/uglightstonedata`, `UnderGround/lightstone/prefabs/lightstonemanager` | `lightstone`, `lightstone_ug` | `LightStonePosTable` (35), `LightStoneTable` (6); two versions, only `lightstone_ug` matches the dump (see 10) |
+| `Dpr/spfishing` | `spfishing` | `RareFishTable` (531 grid points) |
 | `Dpr/statueeffectdata`, `StatuePlacementEdit/sb/sbcontroller`, `DigFossil/dig/digfossilcontroller` | `statueeffect`, `secretbase`, `digfossil` | `StatueEffectRawData` (430), `Pedestal` (35), `SecretbaseUpgrade` (3), `HardStoneRawData`, `DepositItemRawData`, `StoneBoxRawData` |
 | `FureaiHiroba/fieldwalking` | `fieldwalking` | `FieldWalkingKinomiTable`, `…KinomiSeikakuTable` (25), `FieldWalkingPokeTalk` (235) |
-| `Dpr/scenes/title` | `title` | `TitleSettings` (9); die Abspannliste `StaffrollList` (Textdaten) wird bewusst nicht exportiert |
+| `Dpr/scenes/title` | `title` | `TitleSettings` (9); the credits list `StaffrollList` (text data) is intentionally not exported |
 
-Nicht in `AssetAssistant` gefunden: `CharacterTable`, `EffectTable`, `EvMsgList`, `Resources`,
-`ArenaInfoExtensionMethods` (vermutlich in anderen Ressourcen oder im Code). Die Audio-Klassen `AudioTable`, `BgmInfo`,
-`DebugAudioDatabase` liegen in keinem gescannten Bundle; Audio wird ohnehin nie angefasst. `Contest/music/*` enthält
-nur `NotesInfo` (Wettbewerb) und `UIs/searchdatas/*` nur `SearchIndexData` (Text, 9 Sprachen); beide bewusst nicht exportiert.
-Nicht exportiert sind auch Nicht-Tabellenklassen im selben Bundle (`EnvironmentSettings` 175, `GameSettings`,
-`EventCameraData` 526, `EventCameraTable`); Verweise auf sie werden nur namentlich aufgelöst.
+Not found in `AssetAssistant`: `CharacterTable`, `EffectTable`, `EvMsgList`, `Resources`, `ArenaInfoExtensionMethods` (possibly in other resources or code). Audio classes `AudioTable`, `BgmInfo`, `DebugAudioDatabase` are in none of the scanned bundles; audio is never touched anyway. `Contest/music/*` contains only `NotesInfo` (contest), and `UIs/searchdatas/*` only `SearchIndexData` (text, 9 languages); neither is exported. Non-table classes in the same bundles are also excluded (`EnvironmentSettings` 175, `GameSettings`, `EventCameraData` 526, `EventCameraTable`); references to them are resolved by name only.
 
-Insgesamt gibt es jetzt 125 JSON-Dateien (88 Teil 1 + 37 Teil 2), `work/masterdata` ist rund 102 MB groß.
+There are now 125 JSON files (88 Part 1 + 37 Part 2); `work/masterdata` is about 102 MB.
 
-## 10. Exporter-Erweiterung (nur additiv)
+## 10. Exporter additions (additive only)
 
-`scripts/masterdata_export.py` verhält sich ohne neue Optionen wie zuvor (alle Teil-1-Tests unverändert grün).
+Without new options, `scripts/masterdata_export.py` behaves as before (all Part 1 tests still pass unchanged).
 
-| Neu | Wirkung |
+| Addition | Effect |
 |---|---|
-| `--set base\|extra\|all` | `base` (Standard) = Teil 1; `extra` = Bundles aus `EXTRA_BUNDLES`; `all` = beides. Gilt für `survey` und `export`. `survey --set extra` schreibt `_survey_extra.json` (Teil 1 bleibt in `_survey.json`). |
-| `counts` | schreibt Instanz- und Zeilenzahlen aller JSON-Dateien nach `_counts.json` (nur Zahlen) |
-| `scan` | listet je Bundle die Tabellenklassen → `_scan.json` (nur MonoScript, ca. 5 Minuten) |
+| `--set base\|extra\|all` | `base` (default) = Part 1; `extra` = bundles in `EXTRA_BUNDLES`; `all` = both. Applies to `survey` and `export`. `survey --set extra` writes `_survey_extra.json` (Part 1 stays in `_survey.json`). |
+| `counts` | writes instance and row counts for all JSON files to `_counts.json` (numbers only) |
+| `scan` | lists table classes per bundle in `_scan.json` (MonoScript only, about 5 minutes) |
 
-Zusätze im Extra-Export:
-- Instanzen tragen `path_id` (Objekt-ID im Bundle). PPtr-Verweise auf Objekte desselben Bundles (`{m_FileID:0, m_PathID}`)
-  bekommen `target_class` und `target_name`; so zeigt z. B. `MapInfo…Attribute` auf den Namen der `AttributeMatrix`.
-  Aufgelöst wird vor dem Klassenfilter, also auch auf nicht exportierte Klassen (z. B. `EnvironmentSettings`).
-- Klassenfilter je Bundle (`EXTRA_BUNDLES`): Standard nur Namespace `XLSXContent`, bei `ev_script` nur `EvData`, bei `title` nur `TitleSettings`.
-- Neue Hilfsfunktionen mit Tests: `want_class`, `filter_records`, `resolve_pptr_names`, `table_counts`, `ev_stats`, `scan_wanted`.
+Extra-export additions:
+- Instances include `path_id` (object ID in bundle). PPtr references to objects in the same bundle (`{m_FileID:0, m_PathID}`) receive `target_class` and `target_name`; for example, `MapInfo…Attribute` resolves to the `AttributeMatrix` name. Resolution occurs before class filtering, including for classes not exported (e.g. `EnvironmentSettings`).
+- Per-bundle class filters (`EXTRA_BUNDLES`): by default namespace `XLSXContent` only; `ev_script` only `EvData`; `title` only `TitleSettings`.
+- New tested helpers: `want_class`, `filter_records`, `resolve_pptr_names`, `table_counts`, `ev_stats`, `scan_wanted`.
 
-Abgleich mit `dump.cs` (Klassenname, Feldnamen, Reihenfolge, Offsets): 37 Klassen, 47 Zeilenklassen, 0 Abweichungen bei
-Feldnamen und Reihenfolge – mit einer Ausnahme: In `LightStone/uglightstonedata` weichen `LightStonePosTable.SheetData`
-(Bundle: `ZoneID, Digda, Dugtrio`; Dump: `ZoneID, MinNum, MaxNum, MinProbability, MaxProbability, Diglettrate, Dugtriorate, Locator`) und
-`LightStoneTable.SheetData` (Bundle: `ZoneID, LightStoneNum, EventTime, BonusTime`; Dump: `ZoneID, LightStone, BonusTime`) ab.
-Das Bundle `UnderGround/lightstone/prefabs/lightstonemanager` hat dagegen genau das Dump-Schema. Das ist ein Hinweis, dass
-das romfs-Bundle `LightStone/uglightstonedata` neuer ist als der Dump. Der Dump gilt also nicht für jede Tabelle als
-Wahrheit; wichtig fürs Untergrund-Kapitel, nicht für die erste Strecke.
-Zusätzlich wurde geprüft, dass der C#-Leser jedes Dump-Feld der 33 abgedeckten Zeilenklassen liest (0 ungelesene Felder).
+Comparison against `dump.cs` (class name, field names, order, offsets): 37 classes, 47 row classes, zero differences in names/order, with one exception. In `LightStone/uglightstonedata`, `LightStonePosTable.SheetData` differs (bundle: `ZoneID, Digda, Dugtrio`; dump: `ZoneID, MinNum, MaxNum, MinProbability, MaxProbability, Diglettrate, Dugtriorate, Locator`), as does `LightStoneTable.SheetData` (bundle: `ZoneID, LightStoneNum, EventTime, BonusTime`; dump: `ZoneID, LightStone, BonusTime`). The `UnderGround/lightstone/prefabs/lightstonemanager` bundle matches the dump schema exactly. This suggests the romfs bundle `LightStone/uglightstonedata` is newer than the dump. Therefore the dump is not authoritative for every table; this matters for the Underground section, not the initial route.
+It was also verified that the C# reader consumes every dump field in the 33 covered row classes (zero unread fields).
 
-## 11. Neue C#-Modelle und Leser (`Xnu.Data`)
+## 11. New C# models and reader (`Xnu.Data`)
 
-Dateien: `MasterDataModels2.cs` (POCOs), `MasterData2Reader.cs` (Leser; eigene JSON-Helfer, `MiniJson` und der
-Teil-1-Leser bleiben unverändert). Ohne UnityEngine. Die Reader-Konstanten nennen die erwarteten Dateipfade unter `work/masterdata`.
+Files: `MasterDataModels2.cs` (POCOs), `MasterData2Reader.cs` (reader; custom JSON helpers; `MiniJson` and the Part 1 reader remain unchanged). No UnityEngine dependency. Reader constants specify expected paths under `work/masterdata`.
 
-| Gebiet | Quelle (Klasse.Sheet) | Modell / Leser | Gelesene Zahlen (echte Daten) |
+| Area | Source (Class.Sheet) | Model / reader | Counts from real data |
 |---|---|---|---|
-| Trainer | `TrainerTable.{TrainerType,TrainerData,TrainerPoke,TrainerRematch}` | `TrainerTables` → `TrainerTypeRecord`, `TrainerRecord` (+ `Party`), `TrainerPokemonRecord`, `TrainerRematchRecord`; `LoadTrainers` | 108 Klassen, 707 Trainer, 706 mit Team, 1563 Teamplätze (max. 6), 238 Rematch |
-| Wildbegegnungen | `FieldEncountTable.{table,urayama,mistu,honeytree,safari,mvpoke,legendpoke,zui}` | `FieldEncounterTables` → `ZoneEncounterRecord`, `EncounterSlot` u. a.; `LoadFieldEncounters(instanz)` | 183 Zonen (171 mit Graslisten, 53 mit Wasser/Angeln), 6 Honig, 4 Honigbaum, 64 Safari, 29 Wanderzonen, 37 feste Begegnungen, 18 `zui`, 16 `urayama` |
-| Honigbäume | `HoneyTree.{HoneyTreeIndex,HoneyTreeShake}` | `HoneyTreeTables`; `LoadHoneyTrees` | 21 Standorte, 4 Schüttelergebnisse |
-| Kalender | `CalenderEncTable.{data,weather}` | `CalendarEncounterTables`; `LoadCalendar` | 69 Tage, 366 Wettertage |
-| Zonen | `MapInfo.{ZoneData,Camera}` | `MapInfoTables` → `ZoneInfoRecord`, `ZoneCameraRecord`; `LoadMapInfo` | 658 Zonen, 658 Kameras, 67 Feldzonen, 648 mit Kartenbundle (377 verschiedene) |
-| Zonenraster | `ZoneTable` | `ZoneGridRecord`; `LoadZoneGrids` | 2 Raster (30 × 30 mit 196 belegten Zonen, 4 × 5 mit 6) |
-| Karten-Attribute | `AttributeBlock`, `AttributeMatrix`, `MapAttributeTable` | `AttributeBlockRecord`, `AttributeMatrixRecord`, `MapAttributeCodeRecord` | 2878 Blöcke (2863 × 1024, 15 × 1056 Werte, Breite 32), 614 Matrizen, 256 Codes |
-| Warps | `MapWarp` | `MapWarpSet` → `MapWarpRecord`; `LoadMapWarps` | 552 Karten, 1931 Warps |
-| Shops | `ShopTable.{FS,FixedShop,BPShop}` | `ShopTables`; `LoadShops` | 59 / 75 / 90 Einträge (weitere Shop-Sheets nicht modelliert) |
-| Lernlisten | `EvolveTable.ar`, `WazaOboeTable.ar`, `TamagoWazaTable`, `GrowTable` | `EvolutionListRecord`/`EvolutionStepRecord`, `LearnsetRecord`, `EggMoveRecord`, `GrowthCurveRecord` | 560 Listen, 254 Entwicklungsschritte, 8 384 Lernstufen-Paare, 560 Eiattacken-Zeilen, 8 Kurven à 101 Werte |
-| Event-Skripte | `EvData` | `EventScriptFile` → `EventScript` → `EventCommand` → `EventArgument` | 856 Dateien, 13 139 Skripte, 64 745 Befehle, 17 328 Strings |
+| Trainers | `TrainerTable.{TrainerType,TrainerData,TrainerPoke,TrainerRematch}` | `TrainerTables` → `TrainerTypeRecord`, `TrainerRecord` (+ `Party`), `TrainerPokemonRecord`, `TrainerRematchRecord`; `LoadTrainers` | 108 classes, 707 trainers, 706 with teams, 1,563 party slots (max 6), 238 rematches |
+| Wild encounters | `FieldEncountTable.{table,urayama,mistu,honeytree,safari,mvpoke,legendpoke,zui}` | `FieldEncounterTables` → `ZoneEncounterRecord`, `EncounterSlot`, etc.; `LoadFieldEncounters(instance)` | 183 zones (171 with grass lists, 53 with water/fishing), 6 honey, 4 honey trees, 64 Safari, 29 roaming zones, 37 fixed encounters, 18 `zui`, 16 `urayama` |
+| Honey trees | `HoneyTree.{HoneyTreeIndex,HoneyTreeShake}` | `HoneyTreeTables`; `LoadHoneyTrees` | 21 locations, 4 shake results |
+| Calendar | `CalenderEncTable.{data,weather}` | `CalendarEncounterTables`; `LoadCalendar` | 69 days, 366 weather days |
+| Zones | `MapInfo.{ZoneData,Camera}` | `MapInfoTables` → `ZoneInfoRecord`, `ZoneCameraRecord`; `LoadMapInfo` | 658 zones, 658 cameras, 67 field zones, 648 with map bundles (377 distinct) |
+| Zone grids | `ZoneTable` | `ZoneGridRecord`; `LoadZoneGrids` | 2 grids (30×30 with 196 occupied zones, 4×5 with 6) |
+| Map attributes | `AttributeBlock`, `AttributeMatrix`, `MapAttributeTable` | `AttributeBlockRecord`, `AttributeMatrixRecord`, `MapAttributeCodeRecord` | 2,878 blocks (2,863 × 1,024, 15 × 1,056 values, width 32), 614 matrices, 256 codes |
+| Warps | `MapWarp` | `MapWarpSet` → `MapWarpRecord`; `LoadMapWarps` | 552 maps, 1,931 warps |
+| Shops | `ShopTable.{FS,FixedShop,BPShop}` | `ShopTables`; `LoadShops` | 59 / 75 / 90 entries (other shop sheets not modeled) |
+| Learnsets | `EvolveTable.ar`, `WazaOboeTable.ar`, `TamagoWazaTable`, `GrowTable` | `EvolutionListRecord`/`EvolutionStepRecord`, `LearnsetRecord`, `EggMoveRecord`, `GrowthCurveRecord` | 560 lists, 254 evolution steps, 8,384 level/move pairs, 560 egg-move rows, 8 curves of 101 values |
+| Event scripts | `EvData` | `EventScriptFile` → `EventScript` → `EventCommand` → `EventArgument` | 856 files, 13,139 scripts, 64,745 commands, 17,328 strings |
 
-Verifikation: alle Tabellen laden fehlerfrei; Spitzenverbrauch beim Lesen aller (inkl. 20-MB-Attributdatei und Skripten)
-rund 410 MB. Querprüfungen (echte Daten, nur Zähler): Trainer-Typ-IDs 0 unbekannt; Team-ID = Zeilenindex bei allen 707;
-alle 707 `NameLabel` und alle 658 `PokePlaceName` existieren als Label in den passenden Message-Dateien;
-`Attribute`-Verweise der Zonen → Matrizen → Blöcke: 0 offene Verweise; Zonen aus dem Raster ↔ `MapInfo`: 0 fehlende;
-die 25 „Zonen“ ohne `MapInfo`-Eintrag in `FieldEncountTable` und die 18 Warps ohne Ziel sind alle `-1` (Platzhalter).
+Verification: all tables load successfully; peak memory while loading all (including 20 MB of attributes and scripts) is about 410 MB. Cross-checks (real data, counts only): trainer type IDs: zero unknown; team ID equals row index for all 707; all 707 `NameLabel` and all 658 `PokePlaceName` values exist in corresponding message files; zone `Attribute` references → matrices → blocks: zero unresolved; grid zones ↔ `MapInfo`: zero missing; all 25 “zones” without a `MapInfo` entry in `FieldEncountTable` and all 18 warps without a destination are `-1` placeholders.
 
-Hinweise zur Deutung (aus Feldnamen/Zahlen, nicht aus Verhalten bestätigt):
-- `TrainerData` hat kein ID-Feld; die Trainer-ID ist der Zeilenindex (durch `TrainerPoke.ID` bestätigt).
-- `FightType` kommt in 681 × 0 und 26 × 1 vor (vermutlich Einzel/Doppel). `AIBit` ist eine Bitmaske mit 6 verschiedenen
-  Werten (9 bei 613 Trainern, 111 bei 83, 107 bei 6, 11 bei 3, 8 und ein sechster bei je 1). Die Bedeutung der Bits liegt im Kampfcode.
-- Slotzahlen je Zone sind fest: Gras 12, Zeit (Tag/Nacht) je 2, Massenauftreten 2, wiegendes Gras 4, Wasser und die drei
-  Angelstufen je 5, GBA-Listen je 2. Die Tabelle enthält nur die Gesamtrate je Art (`encRate_*`), **keine Slot-Wahrscheinlichkeiten**;
-  die müssen aus dem Code (Klasse `Encount`/`FieldEncount`) oder Nachbau kommen.
-- Die zwei Instanzen `FieldEncountTable_d` und `_p` sind zwei Editionen (in 11 Zonen unterscheidet sich die Grasliste).
-  Der Leser nimmt standardmäßig `_d` (Brilliant Diamond).
-- `zui` hat je Zone 28 Bool-Werte (passt zur Formenzahl von Icognito/Unown; Vermutung).
-- Zonenraster: Index = Zeile × Breite + Spalte, `-1` = leer. Attributblöcke: 32 Werte pro Zeile; Matrizen setzen Blöcke
-  zeilenweise zusammen (Name des Blocks, leer = kein Block). Die Bedeutung der Attributwerte (z. B. 128) steht in
-  `MapAttributeTable`/`MapAttributeExTable` (Letztere enthält auch Soundlabel-Namen; nicht modelliert).
-- `MapWarp.GruopID` ist ein Tippfehler im Original und bleibt als `GroupId` erhalten.
+Interpretation notes (based on field names/numbers, not behavior):
+- `TrainerData` has no ID field; trainer ID is the row index (confirmed by `TrainerPoke.ID`).
+- `FightType` occurs 681 × 0 and 26 × 1 (likely single/double). `AIBit` is a bitmask with six distinct values (9 for 613 trainers, 111 for 83, 107 for 6, 11 for 3, and 8 plus one other value for one trainer each). Bit meanings are in battle code.
+- Slot counts per zone are fixed: grass 12, time-of-day (day/night) 2 each, mass outbreak 2, shaking grass 4, water and each of three fishing tiers 5, GBA lists 2 each. The table contains only each species' overall rate (`encRate_*`), **not per-slot probabilities**; those must come from code (`Encount`/`FieldEncount`) or be reconstructed.
+- `FieldEncountTable_d` and `_p` are two editions (grass lists differ in 11 zones). Reader defaults to `_d` (Brilliant Diamond).
+- `zui` has 28 Boolean values per zone (possibly matching Unown's number of forms).
+- Zone grid: index = row × width + column; `-1` = empty. Attribute blocks contain 32 values per row; matrices concatenate blocks by row (block name, empty = no block). Meaning of attribute values (e.g. 128) is in `MapAttributeTable`/`MapAttributeExTable` (the latter also contains sound-label names, not modeled).
+- `MapWarp.GruopID` is an original typo and remains `GroupId`.
 
-## 12. Karten-, Szenen- und Bundlezuordnung
+## 12. Map, scene, and bundle mapping
 
-- `MapInfo.ZoneData.AssetBundleName` verweist relativ auf `Environments/`: 377 verschiedene Namen (249 `prefab_map/*`,
-  114 `underground/*`, 14 `fields/*`); 375 existieren als Datei, zwei fehlen (`prefab_map/c08r0501`, `c08r0601`).
-  Mehrere Zonen teilen sich ein Bundle (z. B. gleiche Hausinnenräume). 10 Zonen haben kein Kartenbundle. Im Ordner liegen
-  384 Kartenbundles (`fields` 15, `prefab_map` 255, `underground` 114), 9 davon sind von keiner Zone benannt.
-- Die Feldkarten (`fields/areaNNN`) tragen mehrere Zonen (Stadt + Routen); `AreaID` gruppiert sie (14 Feldbundles + `safari`).
-- Platzierungstabellen heißen nach der Karte: `PlaceData_<KARTE>` (484 Instanzen, 4197 Zeilen), `MapWarp_<KARTE>` (552 / 1931),
-  `StopData_<KARTE>` (53 / 116). Die Instanzen passen nur teilweise namentlich auf Kartenbundles (277 / 326 / 38 Treffer);
-  `PlaceData.zoneID` und `MapWarp.WarpZone` verweisen direkt auf Zonen-IDs und sind der verlässlichere Schlüssel.
-- Szenen (`Dpr/scenes/*`, jeweils ein Bundle): `battle`, `contest`, `digfossil`, `evolvedemo`, `field`, `gms`, `opening`,
-  `sealpreview`, `title`. Die Feldszene lädt Karten über `AssetBundleName`; Kampfhintergründe über `ArenaInfo`
-  (106 Einträge mit Boden-/Himmelsbundle unter `Environments/bg/arenas/{ground,sky}`: 104 + 19 Dateien).
-- `ZoneID` hat 658 Werte (0–657, Enum mit 659 Einträgen inkl. `-1`) und entspricht 1:1 den `MapInfo`-Zeilen.
+- `MapInfo.ZoneData.AssetBundleName` is relative to `Environments/`: 377 distinct names (249 `prefab_map/*`, 114 `underground/*`, 14 `fields/*`); 375 exist as files, two are missing (`prefab_map/c08r0501`, `c08r0601`). Multiple zones share a bundle (e.g. identical house interiors). Ten zones have no map bundle. The folder contains 384 map bundles (`fields` 15, `prefab_map` 255, `underground` 114), 9 not referenced by any zone.
+- Field maps (`fields/areaNNN`) contain multiple zones (town + routes); `AreaID` groups them (14 field bundles + `safari`).
+- Placement tables are named after the map: `PlaceData_<MAP>` (484 instances, 4,197 rows), `MapWarp_<MAP>` (552 / 1,931), `StopData_<MAP>` (53 / 116). Instance names only partly match map bundle names (277 / 326 / 38 matches); `PlaceData.zoneID` and `MapWarp.WarpZone` point directly to zone IDs and are more reliable keys.
+- Scenes (`Dpr/scenes/*`, one bundle each): `battle`, `contest`, `digfossil`, `evolvedemo`, `field`, `gms`, `opening`, `sealpreview`, `title`. The field scene loads maps through `AssetBundleName`; battle backgrounds use `ArenaInfo` (106 entries with ground/sky bundles under `Environments/bg/arenas/{ground,sky}`: 104 + 19 files).
+- `ZoneID` has 658 values (0–657; enum has 659 entries including `-1`) and maps 1:1 to `MapInfo` rows.
 
-## 13. Event-Skripte (`EvData`) – nur Struktur
+## 13. Event scripts (`EvData`) — structure only
 
-Format (Dump und TypeTree stimmen überein): `EvData { List<Script> Scripts; List<string> StrList }`,
+Format (dump and TypeTree agree): `EvData { List<Script> Scripts; List<string> StrList }`,
 `Script { string Label; List<Command> Commands }`, `Command { List<Aregment> Arg }`, `Aregment { ArgType argType; int data }`
-(Originalschreibweise „Aregment“). Es ist also **kein Byte-Code-Blob**, sondern strukturierte Zahlenlisten.
+(original spelling: “Aregment”). This is **not a bytecode blob**, but structured numeric lists.
 
-- `ArgType` (Enum im Dump): `Command` 0, `Float` 1, `Work` 2, `Flag` 3, `SysFlag` 4, `String` 5.
-  Häufigkeit in den echten Daten: 64 741 / 26 305 / 13 255 / 2 959 / 458 / 33 054 (zusammen 140 772 Argumente).
-- Das erste Argument eines Befehls hat `argType` 0 und ist die Befehlskennung (`EvCmdID.NAME`, 1236 Werte 0–1235).
-  In den Daten kommen 867 verschiedene Kennungen vor, dazu 88 × `-1` (Platzhalter) und 4 leere Befehle.
-- `Float`-Argumente speichern die Bits eines `float` in `data` (z. B. 1 065 353 216 = 1,0f); `String` ist ein Index in `StrList`;
-  `Work`/`Flag`/`SysFlag` sind Indizes in die Ereignis-Variablen.
-- 856 Dateien, 13 139 Skripte (1 bis 952 je Datei), 64 745 Befehle, 17 328 Stringtabellen-Einträge, rund 5,4 MB JSON.
-  Dateinamen sind Kartenkürzel (238 passen auf Kartenbundle-Namen) und `sp_*` (300; Sonderereignisse).
-- Nicht interpretiert: die Bedeutung der Befehle und das Variablenmodell. Das ist Aufgabe des Skriptinterpreters (Dump: `EvDataManager`, `EvCmdID`); Stand siehe `docs/evscript-spezifikation.md`.
-- Verknüpfungen aus anderen Tabellen: `PlaceData.TalkLabel` (3868 gesetzt, 3849 treffen ein `Script.Label`, groß/klein ignoriert)
-  und `StopData.ContactLabel` (106 von 106) sind Skript-Labels; `PlaceData.ContactLabel` ist überall leer.
-  `MapWarp.ScriptLabel`/`ExitLabel` sind Zahlen (Label-/Ausgangsindex). Es gibt 12 985 verschiedene Labels.
+- `ArgType` (enum in dump): `Command` 0, `Float` 1, `Work` 2, `Flag` 3, `SysFlag` 4, `String` 5.
+  Counts in real data: 64,741 / 26,305 / 13,255 / 2,959 / 458 / 33,054 (140,772 arguments total).
+- First argument of a command has `argType` 0 and is the command ID (`EvCmdID.NAME`, 1,236 values 0–1,235).
+  Data contains 867 distinct IDs, plus 88 × `-1` (placeholder) and 4 empty commands.
+- `Float` arguments store the bits of a `float` in `data` (e.g. 1,065,353,216 = 1.0f); `String` is an index into `StrList`;
+  `Work`/`Flag`/`SysFlag` are indices into event variables.
+- 856 files, 13,139 scripts (1–952 per file), 64,745 commands, 17,328 string-table entries, about 5.4 MB JSON.
+  Filenames are map abbreviations (238 match map bundle names) and `sp_*` (300; special events).
+- Command meanings and variable model have not been interpreted. That is the script interpreter's job (dump classes: `EvDataManager`, `EvCmdID`); see `docs/evscript-spezifikation.md` for current status.
+- Links from other tables: `PlaceData.TalkLabel` (3,868 set, 3,849 match a `Script.Label`, case-insensitive) and `StopData.ContactLabel` (106/106) are script labels; `PlaceData.ContactLabel` is always empty. `MapWarp.ScriptLabel`/`ExitLabel` are numeric label/exit indices. There are 12,985 distinct labels.
 
-## 14. Offene Fragen aus Abschnitt 7: neuer Stand
+## 14. Updated status of questions from section 7
 
-- **Fähigkeiten, Wesen, Typen (Punkt 2, teilweise 1):** Es gibt weiterhin keine Datentabelle für Fähigkeitenverhalten oder
-  Typenwirkung. Aber die Namenstabellen stehen als Message-Dateien in jeder Sprache: `ss_tokusei` und `ss_tokuseiinfo` (je 268 Labels,
-  `TOKUSEI_000…`), `ss_seikaku` (25, `SEIKAKU_nnn`), `ss_typename` (18, `TYPENAME_nnn`), `ss_wazaname` (827), `ss_itemname*` (1823,
-  sechs Fassungen). Der Labelindex entspricht der ID (`TokuseiNo` hat 270 Enum-Werte mit Rand, `Seikaku` 26, `PokeType` 21,
-  `TypeAffinity.AffinityID` 16). Höchste in `PersonalTable` benutzte Fähigkeit: 256. Die Typenmatrix selbst bleibt Code-Arbeit.
-- **Namen (Punkt 3) bestätigt:** Label-Schema `<PREFIX>_<nnn>` mit `labelIndex == arrayIndex == ID`; Trainer- und Ortsnamen
-  werden über die Labeltexte der Tabellen (`NameLabel`, `PokePlaceName`) gefunden (707 / 658 Treffer, siehe 11).
-- **Zonen/Begegnungen (Punkt 4) gelöst:** Zonenmetadaten, Raster, Attribute, Kameras in `gamesettings` (Abschnitt 9);
-  Begegnungstabellen in `FieldEncountTable`; Szenen/Karten über `AssetBundleName` (Abschnitt 12).
-- **Entwicklung (Punkt 5) gelöst:** `EvolveTable.ar` besteht aus Fünfergruppen `(Methode, Parameter, Zielart, Zielform, Stufe)`;
-  alle 560 Listen haben eine durch 5 teilbare Länge (254 Gruppen insgesamt). Bei Art 1 ergibt die Gruppe `(4, 0, 2, 0, 16)`
-  plausibel „Stufenaufstieg zu Art 2 auf Stufe 16“. 25 Methodenwerte kommen vor (4 = 163 ×, 8 = 28 ×). Ihre Bedeutung ist nicht
-  einzeln bestätigt. `WazaOboeTable.ar` besteht aus Paaren `(Stufe, Attacke)` (Stufen 0–100, Attacken 1–791, 8 384 Paare).
-- **Lernlisten (Punkt 6, Wahrscheinlichkeiten, `Encount`):** offen (siehe 11).
-- Zusätzlich offen: `EnvironmentSettings` (Licht je Karte und Tageszeit) sowie `EventCameraData` sind nicht exportiert;
-  `PlaceData`-Zeilenfelder (`EventType`, `MoveCode`, `TalkBit` usw.) sind modellierbar, aber noch ohne Modell.
+- **Abilities, natures, types (item 2, partly 1):** still no data table for ability behavior or type effectiveness. Name tables do exist as message files for every language: `ss_tokusei` and `ss_tokuseiinfo` (268 labels each, `TOKUSEI_000…`), `ss_seikaku` (25, `SEIKAKU_nnn`), `ss_typename` (18, `TYPENAME_nnn`), `ss_wazaname` (827), `ss_itemname*` (1,823, six versions). Label index equals ID (`TokuseiNo` has 270 enum values including boundary values, `Seikaku` 26, `PokeType` 21, `TypeAffinity.AffinityID` 16). Highest ability used in `PersonalTable`: 256. The type matrix itself still requires code analysis.
+- **Names (item 3 confirmed):** label pattern `<PREFIX>_<nnn>` with `labelIndex == arrayIndex == ID`; trainer and place names are found through table label text (`NameLabel`, `PokePlaceName`; 707 / 658 matches, see 11).
+- **Zones/encounters (item 4 resolved):** zone metadata, grids, attributes, cameras are in `gamesettings` (section 9); encounters in `FieldEncountTable`; scenes/maps via `AssetBundleName` (section 12).
+- **Evolution (item 5 resolved):** `EvolveTable.ar` consists of groups of five `(method, parameter, target species, target form, level)`; all 560 lists have lengths divisible by 5 (254 groups total). For species 1, `(4, 0, 2, 0, 16)` plausibly means “level up to species 2 at level 16”. There are 25 method values (4 occurs 163 times, 8 occurs 28 times); their meanings have not been individually confirmed. `WazaOboeTable.ar` consists of pairs `(level, move)` (levels 0–100, moves 1–791, 8,384 pairs).
+- **Learnsets (item 6, probabilities, `Encount`):** still open (see 11).
+- Also open: `EnvironmentSettings` (lighting per map and time of day) and `EventCameraData` are not exported; `PlaceData` row fields (`EventType`, `MoveCode`, `TalkBit`, etc.) can be modeled but have no model yet.
 
-## 15. Texte (nur Zahlen)
+## 15. Text (counts only)
 
-Hinweis: Die Label-Zahlen unten schließen Auffüll-Einträge ein (je Sprache 4.261 leere Labels, `common_msbt` 9.940); echte Labels: 38.296 je Sprache, 46.500 in `common_msbt`. Format, Tags und Leser (`Xnu.Text`): `docs/lokalisierung.md`.
+Note: label counts below include padding entries (4,261 empty labels per language; 9,940 in `common_msbt`); actual labels: 38,296 per language, 46,500 in `common_msbt`. Format, tags, and reader (`Xnu.Text`): `docs/lokalisierung.md`.
 
-Alle Sprachen haben dieselbe Struktur: 119 Textdateien mit insgesamt 42 557 Labels (außer `common_msbt`: 90 Dateien, 56 440 Labels).
-Wortzahl je Sprache: Englisch 71 411, Deutsch 75 508, Französisch 76 495, Italienisch 76 727, Spanisch 74 546,
-Japanisch 79 900 (Kanji 79 880), Koreanisch 81 549, Vereinfachtes Chinesisch 77 970, Traditionelles Chinesisch 81 633;
-`common_msbt` 64 775 Wörter. Der Export (`--messages`) umfasst Englisch, Deutsch und `common`; die anderen Sprachen
-lassen sich durch Ergänzen von `MESSAGE_BUNDLES` exportieren. Dateinamen tragen das Sprachpräfix (`german_…`). Label→Tabelle:
-`TrainerData.NameLabel` → `dp_trainers_name` (1045 Labels), `MapInfo.PokePlaceName` → `dp_fld_areaname` (218), `…MSLabel` → `dp_fld_areaname_display` (142),
-Trainertexte → `dp_trainer_msg` (3014) und `…_sub` (245), Trainerklassen → `dp_trainers_type` (101).
+All languages share the same structure: 119 text files with 42,557 labels total (except `common_msbt`: 90 files, 56,440 labels).
+Word count per language: English 71,411, German 75,508, French 76,495, Italian 76,727, Spanish 74,546,
+Japanese 79,900 (79,880 kanji), Korean 81,549, Simplified Chinese 77,970, Traditional Chinese 81,633;
+`common_msbt`: 64,775 words. Export (`--messages`) includes English, German, and `common`; other languages can be exported by adding them to `MESSAGE_BUNDLES`. Filenames carry a language prefix (`german_…`). Label-to-table mapping:
+`TrainerData.NameLabel` → `dp_trainers_name` (1,045 labels), `MapInfo.PokePlaceName` → `dp_fld_areaname` (218), `…MSLabel` → `dp_fld_areaname_display` (142), trainer dialogue → `dp_trainer_msg` (3,014) and `…_sub` (245), trainer classes → `dp_trainers_type` (101).
 
-## 16. Tabellen für die erste spielbare Strecke (Start bis erster Kampf)
+## 16. Tables for the first playable route (start to first battle)
 
-Strecke nach den internen Zonennamen: Zonen 422–426 (Startort mit Rivalen- und Spielerhaus, Innen- und Außenbereich),
-354 (erste Route), 346 und 323–325 (See mit Uferzone). Dort liegen `PlaceData` 68 Zeilen in 8 Karten, die Routenzone
-hat Trainer 1–3, die Seekarte (324) die Trainer 322, 323, 328, 329; die Wildlisten der Zonen 323, 324 und 354 sind gleich
-gefüllt (Grasrate 30), Zone 422 hat keine. Die Reihenfolge der Story habe ich nicht aus Daten bestätigt; die Menge ist
-bewusst etwas großzügig.
+Route based on internal zone names: zones 422–426 (starting town with rival's and player's houses, interiors and exteriors),
+354 (first route), 346, and 323–325 (lake and shore zone). These contain 68 `PlaceData` rows across 8 maps; route zone has trainers 1–3, lake map (324) has trainers 322, 323, 328, 329; wild lists for zones 323, 324, and 354 are identical (grass rate 30), while zone 422 has none. Story order was not verified from the data; the scope is intentionally generous.
 
-| Priorität | Tabelle | Umfang gesamt (für die Strecke gebraucht) |
+| Priority | Table | Total scope (needed for route) |
 |---|---|---|
-| Kern | `PersonalTable` 560, `WazaTable` 827, `ItemTable` 1823, `GrowTable` 8×101, `EvolveTable` 560, `WazaOboeTable` 560 | alle (Kampf braucht Arten, Attacken, Lernlisten, Erfahrungskurven) |
-| Kern | `TrainerTable` (Type 108, Data 707, Poke 707) | Trainer 1–3 und die Seetrainer; Typklassen dazu |
-| Kern | `FieldEncountTable` (183 Zonen, Instanz `_d`) | 3–4 Zonen; Zeit-/Wasserlisten leer bis auf Gras |
-| Kern | `MapInfo` 658/658 | 10 Zonen; `ZoneTable` Raster 30×30; `MapAttributeTable` 256; `AttributeMatrix` 614 / `AttributeBlock` 2878 (nur die Blöcke der Zonen) |
-| Kern | `MapWarp` 552 Karten/1931 Warps, `PlaceData` 484/4197, `StopData` 53/116 | ca. 8–12 Karten je Tabelle |
-| Kern | `EvData` 856 Dateien/13 139 Skripte | die Dateien der beteiligten Karten (Kartenkürzel `t01*`, `d27*`, Feldbereich, `sp_*`) |
-| Kern | `MsbtData` (Deutsch 119 Dateien/42 557 Labels, `common_msbt` 90/56 440) | Dialoge, Namen, Attackentexte |
-| Kampf | `BattleDataTable` (19 Sheets), `ArenaInfo` 106, `BattleSetupEffectLots`, `BattleDefaultPlacementData`, `EffectDatabase` (2168 Einträge) | Kampfdarstellung; ohne Ton |
-| Darstellung | `PokemonInfo` 1959, `CharacterGraphics`, `FieldCommonParam` 281, `MsgWindowData` (2380 Sprechernamen u. a.), `PlaceNameTable` 774 | Modelle/UI; Rest später |
-| Später | Shops (`ShopTable`: FS 59, Fest 75, BP 90), `HoneyTree` 21, `CalenderEncTable`, Untergrund (`ug_data`), Fureai, Wettbewerb, GTS, Turm | nicht für den ersten Kampf nötig |
+| Core | `PersonalTable` 560, `WazaTable` 827, `ItemTable` 1,823, `GrowTable` 8×101, `EvolveTable` 560, `WazaOboeTable` 560 | all (battle needs species, moves, learnsets, growth curves) |
+| Core | `TrainerTable` (Type 108, Data 707, Poke 707) | trainers 1–3 and lake trainers; include type classes |
+| Core | `FieldEncountTable` (183 zones, instance `_d`) | 3–4 zones; time/water lists empty except grass |
+| Core | `MapInfo` 658/658 | 10 zones; `ZoneTable` 30×30 grid; `MapAttributeTable` 256; `AttributeMatrix` 614 / `AttributeBlock` 2,878 (only blocks for these zones) |
+| Core | `MapWarp` 552 maps/1,931 warps, `PlaceData` 484/4,197, `StopData` 53/116 | about 8–12 maps per table |
+| Core | `EvData` 856 files/13,139 scripts | files for the involved maps (map prefixes `t01*`, `d27*`, field area, `sp_*`) |
+| Core | `MsbtData` (German: 119 files/42,557 labels; `common_msbt` 90/56,440) | dialogue, names, move text |
+| Battle | `BattleDataTable` (19 sheets), `ArenaInfo` 106, `BattleSetupEffectLots`, `BattleDefaultPlacementData`, `EffectDatabase` (2,168 entries) | battle presentation; no audio |
+| Presentation | `PokemonInfo` 1,959, `CharacterGraphics`, `FieldCommonParam` 281, `MsgWindowData` (2,380 speaker names, etc.), `PlaceNameTable` 774 | models/UI; rest later |
+| Later | Shops (`ShopTable`: FS 59, Fixed 75, BP 90), `HoneyTree` 21, `CalenderEncTable`, Underground (`ug_data`), Fureai, contest, GTS, Tower | not needed for first battle |
 
-## 17. Tests, Lücken, nächste Schritte
+## 17. Tests, gaps, next steps
 
-- Python: `python3 -m unittest scripts/tests/test_masterdata.py` (22 Tests, davon 11 neu für Teil 2).
-- C#: `unity/Assets/Tests/EditMode/DataMasterData2Tests.cs` mit synthetischen Beispieldaten (14 Tests: Trainer, Begegnungen, Zonen,
-  Raster/Attribute, Warps, Shops, Entwicklung/Lernlisten, Event-Skripte, Fehlerfälle, Verzeichnisleser). Außerhalb von Unity per
-  `dotnet test` (Wegwerfprojekt `work/dotnet-masterdata2/`, NUnit 3.14): 23 Tests grün (9 Teil 1 + 14 Teil 2); im Unity-Test-Runner noch
-  nicht gelaufen (`.meta`-Dateien der neuen Dateien erzeugt Unity beim ersten Import). Der Echtdatenlauf liegt unter
-  `work/dotnet-masterdata2/check/` (nicht im Repo).
-- Lücken: Slot-Wahrscheinlichkeiten der Begegnungen, Bedeutung von `AIBit`/`FightType`/Evolutionsmethoden, Typenmatrix und
-  Fähigkeitenverhalten (Code), `PlaceData`-Modell, Skriptinterpreter (Befehlssemantik), `EnvironmentSettings`, nicht modellierte
-  Shop-Sheets, Untergrund-/Fureai-Modelle.
-- Nächster sinnvoller Schritt: `PlaceData`/`StopData` modellieren und mit `MapWarp` zu einem Kartenladeplan je Zone verbinden;
-  danach die Wahrscheinlichkeiten aus `Encount` (Dump/Ghidra) übernehmen.
+- Python: `python3 -m unittest scripts/tests/test_masterdata.py` (22 tests, 11 new for Part 2).
+- C#: `unity/Assets/Tests/EditMode/DataMasterData2Tests.cs` with synthetic examples (14 tests: trainers, encounters, zones, grids/attributes, warps, shops, evolution/learnsets, event scripts, errors, directory reader). Also run outside Unity with `dotnet test` (throwaway project `work/dotnet-masterdata2/`, NUnit 3.14): 23 tests passed (9 Part 1 + 14 Part 2); not yet run in Unity test runner (Unity generates `.meta` files for new files on first import). Real-data run is under `work/dotnet-masterdata2/check/` (not in repository).
+- Gaps: encounter-slot probabilities; meanings of `AIBit`/`FightType`/evolution methods; type chart and ability behavior (code); `PlaceData` model; script interpreter (command semantics); `EnvironmentSettings`; unmodeled shop sheets and Underground/Fureai models.
+- Next useful step: model `PlaceData`/`StopData` and connect them to `MapWarp` to produce a map-loading plan per zone; then derive encounter probabilities from `Encount` (dump/Ghidra).

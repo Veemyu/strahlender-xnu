@@ -1,96 +1,96 @@
-# Arbeitsstand 2026-10-19 (17:10)
+# Project Status 2026-10-19 (17:10)
 
-Zweck: ein Dokument, das ohne Vorwissen erklärt, wo wir stehen, was belegt ist, was fehlt und wo man nachliest. Zahlen sind gemessen oder als Annahme gekennzeichnet. Index aller Dokumente: `docs/README.md`. Arbeitsregeln, Befehle, Spielstand-Verteilung, Agenten-/Todo-Stand und unbelegte Annahmen: `docs/betriebshandbuch.md`.
+Purpose: explain where things stand, what is supported, what is missing, and where to find details, without requiring prior context. Numbers are measured or marked as assumptions. Document index: `docs/README.md`. Work rules, commands, save distribution, agent/todo status, and unsupported assumptions: `docs/betriebshandbuch.md`.
 
-## 1. Ziel und Regeln
+## 1. Goal and Rules
 
-- **Ziel (Nutzer):** Mit diesem Repo und einer eigenen NSP/XCI von Pokémon Brilliant Diamond (BDSP) lässt sich ein natives, getestetes Spiel für **macOS, iPadOS** (später Linux/Windows mit Vulkan) bauen. Das Repo enthält **keine** Spieldaten, Keys, Dumps, erzeugten Code, Saves oder Screenshots. Gebaute Apps sind nur für den persönlichen Gebrauch.
-- **Ton:** derzeit stumm (die Audiodienste sind Stummel). Die frühere Vorgabe „kein Ton“ ist aufgehoben; Ton wird jetzt erforscht und darf umgesetzt werden (`todo/neustart.md`, Todo `rc-audio`).
-- **Saves** bleiben kompatibel mit Ryujinx/Switch (`SaveData.bin` 979.108 Byte, Version 0x34, MD5 bei 0xE9818).
-- **Arbeitsregeln:** kein sudo, keine Scans der ganzen Platte, Commits nur mit der Identität des Nutzers (kein Co-Author-Trailer), Repo-Dateien nur mit `edit`/`create`, vor jedem Commit läuft `scripts/repo_check.py` (Hook).
+- **Goal (user):** Use this repository and a personally owned NSP/XCI of Pokémon Brilliant Diamond (BDSP) to build a native, tested game for **macOS and iPadOS** (later Linux/Windows with Vulkan). The repository contains **no** game data, keys, dumps, generated code, saves, or screenshots. Built apps are for personal use only.
+- **Audio:** currently silent (audio services are stubs). The previous “no audio” requirement has been lifted; audio may now be investigated and implemented (`todo/neustart.md`, Todo `rc-audio`).
+- **Saves** remain compatible with Ryujinx/Switch (`SaveData.bin` 979,108 bytes, version 0x34, MD5 at 0xE9818).
+- **Work rules:** no sudo, no whole-disk scans, commits only with the user's identity (no co-author trailer), repository files only via `edit`/`create`; `scripts/repo_check.py` runs before each commit (hook).
 
-## 2. Strategie (Entscheidungen in `docs/architektur-entscheidung.md`)
+## 2. Strategy (Decisions in `docs/architektur-entscheidung.md`)
 
-| Nr. | Datum | Entscheidung |
+| No. | Date | Decision |
 |---|---|---|
-| 1 | 2026-10-18 | Nutzer: Weg D (Unity-Rebuild), vollständig spielbar, später öffentlich (nur Code). |
-| 2 | 2026-10-18 | Autopilot: Rekompilation (LAS-Methode) zurückgestellt (Exceptions, GC, 12,5-GiB-Fenster). |
-| 3 | 2026-10-19 15:30 | Rekompilation wird Hauptweg (Exceptions lösbar, c-Modus bitgenau, Spiel läuft bis in die Stadt). |
-| 4 | 2026-10-19 16:57 | **Nutzer: Unity-Rebuild ist deprecated, nicht mehr weiterentwickeln** (`unity/DEPRECATED.md`). |
+| 1 | 2026-10-18 | User: path D (Unity rebuild), fully playable, later public (code only). |
+| 2 | 2026-10-18 | Autopilot: recompilation (LAS method) deferred (exceptions, GC, 12.5-GiB window). |
+| 3 | 2026-10-19 15:30 | Recompilation becomes main path (exceptions solvable, C mode bit-exact, game reaches the city). |
+| 4 | 2026-10-19 16:57 | **User: Unity rebuild is deprecated; do not develop it further** (`unity/DEPRECATED.md`). |
 
-Es gibt heute **einen** Entwicklungsstrang: die Rekompilation.
+There is now **one** development track: recompilation.
 
-## 3. Rekompilation (Hauptweg)
+## 3. Recompilation (Main Path)
 
-**Prinzip:** Der originale ARM64-Code des Spiels (NSO `main`, `sdk`, `subsdk0`, `rtld`) wird statisch nach C übersetzt (Lifter aus LASRecomp, MIT). Eigene Laufzeit `scripts/recomp/rt-bdsp/` ersetzt das Switch-Betriebssystem: Kernel-SVCs, IPC-Dienste (HIPC/CMIF), RomFS aus dem Dump, Speicherstand, NVN-Grafik über Metal (macOS/iPadOS) bzw. Vulkan (Linux), Film über FFmpeg. Logik, UI, Events, Kampf und KI sind damit 1:1 das Original.
+**Principle:** The game's original ARM64 code (NSO `main`, `sdk`, `subsdk0`, `rtld`) is statically translated to C (lifter from LASRecomp, MIT). Custom runtime `scripts/recomp/rt-bdsp/` replaces the Switch operating system: kernel SVCs, IPC services (HIPC/CMIF), RomFS from the dump, save data, NVN graphics through Metal (macOS/iPadOS) or Vulkan (Linux), and video through FFmpeg. Logic, UI, events, battles, and AI are therefore the original, 1:1.
 
-### 3.1 Gemessen (Quellen: `recomp-gate1.md`, `-gate2.md`, `-spike-2.md`, `-diff.md`, `-ryzen.md`, `-macapp.md`)
-- **Umfang:** 270.299 Funktionen, 985,6 MB (c) bzw. 1.037 MB (asm) C, 14,1 Mio. Befehlswörter. Nur 58 Wörter (LDXP/STXP-Familie) waren anfangs nicht abgedeckt, jetzt 116 erzeugt.
-- **Bauzeit:** Generator 51–74 s; Übersetzen auf dem Mac 937 s (3 Jobs), Kaltbau der Stufe `recomp` ca. 27,5 min inklusive allem; Ryzen 310–388 s (10–12 Jobs, `-O0` ab 300 KB Einzelfunktion). Inkrementell: Sekunden bis 1 min (feste 32-KiB-Chunk-Fenster).
-- **Exceptions (Ausschlusskriterium):** Der echte libunwind des SDKs läuft rekompiliert; 100 von 180 echten LSDA-Funktionen im Test ohne Abweichung beim Landing-Pad, 55 stürzten in der synthetischen Umgebung ab (nicht im Spiel).
-- **GC:** Thread-Anhalten über Mach `thread_suspend`/`thread_get_state` (SVC 0x32/0x33), ca. 8 µs je Thread.
-- **Bitgenauigkeit (`recomp-diff.md`):** x86-`c`-Modus gegen ARM64: 0 Abweichungen (93,5 Mio. Fälle je Variante, 44 Befehle erschöpfend über 2^32 Eingaben). Pflicht: `rt_fp_guest_mode()` im Gast-Thread (sonst weichen FTZ/DAZ-Fälle ab), Flags `-O1 -ffp-contract=off -fno-fast-math`.
-- **Lauf auf dem Mac (Metal):** rtld → Eröffnungsfilm (VP8, FFmpeg) → Titel nach 21,9 s → „Weiter“ → Spielstand → 3D-Stadt (Zone 24) bei 45 Bildern/s, RSS 1,0–1,5 GiB, 24–37 Threads, 135 s ohne Absturz.
-- **Lauf unter Linux (Vulkan, RTX 2080 Ti):** Sprachauswahl mit korrektem Text bei 60 Bildern/s; alle 4.276 eindeutigen Spielprogramme gehen durch Übersetzer + `glslc`, deterministisch (1.206 SPIR-V-Dateien byte-identisch).
-- **iPad (App `dev.local.xnubdsp`):** läuft, 50–52 Bilder/s (frühere Messung 41), Footprint 1,6–2,1 GiB (Limit 8 GiB mit Increased-Memory-Limit), 37–39 Threads, Speichermodell B (alle Gastadressen unter 4 GiB, 1,98 GiB Anwendungsspeicher). Details in `recomp-ios.md` und `ipad-durchstich-1.md` (Save-Weg).
-- **Referenzvergleich:** Sprachauswahl Rekompilation gegen Ryujinx pixelgleich (SSIM 0,999). Stadtbild: Farben nah (Abweichung 15–17 je Kanal), Wasser fehlt (weiß statt blau).
+### 3.1 Measurements (Sources: `recomp-gate1.md`, `-gate2.md`, `-spike-2.md`, `-diff.md`, `-linux.md`, `-macapp.md`)
+- **Scale:** 270,299 functions; 985.6 MB (C) or 1,037 MB (assembly) of C; 14.1 million instruction words. Initially only 58 words (LDXP/STXP family) were unsupported; 116 are now generated.
+- **Build time:** generator 51–74 s; compile on Mac 937 s (3 jobs); cold `recomp` stage about 27.5 min including everything; Ryzen 310–388 s (10–12 jobs, `-O0` for individual functions over 300 KB). Incremental: seconds to 1 min (fixed 32-KiB chunk windows).
+- **Exceptions (gate criterion):** SDK's real libunwind works when recompiled; 100 of 180 real LSDA functions in test show no landing-pad mismatch, 55 crashed in the synthetic environment (not in game).
+- **GC:** suspend threads via Mach `thread_suspend`/`thread_get_state` (SVC 0x32/0x33), about 8 µs per thread.
+- **Bit-exactness (`recomp-diff.md`):** x86 C mode vs ARM64: 0 mismatches (93.5 million cases per variant, 44 instructions exhaustively over 2^32 inputs). Required: `rt_fp_guest_mode()` in guest thread (otherwise FTZ/DAZ cases differ), flags `-O1 -ffp-contract=off -fno-fast-math`.
+- **Mac run (Metal):** rtld → opening video (VP8, FFmpeg) → title after 21.9 s → “Continue” → save → 3D city (Zone 24) at 45 fps, RSS 1.0–1.5 GiB, 24–37 threads, no crash for 135 s.
+- **Linux run (Vulkan, RTX 2080 Ti):** language selection with correct text at 60 fps; all 4,276 unique game programs pass through translator + `glslc`, deterministically (1,206 SPIR-V files byte-identical).
+- **iPad (app `dev.local.xnubdsp`):** runs at 50–52 fps (previous measurement 41), footprint 1.6–2.1 GiB (8-GiB limit with Increased Memory Limit), 37–39 threads, memory model B (all guest addresses below 4 GiB, 1.98 GiB app memory). Details in `recomp-ios.md` and `ipad-durchstich-1.md` (save path).
+- **Reference comparison:** recompilation language selection pixel-identical to Ryujinx (SSIM 0.999). City image colors are close (difference 15–17 per channel); water is missing (white instead of blue).
 
-### 3.2 Komponenten (wo liegt was)
-| Pfad | Inhalt |
+### 3.2 Components (Where Things Live)
+| Path | Contents |
 |---|---|
-| `scripts/recomp/*.py,sh` | Generator-Pipeline (`gen_all.sh`, `regen_inc.sh`, `build_all.sh`, `mkimg.py` Modulabbilder, `eh_*` Exception-Mechanik, `il2sym.py` IL2CPP-Symbole, `symres.py`) |
-| `scripts/recomp/rt-bdsp/` | Laufzeit: `kernel.c`, `ipc.c`, `services*.c`, `loader.c`, `dispatch.c`, `main.c`, `guestmem.h` (G2H/H2G), `install_save.sh`, `app/` (macOS-Hülle) |
-| `scripts/recomp/rt-bdsp/nvn/` | NVN→Metal: `prepare.sh` kopiert LAS-Quellen nach `work/` und wendet `fixes.patch` an; `nvn_glue.c`, `movie_glue.c` (FFmpeg-Film), `debug.patch`; `vulkan/` Linux-Pfad (`prepare_vk.sh`, `las-vk.patch`, `vk_glue.c`) |
-| `scripts/recomp/rt`, `rt32/` | Header-Erweiterungen der LAS-Laufzeit (Exceptions, 32-Bit-Rebasing) |
-| `scripts/recomp/app/` | `BDSP.app`-Hülle (Info.plist, Menü, Import, Eingabe) |
-| `scripts/recomp/ios/` | iPad-Bau (rebase32, FFmpeg-iOS, Xcode, Deploy), in Arbeit |
-| `scripts/recomp/ryzen/` | Ryzen-Farm (`sync.sh`, `build.sh`, `run_probe.sh`, `vk_*.sh`) |
-| `scripts/recomp/qa/` | Testharness (`qa_run.sh`, Szenarien), in Arbeit |
-| `scripts/recomp/diff/`, `c_exact/` | Differenzialtest c-Modus gegen ARM64, FP-Umgebung |
+| `scripts/recomp/*.py,sh` | generator pipeline (`gen_all.sh`, `regen_inc.sh`, `build_all.sh`, `mkimg.py` module images, `eh_*` exception handling, `il2sym.py` IL2CPP symbols, `symres.py`) |
+| `scripts/recomp/rt-bdsp/` | runtime: `kernel.c`, `ipc.c`, `services*.c`, `loader.c`, `dispatch.c`, `main.c`, `guestmem.h` (G2H/H2G), `install_save.sh`, `app/` (macOS wrapper) |
+| `scripts/recomp/rt-bdsp/nvn/` | NVN→Metal: `prepare.sh` copies LAS sources to `work/` and applies `fixes.patch`; `nvn_glue.c`, `movie_glue.c` (FFmpeg video), `debug.patch`; `vulkan/` Linux path (`prepare_vk.sh`, `las-vk.patch`, `vk_glue.c`) |
+| `scripts/recomp/rt`, `rt32/` | LAS runtime header extensions (exceptions, 32-bit rebasing) |
+| `scripts/recomp/app/` | `BDSP.app` wrapper (Info.plist, menu, import, input) |
+| `scripts/recomp/ios/` | iPad build (rebase32, FFmpeg for iOS, Xcode, deploy), in progress |
+| `scripts/recomp/linux/` | Linux build host (`sync.sh`, `build.sh`, `run_probe.sh`, `vk_*.sh`) |
+| `scripts/recomp/qa/` | test harness (`qa_run.sh`, scenarios), in progress |
+| `scripts/recomp/diff/`, `c_exact/` | differential test of C mode vs ARM64, FP environment |
 
-### 3.3 Offene Fehler (Priorität)
-1. **Wasser** (`Delphis/Map/FlowmapWater`, Transparenz, ohne GrabPass; Eingänge `_OpaqueDepthTexture`, `_ReflectionTex`): Referenz `work/visual/ref/ryujinx/views/free_wasser_a/b.png` (Zielwerte in `docs/wasser.md`). Verdacht: Render-Target-Texturen werden im Metal-Pfad falsch gelesen. Besitzer: `ap-recomp-qa`.
-2. **Pokécenter-Innenraum** einfarbig blau, dunkle Striche rechts (NVN/Shader-Schicht).
-3. **iPad:** Absturz, wenn das Intro-Video nicht sofort übersprungen wird (nicht reproduziert); Start brauchte 2–3 Versuche. Software-Decoder VP8 (FFmpeg) läuft; Alternative H.265 per VideoToolbox. Besitzer: `ap-recomp-ios`.
-4. Kameraversatz 28 px gegen Ryujinx (Zeitpunkt der Kamerafahrt, vermutlich nur Timing).
-5. Titelbild: Ryujinx-Referenz fehlt (F8 am Titel nötig).
-6. Speicherpuffer/Compute lesen den umhüllten Gastspeicher; 32-Bit-Modell (`rebase32`) auf dem Gerät noch nicht belegt; SDK verlangt 3,14 GB am Stück.
-7. Nicht umgesetzt: MetalFX, Controller-Test mit Hardware, Touch-Steuerung auf dem iPad, Vulkan unter Windows, Ton (derzeit stumm, wird erforscht: Todo `rc-audio`).
+### 3.3 Open Bugs (Priority)
+1. **Water** (`Delphis/Map/FlowmapWater`, transparency, no GrabPass; inputs `_OpaqueDepthTexture`, `_ReflectionTex`): reference `work/visual/ref/ryujinx/views/free_wasser_a/b.png` (targets in `docs/wasser.md`). Suspected: render-target textures are read incorrectly in Metal path. Owner: `ap-recomp-qa`.
+2. **Pokémon Center interior** solid blue, dark lines on right (NVN/shader layer).
+3. **iPad:** crash if intro video is not skipped immediately (not reproduced); startup took 2–3 attempts. Software VP8 decoder (FFmpeg) works; H.265 via VideoToolbox is an alternative. Owner: `ap-recomp-ios`.
+4. Camera offset 28 px relative to Ryujinx (camera pan timing, probably timing only).
+5. Title image: no Ryujinx reference (F8 needed at title).
+6. Memory buffers/compute read wrapped guest memory; 32-bit model (`rebase32`) not yet proven on device; SDK requires 3.14 GB contiguous.
+7. Not implemented: MetalFX, hardware controller test, iPad touch controls, Vulkan on Windows, audio (currently silent; being investigated in Todo `rc-audio`).
 
-## 4. Gemeinsame Werkzeuge (bleiben in Betrieb)
-- **Extraktion:** hactool-Bau, XCI/NSP → `work/exefs`, `work/romfs` (`scripts/build_all.sh` Stufen `tools`, `extract`); Il2CppDumper → `work/il2cpp`; Ghidra-Projekt `work/ghidra/bdsp` (166.095 Funktionen).
-- **Shader:** Maxwell→MSL/GLSL-Übersetzer `shader_translator/` (LASRecomp-MIT-Basis, `NOTICE.md`, 4.276/4.276 Blobs erkannt, 0 Fehler bei 5.959 Programmen, Treue gemessen).
-- **Umwandlungen:** VP8→H.265 (`video_convert.sh`, CRF 18, +41 % Größe), BC→ASTC (`texture_transcode.py`, 6×6: Median 46,2 dB PSNR), Bundle-Zielplattform Switch→Player (`bundle_retarget.py`).
-- **Saves:** `bdsp_save.py` (prüfen, Hash fixen), `ryujinx_sync_save.sh` (Mac ↔ Ryujinx auf dem Ryzen, findet Profilordner über `ExtraData0`), `ios_push_save.sh` (iPad), `install_save.sh` (Rekompilation). **Standard-Testspielstand:** Stadt (Zone 24), 69:08:16 Spielzeit, SaveData sha256 `0396a4a62735…`.
-- **Bildprüfung:** `visual_compare.py`, `visual_ref.py`, `visual_scenarios.py`, `visual_auto.sh`; Referenzen aus Ryujinx (F8, Ryzen) per `ryujinx_fetch_shots.sh`; Tasten-Spieler `ryzen_keys.py` (uinput, nur bei Fokus auf Ryujinx). Phase B (Unity-Aufnahme) ist stillgelegt.
-- **Analyse-Material (Unity-Zeit, weiter als Referenz nützlich):** Orakel `battle_oracle*.py`, `pokepara_oracle.py` (Unicorn führt echte ARM64-Funktionen aus), Spezifikationen `kampf-spezifikation-1…7`, `pokepara-spezifikation`, `evscript-spezifikation`, `masterdata`, `bundle-katalog`, `ui-spezifikation-1…3`.
+## 4. Shared Tools (Remain in Use)
+- **Extraction:** build hactool, XCI/NSP → `work/exefs`, `work/romfs` (`scripts/build_all.sh` stages `tools`, `extract`); Il2CppDumper → `work/il2cpp`; Ghidra project `work/ghidra/bdsp` (166,095 functions).
+- **Shaders:** Maxwell→MSL/GLSL translator `shader_translator/` (LASRecomp MIT base, `NOTICE.md`, 4,276/4,276 blobs recognized, 0 failures across 5,959 programs, fidelity measured).
+- **Conversions:** VP8→H.265 (`video_convert.sh`, CRF 18, +41% size), BC→ASTC (`texture_transcode.py`, 6×6: median 46.2 dB PSNR), Switch→player bundle platform (`bundle_retarget.py`).
+- **Saves:** `bdsp_save.py` (validate, fix hash), `ryujinx_sync_save.sh` (Mac ↔ Ryujinx on Ryzen, finds profile directory via `ExtraData0`), `ios_push_save.sh` (iPad), `install_save.sh` (recompilation). **Standard test save:** city (Zone 24), 69:08:16 play time, SaveData SHA-256 `0396a4a62735…`.
+- **Image checks:** `visual_compare.py`, `visual_ref.py`, `visual_scenarios.py`, `visual_auto.sh`; Ryujinx references (F8, Ryzen) via `ryujinx_fetch_shots.sh`; key player `ryzen_keys.py` (uinput, only when Ryujinx focused). Phase B (Unity capture) is discontinued.
+- **Analysis assets (Unity-era, still useful as reference):** oracles `battle_oracle*.py`, `pokepara_oracle.py` (Unicorn runs real ARM64 functions), specifications `kampf-spezifikation-1…7`, `pokepara-spezifikation`, `evscript-spezifikation`, `masterdata`, `bundle-katalog`, `ui-spezifikation-1…3`.
 
-## 5. Unity-Rebuild (deprecated, eingefroren)
-Stand beim Stilllegen: 763 EditMode-Tests grün; Kampf (Handler, Ablauf, KI vollständig), Event-Interpreter (597 von 599 Host-Befehle), Spielkern, Feld, UI-Fenster über Stubs, Render-Umbau mit erzeugten Shadern (99,8 % der Varianten). Wird nicht mehr gebaut oder gepflegt; Zweck jetzt nur noch Referenz und Gegenprobe. Beide Unity-Editoren sind geschlossen.
+## 5. Unity Rebuild (Deprecated, Frozen)
+At retirement: 763 EditMode tests passing; battle (handlers, flow, AI complete), event interpreter (597 of 599 host commands), game core, field, UI windows via stubs, render remapping with generated shaders (99.8% of variants). No longer built or maintained; now serves only as reference and comparison. Both Unity Editors are closed.
 
-## 6. Umgebung
-| Gerät | Rolle |
+## 6. Environment
+| Device | Role |
 |---|---|
-| MacBook Pro M1 Pro, 16 GB | Hauptrechner; Generator, Mac-App, iOS-Build (Xcode 26.0.1 über `DEVELOPER_DIR`), ca. 36 GB Platz |
-| Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora (`ssh <RZ_HOST>`) | Build-/Testfarm, Vulkan-Lauf, Ryujinx 1.2.78 für Referenzbilder; nur unter `~/xnu-recomp` (+ Ryujinx-Screenshots) |
-| iPad Pro 12.9" (M2), iPadOS 26 | Zielgerät; Increased Memory Limit: 8 GiB statt 5 GiB (kostenloses Team, Signatur 7 Tage) |
+| MacBook Pro M1 Pro, 16 GB | Main computer; generator, Mac app, iOS build (Xcode 26.0.1 via `DEVELOPER_DIR`), about 36 GB free |
+| Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora (`ssh <RZ_HOST>`) | Build/test farm, Vulkan run, Ryujinx 1.2.78 for reference images; only under `~/xnu-recomp` (+ Ryujinx screenshots) |
+| iPad Pro 12.9-inch (M2), iPadOS 26 | Target device; Increased Memory Limit: 8 GiB instead of 5 GiB (free team, 7-day signature) |
 
-Lokal und nie im Repo: `work/`, `tools/`, `research/`, `nsp/`, `Ryujinx/`, `Ryujinx_July23/`, `unity/Assets/XnuStubs|XnuGenerated`, `cache/`.
+Local and never in repository: `work/`, `tools/`, `research/`, `nsp/`, `Ryujinx/`, `Ryujinx_July23/`, `unity/Assets/XnuStubs|XnuGenerated`, `cache/`.
 
-## 7. Offene Entscheidungen und Risiken
-- **Rechtslage** vor öffentlicher Weitergabe klären (Repo enthält nur Recompiler/Runtime/Doku; erzeugtes C und Binary bleiben lokal).
-- **iPad-Gerätespeicher:** volles RomFS (ca. 4–5 GB) auf dem Gerät; Strategie (voll vs. Teilmenge) in Arbeit.
-- **Build-Zeit des Generats in Xcode** für iOS (ca. 1 GB C) ungemessen.
-- **Free-Team-Signatur** läuft nach 7 Tagen ab.
+## 7. Open Decisions and Risks
+- Clarify **legal status** before public distribution (repository contains only recompiler/runtime/docs; generated C and binaries stay local).
+- **iPad device storage:** full RomFS (about 4–5 GB) on device; strategy (full vs. subset) in progress.
+- **Build time for generated code in Xcode** on iOS (about 1 GB C) not measured.
+- **Free-team signature** expires after 7 days.
 
-## 8. Nächste Schritte (Reihenfolge)
-1. Wasser und Innenraum in Metal beheben, dann Bildvergleich mit Ryujinx erneut.
-2. iPad: Video-Absturz reproduzieren und beheben, Start zuverlässig machen, `recomp-ios.md` fertigstellen.
-3. QA-Szenarien durchlaufen (Menü, Pokécenter, Kampf, Speichern/Laden, Dauerlauf), Fehlerliste in `recomp-qa.md`.
-4. Touch-Steuerung und Controller auf dem iPad testen.
-5. Linux-Vulkan-Lauf mit Film und Spielstand wiederholen (Mac-Fixes auf Vulkan übertragen).
-6. Build-Pipeline `build_all.sh` um die Stufe `recomp-ios` ergänzen; Unity-Stufen aus dem Standardlauf nehmen.
+## 8. Next Steps (In Order)
+1. Fix water and interior in Metal, then repeat image comparison against Ryujinx.
+2. iPad: reproduce and fix video crash, make startup reliable, finish `recomp-ios.md`.
+3. Run QA scenarios (menu, Pokémon Center, battle, save/load, sustained run), track bugs in `recomp-qa.md`.
+4. Test touch controls and controller on iPad.
+5. Repeat Linux/Vulkan run with video and save (port Mac fixes to Vulkan).
+6. Add `recomp-ios` stage to `build_all.sh`; remove Unity stages from default run.
 
-## 9. Arbeitsweise mit Subagenten
-- Große Modelle (Sonnet) für Fehlersuche und Code in Kernel/NVN/Codec; kleine (Haiku/Luna) für Läufe, Messungen, Sichtung, Doku. Höchstens zwei große Agenten gleichzeitig.
-- Agenten committen nie; Tests und Commit macht der Hauptagent. Lange Läufe mit `nohup`/`setsid` + Logdatei.
+## 9. Working with Subagents
+- Large models (Sonnet) for debugging and kernel/NVN/codec code; small models (Haiku/Luna) for runs, measurements, inspection, and docs. At most two large agents at once.
+- Agents never commit; tests and commit are handled by the main agent. Long runs use `nohup`/`setsid` plus a log file.

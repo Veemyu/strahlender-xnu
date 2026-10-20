@@ -1,104 +1,104 @@
-# Shader-Harness: Offscreen-Referenzrenderer für Cache-Shader (Stand: 2026-10-18)
+# Shader harness: offscreen reference renderer for cached shaders (as of 2026-10-18)
 
-Eigenes Kommandozeilenprogramm (Swift, Swift Package unter `scripts/shader_harness/`), das ein Vertex+Fragment-Paar aus dem Ryujinx-Shader-Cache nach MSL übersetzt, zur Laufzeit mit Metal kompiliert und offscreen in ein PNG rendert. Ziel: ein reproduzierbarer Referenzrenderer für Differenztests. Dieselben Eingaben laufen später durch einen nach Unity portierten Shader; danach folgt ein Pixelvergleich mit `scripts/shader_compare.py`.
+A custom command-line program (Swift, Swift Package under `scripts/shader_harness/`) that translates a vertex/fragment pair from the Ryujinx shader cache to MSL, compiles it at runtime with Metal, and renders it offscreen to a PNG. Its goal is a reproducible reference renderer for differential tests. The same inputs will later be passed through a shader ported to Unity, followed by a pixel comparison with `scripts/shader_compare.py`.
 
-Es wird kein Fenster geöffnet und nichts abgespielt. Alle Ausgaben liegen unter `work/shaders/` (gitignored). Testdaten sind synthetisch (Farbverlauf, Schachbrett), keine Spieltexturen.
+It opens no window and plays nothing. All outputs go under `work/shaders/` (gitignored). Test data is synthetic (gradient, checkerboard), with no game textures.
 
-## Bestandteile
+## Components
 
-| Datei | Aufgabe |
+| File | Purpose |
 |---|---|
-| `scripts/shader_cache_extract.py` | liest `vulkan_apple.toc/.data` (nur lesend) und schreibt SPIR-V nach `work/shaders/spirv/<index>_<stage>.spv` |
-| `scripts/shader_harness/` | Swift-Package `shader-harness` (Renderer) und `examples/*.json` (drei Beispiel-Beschreibungen) |
-| `scripts/shader_compare.py` | PNG-Vergleich, nur Standardbibliothek |
-| `scripts/tests/test_shader_compare.py` | 20 Tests mit synthetischen Bildern |
+| `scripts/shader_cache_extract.py` | Reads `vulkan_apple.toc/.data` (read-only) and writes SPIR-V to `work/shaders/spirv/<index>_<stage>.spv` |
+| `scripts/shader_harness/` | Swift package `shader-harness` (renderer) and `examples/*.json` (three example specs) |
+| `scripts/shader_compare.py` | PNG comparison, standard library only |
+| `scripts/tests/test_shader_compare.py` | 20 tests using synthetic images |
 
-## Aufruf
+## Usage
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 
-# 1. Module exportieren (Stufen: vert, frag, comp; dazu index.json)
-python3 scripts/shader_cache_extract.py --smallest 12 --list           # kleinste Paare anzeigen
-python3 scripts/shader_cache_extract.py --index 68 2741 136            # gezielt exportieren
+# 1. Export modules (stages: vert, frag, comp; also writes index.json)
+python3 scripts/shader_cache_extract.py --smallest 12 --list           # list smallest pairs
+python3 scripts/shader_cache_extract.py --index 68 2741 136            # export selected indices
 
-# 2. Harness bauen (Build-Ordner bewusst unter work/)
+# 2. Build the harness (build directory deliberately under work/)
 swift build -c release --package-path scripts/shader_harness --scratch-path work/shaders/build
 
-# 3. Rendern
+# 3. Render
 H=work/shaders/build/release/shader-harness
-$H info   scripts/shader_harness/examples/pair_0068.json        # Bindings anzeigen, nicht rendern
+$H info   scripts/shader_harness/examples/pair_0068.json        # show bindings; do not render
 $H render scripts/shader_harness/examples/pair_0068.json --out work/shaders/out/pair_0068.png \
-          --dump-msl work/shaders/out/msl_0068                  # MSL zusätzlich ablegen
+          --dump-msl work/shaders/out/msl_0068                  # also save MSL
 
-# 4. Vergleichen
+# 4. Compare
 python3 scripts/shader_compare.py a.png b.png --threshold 2 --diff work/shaders/out/diff.png \
           --max-diff 3 --min-psnr 40
 python3 -m unittest scripts/tests/test_shader_compare.py
 ```
 
-`spirv-cross` wird in `/opt/homebrew/bin`, `/usr/local/bin` und `PATH` gesucht (oder über `SPIRV_CROSS=<Pfad>`). Übersetzt wird mit `--msl --msl-version 20300`; kompiliert wird mit Metal Language Version 2.3.
+`spirv-cross` is searched for in `/opt/homebrew/bin`, `/usr/local/bin`, and `PATH` (or supplied through `SPIRV_CROSS=<path>`). Translation uses `--msl --msl-version 20300`; compilation uses Metal language version 2.3.
 
-`--xcrun-check` (mit `--dump-msl`) probiert zusätzlich `xcrun metal -c`. Auf diesem Rechner schlägt das fehl, weil die Metal-Toolchain nicht installiert ist; der Kompiliercheck läuft deshalb über `MTLDevice.makeLibrary`.
+`--xcrun-check` (with `--dump-msl`) also tries `xcrun metal -c`. This fails on this machine because the Metal toolchain is not installed; compilation is therefore checked through `MTLDevice.makeLibrary`.
 
-Das Programm liefert Exit-Code 0 bei Erfolg, 1 bei Fehlern (Spec, Übersetzung, Compiler, GPU), 2 bei falscher Bedienung. Bei `render` steht am Ende eine Zeile mit Pfad, Größe, Anzahl der Pixel, die von der Clear-Farbe abweichen, und dem SHA-256 der RGBA-Bytes. Der Hash dient als schneller Reproduzierbarkeitstest.
+The program exits 0 on success, 1 on errors (spec, translation, compiler, GPU), and 2 for incorrect usage. On `render`, the final line reports the path, dimensions, number of pixels differing from the clear color, and SHA-256 of the RGBA bytes. The hash is a quick reproducibility check.
 
-## Eingabeformat (JSON)
+## Input format (JSON)
 
-Relative Pfade gelten ab dem Ordner der JSON-Datei. Unbekannte Schlüssel sind ein Fehler (Schutz vor Tippfehlern). Vollständige Beispiele: `scripts/shader_harness/examples/`.
+Relative paths are resolved from the JSON file's directory. Unknown keys are errors (to catch typos). Complete examples are under `scripts/shader_harness/examples/`.
 
-| Schlüssel | Bedeutung |
+| Key | Meaning |
 |---|---|
-| `size` | `[Breite, Höhe]`, Standard `[256, 256]`, Format `rgba8Unorm` |
-| `clearColor`, `clearDepth` | Hintergrund RGBA (0..1), Tiefe (Standard 1) |
-| `vertex`, `fragment` | je `spirv` **oder** `msl` (Datei), optional `entry` (Standard `main0`), `flipVertY`, `fixupClipspace`, `spirvCrossArgs` |
+| `size` | `[width, height]`, default `[256, 256]`, format `rgba8Unorm` |
+| `clearColor`, `clearDepth` | Background RGBA (0–1), depth (default 1) |
+| `vertex`, `fragment` | Each accepts `spirv` **or** `msl` (file), optional `entry` (default `main0`), `flipVertY`, `fixupClipspace`, `spirvCrossArgs` |
 | `topology` | `triangle`, `triangleStrip`, `line`, `lineStrip`, `point` |
-| `vertexCount`, `instanceCount`, `indices` (+ `indexType` `uint16`/`uint32`) | Zeichenaufruf; ohne `vertexCount` wird aus Puffergröße und Stride abgeleitet |
-| `vertexBuffers[]` | `slot`, optional `stride`, `step` (`vertex`/`instance`) und genau eine Datenquelle (s. u.) |
-| `attributes[]` | `location`, `buffer` (Slot), `offset`, `format` (`float`…`float4`, `int*`, `uint*`, `uchar4`, `uchar4Normalized`, `ushort2/4`, `half2/4`) |
-| `buffers[]` | Uniform-Puffer: `stage` (`vertex`/`fragment`), `slot`, optional `size` (Mindestgröße), entweder direkte Datenquelle oder `writes[]` mit `offset` (Bytes) bzw. `offsetFloats` und Datenquelle |
-| `textures[]` | `stage`, `slot`, optional `samplerSlot`, `format` (`rgba8Unorm`, `rgba8Unorm_srgb`, `r8Unorm`), `mipmaps`, `sampler`; Quelle `file` (PNG/JPEG) oder `generate` (`solid`, `checker`, `gradient`) |
-| `sampler` | `min`, `mag` (`nearest`/`linear`), `mip` (`none`/`nearest`/`linear`), `address` bzw. `s`/`t`/`r` (`clamp`, `repeat`, `mirror`, `border`) |
-| `state` | `cull` (`none`/`front`/`back`), `frontFace` (`ccw`/`cw`), `wireframe`, `colorMask` (z. B. `"rgb"`), `blend` (`preset`: `alpha`/`additive`/`premultiplied` oder `srcRGB`, `dstRGB`, `opRGB`, `srcA`, `dstA`, `opA`), `depth` (`test`, `write`) |
-| `viewport` | `[x, y, Breite, Höhe]`, Standard: ganzes Bild |
+| `vertexCount`, `instanceCount`, `indices` (plus `indexType` `uint16`/`uint32`) | Draw call; if `vertexCount` is omitted, it is derived from buffer size and stride |
+| `vertexBuffers[]` | `slot`, optional `stride`, `step` (`vertex`/`instance`), and exactly one data source (see below) |
+| `attributes[]` | `location`, `buffer` (slot), `offset`, `format` (`float`…`float4`, `int*`, `uint*`, `uchar4`, `uchar4Normalized`, `ushort2/4`, `half2/4`) |
+| `buffers[]` | Uniform buffers: `stage` (`vertex`/`fragment`), `slot`, optional `size` (minimum size), either a direct data source or `writes[]` with `offset` (bytes) or `offsetFloats` and a data source |
+| `textures[]` | `stage`, `slot`, optional `samplerSlot`, `format` (`rgba8Unorm`, `rgba8Unorm_srgb`, `r8Unorm`), `mipmaps`, `sampler`; source is `file` (PNG/JPEG) or `generate` (`solid`, `checker`, `gradient`) |
+| `sampler` | `min`, `mag` (`nearest`/`linear`), `mip` (`none`/`nearest`/`linear`), `address` or `s`/`t`/`r` (`clamp`, `repeat`, `mirror`, `border`) |
+| `state` | `cull` (`none`/`front`/`back`), `frontFace` (`ccw`/`cw`), `wireframe`, `colorMask` (e.g. `"rgb"`), `blend` (preset: `alpha`/`additive`/`premultiplied`, or `srcRGB`, `dstRGB`, `opRGB`, `srcA`, `dstA`, `opA`), `depth` (`test`, `write`) |
+| `viewport` | `[x, y, width, height]`, default: full image |
 
-**Datenquellen** (genau eine pro Eintrag): `floats`, `ints`, `uints`, `bytes` (0..255) oder `file` (Rohbytes). Alles little-endian. Das ist auch die Form für „Float-Liste oder Byte-Array“ bei Uniform-Puffern.
+**Data sources** (exactly one per entry): `floats`, `ints`, `uints`, `bytes` (0–255), or `file` (raw bytes). All values are little-endian. Uniform-buffer data uses the same forms, including “float list or byte array.”
 
-**Konventionen aus dem Cache:** Die MSL-Ausgabe legt den Konstantenpuffer jeder Stufe auf `buffer(0)` (`float4[4096]`, 64 KB). Vertexdaten gehören deshalb in einen anderen Slot; die Beispiele nehmen 30. Die Puffergröße wird aus der Metal-Reflexion übernommen und mit Nullen aufgefüllt. `info` zeigt, welche Bindings ein Paar braucht (Buffer, Textur, Sampler, Attribute). Werte in Puffern, die der Shader nicht beschreibt, bleiben 0; fehlt ein ganzer Puffer, erscheint eine Warnung.
+**Cache conventions:** MSL output places each stage's constant buffer at `buffer(0)` (`float4[4096]`, 64 KB). Vertex data therefore belongs in another slot; examples use 30. Buffer size is taken from Metal reflection and padded with zeros. `info` shows the bindings required by a pair (buffers, textures, samplers, attributes). Unspecified values in buffers remain 0; a warning appears if an entire buffer is missing.
 
-## Reproduzierbarkeit
+## Reproducibility
 
-- Zielformat `rgba8Unorm` (kein sRGB-Umweg), eine feste Pipeline, keine Zufallswerte, kein MSAA, keine Anisotropie.
-- PNG-Ausgabe über ImageIO, Alpha nicht vormultipliziert. Die rohen Pixelbytes aus dem PNG sind identisch mit dem gemeldeten Hash (mit dem Decoder aus `shader_compare.py` gegengeprüft).
-- Zweimaliges Rendern erzeugte bitgleiche PNG-Dateien (`cmp`) und identische Vergleichswerte (max. Abweichung 0, PSNR inf). Das gilt für diese Maschine (Apple M1 Pro); andere GPUs können bei Gleitkomma, Interpolation und Mip-Erzeugung abweichen.
+- Target format `rgba8Unorm` (no sRGB conversion), fixed pipeline, no random values, no MSAA, no anisotropy.
+- PNG output uses ImageIO, with non-premultiplied alpha. Raw pixel bytes from the PNG match the reported hash (cross-checked with the decoder in `shader_compare.py`).
+- Two renders produced bit-identical PNGs (`cmp`) and identical comparison values (maximum difference 0, PSNR inf). This holds on this machine (Apple M1 Pro); other GPUs may differ in floating-point operations, interpolation, and mip generation.
 
-## Vergleichsskript
+## Comparison script
 
-`shader_compare.py a.png b.png` meldet `max_abs_diff`, `mean_abs_diff` (über alle Kanalwerte), `pixels_over` (Pixel mit mindestens einem Kanal über `--threshold`), `mse` und `psnr` (inf bei Gleichheit). `--ignore-alpha` vergleicht nur RGB, `--diff` schreibt ein Differenzbild (`--diff-gain` verstärkt), `--json` gibt maschinenlesbar aus. Mit `--max-diff`, `--max-pixels` und `--min-psnr` wird der Exit-Code 1, wenn ein Grenzwert verletzt ist (2 bei Lese-/Größenfehlern). Der eigene PNG-Decoder kann alle Farbtypen, Bittiefen 1 bis 16, Adam7 und `tRNS`, prüft CRCs und ignoriert Farbprofile.
+`shader_compare.py a.png b.png` reports `max_abs_diff`, `mean_abs_diff` (over all channel values), `pixels_over` (pixels with at least one channel above `--threshold`), `mse`, and `psnr` (inf for identical images). `--ignore-alpha` compares RGB only; `--diff` writes a difference image (`--diff-gain` amplifies it); `--json` emits machine-readable output. `--max-diff`, `--max-pixels`, and `--min-psnr` make the exit code 1 when a limit is exceeded (2 for read or size errors). The custom PNG decoder supports all color types, bit depths 1–16, Adam7, and `tRNS`; it checks CRCs and ignores color profiles.
 
-## Testergebnis (Apple M1 Pro, macOS 26, Metal Language 2.3)
+## Test results (Apple M1 Pro, macOS 26, Metal language 2.3)
 
-Drei Paare aus dem eigenen Cache, das kleinste zuerst. Größe in Bytes (Vertex + Fragment); alle Eingaben synthetisch.
+Three pairs from the local cache, smallest first. Sizes are in bytes (vertex + fragment); all inputs are synthetic.
 
-| Index | SPIR-V | Was geprüft wird | Ergebnis |
+| Index | SPIR-V | Test | Result |
 |---|---|---|---|
-| 68 | 3120 + 2388 | Quad aus 2 Dreiecken, Rotation/Skalierung per Uniform, Textur (Farbverlauf, linear), Fragment gibt `min(Textur.x, Uniform)` aus | rot, bei 0,75 begrenzter Verlauf; 10404 Pixel bedeckt |
-| 2741 | 5684 + 952 | Dreiecke mit Index-Puffer, 2x 4x4-Matrix aus Uniform, Cull `back`, Tiefentest, `colorMask` `rgb`; Fragment schreibt konstant 0 | ein schwarzes Dreieck, das rückwärtige (CW) Dreieck ist weggeschnitten, Alpha bleibt 1; 8194 Pixel |
-| 136 | 6044 + 2588 | Triangle-Strip, UV-Attribut, Schachbrett mit Alpha, `discard_fragment` per Alpha-Schwelle, Farbe aus Uniform | orangefarbenes Schachbrett, transparente Felder verworfen; 26450 Pixel |
+| 68 | 3120 + 2388 | Quad from 2 triangles, rotated/scaled by uniform, texture (gradient, linear), fragment outputs `min(texture.x, uniform)` | Red, gradient clamped at 0.75; 10,404 pixels covered |
+| 2741 | 5684 + 952 | Triangles with index buffer, two 4×4 matrices from uniform, back-face culling, depth test, `colorMask` `rgb`; fragment writes constant 0 | One black triangle; the clockwise triangle is culled; alpha remains 1; 8,194 pixels |
+| 136 | 6044 + 2588 | Triangle strip, UV attribute, checkerboard with alpha, `discard_fragment` at alpha threshold, color from uniform | Orange checkerboard, transparent cells discarded; 26,450 pixels |
 
-- Alle drei Paare übersetzen, kompilieren und rendern ohne Fehler. Zweiter Lauf: bitgleich (0 Abweichung).
-- Zusätzlich geprüft: PNG-Datei als Textur (`r8Unorm`, Mipmaps, `repeat`), Fehlermeldungen bei fehlender Textur, fehlendem Attribut und unbekanntem JSON-Schlüssel.
-- `scripts/tests/test_shader_compare.py`: 20 Tests grün (Decoder für alle Filter, Farbtypen, Bittiefen, Adam7, Palette/`tRNS`, defekte Dateien; Metriken; Kommandozeile; Gegenprobe mit `sips`).
+- All three pairs translate, compile, and render without errors. A second run was bit-identical (difference 0).
+- Also checked: PNG texture input (`r8Unorm`, mipmaps, `repeat`), and error messages for missing texture, missing attribute, and unknown JSON key.
+- `scripts/tests/test_shader_compare.py`: 20 tests pass (all decoder filters, color types, bit depths, Adam7, palette/`tRNS`, malformed files; metrics; CLI; cross-check against `sips`).
 
-## Grenzen
+## Limitations
 
-- **Ein Zeichenaufruf**, ein Farbziel (`rgba8Unorm`), optional Tiefe `depth32Float`. Kein MSAA, kein Stencil, keine Compute-Shader, keine Geometry/Tessellation (kommen im Cache nicht vor).
-- **Bindings:** Uniform-Puffer, 2D-Texturen und Sampler, jeweils für Vertex- und Fragmentstufe. Keine Cube-/Array-/3D-Texturen, keine Storage-Puffer, keine Argument-Buffer, keine Spezialisierungskonstanten. Der Sampler wird über die Textur beschrieben (`samplerSlot`); Vergleichssampler und Anisotropie fehlen.
-- **Texturformate:** `rgba8Unorm`, `rgba8Unorm_srgb`, `r8Unorm`. Es gibt keine komprimierten Formate (BCn/ASTC) und keine Float-Texturen. PNG-Dateien werden über Core Graphics als vormultipliziertes sRGB-RGBA geladen; bei transparenten Pixeln ändern sich dadurch die Farbwerte. `r8Unorm` nimmt den Rotkanal.
-- **Vertexformate** nur die oben genannten; keine gepackten Formate (`10_10_10_2`).
-- **Clipspace:** Standardmäßig unverändert. Ob der Cache-Shader `--flip-vert-y` und/oder `--fixup-clipspace` braucht (Ryujinx arbeitet mit Vulkan-Konventionen und Viewport-Tricks), ist nicht geklärt und muss pro Vergleich festgelegt werden. Die Option wird je Stufe in der Spec gesetzt.
-- **Renderzustand** kommt aus der JSON-Datei, nicht aus dem Cache (`shared.data` enthält Spezialisierungszustand, der hier nicht ausgewertet wird).
-- Die Zuordnung der Eingaben (welches Attribut ist Position, was steht in welchem Uniform-Float) ist von Hand aus der MSL gelesen; das Harness leitet sie nicht ab.
-- Die Reflexions-API (`MTLArgument`) ist ab macOS 13 als veraltet markiert; der Build zeigt dazu Warnungen, funktioniert aber.
-- Der Renderer nimmt `storageModeShared` an (Apple-Silicon-GPU); auf Intel/diskreten GPUs fehlt die Synchronisation vor dem Auslesen.
-- Offen: ein echter Unity-Vergleich. Die Metriken stehen, aber die Schwellen (z. B. 1 bis 3 Stufen pro Kanal durch Rundung, Interpolation, Farbraum) sind noch nicht an einem portierten Shader kalibriert.
+- **One draw call**, one color target (`rgba8Unorm`), optional `depth32Float`. No MSAA, stencil, compute shaders, geometry, or tessellation (none occur in the cache).
+- **Bindings:** uniform buffers, 2D textures, and samplers, each for vertex and fragment stages. No cube/array/3D textures, storage buffers, argument buffers, or specialization constants. Samplers are described through textures (`samplerSlot`); comparison samplers and anisotropy are unsupported.
+- **Texture formats:** `rgba8Unorm`, `rgba8Unorm_srgb`, `r8Unorm`. No compressed formats (BCn/ASTC) or float textures. PNGs load through Core Graphics as premultiplied sRGB RGBA; this changes color values for transparent pixels. `r8Unorm` uses the red channel.
+- **Vertex formats** are limited to those listed above; packed formats (`10_10_10_2`) are unsupported.
+- **Clip space:** unchanged by default. Whether a cached shader needs `--flip-vert-y` and/or `--fixup-clipspace` (Ryujinx uses Vulkan conventions and viewport tricks) is unresolved and must be set for each comparison. The option is set per stage in the spec.
+- **Render state** comes from the JSON file, not the cache (`shared.data` contains specialization state that is not interpreted here).
+- Input mapping (which attribute is position, which uniform float has which meaning) was read manually from MSL; the harness does not infer it.
+- The reflection API (`MTLArgument`) is marked deprecated from macOS 13; the build emits warnings but works.
+- The renderer assumes `storageModeShared` (Apple Silicon GPU); on Intel/discrete GPUs, synchronization is missing before readback.
+- Still open: a real Unity comparison. Metrics are ready, but thresholds (e.g. 1–3 channel levels for rounding, interpolation, and color space) have not been calibrated against a ported shader.

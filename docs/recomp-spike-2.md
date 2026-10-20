@@ -1,338 +1,338 @@
-# Rekompilations-Spike Phase 2 (`ap-recomp-spike-2`): Gegenprobe zur Frage „statische Rekompilation als Hauptweg?“
+# Recompilation Spike Phase 2 (`ap-recomp-spike-2`): Countercheck of the question “static recompilation as the primary path?”
 
-Stand: 2026-10-19 (Endstand des Spikes, die Zwischenmeldung nach Schritt 1 steht unverändert am Anfang). Grundlage: `docs/recomp-machbarkeit.md` (Phase 1), `docs/architektur-entscheidung.md` (Entscheidung 2, revidierbar), `docs/referenz-las-shader.md`, `docs/ipad-messung-1.md`.
-**Auftrag:** nur messen und kleinste Prototypen, mit Abbruchkriterien. Keine Rechtsberatung. Aus `research/LASRecomp` (MIT, ausdrückliche Freigabe des Nutzers) wurde **nichts kopiert**: die Skripte unter `scripts/recomp/` importieren Lifter und Generator des Klons zur Laufzeit (wie `scripts/recomp_survey.py`) und ergänzen sie. Keine Spielbytes, kein erzeugter Code und keine Spieladressen im Repo; alles Erzeugte liegt unter `work/recomp/` (gitignoriert).
+Status: 2026-10-19 (final spike results; the interim report after Step 1 remains unchanged at the beginning). Basis: `docs/recomp-machbarkeit.md` (Phase 1), `docs/architektur-entscheidung.md` (Decision 2, reversible), `docs/referenz-las-shader.md`, `docs/ipad-messung-1.md`.
+**Scope:** measurements and smallest prototypes only, with abort criteria. Not legal advice. **Nothing was copied** from `research/LASRecomp` (MIT, explicitly authorized by the user): the scripts under `scripts/recomp/` import the clone's lifter and generator at runtime (like `scripts/recomp_survey.py`) and extend them. No game bytes, generated code, or game addresses are in the repo; everything generated is under `work/recomp/` (gitignored).
 
-**Kennzeichnung:** **gemessen** = mit den Skripten unter `scripts/recomp/` am lokalen Dump ermittelt. **belegt** = im Klon oder in einer genannten Quelle gelesen. *vermutet* = Schluss ohne Test. **nicht verifiziert** = nicht prüfbar.
+**Labels:** **measured** = determined from the local dump with the scripts under `scripts/recomp/`. **documented** = read in the clone or a cited source. *inferred* = conclusion without a test. **not verified** = could not be checked.
 
-## Zwischenstand nach Schritt 1 (Exception-Test, Ausschlusskriterium)
+## Interim results after Step 1 (exception test, disqualifying criterion)
 
-**Ergebnis: bestanden. C++-Exceptions sind im LAS-Modell lösbar (Variante a), mit dem unveränderten Gast-Unwinder des Spiels.** Das Ausschlusskriterium aus `docs/recomp-machbarkeit.md` (Abschnitt 5, Zeile „C++-Exceptions“) entfällt damit als Blocker. Aufwand für die Produktionsreife: **grob 1 bis 2 Wochen** (Abschnitt 1.6), keine Forschungsfrage mehr.
+**Result: passed. C++ exceptions are feasible in the LAS model (variant a), using the game's unmodified guest unwinder.** The disqualifying criterion in `docs/recomp-machbarkeit.md` (Section 5, “C++ exceptions”) is no longer a blocker. Production-readiness effort: **roughly 1 to 2 weeks** (Section 1.6); no longer a research question.
 
-| Frage | Ergebnis | Status |
+| Question | Result | Status |
 |---|---|---|
-| Läuft der echte Unwinder des SDK (`_Unwind_RaiseException`, `unw_*`, `__gxx_personality_v0`, `__cxa_*`) rekompiliert unverändert? | **Ja.** Er läuft als erzeugtes C auf dem Gast-Stack, liest die Gast-Rahmen über `.eh_frame`/`.eh_frame_hdr` und ruft die Personality als rekompilierten Gastcode. | gemessen (Test T1 bis T5) |
-| Throw → Catch über ≥ 2 rekompilierte Rahmen mit korrektem Zustand | **Ja:** 3 Gastrahmen dazwischen (Aufräumen in 2 Rahmen, Fang im 4.), callee-saved Register und Reihenfolge der Destruktoren stimmen; Rethrow (`catch (...)` + `throw;`) ok; **200 Rahmen** mit Landing-Pads ok; Wurf aus **echtem SDK-Code** (`operator new` → `std::bad_alloc`) ok. Gegenprobe unter Unicorn (echte ARM64-Semantik) liefert dieselben Werte. | gemessen |
-| Zusätzliche Mechanik nötig | Rahmeneintrag + `_setjmp` je Gastfunktion mit Wiedereinstiegspunkt, Wiedereinstieg im `rt_dispatch`-Fehlpfad, `ret` nach `mov sp` als indirekter Sprung (3 Stellen im SDK: libunwind-`jumpto`, `longjmp`). Zusammen ca. 350 Zeilen Python (Generator-Erweiterung) und 30 Zeilen C (Laufzeit). | gemessen |
-| Gefunden und behoben | Der Standardgenerator zerschneidet Funktionen an `adr`-Sprungtabellenbasen (610 Stellen im SDK); Folge: Switch-Tabellen der libunwind nicht aufgelöst, Absturz im Unwinder. Mit Korrektur 515 statt 41 aufgelöste Tabellen. **Betrifft jede Funktion mit kompakter Sprungtabelle, nicht nur Exceptions.** | gemessen |
-| Kosten | 44,8 µs je Wurf+Fang über 4 Rahmen (`-O1`, ein Thread, Dispatch ohne Cache) = ca. 22.000 Würfe/s; Rahmeneintrag nur in den 3.447 Funktionen mit Wiedereinstiegspunkt (von 270.299 erzeugten). | gemessen |
-| Beweis an echten BDSP-Funktionen | 180 echte LSDA-Funktionen aus `main` ausgewählt (je 60 nur Aufräumen / typisierter Catch / `catch (...)`; ein erster Lauf mit 45 zeigte dasselbe): bei **100** erreichte der Lauf einen Aufruf mit Landing-Pad und **in allen 100** wählte der echte Gast-Unwinder exakt das Landing-Pad, das ein unabhängiger LSDA-Parser vorhersagt; Aufräumcode und `_Unwind_Resume` liefen, die Ausnahme erreichte den Fänger darüber (bei 6 `catch (...)`-Funktionen fing die Funktion selbst). Die übrigen 80 scheiterten an der synthetischen Umgebung (25 erreichten keinen gedeckten Aufruf, 55 stürzten durch Nullzeiger-Daten ab oder liefen in eine Endlosschleife), nicht am Unwinder; 0 Abweichungen. | gemessen (Abschnitt 1.5) |
-| Urteil | **Lösbar**, ca. 1 bis 2 Wochen Produktionsarbeit (Abschnitt 1.6). | |
+| Does the SDK's actual unwinder (`_Unwind_RaiseException`, `unw_*`, `__gxx_personality_v0`, `__cxa_*`) run unchanged after recompilation? | **Yes.** It runs as generated C on the guest stack, reads guest frames through `.eh_frame`/`.eh_frame_hdr`, and calls the personality routine as recompiled guest code. | measured (tests T1 through T5) |
+| Throw → catch across ≥ 2 recompiled frames with correct state | **Yes:** 3 guest frames in between (cleanup in 2 frames, catch in the 4th); callee-saved registers and destructor order are correct; rethrow (`catch (...)` + `throw;`) works; **200 frames** with landing pads work; throwing from **real SDK code** (`operator new` → `std::bad_alloc`) works. A countercheck under Unicorn (real ARM64 semantics) produces the same values. | measured |
+| Additional mechanism required | Frame record + `_setjmp` for each guest function with a reentry point, reentry in the `rt_dispatch` failure path, and `ret` after `mov sp` as an indirect branch (3 places in the SDK: libunwind `jumpto`, `longjmp`). About 350 lines of Python (generator extension) and 30 lines of C (runtime) in total. | measured |
+| Found and fixed | The standard generator splits functions at `adr` jump-table bases (610 places in the SDK); as a result, libunwind switch tables were not resolved and the unwinder crashed. After the fix, 515 tables resolve instead of 41. **Affects every function with a compact jump table, not just exceptions.** | measured |
+| Cost | 44.8 µs per throw+catch across 4 frames (`-O1`, one thread, dispatch without cache) = about 22,000 throws/s; frame records only in the 3,447 functions with a reentry point (out of 270,299 generated functions). | measured |
+| Evidence from real BDSP functions | Selected 180 real LSDA functions from `main` (60 each: cleanup only / typed catch / `catch (...)`; an initial run with 45 showed the same result): in **100** cases, execution reached a call with a landing pad, and in **all 100** the real guest unwinder selected exactly the landing pad predicted by an independent LSDA parser; cleanup code and `_Unwind_Resume` ran, and the exception reached the handler above (in 6 `catch (...)` functions, the function itself caught it). The other 80 failed because of the synthetic environment (25 reached no covered call; 55 crashed on null-pointer data or entered an infinite loop), not because of the unwinder; 0 mismatches. | measured (Section 1.5) |
+| Verdict | **Feasible**, about 1 to 2 weeks of production work (Section 1.6). | |
 
-### Zwischenstand der übrigen Schritte (Details in den Abschnitten 2 bis 6)
+### Interim results for the remaining steps (details in Sections 2 to 6)
 
-| Schritt | Ergebnis | Urteil |
+| Step | Result | Verdict |
 |---|---|---|
-| 2 GC/Thread-Anhalten | `thread_suspend` + `thread_get_state` auf eigenen Threads: 8 µs je Thread bei 1 bis 4 Threads (16 bis 64 Threads auf der ausgelasteten Maschine 0,07 bis 0,09 ms je Thread). Boehm selbst nutzt genau diese Aufrufe auf Apple-Plattformen. An rekompiliertem Gastcode fand ein asynchrones Anhalten das Objekt in 19.293 von 19.293 kritischen Fenstern allein im `Cpu`-Speicher (jeder Gast-Speicherzugriff und Aufruf erzwingt die Rückschrift); die Mach-Register bleiben als zusätzliche Absicherung. Alternative kooperative Sicherheitspunkte: bis 12 % im Extremfall, vermutlich 1 bis 4 % real. | lösbar, 2 bis 4 Tage |
-| 3 Speichermodell | `--rebase32` als Header-Schalter (ca. 90 Zeilen): der komplette Exception-Test mit dem echten SDK läuft mit **allen Gastadressen < 4 GiB** und Zugriff `g_base + (uint32_t)ea` unverändert grün (47,0 statt 44,8 µs je Wurf). Zeiger-Tags/39-Bit-Annahmen: im Code von `main` keine gefunden (nur 4 Masken mit 48 Bit, 1 mit 40 Bit; 0 verdächtige Tag-Befehle in 11,8 Mio. Wörtern). | tragfähig; ca. 1,5 bis 3 Wochen (statt 3 bis 6) |
-| 4 Teilbau | Alle vier Module erzeugt: 270.299 Funktionen, 992 MB C in 74 s; übersetzt in **15,6 min Wanddauer** (3 parallele Compiler, ausgelastete Maschine; CPU-Summe 45 min); Bibliothek **224 MiB** (`__text` 210 MB); größter Compiler-Spitzenwert 1,7 GB (nicht 3,3 GB); langsamste Datei 214 s. | tragfähig |
-| 5 Kleinstes lauffähiges Stück | `main`+`sdk`+`subsdk0` rekompiliert laden (RSS 101 MiB), `nn::init::Start` laufen lassen: `nnosInitialize` und alle 115 Konstruktoren des SDK laufen durch, dann **erster harter Blocker: IPC** (`sm:`, `lm`, CMIF-Domain, danach `apm`, `appletOE`, `aoc:u`, `ectx:aw`, `pctl*`). Bis dahin 8 verschiedene SVCs, 29 Aufrufe, 0 Threads, 105 MiB RSS. | kein CPU-/Exception-/Speicherblocker; Blocker = erwartete Dienstschicht |
+| 2 Stop-the-world GC / threads | `thread_suspend` + `thread_get_state` on own threads: 8 µs per thread with 1 to 4 threads (16 to 64 threads on a busy machine: 0.07 to 0.09 ms per thread). Boehm itself uses exactly these calls on Apple platforms. In recompiled guest code, asynchronous suspension found the object in `Cpu` memory alone in 19,293 of 19,293 critical windows (every guest memory access and call forces a writeback); Mach registers remain an additional safeguard. Alternative cooperative safepoints: up to 12% in the worst case, probably 1 to 4% in practice. | feasible, 2 to 4 days |
+| 3 Memory model | `--rebase32` as a header switch (about 90 lines): the complete exception test with the real SDK runs with **all guest addresses below 4 GiB** and unchanged `g_base + (uint32_t)ea` access, passing (47.0 instead of 44.8 µs per throw). No pointer tags or 39-bit assumptions found in `main` code (only 4 masks with 48 bits, 1 with 40 bits; 0 suspicious tag instructions in 11.8 million words). | viable; about 1.5 to 3 weeks (instead of 3 to 6) |
+| 4 Partial build | All four modules generated: 270,299 functions, 992 MB of C in 74 s; compiled in **15.6 minutes wall time** (3 parallel compilers, busy machine; 45 min total CPU time); library **224 MiB** (`__text` 210 MB); peak compiler memory 1.7 GB (not 3.3 GB); slowest file 214 s. | viable |
+| 5 Smallest runnable piece | Load recompiled `main`+`sdk`+`subsdk0` (RSS 101 MiB), run `nn::init::Start`: `nnosInitialize` and all 115 SDK constructors complete, then **first hard blocker: IPC** (`sm:`, `lm`, CMIF Domain, then `apm`, `appletOE`, `aoc:u`, `ectx:aw`, `pctl*`). Up to that point: 8 distinct SVCs, 29 calls, 0 threads, 105 MiB RSS. | no CPU/exception/memory blocker; blocker = expected service layer |
 
-**Zusatz Leistung (Abschnitt 4a):** Mikro-Benchmarks desselben C-Codes rekompiliert gegen nativ auf dem Mac: **Faktor 1,4 bis 4,3** (Ganzzahl ca. 2, Aufrufe/FP 3 bis 4).
+**Additional performance result (Section 4a):** microbenchmarks of the same C code, recompiled versus native on the Mac: **factor of 1.4 to 4.3** (integer about 2, calls/FP 3 to 4).
 
-**Vorläufige Empfehlung (Abschnitt 6):** Hybrid. R wird von „zurückgestellt“ auf „parallel verfolgter Hauptkandidat mit Entscheidungspunkt“ gehoben (Phase 3, 4 bis 6 Wochen auf dem Mac), D läuft unverändert weiter, startet aber keine neuen großen Rekonstruktionsblöcke bis zum Entscheidungspunkt.
+**Provisional recommendation (Section 6):** hybrid. R moves from “deferred” to “parallel primary candidate with a decision point” (Phase 3, 4 to 6 weeks on the Mac); D continues unchanged, but no new large reconstruction blocks start before the decision point.
 
 ---
 
-## 1. Exception-Test (Ausschlusskriterium)
+## 1. Exception test (disqualifying criterion)
 
-### 1.1 Befund: was im Spiel vorkommt (gemessen, `scripts/recomp/eh_lsda.py survey|cfa`)
+### 1.1 Findings: what the game contains (measured, `scripts/recomp/eh_lsda.py survey|cfa`)
 
 | | main | sdk | subsdk0 | rtld |
 |---|---:|---:|---:|---:|
-| FDEs (`.eh_frame`) | 216.168 | 29.434 | 9.844 | 26 |
-| FDEs mit LSDA (Landing-Pads) | **2.917** | 508 | 0 | 0 |
-| Call-Sites in den LSDA-Tabellen | 26.631 | 2.802 | | |
-| Landing-Pads (verschiedene Adressen) | 14.887 | 1.601 | | |
-| Landing-Pads je Funktion (Median / Maximum) | 3 / 162 | 2 / 32 | | |
-| Call-Sites ohne Handler / nur Aufräumen | 9.257 / 3.866 | 937 / 1.087 | | |
-| Aktionsketten: typisierter Catch / `catch (...)` / Aufräumen in der Kette | 11.851 / 1.658 / 11.844 | 0 / 761 / 0 | | |
-| `setjmp`-Rückkehrstellen (Wiedereinstieg bei `longjmp`) | 17 | 10 | 0 | 0 |
+| FDEs (`.eh_frame`) | 216,168 | 29,434 | 9,844 | 26 |
+| FDEs with LSDA (landing pads) | **2,917** | 508 | 0 | 0 |
+| Call sites in LSDA tables | 26,631 | 2,802 | | |
+| Landing pads (distinct addresses) | 14,887 | 1,601 | | |
+| Landing pads per function (median / maximum) | 3 / 162 | 2 / 32 | | |
+| Call sites without a handler / cleanup only | 9,257 / 3,866 | 937 / 1,087 | | |
+| Action chains: typed catch / `catch (...)` / cleanup in chain | 11,851 / 1,658 / 11,844 | 0 / 761 / 0 | | |
+| `setjmp` return points (reentry after `longjmp`) | 17 | 10 | 0 | 0 |
 
-- **CFA-Befehle:** in keinem Modul kommen `DW_CFA_remember_state`/`restore_state`, Ausdrucksbefehle (`def_cfa_expression`, `expression`, `val_expression`), PAC-Befehle oder unbekannte Opcodes vor. Die Nintendo-Toolchain schreibt reine Sync-Unwind-Tabellen. Die libunwind des SDK **lehnt `remember_state` ab** (beim Test gefunden: ein FDE mit Opcode `0x0a` lässt die FDE-Auswertung scheitern). Das betrifft nur unsere mit neuerem Clang gebauten Testprogramme (übersetzt mit `-fno-asynchronous-unwind-tables`), nicht das Spiel.
-- Funktionen mit Landing-Pads sind im Mittel 720 Byte (180 Anweisungen) groß, zusammen 2,1 MB Code in den 2.917 Funktionen von `main`.
-- Personality ist überall `__gxx_personality_v0`. Die SDK-libunwind ist eine LLVM-libunwind (`unw_*`, `_Unwind_RaiseException` mit `unw_getcontext`, `unw_init_local`, `unw_step`). Der Wiedereinstieg erfolgt in `__libunwind_Registers_arm64_jumpto`: lädt alle Register aus dem Kontext, setzt `sp` und springt per `ret` (x30 = Landing-Pad) mitten in eine Gastfunktion.
+- **CFA instructions:** no module contains `DW_CFA_remember_state`/`restore_state`, expression instructions (`def_cfa_expression`, `expression`, `val_expression`), PAC instructions, or unknown opcodes. The Nintendo toolchain emits plain synchronous unwind tables. The SDK libunwind **rejects `remember_state`** (found during testing: an FDE with opcode `0x0a` causes FDE evaluation to fail). This affects only our test programs built with newer Clang (compiled with `-fno-asynchronous-unwind-tables`), not the game.
+- Functions with landing pads average 720 bytes (180 instructions), for a total of 2.1 MB of code across the 2,917 functions in `main`.
+- The personality routine is `__gxx_personality_v0` everywhere. The SDK libunwind is LLVM libunwind (`unw_*`, `_Unwind_RaiseException` using `unw_getcontext`, `unw_init_local`, `unw_step`). Reentry happens in `__libunwind_Registers_arm64_jumpto`: it loads all registers from the context, sets `sp`, and jumps with `ret` (x30 = landing pad) into the middle of a guest function.
 
-### 1.2 Warum das LAS-Modell bricht (belegt, Lifter/Generator gelesen)
+### 1.2 Why the LAS model breaks (documented, lifter/generator inspected)
 
-1. Ein Gast-`RET` wird zu einem Host-`return`; `ret` nach `mov sp, xN` (`jumpto`) wäre damit ein Rücksprung zum **Host-Aufrufer**, nicht zum Landing-Pad. Ebenso `longjmp` (`br x30`).
-2. `rt_dispatch` kennt nur Funktionsanfänge; ein Landing-Pad liegt mitten in einer Funktion → „no function at …“.
-3. Der Host-Stack enthält zwischen Wurfstelle und Fänger noch die Rahmen der übersprungenen Gastfunktionen; sie müssen verschwinden.
+1. A guest `RET` becomes a host `return`; therefore, `ret` after `mov sp, xN` (`jumpto`) would return to the **host caller**, not to the landing pad. Likewise for `longjmp` (`br x30`).
+2. `rt_dispatch` knows only function starts; a landing pad is in the middle of a function → “no function at …”.
+3. The host stack still contains the frames of guest functions skipped between the throw site and the handler; those frames must be removed.
 
-### 1.3 Entwurf der drei Varianten
+### 1.3 Design of the three variants
 
-| Variante | Idee | Bewertung |
+| Variant | Idea | Assessment |
 |---|---|---|
-| **(a) Gast-Unwinder unverändert + Wiedereinstieg über Rahmeneinträge (gewählt, prototypisiert)** | Jede Gastfunktion mit Wiedereinstiegspunkt (Landing-Pad aus der LSDA, Stelle hinter `bl setjmp`) legt beim Eintritt einen `EhRec {prev, lo, hi, sp, jmp_buf}` auf den Host-Stack, hängt ihn an `Cpu` (Offset 336, bislang freier Füllbereich) und ruft `_setjmp`. Jeder Austritt (Return, Tail-Call, Dispatch) hängt ihn aus. Der echte Unwinder (rekompiliert) arbeitet auf den **echten Gast-Rahmen**: Die Gast-Stackrahmen sind faithful, weil die rekompilierten Prologe `stp x29,x30` auf den Gast-Stack schreiben und das Gast-LR vor jedem Aufruf gesetzt wird. Am Ende ruft `jumpto` per `br x30` den `rt_dispatch` mit der Landing-Pad-Adresse; ein Fehlgriff dort ruft `rt_nle_enter`: innerster Eintrag, dessen Bereich die Adresse enthält und dessen Eintritts-SP **über** dem Ziel-SP liegt (rekursive Aufrufe derselben Funktion liegen tiefer), `_longjmp` dorthin; die Funktion verteilt per `switch (c->pc)` auf das Label. Gast-Register stimmen, weil sie ohnehin nur in `Cpu` und auf dem Gast-Stack liegen (der Unwinder stellt x19 bis x28, fp, sp aus den Rahmen wieder her, `_Unwind_SetGR` setzt x0/x1). | funktioniert (1.4, 1.5); Kosten nur in 3.447 von 270.299 Funktionen |
-| (b) Eigener Unwinder auf `.eh_frame` mit Host-`longjmp` | `_Unwind_RaiseException`/`_Resume` als Host-Funktionen (HLE): CFI selbst auswerten (reicht: nur `def_cfa`, `offset`, `advance_loc`, `def_cfa_register/offset`, siehe 1.1), Personality weiterhin als Gastcode. Vorteil: schneller, kein SDK-Modulinfo (`GetExceptionInfo`) nötig. Nachteil: eigener DWARF-Interpreter (ca. 300 bis 400 Zeilen C), eine zweite Wahrheit neben dem SDK-Unwinder. | als Optimierung/Fallback möglich, nicht nötig |
-| (c) Fehlerrückgabe-Konvention | Jede Funktion gibt einen Ausnahmezustand zurück, jeder Aufruf prüft. | **nicht tragbar:** 216.168 Funktionen, auch ohne LSDA-Rahmen, Aufrufe durch Funktionszeiger und HLE; Laufzeit- und Größenkosten überall |
+| **(a) Unmodified guest unwinder + reentry through frame records (selected, prototyped)** | Each guest function with a reentry point (landing pad from the LSDA, or the instruction after `bl setjmp`) pushes an `EhRec {prev, lo, hi, sp, jmp_buf}` onto the host stack on entry, links it to `Cpu` (offset 336, previously unused padding), and calls `_setjmp`. Each exit (return, tail call, dispatch) unlinks it. The real unwinder (recompiled) operates on the **real guest frames**: guest stack frames are faithful because the recompiled prologues write `stp x29,x30` to the guest stack and the guest LR is set before every call. At the end, `jumpto` calls `rt_dispatch` with the landing-pad address via `br x30`; a miss there calls `rt_nle_enter`: find the innermost record whose range contains the address and whose entry SP is **above** the target SP (recursive calls to the same function are deeper), then `_longjmp` to it; the function dispatches via `switch (c->pc)` to the label. Guest registers are correct because they live only in `Cpu` and on the guest stack anyway (the unwinder restores x19 through x28, fp, sp from the frames; `_Unwind_SetGR` sets x0/x1). | works (1.4, 1.5); cost applies to only 3,447 of 270,299 functions |
+| (b) Custom unwinder over `.eh_frame` with host `longjmp` | Implement `_Unwind_RaiseException`/`_Resume` as host functions (HLE): evaluate CFI directly (sufficient: only `def_cfa`, `offset`, `advance_loc`, `def_cfa_register/offset`, see 1.1); keep the personality routine as guest code. Advantage: faster, no need for SDK module info (`GetExceptionInfo`). Disadvantage: custom DWARF interpreter (about 300 to 400 lines of C), a second source of truth alongside the SDK unwinder. | possible as an optimization/fallback; not needed |
+| (c) Error-return convention | Every function returns an exception state, and every call checks it. | **not viable:** 216,168 functions, including frames without LSDA, plus calls through function pointers and HLE; runtime and size costs everywhere |
 
-### 1.4 Der Prototyp (`scripts/recomp/`, alles Eigenbau, LAS-Generator nur zur Laufzeit importiert)
+### 1.4 The prototype (`scripts/recomp/`, all custom code; LAS generator imported only at runtime)
 
-| Baustein | Datei | Inhalt |
+| Component | File | Contents |
 |---|---|---|
-| LSDA-/CFA-Parser | `eh_lsda.py` | `.eh_frame_hdr`, FDE/CIE, LSDA-Call-Sites, Aktionstabellen, Typtabelle; Zahlen aus 1.1 |
-| Generator-Erweiterung | `eh_gen.py` | `EhModule(gen.Module)`: Wiedereinstiegspunkte, Rahmeneintrag (`EH_ENTER/EH_POP/EH_SETJMP`), `ret`-Sonderfälle, Korrektur der Sprungtabellen-Zerschneidung (siehe unten), Teilbau (`--only`), Gesamterzeugung (`generate`, eine Kopie der Partitionsschleife von `gen.main` mit der Korrektur) |
-| Laufzeit-Header | `rt/cpu.h` | `EhRec`, Makros, `#include_next` der Original-`cpu.h` |
-| Mini-Linker | `mini_link.py` | ELF64-Relocatable (aarch64) → NSO + Bild + `.eh_frame_hdr` (kein aarch64-Linker auf dem Mac) |
-| Bildbau | `mkimg.py` | NSO → Speicherbild mit Relokationen, Importe → Modulexporte oder HLE-Slots, schwache Importe → 0, `.mod`-Datei |
-| Test | `test/eh_guest.cpp`, `test/eh_harness.c`, `test/run_eh_test.sh`, `test/uc_ref.py` | synthetisches Gastprogramm (aarch64-Clang), Host-Laufzeit, Referenzlauf unter Unicorn |
+| LSDA/CFA parser | `eh_lsda.py` | `.eh_frame_hdr`, FDE/CIE, LSDA call sites, action tables, type table; figures from 1.1 |
+| Generator extension | `eh_gen.py` | `EhModule(gen.Module)`: reentry points, frame-record operations (`EH_ENTER/EH_POP/EH_SETJMP`), special `ret` cases, fix for jump-table function splitting (see below), partial build (`--only`), full generation (`generate`, a copy of the partition loop from `gen.main` with the fix) |
+| Runtime header | `rt/cpu.h` | `EhRec`, macros, `#include_next` of the original `cpu.h` |
+| Mini-linker | `mini_link.py` | ELF64 relocatable (aarch64) → NSO + image + `.eh_frame_hdr` (no aarch64 linker on Mac) |
+| Image builder | `mkimg.py` | NSO → memory image with relocations, imports → module exports or HLE slots, weak imports → 0, `.mod` file |
+| Tests | `test/eh_guest.cpp`, `test/eh_harness.c`, `test/run_eh_test.sh`, `test/uc_ref.py` | synthetic guest program (aarch64-Clang), host runtime, reference run under Unicorn |
 
-**Gefundene Randbedingungen des SDK-Unwinders** (im Test entdeckt, für das Produkt als Anforderungen an den Loader/die Laufzeit zu übernehmen):
+**SDK unwinder constraints found** (discovered in testing; product requirements for the loader/runtime):
 
-1. FDE-Suche über `nn::ro::detail::GetExceptionInfo(info, pc)`. Im SDK implementiert über **SVC `QueryMemory`** auf dem Segmentbild (Typ 3 bzw. 8 und Recht 5 für Code, dann `MOD0` und `eh_frame_hdr`); im Test durch eine Host-Funktion ersetzt, im Produkt: `QueryMemory` mit Segmenttabelle der Module (der Probelauf in Schritt 5 liefert sie bereits).
-2. `nn::os`-Mutex des FDE-Caches (Thread-Objekt, Arbitration): Host-Mutex.
-3. `__cxa_get_globals` (TLS über `nn::os`): im Test Host-Block; im Produkt läuft das über den echten SDK-Start (Schritt 5).
-4. `malloc/free/calloc/aligned_alloc` sind Importe des SDK und kommen aus der Anwendung (`nninitStartup`).
-5. EH-Kodierungen: die libunwind der Switch-Toolchain arbeitet mit `sdata4`; der lokale Clang schreibt `sdata8` (Test wandelt im Assembler um, `test/eh_sdata4.py`).
+1. FDE lookup through `nn::ro::detail::GetExceptionInfo(info, pc)`. In the SDK this is implemented using **SVC `QueryMemory`** on the segment image (type 3 or 8 and permission 5 for code, then `MOD0` and `eh_frame_hdr`); replaced with a host function in the test. In the product: `QueryMemory` backed by the modules' segment table (already provided by the probe run in Step 5).
+2. `nn::os` mutex for the FDE cache (thread object, arbitration): use a host mutex.
+3. `__cxa_get_globals` (TLS through `nn::os`): host block in the test; in the product this runs through the real SDK startup (Step 5).
+4. `malloc/free/calloc/aligned_alloc` are SDK imports supplied by the application (`nninitStartup`).
+5. EH encodings: the Switch toolchain's libunwind uses `sdata4`; local Clang writes `sdata8` (the test converts it in assembly, `test/eh_sdata4.py`).
 
-**Gefundene Generatorlücke (betrifft jede Funktion mit kompakter Sprungtabelle):** `gen.py` macht jedes `adr`-Ziel im Text zum Funktionsanfang. Bei clang-Tabellen der Form `adr xA, T; ldrb w, [tab, idx]; add xA, xA, w, lsl #2; br xA` ist `T` die Tabellenbasis **innerhalb** der Funktion; die Funktion wurde zerschnitten, die Tabelle konnte nicht aufgelöst werden, und der Sprung ging in die Mitte einer anderen „Funktion“. Korrektur in `eh_gen.py` (`is_jumptable_base_adr`): SDK 610 Stellen, aufgelöste Tabellen **41 → 515**, Funktionen 44.718 → 38.342; `main`: 2.219 Stellen, 2.277 Tabellen aufgelöst, 284 Rückfälle auf „alle Anweisungen sind Label“. Das ist ein allgemeiner Fehler des Standardgenerators und ohne die Korrektur würde auch Spielcode falsch laufen.
+**Generator gap found (affects every function with a compact jump table):** `gen.py` treats every `adr` target in text as a function start. With Clang tables of the form `adr xA, T; ldrb w, [tab, idx]; add xA, xA, w, lsl #2; br xA`, `T` is the table base **inside** the function; the function was split, the table could not be resolved, and the branch landed in the middle of another “function.” Fix in `eh_gen.py` (`is_jumptable_base_adr`): 610 places in the SDK; resolved tables **41 → 515**, functions 44,718 → 38,342; `main`: 2,219 places, 2,277 tables resolved, 284 fallbacks to “all instructions are labels.” This is a general bug in the standard generator; without the fix, game code would also run incorrectly.
 
-### 1.5 Messung (`test/run_eh_test.sh`, `test/run_eh_real.sh`)
+### 1.5 Measurements (`test/run_eh_test.sh`, `test/run_eh_real.sh`)
 
-| Test | Inhalt | Ergebnis |
+| Test | Contents | Result |
 |---|---|---|
-| T0 | `_Unwind_Backtrace` ohne Wurf | 2 Rahmen mit LSDA/Funktionsanfang richtig |
-| T1 | `leaf` wirft `int` → Aufräumen in `mid` und `mid2` (Landing-Pads) → Fang in `test_basic`; Callee-saved-Werte und Log-Reihenfolge prüfen | Rückgabe 60/60, Log 1234/1234 |
-| T2 | kein Wurf, Rahmenkette danach leer | ok |
-| T3 | `catch (...)` mit `throw;` (Rethrow), Fang mit Typ weiter oben | ok |
-| T4 | 200 Rahmen mit Landing-Pads | ok |
-| T5 | Wurf aus echtem SDK-Code: `operator new(0x7fffffffffff)` → `std::bad_alloc` | ok (ein echter SDK-Rahmen dazwischen) |
-| T6 | 20.000 Würfe, je 4 Rahmen | 44,8 µs je Wurf+Fang (`-O1`) |
-| Gegenprobe | dieselben Tests unter Unicorn (echte ARM64-Semantik, gleiche Bilder und HLE-Semantik) | alle bestanden |
-| Echte Funktionen (`run_eh_real.sh`, `PER_KIND=60`) | 180 echte LSDA-Funktionen aus `main` (reproduzierbar per Seed, Teilbau mit direkten Aufrufen als Dispatch-Stubs; Standard 45 Funktionen). Der erste Aufruf mit Landing-Pad **wirft** eine Ausnahme (echtes `__cxa_allocate_exception`/`__cxa_throw` des SDK, Rücksprungadresse = Aufrufstelle in der Funktion); alle Importe der Funktion laufen danach über den echten SDK-Code (PLT-Auflösung). Ein unabhängiger Parser (`eh_lsda.py`) sagt das Landing-Pad voraus. | **100 von 100** erreichten Fälle (nur Aufräumen 40, typisierter Catch 25, `catch (...)` 35): Landing-Pad stimmt, Aufräumcode läuft, `_Unwind_Resume` setzt die Abwicklung fort, der Fänger oberhalb bekommt die Ausnahme (6-mal fing die `catch (...)`-Funktion selbst). 25 ohne erreichten gedeckten Aufruf, 55 Abstürze/Zeitüberschreitungen durch die synthetische Umgebung (Argumente zeigen auf einen Seitenpuffer, der mit Selbstzeigern gefüllt ist). **0 Abweichungen, 0 Laufzeitfehler.** (Lauf mit 45 Funktionen: 25 von 25.) |
+| T0 | `_Unwind_Backtrace` without a throw | 2 frames with LSDA/function start identified correctly |
+| T1 | `leaf` throws `int` → cleanup in `mid` and `mid2` (landing pads) → caught in `test_basic`; check callee-saved values and log order | return 60/60, log 1234/1234 |
+| T2 | no throw; frame chain is empty afterward | ok |
+| T3 | `catch (...)` with `throw;` (rethrow), then catch by type farther up | ok |
+| T4 | 200 frames with landing pads | ok |
+| T5 | throw from real SDK code: `operator new(0x7fffffffffff)` → `std::bad_alloc` | ok (one real SDK frame in between) |
+| T6 | 20,000 throws, 4 frames each | 44.8 µs per throw+catch (`-O1`) |
+| Countercheck | same tests under Unicorn (real ARM64 semantics, same images and HLE semantics) | all passed |
+| Real functions (`run_eh_real.sh`, `PER_KIND=60`) | 180 real LSDA functions from `main` (reproducible by seed; partial build uses direct calls as dispatch stubs; default is 45 functions). The first call with a landing pad **throws** an exception (real SDK `__cxa_allocate_exception`/`__cxa_throw`; return address = call site in the function); all imports of the function then go through real SDK code (PLT resolution). An independent parser (`eh_lsda.py`) predicts the landing pad. | **100 of 100** reached cases (cleanup only 40, typed catch 25, `catch (...)` 35): landing pad matches, cleanup runs, `_Unwind_Resume` continues unwinding, handler above receives exception (the `catch (...)` function itself caught it 6 times). 25 did not reach a covered call; 55 crashed/timed out because of the synthetic environment (arguments point to a page buffer filled with self-pointers). **0 mismatches, 0 runtime errors.** (Run with 45 functions: 25 of 25.) |
 
-Grenzen: Der Wurf-Test belegt Auswahl des Landing-Pads und Abwicklung an echten Funktionen, **nicht** das Spielverhalten (Zustand der Funktion ist synthetisch). Bei den 25 erreichten Funktionen mit typisiertem Catch war das geworfene Typobjekt nicht das der Catch-Klausel (die Ausnahme lief weiter zum Wrapper); der Fang selbst ist durch T1/T3 (eigene Typen) belegt. Zeitlimit/Absturz bei 55 von 180 liegt an der Umgebung, nicht am Unwinder.
+Limits: The throw test demonstrates landing-pad selection and unwinding in real functions, **not** game behavior (the function state is synthetic). For the 25 reached functions with a typed catch, the thrown type object did not match the catch clause (the exception continued to the wrapper); catching itself is demonstrated by T1/T3 (with test types). The timeouts/crashes for 55 of 180 are due to the environment, not the unwinder.
 
-### 1.6 Urteil und Aufwand
+### 1.6 Verdict and effort
 
-**Lösbar.** Fehlend für die Produktion (Schätzung, Einzelentwickler): (1) `QueryMemory`/Modulsegmente im Lader und Mehrthread-Mutex für den FDE-Cache (1 bis 2 Tage), (2) Host-HLE-Funktionen dürfen beim Abwickeln keine Sperren halten; Thread-Beendigung/`ExitThread` mit offenen Rahmen (2 Tage), (3) Tests gegen mehr echte Funktionen und die Variante `longjmp` (17 Stellen in `main`) (2 bis 3 Tage), (4) Leistung: Dispatch-Cache und -O1-Optimierung (1 Tag). Summe **1 bis 2 Wochen**. Risiko: niedrig bis mittel (keine bekannten offenen Probleme; Unity-Code ist der größere Prüfstand: Managed-Exceptions kommen von IL2CPP über `__cxa_throw` mit `Il2CppExceptionWrapper`).
+**Feasible.** Remaining production work (estimate, one developer): (1) `QueryMemory`/module segments in loader and a multi-threaded mutex for the FDE cache (1 to 2 days), (2) host HLE functions must not hold locks during unwinding; thread termination/`ExitThread` with open frames (2 days), (3) tests against more real functions and the `longjmp` variant (17 sites in `main`) (2 to 3 days), (4) performance: dispatch cache and `-O1` optimization (1 day). Total **1 to 2 weeks**. Risk: low to medium (no known open problems; Unity code is the larger test: managed exceptions come from IL2CPP through `__cxa_throw` with `Il2CppExceptionWrapper`).
 
 ---
 
-## 2. GC / Thread-Anhalten
+## 2. GC / thread suspension
 
-**Befund (belegt):** `main` importiert `nn::os::SuspendThread`, `ResumeThread`, `GetThreadContext`; ein Boehm-GC (13 Warnstrings, `GC_general_register_disappearing_link` in `main`, siehe Phase 1) hält alle Threads an und scannt Stack und Register. LAS setzt SVC `0x32` (`SetThreadActivity`) und `0x33` (`GetThreadContext3`) nicht um.
+**Finding (documented):** `main` imports `nn::os::SuspendThread`, `ResumeThread`, `GetThreadContext`; a Boehm GC (13 warning strings, `GC_general_register_disappearing_link` in `main`, see Phase 1) suspends all threads and scans their stacks and registers. LAS does not implement SVC `0x32` (`SetThreadActivity`) or `0x33` (`GetThreadContext3`).
 
-**Prototyp** (`scripts/recomp/test/gc_suspend.c`, macOS, ohne Entitlement):
+**Prototype** (`scripts/recomp/test/gc_suspend.c`, macOS, no entitlement):
 
-| Messung | Wert |
+| Measurement | Value |
 |---|---|
-| `thread_suspend` + `thread_get_state(ARM_THREAD_STATE64)` + `thread_resume`, 1 Thread | 8,0 µs im Mittel |
-| 4 Threads | 34,5 µs (8,6 µs je Thread) |
-| 16 Threads | 1,45 ms (Maschine mit 14 anderen Prozessen ausgelastet; schlechtester 25 ms) |
-| 64 Threads | 4,3 ms (67 µs je Thread) |
-| Gastwert nur im Host-Register, **künstlicher Fall** (Inline-asm hält ihn dort) | im Mach-Registerzustand 1 von 1, im `Cpu`-Speicher 0: die API liefert den Registerzustand |
-| **Rekompilierter Gastcode** (`gc_guest.c` über `eh_gen.py`, `run_gc_proof.sh`): Zeiger aus Slot nehmen, Slot leeren, 60 Rechenschritte, zurücklegen; 20.000 zufällige Anhaltepunkte | 19.293 im Fenster (Slot leer, Zeiger nur noch „im Register“): gefunden mit **`Cpu` + Gast-Stack allein in 19.293 von 19.293 (100 %)**, Host-Register/-Stack zusätzlich nötig: 0 |
-| Kooperativer Sicherheitspunkt (Poll am Funktionseintritt), Worst Case: 5 winzige Funktionen je Durchlauf | +12,1 % (23,5 → 26,4 ns); reale Funktionen sind größer, *vermutet* 1 bis 4 % |
+| `thread_suspend` + `thread_get_state(ARM_THREAD_STATE64)` + `thread_resume`, 1 thread | 8.0 µs average |
+| 4 threads | 34.5 µs (8.6 µs per thread) |
+| 16 threads | 1.45 ms (machine busy with 14 other processes; worst case 25 ms) |
+| 64 threads | 4.3 ms (67 µs per thread) |
+| Guest value only in host register, **artificial case** (inline asm keeps it there) | in Mach register state 1 of 1, in `Cpu` memory 0: the API returns the register state |
+| **Recompiled guest code** (`gc_guest.c` through `eh_gen.py`, `run_gc_proof.sh`): take pointer from slot, clear slot, do 60 arithmetic steps, put it back; 20,000 random suspension points | In critical window (slot empty, pointer only “in register”) 19,293 times: found with **`Cpu` + guest stack alone in 19,293 of 19,293 (100%)**; host registers/stack additionally needed: 0 |
+| Cooperative safepoint (poll at function entry), worst case: 5 tiny functions per iteration | +12.1% (23.5 → 26.4 ns); real functions are larger, *inferred* 1 to 4% |
 
-**Auswertung:**
+**Analysis:**
 
-- **Warum der Host-Zustand trotzdem in Betracht kommt:** Erzeugtes C hält Gastregister in `Cpu` im Speicher; LLVM darf Werte innerhalb einer Funktion aber in Host-Registern halten, solange kein Aufruf und kein Gast-Speicherzugriff dazwischen liegt. Der Test oben zeigt, dass das in dem Muster „Zeiger nur im Register“ **nichts verändert**: Jeder Gast-Speicherzugriff ist `may_alias` und zwingt den Compiler, `Cpu` vorher zu schreiben, jeder Aufruf `f_G(c)` ebenso (`c` entkommt). Übrig bleiben nur abgeleitete Werte, die in einer Strecke ohne Speicherzugriff berechnet werden (typisch Innenzeiger, die auf dasselbe Objekt zeigen); der Boehm-GC wertet Innenzeiger aus, und veraltete `Cpu`-Werte halten das Objekt ohnehin am Leben. Ein Fall, in dem **kein** Verweis in `Cpu`, Stack oder Heap bleibt, ist nach dem Test nicht ausgeschlossen, aber nicht erzeugt worden.
-- **Lösung A (asynchron, kein Laufzeitaufschlag, empfohlen):** `SetThreadActivity(pause)` → `thread_suspend`; `GetThreadContext3` liefert den Gast-Kontext aus `Cpu` (x0 bis x30, sp, pc, Vektorregister) und spiegelt zur Sicherheit zusätzlich die 29 Host-Register und die oberen 512 Byte des Host-Stacks unterhalb des gemeldeten Gast-SP (der Boehm scannt bis dorthin; der Gast-SP selbst bleibt unverändert). Kosten: Mikrosekunden je Thread. **Rest-Risiko:** siehe oben; es braucht einen Allokations-/GC-Stresstest des echten Spiels, der hier nicht möglich war.
-- **Lösung B (kooperativ):** Poll am Funktionseintritt und an Rücksprüngen im erzeugten C (`c->gc_pending`), Threads in HLE/Kernel-Warten gelten als sicher. Deterministisch, aber Laufzeitaufschlag und Generatoränderung an 218.195 Funktionen.
-- **iOS/iPadOS:** `thread_suspend` und `thread_get_state` auf **eigenen** Threads sind erlaubt (kein Entitlement); belegt durch den Quelltext von Boehm `darwin_stop_world.c` (öffentlich, abgerufen 2026-10-19: `thread_suspend`, `thread_get_state`, `task_threads(mach_task_self())`, ARM-Zweige), der auf iOS genau so läuft (Unity-Mono/IL2CPP-Boehm auf iOS). Auf dem iPad **nicht selbst gemessen**.
-- **Aufwand:** 2 bis 4 Tage (SVC `0x32/0x33`, `nn::os::GetThreadContext`, Test mit zwei Allokationsthreads), plus 2 bis 3 Tage Stresstest. Urteil: **lösbar**.
+- **Why host state is still considered:** Generated C keeps guest registers in `Cpu` memory; LLVM may keep values in host registers inside a function, though, as long as no call or guest memory access occurs in between. The test above shows that this makes **no difference** in the “pointer only in register” pattern: every guest memory access is `may_alias` and forces the compiler to write `Cpu` back first; every call to `f_G(c)` does the same (`c` escapes). What remains are derived values computed in a stretch with no memory access (typically interior pointers that point to the same object); Boehm recognizes interior pointers, and stale `Cpu` values keep the object alive anyway. A case where **no** reference remains in `Cpu`, stack, or heap is not ruled out by the test, but was not produced.
+- **Solution A (asynchronous, no runtime overhead, recommended):** `SetThreadActivity(pause)` → `thread_suspend`; `GetThreadContext3` returns the guest context from `Cpu` (x0 through x30, sp, pc, vector registers) and, as a safeguard, also mirrors the 29 host registers and the 512 bytes at the top of the host stack below the reported guest SP (Boehm scans down to that point; guest SP itself remains unchanged). Cost: microseconds per thread. **Remaining risk:** see above; this needs an allocation/GC stress test on the real game, which was not possible here.
+- **Solution B (cooperative):** poll at function entry and on backward branches in generated C (`c->gc_pending`); threads in HLE/kernel waits count as safe. Deterministic, but incurs runtime overhead and requires a generator change for 218,195 functions.
+- **iOS/iPadOS:** `thread_suspend` and `thread_get_state` on **own** threads are allowed (no entitlement); documented by Boehm source `darwin_stop_world.c` (public, accessed 2026-10-19: `thread_suspend`, `thread_get_state`, `task_threads(mach_task_self())`, ARM branches), which runs exactly this way on iOS (Unity Mono/IL2CPP Boehm on iOS). **Not measured on the iPad** itself.
+- **Effort:** 2 to 4 days (SVC `0x32/0x33`, `nn::os::GetThreadContext`, test with two allocation threads), plus 2 to 3 days for stress testing. Verdict: **feasible**.
 
 ---
 
-## 3. Speichermodell (32-Bit-Gastadressen)
+## 3. Memory model (32-bit guest addresses)
 
-**Schalter:** `scripts/recomp/rt32/cpu.h` und `rt32/simd.h` (zusammen ca. 90 Zeilen, `-DREBASE32 -I scripts/recomp/rt32` vor `rt`): überschreiben `LD8..LD64/ST8..ST64`, `LD128/ST128` und die Exklusiv-/Acquire-Hilfen mit `*(T*)(g_base + (uint32_t)ea)`. Der Generator bleibt **unverändert**, FP/SIMD muss im C-Modus (`--simd c`) erzeugt werden, weil die Inline-asm-Blöcke Gastadressen direkt als Hostadressen benutzen.
+**Switch:** `scripts/recomp/rt32/cpu.h` and `rt32/simd.h` (about 90 lines total, `-DREBASE32 -I scripts/recomp/rt32` before `rt`): override `LD8..LD64/ST8..ST64`, `LD128/ST128`, and the exclusive/acquire helpers with `*(T*)(g_base + (uint32_t)ea)`. The generator remains **unchanged**; FP/SIMD must be generated in C mode (`--simd c`) because the inline asm blocks use guest addresses directly as host addresses.
 
-**Test:** derselbe Exception-Test mit dem **echten SDK-Modul** (38.342 Funktionen, `--simd c`) und **allen Gastadressen unter 4 GiB** (SDK `0x1000000`, Testmodul `0x2000000`, Stack `0x3000000`, HLE `0x8000000`, Heap `0x20000000`; Fenster per `mmap(NORESERVE)`): T0 bis T5 **bestanden**, T6 47,0 µs je Wurf (asm-Modus ohne Rebase: 44,8 µs, also +5 %). Der Host (HLE) rechnet mit `H()`/`GA()` um (Gast- nach Hostadresse und zurück); das sind im Test 20 Zeilen in einer 422 Zeilen großen Harness (Allokator, TLS, Stack, `GetExceptionInfo`). Objektgröße der SDK-Chunks 35,8 MB statt 30,3 MB (+18 %, überwiegend C-SIMD statt Inline-asm). **`main` im C-SIMD-Modus** (`--simd c`): 917 Chunks, 781 MB C (Inline-asm-Modus 828 MB); im erzeugten C steht **kein einziges `(uintptr_t)`** außerhalb der Makros, also laufen alle Speicherzugriffe über `LD*/ST*` und `ldx/stx`; 24 gleichmäßig gewählte `main`-Chunks (je ca. 1,5 MB C, 18 s mit 3 Jobs) übersetzen fehlerfrei mit `-DREBASE32`.
+**Test:** same exception test with the **real SDK module** (38,342 functions, `--simd c`) and **all guest addresses below 4 GiB** (SDK `0x1000000`, test module `0x2000000`, stack `0x3000000`, HLE `0x8000000`, heap `0x20000000`; windows via `mmap(NORESERVE)`): T0 through T5 **passed**, T6 47.0 µs per throw (asm mode without rebase: 44.8 µs, so +5%). The host (HLE) translates with `H()`/`GA()` (guest to host address and back); this is 20 lines in the 422-line harness (allocator, TLS, stack, `GetExceptionInfo`) in the test. SDK chunk object size is 35.8 MB instead of 30.3 MB (+18%, mostly C-SIMD instead of inline asm). **`main` in C-SIMD mode** (`--simd c`): 917 chunks, 781 MB C (inline-asm mode: 828 MB); generated C contains **not a single `(uintptr_t)`** outside the macros, so all memory accesses go through `LD*/ST*` and `ldx/stx`; 24 evenly selected `main` chunks (about 1.5 MB C each, 18 s with 3 jobs) compile cleanly with `-DREBASE32`.
 
-**Stichprobe nach Zeiger-Tags und 39-Bit-Annahmen** (`scripts/recomp/ptr_scan.py`, 11.786.892 Wörter in `main`):
+**Sample scan for pointer tags and 39-bit assumptions** (`scripts/recomp/ptr_scan.py`, 11,786,892 words in `main`):
 
-| Muster | main | sdk | subsdk0 |
+| Pattern | main | sdk | subsdk0 |
 |---|---:|---:|---:|
-| `AND` mit Maske 2^k−1, k = 39..63 (Zeigerbreite abschneiden) | 118 (davon 106 mit k = 62/63: Vorzeichen/`fabs`; **4 mit k = 48, 1 mit k = 40**) | 134 | 11 |
-| `AND` mit 0xFFFFFFFF (auf 32 Bit abschneiden) | 4.681 | 9.311 | 120 |
-| `ORR` mit Bit ≥ 40 gesetzt | 2.418 (die häufigsten: Bitmuster `0xAAAA…`, `0xCCCC…`, `0xFFFFFFFF00000000`, Gleitkomma-Konstanten) | 423 | 307 |
-| `LSR/UBFX` ab Bit ≥ 40, `LSL` ≥ 40 | 1.605 / 23 | 859 / 36 | 428 / 6 |
-| `MOVK/MOVZ/MOVN` mit hohen Halbworten | 7.424 | 7.565 | 2.477 |
+| `AND` with mask 2^k−1, k = 39..63 (truncate pointer width) | 118 (106 with k = 62/63: sign/`fabs`; **4 with k = 48, 1 with k = 40**) | 134 | 11 |
+| `AND` with 0xFFFFFFFF (truncate to 32 bits) | 4,681 | 9,311 | 120 |
+| `ORR` with bit ≥ 40 set | 2,418 (most common: bit patterns `0xAAAA…`, `0xCCCC…`, `0xFFFFFFFF00000000`, floating-point constants) | 423 | 307 |
+| `LSR/UBFX` from bit ≥ 40, `LSL` ≥ 40 | 1,605 / 23 | 859 / 36 | 428 / 6 |
+| `MOVK/MOVZ/MOVN` with high halfwords | 7,424 | 7,565 | 2,477 |
 
-Ergebnis: **kein Hinweis auf Zeiger-Tags im Anwendungscode** (die 5 Zeigerbreiten-Masken sind klein genug für eine Einzelprüfung); die Häufungen sind Bitmuster- und Gleitkommakonstanten. Kein Beweis (Daten, die als 64-Bit-Zeiger mit Flags in hohen Bits gespeichert werden, tauchen so nicht auf), aber ein günstiger Befund. Die Gast-Zeiger sind in Rebase-Modus ohnehin Werte < 4 GiB; gefährlich wären nur gespeicherte Zeiger mit Tags in den oberen 32 Bit.
+Result: **no evidence of pointer tags in application code** (the 5 pointer-width masks are few enough to inspect individually); the clusters are bit patterns and floating-point constants. Not proof (data stored as 64-bit pointers with flags in high bits would not appear this way), but a favorable finding. In rebase mode, guest pointers are values below 4 GiB anyway; only stored pointers tagged in their upper 32 bits would be dangerous.
 
-**Budgetrechnung gegen iPad (gemessene Limits 5 GiB ohne, 8 GiB mit Increased Memory Limit; Warnschwellen 4,1 / 5,9 GiB; `docs/ipad-messung-1.md`):**
+**Memory budget calculation for iPad** (measured limits: 5 GiB without, 8 GiB with Increased Memory Limit; warning thresholds 4.1 / 5.9 GiB; `docs/ipad-messung-1.md`):
 
-| Posten | MiB | Status |
+| Item | MiB | Status |
 |---|---:|---|
-| Module (Text, ro, data, bss; Bild im Gast) | 100 | gemessen (RSS 101 MiB nach Laden von main+sdk+subsdk0) |
-| rekompilierter Code (`__text` 210 MB, 224 MiB Bibliothek), nur berührte Seiten resident (sauber, ablösbar) | 50 bis 200 | *vermutet* |
-| Gast-Heap (Switch-Anwendungsbereich; `SetHeapSize` von BDSP ungemessen) | bis 3.328 | Obergrenze (LAS `HEAP_MAX` 3,25 GiB) |
-| Gast-Stacks und TLS | 20 bis 60 | *vermutet* |
-| Host-Seite: Texturkopien (Tegra-Swizzle → Metal), Puffer als No-Copy-Wrapper um den Gast-Heap (LAS-Ansatz) | 300 bis 1.000 | *vermutet* |
-| Metal/UIKit/Laufzeit | 200 | gemessen (leere Unity-Szene 180 MiB) |
-| **Summe** | **ca. 3,9 bis 5,0 GiB** | |
+| Modules (text, ro, data, bss; image in guest) | 100 | measured (RSS 101 MiB after loading main+sdk+subsdk0) |
+| Recompiled code (`__text` 210 MB, 224 MiB library), only touched pages resident (clean, evictable) | 50 to 200 | *inferred* |
+| Guest heap (Switch application region; BDSP `SetHeapSize` not measured) | up to 3,328 | upper bound (LAS `HEAP_MAX` 3.25 GiB) |
+| Guest stacks and TLS | 20 to 60 | *inferred* |
+| Host side: texture copies (Tegra swizzle → Metal), buffers as no-copy wrappers around guest heap (LAS approach) | 300 to 1,000 | *inferred* |
+| Metal/UIKit/runtime | 200 | measured (empty Unity scene: 180 MiB) |
+| **Total** | **about 3.9 to 5.0 GiB** | |
 
-Ohne Entitlement (5 GiB, Warnung bei 4,1 GiB) ist das **zu knapp**; mit Increased Memory Limit (8 GiB, funktioniert mit kostenlosem Team) **passt es mit 3 GiB Reserve**. Das 4-GiB-Fenster ist reserviert, nicht belegt (`NORESERVE`); die Adressraumgrenze iOS (7,4 GiB nutzbar laut Phase 1, **nicht verifiziert auf aktuellem iPadOS**) lässt 3,4 GiB für alles andere; Host-Thread-Stacks müssen deutlich unter LAS' 256 MiB liegen (Gaststack 1 MiB, Hoststack genügt in der Größenordnung 1 bis 2 MiB: ein Host-Rahmen je Gast-Aufruf, ca. 50 bis 200 Byte).
+Without the entitlement (5 GiB, warning at 4.1 GiB), this is **too tight**; with Increased Memory Limit (8 GiB, works with a free team) it **fits with 3 GiB to spare**. The 4-GiB window is reserved, not committed (`NORESERVE`); the iOS address-space limit (7.4 GiB usable according to Phase 1, **not verified on current iPadOS**) leaves 3.4 GiB for everything else; host thread stacks must be well below LAS's 256 MiB (guest stack 1 MiB; host stack should suffice at about 1 to 2 MiB: one host frame per guest call, about 50 to 200 bytes).
 
-**Aufwand (Schätzung, statt 3 bis 6 Wochen in Phase 1):** Header-Schalter fertig; offen: HLE/Kernel/Dienste auf `H()`/`GA()` umstellen (Phase 1: ca. 456 `(uintptr_t)`-Umwandlungen in HLE/Services/NVN), `DC ZVA` (5 Stellen im SDK, `memset`), Asm-SIMD mit Rebase (289.000 Zugriffe in `main`: entweder Basisregister vor dem Befehl auf Hostadresse und danach zurückrechnen oder C-SIMD akzeptieren), Test mit dem laufenden Spiel. **1,5 bis 3 Wochen.** Urteil: **tragfähig.**
+**Effort (estimate, revised from 3 to 6 weeks in Phase 1):** header switch is done; remaining: convert HLE/kernel/services to `H()`/`GA()` (Phase 1: about 456 `(uintptr_t)` conversions in HLE/services/NVN), `DC ZVA` (5 places in SDK, use `memset`), SIMD asm with rebase (289,000 accesses in `main`: either set base register to host address before instruction and convert back afterward, or accept C-SIMD), test with running game. **1.5 to 3 weeks.** Verdict: **viable.**
 
 ---
 
-## 4. Teilbau: Generierung und Übersetzung aller vier Module
+## 4. Partial build: generate and compile all four modules
 
-**Erzeugung** (`scripts/recomp/gen_all.sh`; Ausgabe `work/recomp/gen4`, gitignoriert; Python-Generator, Einzelkern):
+**Generation** (`scripts/recomp/gen_all.sh`; output in `work/recomp/gen4`, gitignored; Python generator, single core):
 
-| Modul | Funktionen | Chunks | C-Größe | Zeit | Spitzen-RAM Generator |
+| Module | Functions | Chunks | C size | Time | Generator peak RAM |
 |---|---:|---:|---:|---:|---:|
-| main | 218.195 | 1.046 | 828 MB | 62 s | 4,8 GB |
-| sdk | 38.342 | 189 | 103 MB | 7,7 s | 0,7 GB |
-| subsdk0 | 13.719 | 160 | 61 MB | 4,2 s | 0,4 GB |
-| rtld | 43 | 1 | 0,1 MB | 0,2 s | |
-| **Summe** | **270.299** | **1.396** | **992 MB** | **74 s** | |
+| main | 218,195 | 1,046 | 828 MB | 62 s | 4.8 GB |
+| sdk | 38,342 | 189 | 103 MB | 7.7 s | 0.7 GB |
+| subsdk0 | 13,719 | 160 | 61 MB | 4.2 s | 0.4 GB |
+| rtld | 43 | 1 | 0.1 MB | 0.2 s | |
+| **Total** | **270,299** | **1,396** | **992 MB** | **74 s** | |
 
-`main` hat 2.929 Funktionen mit Rahmeneintrag, 14.887 Landing-Pad-Labels, 17 `setjmp`-Rückkehrstellen; 58 Wörter werden als `rt_udf` (nicht unterstützte Exklusiv-Paare) erzeugt.
+`main` has 2,929 functions with frame records, 14,887 landing-pad labels, 17 `setjmp` return points; 58 instructions are emitted as `rt_udf` (unsupported exclusive pairs).
 
-**Übersetzung** (`scripts/recomp/build_all.sh 3`; `clang -O1 -fno-strict-aliasing -fvisibility=hidden`; Einzelfunktionen über 1 MB C mit `-O0`; 3 parallele Compiler, die Maschine war durch andere Prozesse ausgelastet, Last 8 bis 14):
+**Compilation** (`scripts/recomp/build_all.sh 3`; `clang -O1 -fno-strict-aliasing -fvisibility=hidden`; individual functions over 1 MB C use `-O0`; 3 parallel compilers, machine was busy with other processes, load 8 to 14):
 
-| Messwert | Ergebnis |
+| Measurement | Result |
 |---|---|
-| Dateien | 1.400 (1.390 mit `-O1`, 10 mit `-O0`; 1.396 Chunks plus 4 Tabellendateien) |
-| Wanddauer gesamt | **937 s = 15,6 min** |
-| Summe der Einzelzeiten | 2.711 s (45 min CPU) |
-| Median je Datei | 1 s |
-| Dateien über 10 s / über 60 s | 21 / 4 |
-| langsamste Dateien | 214 s (729 MB), 187 s (727 MB), 87 s (**1.681 MB**, größter Speicherbedarf), 72 s, 44 s |
-| größter Speicherbedarf | **1,7 GB** (870-KB-Einzelfunktion; Phase 1 hatte in einer Stichprobe 3,3 GB gemessen, diese Datei kam bei der jetzigen Chunk-Einteilung nicht vor oder wurde anders zugeschnitten) |
-| Link (`clang -dynamiclib`) | 0,5 s |
-| Objektdateien | 266 MiB |
-| Bibliothek `libgame.dylib` | **224 MiB** (`__text` 209,6 MB, `__const` 12,2 MB, `__unwind_info` 0,4 MB) |
+| Files | 1,400 (1,390 with `-O1`, 10 with `-O0`; 1,396 chunks plus 4 table files) |
+| Total wall time | **937 s = 15.6 min** |
+| Sum of individual times | 2,711 s (45 min CPU) |
+| Median per file | 1 s |
+| Files over 10 s / over 60 s | 21 / 4 |
+| Slowest files | 214 s (729 MB), 187 s (727 MB), 87 s (**1,681 MB**, highest memory use), 72 s, 44 s |
+| Peak memory | **1.7 GB** (870-KB single function; Phase 1 measured 3.3 GB in a sample, but that file was absent from the current chunking or was split differently) |
+| Link (`clang -dynamiclib`) | 0.5 s |
+| Object files | 266 MiB |
+| `libgame.dylib` library | **224 MiB** (`__text` 209.6 MB, `__const` 12.2 MB, `__unwind_info` 0.4 MB) |
 
-Ausreißer-Experiment (je eine Einzelfunktionsdatei, `-O1` / `-O0`, Spitzenspeicher): 134 KB C: 3,3 s / 0,08 s; 379 KB: 1,6 s / 0,11 s; 756 KB: 8,6 s (312 MB) / 0,24 s; 1,36 MB: **72 s** (604 MB) / 0,39 s; **8,0 MB** (größte Funktion): **153 s** (867 MB) / 4,0 s (999 MB, Objekt 4,3 MB). `-O0` löst die Ausreißer vollständig (Faktor 35 bis 185 schneller), kostet aber Laufzeit in diesen Funktionen; es sind 337 Einzelfunktionsdateien über 100 KB (284 zwischen 100 und 300 KB, 32 bis 600 KB, 9 bis 1 MB, 8 bis 2 MB, 2 darüber), also 10 von 1.400 Dateien im Sonderpfad. Die drei langsamsten Dateien (214 s, 187 s, 87 s) sind **Einzelfunktionen von 373 KB, 488 KB und 870 KB C**, also unter der 1-MB-Schwelle; die Übersetzungszeit hängt stark vom Kontrollfluss ab, nicht nur von der Größe (die 8-MB-Funktion braucht 153 s, die 373-KB-Funktion 214 s). Mit einer Schwelle von 300 KB für `-O0` wären sie alle in den Sonderpfad gefallen.
+Outlier experiment (one single-function file each, `-O1` / `-O0`, peak memory): 134 KB C: 3.3 s / 0.08 s; 379 KB: 1.6 s / 0.11 s; 756 KB: 8.6 s (312 MB) / 0.24 s; 1.36 MB: **72 s** (604 MB) / 0.39 s; **8.0 MB** (largest function): **153 s** (867 MB) / 4.0 s (999 MB, 4.3 MB object). `-O0` eliminates the outliers completely (35 to 185 times faster), but costs runtime in those functions; there are 337 single-function files over 100 KB (284 between 100 and 300 KB, 32 up to 600 KB, 9 up to 1 MB, 8 up to 2 MB, 2 above), so 10 of 1,400 files take the special path. The three slowest files (214 s, 187 s, 87 s) are **single functions with 373 KB, 488 KB, and 870 KB of C**, below the 1-MB threshold; compilation time depends heavily on control flow, not just size (the 8-MB function takes 153 s; the 373-KB function takes 214 s). With a 300-KB threshold for `-O0`, all would have taken the special path.
 
-**Bewertung:** Gesamtbau **unter der Bedingung (c) aus Phase 1 (30 Minuten)**: 15,6 min mit 3 Jobs auf der ausgelasteten Maschine, *vermutet* 6 bis 8 min mit 8 freien Kernen. Gesamt-Ressourcen: 1 GB C + 0,27 GB Objekte + 0,22 GB Bibliothek, Platz < 2 GB; Generator braucht 5 GB RAM für `main`. Urteil: **tragfähig**. Offen: iOS-Ziel (arm64, gleiche Bibliothek, in das App-Bundle eingebettet; Xcode-Übersetzung statt Skript), Link-Verhalten mit LTO nicht gemessen.
+**Assessment:** Full build is **within Phase 1 condition (c) (30 minutes)**: 15.6 min with 3 jobs on a busy machine; *inferred* 6 to 8 min with 8 free cores. Total resources: 1 GB C + 0.27 GB objects + 0.22 GB library, under 2 GB disk; generator needs 5 GB RAM for `main`. Verdict: **viable**. Remaining: iOS target (arm64, same library, embedded in app bundle; Xcode compilation instead of script), link behavior with LTO not measured.
 
 ---
 
-## 4a. Leistung: Mikro-Benchmarks rekompiliert gegen nativ
+## 4a. Performance: microbenchmarks recompiled versus native
 
-`scripts/recomp/test/run_bench.sh`: dieselbe C-Quelle (`bench_guest.c`) wird für aarch64-linux mit `-O2` übersetzt und durch die Pipeline rekompiliert (`-O1` wie im Gesamtbau, Gleitkomma als Inline-asm-Blöcke, Dispatch wie LAS mit 4096er-Cache), und als Vergleich nativ auf dem Mac (M1 Pro, `-O2`) übersetzt. Ergebnisse stimmen in allen vier Fällen überein.
+`scripts/recomp/test/run_bench.sh`: the same C source (`bench_guest.c`) is compiled for aarch64-linux with `-O2` and run through the recompilation pipeline (`-O1` as in the full build, floating point as inline asm blocks, dispatch like LAS with a 4096-entry cache), and is compiled natively on the Mac (`-O2`) for comparison. Results match in all four cases.
 
-| Benchmark | rekompiliert | nativ | Faktor (`-O1`) | Faktor (`-O2`) |
+| Benchmark | Recompiled | Native | Factor (`-O1`) | Factor (`-O2`) |
 |---|---:|---:|---:|---:|
-| Ganzzahl + Speicher (Xorshift, 32 KiB) | 0,41 s | 0,21 s | 1,9 | 2,0 |
-| Aufrufe + Stack (`fib(35)`) | 0,12 s | 0,03 s | 4,3 | 3,2 |
-| Gleitkomma (FMA-Schleife, Inline-asm) | 0,61 s | 0,15 s | 4,0 | 4,0 |
-| indirekte Aufrufe (8er-Tabelle, `rt_dispatch`) | 0,17 s | 0,11 s | 1,5 | 1,4 |
+| Integer + memory (Xorshift, 32 KiB) | 0.41 s | 0.21 s | 1.9 | 2.0 |
+| Calls + stack (`fib(35)`) | 0.12 s | 0.03 s | 4.3 | 3.2 |
+| Floating point (FMA loop, inline asm) | 0.61 s | 0.15 s | 4.0 | 4.0 |
+| Indirect calls (8-entry table, `rt_dispatch`) | 0.17 s | 0.11 s | 1.5 | 1.4 |
 
-**Aussage:** auf Mikro-Ebene **1,4- bis 4,3-mal langsamer** als nativer Code derselben Quelle (Ganzzahlcode ca. 2×, aufrufintensiv und FP-lastig 3 bis 4×). Das bestätigt die Phase-1-Schätzung „2× bis 5×“ von unten. Grenzen: kleine Schleifen, ein Thread, kein Cache-Druck; die Switch-CPU (Cortex-A57, ca. 1 GHz) ist laut Schätzung 6- bis 10-mal langsamer als ein M1/M2-Kern, was den Faktor mehr als aufwiegen würde (*vermutet*); das Spiel selbst wurde nicht gemessen. Der Rebase-Schalter kostet in der Exception-Messung +5 %.
+**Conclusion:** at the micro level, **1.4 to 4.3 times slower** than native code from the same source (integer code about 2×, call-heavy and FP-heavy code 3 to 4×). This supports the Phase 1 estimate of “2× to 5×” at the low end. Limits: small loops, one thread, no cache pressure; the Switch CPU (Cortex-A57, about 1 GHz) is estimated to be 6 to 10 times slower than an M1/M2 core, which would more than offset the factor (*inferred*); the game itself was not measured. The rebase switch costs +5% in the exception measurement.
 
 ---
 
-## 5. Kleinstes lauffähiges Stück: `main` + `sdk` + `subsdk0` bis `nnMain`
+## 5. Smallest runnable piece: `main` + `sdk` + `subsdk0` through `nnMain`
 
-Die Bedingung „Schritte 1 bis 3 positiv“ ist erfüllt. Aufbau (`scripts/recomp/test/boot_probe.c`, `run_boot_probe.sh`): alle drei Module (aus den 1.400 Objekten, nicht der Test-Teilbau) an ihrer Basis laden (`main` `0x70_0000_0000`, `sdk` `0x70_0600_0000`, `subsdk0` `0x70_0700_0000`; das `main`-Image ist 84,3 MB groß, der LAS-Slot 64 MiB, daher geänderte Basen), Relokationen und Querverweise anwenden (`main` → `sdk`: 3.854, `subsdk0` → `main`/`sdk`: 6.551), schwache Importe 0, `nn::init::Start(thread_handle, args, init_sdk, init_main, fini)` auf dem Hauptthread starten (rtld-Ersatz wie LAS: erste Rückruffunktion = Initialisierung des SDK-Moduls nach `nnosInitialize`, zweite = `main` vor `nnMain`). Mini-Kernel nur für den Befund: 25 SVCs mit Standardantworten, ein Thread, einfache CMIF-Antworten.
+The condition “Steps 1 through 3 positive” is met. Setup (`scripts/recomp/test/boot_probe.c`, `run_boot_probe.sh`): load all three modules (from the 1,400 objects, not the test partial build) at their bases (`main` `0x70_0000_0000`, `sdk` `0x70_0600_0000`, `subsdk0` `0x70_0700_0000`; the `main` image is 84.3 MB, while the LAS slot is 64 MiB, so bases were changed), apply relocations and cross-references (`main` → `sdk`: 3,854; `subsdk0` → `main`/`sdk`: 6,551), set weak imports to 0, start `nn::init::Start(thread_handle, args, init_sdk, init_main, fini)` on the main thread (rtld replacement as in LAS: first callback = SDK module initialization after `nnosInitialize`, second = `main` before `nnMain`). Mini-kernel for this finding only: 25 SVCs with default responses, one thread, simple CMIF responses.
 
-**Ergebnis (gemessen):**
+**Result (measured):**
 
 | | |
 |---|---|
-| Start-RSS nach Laden der drei Module | **101 MiB** (alle Module berührt, 99 MB entpackt) |
-| `nn::init::Start` → `nnosInitialize` | läuft: `GetInfo` ×12, `QueryMemory` ×2, `GetThreadPriority`, `GetThreadId` (alle Werte plausibel) |
-| SDK-Konstruktoren (DT_INIT, **115 `init_array`-Einträge**) | **laufen durch**, ohne Absturz oder Ausnahme |
-| Erster harter Blocker | **IPC / Dienstschicht**: `ConnectToNamedPort("sm:")` → `SendSyncRequest` (HIPC-Typ 6). Mit einer Mini-CMIF-Schicht (Antworten, Domain, 120 Zeilen) beantwortet der Test `sm:` Initialize, `lm` (Steuerbefehle QueryPointerBufferSize und ConvertCurrentObjectToDomain, `OpenLogger` als Domain-Objekt) und `MapPhysicalMemory`. **Fragefolge des SDK danach (`sm:` GetService):** `apm`, `appletOE`, `aoc:u`, **`ectx:aw`** (fehlt er, ruft das SDK `svcBreak`), danach `pctl`, `pctl:s`, `pctl:a`, `pctl:r`. Fehlerantworten für `apm`/`appletOE`/`aoc:u` nimmt das SDK hin; fehlt `pctl` samt Varianten, läuft es in seine Abbruchbehandlung (`nn::diag::detail::InvokeSdkAbortObserver`), die ein `nn::am`-Objekt (aus `appletOE`) braucht, und der Test stürzt mit Nullzugriff ab (Ursache gelesen aus dem Funktionsring, kein Fehler des erzeugten Codes). Echte Dienste mit gültigen Objekten sind nötig. Pflicht bis hier: `ectx:aw` und ein `pctl*` (sonst Abbruch), `appletOE` (für die Abbruchbehandlung); `apm` und `aoc:u` überstanden den Fehler; `lm` wurde umgesetzt. |
-| SVCs bis dahin (Lauf ohne `ectx:aw`) | 8 verschiedene (`0x06`, `0x0c`, `0x1f`, `0x21`, `0x25`, `0x26`, `0x29`, `0x2c`), 29 Aufrufe (`GetInfo` 13, `SendSyncRequest` 9); zwei `GetInfo`-Anfragen mit IDs, die der Mini-Kernel nicht kennt |
-| Threads, Heap | 0 Threads angelegt, `SetHeapSize` noch nicht aufgerufen (das macht `nninitStartup` in `main` nach den Konstruktoren) |
-| Spitzen-RSS bei Abbruch | 105 MiB |
-| Zeit bis zum Blocker | Lauf selbst < 1 s |
+| RSS after loading the three modules | **101 MiB** (all modules touched, 99 MB unpacked) |
+| `nn::init::Start` → `nnosInitialize` | runs: `GetInfo` ×12, `QueryMemory` ×2, `GetThreadPriority`, `GetThreadId` (all values plausible) |
+| SDK constructors (DT_INIT, **115 `init_array` entries**) | **complete**, without a crash or exception |
+| First hard blocker | **IPC / service layer**: `ConnectToNamedPort("sm:")` → `SendSyncRequest` (HIPC type 6). With a mini-CMIF layer (responses, Domain, 120 lines), the test handles `sm:` Initialize, `lm` (control commands QueryPointerBufferSize and ConvertCurrentObjectToDomain, `OpenLogger` as a Domain object), and `MapPhysicalMemory`. **SDK query sequence afterward (`sm:` GetService):** `apm`, `appletOE`, `aoc:u`, **`ectx:aw`** (if missing, SDK calls `svcBreak`), then `pctl`, `pctl:s`, `pctl:a`, `pctl:r`. The SDK accepts error responses for `apm`/`appletOE`/`aoc:u`; if `pctl` and its variants are missing, it enters its abort handler (`nn::diag::detail::InvokeSdkAbortObserver`), which needs an `nn::am` object (from `appletOE`), and the test crashes with a null access (cause inferred from the function chain; not an error in generated code). Real services with valid objects are required. Required by this point: `ectx:aw` and one `pctl*` (otherwise abort), `appletOE` (for abort handling); `apm` and `aoc:u` tolerate the error; `lm` is implemented. |
+| SVCs up to that point (run without `ectx:aw`) | 8 distinct (`0x06`, `0x0c`, `0x1f`, `0x21`, `0x25`, `0x26`, `0x29`, `0x2c`), 29 calls (`GetInfo` 13, `SendSyncRequest` 9); two `GetInfo` requests use IDs unknown to the mini-kernel |
+| Threads, heap | 0 threads created; `SetHeapSize` not yet called (that happens in `nninitStartup` in `main`, after the constructors) |
+| Peak RSS at abort | 105 MiB |
+| Time to blocker | run itself < 1 s |
 
-**Was dem Start (laut Phase 1 und diesem Lauf) fehlt:** (1) die CMIF-/Domain-Schicht und die 47 Dienste laut NPDM (`sm:`, `lm`, `fsp-srv`, `appletOE`, `apm`, `hid`, `time:u`, `set:sys`, `acc:u0`, `pctl`, `aoc:u`, `audren:u`, `nvdrv` …; LAS bringt 20 Namen mit, siehe Phase 1) – dies ist der nächste harte Blocker und erwartete Arbeit, kein Forschungsrisiko; (2) Thread- und Synchronisations-SVCs mit echten Host-Threads (`CreateThread`, `StartThread`, `WaitSynchronization`, `ArbitrateLock`, `WaitProcessWideKey`, `WaitForAddress`: Mini-Kernel hat sie nur als Platzhalter), SVC `0x32/0x33` (Schritt 2), `0x20, 0x23, 0x28, 0x2F, 0x36, 0x5F`; (3) `QueryMemory`-Segmenttypen (im Probelauf nachgebaut), (4) `nninitStartup`/`SetHeapSize` (kommt nach den Konstruktoren), (5) Grafik- und Medienschicht (nicht Teil dieses Laufs). Die **Zahl der Unity-Threads** bleibt ungemessen (Strings: `UnityGfxDeviceWorker`, `Loading.*`, `Background Job`, `AK::IOThread`, vermutlich 20 bis 40).
+**What startup still needs (according to Phase 1 and this run):** (1) CMIF/Domain layer and the 47 services listed in NPDM (`sm:`, `lm`, `fsp-srv`, `appletOE`, `apm`, `hid`, `time:u`, `set:sys`, `acc:u0`, `pctl`, `aoc:u`, `audren:u`, `nvdrv` …; LAS includes 20 names, see Phase 1) — this is the next hard blocker and expected work, not a research risk; (2) thread and synchronization SVCs backed by real host threads (`CreateThread`, `StartThread`, `WaitSynchronization`, `ArbitrateLock`, `WaitProcessWideKey`, `WaitForAddress`; mini-kernel has placeholders only), SVC `0x32/0x33`, `0x20`, `0x23`, `0x28`, `0x2F`, `0x36`, `0x5F`; (3) `QueryMemory` segment types (reconstructed in the probe run); (4) `nninitStartup`/`SetHeapSize` (comes after constructors); (5) graphics and media layer (outside this run). The **number of Unity threads** remains unmeasured (strings: `UnityGfxDeviceWorker`, `Loading.*`, `Background Job`, `AK::IOThread`; probably 20 to 40).
 
-**Erweiterung (kurzer Zusatzlauf, `run_boot_probe_las.sh`):** Die IPC-/Dienstschicht von LASRecomp (`ipc.c`, `services/am|misc|acc|hid_set|time.c`, gelinkt, nicht kopiert; dazu ein 40-Zeilen-Handle-Shim) ersetzt die Mini-CMIF-Schicht des Tests. Ergebnis: `sm:` → `lm` → `apm` → `appletOE` werden beantwortet, zwei `am`-Befehle (`ICommonStateGetter` 900, `ISelfController` 91) sind in LAS nicht behandelt, danach `svcBreak` (Grund 0) des SDK, noch vor `aoc:u`/`ectx:aw`/`pctl`. 9 verschiedene SVCs, 557 Aufrufe (`GetInfo` 14, `QueryMemory` 514 durch den EH-Unwinder-Pfad des SDK, `SendSyncRequest` 22), 0 Threads, Spitzen-RSS 105 MiB. Befund unverändert: nächster Blocker sind fehlende bzw. unvollständige Dienste (Wochenarbeit laut Aufwandsschätzung), kein Fehler in den rekompilierten Modulen.
+**Extension (short additional run, `run_boot_probe_las.sh`):** LASRecomp's IPC/service layer (`ipc.c`, `services/am|misc|acc|hid_set|time.c`, linked, not copied) replaces the test's mini-CMIF layer, with a 40-line handle shim. Result: `sm:` → `lm` → `apm` → `appletOE` are handled; two `am` commands (`ICommonStateGetter` 900, `ISelfController` 91) are not handled by LAS; then the SDK calls `svcBreak` (reason 0), before `aoc:u`/`ectx:aw`/`pctl`. 9 distinct SVCs, 557 calls (`GetInfo` 14, `QueryMemory` 514 via the SDK EH unwinder path, `SendSyncRequest` 22), 0 threads, peak RSS 105 MiB. Finding unchanged: next blocker is missing or incomplete services (weeks of work according to the effort estimate), not an error in the recompiled modules.
 
-**Abbruch** wie vorgegeben beim ersten harten Blocker (fehlende Dienstschicht). Erste Log-Zeilen des Unity-/IL2CPP-Starts wurden **nicht** erreicht: dafür fehlen RomFS (`fsp-srv`), Threads und Grafikdienste. CPU-Seite: **kein Hinweis auf Fehler** in den rekompilierten Modulen bis hierher (SDK-Konstruktoren, TLS, `nn::os`).
+**Stopped** as specified at the first hard blocker (missing service layer). The first Unity/IL2CPP startup log lines were **not** reached: RomFS (`fsp-srv`), threads, and graphics services are missing. CPU side: **no indication of errors** in the recompiled modules up to this point (SDK constructors, TLS, `nn::os`).
 
 ---
 
-## 6. Entscheidungsvorlage
+## 6. Decision memo
 
-### 6.1 Zahlen D gegen R
+### 6.1 D versus R figures
 
-| Kriterium | D: Unity-6-Rebuild mit handrekonstruierter Logik | R: Rekompilation des gesamten NSO (gemessen in Phase 1 und 2) |
+| Criterion | D: Unity 6 rebuild with manually reconstructed logic | R: recompilation of the entire NSO (measured in Phases 1 and 2) |
 |---|---|---|
-| Stand | 194 C#-Dateien (28.620 Zeilen) plus 12.802 Zeilen Tests, 645 Tests grün; Feld-, Kampf-, Event-, UI-Teile (Slices); **ca. 39.100 Methoden Spiellogik** insgesamt zu rekonstruieren | CPU-Seite vollständig gemessen: 270.299 Funktionen, 14,1 Mio. Wörter, **58 nicht abgedeckt**, 1.400 Dateien in 15,6 min, 224 MiB Bibliothek, SDK-Initialisierung läuft |
-| Feature-Parität (Logik, Engine, UI, Events) | nur so weit rekonstruiert; Differenzen in Zufall, Timing, Reihenfolge, Unity 6 statt 2019.4 bleiben | **1:1 automatisch**, solange CPU, Kernel/Dienste und GPU stimmen; Savegame-Kompatibilität bleibt, weil der Gast-Code unverändert schreibt |
-| Treue-Prüfung | gegen das Original nur über Orakel/Messung (`scripts/battle_oracle*.py`) | das Original **ist** der Code; Vergleich mit D möglich (Referenz) |
-| GPU | Unity-Pfad mit unserem Maxwell→MSL-Übersetzer (99,8 % der Varianten, Treue gemessen) | NVN→Metal-Schicht aus LAS (9,5 kZeilen, 495 von 524 NVN-Namen, `docs/referenz-las-shader.md`) plus derselbe Maxwell→MSL-Übersetzer (Stufe `shader_translator`): **GPU-Seite im Wesentlichen vorhanden**, Unity-spezifische Nutzung (MRT, Instancing, Compute-Skinning, 5 Compute-Programme) ungeprüft |
-| Exceptions | n. a. | **gelöst** (Abschnitt 1) |
-| GC-Thread-Anhalten | n. a. (Unity-IL2CPP) | **lösbar**, 2 bis 4 Tage (Abschnitt 2) |
-| iPad-Adressraum/-Speicher | Unity normal, Budget 2,5 GB Richtwert / 4 GB Grenze (`ipad-messung-1.md`) | 32-Bit-Fenster **funktioniert** (Abschnitt 3); Summe 3,9 bis 5,0 GiB: **nur mit Increased Memory Limit** (8 GiB, mit kostenlosem Team gemessen) sicher, ohne zu knapp |
-| Leistung | Unity-nativ | Spiel **ungemessen**; Mikro-Benchmarks (Abschnitt 4a): **1,4- bis 4,3-mal langsamer** als nativer Code derselben Quelle (Ganzzahl ca. 2×, Aufrufe/FP 3 bis 4×), Rebase +5 %, Sicherheitspunkt-Poll bis 12 % (Worst Case); Zielgeräte M1/M2 rechnen ca. 6- bis 10-mal so schnell wie der Cortex-A57 der Switch (*vermutet*) |
-| Build | Unity + Xcode wie bisher | 15,6 min auf dem Mac (3 Jobs), 5 GB RAM Generator, < 2 GB Platz; Bibliothek 224 MiB im App-Bundle |
-| Fehlt noch | alles außerhalb der Slices: laut Schätzung 90 % der Logik | Dienstschicht (47 Dienste), echte Threads, Speicherumbau der Laufzeit, Medien (Video 8 von 23 `movie::` fehlen), Audio (`hwopus`), Eingabe/Touch, Plattform-Integration |
-| Aufwand bis Feature-Parität (Einzelentwickler mit KI, **Schätzung**) | **40 bis 80 Wochen** (39.100 Methoden bei 100 bis 200 Methoden je Arbeitstag mit Werkzeugen; die Rate ist eine Annahme, nicht gemessen; Referenz nur der heutige Stand: 645 Tests, 28,6 kLOC); Unsicherheit ± 50 % | **Mac: 10 bis 18 Wochen, iPad stabil: weitere 10 bis 18 Wochen** (Aufstellung unten); Unsicherheit ± 50 %, größte Unbekannte: Unity-Start auf dem Gast, Leistung |
-| Hauptrisiken | Umfang, stille Abweichungen, Unity-6-Unterschiede | Leistung (60 FPS auf dem iPad), Unity-Mehrthreading/GC im Zusammenspiel mit dem Kernel-Nachbau, Speicher auf dem iPad, Rechtslage, Wartung (Generator/Runtime = Compilerprojekt, LAS-Quelle laut README fast ganz KI-generiert) |
-| Rechtslage (keine Rechtsberatung) | Nachbau aus Decompiler-Ausgabe; Weitergabe des Repos ohne Spielinhalte | **Repo enthält nur Recompiler + Runtime** (`scripts/recomp`, Klon-Code mit MIT-Hinweis), erzeugtes C und Binary entstehen **lokal** und werden nicht weitergegeben (Muster „Repo + eigener Dump“); das Binary ist eine mechanische Übersetzung von Nintendo-Code (klarer abgeleitetes Werk als D), die App nur für den persönlichen Gebrauch; vor öffentlicher Weitergabe rechtlich klären |
-| Ressourcen | Mac 16 GB reicht (Unity Editor + Tests) | Mac 16 GB reicht (Generator 5 GB, Compiler je 1,7 GB); iPad M2 8 GB mit Entitlement, 5 GiB ohne: knapp |
+| Status | 194 C# files (28,620 lines) plus 12,802 lines of tests, 645 tests passing; field, battle, event, UI slices; **about 39,100 game-logic methods** still to reconstruct in total | CPU side fully measured: 270,299 functions, 14.1 million words, **58 unsupported**, 1,400 files in 15.6 min, 224 MiB library; SDK initialization runs |
+| Feature parity (logic, engine, UI, events) | only to the extent reconstructed; differences in randomness, timing, order, and Unity 6 versus 2019.4 remain | **1:1 automatically**, assuming CPU, kernel/services, and GPU match; save compatibility remains because the guest code writes unchanged |
+| Fidelity check | against the original only through oracle/measurement (`scripts/battle_oracle*.py`) | the original **is** the code; D can be compared against it (reference) |
+| GPU | Unity path with our Maxwell→MSL translator (99.8% of variants, fidelity measured) | NVN→Metal layer from LAS (9.5K lines, 495 of 524 NVN names, `docs/referenz-las-shader.md`) plus the same Maxwell→MSL translator (`shader_translator` stage): **GPU side mostly exists**; Unity-specific usage (MRT, instancing, compute skinning, 5 compute programs) unverified |
+| Exceptions | n/a | **solved** (Section 1) |
+| GC thread suspension | n/a (Unity IL2CPP) | **feasible**, 2 to 4 days (Section 2) |
+| iPad address space/memory | normal Unity, 2.5 GB guideline / 4 GB limit (`ipad-messung-1.md`) | 32-bit window **works** (Section 3); total 3.9 to 5.0 GiB: safe **only with Increased Memory Limit** (8 GiB, measured with a free team); too tight without it |
+| Performance | native Unity | game **not measured**; microbenchmarks (Section 4a): **1.4 to 4.3 times slower** than native code from same source (integer about 2×, calls/FP 3 to 4×), rebase +5%, safepoint polling up to 12% (worst case); target devices compute about 6 to 10 times as fast as Switch Cortex-A57 (*inferred*) |
+| Build | Unity + Xcode as before | 15.6 min on Mac (3 jobs), generator 5 GB RAM, under 2 GB disk; 224 MiB library in app bundle |
+| Still missing | everything outside the slices: estimated 90% of the logic | service layer (47 services), real threads, runtime memory conversion, media (8 of 23 `movie::` missing), audio (`hwopus`), input/touch, platform integration |
+| Effort to feature parity (one developer with AI, **estimate**) | **40 to 80 weeks** (39,100 methods at 100 to 200 methods per workday with tools; rate is an assumption, not measured; current reference only: 645 tests, 28.6 kLOC); uncertainty ±50% | **Mac: 10 to 18 weeks; stable iPad: another 10 to 18 weeks** (breakdown below); uncertainty ±50%, biggest unknowns: Unity startup on guest, performance |
+| Main risks | scope, silent differences, Unity 6 differences | performance (60 FPS on iPad), Unity multithreading/GC interaction with kernel reimplementation, iPad memory, legal status, maintenance (generator/runtime is a compiler project; according to its README, LAS source was almost entirely AI-generated) |
+| Legal status (not legal advice) | rebuild from decompiler output; distribute repo without game content | **repo contains only recompiler + runtime** (`scripts/recomp`, clone code with MIT notice); generated C and binary are produced **locally** and not distributed (pattern: “repo + own dump”); binary is a mechanical translation of Nintendo code (more clearly a derivative work than D); app for personal use only; seek legal advice before public distribution |
+| Resources | 16 GB Mac is enough (Unity Editor + tests) | 16 GB Mac is enough (generator 5 GB, compiler 1.7 GB each); iPad M2: 8 GB with entitlement, 5 GiB without, tight |
 
-**Aufwand R in Wochen (Schätzung, Einzelentwickler):**
+**R effort in weeks (estimate, one developer):**
 
-| Paket | Wochen |
+| Package | Weeks |
 |---|---:|
-| Exceptions produktiv, `QueryMemory`, Loader, `longjmp` | 1 bis 2 |
-| GC-Thread-Anhalten, Thread-/Sync-SVCs mit Host-Threads | 1,5 bis 2,5 |
-| CMIF/Domain, 47 Dienste (Stubs/Echtes: `sm:`, `lm`, `fsp-srv`, `appletOE`, `apm`, `hid`, `time`, `set`, `acc`, `pctl`, `aoc`, `nvdrv`); LAS-Runtime als Vorbild | 3 bis 5 |
-| Speichermodell B in Laufzeit/HLE (Abschnitt 3) | 1,5 bis 3 |
-| Grafik: NVN→Metal übernehmen und an Unity anpassen, Maxwell-Programme prüfen | 3 bis 6 |
-| Audio (`audren`, `hwopus`, Wwise), Video (`movie::`) | 2 bis 4 |
-| Eingabe/Touch/iPad, Pfade/Save, Plattform-Integration, Xcode-Bundle | 2 bis 3 |
-| Fehlersuche und Leistung (60 FPS) | 4 bis 10 |
-| **Summe** | **18 bis 35.5** (Mac ca. die Hälfte) |
+| Production exceptions, `QueryMemory`, loader, `longjmp` | 1 to 2 |
+| GC thread suspension, thread/sync SVCs with host threads | 1.5 to 2.5 |
+| CMIF/Domain, 47 services (stubs/real: `sm:`, `lm`, `fsp-srv`, `appletOE`, `apm`, `hid`, `time`, `set`, `acc`, `pctl`, `aoc`, `nvdrv`); LAS runtime as model | 3 to 5 |
+| Memory model B in runtime/HLE (Section 3) | 1.5 to 3 |
+| Graphics: port NVN→Metal and adapt to Unity, check Maxwell programs | 3 to 6 |
+| Audio (`audren`, `hwopus`, Wwise), video (`movie::`) | 2 to 4 |
+| Input/touch/iPad, paths/save, platform integration, Xcode bundle | 2 to 3 |
+| Debugging and performance (60 FPS) | 4 to 10 |
+| **Total** | **18 to 35.5** (Mac about half) |
 
-### 6.2 Empfehlung: **Hybrid, R vorrangig weiterverfolgen mit Entscheidungspunkt**
+### 6.2 Recommendation: **Hybrid; continue R as the priority with a decision point**
 
-1. **Jetzt (Phase 3, nur Mac, keine neue Unity-Rekonstruktion), zwei Stufen:**
-   **Stufe 1 (4 bis 6 Wochen):** CMIF/Domain und die Dienste bis zum Unity-/IL2CPP-Start auf dem Gast ausbauen (LAS-Runtime `ipc.c`/`kernel.c`/`services` als Vorbild, ohne UI/Rando; nächste Pflicht laut Schritt 5: `ectx:aw`, `pctl*`, `appletOE`, danach `fsp-srv`/RomFS), echte Host-Threads, SVC `0x32/0x33`, GC-Stresstest; **Messung von `SetHeapSize`, Gast-RSS, Zahl der Threads und Dienste, erste Logzeilen des Unity-Starts**.
-   **Stufe 2 (weitere 4 bis 6 Wochen):** Grafik (NVN→Metal, Maxwell→MSL) bis zum Titelbild und ins Feld, **Bildzeit** auf dem Mac und ein Probe-Build der Mini-Szene auf dem iPad.
-2. **D läuft weiter wie bisher** (die Shader-/Textur-/Save-/Daten-Werkzeuge sind für beide Wege gleich), startet aber **keine neuen großen Logikblöcke**, bis der Entscheidungspunkt erreicht ist. Die schon rekonstruierten Teile (Kampf, EvScript) werden **gegen R als Orakel** geprüft (gleiche Eingaben, Zustandsvergleich), das senkt auch das D-Risiko.
-3. **Entscheidungspunkte.** Nach Stufe 1: weiter nur, wenn (a) der Unity-Start auf dem Gast bis zu einer stabilen Hauptschleife läuft (Exceptions und GC in einem Dauertest von 1 Stunde ohne Fehler) und (c) der Gast-RSS dort ≤ 4,5 GiB liegt (mit Entitlement < 5,9 GiB). Nach Stufe 2 wird R Hauptweg (Mac **und** iPad), wenn zusätzlich (b) die Bildzeit im Feld ≤ 16,7 ms auf dem Mac liegt und die Hochrechnung auf das iPad (Faktor aus Mac M1 Pro gegen iPad M2 mit dem Probe-Build) das Ziel hält, (e) der Gesamtbau ≤ 30 min auf dem Mac braucht und (f) die Rechtslage für den persönlichen Gebrauch akzeptiert ist. **Sonst**: D bleibt Hauptweg, R bleibt als Orakel und Vergleichsbasis (Entscheidung 2 bleibt gültig).
-4. **Warum nicht sofort R als alleiniger Hauptweg:** Unity-Engine, Dienste, Audio, Grafik des Gasts sind in diesem Spike nicht gelaufen; die Leistung auf dem iPad und der Speicher im Spiel sind ungemessen; das Arbeitspaket ist als Wochenfolge geschätzt, aber noch kein Unity-Frame ist erreicht. **Warum nicht bei D allein:** die drei Hauptblocker der Phase 1 (Exceptions, GC, Speichermodell) sind weg; R liefert Feature-Parität und Treue für ein Drittel bis die Hälfte des D-Aufwands, falls die offenen Punkte (b), (c) halten.
-5. **Abbruchkriterium des Hybrids:** Schlägt in Phase 3 ein harter Blocker auf (Unity-Boot scheitert an Threads/GC/Diensten, die Bildzeit liegt mehr als 3-fach über dem Ziel oder der Speicher überschreitet 5,9 GiB), werden die Ergebnisse dokumentiert und D wird wieder alleiniger Hauptweg; die Kosten sind begrenzt auf 4 bis 6 Wochen (Stufe 1) bzw. 8 bis 12 Wochen (beide Stufen).
+1. **Now (Phase 3, Mac only, no new Unity reconstruction), in two stages:**
+   **Stage 1 (4 to 6 weeks):** build out CMIF/Domain and services through Unity/IL2CPP startup on the guest (use LAS runtime `ipc.c`/`kernel.c`/`services` as a model, without UI/Rando; next required according to Step 5: `ectx:aw`, `pctl*`, `appletOE`, then `fsp-srv`/RomFS), real host threads, SVC `0x32/0x33`, GC stress test; **measure `SetHeapSize`, guest RSS, thread and service counts, and the first Unity startup log lines**.
+   **Stage 2 (another 4 to 6 weeks):** graphics (NVN→Metal, Maxwell→MSL) through title screen and into the field, **frame time** on Mac, and a probe build of the mini-scene on iPad.
+2. **D continues as before** (shader/texture/save/data tools are shared by both paths), but starts **no new large logic blocks** before the decision point. Already reconstructed components (battle, EvScript) are checked **against R as an oracle** (same inputs, state comparison), which also reduces D risk.
+3. **Decision points.** After Stage 1, continue only if (a) Unity startup on guest reaches a stable main loop (one-hour soak test with no exception or GC errors) and (c) guest RSS there is ≤ 4.5 GiB (below 5.9 GiB with entitlement). After Stage 2, R becomes the primary path (Mac **and** iPad) if, in addition, (b) frame time in the field is ≤ 16.7 ms on Mac and projection to iPad (factor from Mac M1 Pro versus iPad M2 using the probe build) meets the target, (e) full build takes ≤ 30 min on Mac, and (f) legal status for personal use is acceptable. **Otherwise** D remains primary, and R remains an oracle and comparison baseline (Decision 2 remains valid).
+4. **Why not make R the sole primary path immediately:** Unity engine, services, audio, and guest graphics did not run in this spike; iPad performance and in-game memory are unmeasured; the work is estimated in weeks, but no Unity frame has been reached yet. **Why not use D alone:** the three main Phase 1 blockers (exceptions, GC, memory model) are gone; R provides feature parity and fidelity for one third to one half of D's effort if the open conditions (b), (c) hold.
+5. **Hybrid abort criterion:** if a hard blocker appears in Phase 3 (Unity boot fails because of threads/GC/services, frame time is more than 3× the target, or memory exceeds 5.9 GiB), document the findings and make D the sole primary path again; cost is limited to 4 to 6 weeks (Stage 1) or 8 to 12 weeks (both stages).
 
 ---
 
-## 7. Abbruchkriterien und was sie ergeben haben
+## 7. Abort criteria and outcomes
 
-| Schritt | Abbruchkriterium | Ergebnis |
+| Step | Abort criterion | Result |
 |---|---|---|
-| 1 Exceptions | throw → catch über ≥ 2 rekompilierte Rahmen mit korrektem Zustand nicht erreichbar | **erreicht** (Test T1 bis T5, 100 von 100 erreichten echten Funktionen) |
-| 2 GC | Thread-Anhalten ohne Entitlement unmöglich | **nicht eingetreten** (Mach-API, Boehm nutzt sie) |
-| 3 Speicher | 32-Bit-Offsets nicht ohne Änderung der Semantik machbar | **nicht eingetreten** (Header-Schalter läuft grün) |
-| 4 Teilbau | Gesamtbau > 30 min oder Speicher > 3,3 GB je Compiler | **nicht eingetreten** (15,6 min, 1,7 GB) |
-| 5 Kleinstes Stück | erster harter Blocker | **eingetreten** nach `nnosInitialize` und 115 SDK-Konstruktoren: IPC (`sm:`/`lm`) |
+| 1 Exceptions | cannot throw → catch across ≥ 2 recompiled frames with correct state | **met** (tests T1 through T5, 100 of 100 reached real functions) |
+| 2 GC | thread suspension impossible without entitlement | **did not occur** (Mach API; Boehm uses it) |
+| 3 Memory | 32-bit offsets cannot be used without changing semantics | **did not occur** (header switch passes) |
+| 4 Partial build | full build > 30 min or memory > 3.3 GB per compiler | **did not occur** (15.6 min, 1.7 GB) |
+| 5 Smallest piece | first hard blocker | **occurred** after `nnosInitialize` and 115 SDK constructors: IPC (`sm:`/`lm`) |
 
-## 8. Lücken und nicht Verifiziertes
+## 8. Gaps and unverified items
 
-- **Leistung** der rekompilierten Spiele (Bildzeit, Anteil `Cpu`-Speicher, Dispatch): nur Mikro-Benchmarks (Abschnitt 4a: Faktor 1,4 bis 4,3 gegen nativ, `fib`, FP, indirekte Aufrufe, Ganzzahl); es gibt kein lauffähiges Spiel. Die Annahme „M-Kern 6- bis 10-mal schneller als Cortex-A57“ ist nicht gemessen.
-- **Unity-Start auf dem Gast** (IL2CPP-Initialisierung, Threads, Wwise, Videopfad): nicht erreicht.
-- Der echte `SetHeapSize`-Wert, die Zahl der Threads und der Gast-RSS im Feld: ungemessen.
-- **iPad**: weder 4-GiB-Reservierung noch `thread_suspend` auf dem Gerät gemessen; Adressraumgrenzen aktueller iPadOS-Versionen nicht verifiziert.
-- Wurf-Test mit echten Funktionen: nur 100 von 180 erreichten die Prüfung (Rest: synthetische Umgebung); typisierte Catches mit dem **tatsächlich passenden** Typobjekt nicht an echten Funktionen geprüft; `longjmp`-Wiedereinstieg (17 Stellen in `main`) nur über denselben Mechanismus, nicht getestet.
-- GC-Anhalten (Abschnitt 2): Mach-Messungen und ein synthetischer Test an rekompiliertem Gastcode, **kein Lauf mit einem echten Boehm-GC**; die Spiegelung des Host-Zustands ist Entwurf.
-- Rebase32: nur mit dem SDK-Test (Exceptions, Allokationen), nicht mit `main`; Asm-SIMD-Pfad mit Rebase nicht umgesetzt.
-- Aufwandszahlen in Wochen sind Schätzungen mit ± 50 % Unsicherheit; die D-Spanne beruht auf einer Annahme über Methoden je Tag, die nicht gemessen ist.
-- Kompilierzeit: Messung unter fremder Last; keine LTO-/Release-Optimierung gemessen; Startzeit der Bibliothek (Seitenfehler beim Laden der 224 MiB) nicht gemessen.
+- **Performance** of recompiled games (frame time, share of `Cpu` memory, dispatch): microbenchmarks only (Section 4a: factor 1.4 to 4.3 versus native, `fib`, FP, indirect calls, integer); there is no runnable game. The assumption “M core is 6 to 10 times faster than Cortex-A57” is not measured.
+- **Unity startup on the guest** (IL2CPP initialization, threads, Wwise, video path): not reached.
+- Actual `SetHeapSize` value, number of threads, and guest RSS in the field: unmeasured.
+- **iPad**: neither 4-GiB reservation nor `thread_suspend` was measured on device; address-space limits on current iPadOS versions have not been verified.
+- Throw test with real functions: only 100 of 180 reached the check (the rest failed due to the synthetic environment); typed catches with the **actually matching** type object were not tested on real functions; `longjmp` reentry (17 sites in `main`) uses the same mechanism but was not tested.
+- GC suspension (Section 2): Mach measurements and a synthetic test on recompiled guest code, **no run with a real Boehm GC**; mirroring host state is a design, not a test result.
+- Rebase32: tested only with the SDK test (exceptions, allocations), not with `main`; SIMD asm path with rebase is not implemented.
+- Effort in weeks is estimated with ±50% uncertainty; the D range relies on an unmeasured assumption about methods per day.
+- Compilation time: measured under external load; no LTO/release optimization measured; library startup time (page faults while loading the 224 MiB) not measured.
 
-## 9. Reproduktion
+## 9. Reproduction
 
-Alles lokal; Ausgaben unter `work/recomp/` (gitignoriert). Voraussetzung: `work/exefs`, `research/LASRecomp`, `tools/pydeps` (capstone, unicorn, lz4), Homebrew-LLVM.
+All local; outputs under `work/recomp/` (gitignored). Requirements: `work/exefs`, `research/LASRecomp`, `tools/pydeps` (capstone, unicorn, lz4), Homebrew LLVM.
 
 ```
 python3 scripts/recomp/eh_lsda.py survey ; python3 scripts/recomp/eh_lsda.py cfa ; python3 scripts/recomp/eh_lsda.py sample
-scripts/recomp/test/run_eh_test.sh               # Schritt 1: Gast-Test mit dem echten SDK (Generator, Compiler, Lauf)
-python3 scripts/recomp/test/uc_ref.py            # Gegenprobe unter Unicorn
-scripts/recomp/test/run_eh_real.sh               # 45 echte LSDA-Funktionen aus main (PER_KIND=60: 180)
-clang -O1 -o work/recomp/spike2/gc_suspend scripts/recomp/test/gc_suspend.c && work/recomp/spike2/gc_suspend     # Schritt 2 (Mach-Latenzen, Poll-Kosten)
-scripts/recomp/test/run_gc_proof.sh              # Schritt 2: asynchrones Anhalten an rekompiliertem Gastcode
-scripts/recomp/test/run_eh_rebase32.sh           # Schritt 3: 32-Bit-Gastadressen
-python3 scripts/recomp/ptr_scan.py               # Schritt 3: Tag-/39-Bit-Stichprobe
-scripts/recomp/gen_all.sh ; scripts/recomp/build_all.sh 3     # Schritt 4
-scripts/recomp/test/run_bench.sh -O1             # Abschnitt 4a: Leistung rekompiliert gegen nativ
-scripts/recomp/test/run_boot_probe.sh            # Schritt 5
-scripts/recomp/test/run_boot_probe_las.sh        # Schritt 5, Erweiterung mit LAS-IPC-/Dienstschicht
+scripts/recomp/test/run_eh_test.sh               # Step 1: guest test with real SDK (generation, compilation, run)
+python3 scripts/recomp/test/uc_ref.py            # countercheck under Unicorn
+scripts/recomp/test/run_eh_real.sh               # 45 real LSDA functions from main (PER_KIND=60: 180)
+clang -O1 -o work/recomp/spike2/gc_suspend scripts/recomp/test/gc_suspend.c && work/recomp/spike2/gc_suspend     # Step 2 (Mach latency, polling cost)
+scripts/recomp/test/run_gc_proof.sh              # Step 2: asynchronous suspension in recompiled guest code
+scripts/recomp/test/run_eh_rebase32.sh           # Step 3: 32-bit guest addresses
+python3 scripts/recomp/ptr_scan.py               # Step 3: tag/39-bit sample
+scripts/recomp/gen_all.sh ; scripts/recomp/build_all.sh 3     # Step 4
+scripts/recomp/test/run_bench.sh -O1             # Section 4a: recompiled vs. native performance
+scripts/recomp/test/run_boot_probe.sh            # Step 5
+scripts/recomp/test/run_boot_probe_las.sh        # Step 5, extension using LAS IPC/service layer
 ```
 
-Herkunft und Lizenz: `research/LASRecomp` (MIT, Copyright (c) 2026 Peiikai; Nintendo-Eigentum und `third_party/` ausgenommen) wird nur zur Laufzeit von den Skripten importiert; es wurde nichts kopiert. Falls der Generator später übernommen wird, gelten die Hinweise aus `shader_translator/NOTICE.md` (Lizenztext unverändert, Commit `09f8e5e`, Änderungen kennzeichnen); `tools/patches.py` des Originals enthält Spieladressen und ist nicht übernehmbar.
+Origin and license: `research/LASRecomp` (MIT, Copyright (c) 2026 Peiikai; excluding Nintendo property and `third_party/`) is imported only at runtime by the scripts; nothing was copied. If the generator is adopted later, follow the notices in `shader_translator/NOTICE.md` (license text unchanged, commit `09f8e5e`, identify changes); the original's `tools/patches.py` contains game addresses and cannot be adopted.

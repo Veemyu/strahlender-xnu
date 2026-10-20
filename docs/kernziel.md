@@ -1,37 +1,37 @@
-# Kernziel (Vorgabe des Nutzers, 2026-10-18)
+# Core Goal (User Requirement, 2026-10-18)
 
-**Mit diesem Repository und einer eigenen NSP/XCI von Pokémon Brilliant Diamond / Shining Pearl lässt sich die komplette App für iOS, iPadOS und macOS bauen.** Ein Aufruf soll genügen, und das Repo enthält dafür nur eigenen Code, Skripte und Doku.
+**This repository and a personally owned NSP/XCI of Pokémon Brilliant Diamond / Shining Pearl must be enough to build the complete app for iOS, iPadOS, and macOS.** A single command should suffice, and the repository should contain only original code, scripts, and documentation for this purpose.
 
-## Grundsätze
-- Das Repo enthält **keine** Spieldaten, Keys, Dumps oder abgeleiteten Inhalte. Alles Fremde entsteht lokal beim Bauen aus den Dateien, die der Nutzer selbst bereitstellt.
-- Der Nutzer liefert lokal: XCI (Basisspiel), NSP (Update) und `prod.keys`/`title.keys` aus seiner eigenen Konsole. Keys werden nie ins Repo oder in die App gepackt.
-- **Die gebauten Apps enthalten die Inhalte des Nutzers** (Texturen, Modelle, Töne, Videos). Sie sind daher nur für den persönlichen Gebrauch gedacht und werden nicht weitergegeben. Weitergegeben wird nur das Repo.
-- Alle Umwandlungen (z. B. Videoformat) sind **zusätzliche Build-Schritte** und ändern die Quelldaten nicht.
+## Principles
+- The repository contains **no** game data, keys, dumps, or derived content. All third-party content is produced locally during the build from files supplied by the user.
+- The user supplies locally: the base game as XCI, the update as NSP, and `prod.keys`/`title.keys` from their own console. Keys are never included in the repository or app.
+- **Built apps contain the user's content** (textures, models, audio, videos). They are therefore for personal use only and must not be redistributed. Only the repository is shared.
+- All conversions (for example, video format conversion) are **additional build steps** and do not modify the source data.
 
-## Build-Pipeline (Ziel)
-Einstiegspunkt: `scripts/build_all.sh all --xci <Datei> --nsp <Datei> --keys <Ordner> --target macos|ios|all` (Anleitung: `docs/bauen.md`, Technik: `docs/build-pipeline.md`; `--dry-run` zeigt vorab den Plan).
+## Build Pipeline (Goal)
+Entry point: `scripts/build_all.sh all --xci <file> --nsp <file> --keys <directory> --target macos|ios|all` (guide: `docs/bauen.md`, technical details: `docs/build-pipeline.md`; `--dry-run` previews the plan).
 
-| Schritt | Inhalt | Stand |
+| Step | Contents | Status |
 |---|---|---|
-| 1 Werkzeuge | hactool, Ghidra-freie Basis: nur was der Build braucht (hactool aus Quellcode, ffmpeg, Unity 6.3 LTS, Xcode) | Stufe `tools` und Preflight (Installationsliste ohne sudo) |
-| 2 Entschlüsseln | XCI/NSP entpacken, Update anwenden: `work/exefs`, `work/romfs` | Stufe `extract` (getestet) |
-| 3 Stammdaten | Bundles lesen, typisierte Daten erzeugen | Stufen `il2cpp`, `masterdata` (getestet) |
-| 4 Assets | Bundles in das Unity-Projekt einbinden, Shader durch eigene ersetzen | Stufen `shaders` (Stichprobe), `assets` (getestet) |
-| 5 Video | VP8-WebM nach H.265 (`ffmpeg`) umwandeln | Stufe `video` (Stichprobe getestet) |
-| 6 Audio | Wwise-Banks/WEM offline in ein Format für Unity wandeln (vgmstream) | Platzhalter „nicht implementiert“ (`ap-audio`) |
-| 7 Unity-Build (**deprecated, Entscheidung 4**) | IL2CPP-Player für macOS (arm64) und iOS/iPadOS (Xcode-Projekt) | Stufe `unity-build`: stillgelegt, nicht mehr gepflegt (`unity/DEPRECATED.md`) |
-| 7b Rekompilation (Hauptweg seit Entscheidung 3) | macOS-App aus der Rekompilation: Generator → C → Übersetzen → Laufzeit/Metal → `BDSP.app` | Stufe `recomp` (getestet, Kaltbau 27,5 min; `docs/recomp-macapp.md`) |
-| 8 Signieren/Installieren | Xcode mit eigenem Team, `scripts/recomp/ios/deploy_ios.sh` | Stufe `recomp` mit `--target ios` (Team-ID `TEAM_ID` oder `work/local.env`; ohne ID nur Build) |
+| 1 Tools | hactool, Ghidra-free baseline: only what the build needs (hactool from source, ffmpeg, Unity 6.3 LTS, Xcode) | `tools` stage and preflight (installation list without sudo) |
+| 2 Decryption | Unpack XCI/NSP, apply update: `work/exefs`, `work/romfs` | `extract` stage (tested) |
+| 3 Master data | Read bundles, produce typed data | `il2cpp`, `masterdata` stages (tested) |
+| 4 Assets | Integrate bundles into the Unity project, replace shaders with custom ones | `shaders` stage (sample tested), `assets` stage (tested) |
+| 5 Video | Convert VP8 WebM to H.265 (`ffmpeg`) | `video` stage (sample tested) |
+| 6 Audio | Convert Wwise banks/WEM offline to a Unity-ready format (vgmstream) | Placeholder: “not implemented” (`ap-audio`) |
+| 7 Unity build (**deprecated, decision 4**) | IL2CPP player for macOS (arm64) and iOS/iPadOS (Xcode project) | `unity-build` stage: retired, no longer maintained (`unity/DEPRECATED.md`) |
+| 7b Recompilation (main path since decision 3) | macOS app from recompilation: generator → C → compile → runtime/Metal → `BDSP.app` | `recomp` stage (tested, cold build 27.5 min; `docs/recomp-macapp.md`) |
+| 8 Sign/install | Xcode with a personal team, `scripts/recomp/ios/deploy_ios.sh` | `recomp` stage with `--target ios` (team ID via `TEAM_ID` or `work/local.env`; build only if no ID is available) |
 
-## Videos (Entscheidungsvorschlag)
-- 18 Dateien, VP8 in WebM (`docs/daten-inventar.md`). Ob Unitys VideoPlayer auf macOS und iOS VP8 abspielt, ist **ungeprüft**. Falls nicht, wandelt der Build sie um.
-- Zielformat: **H.265 (HEVC, `hvc1`, `.mp4`)**, ausdrücklich ohne H.264-Fallback (Nutzerentscheidung: alle Zielgeräte dekodieren HEVC in Hardware, das ist hier eine Annahme und nicht gemessen). Eine Neukodierung einer bereits verlustbehafteten VP8-Quelle ist nie ganz verlustfrei. Ein echter Lossless-Modus wäre sehr groß. Praktisch: sehr hohe Qualität (CRF-Bereich), danach Größe und Bildvergleich messen.
-- `ffmpeg 9.0.2` ist per Homebrew vorhanden.
+## Videos (Proposed Decision)
+- 18 files, VP8 in WebM (`docs/daten-inventar.md`). Whether Unity's VideoPlayer plays VP8 on macOS and iOS is **untested**. If it does not, the build converts them.
+- Target format: **H.265 (HEVC, `hvc1`, `.mp4`)**, explicitly with no H.264 fallback (user decision: all target devices hardware-decode HEVC; this is an assumption, not a measurement). Re-encoding an already lossy VP8 source can never be entirely lossless. A true lossless mode would produce very large files. Practical approach: use a very high quality (CRF range), then measure file size and compare images.
+- `ffmpeg 9.0.2` is available through Homebrew.
 
-## Auslieferungsform (Nutzervorgabe 2026-10-18)
-- **Primär: vorgepacktes Binary.** Alles wird auf dem Entwicklungsrechner mit Unity und Xcode vorgebaut. Auf dem Zielgerät (iPad/Mac) muss nichts mehr importiert oder ausgewählt werden. Die Spieldaten (umgewandelte Bundles, Videos, Audio) liegen fertig in der App. Das passt zum Modell „selbst gebaut, nichts wird weitergegeben“.
-- **Optional später: Core-App plus Import** (Erststart-Assistent, der eine XCI/NSP verarbeitet). Das spart Build-Zeit und App-Größe, ist aber mehr Arbeit auf dem Gerät (Entschlüsseln, Entpacken, Speicher).
-- **Zu prüfen beim vorgepackten Weg** (nicht belegt): App-Größe von mehreren GB bei der Installation auf dem iPad per Xcode, Ladezeiten der Bundles aus dem App-Paket, Speicherplatz auf dem Gerät, Verhalten mit einem kostenlosen Team (Profil 7 Tage). Die Lesepfade im Code (`GameDataPaths`) bleiben konfigurierbar, damit beide Formen möglich sind.
+## Distribution Form (User Requirement, 2026-10-18)
+- **Primary: prepackaged binary.** Build everything on the development computer with Unity and Xcode. Nothing needs to be imported or selected on the target device (iPad/Mac). The game data (converted bundles, videos, audio) is already in the app. This fits the model “built by oneself, nothing is redistributed.”
+- **Optional later: core app plus import** (first-launch assistant that processes an XCI/NSP). This saves build time and app size, but requires more work on the device (decrypting, unpacking, storage).
+- **To verify for the prepackaged approach** (not established): app size when installed on iPad via Xcode, bundle loading times from the app package, device storage use, and behavior with a free team (7-day profile). The read paths in code (`GameDataPaths`) remain configurable so both approaches are possible.
 
-## Rechtliche Einordnung
-Das ist keine Rechtsberatung. Das Muster „Repo plus eigener Dump“ vermeidet die Weitergabe fremder Inhalte durch uns. Die gebauten Binaries sind ausdrücklich nicht zur Weitergabe bestimmt. Vor einer öffentlichen Veröffentlichung sollte die Rechtslage geklärt werden.
+## Legal Context
+This is not legal advice. The “repository plus personal dump” model avoids us redistributing third-party content. Built binaries are explicitly not intended for redistribution. Clarify the legal position before any public release.

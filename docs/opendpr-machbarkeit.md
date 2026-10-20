@@ -1,223 +1,224 @@
-# opendpr als Machbarkeitstest (Stand: 2026-10-18)
+# opendpr Feasibility Test (Status: 2026-10-18)
 
-Alles hier ist eine eigene Zusammenfassung. Aus `opendpr` und `Lumi_Small_Scripts` wurde nichts ins Repo kopiert.
-Beide Klone liegen nur lokal und gitignored unter `tools/opendpr` und `tools/Lumi_Small_Scripts`.
-Beide Repos haben auf GitHub keine Lizenz (`gh repo view` liefert `licenseInfo: null`), also gelten alle Rechte als vorbehalten.
-Das Skript-Repo gehört laut README-Link `SaltContainer/Lumi_Small_Scripts`, nicht TeamLumi.
-Zum Lesen der AssetRipper-API liegt außerdem der Quellcode (Tag 1.1.8, Commit `97e8b07`) unter `tools/AssetRipper-src-1.1.8`.
+> **Historical:** This documents the discontinued Unity path.
 
-## 1. Was opendpr ist
+This is an original summary. Nothing from `opendpr` or `Lumi_Small_Scripts` was copied into the repository.
+Both clones exist only locally, gitignored, under `tools/opendpr` and `tools/Lumi_Small_Scripts`.
+Neither repository has a GitHub license (`gh repo view` returns `licenseInfo: null`), so all rights are reserved.
+The scripts repository belongs to `SaltContainer/Lumi_Small_Scripts` per README link, not TeamLumi.
+AssetRipper source (tag 1.1.8, commit `97e8b07`) is also available locally to inspect its API under `tools/AssetRipper-src-1.1.8`.
 
-- Ein rekonstruiertes Unity-Projekt für BDSP (Editor 2019.4.27f1, Changeset `23dc10685eb4`), keine echte Decompilation.
-- Im Repo liegen: ca. 3800 handgeschriebene C#-Dateien (ca. 307.000 Zeilen, 37 MB) unter `Assets/Scripts`, die Wwise-Integration (2019.2.4, 139 MB, mit Mac- und Windows-Plugins), DOTween (Plugins), `ProjectSettings` und `Packages` (TextMeshPro 2.1.6, Timeline, ugui, Standardmodule) sowie das Wwise-Projekt `Dpr_WwiseProject`.
-- Spieldaten und Assets liegen **nicht** im Repo. Sie müssen aus dem eigenen Dump erzeugt werden.
-- Viele Methoden sind noch Platzhalter (ca. 4300 Mal `return default;`). Ein Start des Editors zeigt also höchstens, dass das Gerüst läuft, nicht ein spielbares Spiel.
-- Das Projekt hat keine Szene in den Build-Einstellungen. Die Szene `level0.unity` muss man von Hand öffnen.
-- Offene Issues: #2 (README sei unklar zur Ordnerstruktur und zu `TextMesh Pro`), #1 (fehlende Mesh-Assets). Zu den Windows-Bundles gibt es keine Antwort.
-- Die README erklärt, dass keine generative KI genutzt wurde, und rät anderen Projekten davon ab. Das ist eine Haltung, keine Lizenzbedingung.
+## 1. What opendpr Is
 
-## 2. Ablauf bis zum öffnenbaren Projekt
+- Reconstructed Unity project for BDSP (Editor 2019.4.27f1, Changeset `23dc10685eb4`), not an actual decompilation.
+- Repository contains about 3,800 hand-written C# files (about 307,000 lines, 37 MB) under `Assets/Scripts`, Wwise integration (2019.2.4, 139 MB, Mac and Windows plugins), `ProjectSettings`, `Packages` (TextMeshPro 2.1.6, Timeline, uGUI, standard modules), and Wwise project `Dpr_WwiseProject`.
+- Game data and assets are **not** in repository. They must be generated from a personal dump.
+- Many methods remain placeholders (about 4,300 occurrences of `return default;`). Starting Editor can show at most that scaffold runs, not a playable game.
+- No scene is listed in Build Settings. Must open `level0.unity` manually.
+- Open issues: #2 (README unclear about directory structure and `TextMesh Pro`), #1 (missing mesh assets). No answer about Windows bundles.
+- README says generative AI was not used and advises other projects against it. This is a position, not a license condition.
 
-Status: ✅ haben wir, ⚠️ unsicher, ❌ fehlt.
+## 2. Steps to an Openable Project
 
-| # | Schritt | Aus unserem Dump | Status |
+Status: ✅ done, ⚠️ uncertain, ❌ missing.
+
+| # | Step | From our dump | Status |
 |---|---|---|---|
-| 0 | Repos klonen | – | ✅ erledigt |
-| 1 | AssetRipper 1.1.8 auf RomFS + ExeFS, StreamingAssets überspringen | `work/exefs/main`, `work/romfs/Data` (inkl. `Managed/Metadata/global-metadata.dat`) | ✅ Eingabe vollständig, Export noch nicht gelaufen |
-| 2 | Python-Skript `fix_pathids.py` | Export-Ordner `Assets` als `input/` | ⚠️ Struktur der Eingabe ist in der README nicht beschrieben |
-| 3 | Von-Hand-Schritte (löschen, verschieben, Assembly-Name ersetzen) | Ergebnis aus Schritt 2 | ⚠️ |
-| 4 | Ordner `AssetBundles/Editor` mit Windows-Bundles `fxparticle` und `shaders` | nur die Switch-Versionen | ❌ **Blocker B1** |
-| 5 | StreamingAssets aus dem RomFS nach `Assets/StreamingAssets` kopieren | `work/romfs/Data/StreamingAssets` (4,7 GB) | ✅ |
-| 6 | `GeneratedSoundBanks/Switch` in `.../Windows` umbenennen | vorhanden (427 MB) | ✅ |
-| 7 | Unity 2019.4.27f1 öffnen, Packages auflösen, Szene wählen | – | ⚠️ siehe Abschnitt 5 |
+| 0 | Clone repositories | – | ✅ complete |
+| 1 | AssetRipper 1.1.8 on RomFS + ExeFS, skip StreamingAssets | `work/exefs/main`, `work/romfs/Data` (including `Managed/Metadata/global-metadata.dat`) | ✅ input complete, export not yet run |
+| 2 | Python script `fix_pathids.py` | Export directory `Assets` as `input/` | ⚠️ README does not describe input structure |
+| 3 | Manual steps (delete, move, replace assembly name) | result of step 2 | ⚠️ |
+| 4 | `AssetBundles/Editor` with Windows bundles `fxparticle` and `shaders` | only Switch versions available | ❌ **Blocker B1** |
+| 5 | Copy StreamingAssets from RomFS to `Assets/StreamingAssets` | `work/romfs/Data/StreamingAssets` (4.7 GB) | ✅ |
+| 6 | Rename `GeneratedSoundBanks/Switch` to `.../Windows` | present (427 MB) | ✅ |
+| 7 | Open Unity 2019.4.27f1, resolve packages, choose scene | – | ⚠️ see section 5 |
 
-### 2a. AssetRipper-Automatisierung (aus dem 1.1.8-Quellcode gelesen)
+### 2a. AssetRipper Automation (Read from 1.1.8 Source)
 
-Start: `tools/AssetRipper-1.1.8/AssetRipper.GUI.Free --port 8765 --launch-browser false --log true --log-path <Datei>`.
-Die Datei ist eine arm64-Mach-O-Binärdatei. Der Server lauscht nur auf `127.0.0.1`.
+Start: `tools/AssetRipper-1.1.8/AssetRipper.GUI.Free --port 8765 --launch-browser false --log true --log-path <File>`.
+The file is an arm64 Mach-O binary. Server listens only on `127.0.0.1`.
 
-| Zweck | Aufruf (Formular `application/x-www-form-urlencoded`) |
+| Purpose | Request (form `application/x-www-form-urlencoded`) |
 |---|---|
-| Einstellungen setzen | `POST /Settings/Update` mit `ScriptContentLevel=Level2`, `ScriptExportMode=Hybrid`, `ScriptLanguageVersion=AutoSafe`, `SpriteExportMode=Texture2D`, `IgnoreStreamingAssets=` |
-| Eingabe laden | `POST /LoadFolder` mit `Path=<Ordner mit exefs/ und romfs/Data>` |
-| Exportieren | `POST /Export/UnityProject` mit `Path=<Zielordner>` |
-| Zurücksetzen | `POST /Reset` |
-| API-Doku | `GET /openapi.json` plus Swagger-Oberfläche (Route `/swagger`, Standard von `UseSwaggerUI`) |
+| Set settings | `POST /Settings/Update` with `ScriptContentLevel=Level2`, `ScriptExportMode=Hybrid`, `ScriptLanguageVersion=AutoSafe`, `SpriteExportMode=Texture2D`, `IgnoreStreamingAssets=` |
+| Load input | `POST /LoadFolder` with `Path=<directory with exefs/ and romfs/Data>` |
+| Export | `POST /Export/UnityProject` with `Path=<destination>` |
+| Reset | `POST /Reset` |
+| API docs | `GET /openapi.json` plus Swagger UI (route `/swagger`, default from `UseSwaggerUI`) |
 
-Wichtige Eigenheiten, die im Code stehen:
+Important behavior from source:
 
-- Bei `/Settings/Update` werden alle Checkboxen auf false gesetzt, deren Schlüssel nicht im Formular steht. „Skip StreamingAssets“ ist die Checkbox `IgnoreStreamingAssets`. Der Wert darf leer sein, nur der Schlüssel zählt.
-- Die Defaults sind schon Level 2, Hybrid und AutoSafe. Geändert werden müssen nur Sprite-Export (Default `Yaml`) und die StreamingAssets-Checkbox.
-- Einstellungen lassen sich nur ändern, solange nichts geladen ist.
-- Laden und Export laufen synchron. Die HTTP-Antwort kommt erst nach Abschluss, und zwar als 302-Redirect auf `/`.
-- Fehler werden von einer Middleware verschluckt und ebenfalls als Redirect auf `/` beantwortet. Erfolg muss man also am Log und am Ausgabeordner prüfen.
-- `Export/UnityProject` ruft `Directory.Delete(Path, true)` auf und legt den Ordner neu an. Der Zielordner muss vorher existieren, und sein Inhalt geht verloren.
-- Die Ausgabe landet in `<Path>/ExportedProject/{Assets,ProjectSettings}` und `<Path>/AuxiliaryFiles`.
-- Die Switch-Erkennung (`SwitchGameStructure`) erwartet einen Ordner mit den Unterordnern `exefs` (Datei `main`) und `romfs/Data`. Unser `work/` erfüllt das direkt, es braucht keine Kopie.
-- Bei IL2CPP und Level 2 haben die exportierten Skripte leere Methodenrümpfe (Kommentar im Enum `ScriptContentLevel`). opendpr verwendet die gerippten Skripte offenbar auch gar nicht, denn das Python-Skript überspringt `Scripts`, `Plugins` und `Shader`.
-- Nicht verifiziert: ob Cpp2IL in AssetRipper 1.1.8 Metadata v24.4 (laut unserem Il2CppDumper-Lauf) problemlos liest. Die opendpr-Autoren behaupten es für dieselbe Unity-Version. Unsere Bundles tragen ebenfalls `2019.4.27f1` im Header.
+- `/Settings/Update` sets every checkbox to false if its key is absent from form. “Skip StreamingAssets” is checkbox `IgnoreStreamingAssets`; value may be empty, only key matters.
+- Defaults are already Level 2, Hybrid, AutoSafe. Only Sprite export (default `Yaml`) and StreamingAssets checkbox need changing.
+- Settings can be changed only before anything is loaded.
+- Load and export are synchronous. HTTP response arrives after completion as 302 redirect to `/`.
+- Middleware swallows errors and also redirects to `/`; check log and output directory to confirm success.
+- `Export/UnityProject` runs `Directory.Delete(Path, true)` and recreates directory. Destination must exist; its contents are destroyed.
+- Output goes to `<Path>/ExportedProject/{Assets,ProjectSettings}` and `<Path>/AuxiliaryFiles`.
+- Switch detection (`SwitchGameStructure`) expects directory with `exefs` (file `main`) and `romfs/Data`. Our `work/` already matches; no copy needed.
+- With IL2CPP and Level 2, exported script bodies are empty (comment in `ScriptContentLevel` enum). opendpr apparently does not use ripped scripts because Python script skips `Scripts`, `Plugins`, and `Shader`.
+- Unverified: whether Cpp2IL in AssetRipper 1.1.8 reads metadata v24.4 (per our Il2CppDumper run) successfully. opendpr authors claim support for same Unity version. Our bundles also carry `2019.4.27f1` in header.
 
-Vorbereitet ist `scripts/assetripper_export.py` (reine Standardbibliothek, mit `--dry-run`, nicht ausgeführt). Es prüft vorab:
+Prepared `scripts/assetripper_export.py` (standard library only, supports `--dry-run`, not run). Prechecks:
 
-- Ghidra-PID (Default 4461) läuft nicht mehr,
-- Eingabedateien sind vorhanden,
-- das Ziel liegt unter `work/` und ist leer,
-- mindestens 5 GB sind frei.
+- Ghidra PID (default 4461) is not running,
+- input files exist,
+- destination is under `work/` and empty,
+- at least 5 GB is free.
 
-Danach startet es AssetRipper, setzt die Einstellungen, lädt und exportiert. Anschließend prüft es im Konsolen-Log, ob die Einstellungen angekommen sind und der Export fertig ist, und beendet AssetRipper wieder.
-Ausgabe: `work/ripper/out/ExportedProject/`, Logs: `work/ripper/assetripper*.log`.
-Es ist ungetestet, die Syntax und der Dry-Run sind aber geprüft.
-Hinweis: Ghidra (PID 4461) lief beim Schreiben dieses Dokuments schon nicht mehr (`ps -p 4461` ohne Treffer).
+Then it starts AssetRipper, sets options, loads and exports. Afterwards it checks console log for applied settings and completed export, then stops AssetRipper.
+Output: `work/ripper/out/ExportedProject/`; logs: `work/ripper/assetripper*.log`.
+Untested, but syntax and dry run checked.
+Note: Ghidra (PID 4461) was already stopped when this document was written (`ps -p 4461` had no match).
 
-Größenhinweis: Außerhalb von StreamingAssets enthält `work/romfs/Data` nur wenige MB (`resources.assets` ca. 1 MB, `.resS` 3 MB, `globalgamemanagers` unter 0,5 MB). Der Export sollte also klein und schnell sein. Die 3,9 GB Bundles unter `StreamingAssets/AssetAssistant` werden nicht gerippt, sondern nur kopiert.
+Size note: besides StreamingAssets, `work/romfs/Data` is only a few MB (`resources.assets` about 1 MB, `.resS` 3 MB, `globalgamemanagers` under 0.5 MB). Export should be small and quick. The 3.9 GB of bundles under `StreamingAssets/AssetAssistant` are not ripped, only copied.
 
-### 2b. Das Python-Skript `asset_ripper_resources/fix_pathids.py`
+### 2b. Python Script `asset_ripper_resources/fix_pathids.py`
 
-- Reines Python 3 mit `os` und `shutil`. Es gibt keine `requirements`-Datei und keine Versionsangabe. Hier läuft Python 3.14.3, das sollte genügen.
-- Eingabe: Ordner `input/` im aktuellen Arbeitsverzeichnis. Dort liegen die Unterordner des AssetRipper-Exports (nach meiner Lesart der Inhalt von `ExportedProject/Assets`; die README sagt nur „die Ordner, die AssetRipper erzeugt hat“).
-- Ausgabe: Ordner `output/` mit derselben Struktur.
-- Das Skript ersetzt in `.asset`- und `.prefab`-Dateien rund 40 Paare aus Script-GUID und FileID durch die GUIDs, die opendpr benutzt. Es betrifft TextMeshPro, DOTween, Wwise, die Startup-Einstellungen und eigene Spielklassen. Alle anderen Dateien werden unverändert kopiert.
-- Szenen (`.unity`) bekommen keine Ersetzung. Das ist laut Skript so gewollt oder ein Versehen, das wir erst am echten Export sehen.
-- `input/Scripts`, `input/Plugins` und `input/Shader` werden übersprungen.
-- Schwächen im Skript (nicht verändern, nur beachten): Die Dateiendung wird mit `split('.')[1]` bestimmt. Dateien ohne Punkt lösen einen `IndexError` aus, bei mehreren Punkten wird die falsche Endung gelesen. Der Zielpfad entsteht mit `replace('input','output')` auf dem ganzen Pfad. Ein Ordnername mit „input“ würde also auch ersetzt.
+- Pure Python 3 using `os` and `shutil`; no requirements file or version pin. Python 3.14.3 is available here and should work.
+- Input: `input/` in current working directory. It contains AssetRipper export subdirectories (as interpreted, contents of `ExportedProject/Assets`; README only says “the directories created by AssetRipper”).
+- Output: `output/` with same structure.
+- In `.asset` and `.prefab` files, script replaces about 40 pairs of script GUID and FileID with GUIDs used by opendpr. Covers TextMeshPro, DOTween, Wwise, startup settings, and custom game classes. All other files are copied unchanged.
+- `input/Scripts`, `input/Plugins`, and `input/Shader` are skipped.
+- Script weaknesses (do not modify, just account for): extension determined by `split('.')[1]`. Filename without dot raises `IndexError`; multiple dots select wrong extension. Destination is formed by `replace('input','output')` across full path, so a directory named “input” is also changed.
 
-### 2c. Von-Hand-Schritte laut README (in eigenen Worten)
+### 2c. Manual Steps from README (Paraphrased)
 
-1. Vier Dateien (und ihre `.meta`) aus `MonoBehaviour` löschen: `AkWwiseInitializationSettings`, `Mac`, `Switch`, `Windows`. Sie widersprechen den Wwise-Assets des Projekts.
-2. Aus `Resources` die TextMeshPro-Teile (`fonts & materials`, `sprite assets`, `style sheets` und die beiden `LineBreaking …txt`) nach `TextMesh Pro/Resources/…` verschieben. Woher der Ordner `TextMesh Pro` kommt, sagt die README nicht (Issue #2). Er stammt vermutlich aus dem TMP-Essentials-Import des Unity-Pakets. Das ist nicht verifiziert.
-3. `Scenes/level0.unity` direkt nach `Assets` legen. Alles Übrige kommt direkt nach `Assets/Resources`.
-4. In `StartupSettings.asset` den Assembly-Verweis `AssetAssistant, Version=0.0.0.0,` durch `Assembly-CSharp, Version=1.6.28.12450,` ersetzen. Die Versionsnummer passt zu unserem Dump (Assembly-CSharp 1.6.28.12450, siehe `docs/extraktion.md`).
-5. `AssetBundles/Editor` im Projektstamm anlegen und dort die Windows-Bundles `fxparticle` und `shaders` ablegen (Blocker B1).
-6. Den Inhalt von `romfs/Data/StreamingAssets` nach `Assets/StreamingAssets` kopieren, dann `Audio/GeneratedSoundBanks/Switch` in `Windows` umbenennen.
+1. Delete four files and their `.meta` from `MonoBehaviour`: `AkWwiseInitializationSettings`, `Mac`, `Switch`, `Windows`. They conflict with project Wwise assets.
+2. Move TextMeshPro parts from `Resources` (`fonts & materials`, `sprite assets`, `style sheets`, and two `LineBreaking …txt`) to `TextMesh Pro/Resources/…`. README does not say where `TextMesh Pro` comes from (issue #2). Probably TMP Essentials import from Unity package; unverified.
+3. Move `Scenes/level0.unity` directly to `Assets`. Everything else goes directly to `Assets/Resources`.
+4. In `StartupSettings.asset`, replace assembly reference `AssetAssistant, Version=0.0.0.0,` with `Assembly-CSharp, Version=1.6.28.12450,`. Version matches our dump (Assembly-CSharp 1.6.28.12450; see `docs/extraktion.md`).
+5. Create `AssetBundles/Editor` at project root and put Windows bundles `fxparticle` and `shaders` there (blocker B1).
+6. Copy contents of `romfs/Data/StreamingAssets` to `Assets/StreamingAssets`, then rename `Audio/GeneratedSoundBanks/Switch` to `Windows`.
 
-## 3. Anforderungen aus unserem Dump
+## 3. Requirements from Our Dump
 
-| Benötigt | Vorhanden | Anmerkung |
+| Required | Present | Note |
 |---|---|---|
-| `exefs/main` (NSO, IL2CPP) | ✅ 37,9 MB | wird von AssetRipper direkt gelesen |
-| `romfs/Data` mit `globalgamemanagers`, `level0`, `resources.assets`, `sharedassets0.assets`, `Resources`, `Managed/Metadata/global-metadata.dat` | ✅ | |
-| StreamingAssets (`AssetAssistant` 3,9 GB, `Audio` 427 MB, `Movie` 456 MB) | ✅ | Bundles tragen `UnityFS` mit Version `2019.4.27f1` |
-| Switch-Bundles `AssetAssistant/Effects/fxparticle` (3,9 MB) und `AssetAssistant/Dpr/shaders` (6,7 MB) | ✅ | enthalten Switch-Shader, nicht Windows/Mac |
-| Windows-Bundles `fxparticle` und `shaders` | ❌ | Blocker B1 |
-| Wwise-Soundbanks für Windows | ⚠️ | wir haben nur `Switch` (427 MB). Das Umbenennen ändert das Format nicht. Ob das Wwise-Plugin sie am Mac abspielt, ist nicht verifiziert. Für das bloße Öffnen des Projekts ist es nicht nötig |
-| Unity-Editor 2019.4.27f1 | ❌ | Abschnitt 5 |
-| Netzzugang beim ersten Öffnen | – | der Package Manager löst die Pakete aus `Packages/manifest.json` auf |
+| `exefs/main` (NSO, IL2CPP) | ✅ 37.9 MB | read directly by AssetRipper |
+| `romfs/Data` with `globalgamemanagers`, `level0`, `resources.assets`, `sharedassets0.assets`, `Resources`, `Managed/Metadata/global-metadata.dat` | ✅ | |
+| StreamingAssets (`AssetAssistant` 3.9 GB, `Audio` 427 MB, `Movie` 456 MB) | ✅ | bundles have `UnityFS` version `2019.4.27f1` |
+| Switch bundles `AssetAssistant/Effects/fxparticle` (3.9 MB), `AssetAssistant/Dpr/shaders` (6.7 MB) | ✅ | contain Switch shaders, not Windows/Mac |
+| Windows bundles `fxparticle` and `shaders` | ❌ | blocker B1 |
+| Windows Wwise banks | ⚠️ | only `Switch` (427 MB) available. Renaming does not change format. Mac Wwise plugin playback unverified. Not needed just to open project. |
+| Unity Editor 2019.4.27f1 | ❌ | section 5 |
+| Network for first open | – | Package Manager resolves packages from `Packages/manifest.json` |
 
-## 4. Blocker und Risiken
+## 4. Blockers and Risks
 
-**B1 – Windows-Bundles `fxparticle` und `shaders` (harter Blocker, Herkunft unklar).**
+**B1 – Windows bundles `fxparticle` and `shaders` (hard blocker, origin unclear).**
 
-- Der Editor-Code (`AssetManager.editorPath`) liest im Editor die Bundles aus `<Ziel>/AssetBundles/Editor`. `EffectManager` verlangt `fxparticle` und `effect_common`.
-- Die README erklärt weder, woher die „prepared bundles“ kommen, noch wie man sie baut. Die Issues geben ebenfalls nichts her. Im Repo liegen sie nicht (nur der Dateiname `fxparticle` kommt im Code vor).
-- Meine Vermutung, ausdrücklich nicht belegt: Ein Switch-Shader enthält nur Binärcode für NVN und keinen Quelltext. Für Windows müsste man die Shader aus Quelltext neu bauen oder sie von Dritten (Lumi-Community) erhalten. Der Shader-Export von AssetRipper (Standard `Dummy`, alternativ `Yaml`) liefert keinen kompilierbaren Quelltext.
-- Rechtlich: Die Shader sind urheberrechtlich geschützte Spielinhalte. Fertige Bundles aus fremder Hand wären Weitergabe von Nintendo-/Game-Freak-Material. Eigenbau aus dem eigenen Dump ist privat vermutlich unproblematisch. Das ist keine Rechtsberatung und nicht geprüft.
-- Mac: Windows-Bundles enthalten Direct3D-Shaderblobs. Der Mac-Editor rendert über Metal. Ohne Metal-Varianten wären Materialien magentafarben oder unsichtbar. Ob die Bundles Metal-Varianten enthalten, ist unbekannt (nicht verifiziert). Auf dem Mac müsste man die Bundles selbst mit Ziel `StandaloneOSX` aus Shader-Quelltext bauen.
-- Das Projekt lässt sich vermutlich auch ohne diese Bundles öffnen (Konsolenfehler, rosa Materialien). Das ist nicht belegt.
+- Editor code (`AssetManager.editorPath`) reads bundles in Editor from `<destination>/AssetBundles/Editor`. `EffectManager` requires `fxparticle` and `effect_common`.
+- README does not explain where “prepared bundles” come from or how to build them. Issues offer no answer. They are not in repository (only filename `fxparticle` occurs in code).
+- Explicitly unverified hypothesis: Switch shader contains only NVN bytecode, no source. Windows shaders would need rebuilding from source or obtaining from third parties (Lumi community). AssetRipper shader export (default `Dummy`, alternative `Yaml`) yields no compilable source.
+- Legal: shaders are copyrighted game content. Prebuilt bundles from others would redistribute Nintendo/Game Freak material. Building privately from one's own dump is probably unproblematic. Not legal advice; not verified.
+- Mac: Windows bundles contain Direct3D shader blobs. Mac Editor renders through Metal. Without Metal variants, materials would be magenta or invisible. Whether bundles contain Metal variants is unknown (unverified). On Mac, bundles would need to be built from shader source for `StandaloneOSX`.
+- Project might open without these bundles (console errors, pink materials). Not established.
 
-**B2 – Unity 2019.4 unter Rosetta auf macOS 26.** Siehe Abschnitt 5. Offiziell nicht unterstützt, das Ergebnis ist nur durch Ausprobieren zu klären.
+**B2 – Unity 2019.4 under Rosetta on macOS 26.** See section 5. Officially unsupported; only trial can establish outcome.
 
-**R1 – Struktur des Exports.** Die README ist laut Issue #2 unklar. Nach dem ersten Export prüfen wir die Ordner, bevor wir verschieben.
+**R1 – Export structure.** README is unclear according to issue #2. Inspect directories after first export, before moving files.
 
-**R2 – Skript-Fehler** (Abschnitt 2b) bei unerwarteten Dateinamen.
+**R2 – Script errors** (section 2b) on unexpected filenames.
 
-**R3 – Cpp2IL und Metadata v24.4** (Abschnitt 2a). Falls AssetRipper die Skripte nicht lädt, erscheint im Log „Switching to the 'Unknown' scripting backend“. Dann fehlen die MonoBehaviour-Typen, und das Skript-GUID-Mapping greift nicht.
+**R3 – Cpp2IL and metadata v24.4** (section 2a). If AssetRipper cannot load scripts, log shows “Switching to the 'Unknown' scripting backend.” Then MonoBehaviour types are missing and script GUID mapping will not work.
 
-**R4 – Datenschutz/Urheberrecht.** Nichts aus `work/` oder aus dem gebauten Projekt gehört ins Git-Repo. `work/` und `tools/` sind bereits gitignored.
+**R4 – Privacy/copyright.** Nothing from `work/` or built project belongs in Git repository. `work/` and `tools/` are already gitignored.
 
-**R5 – Wenig freier Platz** (38 GB frei bei 91 % Belegung), siehe unten.
+**R5 – Limited free space** (38 GB free at 91% usage), see below.
 
-### Platzbedarf (grobe Schätzung)
+### Approximate Space Requirement
 
-| Posten | Größe |
-|---|---|
-| Unity-Editor-Paket (Download) | 2,15 GB (gemessen per HEAD-Anfrage) |
-| Unity-Editor entpackt/installiert | ca. 6–8 GB (nicht verifiziert) |
-| AssetRipper-Export | unter 0,2 GB (Schätzung aus der Eingabegröße) |
-| opendpr-Kopie ohne Spieldaten | 0,22 GB |
-| StreamingAssets im Projekt | 4,7 GB, mit APFS-Klon (`cp -c`, gleiche Partition) ca. 0 GB zusätzlich |
-| Unity `Library` | 2–6 GB (nicht verifiziert, Schätzung) |
-| **Summe** | **ca. 11–16 GB mit Klon, bis ca. 21 GB mit voller Kopie** |
+| Item | Size |
+|---|---:|
+| Unity Editor package download | 2.15 GB (measured via HEAD request) |
+| Unity Editor installed/unpacked | about 6–8 GB (unverified) |
+| AssetRipper export | under 0.2 GB (estimated from input size) |
+| opendpr copy without game data | 0.22 GB |
+| StreamingAssets in project | 4.7 GB; APFS clone (`cp -c`, same partition) adds about 0 GB |
+| Unity `Library` | 2–6 GB (unverified estimate) |
+| **Total** | **about 11–16 GB with clone, up to about 21 GB with full copy** |
 
-Das Installer-Paket kann nach der Installation gelöscht werden. Das passt in die 38 GB, lässt aber nicht viel Luft.
+Installer package can be deleted after installation. It fits within 38 GB, but leaves little margin.
 
-## 5. Mac-Machbarkeit (Unity 2019.4.27f1)
+## 5. Mac Feasibility (Unity 2019.4.27f1)
 
-Belegt:
+Established:
 
-- Die Version ist im Archiv vorhanden: Changeset **`23dc10685eb4`**, Hub-Link `unityhub://2019.4.27f1/23dc10685eb4` (https://unity.com/releases/editor/whats-new/2019.4.27f1, https://unity.com/releases/editor/archive).
-- Direktlinks (per HEAD-Anfrage geprüft, HTTP 200):
-  - `https://download.unity3d.com/download_unity/23dc10685eb4/MacEditorInstaller/Unity-2019.4.27f1.pkg` mit 2.148.927.494 Byte (ca. 2,0 GiB). Es ist ein Intel-(x64)-Editor, ein Apple-Silicon-Build existiert für 2019.4 nicht.
-  - `.../MacEditorTargetInstaller/UnitySetup-Mac-IL2CPP-Support-for-Editor-2019.4.27f1.pkg` mit 142,7 MB.
-  - `.../MacEditorTargetInstaller/UnitySetup-Windows-Mono-Support-for-Editor-2019.4.27f1.pkg` mit 111,5 MB.
-  - Der DownloadAssistant `https://download.unity3d.com/download_unity/23dc10685eb4/UnityDownloadAssistant-2019.4.27f1.dmg` hat 0,5 MB.
-- Module: Für das Öffnen und Ausführen im Editor sind keine Zusatzmodule nötig. Das Projekt nutzt den Editor mit Mono. „Mac IL2CPP Support“ und „Windows Build Support“ braucht man nur zum Bauen, nicht für diese Aufgabe.
-- Das Unity-Handbuch 2019.4 nennt als Editor-Mindestanforderung für macOS Sierra 10.12.6+, x64 mit SSE2 und „Metal-capable Intel and AMD GPUs“. Der Editor sei „supported … running without emulation, container or compatibility layer“ (https://docs.unity3d.com/2019.4/Documentation/Manual/system-requirements.html). Rosetta ist also offiziell nicht abgedeckt.
-- Rosetta ist hier installiert (Prozess `oahd` läuft, `/Library/Apple/usr/share/rosetta` vorhanden).
-- Laut Unity-Dokumentation für Unity 6 wird Rosetta von Apple abgekündigt (https://docs.unity.com/en-us/engine/6000.0/manual/platform-specific/apple-mac/macos-requirements-and-compatibility). Langfristig ist der Intel-Editor damit auf neuen macOS-Versionen gefährdet.
-- Im opendpr-Projekt ist `metalEditorSupport: 1` bereits gesetzt (`ProjectSettings/ProjectSettings.asset`). Die Wwise-Mac-Plugins sind x86_64-Bundles. Beides passt zu einem Rosetta-Editor.
-- Unity Hub: Homebrew zeigt `unity-hub` 3.22.3 (nicht installiert).
+- Version exists in archive: Changeset **`23dc10685eb4`**, Hub link `unityhub://2019.4.27f1/23dc10685eb4` (https://unity.com/releases/editor/whats-new/2019.4.27f1, https://unity.com/releases/editor/archive).
+- Direct links checked with HEAD (HTTP 200):
+  - `https://download.unity3d.com/download_unity/23dc10685eb4/MacEditorInstaller/Unity-2019.4.27f1.pkg`, 2,148,927,494 bytes (about 2.0 GiB). Intel (x64) Editor; no Apple Silicon build exists for 2019.4.
+  - `.../MacEditorTargetInstaller/UnitySetup-Mac-IL2CPP-Support-for-Editor-2019.4.27f1.pkg`, 142.7 MB.
+  - `.../MacEditorTargetInstaller/UnitySetup-Windows-Mono-Support-for-Editor-2019.4.27f1.pkg`, 111.5 MB.
+  - Download Assistant `https://download.unity3d.com/download_unity/23dc10685eb4/UnityDownloadAssistant-2019.4.27f1.dmg`, 0.5 MB.
+- Modules: no additional modules needed just to open and run in Editor. Project uses Editor with Mono. “Mac IL2CPP Support” and “Windows Build Support” are needed only to build, not for this task.
+- Unity 2019.4 manual lists macOS Sierra 10.12.6+, x64 with SSE2, and “Metal-capable Intel and AMD GPUs” as minimum Editor requirements. Editor is “supported … running without emulation, container or compatibility layer” (https://docs.unity3d.com/2019.4/Documentation/Manual/system-requirements.html). Rosetta is therefore not officially covered.
+- Rosetta is installed here (process `oahd` running, `/Library/Apple/usr/share/rosetta` exists).
+- Unity 6 docs say Apple is deprecating Rosetta (https://docs.unity.com/en-us/engine/6000.0/manual/platform-specific/apple-mac/macos-requirements-and-compatibility). Intel Editor may therefore be at risk on future macOS versions.
+- opendpr project already has `metalEditorSupport: 1` (`ProjectSettings/ProjectSettings.asset`). Wwise Mac plugins are x86_64 bundles. Both fit a Rosetta Editor.
+- Unity Hub: Homebrew lists `unity-hub` 3.22.3 (not installed).
 
-Nicht verifiziert (nur Hinweise aus einer Websuche, Quellen nicht gelesen):
+Unverified (only leads from web search; sources not read):
 
-- Ob Hub 3.22.3 auf Apple Silicon den Intel-Editor 2019.4.27f1 zuverlässig installiert und startet.
-- Ob der Editor unter macOS 26 abstürzt oder schwarze Fenster zeigt. Ein Forenthread nennt `metalEditorSupport: 1` als Abhilfe (https://discussions.unity.com/t/unity-editor-crashes-macos/757071, nicht abrufbar). Das ist hier ohnehin gesetzt.
-- Die Größe des installierten Editors und der Library.
+- Whether Hub 3.22.3 on Apple Silicon reliably installs and starts Intel Editor 2019.4.27f1.
+- Whether Editor crashes or displays black windows on macOS 26. A forum thread suggests `metalEditorSupport: 1` as workaround (https://discussions.unity.com/t/unity-editor-crashes-macos/757071, unavailable). It is already set here.
+- Installed Editor and Library sizes.
 
-Lizenz/Login: Das muss der Nutzer selbst erledigen. Der Hub verlangt eine Unity-ID und eine Personal-Lizenz.
-Ein Hub-Login ist keine Aktion für uns. Wir geben dazu keine Zugangsdaten an.
+License/login: user must handle this. Hub requires Unity ID and Personal license.
+Hub login is not an action for us; no credentials are requested.
 
-Fazit Mac: Der Editor sollte unter Rosetta starten, ist aber offiziell nicht unterstützt. Das ist ein Experiment, das ca. 2 GB Download kostet. Der wahrscheinliche Engpass sind die Shader (B1), nicht der Editor.
+Mac conclusion: Editor should start under Rosetta, but this is not officially supported. Experiment costs about 2 GB download. Likely bottleneck is shaders (B1), not Editor.
 
-## 6. Befehlsliste für den Nutzer (ohne sudo)
+## 6. Commands for User (No sudo)
 
-Alle Befehle im Repo-Stamm `/Users/vee/Work/strahlender-xnu`.
+All commands are run from repository root `<REPO_ROOT>`.
 
 ```sh
-# 0) Ghidra muss beendet sein (keine Ausgabe außer Kopfzeile = ok)
+# 0) Ghidra must be stopped (no output except header = OK)
 ps -p 4461
 
-# 1) Export-Plan prüfen, dann ausführen (AssetRipper, ca. wenige Minuten, wenig RAM)
+# 1) Preview export, then run (AssetRipper, a few minutes, low RAM)
 python3 scripts/assetripper_export.py --dry-run
 python3 scripts/assetripper_export.py
 ls work/ripper/out/ExportedProject/Assets
 
-# 2) Projektordner anlegen (opendpr-Kopie, APFS-Klone sparen Platz)
+# 2) Create project directories (opendpr copy, APFS clones save space)
 mkdir -p work/dpr-prep work/dpr-project
 cp -cR tools/opendpr/Assets tools/opendpr/Packages tools/opendpr/ProjectSettings tools/opendpr/Dpr_WwiseProject work/dpr-project/
 cp -cR work/ripper/out/ExportedProject/Assets work/dpr-prep/input
 
-# 3) Python-Skript aus dem Fremdrepo unverändert aus work/dpr-prep laufen lassen
+# 3) Run unchanged third-party Python script from work/dpr-prep
 cd work/dpr-prep && python3 ../../tools/Lumi_Small_Scripts/asset_ripper_resources/fix_pathids.py && cd ../..
 ls work/dpr-prep/output
 
-# 4) Von-Hand-Schritte (Struktur erst nach Schritt 3 prüfen!)
+# 4) Manual steps (inspect structure only after step 3)
 find work/dpr-prep/output -name StartupSettings.asset
-#    dann die Löschungen und Verschiebungen aus Abschnitt 2c ausführen
-#    und im StartupSettings.asset den Assembly-Namen ersetzen,
-#    das Ergebnis nach work/dpr-project/Assets legen
+#    then perform deletes/moves from section 2c
+#    and replace assembly name in StartupSettings.asset,
+#    then put result under work/dpr-project/Assets
 
-# 5) StreamingAssets als APFS-Klon (kostet keinen zusätzlichen Platz) und Soundbank-Ordner umbenennen
+# 5) Clone StreamingAssets (no extra disk use) and rename soundbank directory
 cp -cR work/romfs/Data/StreamingAssets/. work/dpr-project/Assets/StreamingAssets/
 mv work/dpr-project/Assets/StreamingAssets/Audio/GeneratedSoundBanks/Switch work/dpr-project/Assets/StreamingAssets/Audio/GeneratedSoundBanks/Windows
 
-# 6) Unity-Hub installieren und den Editor über den Archiv-Link holen (Anmeldung durch den Nutzer)
+# 6) Install Unity Hub and get Editor via archive link (user signs in)
 brew install --cask unity-hub
 open "unityhub://2019.4.27f1/23dc10685eb4"
 
-# 7) Projekt in Hub über „Hinzufügen“ öffnen: work/dpr-project
-#    Vor dem ersten Öffnen fehlt noch B1: work/dpr-project/AssetBundles/Editor
+# 7) Open project in Hub using “Add”: work/dpr-project
+#    B1 is still missing before first open: work/dpr-project/AssetBundles/Editor
 ```
 
-Alternative zum Hub ohne sudo (nicht verifiziert): Das Paket per `curl -L -O` laden und mit `pkgutil --expand-full <pkg> <Zielordner>` entpacken. Das Entpackte enthält die `Unity.app`, die man im Benutzerordner starten könnte.
-Die Installation per `installer` verlangt dagegen Adminrechte.
-Hinweis zu Schritt 5: `cp -c` funktioniert nur, wenn Quelle und Ziel auf derselben APFS-Partition liegen. Das trifft für `work/` zu.
+Alternative to Hub without sudo (unverified): download package with `curl -L -O` and unpack using `pkgutil --expand-full <pkg> <destination>`. Unpacked contents include `Unity.app`, which could be started from user directory.
+Using `installer` requires admin rights.
+Note on step 5: `cp -c` works only when source and destination are on the same APFS partition. This is true for `work/`.
 
-## 7. Entscheidungsfrage
+## 7. Decision
 
-Wie weit wollen wir den Test treiben?
+How far should the test go?
 
-- **A (empfohlen, günstig):** Export und Aufbereitung jetzt machen und das Projekt ohne Windows-Shader-Bundles öffnen. Ziel: prüfen, ob Rosetta-Editor, Skriptgerüst und Ressourcen-Zuordnung laufen. Kosten: ca. 2 GB Download, ca. 10–15 GB Platz. Shader bleiben ungeklärt.
-- **B:** Zusätzlich Zeit in die Shader-Frage stecken (B1), also Bundles aus Quelltext für Mac/Windows neu bauen. Das ist der Teil, der echten Aufwand und Unsicherheit trägt.
-- **C:** Auf Unity verzichten und opendpr nur als Namens- und Strukturreferenz lesen. Wir bleiben beim IL2CPP-/Ghidra-Strang und sparen Platz und Zeit.
+- **A (recommended, low cost):** export and prepare now, then open project without Windows shader bundles. Goal: check whether Rosetta Editor, script scaffold, and resource mapping work. Cost: about 2 GB download, 10–15 GB disk. Shader question remains open.
+- **B:** also investigate shader question (B1), rebuilding bundles from source for Mac/Windows. This is the part with real effort and uncertainty.
+- **C:** skip Unity and use opendpr only as a name/structure reference. Continue IL2CPP/Ghidra track, save space and time.
 
-Mein Vorschlag: A, weil der AssetRipper-Teil nach Eingabegröße klein ist. Danach entscheiden wir zwischen B und C, sobald klar ist, ob der Editor unter Rosetta läuft.
+Recommendation: A, because AssetRipper work is small relative to input size. Then choose B or C once it is clear whether Editor runs under Rosetta.

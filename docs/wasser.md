@@ -1,65 +1,65 @@
-# Wasser im Original: Befund für die Rekompilation
+# Original water rendering: findings for recompilation
 
-Stand: 2026-10-19, 16:58. Der Auftrag „Wasser im Unity-Rebuild“ wurde **zurückgezogen**: Gemeint ist die rekompilierte BDSP-App (`dev.local.xnubdsp`, Stränge `ap-recomp-qa`/`ap-recomp-ios`), nicht das Unity-Projekt. Am Unity-Projekt wurde **nichts geändert**. Hier steht nur, was aus der Material-Analyse und dem Referenzbild für die Rekompilation nützlich ist. Es gibt hier **keine** Unity-Messungen und keine iPad-Startanalyse (nicht begonnen).
+Updated: 2026-10-19, 16:58. The “water in the Unity rebuild” task was **withdrawn**: the intended target is the recompiled BDSP app (`dev.local.xnubdsp`, tracks `ap-recomp-qa`/`ap-recomp-ios`), not the Unity project. **Nothing was changed** in Unity. This document records only material-analysis and reference-image findings useful to recompilation. No new Unity measurements or iPad startup investigation were performed.
 
-Markierung: **belegt** = aus unseren Exporten oder dem Referenzbild gemessen, *vermutet* = Schluss ohne Test.
+Labels: **verified** means measured from our exports or the reference image; *inferred* means a conclusion not tested.
 
-## 1. Referenz (Ryujinx, echtes Original)
+## 1. Reference (Ryujinx, original game)
 
-`work/visual/ref/ryujinx/views/free_wasser_a.png` und `free_wasser_b.png` (nur lokal, nicht im Repo), 2 s Abstand, Spielstand sha 0396a4a62735, Fleetburg (Zone 24), Becken rechts neben dem Pokécenter, Spielstunde ≈ 14,4 (Dateizeit 14:49:59 UTC minus Offset 1388 s, Annahme [A]).
+`work/visual/ref/ryujinx/views/free_wasser_a.png` and `free_wasser_b.png` (local only, not in Git), two seconds apart, save SHA prefix 0396a4a62735, Canalave City (zone 24), pool right of the Pokémon Center, in-game hour ≈ 14.4 (file time 14:49:59 UTC minus offset 1388 s, assumption [A]).
 
-Beschreibung: tiefes, gesättigtes Blau; darauf helle, scharfe **Caustics** (weiße, netzartige Lichtlinien und Glanzpunkte, im Bild a und b an anderen Stellen); schwach erkennbare **Spiegelung/Brechung** von Brücke und Planken am oberen Beckenrand und als dunkle Schlagschatten im Wasser; orange Uferkante (Holz/Kupfer) links und rechts, helle Steinmauern.
+Appearance: deep saturated blue with bright, sharp **caustics** (white net-like light lines and highlights at different positions in images a and b); faint **reflection/refraction** of the bridge and planks along the upper pool edge, and dark cast shadows in the water; orange bank edges (wood/copper) on both sides and pale stone walls.
 
-Zahlen (Wasserregion x 790–1180, y 170–650 des 1280×720-Bildes, **belegt**):
+Measurements (water region x 790–1180, y 170–650 in the 1280×720 image, **verified**):
 
-| Maß | Bild a | Bild b |
+| Metric | Image a | Image b |
 |---|---|---|
-| Mittel RGB | 87,2 / 126,7 / 209,6 | 88,1 / 127,5 / 210,6 |
-| Standardabweichung RGB | 25,8 / 17,1 / 24,7 | 26,2 / 17,8 / 25,1 |
-| 99-%-Perzentil der Helligkeit | 191 | 195 |
-| Anteil sehr heller Pixel (alle Kanäle > 200) | 0,27 % | 0,33 % |
+| Mean RGB | 87.2 / 126.7 / 209.6 | 88.1 / 127.5 / 210.6 |
+| RGB standard deviation | 25.8 / 17.1 / 24.7 | 26.2 / 17.8 / 25.1 |
+| 99th brightness percentile | 191 | 195 |
+| Very bright pixels (all channels > 200) | 0.27% | 0.33% |
 
-Animation: mittlere Abweichung zwischen a und b in der Region **8,7** (Anteil Pixel mit Abweichung > 24: 5 %). Das Mittel bleibt gleich, nur die Caustics-Struktur wandert: **belegt**, dass das Wasser über `_Time` animiert wird und die Gesamtfarbe zeitlich stabil ist. Ein Rekompilationsbild muss also Mittel ≈ (87 / 127 / 210) ± 10 % und zwei Bilder mit MAD ≈ 9 in der Region zeigen.
+Animation: mean difference between a and b in the region is **8.7** (5% of pixels differ by > 24). The mean stays stable while the caustic pattern moves. The original report treats animation through `_Time` and a stable overall color as **verified**. A recompiled frame should therefore have mean ≈ (87 / 127 / 210) ± 10%, and two frames should have regional MAD ≈ 9.
 
-## 2. Shader und Material der Zone 24
+## 2. Zone 24 shader and material
 
-Das Wasser der Zone 24 steckt im Bundle `Environments/fields/area010` (Bereich C02), Material **`M_C_001_SeaWater_03`** (aus `work/materials/Environments__fields__area010.json`, **belegt**; die Pokécenter-Prefabs `c02r*` enthalten kein Wassermaterial):
+Zone 24 water is in bundle `Environments/fields/area010` (area C02), material **`M_C_001_SeaWater_03`** (from `work/materials/Environments__fields__area010.json`, **verified**; Pokémon Center prefabs `c02r*` contain no water material):
 
-| Eigenschaft | Wert |
+| Property | Value |
 |---|---|
-| Shader | `Delphis/Map/FlowmapWater` (ein Pass, `Lightmode=FORWARDBASE`) |
-| Zustand | `QUEUE=Transparent`, `Blend SrcAlpha OneMinusSrcAlpha`, `ZWrite Off`, `ZTest LEqual`, `Cull Back` (Inventar); `renderQueue` im Material −1 (Shader-Standard) |
+| Shader | `Delphis/Map/FlowmapWater` (one pass, `Lightmode=FORWARDBASE`) |
+| State | `QUEUE=Transparent`, `Blend SrcAlpha OneMinusSrcAlpha`, `ZWrite Off`, `ZTest LEqual`, `Cull Back` (inventory); material `renderQueue` −1 (shader default) |
 | Keywords | `_ALPHABLEND_ON`, `_CASCADE_SINGLE`, `_ENVIRONMENTMAPENABLE_SPECULAR` |
-| Instancing | nein |
-| Grab-Pass | **keiner** (nur `Map/Water`, `Wave`, `Fog`, `WaterSurface`, `Encount01/02` haben `_BackgroundTexture`) |
-| Texturen (Bindung über Eigenschaftsname) | `_CausticsTex` „Caustics“ 256×256 (Format 10 = DXT1/BC1), Kachelung 4×4; `_FlowMap` „Flow“ 256×256 (Format 27 = RGBA/BC7-Klasse laut Exporttabelle), 1×1; `_TimeOffsetMap` „TimeOffset“ 256×256 (Format 1 = Alpha8), Kachelung 5×5, Versatz 0,3 |
-| Farben | `_WaterColor` (0,012 / 0,205 / 0,620, Alpha 0,698), `_Color` (0 / 0,626 / 1), `_SkyColor` (0,099 / 0,718 / 1), `_SpecularColor` (0,35 / 1 / 0,751), `_WaveColor` (0,344 / 1 / 1, Alpha 0,25), `_Reflectivity` (1,1,1) |
-| Zahlen | `_CausticsIntensity` 6, `_CausticsExponential` 3, `_FlowSpeed` 0,1 (Vektor (1, 0, 1, 0)), `_FlowStrength` 0,015, `_TimeScale` 0,5, `_BumpScale` 0,67, `_FresnelPower` 3, `_RefractionScale` 3, `_ReflectionBias` 5, `_ReflectionOffsetScale` 1, `_DensityExponential` 2, `_MaxDensity` 1, `_TransDistance` 0,6, `_SpecularIntensity` 0,5, `_SpecularCosinePower` 18, `_Cull` 0 (Material), `_SrcBlend` 1, `_DstBlend` 0 |
+| Instancing | No |
+| Grab pass | **None** (only `Map/Water`, `Wave`, `Fog`, `WaterSurface`, `Encount01/02` have `_BackgroundTexture`) |
+| Textures (bound by property name) | `_CausticsTex` “Caustics” 256×256 (format 10 = DXT1/BC1), tiling 4×4; `_FlowMap` “Flow” 256×256 (format 27 = RGBA/BC7 class according to export table), 1×1; `_TimeOffsetMap` “TimeOffset” 256×256 (format 1 = Alpha8), tiling 5×5, offset 0.3 |
+| Colors | `_WaterColor` (0.012 / 0.205 / 0.620, alpha 0.698), `_Color` (0 / 0.626 / 1), `_SkyColor` (0.099 / 0.718 / 1), `_SpecularColor` (0.35 / 1 / 0.751), `_WaveColor` (0.344 / 1 / 1, alpha 0.25), `_Reflectivity` (1,1,1) |
+| Scalars | `_CausticsIntensity` 6, `_CausticsExponential` 3, `_FlowSpeed` 0.1 (vector (1, 0, 1, 0)), `_FlowStrength` 0.015, `_TimeScale` 0.5, `_BumpScale` 0.67, `_FresnelPower` 3, `_RefractionScale` 3, `_ReflectionBias` 5, `_ReflectionOffsetScale` 1, `_DensityExponential` 2, `_MaxDensity` 1, `_TransDistance` 0.6, `_SpecularIntensity` 0.5, `_SpecularCosinePower` 18, `_Cull` 0 (material), `_SrcBlend` 1, `_DstBlend` 0 |
 
-Das Bild passt dazu: `_WaterColor` im Gamma-Raum ergibt tiefes Blau, `_CausticsIntensity` 6 mit Exponent 3 erzeugt wenige, sehr helle Linien (0,3 % der Pixel über 200). *Vermutet:* die Caustics-Textur wird mit zwei gegenläufig verschobenen UV-Sätzen (Zeit × `_TimeScale`, Versatz aus `_TimeOffsetMap`) gelesen, das erklärt das wandernde Netz; nicht am Shadercode überprüft.
+The image is consistent with this: `_WaterColor` in Gamma space produces deep blue; `_CausticsIntensity` 6 and exponent 3 produce sparse bright lines (0.3% of pixels above 200). *Inference:* The caustics texture uses two oppositely shifted UV sets (time × `_TimeScale`, offset from `_TimeOffsetMap`), explaining the moving net; this was not checked against shader code.
 
-## 3. Eingänge, die die Rekompilation liefern muss
+## 3. Inputs recompilation must provide
 
-Aus dem Inventar (`docs/shader-inventar.md`, Abschnitt Globals) und `docs/shader-globals.md`:
+From the inventory (`docs/shader-inventar.md`, Globals section) and `docs/shader-globals.md`:
 
-1. **`_OpaqueDepthTexture`** (`FlowmapWater`, `FlowmapBumpWater`): Tiefe nach dem undurchsichtigen Durchgang (`CameraEvent.AfterForwardOpaque`, `MultipleCameraCompositor`). Ohne sie rechnet der Shader mit Tiefe 0/1 und zeichnet in Unity eine einfarbige, braune Fläche (Beobachtung aus `docs/sichtpruefung-3.md`, **belegt** im Unity-Rebuild). Das Wasser darf nicht in diese Tiefentextur schreiben (`ZWrite Off`).
-2. **`_ReflectionTex` und `_ReflectionVP`**: Reflexionskamera (`ReflectionCameraFollower`), an y = 0 gespiegelt, Position (x, −y, z), Drehung Euler(−x, y, −z), Sichtfeld = Hauptkamera · `_fovScale`, Textur Bildschirmgröße mit Mips. **Widerspruch im Inventar:** die Tabelle nennt `_ReflectionTex` nur bei `Map/FlowMap` und `Map/Standard`, `docs/shader-globals.md` Abschnitt 7 nennt sie auch für `FlowmapWater`; für Zone 24 ungeklärt, ob der Shader sie liest. Die Spiegelung der Brücke im Referenzbild spricht dafür (*vermutet*).
-3. **`_Time`** aus der Spielzeit (Animation, siehe Abschnitt 1), plus die Spiel-Globals der Umgebung (`_SkyColor`-artige Werte kommen aus dem Material, Licht und `_ShadowColor` aus `EnvironmentController`).
-4. **Blendzustand** aus dem Pass (`SrcAlpha OneMinusSrcAlpha`, `ZWrite Off`) und **Zeichenreihenfolge Transparent (Queue 3000)** nach allen undurchsichtigen Flächen; Cull Back. Das Netz hat keine Normalen (nur Position, Farbe, UV0 als Float16×2, `docs/sichtpruefung-3.md`): fehlende Normalen sind 0, die Normalen des Wassers kommen aus der Bump-Berechnung.
-5. **Bindung der Texturen** erfolgt im Original über die Eigenschaftsnamen des Materials (`_CausticsTex`, `_FlowMap`, `_TimeOffsetMap`). In der Rekompilation kommen sie als Bindless-Handles in `cbuf 2` (ab 0x568, Schritt 8, `docs/render-treue.md`); sind die Handles falsch oder die Textur nicht geladen, erscheint eine einfarbige Fläche.
+1. **`_OpaqueDepthTexture`** (`FlowmapWater`, `FlowmapBumpWater`): Depth after the opaque pass (`CameraEvent.AfterForwardOpaque`, `MultipleCameraCompositor`). Without it the shader uses depth 0/1 and draws a uniform brown surface in Unity (`docs/sichtpruefung-3.md`, **verified** in the Unity rebuild). Water must not write to this depth texture (`ZWrite Off`).
+2. **`_ReflectionTex` and `_ReflectionVP`**: Reflection camera (`ReflectionCameraFollower`), mirrored across y = 0, position (x, −y, z), Euler rotation (−x, y, −z), FOV = main-camera FOV × `_fovScale`, screen-sized texture with mips. **Inventory inconsistency:** The table lists `_ReflectionTex` only for `Map/FlowMap` and `Map/Standard`, while section 7 of `docs/shader-globals.md` also lists it for `FlowmapWater`. Whether zone 24 reads it is unresolved. The bridge reflection suggests it does (*inferred*).
+3. **`_Time`** from game time (animation, section 1), plus environment globals (`_SkyColor`-like values come from the material; light and `_ShadowColor` from `EnvironmentController`).
+4. Pass **blend state** (`SrcAlpha OneMinusSrcAlpha`, `ZWrite Off`) and **transparent draw order (queue 3000)** after all opaque surfaces; Cull Back. The mesh has no normals (only position, color, UV0 as Float16×2, `docs/sichtpruefung-3.md`): missing normals are zero; water normals come from bump calculations.
+5. Original **texture binding** uses material property names (`_CausticsTex`, `_FlowMap`, `_TimeOffsetMap`). Recompilation receives bindless handles in `cbuf 2` (from 0x568, stride 8, `docs/render-treue.md`); incorrect handles or unloaded textures produce a uniform surface.
 
-## 4. Grab-Pass (für die übrigen Wasser-Shader)
+## 4. Grab pass (other water shaders)
 
-`Delphis/Map/Water`, `Wave`, `Fog`, `WaterSurface` besitzen einen Grab-Pass `_BackgroundTexture` vor dem Hauptpass. Das Spiel legt dafür **keinen** eigenen Puffer an; es ist Unitys `GrabPass` (Kopie des Bildes bis dahin). In der Rekompilation ist das ein Kopieren des aktuellen Farbziels in eine Textur zwischen undurchsichtigem und transparentem Durchgang. Für die Zone 24 spielt das keine Rolle (`FlowmapWater` hat keinen Grab-Pass). Messung im Unity-Lab: mit Grab-Pass scheint der Hintergrund durch das Wasser (Rot (209, 95, 96), Blau (65, 115, 245)), ohne bleibt ein konstanter Farbton (`docs/shader-globals.md`, Abschnitt 7).
+`Delphis/Map/Water`, `Wave`, `Fog`, and `WaterSurface` have a `_BackgroundTexture` grab pass before the main pass. The game creates **no** dedicated buffer; this is Unity's `GrabPass`, copying the image rendered so far. In recompilation, copy the current color target to a texture between opaque and transparent passes. Zone 24 does not need it (`FlowmapWater` has no grab pass). Unity-lab measurements: with the grab pass, the background shows through water (red (209, 95, 96), blue (65, 115, 245)); without it, the color stays constant (`docs/shader-globals.md`, section 7).
 
-## 5. Prüfen in der Rekompilation
+## 5. Recompilation checks
 
-- Region und Zahlen aus Abschnitt 1 verwenden: Mittel (87 / 127 / 210) ± 10 %, Standardabweichung ≈ (26 / 17 / 25), Anteil sehr heller Pixel ≈ 0,3 %.
-- Zwei Aufnahmen im Abstand von 2 s: MAD in der Region ≈ 9, Mittel unverändert. Zeigt sich keine Bewegung, fehlt `_Time` (oder die Zeitkonstanten); zeigt sich Bewegung ohne Caustics-Netz, fehlt `_CausticsTex`.
-- Vergleich mit `scripts/visual_compare.py ref compare` (Heatmap, Bildmittel). Dazu muss in `scripts/visual/ref_map.json` noch eine Ansicht für `free_wasser_a`/`b` ergänzt werden (nicht erledigt; ein manueller Vergleich beider Bilder reicht für die Zahlen oben).
+- Use the region and measurements in section 1: mean (87 / 127 / 210) ± 10%, standard deviation ≈ (26 / 17 / 25), very bright pixels ≈ 0.3%.
+- Capture two frames two seconds apart: regional MAD ≈ 9, mean unchanged. No movement suggests missing `_Time` or time constants; movement without the caustic net suggests missing `_CausticsTex`.
+- Compare with `scripts/visual_compare.py ref compare` (heatmap, image mean). A `free_wasser_a`/`b` view still needs adding to `scripts/visual/ref_map.json` (not done; manual comparison suffices for the figures above).
 
-## 6. Nicht geklärt
+## 6. Unresolved
 
-- Ob `FlowmapWater` in Zone 24 `_ReflectionTex` tatsächlich liest (Abschnitt 3, Punkt 2).
-- Der Texturformat-Code 27 ist aus der Exporttabelle übernommen, nicht gegengeprüft.
-- iPad-Start (2–3 Versuche bis zum Hochfahren): nicht untersucht, gehört zu `ap-recomp-ios`.
+- Whether zone 24 `FlowmapWater` actually reads `_ReflectionTex` (section 3, item 2).
+- Texture format code 27 was taken from the export table, not independently checked.
+- iPad startup (two or three attempts before starting) was not investigated; this belongs to `ap-recomp-ios`.

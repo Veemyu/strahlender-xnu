@@ -1,15 +1,17 @@
-# Referenz: Static-Recompilation-Projekte (Stand 2026-10-18)
+# Reference: Static recompilation projects (as of 2026-10-18)
 
-Eigene Zusammenfassung einer Recherche (nur lesend, nichts geklont, kein Code übernommen). Quellen: `peiikai/LASRecomp` (MIT, Link's Awakening Switch) und `raulzrrs/letsgo-recomp` (baut auf LASRecomp auf).
+Summary of our own read-only research (nothing cloned, no code reused). Sources: `peiikai/LASRecomp` (MIT, Link's Awakening Switch) and `raulzrrs/letsgo-recomp` (based on LASRecomp).
 
-## Befund
-- Beide Projekte übersetzen den kompletten NSO-Code (`main`, `sdk`) per Skript-Pipeline nach C, ersetzen Switch-OS (SVC, IPC) und NVN durch eine eigene Runtime und übersetzen Maxwell-Shader zur Laufzeit nach MSL (Metal).
-- macOS arm64 ist dort Zielplattform (Metal, Guest-Speicherfenster per `mach_vm_allocate`). iOS/iPadOS und JIT-Freiheit werden nicht behandelt.
-- Die Zielspiele (Link's Awakening, Let's Go) sind **keine Unity/IL2CPP-Spiele** (LAS: Grezzo-Eigenengine laut Sekundärquelle, nicht direkt geprüft). Metadata, `libil2cpp` und Funktionszeiger-Tabellen von IL2CPP wurden dort nicht untersucht.
-- Spielcode wird beim Nutzer erzeugt und kompiliert (`dlopen`), das geht auf iPadOS nicht (kein Compiler) und würde Nintendo-Code ausliefern.
-- LASRecomp: Beta, Release `beta_4`, MIT-Lizenz mit Ausschluss von Spieldateien; das README nennt den Code „almost exclusively“ KI-generiert. Keine Spieldateien im Repo.
+## Findings
 
-## Bewertung für BDSP
-- Nützlich als Checkliste für Switch-Dienste und Grafik-Imports, nicht als Ausführungsweg.
-- BDSP hat 166.095 Funktionen (ca. 1,3 × Let's Go). Die Hochrechnung auf 0,7–1 GB generiertes C ist eine Schätzung.
-- Der IL2CPP-Code stammt aus C#. Daher bleibt **Option A** (neues Unity-Projekt mit rekonstruierter Logik) der klar bessere Weg als Rekompilation des NSO. Die Entscheidung fällt am Architektur-Gate.
+- Both projects translate the complete NSO code (`main`, `sdk`) to C through a scripted pipeline, replace Switch OS services (SVC, IPC) and NVN with a custom runtime, and translate Maxwell shaders to MSL (Metal) at runtime.
+- Their target is macOS arm64 (Metal, with a guest-memory window allocated through `mach_vm_allocate`). iOS/iPadOS and freedom from JIT requirements are not addressed.
+- The target games (Link's Awakening and Let's Go) are **not Unity/IL2CPP games** (LAS uses Grezzo's own engine according to a secondary source; this was not independently verified). Their metadata, `libil2cpp`, and IL2CPP function-pointer tables were not examined.
+- Game code is generated and compiled on the user's machine (`dlopen`); this is not possible on iPadOS (no compiler) and would distribute Nintendo code.
+- LASRecomp is a beta (release `beta_4`), MIT-licensed with game files excluded. Its README describes the code as “almost exclusively” AI-generated. The repository contains no game files.
+
+## Assessment for BDSP
+
+- Useful as a checklist for Switch services and graphics imports, not as an execution path.
+- BDSP has 166,095 functions (about 1.3× as many as Let's Go). The estimate of 0.7–1 GB of generated C is an extrapolation.
+- The IL2CPP code comes from C#. Therefore **Option A** (a new Unity project with reconstructed logic) remains clearly preferable to NSO recompilation. The architecture gate will make the decision.

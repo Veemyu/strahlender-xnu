@@ -1,168 +1,118 @@
-# Bundle-Katalog (`Dpr.bin`)
+# Bundle Catalog (`Dpr.bin`)
 
-Stand: 2026-10-18. Dieses Dokument beschreibt `AssetAssistant/Dpr.bin` und die darauf
-aufbauende Boot-Schicht (`unity/Assets/Scripts/Boot`, Assembly `Xnu.Boot`). Es enthält nur
-Formate, Namen und Zahlen – keine Spielinhalte.
+> **Historical:** documents the Unity boot layer implementation; it remains useful as a data-format reference.
 
-## Kurzergebnis
+Status: 2026-10-18. This document describes `AssetAssistant/Dpr.bin` and the boot layer built on it (`unity/Assets/Scripts/Boot`, assembly `Xnu.Boot`). It contains only formats, names, and numbers—not game content.
 
-- `Dpr.bin` ist der **Bundle-Katalog** des Spiels: eine mit dem .NET-`BinaryFormatter`
-  serialisierte Instanz der Klasse `SmartPoint.AssetAssistant.AssetBundleDownloadManifest`
-  (Il2Cpp-Dump: TypeDefIndex 3006, Konstante `currentVersion = 6`). Sie ist **weder
-  verschlüsselt noch komprimiert**.
-- Pro Bundle steht dort: Projekt, Bundle-Name, 128-Bit-Hash, Änderungszeit, Szenen-Flag,
-  Liste aller (transitiven) Abhängigkeiten, Liste der enthaltenen Asset-Pfade und Dateigröße.
-- Damit ist die Zuordnung *logischer Asset-Name → Bundle* und *Bundle → Abhängigkeiten*
-  vollständig aus `Dpr.bin` lesbar. Ein Verzeichnis-Scan reicht nur für Bundle-Namen und
-  Größen, nicht für Abhängigkeiten und Asset-Namen.
-- Die Dateien liegen unter `AssetAssistant/<Projekt>/<Bundle-Name>`; der Bundle-Name darf
-  selbst `/` enthalten (Unterordner).
+## Summary
 
-## Container: .NET-BinaryFormatter (MS-NRBF)
+- `Dpr.bin` is the game's **bundle catalog**: a .NET `BinaryFormatter` serialized instance of `SmartPoint.AssetAssistant.AssetBundleDownloadManifest` (Il2Cpp dump: TypeDefIndex 3006, constant `currentVersion = 6`). It is **neither encrypted nor compressed**.
+- For each bundle it stores: project, bundle name, 128-bit hash, modification time, scene flag, list of all (transitive) dependencies, list of contained asset paths, and file size.
+- The mapping *logical asset name → bundle* and *bundle → dependencies* can therefore be read completely from `Dpr.bin`. A directory scan gives only bundle names and sizes, not dependencies or asset names.
+- Files live at `AssetAssistant/<Project>/<Bundle-Name>`; bundle name itself may contain `/` (subdirectory).
 
-Die Datei ist ein Strom aus „Records“ (Spezifikation MS-NRBF). Ganzzahlen sind
-little-endian, Strings sind UTF-8 mit 7-Bit-Längenpräfix. Reihenfolge in `Dpr.bin`:
+## Container: .NET BinaryFormatter (MS-NRBF)
 
-| Offset | Inhalt |
+File is a stream of “records” (MS-NRBF specification). Integers are little-endian; strings are UTF-8 with 7-bit length prefix. Order in `Dpr.bin`:
+
+| Offset | Contents |
 |---|---|
 | 0x00 | Record 0 `SerializedStreamHeader`: Root-ID = 1, Header-ID = -1, Major 1, Minor 0 |
-| 0x11 | Record 12 `BinaryLibrary`, ID 2, Name `AssetAssistant, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null` |
-| danach | Record 5 `ClassWithMembersAndTypes` (ID 1) für `AssetBundleDownloadManifest` |
-| danach | Record 7 `BinaryArray` (ID 4, Einzel-Array, Länge N, Elementtyp Klasse) mit N × Record 9 `MemberReference` auf die Einträge |
-| danach | Record 17 `ArraySingleString` (ID 5) = Variantenliste |
-| danach | N Eintragsobjekte: erster als Record 5 (Klassenbeschreibung), die übrigen als Record 1 `ClassWithId` |
-| Ende | Record 11 `MessageEnd` |
+| 0x11 | Record 12 `BinaryLibrary`, ID 2, name `AssetAssistant, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null` |
+| next | Record 5 `ClassWithMembersAndTypes` (ID 1) for `AssetBundleDownloadManifest` |
+| next | Record 7 `BinaryArray` (ID 4, single array, length N, class element type) with N × Record 9 `MemberReference` to entries |
+| next | Record 17 `ArraySingleString` (ID 5) = variants list |
+| next | N entry objects: first as Record 5 (class description), remaining as Record 1 `ClassWithId` |
+| end | Record 11 `MessageEnd` |
 
-Die Dateigröße (5.278.300 Byte) wird vom Strom exakt verbraucht; kein Rest.
+Stream consumes the entire file (5,278,300 bytes); no remainder.
 
-### Klassen und Felder
+### Classes and Fields
 
-`AssetBundleDownloadManifest` (4 Mitglieder, Typ in Klammern = BinaryType/Primitiv):
+`AssetBundleDownloadManifest` (4 members; type in parentheses is BinaryType/primitive):
 
-| Feld | Typ | Bedeutung |
+| Field | Type | Meaning |
 |---|---|---|
 | `_version` | Int32 | 6 |
 | `_projectName` | String | `Dpr` |
-| `_records` | Klassen-Array | N Einträge (Wert in diesem Dump: 13.660) |
-| `_assetBundleNamesWithVariant` | String-Array | Bundle-Namen mit Sprachvariante (99 Stück) |
+| `_records` | class array | N entries (13,660 in this dump) |
+| `_assetBundleNamesWithVariant` | string array | bundle names with language variant (99) |
 
-Hinweis: Die Typinformation von `_records` lautet formal `AssetBundleRecord[]` als Klasse
-(Mono-Eigenheit), das Objekt dahinter ist ein normales `BinaryArray`.
+Note: `_records` type info formally says `AssetBundleRecord[]` as a class (Mono quirk); object itself is a normal `BinaryArray`.
 
-`AssetBundleRecord` (8 serialisierte Mitglieder; `latest`, `isBeginInstalled`,
-`isSimulation` sind Laufzeitfelder und nicht enthalten):
+`AssetBundleRecord` (8 serialized members; runtime fields `latest`, `isBeginInstalled`, `isSimulation` are not included):
 
-| Feld | Typ | Bedeutung |
+| Field | Type | Meaning |
 |---|---|---|
-| `projectName` | String | Projektordner (18 verschiedene, s. u.) |
-| `assetBundleName` | String | Name relativ zum Projektordner, kleingeschrieben, ggf. mit `/` |
-| `hash` | `RecordedHash` (Wertklasse, inline) | 4 × UInt32 `u0..u3`; nur für Projekt `Dpr` gesetzt (146 Einträge), sonst 0 |
-| `lastWriteTime` | DateTime (Primitiv 13) | roher 64-Bit-Wert: Bits 0–61 Ticks, Bits 62–63 Kind (hier immer 1 = UTC); Spanne 2021-08-01 bis 2022-03-01 |
-| `isStreamingSceneAssetBundle` | Boolean | Szenen-Bundle (16 Stück) |
-| `allDependencies` | String-Array oder Null | alle transitiven Abhängigkeiten als Bundle-Namen |
-| `assetPaths` | String-Array oder Null | Asset-Pfade im Bundle (kleingeschrieben, `assets/…`) |
-| `size` | Int64 | Dateigröße in Byte |
+| `projectName` | String | project directory (18 distinct, see below) |
+| `assetBundleName` | String | name relative to project directory, lowercase, may contain `/` |
+| `hash` | `RecordedHash` (inline value type) | 4 × UInt32 `u0..u3`; set only for project `Dpr` (146 entries), otherwise 0 |
+| `lastWriteTime` | DateTime (primitive 13) | raw 64-bit value: bits 0–61 ticks, bits 62–63 kind (always 1 = UTC); dates span 2021-08-01 to 2022-03-01 |
+| `isStreamingSceneAssetBundle` | Boolean | scene bundle (16) |
+| `allDependencies` | string array or null | all transitive dependencies by bundle name |
+| `assetPaths` | string array or null | asset paths in bundle (lowercase, `assets/…`) |
+| `size` | Int64 | file size in bytes |
 
-Kodierungsdetails, die ein Leser beherrschen muss:
+Encoding details a reader must handle:
 
-- Strings, die mehrfach vorkommen (z. B. Abhängigkeitsnamen), stehen nur einmal; weitere
-  Vorkommen sind `MemberReference` (Record 9) auf die Objekt-ID. Referenzen zeigen auch
-  vorwärts (das Eintrags-Array steht vor den Eintragsobjekten).
-- Objekt-IDs können negativ sein (die Klasse `RecordedHash` hat ID −13767).
-- Leere Arrays/Strings können als `ObjectNull` (Record 10) und Folgen davon als
-  `ObjectNullMultiple(256)` (Record 13/14) kodiert sein.
-- Ab dem zweiten Eintrag nutzen Klassenobjekte `ClassWithId` (Record 1) und verweisen auf die
-  zuerst beschriebene Klasse; das gilt auch für den inline eingebetteten `RecordedHash`.
+- Repeated strings (e.g. dependency names) occur only once; later occurrences are `MemberReference` (Record 9) to object ID. References may point forward (entry array precedes entry objects).
+- Object IDs may be negative (class `RecordedHash` has ID −13767).
+- Empty arrays/strings may be encoded as `ObjectNull` (Record 10), and runs as `ObjectNullMultiple(256)` (Record 13/14).
+- Starting with second entry, class objects use `ClassWithId` (Record 1) and reference first class description; same for inline embedded `RecordedHash`.
 
-### Hash-Darstellung
+### Hash Representation
 
-`u0..u3` sind die vier Little-Endian-Wörter eines Unity-`Hash128`. Die Textform (32 Hex-Zeichen)
-entsteht, indem jedes Wort byte-vertauscht als 8 Hex-Ziffern ausgegeben wird (entspricht
-`Hash128.ToString()`). Geprüft: Für alle 146 Einträge mit Hash stimmt der Wert mit
-`AssetBundleManifest.GetAssetBundleHash` aus dem Bundle `Dpr/Dpr` überein (146/146).
+`u0..u3` are four little-endian words of Unity `Hash128`. Text form (32 hex characters) is generated by byte-swapping each word and outputting 8 hex digits (equivalent to `Hash128.ToString()`). Checked: for all 146 entries with hash, value matches `AssetBundleManifest.GetAssetBundleHash` from bundle `Dpr/Dpr` (146/146).
 
-## Zuordnung zu Dateien auf der Platte
+## Mapping to Files on Disk
 
-- Pfad = `AssetAssistant/<projectName>/<assetBundleName>`. Auf der Platte stimmen Groß-/
-  Kleinschreibung der Projektordner mit dem Katalog überein (`Pokemon Database`, `UIs`, …).
-- Bundle-Namen sind **global eindeutig** (13.660 verschiedene Namen); Abhängigkeiten
-  referenzieren daher nur den Namen ohne Projekt. Alle Abhängigkeiten sind im Katalog auflösbar
-  (0 fehlende). Maximal 23 Abhängigkeiten pro Bundle, 6.721 Bundles haben keine.
-- 13.651 von 13.660 Katalogdateien existieren mit **exakt** der im Katalog genannten Größe.
-  Die 9 fehlenden sind Debug-/Viewer-Szenenbundles (z. B. `Dpr/debug/…`, `Dpr/assetviewer/viewer`,
-  `Dpr/scenes/messageviewer`, `Battle/debug/…`, `GMS/debug/…`); sie werden vom Spiel nicht benötigt.
-- Auf der Platte liegen 14.052 UnityFS-Dateien, davon 401 **nicht** im Katalog:
-  18 Manifest-Bundles je Projekt (`<Projekt>/<Projekt>`, Unity-`AssetBundleManifest`),
-  296 Pokémon-Animationsbundles (`Pokemon Database/pokemons/battle/animations/pm…`),
-  81 Sprach-Textur-Bundles (`GMS/textures/graphictext/*`) und 6 einzelne weitere
-  (`Dpr/tmpshader`, `Effects/bg/arenas/sky/s037`, vier unter `GMS/`). Der Loader kann sie über
-  den Verzeichnis-Scan finden; ein Katalogeintrag fehlt dafür.
-- Verteilung der Einträge je Projekt: Pokemon Database 5451, Effects 2985, UIs 1994,
-  Battle 1411, Environments 643, Contest 578, Characters 413, Dpr 146, FureaiHiroba 13,
-  Message 11, UnderGround 3, Union 3, DigFossil 2, GMS 2, StatuePlacementEdit 2, Pml 1,
-  UgFather 1, LightStone 1. Summe der Größen: 4.101.784.513 Byte.
-- Sprachvarianten (`…lang.en`, `.fr`, `.ge`, `.it`, `.jp`, `.ko`, `.si`, `.sp`, `.tr`) sind
-  ganz normale Katalogeinträge mit vollem Namen inkl. Endung; `_assetBundleNamesWithVariant`
-  listet sie nur zusätzlich (99 Namen, alle im Katalog).
+- Path = `AssetAssistant/<projectName>/<assetBundleName>`. Project-directory capitalization on disk matches catalog (`Pokemon Database`, `UIs`, …).
+- Bundle names are **globally unique** (13,660 distinct); dependencies therefore refer only to name, without project. Every dependency resolves in catalog (0 missing). Maximum 23 dependencies per bundle; 6,721 bundles have none.
+- 13,651 of 13,660 catalog files exist with **exactly** the catalog size. The 9 missing are debug/viewer scene bundles (e.g. `Dpr/debug/…`, `Dpr/assetviewer/viewer`, `Dpr/scenes/messageviewer`, `Battle/debug/…`, `GMS/debug/…`); game does not need them.
+- Disk contains 14,052 UnityFS files, 401 **not in catalog**: 18 manifest bundles per project (`<Project>/<Project>`, Unity `AssetBundleManifest`), 296 Pokémon animation bundles (`Pokemon Database/pokemons/battle/animations/pm…`), 81 language texture bundles (`GMS/textures/graphictext/*`), and 6 other individual files (`Dpr/tmpshader`, `Effects/bg/arenas/sky/s037`, four under `GMS/`). Loader can find them by directory scan; no catalog entry exists.
+- Entries by project: Pokemon Database 5451, Effects 2985, UIs 1994, Battle 1411, Environments 643, Contest 578, Characters 413, Dpr 146, FureaiHiroba 13, Message 11, UnderGround 3, Union 3, DigFossil 2, GMS 2, StatuePlacementEdit 2, Pml 1, UgFather 1, LightStone 1. Total sizes: 4,101,784,513 bytes.
+- Language variants (`…lang.en`, `.fr`, `.ge`, `.it`, `.jp`, `.ko`, `.si`, `.sp`, `.tr`) are ordinary catalog entries with full names including suffix; `_assetBundleNamesWithVariant` additionally lists them (99 names, all in catalog).
 
-## Asset-Schlüssel
+## Asset Keys
 
-Insgesamt enthält der Katalog 44.431 Asset-Pfade, alle eindeutig und kleingeschrieben, alle mit
-Präfix `assets/`. Der logische Schlüssel entsteht durch Entfernen von `assets/` und der Endung,
-z. B. `assets/scriptableobjects/gamesettings.asset` → `scriptableobjects/gamesettings`
-→ Bundle `Dpr/scriptableobjects/gamesettings`. Es gibt 44.393 verschiedene logische Schlüssel;
-bei 38 gehören mehrere Assets mit unterschiedlicher Endung zum selben Namen (z. B. `.asset`
-neben `.xlsx`, `.shader` neben `.cginc`). Diese Namen löst der Loader nicht auf; man fragt mit
-Endung an (`TryResolveAsset("md/a/foo.xlsx")`). Die `.xlsx`-/`.cginc`-Einträge sind
-Editor-Quelldateien, die im Bundle selbst nicht als Asset vorhanden sind (Beispiel
-`Dpr/masterdatas`: Katalog 1119 Pfade, im Bundle 1118 Assets).
+Catalog contains 44,431 asset paths, all unique and lowercase, all prefixed `assets/`. Logical key is made by removing `assets/` and extension, e.g. `assets/scriptableobjects/gamesettings.asset` → `scriptableobjects/gamesettings` → bundle `Dpr/scriptableobjects/gamesettings`. There are 44,393 distinct logical keys; 38 names have multiple assets with different extensions (e.g. `.asset` alongside `.xlsx`, `.shader` alongside `.cginc`). Loader does not resolve these names alone; query with extension (`TryResolveAsset("md/a/foo.xlsx")`). `.xlsx`/`.cginc` entries are editor source files not present as assets in bundle (e.g. `Dpr/masterdatas`: 1,119 catalog paths, 1,118 assets in bundle).
 
-## Implementierung (`Xnu.Boot`)
+## Implementation (`Xnu.Boot`)
 
-| Klasse | Aufgabe |
+| Class | Purpose |
 |---|---|
-| `NrbfReader` | allgemeiner Leser für den benötigten NRBF-Ausschnitt (Klassen mit Typinfo, Strings, Arrays, Referenzen, Null-Läufe), mit Grenzprüfungen; Fehler → `FormatException` |
-| `BundleCatalog` | `FromFile`/`FromBytes` (Dpr.bin, nur Version 6), `FromDirectory` (Ersatz-Scan: UnityFS-Magic, Projekt = erstes Pfadsegment), Bundle-Suche (`Projekt/Name` oder nur Name, case-insensitiv), `GetDependencyClosure`, `TryResolveAsset` |
-| `AssetKey` | Normalisierung (Kleinschreibung, `/`, ohne `assets/` und Endung) |
-| `BundleProvider` | `Acquire`/`Release` mit Referenzzähler, Abhängigkeiten werden mitgezählt, Rollback bei Ladefehlern, `LoadAsset<T>(Schlüssel)`, `UnloadAll`; optional `DependencyFilter` (Abhängigkeiten überspringen, z. B. das Shader-Bundle, siehe `docs/feld-szene-1.md`) |
-| `IBundleSource`/`UnityBundleSource` | `AssetBundle.LoadFromFile`; in Tests durch Attrappe ersetzbar |
-| `BootSequence`/`BootLoader` | Pfade prüfen, Katalog lesen (Rückfall auf Scan mit Warnung), Konsistenz prüfen, Provider anlegen; `BootLoader` ist ein MonoBehaviour, das beim Start die Schritte nur ins Log schreibt (keine UI, nichts wird abgespielt/gerendert) |
+| `NrbfReader` | general reader for needed NRBF subset (classes with type info, strings, arrays, references, null runs), with bounds checks; errors → `FormatException` |
+| `BundleCatalog` | `FromFile`/`FromBytes` (`Dpr.bin`, version 6 only), `FromDirectory` (fallback scan: UnityFS magic, project = first path segment), bundle lookup (`Project/Name` or name only, case-insensitive), `GetDependencyClosure`, `TryResolveAsset` |
+| `AssetKey` | normalization (lowercase, `/`, remove `assets/` and extension) |
+| `BundleProvider` | `Acquire`/`Release` with reference count, dependencies counted too, rollback on load failure, `LoadAsset<T>(key)`, `UnloadAll`; optional `DependencyFilter` (skip dependencies, e.g. shader bundle; see `docs/feld-szene-1.md`) |
+| `IBundleSource`/`UnityBundleSource` | `AssetBundle.LoadFromFile`; replaceable by fake in tests |
+| `BootSequence`/`BootLoader` | validate paths, read catalog (fallback to scan with warning), check consistency, create provider; `BootLoader` is a MonoBehaviour that only logs steps at startup (no UI, playback, or rendering) |
 
-Pfade kommen aus `Xnu.Core.GameDataPaths` (Umgebungsvariable `XNU_GAMEDATA`, Root enthält
-`romfs/Data/StreamingAssets`); der Katalog liegt unter `AssetAssistant/Dpr.bin`.
-`Acquire` erhöht den Zähler des Bundles und aller transitiven Abhängigkeiten; `Release` senkt
-sie symmetrisch, bei 0 wird mit `Unload(true)` entladen. Ein Bundle darf in Unity nicht zweimal
-per Datei geladen werden – der Zähler verhindert das.
+Paths come from `Xnu.Core.GameDataPaths` (environment variable `XNU_GAMEDATA`, root contains `romfs/Data/StreamingAssets`); catalog at `AssetAssistant/Dpr.bin`.
+`Acquire` increments count for bundle and all transitive dependencies; `Release` decrements symmetrically; count 0 unloads with `Unload(true)`. Unity must not load a bundle twice from file; counter prevents that.
 
-## Tests und Messwerte
+## Tests and Measurements
 
-EditMode-Tests (`Assets/Tests/EditMode/BootTests.cs`, Schreiber für synthetische Kataloge in
-`BootTestCatalogWriter.cs`, gleiches NRBF-Layout wie `Dpr.bin`, aber erfundene Namen): 16 neue
-Tests (Katalogparser inkl. Null-/Referenz-Kodierung, Fehlerfälle, Name-/Asset-Auflösung,
-Mehrdeutigkeit, Provider-Zähler/Rollback/Dispose, Verzeichnis-Scan, Boot-Ablauf). Lauf
-`Xnu.Tests.EditMode`: 46/46 grün.
+EditMode tests (`Assets/Tests/EditMode/BootTests.cs`, synthetic catalog writer in `BootTestCatalogWriter.cs`, same NRBF layout as `Dpr.bin` but invented names): 16 new tests (catalog parser including null/reference encoding, error cases, name/asset resolution, ambiguity, provider counters/rollback/dispose, directory scan, boot sequence). `Xnu.Tests.EditMode`: 46/46 passing.
 
-Integrationscheck gegen die echten Daten (`unity-eval`, `XNU_GAMEDATA=<Repo>/work`,
-Editor 6000.3.26f1, M1 Pro):
+Integration check against real data (`unity-eval`, `XNU_GAMEDATA=<Repo>/work`, Editor 6000.3.26f1, M1 Pro):
 
-| Messung | Wert |
+| Measurement | Value |
 |---|---|
-| Boot (Pfade + Katalog + Konsistenz) | 307 ms; Katalog lesen 189 ms |
-| Katalog | 13.660 Bundles, 44.431 Assets, 99 Varianten, Version 6 |
-| Konsistenz | 9 Bundle-Dateien fehlen, 0 fehlende Abhängigkeiten, 38 mehrdeutige Namen |
-| Verzeichnis-Scan | 14.052 UnityFS-Dateien in 954 ms |
-| `Dpr/masterdatas` | per Namen aufgelöst, geladen, 1118 Assets (Katalog 1119), 0 Abhängigkeiten |
-| `Pml/personal_masterdatas` | geladen, 16 Assets (Katalog 16) |
-| `scriptableobjects/gamesettings` | per Name → `Dpr/scriptableobjects/gamesettings`, 1 Asset (Katalog 1) |
-| Refcount/Unload | nach 3 Acquire 3 geladen, nach Release 0, `UnloadAll` 0 |
-| Hash-Vergleich Katalog ↔ `Dpr/Dpr`-Manifest | 146/146 gleich; Abhängigkeiten stimmen (Stichprobe) |
+| Boot (paths + catalog + consistency) | 307 ms; catalog read 189 ms |
+| Catalog | 13,660 bundles, 44,431 assets, 99 variants, version 6 |
+| Consistency | 9 bundle files missing, 0 missing dependencies, 38 ambiguous names |
+| Directory scan | 14,052 UnityFS files in 954 ms |
+| `Dpr/masterdatas` | resolved by name, loaded, 1,118 assets (catalog 1,119), 0 dependencies |
+| `Pml/personal_masterdatas` | loaded, 16 assets (catalog 16) |
+| `scriptableobjects/gamesettings` | by name → `Dpr/scriptableobjects/gamesettings`, 1 asset (catalog 1) |
+| Refcount/unload | after 3 Acquire: 3 loaded; after Release: 0; `UnloadAll`: 0 |
+| Catalog ↔ `Dpr/Dpr` manifest hash comparison | 146/146 equal; dependencies agree (sample) |
 
-Es wurde nur geladen und aufgelistet; keine Materialien/Shader gerendert, kein Audio.
+Only loading and listing were performed; no materials/shaders rendered and no audio played.
 
-## Offene Punkte
+## Open Items
 
-- Asynchrones Laden (`LoadFromFileAsync`) und Szenen-Bundles sind noch nicht im Provider.
-- Die 401 Dateien ohne Katalogeintrag (v. a. Pokémon-Animationen) braucht der Loader über den
-  Verzeichnis-Scan; wie das Spiel sie adressiert (Bundle-Namen aus `Pml`/Masterdaten?), ist
-  noch zu klären.
-- `docs/daten-inventar.md` nennt `Dpr.bin` noch als offen; dieses Dokument löst die Frage.
+- Asynchronous loading (`LoadFromFileAsync`) and scene bundles are not yet in provider.
+- Loader needs directory scan for 401 files without catalog entries (especially Pokémon animations); how game addresses them (bundle names from `Pml`/master data?) remains to be determined.
+- `docs/daten-inventar.md` still lists `Dpr.bin` as unresolved; this document resolves that question.

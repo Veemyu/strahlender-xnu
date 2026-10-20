@@ -1,83 +1,79 @@
-# Save-Spezifikation (Entwurf) – Brilliant Diamond, SaveData.bin
+# Save Specification (Draft) – Brilliant Diamond, SaveData.bin
 
-Quelle: eigene statische Analyse von `work/elf/main.patched.elf` (Ghidra-Projekt `work/ghidra/bdsp`) und
-`work/il2cpp/dump.cs` / `global-metadata.dat`. Adressen sind Ghidra-Adressen (RVA + 0x100000).
-Kennzeichnung: **[belegt]** = direkt im Pseudocode/Disassembly oder in den Metadaten zu sehen,
-**[vermutet]** = Schluss aus Struktur/Benennung, **[offen]** = nicht geklärt.
-Export der Pseudocodes: `work/decomp/` (PlayerWork.c, Dpr_NX_SaveSystem.c, …) und `work/decomp/save-spec/`.
+Source: independent static analysis of `work/elf/main.patched.elf` (Ghidra project `work/ghidra/bdsp`) and
+`work/il2cpp/dump.cs` / `global-metadata.dat`. Addresses are Ghidra addresses (RVA + 0x100000).
+Labels: **[verified]** = directly visible in pseudocode/disassembly or metadata,
+**[inferred]** = conclusion from structure/naming, **[open]** = unresolved.
+Pseudocode exports: `work/decomp/` (PlayerWork.c, Dpr_NX_SaveSystem.c, …) and `work/decomp/save-spec/`.
 
-## 1. Gesamtbild
+## 1. Overview
 
-- Der Spielstand ist **kein** Serialisierungsformat (kein MessagePack/JSON/BinaryFormatter), sondern das
-  **Marshal-Abbild** (`Marshal.SizeOf` / StructureToPtr) der verwalteten Struktur `PlayerWork.SaveData`. Die Datei
-  hat feste Offsets, keine Kompression, keine Verschlüsselung der Datei als Ganzes. [belegt: `PlayerWork$$ToBytes<PlayerWork.SaveData>` 0x1b8c2f0 ruft SizeOf, AllocHGlobal, StructureToPtr-artigen Aufruf, `Marshal.Copy`; Dateiinhalt wird unverändert geschrieben, siehe 2.]
-  Dass der zweite Aufruf exakt `StructureToPtr<T>(T, IntPtr, bool)` ist, ist aus der Signatur (Struct, Zeiger, `1`) geschlossen. [vermutet]
-- Pokémon-Slots sind zusätzlich einzeln mit dem bekannten LCG-XOR-Verfahren (Faktor `0x41C64E6D`, Inkrement `0x6073`,
-  16-Bit-Prüfsumme) kodiert. [belegt: `Pml.PokePara.Encoder$$Encode` 0x21524d0, `$$CalcChecksum` 0x2152460, `$$CalcNextRandCode` 0x2152500]
-- Version steht als `int` am Dateianfang; aktueller Wert `0x34` (`PlayerWork.SaveData.CURRENT_VERSION = 52`,
-  `LAUNCH_VERSION = 37 (0x25)`). [belegt: dump.cs; `PlayerWork$$Initialization` 0x2deb000 setzt 0x34; OnPreSave 0x2decd90 hebt kleinere Versionen auf 0x34 an]
+- The save is **not** a serialization format (no MessagePack/JSON/BinaryFormatter); it is the
+  **Marshal image** (`Marshal.SizeOf` / StructureToPtr) of the managed structure `PlayerWork.SaveData`. The file
+  has fixed offsets, no compression, and no encryption of the file as a whole. [verified: `PlayerWork$$ToBytes<PlayerWork.SaveData>` 0x1b8c2f0 calls SizeOf, AllocHGlobal, a StructureToPtr-like call, and `Marshal.Copy`; file contents are written unchanged, see section 2.]
+  The conclusion that the second call is exactly `StructureToPtr<T>(T, IntPtr, bool)` follows from its signature (struct, pointer, `1`). [inferred]
+- Pokémon slots are additionally encoded individually with the known LCG-XOR method (factor `0x41C64E6D`, increment `0x6073`, 16-bit checksum). [verified: `Pml.PokePara.Encoder$$Encode` 0x21524d0, `$$CalcChecksum` 0x2152460, `$$CalcNextRandCode` 0x2152500]
+- Version is an `int` at the start of the file; current value `0x34` (`PlayerWork.SaveData.CURRENT_VERSION = 52`,
+  `LAUNCH_VERSION = 37 (0x25)`). [verified: dump.cs; `PlayerWork$$Initialization` 0x2deb000 sets 0x34; OnPreSave 0x2decd90 raises lower versions to 0x34]
 
-## 2. Ablauf Speichern
+## 2. Save flow
 
-1. `PlayerWork$$SaveAsync(a,b)` 0x2ded680 → `PlayerWork$$DataSave(1,a,b)` 0x2ded1d0. [belegt]
-2. `DataSave` setzt `_isMainSave` (+0x828) und `_isBackupSave` (+0x829), ruft u. a. `FieldWalkingManager.UpdatePartnerPokeIndex`,
-   `PlayReportManager.SaveRecordDataEvent`, `SystemTimeWork.GetSaveTime/SetSaveTime`, `UgFieldManager.SAVE_POKE`, danach
-   `PlayerPrefsProvider<PlayerWork>$$Save(isAsync)` 0x2424f60. [belegt]
-3. `Save` ruft per vtable (Slot 11 = Offset 0x1e0) `OnPreSave`, dann Slot 7 (`CustomSaveOperation`, sync) bzw. Slot 9
-   (`CustomSaveAsyncOperation`, async). [belegt: Slot→Methode aus dump.cs `PlayerPrefsProvider<T>`; Offsets 0x170+0x10·(Slot−4)]
-4. `PlayerWork$$OnPreSave` 0x2decd90: serialisiert die Party (`Pml.PokeParty$$SerializeFull` 0x2157350, Ziel `_saveData.playerParty`),
-   sichert Spielerposition (`SetPlayerPosData`), setzt `version = max(version, 0x34)`. [belegt]
+1. `PlayerWork$$SaveAsync(a,b)` 0x2ded680 → `PlayerWork$$DataSave(1,a,b)` 0x2ded1d0. [verified]
+2. `DataSave` sets `_isMainSave` (+0x828) and `_isBackupSave` (+0x829), calls, among others, `FieldWalkingManager.UpdatePartnerPokeIndex`,
+   `PlayReportManager.SaveRecordDataEvent`, `SystemTimeWork.GetSaveTime/SetSaveTime`, `UgFieldManager.SAVE_POKE`, then
+   `PlayerPrefsProvider<PlayerWork>$$Save(isAsync)` 0x2424f60. [verified]
+3. `Save` calls `OnPreSave` through the vtable (slot 11 = offset 0x1e0), then slot 7 (`CustomSaveOperation`, sync) or slot 9
+   (`CustomSaveAsyncOperation`, async). [verified: slot-to-method mapping from dump.cs `PlayerPrefsProvider<T>`; offsets 0x170+0x10·(slot−4)]
+4. `PlayerWork$$OnPreSave` 0x2decd90: serializes the party (`Pml.PokeParty$$SerializeFull` 0x2157350, destination `_saveData.playerParty`),
+   saves player position (`SetPlayerPosData`), sets `version = max(version, 0x34)`. [verified]
 5. `CustomSaveOperation` 0x2debf00 / `CustomSaveAsyncOperation` 0x2dec400: `ToBytes<SaveData>(_saveData)` → `byte[] _writeSrcBuffer`
-   (+0x820), dann `PlayerWork$$makeSaveDataHash` 0x2debff0. [belegt]
-6. **Prüfsumme** `makeSaveDataHash`: Bytes 0xE9818..0xE9827 auf 0 setzen, `MD5CryptoServiceProvider.ComputeHash(buf, 0, Marshal.SizeOf(SaveData))`
-   (= ganze Datei, 0xEF0A4 Byte), Ergebnis (16 Byte) nach 0xE9818 kopieren. [belegt]
-   Der Typ-Handle (`PTR_DAT_04cbfcf8`) ist derselbe wie in `Dpr.NX.SaveSystem$$_cctor`; dass es `PlayerWork.SaveData` ist, folgt aus der Größe 0xEF0A4. [vermutet]
-7. `Dpr.NX.SaveSystem$$Save(data, writeMain, writeBackup)` 0x1edf3e0 (async: `SaveAsync` 0x1edf680 → Thread `StartThread` 0x1edf830 →
-   `ThreadLoop` 0x1edfe50): mountet `SaveData` (`MountSaveData` 0x1edf5a0), dann für Hauptdatei und danach Backup jeweils
-   `nn::fs::DeleteFile`, `CreateFile(size = data.Length)`, `OpenFile(Mode 2)`, `WriteFile(0, data, data.Length)`, `CloseFile`; zum Schluss
-   `FileSystem.Commit`. Die Daten gehen 1:1 auf die Platte (keine Transformation). [belegt]
-   Pfade: `SaveData:/SaveData.bin` und `SaveData:/Backup.bin` (dump.cs-Konstanten `SAVEDATA_PATH`, `BACKUP_PATH`). Zuordnung Hauptdatei = erster
-   Schreibvorgang/`SaveDataExists`, Backup = zweiter/`BackupExists`. [vermutet, aus Funktionsnamen]
+   (+0x820), then `PlayerWork$$makeSaveDataHash` 0x2debff0. [verified]
+6. **Checksum** `makeSaveDataHash`: zero bytes 0xE9818..0xE9827, call `MD5CryptoServiceProvider.ComputeHash(buf, 0, Marshal.SizeOf(SaveData))`
+   (= entire file, 0xEF0A4 bytes), copy result (16 bytes) to 0xE9818. [verified]
+   The type handle (`PTR_DAT_04cbfcf8`) is the same as in `Dpr.NX.SaveSystem$$_cctor`; that it is `PlayerWork.SaveData` follows from its size 0xEF0A4. [inferred]
+7. `Dpr.NX.SaveSystem$$Save(data, writeMain, writeBackup)` 0x1edf3e0 (async: `SaveAsync` 0x1edf680 → thread `StartThread` 0x1edf830 →
+   `ThreadLoop` 0x1edfe50): mounts `SaveData` (`MountSaveData` 0x1edf5a0), then for the main file and afterward the backup, calls
+   `nn::fs::DeleteFile`, `CreateFile(size = data.Length)`, `OpenFile(Mode 2)`, `WriteFile(0, data, data.Length)`, `CloseFile`; finally
+   `FileSystem.Commit`. Data is written to disk 1:1 (no transformation). [verified]
+   Paths: `SaveData:/SaveData.bin` and `SaveData:/Backup.bin` (dump.cs constants `SAVEDATA_PATH`, `BACKUP_PATH`). Mapping main file = first
+   write/`SaveDataExists`, backup = second/`BackupExists`. [inferred from function names]
 
-## 3. Ablauf Laden
+## 3. Load flow
 
-1. `PlayerWork$$LoadAsync(fromBackup)` 0x2ded780 setzt `_isBackupSave` (+0x829) und ruft `PlayerPrefsProvider<PlayerWork>$$Load(false, true)` 0x2424ae0. [belegt]
-2. Slot 8 `CustomLoadAsyncOperation` 0x2dec1e0 → `SaveSystem$$LoadAsync` 0x1edfba0 (Thread). `LoadCore` 0x1edf9b0: Puffer (`SAVELOAD_BUFFER_SIZE`
-   = `Marshal.SizeOf` zur Klassenkonstruktion, `_cctor` 0x1ee01d0) mit 0 füllen, `nn::fs` Datei öffnen, `GetSize`, `ReadFile` mit `min(Dateigröße, Puffergröße)`
-   (kürzere ältere Saves bleiben hinten 0-aufgefüllt). [belegt; min() aus dem Pseudocode gelesen]
-3. Callback `PlayerWork$$OnPostLoadAsync` 0x2dec2a0 (sync-Variante: `CustomLoadOperation` 0x2deb850):
-   - Datei fehlt → `LoadResult.NOT_EXIST (1)` (Prüfung `SaveDataExists`), Lesefehler bei vorhandener Datei → `FAILED (3)`,
-   - `VerifySaveData` schlägt fehl → `CORRUPTED (2)`,
-   - sonst `LoadBytes<PlayerWork.SaveData>` 0x1b8bf60 (`Marshal.PtrToStructure`-artig, siehe `ToBytes`) → `_saveData`, `SUCCESS (0)`. [belegt; Enum aus dump.cs]
-   - Nur sync-Pfad: bei `version < 0x29` wird vor dem Einlesen `Array.Clear(buf, 0x9D03C, 0x31304)` ausgeführt (GMS-Bereich; dump.cs: `GMS_WORK_ADDR = 643132 = 0x9D03C`,
-     `GMS_WORK_SIZE = 201476 = 0x31304`). [belegt]
-4. **Prüfung** `PlayerWork$$VerifySaveData` 0x2deba00: `version` = LE-`int` an `buf[0]`; `version < 0x25` → gilt als gültig (keine Prüfung).
-   Sonst: `N = BINARY_SIZE[version − 0x25]`; Puffer < 0xE9828 → ungültig; 16 Byte ab 0xE9818 merken, auf 0 setzen,
-   `MD5.ComputeHash(buf, 0, N)`, Byte für Byte vergleichen, Hash zurückschreiben. [belegt]
-   Version > 0x34 würde den Tabellenindex sprengen (IndexOutOfRange). [vermutet]
-5. `PlayerWork$$OnPostLoad` 0x2dec500: `version < 0x20` → `Initialization` (vtable-Slot 5); `version < 0x34` → `TakeOverOldVersion` 0x2dec6e0
-   (versionsabhängige Nachziehungen, z. B. `ZukanWork.CheckLangFlags`, `GMSWork.ResetGMSData`, `TvWork.Initialize`, `BallDecoWork.ResetBallDecoExtraData`); danach `OnPostLoad_NeedMD` 0x2dec8e0. [belegt]
+1. `PlayerWork$$LoadAsync(fromBackup)` 0x2ded780 sets `_isBackupSave` (+0x829) and calls `PlayerPrefsProvider<PlayerWork>$$Load(false, true)` 0x2424ae0. [verified]
+2. Slot 8 `CustomLoadAsyncOperation` 0x2dec1e0 → `SaveSystem$$LoadAsync` 0x1edfba0 (thread). `LoadCore` 0x1edf9b0: zero-fills buffer (`SAVELOAD_BUFFER_SIZE`
+   = `Marshal.SizeOf` at class construction, `_cctor` 0x1ee01d0), opens file through `nn::fs`, calls `GetSize`, then `ReadFile` with `min(file size, buffer size)`
+   (shorter older saves remain zero-padded at the end). [verified; min() inferred from pseudocode]
+3. Callback `PlayerWork$$OnPostLoadAsync` 0x2dec2a0 (sync variant: `CustomLoadOperation` 0x2deb850):
+   - file missing → `LoadResult.NOT_EXIST (1)` (checks `SaveDataExists`), read error for existing file → `FAILED (3)`,
+   - `VerifySaveData` fails → `CORRUPTED (2)`,
+   - otherwise `LoadBytes<PlayerWork.SaveData>` 0x1b8bf60 (PtrToStructure-like, see `ToBytes`) → `_saveData`, `SUCCESS (0)`. [verified; enum from dump.cs]
+   - Sync path only: if `version < 0x29`, runs `Array.Clear(buf, 0x9D03C, 0x31304)` before loading (GMS region; dump.cs: `GMS_WORK_ADDR = 643132 = 0x9D03C`,
+     `GMS_WORK_SIZE = 201476 = 0x31304`). [verified]
+4. **Validation** `PlayerWork$$VerifySaveData` 0x2deba00: `version` = LE `int` at `buf[0]`; `version < 0x25` → considered valid (no checks).
+   Otherwise: `N = BINARY_SIZE[version − 0x25]`. Buffer < 0xE9828 → invalid; save 16 bytes at 0xE9818, zero them,
+   `MD5.ComputeHash(buf, 0, N)`, compare byte-by-byte, restore hash. [verified]
+   Version > 0x34 would exceed the table index (IndexOutOfRange). [inferred]
+5. `PlayerWork$$OnPostLoad` 0x2dec500: `version < 0x20` → `Initialization` (vtable slot 5); `version < 0x34` → `TakeOverOldVersion` 0x2dec6e0
+   (version-specific migration, e.g. `ZukanWork.CheckLangFlags`, `GMSWork.ResetGMSData`, `TvWork.Initialize`, `BallDecoWork.ResetBallDecoExtraData`); then `OnPostLoad_NeedMD` 0x2dec8e0. [verified]
 
-### BINARY_SIZE (hasher-relevante Länge je Version, 0x25 … 0x34)
-Statisches `int[16]` aus `PlayerWork.SaveData..cctor` 0x1c29610 (RuntimeHelpers.InitializeArray); Inhalt aus der Metadaten-Datenzeile (fieldDefaultValues):
+### BINARY_SIZE (length used by the hasher for each version, 0x25 … 0x34)
+Static `int[16]` from `PlayerWork.SaveData..cctor` 0x1c29610 (`RuntimeHelpers.InitializeArray`); contents from the metadata data row (`fieldDefaultValues`):
 
 | Version | 0x25 | 0x26 | 0x27 | 0x28 | 0x29 | 0x2A | 0x2B–0x31 | 0x32 | 0x33 | 0x34 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Größe | 0xE9828 | 0xE9BE8 | 0xED158 | 0xED188 | 0xED188 | 0xED680 | 0xEDC20 | 0xEED8C | 0xEED8C | **0xEF0A4** |
+| Size | 0xE9828 | 0xE9BE8 | 0xED158 | 0xED188 | 0xED188 | 0xED680 | 0xEDC20 | 0xEED8C | 0xEED8C | **0xEF0A4** |
 
-Die Werte entsprechen genau den Startoffsets neu hinzugekommener Blöcke (recodeAddData, mysteryGift, poketore, playReport/mt, dendouSaveAdd/tv, ballDecoExtra). [belegt; Zuordnung Version→Block vermutet]
+The values exactly match the starting offsets of newly added blocks (recodeAddData, mysteryGift, poketore, playReport/mt, dendouSaveAdd/tv, ballDecoExtra). [verified; version-to-block mapping inferred]
 
-## 4. Layout (Version 0x34, Gesamtgröße 0xEF0A4 = 979 108 Byte)
+## 4. Layout (version 0x34, total size 0xEF0A4 = 979,108 bytes)
 
-Herleitung: Die vom IL2CPP-Compiler erzeugte Marshal-Routine (verwaltet → nativ) liegt bei **0x2abf40–0x2acb64** (Gegenrichtung ab 0x2acb90). Ghidra hat sie nicht als Funktion
-angelegt, sie wurde über `scripts/ghidra/ScanScalars.java` (Konstante 0x9818) gefunden und per `scripts/ghidra/DecompAt.java` im Speicher dekompiliert
-(`work/decomp/save-spec/marshal_savedata.c`). Native Offsets je Top-Level-Feld mit `scripts/save_toplevel.py` abgeleitet; Gegenproben:
-Hash-Offset 0xE9818 und GMS-Offset 0x9D03C stimmen mit den dump.cs-Konstanten überein, die Summe der Feldgrößen ergibt exakt 979 108 (0xEF0A4), Rivalenname bei 0x55F4 entspricht UTF-16 „Lutz“ im lokalen Save. [belegt]
+Derivation: the Marshal routine generated by the IL2CPP compiler (managed → native) is at **0x2abf40–0x2acb64** (reverse direction starts at 0x2acb90). Ghidra did not identify it as a function; it was found via `scripts/ghidra/ScanScalars.java` (constant 0x9818) and decompiled in memory with `scripts/ghidra/DecompAt.java` (`work/decomp/save-spec/marshal_savedata.c`). Native offsets for each top-level field were derived with `scripts/save_toplevel.py`. Cross-checks: hash offset 0xE9818 and GMS offset 0x9D03C match dump.cs constants, total field sizes add up to exactly 979,108 (0xEF0A4), and rival name at 0x55F4 matches UTF-16 “Lutz” in the local save. [verified]
 
-Gelten für die Marshal-Abbildung: `bool[]` = 4 Byte je Element (Marshal-BOOL), `string` = festes UTF-16-Feld (rivalName 0x40 Byte), verschachtelte Strukturen inline.
-Die Spalte „Größe“ ist Differenz zum nächsten Feld und enthält ggf. Padding. Die „mgd“-Offsets aus dump.cs sind **verwaltete** Offsets (nicht Dateioffsets).
+For this Marshal layout: each `bool[]` element is 4 bytes (Marshal BOOL), `string` is a fixed UTF-16 field (`rivalName` 0x40 bytes), and nested structures are inline.
+The “Size” column is the difference to the next field and may include padding. “mgd” offsets from dump.cs are **managed** offsets (not file offsets).
 
-| Datei-Offset | Größe | mgd | Feld | Typ | Marshal-Routine |
+| File offset | Size | mgd | Field | Type | Marshal routine |
 |---|---|---|---|---|---|
 | 0x00000 | 4 | 0x000 | version | int | |
 | 0x00004 | 2000 | 0x008 | intValues | int[500] | |
@@ -134,35 +130,35 @@ Die Spalte „Größe“ ist Differenz zum nächsten Feld und enthält ggf. Padd
 | 0xEDC20 | 4460 | 0x718 | tvData | TV_DATA | 0x2a3ca0 |
 | 0xEED8C | 792 | 0x7A8 | ballDecoExtraData | SaveBallDecoExtraData | 0x2ab830 |
 
-Array-Längen `intValues`, `boolValues`, `systemFlags`, `saveItem`, `saveUgItem`, `saveItemShortcut`, `boxTray`, `tr_battleData` stammen zusätzlich aus
-`PlayerWork$$Initialization` 0x2deb000 (500, 4000, 1000, 3000, 999, 4, 40, 0x2c3=707). [belegt]
-Das verwaltete `PlayerWork.SaveData` ist 0x7B8 Byte groß (letztes Feld 0x7A8 + 16); `PlayerWork` selbst legt `_saveData` bei +0x18 ab, `_writeSrcBuffer` bei +0x820. Das ist nur der Wrapper mit Referenzen auf Arrays/Strukturen, nicht das Dateiabbild. [belegt: dump.cs, memcpy(…,0x7b8) in ToBytes/LoadBytes]
+Array lengths for `intValues`, `boolValues`, `systemFlags`, `saveItem`, `saveUgItem`, `saveItemShortcut`, `boxTray`, `tr_battleData` also come from
+`PlayerWork$$Initialization` 0x2deb000 (500, 4000, 1000, 3000, 999, 4, 40, 0x2c3=707). [verified]
+Managed `PlayerWork.SaveData` is 0x7B8 bytes (last field 0x7A8 + 16); `PlayerWork` itself stores `_saveData` at +0x18 and `_writeSrcBuffer` at +0x820. This is only the wrapper with references to arrays/structures, not the file image. [verified: dump.cs, memcpy(…,0x7b8) in ToBytes/LoadBytes]
 
-### Pokémon-Slots
-- Ein Slot in Box/Party ist ein `byte[]` (`SerializedPokemonFull.buffer`); die Boxplatzgröße ergibt sich aus 10320 B je Tray / 30 Slots = **344 Byte** je Slot. [vermutet aus Tray-Größe; Slotzahl 30 nicht separat belegt]
-- Kodierung: Gen-4/5-artig – 16-Bit-Wörter mit LCG-Keystream XOR (`Encoder$$Encode/Decode` 0x21524d0/0x2152520), Summe 16-Bit-Wörter als Prüfsumme (`CalcChecksum` 0x2152460).
-  Die Keys/Seeds und welche Bereiche kodiert sind, steht in `Pml.PokePara.Accessor` (`UpdateChecksumAndEncode` 0x25a3f20, `DecodeAndCheckIllegalWrite` 0x25a42f0; Export `work/decomp/save-spec/Pml_PokePara_Accessor.c`). [offen: vollständige Beschreibung]
+### Pokémon slots
+- A box/party slot is a `byte[]` (`SerializedPokemonFull.buffer`); box slot size is 10320 B per tray / 30 slots = **344 bytes** per slot. [inferred from tray size; 30 slots not independently verified]
+- Encoding: Gen 4/5-like—16-bit words XORed with an LCG keystream (`Encoder$$Encode/Decode` 0x21524d0/0x2152520), with the sum of 16-bit words as checksum (`CalcChecksum` 0x2152460).
+  Keys/seeds and encoded regions are in `Pml.PokePara.Accessor` (`UpdateChecksumAndEncode` 0x25a3f20, `DecodeAndCheckIllegalWrite` 0x25a42f0; export `work/decomp/save-spec/Pml_PokePara_Accessor.c`). [open: complete description]
 
-## 5. Prüfung am lokalen Save
-`Ryujinx/bis/user/save/0000000000000006/0/SaveData.bin`: Größe 979 108, Version 52, MD5 über die Datei mit genulltem Feld bei 0xE9818 stimmt mit dem gespeicherten Hash überein. [belegt, selbst nachgerechnet]
+## 5. Check against the local save
+`Ryujinx/bis/user/save/0000000000000006/0/SaveData.bin`: size 979,108, version 52, MD5 over the file with the field at 0xE9818 zeroed matches the stored hash. [verified, independently recomputed]
 
-## 6. Offene Fragen
-- Interne Feldlayouts der Unterstrukturen (z. B. `PLAYER_DATA`, `ZUKAN_WORK`, `SaveBoxData`): Die jeweiligen Marshal-Routinen (Spalte „Marshal-Routine“) enthalten die Offsets; automatische Auswertung steht aus. Die verwalteten dump.cs-Offsets reichen dafür nicht, weil Arrays inline (feste Länge) und `bool` als 4 Byte abgelegt werden. [offen]
-- Exakte Padding-/Alignment-Lücken innerhalb der in der Tabelle als Differenz berechneten Größen (z. B. `gmsdata` 201 508 vs. `GMS_WORK_SIZE` 201 476). [offen]
-- Pokémon-Kodierung im Detail (Seed-Quelle, kodierte Bereiche, Slotgröße 344 Byte direkt belegen). [offen]
-- Bestätigung, dass der zweite ToBytes/LoadBytes-Aufruf `StructureToPtr`/`PtrToStructure` ist, und der Typ-Handle `PTR_DAT_04cbfcf8` = `PlayerWork.SaveData`. [vermutet]
-- Zuordnung Pfadkonstante ↔ Hauptdatei/Backup in `SaveSystem` (Literal-Zeiger `PTR_DAT_04cbfc68/70`). [vermutet]
-- Zweck der `rp*.dat` im anderen Save-Ordner (`docs/save-format.md`) weiterhin unklar.
+## 6. Open questions
+- Internal layouts of nested structures (e.g. `PLAYER_DATA`, `ZUKAN_WORK`, `SaveBoxData`): their Marshal routines (the “Marshal routine” column) contain the offsets; automated analysis remains to be done. Managed dump.cs offsets are insufficient because arrays are stored inline (fixed length) and `bool` uses 4 bytes. [open]
+- Exact padding/alignment gaps within sizes calculated as differences in the table (e.g. `gmsdata` 201,508 vs. `GMS_WORK_SIZE` 201,476). [open]
+- Pokémon encoding details (seed source, encoded regions, direct verification of 344-byte slot size). [open]
+- Confirm that the second ToBytes/LoadBytes call is `StructureToPtr`/`PtrToStructure`, and that type handle `PTR_DAT_04cbfcf8` = `PlayerWork.SaveData`. [inferred]
+- Mapping path constant ↔ main file/backup in `SaveSystem` (literal pointers `PTR_DAT_04cbfc68/70`). [inferred]
+- Purpose of `rp*.dat` in the other save directory (`docs/save-format.md`) remains unknown.
 
-## 7. Eigene Werkzeuge (Hilfsmittel für die Analyse)
-- `scripts/ghidra/ExportDecompiled.java` (Regex → .c je Klasse), `ScanScalars.java` (Skalar-Operanden suchen), `DumpRange.java` (Listing eines Bereichs),
-  `DecompAt.java` (Funktion im Speicher anlegen und dekompilieren; mit `-readOnly` ändert es das Projekt nicht).
-- `scripts/save_layout.py` (dump.cs ↔ Metadaten-Felder, 105 088 Felder stimmen überein), `scripts/save_toplevel.py` (native Top-Level-Offsets aus der dekompilierten Marshal-Routine).
+## 7. Custom analysis tools
+- `scripts/ghidra/ExportDecompiled.java` (regex → .c per class), `ScanScalars.java` (search scalar operands), `DumpRange.java` (listing for a range),
+  `DecompAt.java` (create a function in memory and decompile it; with `-readOnly`, does not modify the project).
+- `scripts/save_layout.py` (dump.cs ↔ metadata fields, 105,088 fields match), `scripts/save_toplevel.py` (native top-level offsets from the decompiled Marshal routine).
 
-## 8. Nachtrag: Pokémon-Slots
-Slotlayout (344 Byte), Kodierung (LCG-XOR, 16-Bit-Prüfsumme, Blockmischung), alle Felder und die Berechnung der Statuswerte stehen in `docs/pokepara-spezifikation.md`
-(C#: `unity/Assets/Scripts/PokePara`); damit sind die in Abschnitt 4 („Pokémon-Slots“) und 6 als offen markierten Punkte zur Pokémon-Kodierung geklärt. Am lokalen Save stimmen alle 1206 Slot-Prüfsummen.
+## 8. Addendum: Pokémon slots
+Slot layout (344 bytes), encoding (LCG-XOR, 16-bit checksum, block shuffle), all fields, and stat calculations are documented in `docs/pokepara-spezifikation.md`
+(C#: `unity/Assets/Scripts/PokePara`); this resolves the Pokémon-encoding items marked open in sections 4 (“Pokémon slots”) and 6. All 1206 slot checksums match in the local save.
 
-## 9. Nachtrag: Spieler-Basisdaten, Items, Schreibpfad
-Native Offsets in `PLAYER_DATA` (Name 0x79BB4, Trainer-ID 0x79BD0, Geld 0x79BD4, Spielzeit 0x79C04), das 16-Byte-Layout von `SaveItem` und der Schreibpfad (`SaveData`, atomares Schreiben, Ordnerkonventionen)
-stehen mit Belegen in `docs/save-kompatibilitaet.md` (C#: `SavePlayerLayout`, `SaveData`).
+## 9. Addendum: player basics, items, write path
+Native offsets in `PLAYER_DATA` (name 0x79BB4, trainer ID 0x79BD0, money 0x79BD4, play time 0x79C04), the 16-byte `SaveItem` layout, and the write path (`SaveData`, atomic write, directory conventions)
+are documented with evidence in `docs/save-kompatibilitaet.md` (C#: `SavePlayerLayout`, `SaveData`).

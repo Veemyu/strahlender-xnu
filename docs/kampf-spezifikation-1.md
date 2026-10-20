@@ -1,360 +1,349 @@
-# Kampfmathematik, Scheibe 1: Spezifikation
+# Battle Mathematics, Slice 1: Specification
 
-Stand: Zwischenstand Scheibe 1 (nur reine Kampfmathematik, ohne Rendering, ohne Sound).
-Diese Datei ist die Spezifikation in eigenen Worten. Die C#-Umsetzung (`unity/Assets/Scripts/Battle`, Assembly
-`Xnu.Battle`) ist ausschließlich aus diesem Text entstanden, nicht aus dem Pseudocode abgeschrieben.
+Status: Slice 1 interim results (pure battle mathematics only; no rendering or audio).
+This document is a specification written in my own words. The C# implementation (`unity/Assets/Scripts/Battle`, assembly
+`Xnu.Battle`) was derived exclusively from this text, not copied from the pseudocode.
 
-## 0. Vorgehen und Belegkonvention
+## 0. Method and evidence conventions
 
-- **Quelle:** dekompilierte Funktionen des Spiel-Binaries (`work/elf/main.patched.elf`, Ghidra-Projekt `work/ghidra/bdsp`,
-  Export nach `work/decomp/battle1*`), Typen und Feldoffsets aus `work/il2cpp/dump.cs`.
-- **Beleg:** `[Klasse.Methode @0xADRESSE]`; die Adresse ist die Ghidra-Adresse (Il2CppDumper-RVA + 0x100000).
-  Reihenfolge-Aussagen beziehen sich auf die Aufrufreihenfolge in der genannten Funktion.
-- **Prüfstufe je Aussage:**
-  - **[O]** durch das Emulations-Orakel bestätigt: die echte ARM64-Funktion lief in Unicorn, Eingaben und Ergebnisse stehen
-    als Zahlen in `unity/Assets/Tests/EditMode/Fixtures/*.json` und werden im Unity-Test gegen die C#-Umsetzung geprüft
-    (Abschnitt 9).
-  - **[OK]** Orakel mit ersetzten Zustandsfunktionen (Verbund-Orakel): die echte Rumpffunktion lief, aber Spielzustand und
-    Handler (Fähigkeiten, Items, Attacken) wurden durch Testeingaben ersetzt.
-  - **[P]** nur aus dem Pseudocode gelesen und mit handgerechneten Beispielen getestet.
-- Interne Namen der Originalklassen (japanische Kürzel wie `Seikaku` = Wesen, `Sakasa` = umgekehrt/Inverse Battle,
-  `Koraeru` = Durchhalten, `Migawari` = Delegator) werden nur in Belegen genutzt.
+- **Source:** decompiled functions from the game binary (`work/elf/main.patched.elf`, Ghidra project `work/ghidra/bdsp`,
+  exports under `work/decomp/battle1*`), and types/field offsets from `work/il2cpp/dump.cs`.
+- **Evidence:** `[Class.Method @0xADDRESS]`; the address is the Ghidra address (Il2CppDumper RVA + `0x100000`).
+  Statements about order refer to the call order in the cited function.
+- **Verification level for each statement:**
+  - **[O]** confirmed by the emulation oracle: the real ARM64 function ran in Unicorn; inputs and outputs are stored
+    numerically in `unity/Assets/Tests/EditMode/Fixtures/*.json` and checked against the C# implementation by Unity tests
+    (section 9).
+  - **[OK]** oracle with substituted state functions (composite oracle): the real function body ran, but game state and
+    handlers (abilities, items, moves) were replaced by test inputs.
+  - **[P]** read from pseudocode only and checked with hand-calculated examples.
+- Internal names of original classes (Japanese abbreviations such as `Seikaku` = nature, `Sakasa` = reversed/Inverse Battle,
+  `Koraeru` = Endure, `Migawari` = Substitute) are used only in evidence references.
 
-## 1. Zahlenkonventionen des Originals
+## 1. Numeric conventions in the original
 
-- Alle Kampfrechnungen laufen in **32-Bit-Ganzzahlen** (IL2CPP, ARM64). Wo eine Funktion `ushort`/`byte` zurückgibt oder
-  Parameter mit `& 0xffff` maskiert, steht das unten ausdrücklich. Überläufe wickeln modulo 2^32 um (keine Prüfung).
-- **Division rundet immer ab** (Ganzzahlteilung auf vorzeichenlosen Werten, wo es im Original `uint` ist).
-- **Festkomma „x/4096“** (Verhältnisse): 0x1000 = 1,0; 0x1800 = 1,5; 0x2000 = 2,0; 0x0800 = 0,5; 0x0C00 = 0,75; 0x1333 ≈ 1,2.
-  Die Funktion `MulRatio` multipliziert und teilt durch 4096 **mit Rundung „halb nach unten“**:
-  `p = (a*b) mod 2^32; r = p >> 12; wenn (p & 0xfff) > 0x800: r += 1` [O, `calc.MulRatio @0x2074b00`]. Genau 0x800 rundet also ab.
-  `MulRatio_OverZero @0x2074b20` ist dasselbe, liefert aber mindestens 1 [O].
-  `MulRatioInt @0x2074bb0`: `p = (a*b) mod 2^32; r = p / 100; wenn p % 100 > 49: r += 1` (Prozent, „halb nach oben“) [O].
-- **Ereignis-Variablen** (Handler-Verhältnisse, Abschnitt 5) werden anders gerundet: `EVENTVAR_MulValue` rechnet mit 64 Bit
-  `v = (v * f + 0x800) >> 12` (**halb nach oben**) und klemmt das Ergebnis auf `[min, max]`, falls einer der beiden Grenzwerte
-  ungleich 0 ist [P+OK, `EventSystem.EVENTVAR_MulValue @0x19f5fc0`; die Treffer-Fixtures nutzen diese Regel].
-- **Typ-IDs** (`PokeType`): 0 Normal, 1 Kampf, 2 Flug, 3 Gift, 4 Boden, 5 Gestein, 6 Käfer, 7 Geist, 8 Stahl, 9 Feuer,
-  10 Wasser, 11 Pflanze, 12 Elektro, 13 Psycho, 14 Eis, 15 Drache, 16 Unlicht, 17 Fee, 18 = „kein Typ“ (`NULL`) [dump.cs `PokeType`].
+- All battle calculations use **32-bit integers** (IL2CPP, ARM64). Where a function returns `ushort`/`byte` or masks
+  parameters with `& 0xffff`, this is stated explicitly below. Overflow wraps modulo 2^32 (no check).
+- **Division always rounds down** (integer division on unsigned values where the original uses `uint`).
+- **Fixed point “x/4096”** (ratios): `0x1000` = 1.0; `0x1800` = 1.5; `0x2000` = 2.0; `0x0800` = 0.5; `0x0C00` = 0.75; `0x1333` ≈ 1.2.
+  `MulRatio` multiplies and divides by 4096 using **round half down**:
+  `p = (a*b) mod 2^32; r = p >> 12; if (p & 0xfff) > 0x800: r += 1` [O, `calc.MulRatio @0x2074b00`]. Thus an exact `0x800` remainder rounds down.
+  `MulRatio_OverZero @0x2074b20` does the same but returns at least 1 [O].
+  `MulRatioInt @0x2074bb0`: `p = (a*b) mod 2^32; r = p / 100; if p % 100 > 49: r += 1` (percent, “round half up”) [O].
+- **Event variables** (handler ratios, section 5) use a different rounding rule: `EVENTVAR_MulValue` computes in 64 bits
+  `v = (v * f + 0x800) >> 12` (**round half up**) and clamps the result to `[min, max]` if either bound is nonzero
+  [P+OK, `EventSystem.EVENTVAR_MulValue @0x19f5fc0`; hit fixtures use this rule].
+- **Type IDs** (`PokeType`): 0 Normal, 1 Fighting, 2 Flying, 3 Poison, 4 Ground, 5 Rock, 6 Bug, 7 Ghost, 8 Steel, 9 Fire,
+  10 Water, 11 Grass, 12 Electric, 13 Psychic, 14 Ice, 15 Dragon, 16 Dark, 17 Fairy, 18 = “no type” (`NULL`) [`dump.cs` `PokeType`].
 
-## 2. Typentabelle und Typenwirkung
+## 2. Type chart and type effectiveness
 
-### 2.1 Tabelle (liegt im Code, nicht im Bundle)
+### 2.1 Chart (in code, not in the bundle)
 
-`Pml.Battle.TypeAffinity.TYPE_AFF_TBL` ist ein `byte[18][18]`, aufgebaut im Klassenkonstruktor
-[`TypeAffinity..cctor @0x1c29e00`]. Jede Zeile kommt als Initialisierer-Blob aus den Metadaten; ich habe den echten `.cctor` in
-Unicorn ausgeführt und die 18 Zeilen ausgelesen (Fixture `BattleTables.json`, `typeChart`) [O]. Zeile = Angriffstyp, Spalte =
-Verteidigertyp, Werte: `0` = wirkt nicht, `2` = halber Schaden, `4` = normal, `8` = doppelter Schaden (Konstanten `x0/xH/x1/x2`).
-Die Tabelle entspricht der bekannten Typentabelle ab Generation 6 (mit Fee; Geist und Unlicht sind gegen Stahl neutral).
+`Pml.Battle.TypeAffinity.TYPE_AFF_TBL` is a `byte[18][18]`, built by the class constructor
+[`TypeAffinity..cctor @0x1c29e00`]. Each row comes from an initializer blob in the metadata; I ran the real `.cctor`
+in Unicorn and read out all 18 rows (fixture `BattleTables.json`, `typeChart`) [O]. Rows are attacking types, columns are
+defending types. Values: `0` = no effect, `2` = half damage, `4` = normal, `8` = double damage (constants `x0/xH/x1/x2`).
+The chart matches the familiar Generation VI chart (including Fairy; Ghost and Dark are neutral against Steel).
 
-Kodierung der 18 Zeilen (Spalten in Typ-ID-Reihenfolge 0..17):
+Encoding of the 18 rows (columns in type ID order 0..17):
 
 ```
 Normal : 4 4 4 4 4 2 4 0 2 4 4 4 4 4 4 4 4 4
-Kampf  : 8 4 2 2 4 8 2 0 8 4 4 4 4 2 8 4 8 2
-Flug   : 4 8 4 4 4 2 8 4 2 4 4 8 2 4 4 4 4 4
-Gift   : 4 4 4 2 2 2 4 2 0 4 4 8 4 4 4 4 4 8
-Boden  : 4 4 0 8 4 8 2 4 8 8 4 2 8 4 4 4 4 4
-Gestein: 4 2 8 4 2 4 8 4 2 8 4 4 4 4 8 4 4 4
-Käfer  : 4 2 2 2 4 4 4 2 2 2 4 8 4 8 4 4 8 2
-Geist  : 0 4 4 4 4 4 4 8 4 4 4 4 4 8 4 4 2 4
-Stahl  : 4 4 4 4 4 8 4 4 2 2 2 4 2 4 8 4 4 8
-Feuer  : 4 4 4 4 4 2 8 4 8 2 2 8 4 4 8 2 4 4
-Wasser : 4 4 4 4 8 8 4 4 4 8 2 2 4 4 4 2 4 4
-Pflanze: 4 4 2 2 8 8 2 4 2 2 8 2 4 4 4 2 4 4
-Elektro: 4 4 8 4 0 4 4 4 4 4 8 2 2 4 4 2 4 4
-Psycho : 4 8 4 8 4 4 4 4 2 4 4 4 4 2 4 4 0 4
-Eis    : 4 4 8 4 8 4 4 4 2 2 2 8 4 4 2 8 4 4
-Drache : 4 4 4 4 4 4 4 4 2 4 4 4 4 4 4 8 4 0
-Unlicht: 4 2 4 4 4 4 4 8 4 4 4 4 4 8 4 4 2 2
-Fee    : 4 8 4 2 4 4 4 4 2 2 4 4 4 4 4 8 8 4
+Fighting: 8 4 2 2 4 8 2 0 8 4 4 4 4 2 8 4 8 2
+Flying : 4 8 4 4 4 2 8 4 2 4 4 8 2 4 4 4 4 4
+Poison : 4 4 4 2 2 2 4 2 0 4 4 8 4 4 4 4 4 8
+Ground : 4 4 0 8 4 8 2 4 8 8 4 2 8 4 4 4 4 4
+Rock   : 4 2 8 4 2 4 8 4 2 8 4 4 4 4 8 4 4 4
+Bug    : 4 2 2 2 4 4 4 2 2 2 4 8 4 8 4 4 8 2
+Ghost  : 0 4 4 4 4 4 4 8 4 4 4 4 4 8 4 4 2 4
+Steel  : 4 4 4 4 4 8 4 4 2 2 2 4 2 4 8 4 4 8
+Fire   : 4 4 4 4 4 2 8 4 8 2 2 8 4 4 8 2 4 4
+Water  : 4 4 4 4 8 8 4 4 4 8 2 2 4 4 4 2 4 4
+Grass  : 4 4 2 2 8 8 2 4 2 2 8 2 4 4 4 2 4 4
+Electric: 4 4 8 4 0 4 4 4 4 4 8 2 2 4 4 2 4 4
+Psychic: 4 8 4 8 4 4 4 4 2 4 4 4 4 2 4 4 0 4
+Ice    : 4 4 8 4 8 4 4 4 2 2 2 8 4 4 2 8 4 4
+Dragon : 4 4 4 4 4 4 4 4 2 4 4 4 4 4 4 8 4 0
+Dark   : 4 2 4 4 4 4 4 8 4 4 4 4 4 8 4 4 2 2
+Fairy  : 4 8 4 2 4 4 4 4 2 2 4 4 4 4 4 8 8 4
 ```
 
-(Die Zeilen sind direkt aus dem Binary ausgelesen; Gegenprobe: Normal→Geist 0, Geist→Normal 0, Boden→Flug 0,
-Elektro→Boden 0, Psycho→Unlicht 0, Drache→Fee 0, Gift→Stahl 0.)
+(The rows were read directly from the binary. Cross-checks: Normal→Ghost 0, Ghost→Normal 0, Ground→Flying 0,
+Electric→Ground 0, Psychic→Dark 0, Dragon→Fairy 0, Poison→Steel 0.)
 
-### 2.2 Einzelner Verteidigertyp: `CalcAffinity(wazaTyp, pokeTyp, umgekehrt)` [O, `@0x1c296c0`]
+### 2.2 Single defending type: `CalcAffinity(wazaTyp, pokeTyp, reversed)` [O, `@0x1c296c0`]
 
-1. Ist einer der beiden Typen 18 (kein Typ), ist das Ergebnis **ID 7** (= neutral), ohne Tabellenzugriff.
-2. Sonst Tabellenwert `t = TYPE_AFF_TBL[wazaTyp][pokeTyp]`:
-   - normaler Kampf: `0 → ID 0`, `2 → ID 6`, `4 → ID 7`, `8 → ID 8`;
-   - umgekehrter Kampf (`isSakasaBattle`, „Inverse Battle“): `0 → ID 8`, `2 → ID 8`, `4 → ID 7`, `8 → ID 6`.
-3. Typen außerhalb 0..17 (außer 18) lösen im Original eine Ausnahme aus (nicht abgebildet).
+1. If either type is 18 (no type), the result is **ID 7** (= neutral), without reading the chart.
+2. Otherwise, chart value `t = TYPE_AFF_TBL[wazaTyp][pokeTyp]`:
+   - normal battle: `0 → ID 0`, `2 → ID 6`, `4 → ID 7`, `8 → ID 8`;
+   - reversed battle (`isSakasaBattle`, “Inverse Battle”): `0 → ID 8`, `2 → ID 8`, `4 → ID 7`, `8 → ID 6`.
+3. Types outside 0..17 (except 18) throw an exception in the original (not modeled here).
 
-**Affinitäts-IDs** (`TypeAffinity.AffinityID`): `0` = ×0, `1` = ×1/64, `2` = ×1/32, `3` = ×1/16, `4` = ×1/8, `5` = ×1/4, `6` = ×1/2,
-`7` = ×1, `8` = ×2, `9` = ×4, `10` = ×8, `11` = ×16, `12` = ×32, `13` = ×64, `14` = „kein Wert“ (`TYPEAFF_NULL`).
-Es gibt eine interne Wertetabelle `VALUE_TABLE = {0,1,2,4,8,16,32,64,128,256,512,1024,2048,4096}` (ID → 64·Faktor) [O, aus dem .cctor].
+**Affinity IDs** (`TypeAffinity.AffinityID`): `0` = ×0, `1` = ×1/64, `2` = ×1/32, `3` = ×1/16, `4` = ×1/8, `5` = ×1/4, `6` = ×1/2,
+`7` = ×1, `8` = ×2, `9` = ×4, `10` = ×8, `11` = ×16, `12` = ×32, `13` = ×64, `14` = “no value” (`TYPEAFF_NULL`).
+The internal table is `VALUE_TABLE = {0,1,2,4,8,16,32,64,128,256,512,1024,2048,4096}` (ID → 64 × factor) [O, read from the `.cctor`].
 
-### 2.3 Zwei Typen: `MulAffinity(a, b)` [O, `@0x1c298c0`]
+### 2.3 Two types: `MulAffinity(a, b)` [O, `@0x1c298c0`]
 
-`MulAffinity` multipliziert zwei IDs: `p = VALUE_TABLE[a] * VALUE_TABLE[b]`.
-- `p < 0x40040`: `v = p >> 6`; ist `v == 0` obwohl beide IDs ≠ 0 (Faktor kleiner 1/64), wird `v = 1` gesetzt (das Original ruft hier
-  eine Assert-Meldung auf, rechnet aber weiter).
-- sonst `v = 0x1000` (Sättigung bei ×64).
-- Ergebnis: ist `a == 0` oder `b == 0` → **ID 0**. Sonst die Position `k` des niedrigsten gesetzten Bits von `v` (0-basiert) plus 1,
-  also `v = 64 → ID 7`, `v = 128 → ID 8`, `v = 1 → ID 1`; `v = 0x1000 → ID 13`.
-- Eingaben ≥ 14 lösen im Original eine Ausnahme aus (nicht abgebildet).
+`MulAffinity` multiplies two IDs: `p = VALUE_TABLE[a] * VALUE_TABLE[b]`.
+- If `p < 0x40040`: `v = p >> 6`; if `v == 0` even though both IDs are nonzero (factor below 1/64), set `v = 1` (the original emits an assertion message but continues).
+- Otherwise, `v = 0x1000` (saturation at ×64).
+- Result: if `a == 0` or `b == 0` → **ID 0**. Otherwise, take the position `k` of the least significant set bit in `v` (zero-based) plus 1;
+  thus `v = 64 → ID 7`, `v = 128 → ID 8`, `v = 1 → ID 1`, and `v = 0x1000 → ID 13`.
+- Inputs ≥ 14 throw an exception in the original (not modeled here).
 
-Die Pml-Variante `CalcAffinity(wazaTyp, typ1, typ2, umgekehrt)` [`@0x1c29810`] multipliziert **beide** Einzelwerte ohne Duplikatprüfung.
-Der Kampf selbst benutzt aber `calc.TypeAffPair` (nächster Punkt).
+The Pml overload `CalcAffinity(wazaTyp, typ1, typ2, reversed)` [`@0x1c29810`] multiplies **both** individual values without checking for duplicates.
+Battle code itself uses `calc.TypeAffPair` (next item).
 
-### 2.4 Kampf-Variante: `calc.TypeAffPair(wazaTyp, PokeTypePair)` [P, `@0x2074300`]
+### 2.4 Battle variant: `calc.TypeAffPair(wazaTyp, PokeTypePair)` [P, `@0x2074300`]
 
-`PokeTypePair` ist eine 16-Bit-Packung: Bits 0–4 Typ 1, Bits 5–9 Typ 2, Bits 10–14 Zusatztyp (z. B. durch Attacken wie Halloween,
-`PokeTypePair.Split @0x21ce620`). Ablauf:
-1. `aff = CalcAffinity(waza, typ1, umgekehrt)`.
-2. Ist `typ2 ≠ 18` **und** `typ2 ≠ typ1`: `aff = MulAffinity(aff, CalcAffinity(waza, typ2))`.
-3. Ist `zusatz ≠ 18` **und** `zusatz ≠ typ1` **und** `zusatz ≠ typ2`: `aff = MulAffinity(aff, CalcAffinity(waza, zusatz))`.
-Das Flag „umgekehrt“ steht in `calc.g_SakasaBtlFlag`, gesetzt durch `calc.InitSys(zufall, sakasa)` [`@0x2073f40`].
-Ein Einzeltyp-Pokémon trägt Typ 2 = Typ 1 (bzw. 18) und wird so nicht doppelt gezählt.
+`PokeTypePair` is a 16-bit packed value: bits 0–4 type 1, bits 5–9 type 2, bits 10–14 additional type (e.g. from moves such as Halloween,
+`PokeTypePair.Split @0x21ce620`). Steps:
+1. `aff = CalcAffinity(waza, typ1, reversed)`.
+2. If `typ2 != 18` **and** `typ2 != typ1`: `aff = MulAffinity(aff, CalcAffinity(waza, typ2))`.
+3. If `additional != 18` **and** `additional != typ1` **and** `additional != typ2`: `aff = MulAffinity(aff, CalcAffinity(waza, additional))`.
+The “reversed” flag is `calc.g_SakasaBtlFlag`, set by `calc.InitSys(random, sakasa)` [`@0x2073f40`].
+A single-type Pokémon has type 2 equal to type 1 (or 18), so it is not counted twice.
 
-`ConvAboutAffinity(id)` [`@0x1c29b60`] grobe Einstufung für die Anzeige: `id > 7 → 2` (wirksam), `id == 7 → 1`, `id == 0 → 0`,
-sonst `3` (nicht sehr effektiv). `calc.GetResistTypes` [`@0x2074660`] liefert alle Angriffstypen, deren ID gegen den Einzeltyp 0 oder 6 ist.
+`ConvAboutAffinity(id)` [`@0x1c29b60`] provides a coarse display category: `id > 7 → 2` (effective), `id == 7 → 1`, `id == 0 → 0`,
+otherwise `3` (not very effective). `calc.GetResistTypes` [`@0x2074660`] returns all attacking types whose ID against the single type is 0 or 6.
 
-### 2.5 Anwendung auf den Schaden: `calc.AffDamage(roh, id)` [O, `@0x2074820`]
+### 2.5 Apply effectiveness to damage: `calc.AffDamage(raw, id)` [O, `@0x2074820`]
 
-- `id = 0 → 0`; `id = 1..6 → roh >> (7 - id)` (Rechtsschieben, also abrunden: 1 → >>6, 6 → >>1);
-- `id = 8..13 → roh << (id - 7)` (32-Bit, Überlauf wickelt um);
-- jede andere ID (7, ≥ 14) → `roh` unverändert.
+- `id = 0 → 0`; `id = 1..6 → raw >> (7 - id)` (arithmetic right shift, so round down: 1 → >>6, 6 → >>1);
+- `id = 8..13 → raw << (id - 7)` (32-bit, overflow wraps);
+- any other ID (7, ≥ 14) → `raw` unchanged.
 
-## 3. Statuswerte, Wesen
+## 3. Stats and natures
 
-### 3.1 Wesenstabelle [O]
+### 3.1 Nature table [O]
 
-25 Wesen (`Seikaku`-ID 0..24; Enum-Namen GANBARIYA, SAMISHIGARI, YUUKAN, IJIPPARI, YANTYA, ZUBUTOI, SUNAO, NONKI, WANPAKU, NOUTENKI,
+25 natures (`Seikaku` IDs 0..24; enum names GANBARIYA, SAMISHIGARI, YUUKAN, IJIPPARI, YANTYA, ZUBUTOI, SUNAO, NONKI, WANPAKU, NOUTENKI,
 OKUBYOU, SEKKATI, MAJIME, YOUKI, MUJYAKI, HIKAEME, OTTORI, REISEI, TEREYA, UKKARIYA, ODAYAKA, OTONASHII, NAMAIKI, SINTYOU, KIMAGURE;
-das ist die übliche Reihenfolge Robust, Solo, Mutig, … Kauzig). Die Tabelle
-`Pml.PokePara.CalcTool` hat 25 Zeilen zu je 5 `sbyte` (Spalten: Angriff, Verteidigung, Spezial-Angriff, Spezial-Verteidigung,
-Initiative). `+1` = Wert wird erhöht, `-1` = gesenkt, `0` = unverändert [`CalcTool..cctor @0x25aec40`, aus dem echten .cctor ausgelesen,
-Fixture `BattleTables.json`, `natureTable`]. Neutrale Wesen: IDs 0, 6, 12, 18, 24 (alle Einträge 0). Jedes andere Wesen erhöht genau einen und
-senkt genau einen Wert, je Zeile ein `+1` und ein `-1`; die Zeilen stehen vollständig in `BattleTables.json`.
-Mapping „Kraft-ID“ (`powerId`) → Spalte: `1 → Angriff`, `2 → Verteidigung`, `3 → Sp.-Angriff`, `4 → Sp.-Verteidigung`, `5 → Initiative`
-(Spalte = `powerId - 1`); `powerId` außerhalb 1..5 bedeutet „keine Wesenswirkung“ [O, `GetPowerTransformBySeikaku @0x25ad6c0`].
+this is the familiar order Hardy, Lonely, Brave, … Quirky). The `Pml.PokePara.CalcTool` table has 25 rows of five `sbyte` values (columns: Attack, Defense, Special Attack, Special Defense,
+Speed). `+1` means increased, `-1` decreased, `0` unchanged [`CalcTool..cctor @0x25aec40`, read from the real `.cctor`,
+fixture `BattleTables.json`, `natureTable`]. Neutral natures: IDs 0, 6, 12, 18, 24 (all entries zero). Every other nature raises one stat and
+lowers one stat, with one `+1` and one `-1` in each row; all rows are in `BattleTables.json`.
+Mapping from “power ID” (`powerId`) to column: `1 → Attack`, `2 → Defense`, `3 → Sp. Attack`, `4 → Sp. Defense`, `5 → Speed`
+(column = `powerId - 1`); values outside 1..5 mean “no nature effect” [O, `GetPowerTransformBySeikaku @0x25ad6c0`].
 
-### 3.2 Wesenskorrektur [O, `CalcCorrectedPowerBySeikaku @0x25ad2c0`]
+### 3.2 Nature adjustment [O, `CalcCorrectedPowerBySeikaku @0x25ad2c0`]
 
-`wert` (32 Bit), Wesen `n`, `powerId`:
-- `powerId` nicht in 1..5 oder Tabelleneintrag 0 → `wert` unverändert;
-- Eintrag `-1`: `((wert * 90) & 0xfffe) / 100`; Eintrag `+1`: `((wert * 110) & 0xfffe) / 100`.
-Auffällig: das Produkt wird mit `0xfffe` **maskiert** (16 Bit, Bit 0 gelöscht), bevor durch 100 geteilt wird. Für echte Statuswerte (< 596) ändert die
-Maske nichts, außer dass sie ein ungerades Produkt abrundet; ab Wert 596 (Produkt ≥ 65 536, +10 %) wickelt es um. Das
-Verhalten wird 1:1 nachgebildet; die Fixtures testen Werte bis 65 535. Das Ergebnis der Statusfunktionen ist `ushort`.
+Given `value` (32-bit), nature `n`, and `powerId`:
+- If `powerId` is not in 1..5 or the table entry is 0, return `value` unchanged.
+- Entry `-1`: `((value * 90) & 0xfffe) / 100`; entry `+1`: `((value * 110) & 0xfffe) / 100`.
+Notably, the product is **masked with `0xfffe`** (16-bit, low bit cleared) before division by 100. For real stats (<596) the mask changes nothing
+except rounding down an odd product; from value 596 onward (the +10% product reaches 65,536), it wraps. This behavior is reproduced exactly; fixtures
+test values through 65,535. The stat functions return `ushort`.
 
-### 3.3 HP und übrige Werte [O]
+### 3.3 HP and other stats [O]
 
-Alle Eingaben werden maskiert: Basiswert und IV mit `& 0xffff`, Level mit `& 0xff`, EV als `(ev & 0xfffc) >> 2` (also `floor(ev/4)` mit
-16-Bit-Eingang).
-- **HP** `CalcMaxHp(monsno, level, basis, iv, ev)` [`@0x25ad1b0`]: ist `monsno == 292` (Nationaldex 292 = Shedinja, Pokémon mit fester 1 HP), Ergebnis **1**. Sonst
-  `((2*basis + iv + ev/4) * level) / 100 + level + 10`.
-- **Angriff / Verteidigung / Sp.-Angriff / Sp.-Verteidigung / Initiative** [`CalcAtk @0x25ad200`, `CalcDef @0x25ad3c0`, `CalcSpAtk @0x25ad480`,
-  `CalcSpDef @0x25ad540`, `CalcAgi @0x25ad600`]: `roh = ((2*basis + iv + ev/4) * level) / 100 + 5`, dann Wesenskorrektur (3.2) mit
-  `powerId` 1, 2, 3, 4, 5. Rückgabe `ushort` (untere 16 Bit).
-- **Level aus Erfahrung** `CalcLevel(monsno, form, exp)` [`@0x25ad0e0`]: gesucht ist das größte `L` in 1..100 mit `exps[L] ≤ exp`, wobei `exps` die Zeile der
-  Wachstumsrate der Art ist (Tabelle `GrowTable`, 101 Einträge, Index = Level); `exps[1] = 0`. Ergebnis mindestens 1, höchstens 100.
-  `GrowTable.GetMinExp(level)` [`@0x25a0880`] = `exps[min(level, 100)]` (Level > 100 löst im Original eine Assert-Meldung aus und wird auf 100 gesetzt).
+Inputs are masked: base stat and IV with `& 0xffff`, level with `& 0xff`, EV as `(ev & 0xfffc) >> 2` (that is, `floor(ev/4)` using a
+16-bit input).
+- **HP** `CalcMaxHp(monsno, level, base, iv, ev)` [`@0x25ad1b0`]: if `monsno == 292` (National Pokédex #292, Shedinja, fixed 1 HP), return **1**.
+  Otherwise: `((2*base + iv + ev/4) * level) / 100 + level + 10`.
+- **Attack / Defense / Special Attack / Special Defense / Speed** [`CalcAtk @0x25ad200`, `CalcDef @0x25ad3c0`, `CalcSpAtk @0x25ad480`,
+  `CalcSpDef @0x25ad540`, `CalcAgi @0x25ad600`]: `raw = ((2*base + iv + ev/4) * level) / 100 + 5`, then apply the nature adjustment (3.2)
+  with `powerId` 1, 2, 3, 4, 5. Return `ushort` (lower 16 bits).
+- **Level from experience** `CalcLevel(monsno, form, exp)` [`@0x25ad0e0`]: find the greatest `L` in 1..100 where `exps[L] ≤ exp`, with
+  `exps` taken from the species' growth-rate row (table `GrowTable`, 101 entries, index = level); `exps[1] = 0`. Result is at least 1 and at most 100.
+  `GrowTable.GetMinExp(level)` [`@0x25a0880`] = `exps[min(level, 100)]` (levels >100 emit an assertion in the original and are clamped to 100).
 
-### 3.4 Wachstumsraten [O für das Datenmaterial, P für die Formel]
+### 3.4 Growth rates [O for data, P for formula]
 
-`work/masterdata/pml_personal/GrowTable.json` enthält 8 Zeilen zu je 101 Einträgen. Ich habe sie gegen die klassischen Formeln geprüft
-(Prüfung lokal in `scripts/battle_oracle.py --verify-growth`, nur lesend gegen die Masterdata):
-Zeile 0 = mittel-schnell `n³`; Zeile 1 = unregelmäßig (erratic); Zeile 2 = schwankend (fluctuating); Zeile 3 = mittel-langsam
-`6/5·n³ − 15·n² + 100·n − 140`; Zeile 4 = schnell `4/5·n³`; Zeile 5 = langsam `5/4·n³`; Zeilen 6 und 7 = wie 0. Alle Zeilen stimmen für
-Level 2..100 exakt (Ganzzahldivision), Level 1 = 0, Zeile 3 ist dort negativ und wird auf 0 gesetzt. Details (Bereichsgrenzen
-50/68/98 und 15/35) stehen im C#-Code `GrowthRate`; maßgeblich bleibt die Tabelle aus dem Bundle, die Formeln sind eine Hilfe für
-Tests ohne Spieldaten.
+`work/masterdata/pml_personal/GrowTable.json` contains eight rows of 101 entries. I checked them against the classic formulas
+(read-only verification against the master data using `scripts/battle_oracle.py --verify-growth`):
+row 0 = medium-fast `n³`; row 1 = erratic; row 2 = fluctuating; row 3 = medium-slow
+`6/5·n³ − 15·n² + 100·n − 140`; row 4 = fast `4/5·n³`; row 5 = slow `5/4·n³`; rows 6 and 7 match row 0. All rows match exactly
+for levels 2..100 (integer division); level 1 is 0; row 3 is negative there and is clamped to 0. Range boundaries (50/68/98 and 15/35) are
+in the C# `GrowthRate` implementation. The bundle table remains authoritative; the formulas are useful for tests without game data.
 
-## 4. Zufall
+## 4. Random numbers
 
 ### 4.1 Generator [O]
 
-Alle Zufallswerte im Kampf kommen aus **Xoroshiro128+** (`Xoroshiro128Plus.Xoroshiro128Plus`), Zustand 2 × 64 Bit.
-- **Seed → Zustand** [`Xoroshiro128Plus..ctor(ulong) @0x18d84e0`]: `mix(x)`: `z = x; z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) * 0x94D049BB133111EB; z ^ (z >> 31)`.
-  `s0 = mix(seed + 0x9E3779B97F4A7C15)`, `s1 = mix(seed + 0x3C6EF372FE94F82A)` (alles mod 2^64). Sind beide 0, wird `s0 = 1`.
-- **Schritt** [`next @0x18d8fd0`, `NextULong @0x18d8ff0`]: `ergebnis = s0 + s1`; `t = s1 ^ s0`; `s0' = rotl(s0, 24) ^ t ^ (t << 16)`; `s1' = rotl(t, 37)`.
-  `NextULong` gibt `ergebnis` zurück, `NextUInt` [`@0x18d9010`] `ergebnis >> 32`.
-- **Begrenzter Wert** `Random.GetValue(max)` [`Dpr.Battle.Logic.Random.GetValue @0x21d3290`]: `r = NextULong(); max == 0 ? r : r % max` (64-Bit-Modulo,
-  `[0, max)`). `GetValue()` ohne Argument [`@0x21d4090`] = `NextULong`.
-- Hilfen: `calc.GetRand(n)` [`@0x2074990`] = `GetValue(n)` auf dem Kampf-Generator `calc.g_RandSys`; `calc.RandRange(a, b)` [`@0x2074a10`]: Grenzen werden
-  geordnet, Ergebnis `min + GetValue(max - min + 1)` [O]; `calc.IsOccurPer(p)` [`@0x2075e20`] = `GetValue(100) < p` [O].
-- `calc.GetPublicRand(n)` [`@0x20748b0`] nutzt einen **zweiten** Generator `g_PublicRand` (oder `UnityEngine.Random`, wenn dieser fehlt) und ist nur für
-  nicht reproduzierbare Darstellungsdinge gedacht.
+All battle random values come from **Xoroshiro128+** (`Xoroshiro128Plus.Xoroshiro128Plus`), with a 2 × 64-bit state.
+- **Seed → state** [`Xoroshiro128Plus..ctor(ulong) @0x18d84e0`]: `mix(x)`: `z = x; z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) * 0x94D049BB133111EB; z ^ (z >> 31)`.
+  `s0 = mix(seed + 0x9E3779B97F4A7C15)`, `s1 = mix(seed + 0x3C6EF372FE94F82A)` (all modulo 2^64). If both are 0, set `s0 = 1`.
+- **Step** [`next @0x18d8fd0`, `NextULong @0x18d8ff0`]: `result = s0 + s1`; `t = s1 ^ s0`; `s0' = rotl(s0, 24) ^ t ^ (t << 16)`; `s1' = rotl(t, 37)`.
+  `NextULong` returns `result`; `NextUInt` [`@0x18d9010`] returns `result >> 32`.
+- **Bounded value** `Random.GetValue(max)` [`Dpr.Battle.Logic.Random.GetValue @0x21d3290`]: `r = NextULong(); max == 0 ? r : r % max` (64-bit modulo,
+  range `[0, max)`). The parameterless `GetValue()` [`@0x21d4090`] returns `NextULong`.
+- Helpers: `calc.GetRand(n)` [`@0x2074990`] = `GetValue(n)` on battle generator `calc.g_RandSys`; `calc.RandRange(a, b)` [`@0x2074a10`]: order bounds,
+  result `min + GetValue(max - min + 1)` [O]; `calc.IsOccurPer(p)` [`@0x2075e20`] = `GetValue(100) < p` [O].
+- `calc.GetPublicRand(n)` [`@0x20748b0`] uses a **second** generator `g_PublicRand` (or `UnityEngine.Random` if unavailable) and is intended only
+  for non-reproducible presentation effects.
 
-### 4.2 Seed und Reproduzierbarkeit [P]
+### 4.2 Seed and reproducibility [P]
 
-- `calc.InitSys(zufall, sakasa)` [`@0x2073f40`] merkt den Kampf-Generator, legt einen zweiten, öffentlichen an und setzt das Inverse-Flag.
-  `calc.ResetSys(seed)` [`@0x2074040`] setzt den Kampf-Generator neu (`Random.Initialize(seed)` [`@0x21d4000`]).
-- `MainModule.SetUpRandSystem` [`@0x213a1b0`]: Ist im Setup (`BattleSetupParam`, Byte bei +0x3b) das Wiedergabe-Flag `== 1`, wird der Seed aus dem Setup-Feld
-  `recRandSeed` (+0xF8) genommen; sonst `Random.Initialize()` [`@0x21d3f40`] mit einem **Unity-Zufallswert** `UnityEngine.Random.Range(int.MinValue, int.MaxValue)`, vorzeichenerweitert
-  auf 64 Bit (`(ulong)(long)int`), und dieser Seed wird als `recRandSeed` gespeichert. Der Kampfausgang ist also bei bekanntem Seed vollständig reproduzierbar;
-  der Originalseed eines Live-Kampfes kommt aus dem (nicht deterministischen) Unity-Zufall. Der Rebuild nimmt den Seed als Parameter.
-- **Ziehreihenfolge im Schaden** (wichtig für Reproduzierbarkeit): Trefferprüfung (genau 1 Zug, nur wenn nicht automatisch getroffen) → Volltrefferprüfung (genau 1 Zug, wenn
-  die Attacke Volltreffer prüfen darf) → Zufallsfaktor des Schadens (genau 1 Zug, entfällt bei festem Faktor 85). Mehrfachtreffer-Anzahl
-  `calc.HitCountStd` [`@0x2075ae0`] (1 Zug nur wenn die Attacke „2–5 Treffer“ hat, Typ 5) [O].
+- `calc.InitSys(random, sakasa)` [`@0x2073f40`] stores the battle generator, creates a second, public generator, and sets the Inverse Battle flag.
+  `calc.ResetSys(seed)` [`@0x2074040`] resets the battle generator (`Random.Initialize(seed)` [`@0x21d4000`]).
+- `MainModule.SetUpRandSystem` [`@0x213a1b0`]: if replay flag `== 1` in setup (`BattleSetupParam`, byte at +`0x3b`), use the seed from setup field
+  `recRandSeed` (+`0xF8`); otherwise, `Random.Initialize()` [`@0x21d3f40`] uses a **Unity random value** from
+  `UnityEngine.Random.Range(int.MinValue, int.MaxValue)`, sign-extended to 64 bits (`(ulong)(long)int`), and saves that seed to `recRandSeed`.
+  Thus a battle is fully reproducible when its seed is known; a live battle's original seed comes from non-deterministic Unity random. The rebuild accepts the seed as a parameter.
+- **Random draw order for damage** (important for reproducibility): hit check (exactly one draw, unless hit is automatic) → critical check (exactly one draw if the move allows a critical check) → damage random factor (exactly one draw, omitted for fixed factor 85). Multi-hit count
+  `calc.HitCountStd` [`@0x2075ae0`] draws once only for “2–5 hits” moves (type 5) [O].
 
-## 5. Schaden
+## 5. Damage
 
-Der Schaden einer Attacke auf ein Ziel entsteht in `Section_CalcDamage.getCalcDamage` [`@0x22addc0`] → `EventLauncher.Event_CalcDamage` [`@0x1e14710`] [OK].
-Vor der eigentlichen Formel liest `getCalcDamage` das Wetter (`Section_FromEvent_GetWeather`) und übergibt es. Die Volltreffer-Entscheidung fällt
-**vorher** in `Section_CalcDamage.Execute` [`@0x22ad8d0`] (`Event_CheckCritical`, Abschnitt 7) und die Typenwirkung vorher in `Section_CheckWazaDamageAffinity`.
+Damage dealt by a move to a target flows through `Section_CalcDamage.getCalcDamage` [`@0x22addc0`] → `EventLauncher.Event_CalcDamage` [`@0x1e14710`] [OK].
+Before the formula, `getCalcDamage` reads weather (`Section_FromEvent_GetWeather`) and passes it in. The critical-hit decision happens **earlier**
+in `Section_CalcDamage.Execute` [`@0x22ad8d0`] (`Event_CheckCritical`, section 7), as does type effectiveness in `Section_CheckWazaDamageAffinity`.
 
-### 5.1 Eingaben von Event_CalcDamage
+### 5.1 Inputs to Event_CalcDamage
 
-Typenwirkung `aff` (ID, Abschnitt 2), `zielFaktor` (Festkomma; 0x1000 bei einem Ziel, bei Mehrfachzielen kleiner), Volltreffer-Flag, „fester Faktor“-Flag
-(nur der KI-Simulator setzt es; `getCalcDamage` übergibt 0), Delegator-Flag, Wetter und die Attacke (Typ, Schadenskategorie 1 = physisch, 2 = speziell).
-Aus dem Zustand/Handlern kommen (siehe 5.3): `kraft`, `angriff`, `abwehr`, Level des Angreifers, STAB-Verhältnis, Endfaktor, Brand-Ignorieren-Flag.
+Type effectiveness `aff` (ID, section 2), `targetFactor` (fixed point; `0x1000` for one target, lower for multiple targets), critical flag,
+“fixed factor” flag (set only by the AI simulator; `getCalcDamage` passes 0), Substitute flag, weather, and move (type, damage category 1 = physical, 2 = special).
+State/handlers supply (see 5.3): `power`, `attack`, `defense`, attacker's level, STAB ratio, final factor, and burn-ignore flag.
 
-### 5.2 Ablauf (Reihenfolge ist verbindlich) [OK]
+### 5.2 Calculation order (the order is significant) [OK]
 
-0. **Vorab-Ereignisse** (0x58, 0x59) dürfen Festschaden liefern (z. B. Fixschadensattacken); gelingt das, werden alle folgenden Schritte übersprungen. Nicht Teil
-   der Scheibe 1.
-1. `kraft`, `angriff`, `abwehr` bestimmen (5.3), Level = Level des Angreifers.
-2. **Grundschaden** `DamageBase(kraft, angriff, level, abwehr)` [O, `calc.DamageBase @0x20747e0`]:
-   `u = (angriff * kraft * ((level*2)/5 + 2)) / abwehr` (32-Bit, vorzeichenlose Division; ist `abwehr == 0`, ist `u = 0`), Ergebnis `u/50 + 2`.
-3. Ist `zielFaktor ≠ 0x1000`: `s = MulRatio(s, zielFaktor)`.
-4. **Wetterfaktor** `GetWeatherDmgRatio(wetter, attackenTyp)` [O, `@0x2075830`]: Sonne (1) oder Extremsonne (6): Feuer ×1,5 (0x1800), Wasser ×0,5 (0x800),
-   sonst 0x1000; Regen (2) oder Starkregen (5): Wasser 0x1800, Feuer 0x800, sonst 0x1000; alle anderen Wetter (0, 3 Schnee/Hagel, 4 Sand, 7, …) 0x1000.
-   Ist der Faktor ≠ 0x1000: `s = MulRatio(s, faktor)`.
-5. **Volltreffer** (falls gesetzt): `s = (s * 15) / 10` (32-Bit, abrunden; **nicht** über MulRatio).
-6. **Zufallsfaktor** `roll`: bei „fester Faktor“ **85**, sonst `100 - GetRand(16)` (also 85..100, ein Zug aus dem Kampf-Generator).
-   `s = (roll * s) / 100` (32-Bit-Produkt, das bei Überlauf umwickelt, danach abrundende Division). Der Faktor kommt **nach** Wetter und Volltreffer.
-7. **STAB**: ist der Attackentyp ≠ 18: `s = MulRatio(s, stab)`, wobei `stab` aus `Event_CalcTypeMatchRatio` [`@0x1e15740`] kommt: 0x1800 (×1,5), wenn der Angreifer den Typ
-   hat (Typ 1, Typ 2 oder Zusatztyp, `BTL_POKEPARAM.IsMatchType @0x20dfad0`, Typ 18 passt nie), sonst 0x1000; ein Handler kann das Verhältnis noch ändern
-   (Fähigkeit Anpassung/„Tekiouryoku“ schreibt 0x2000, `Handler.Tokusei.handler_Tekiouryoku @0x1a41650`).
-8. **Typenwirkung**: `s = AffDamage(s, aff)` (2.5).
-9. **Brand**: ist die Attacke physisch (Kategorie 1) **und** der Angreifer verbrannt (`GetPokeSick == 4`) **und** das „Brand ignorieren“-Flag (kommt aus
-   `Event_getAttackPower`, Ereignis 0x4A, Variable 0x5A, z. B. durch eine Fähigkeit mit Brand-Ausnahme) nicht gesetzt: `s = (s * 50) / 100` (32-Bit, abrunden).
-10. **Endfaktor** (Ereignis 0x5A: Handler der letzten Schadensstufe multiplizieren hier): Variable 0x38 startet bei 0x1000 mit den Grenzen
-    `[0x29, 0x20000]`, Handler multiplizieren (Regel „halb nach oben“, Abschnitt 1); dann `s = MulRatio(s, endfaktor)`.
-11. (G-Modus, Raid-Boss-Wand: Scheibe 2.)
-12. **Mindestschaden**: ist `s == 0` und kein Festschaden aktiv: `s = 1`. Ergebnis wird auf 16 Bit gekürzt (`ushort`).
-    Wichtig: der Mindestschaden gilt auch bei Typenwirkung 0 — die Immunität wird davor (`Section_CheckTypeAffinity`/`CheckWazaDamageAffinity`) abgefangen.
+0. **Pre-events** (`0x58`, `0x59`) may provide fixed damage (e.g. fixed-damage moves); when successful, all following steps are skipped. Not part of Slice 1.
+1. Determine `power`, `attack`, and `defense` (5.3); level = attacker's level.
+2. **Base damage** `DamageBase(power, attack, level, defense)` [O, `calc.DamageBase @0x20747e0`]:
+   `u = (attack * power * ((level*2)/5 + 2)) / defense` (32-bit, unsigned division; if `defense == 0`, `u = 0`), result `u/50 + 2`.
+3. If `targetFactor != 0x1000`: `s = MulRatio(s, targetFactor)`.
+4. **Weather factor** `GetWeatherDmgRatio(weather, moveType)` [O, `@0x2075830`]: sun (1) or harsh sunlight (6): Fire ×1.5 (`0x1800`), Water ×0.5 (`0x800`), otherwise `0x1000`; rain (2) or heavy rain (5): Water `0x1800`, Fire `0x800`, otherwise `0x1000`; all other weather (0, 3 snow/hail, 4 sand, 7, …) uses `0x1000`.
+   If factor differs from `0x1000`: `s = MulRatio(s, factor)`.
+5. **Critical hit** (if set): `s = (s * 15) / 10` (32-bit, round down; **not** via `MulRatio`).
+6. **Random factor** `roll`: for “fixed factor”, **85**; otherwise `100 - GetRand(16)` (85..100, one draw from the battle generator).
+   `s = (roll * s) / 100` (32-bit product wraps on overflow, then integer division rounds down). This factor comes **after** weather and critical hit.
+7. **STAB**: if move type != 18: `s = MulRatio(s, stab)`, where `stab` comes from `Event_CalcTypeMatchRatio` [`@0x1e15740`]: `0x1800` (×1.5) if the attacker has the type
+   (type 1, type 2, or additional type; `BTL_POKEPARAM.IsMatchType @0x20dfad0`; type 18 never matches), otherwise `0x1000`; a handler can modify the ratio
+   (ability Adaptability/“Tekiouryoku” writes `0x2000`, `Handler.Tokusei.handler_Tekiouryoku @0x1a41650`).
+8. **Type effectiveness**: `s = AffDamage(s, aff)` (2.5).
+9. **Burn**: if the move is physical (category 1), the attacker is burned (`GetPokeSick == 4`), and the “ignore burn” flag (from
+   `Event_getAttackPower`, event `0x4A`, variable `0x5A`, e.g. an ability that ignores burn) is not set: `s = (s * 50) / 100` (32-bit, round down).
+10. **Final factor** (event `0x5A`: handlers for the last damage stage multiply this): variable `0x38` starts at `0x1000` with bounds
+    `[0x29, 0x20000]`; handlers multiply it (round-half-up rule, section 1); then `s = MulRatio(s, endFactor)`.
+11. (G-mode, Raid Boss wall: Slice 2.)
+12. **Minimum damage**: if `s == 0` and fixed damage is not active: `s = 1`. Result is truncated to 16 bits (`ushort`).
+    Note: minimum damage also applies at type effectiveness 0; immunity is handled earlier (`Section_CheckTypeAffinity`/`CheckWazaDamageAffinity`).
 
-Anschließend begrenzt `Section_CalcDamage.Execute` [`@0x22ad8d0`]: `roundDamage` [`@0x22adf50`]: `min(schaden, aktuelleHP)`; bei Delegator
-(`roundDamage_byMigawari @0x22adf90`): `min(schaden, Delegator-HP)` (HP-Feld +0x92). Durchhalten (`Event_CheckKoraeru`) darf die gedeckelte HP weiter
-verändern [P].
+Then `Section_CalcDamage.Execute` [`@0x22ad8d0`] caps damage: `roundDamage` [`@0x22adf50`] is `min(damage, currentHP)`; for Substitute
+(`roundDamage_byMigawari @0x22adf90`) it is `min(damage, Substitute HP)` (HP field +`0x92`). Endure (`Event_CheckKoraeru`) may further alter capped HP [P].
 
-### 5.3 Teilwerte aus dem Ereignissystem [P, OK-ersetzt]
+### 5.3 Components from the event system [P, OK with substitutions]
 
-- `kraft` = `Event_getWazaPower` [`@0x1e14e20`]: Basis aus den Attackendaten; Ereignis 0x45 darf sie umschreiben, danach Ereignis 0x46 mit Verhältnis
-  (Start 0x1000, Grenzen `[0x29, 0x200000]`), Ergebnis `MulRatio(kraft, verhältnis)`.
-- `angriff` = `Event_getAttackPower` [`@0x1e15010`]: Quelle ist physisch der Angriffswert (ValueID 8), speziell der Sp.-Angriff (10); ein Ereignis (0x49) darf die
-  Wertart ändern (Variable 0x41), Ereignis 0x47 darf das Pokémon wechseln, dessen Wert zählt (Variable 0x40, z. B. Ziel statt Angreifer). Wert = `BTL_POKEPARAM.GetValue` (mit Stufen) **oder** `GetValue_Base` (ohne
-  Stufen), Regel: bei Volltreffer wird ein **negativer Stufenwert des Angreifers ignoriert** (Stufe < 6 im 0..12-System → Basiswert); sonst Stufenwert.
-  Danach Ereignis 0x4A mit Verhältnis (Start 0x1000, Grenzen `[0x19a, 0x20000]`), Ergebnis `MulRatio(wert, verhältnis)`.
-- `abwehr` = `Event_getDefenderGuard` [`@0x1e153d0`]: physisch Verteidigung (ValueID 9), speziell Sp.-Verteidigung (11); Ereignis 0x48 darf die Art vertauschen (Variable 0x42) und das Ignorieren der Stufen erzwingen (Variable 0x59); bei Volltreffer
-  `GetValue_Critical` (ignoriert **positive** Verteidigungsstufen des Ziels, wenn die Stufe ≥ 7 wäre: Regel `stufe > 6 → Basiswert`); bei Sandsturm und
-  Gestein-Ziel zusätzlich ×1,5 auf Sp.-Verteidigung (`MulRatio(wert, 0x1800)`); danach Ereignis 0x4B mit Verhältnis `[0x19a, 0x20000]`.
-- **Stufenwert** `BTL_POKEPARAM.GetValue(8..12)` [`@0x20dd010`] = `calc.StatusRank(basis, stufenIndex)` [O]: Stufenindex 0..12 (6 = neutral):
-  `((zähler * basis) & 0xffff) / nenner` mit der Tabelle (zähler/nenner) `{2/8, 2/7, 2/6, 2/5, 2/4, 2/3, 2/2, 3/2, 4/2, 5/2, 6/2, 7/2, 8/2}`
-  (aus dem .cctor, [O]); Index ≥ 13 liefert `basis` unverändert.
-- Genauigkeits- und Fluchtstufe liegen im selben 0..12-System (6 = neutral) [P].
+- `power` = `Event_getWazaPower` [`@0x1e14e20`]: starts with base move data; event `0x45` may rewrite it, followed by event `0x46` with a ratio
+  (starts at `0x1000`, bounds `[0x29, 0x200000]`); result is `MulRatio(power, ratio)`.
+- `attack` = `Event_getAttackPower` [`@0x1e15010`]: physical uses Attack (ValueID 8), special uses Sp. Attack (10); event `0x49` may change the stat kind
+  (variable `0x41`), and event `0x47` may change which Pokémon supplies it (variable `0x40`, e.g. the target instead of the attacker). Value is
+  `BTL_POKEPARAM.GetValue` (with stages) or `GetValue_Base` (without stages). On a critical hit, **negative stages on the attacker are ignored**
+  (stage < 6 in the 0..12 system → base value); otherwise use the staged value. Then event `0x4A` applies a ratio (starts at `0x1000`, bounds
+  `[0x19a, 0x20000]`): result `MulRatio(value, ratio)`.
+- `defense` = `Event_getDefenderGuard` [`@0x1e153d0`]: physical uses Defense (ValueID 9), special uses Sp. Defense (11); event `0x48` may swap the stat kind
+  (variable `0x42`) and force stage-ignore (variable `0x59`). On a critical hit, `GetValue_Critical` ignores **positive** target defense stages
+  (stage ≥ 7, i.e. `stage > 6` → base value). In sandstorm, a Rock-type target also gets ×1.5 Sp. Defense (`MulRatio(value, 0x1800))); then event `0x4B` applies ratio bounds `[0x19a, 0x20000]`.
+- **Stage-adjusted value** `BTL_POKEPARAM.GetValue(8..12)` [`@0x20dd010`] = `calc.StatusRank(base, stageIndex)` [O]. Stage index 0..12 (6 = neutral):
+  `((numerator * base) & 0xffff) / denominator`, with table numerator/denominator `{2/8, 2/7, 2/6, 2/5, 2/4, 2/3, 2/2, 3/2, 4/2, 5/2, 6/2, 7/2, 8/2}`
+  (read from the `.cctor`, [O]); index ≥ 13 returns `base` unchanged.
+- Accuracy and evasion use the same 0..12 stage system (6 = neutral) [P].
 
-### 5.4 Wetterschaden nach dem Zug [P]
+### 5.4 Weather damage after the turn [P]
 
-`calc.RecvWeatherDamage(poke, wetter)` [`@0x2075770`]: Wetter 3 (Hagel/Schnee): Typ Eis ist immun; Wetter 4 (Sand): Gestein, Stahl, Boden sind immun; sonst
-Schaden `max(1, maxHP / 16)` (HP über `ValueID 16`, MAX_HP_BEFORE_G; Original rechnet `(x + 15)` bei negativem x, praktisch `x >> 4`). Wetter außerhalb 3/4: 0.
+`calc.RecvWeatherDamage(poke, weather)` [`@0x2075770`]: weather 3 (hail/snow): Ice types are immune; weather 4 (sand): Rock, Steel, and Ground are immune; otherwise
+damage is `max(1, maxHP / 16)` (HP via `ValueID 16`, `MAX_HP_BEFORE_G`; the original computes `(x + 15)` for negative x, effectively `x >> 4`). Weather other than 3/4: 0.
 
-## 6. Treffer
+## 6. Accuracy
 
-`EventLauncher.Event_CheckHit(angreifer, ziel, attacke)` [`@0x1e19350`] [OK], liefert `trifft` und ein Flag „Zuneigungsausweichen“:
-1. Flag := 0. Trifft automatisch (**kein Zufallszug**), wenn eines gilt: `CheckMustHit` (Ziel/Angreifer in bestimmter Lage, z. B. Lock-On-Effekte), Kampfart
-   „Demo-Fang“ (`GetCompetitor == 4`), `Event_IsCalcHitCancel` (Attacke trifft immer oder Handler hebt die Prüfung auf), das Ziel hat den Zustand 0x21 (`WAZASICK_TELEKINESIS`).
-2. `p0` = `Event_getHitPer` [`@0x1e16a30`] = `MulRatio(genauigkeit, verhältnis)` (Genauigkeit aus den Attackendaten, Verhältnis aus Ereignissen, Start 0x1000,
-   Grenzen `[0x19a, 0x20000]`).
-3. Ereignis 0x3F darf die Genauigkeitsstufe `acc` (Angreifer, 0..12), die Fluchtstufe `eva` (Ziel, 0..12), das Flag „Flucht ignorieren“ und ein Verhältnis ändern
-   (Variable 0x38, Start 0x1000, Grenzen `[0x29, 0x20000]`). Hat der Angreifer das Zug-Flag 0xE, wird das Verhältnis zusätzlich mit 0x1333 multipliziert (≈ ×1,2,
-   `EVENTVAR_MulValue`-Regel).
-4. Stufenindex: Wenn „Flucht ignorieren“ gesetzt ist **oder** (das Ziel hat den Zustand 0x11 (`WAZASICK_MIYABURU`, Foresight-/Odor-Sleuth-Art) **und** `eva > 6`), ist der Fluchtterm `-6`, sonst `-eva`.
-   `idx = clamp(fluchtterm + acc + 6, 0, 12)`.
-5. `p1 = HitPer(p0, idx)` [O, `calc.HitPer @0x20750b0`]: Tabelle (zähler/nenner) `{6/18, 6/16, 6/14, 6/12, 6/10, 6/8, 6/6, 8/6, 10/6, 12/6, 14/6, 16/6, 18/6}`; `p1 = (zähler * (p0 & 0xff)) / nenner`,
-   `≥ 100 → 100`; Index ≥ 13 liefert `p0` unverändert. (Gegenüber den klassischen 3/9 … 9/3-Brüchen identisch.)
-6. `p2 = MulRatio(p1, verhältnis)`; `≥ 100 → 100`.
-7. Zuneigung: Ist die Freundschaft des **Ziels** über `SectionUtil.GetFriendship` (nur aktiv für Spieler-Pokémon in Wild-/Trainerkämpfen, nicht im G-Modus, `IsFriendshipActive @0x21378d0`)
-   gleich **255**: `p2 = p2 > 10 ? p2 - 10 : 0` und Flag := 1.
-8. Zug `x = GetRand(100)`; **trifft, wenn `(x & 0xff) < (p2 & 0xff)`**.
-Hinweise: `p0 == 0` (Attacken ohne Genauigkeit) führen hier zu `p1 = 0`, also Fehlschlag; sie müssen vorher über `IsAlwaysHit`/`IsCalcHitCancel` abgefangen
-werden [P]. Reihenfolge der Zufallszüge: nur Schritt 8.
+`EventLauncher.Event_CheckHit(attacker, target, move)` [`@0x1e19350`] [OK] returns `hit` and a “friendship dodge” flag:
+1. Set flag := 0. Hit automatically (**no random draw**) if any condition applies: `CheckMustHit` (attacker/target in a specific state, e.g. Lock-On effects), battle type “demo capture” (`GetCompetitor == 4`), `Event_IsCalcHitCancel` (move always hits or a handler cancels the check), or target has status `0x21` (`WAZASICK_TELEKINESIS`).
+2. `p0` = `Event_getHitPer` [`@0x1e16a30`] = `MulRatio(accuracy, ratio)` (accuracy from move data, event ratio starts at `0x1000`, bounds `[0x19a, 0x20000]`).
+3. Event `0x3F` may change accuracy stage `acc` (attacker, 0..12), evasion stage `eva` (target, 0..12), “ignore evasion” flag, and a ratio
+   (variable `0x38`, starts `0x1000`, bounds `[0x29, 0x20000]`). If the attacker has turn flag `0xE`, the ratio is multiplied by `0x1333` (≈ ×1.2,
+   using `EVENTVAR_MulValue` rounding).
+4. Evasion term: if “ignore evasion” is set **or** (target has status `0x11` (`WAZASICK_MIYABURU`, Foresight/Odor Sleuth-like) **and** `eva > 6`),
+   use `-6`; otherwise use `-eva`. `idx = clamp(evasionTerm + acc + 6, 0, 12)`.
+5. `p1 = HitPer(p0, idx)` [O, `calc.HitPer @0x20750b0`]: numerator/denominator table `{6/18, 6/16, 6/14, 6/12, 6/10, 6/8, 6/6, 8/6, 10/6, 12/6, 14/6, 16/6, 18/6}`; `p1 = (numerator * (p0 & 0xff)) / denominator`,
+   capped at 100; index ≥ 13 returns `p0` unchanged. (Equivalent to the classic 3/9 … 9/3 fractions.)
+6. `p2 = MulRatio(p1, ratio)`; cap at 100.
+7. Friendship: if the **target's** friendship from `SectionUtil.GetFriendship` (active only for player Pokémon in wild/trainer battles, not G-mode; `IsFriendshipActive @0x21378d0`) is **255**:
+   `p2 = p2 > 10 ? p2 - 10 : 0` and flag := 1.
+8. Draw `x = GetRand(100)`; **hit if `(x & 0xff) < (p2 & 0xff)`**.
+Note: `p0 == 0` (moves with no accuracy value) gives `p1 = 0`, hence a miss; such moves must be handled earlier via `IsAlwaysHit`/`IsCalcHitCancel` [P].
+Only step 8 consumes a random value.
 
-## 7. Volltreffer
+## 7. Critical hits
 
-`EventLauncher.Event_CheckCritical(angreifer, ziel, attacke)` [`@0x1e144d0`] [OK]:
-1. `stufeAttacke` = `WAZADATA.GetCriticalRank` (0..2, **6 = immer Volltreffer**). `stufe = stufeAttacke == 6 ? 6 : GetCriticalRank(Angreifer) + stufeAttacke`
-   (`BTL_POKEPARAM.GetCriticalRank @0x20e0c10` [P]: gespeicherte Stufe (Byte +0x3f) plus Zuschläge durch Zustandsflags: +2 bei gesetztem Bit 1 des zweiten Zustandsfeldes, +3 bei einem Flag in +0x168 des Zustandsblocks; Ergebnis ab 3 auf 3 gedeckelt).
-2. Ereignis 0x43 darf `stufe` ändern oder Volltreffer **verbieten**. Danach `stufe = min(stufe, 3)`.
-3. Verboten → kein Volltreffer (kein Zufallszug).
-4. `stufeAttacke == 6` → Volltreffer, außer Kampfart „Demo-Fang“ (= 4) (kein Zufallszug).
-5. Demo-Fang → kein Volltreffer. Sonst: `zuneigung = (GetFriendship(Angreifer) == 255)`; `teiler = zuneigung ? 2 : 1`.
-6. `CheckCritical(stufe, teiler)` [O, `calc.CheckCritical @0x2075170`]: `n = CheckCriticalTable[stufe] / teiler`, mindestens 1 (Ergebnis 0 → 1);
-   Volltreffer, wenn `GetValue(n) == 0`. Tabelle `{24, 8, 2, 1}` (aus dem .cctor) = 1/24, 1/8, 1/2, 1/1.
-7. Bei Volltreffer schreibt die Funktion das Flag „Zuneigungsbonus“ := `zuneigung`.
-Die Stufe 6 der Attackendaten steht also nicht in der Tabelle; die gedeckelte Stufe indexiert sie.
+`EventLauncher.Event_CheckCritical(attacker, target, move)` [`@0x1e144d0`] [OK]:
+1. `moveStage` = `WAZADATA.GetCriticalRank` (0..2, **6 = always critical**). `stage = moveStage == 6 ? 6 : GetCriticalRank(attacker) + moveStage`
+   (`BTL_POKEPARAM.GetCriticalRank @0x20e0c10` [P]: stored stage (byte +`0x3f`) plus status-flag bonuses: +2 if bit 1 of the second status field is set,
+   +3 for a flag at +`0x168` in the status block; capped at 3).
+2. Event `0x43` may change `stage` or **prevent** a critical hit. Then `stage = min(stage, 3)`.
+3. If prevented → no critical hit (no random draw).
+4. If `moveStage == 6` → critical hit, except in “demo capture” battle type (= 4) (no random draw).
+5. Demo capture → no critical hit. Otherwise `friendship = (GetFriendship(attacker) == 255)`; `divisor = friendship ? 2 : 1`.
+6. `CheckCritical(stage, divisor)` [O, `calc.CheckCritical @0x2075170`]: `n = CheckCriticalTable[stage] / divisor`, at least 1 (zero becomes 1);
+   critical hit if `GetValue(n) == 0`. Table `{24, 8, 2, 1}` (from the `.cctor`) means 1/24, 1/8, 1/2, 1/1.
+7. On a critical hit, the function sets the “friendship bonus” flag := `friendship`.
+The move-data stage 6 is therefore not a table index; the capped stage indexes the table.
 
-## 8. Erfahrungspunkte
+## 8. Experience
 
-Berechnung je Empfänger: `Exp.CalcExp(param, ergebnis)` [`Dpr.Battle.Logic.Exp.CalcExp @0x19f7d70`] [O (echte Funktion mit Speicher-Eingaben)].
-Eingaben (`Exp.CalcParam`): `levelCap` (Level-Deckel), `deadPokeExp` (Basis-Erfahrung der besiegten Art, `PersonalTable.give_exp`), `deadPokeLevel`,
-`getPokeLevel` (Level des Empfängers), `getPokeFriendship`, `playerLanguageId`, `getPokeLanguageId`, Flags `isMatch` (hat gekämpft), `isGakusyusoutiOn`
-(Erfahrungs-Teiler vorhanden), `haveSiawasetamago` (Glücks-Ei), `isEvoCanceledPoke` (Entwicklung per Level gestoppt/Entwicklungsstein), `isMyPoke` (eigenes Pokémon, nicht
-getauscht), `competitor` (wird nicht benutzt).
-Ablauf:
-1. Hat der Empfänger weder gekämpft noch einen Teiler: Ergebnis 0 (`exp = 0`, Flags 0).
-2. `L = min(deadPokeLevel, levelCap)`. `basis = L * deadPokeExp`; `basis = basis < 5 ? 1 : basis / 5` (`CalcBaseExp @0x19f8000`, 32-Bit).
-3. Hat der Empfänger **gekämpft**: `e = basis`. Sonst (nur Teiler): `e = max(1, basis >> 1)` (`CalcGakusyusoutiExp @0x19f8030`), Flag „durch Teiler“ = 1.
-4. **Stufenausgleich** (`getexp_calc_adjust_level @0x19f8040`, **Gleitkomma einfacher Genauigkeit**):
-   `x = 2*L + 10` (float), `y = L + level_empfänger + 10` (float), `f(z) = z*z*sqrt(z)` (float, Reihenfolge `(z*z)*sqrtf(z)`),
-   `e = (int)( (f(x) / f(y)) * (float)e + 1.0f )` (Abschneiden zur 0, `int`). Das entspricht `((2L+10)/(L+Lr+10))^2,5 · e + 1`.
-5. Ist das Pokémon **nicht** eigen (`!isMyPoke`): `e = MulRatio(e, sprache gleich ? 0x1800 : 0x1b33)` (×1,5 bzw. ≈ ×1,7), Flag „Bonus“ := 1.
-6. Glücks-Ei: `e = MulRatio(e, 0x1800)`, Bonus := 1.
-7. Entwicklungs-Bonus: `e = MulRatio(e, 0x1333)`, Bonus := 1.
-8. Freundschaft `> 219` (`0xDB`): `e = MulRatio(e, 0x1333)`, Bonus := 1.
-Rückgabe `exp` (32 Bit), `durchTeiler`, `hatBonus` (Reihenfolge der Multiplikationen: 5 → 6 → 7 → 8; jede Stufe rundet einzeln).
-Der Trainerkampf-Bonus (×1,5) kommt **nicht** in dieser Funktion vor (`competitor` bleibt unbenutzt); wo er sonst steckt, ist offen (Abschnitt 10).
-Die Verteilung auf die Gruppe (`ExpCalculator.CalcExp @0x19f8460` ruft `calcExp_Party`, `calcEffortExp_Party`, `calcGEffort_Party`) und die EV-Vergabe sind Scheibe 2.
+Calculated per recipient: `Exp.CalcExp(param, result)` [`Dpr.Battle.Logic.Exp.CalcExp @0x19f7d70`] [O, real function with memory inputs].
+Inputs (`Exp.CalcParam`): `levelCap`, `deadPokeExp` (base experience of defeated species, `PersonalTable.give_exp`), `deadPokeLevel`,
+`getPokeLevel` (recipient level), `getPokeFriendship`, `playerLanguageId`, `getPokeLanguageId`; flags `isMatch` (participated in battle),
+`isGakusyusoutiOn` (Exp. Share present), `haveSiawasetamago` (Lucky Egg), `isEvoCanceledPoke` (stopped level-up evolution/evolution stone),
+`isMyPoke` (owned, not traded), and `competitor` (unused).
+Steps:
+1. If the recipient neither battled nor has Exp. Share, result is 0 (`exp = 0`, flags 0).
+2. `L = min(deadPokeLevel, levelCap)`. `basis = L * deadPokeExp`; then `basis = basis < 5 ? 1 : basis / 5` (`CalcBaseExp @0x19f8000`, 32-bit).
+3. If the recipient **battled**: `e = basis`. Otherwise (Exp. Share only): `e = max(1, basis >> 1)` (`CalcGakusyusoutiExp @0x19f8030`), set “via Exp. Share” flag = 1.
+4. **Level adjustment** (`getexp_calc_adjust_level @0x19f8040`, **single-precision float**):
+   `x = 2*L + 10` (float), `y = L + recipientLevel + 10` (float), `f(z) = z*z*sqrt(z)` (float, order `(z*z)*sqrtf(z)`),
+   `e = (int)((f(x) / f(y)) * (float)e + 1.0f)` (truncate toward zero, `int`). This corresponds to `((2L+10)/(L+Lr+10))^2.5 · e + 1`.
+5. If the Pokémon is not owned (`!isMyPoke`): `e = MulRatio(e, same language ? 0x1800 : 0x1b33)` (×1.5 or ≈×1.7); set “bonus” = 1.
+6. Lucky Egg: `e = MulRatio(e, 0x1800)`; set bonus = 1.
+7. Evolution bonus: `e = MulRatio(e, 0x1333)`; set bonus = 1.
+8. Friendship >219 (`0xDB`): `e = MulRatio(e, 0x1333)`; set bonus = 1.
+Return `exp` (32-bit), `viaExpShare`, `hasBonus` (multiplication order 5 → 6 → 7 → 8; each step rounds separately).
+The trainer-battle bonus (×1.5) is **not** in this function (`competitor` remains unused); its location is unknown (section 10).
+Party distribution (`ExpCalculator.CalcExp @0x19f8460` calls `calcExp_Party`, `calcEffortExp_Party`, `calcGEffort_Party`) and EV awards are Slice 2.
 
-## 9. Orakel-Methodik und Ergebnisse
+## 9. Oracle method and results
 
-- Werkzeug: `scripts/battle_oracle.py` (Python 3 + Paket `unicorn`, installiert unter `tools/pydeps`). Es lädt die LOAD-Segmente des ELF an ihre
-  vaddr, wendet die 551 315 relativen Relokationen an (nötig, weil IL2CPP seine Tabellenzeiger über sie auflöst) und führt die Funktionen ab
-  ihrem Einstieg bis zum Rücksprung aus. IL2CPP-Laufzeit: Array-Anlage, Typprüfung, Barrieren und Klasseninitialisierung sind Stubs; statische
-  Felder werden nicht nachgebaut, sondern durch **Ausführen der echten `.cctor`** (`TypeAffinity`, `CalcTool`, `calc`) befüllt. Statische Initialisierer-Arrays
-  (`RuntimeHelpers.InitializeArray`) lesen die Rohbytes aus `global-metadata.dat` anhand der Feld-Hashes aus `dump.cs`.
-- Verbund-Orakel (`damage`, `hit`, `crit`): Die Funktionen `Event_CalcDamage`, `Event_CheckHit`, `Event_CheckCritical` laufen als Original; das Ereignissystem
-  (`EVENTVAR_*`, `CallEvent`), `BTL_POKEPARAM`-Zugriffe und die Handler-Funktionen (Kraft, Angriff, Abwehr, STAB) sind Python-Stubs, deren Rückgaben
-  Teil der Fixture-Eingaben sind. Der Zufall kommt aus dem echten Xoroshiro; jede Fixture enthält deshalb auch den **nächsten Zufallswert nach dem Aufruf**
-  (`nextRand`) und prüft damit die Anzahl der gezogenen Werte.
-- Fixtures (`unity/Assets/Tests/EditMode/Fixtures`, nur Zahlen, feste Seeds, mit `PYTHONPATH=tools/pydeps python3 scripts/battle_oracle.py` neu erzeugbar);
-  jede Funktion hat ≥ 50 Eingaben.
+- Tool: `scripts/battle_oracle.py` (Python 3 and `unicorn`, installed under `tools/pydeps`). It loads the ELF LOAD segments at their
+  virtual addresses, applies 551,315 relative relocations (needed for IL2CPP to resolve table pointers), and runs functions from entry to return.
+  IL2CPP runtime features—array allocation, type checks, barriers, and class initialization—are stubs; static fields are populated by **running the real
+  `.cctor`** (`TypeAffinity`, `CalcTool`, `calc`) rather than recreated. Static initializer arrays (`RuntimeHelpers.InitializeArray`) read raw
+  bytes from `global-metadata.dat` using field hashes from `dump.cs`.
+- Composite oracle (`damage`, `hit`, `crit`): `Event_CalcDamage`, `Event_CheckHit`, and `Event_CheckCritical` run as original; the event system
+  (`EVENTVAR_*`, `CallEvent`), `BTL_POKEPARAM` accesses, and handler functions (power, attack, defense, STAB) are Python stubs whose return values
+  are fixture inputs. Randomness comes from the real Xoroshiro, so each fixture also records the **next random value after the call** (`nextRand`) to check how
+  many values were drawn.
+- Fixtures (`unity/Assets/Tests/EditMode/Fixtures`, numeric data only, fixed seeds, reproducible with `PYTHONPATH=tools/pydeps python3 scripts/battle_oracle.py`);
+  each function has ≥ 50 inputs.
 
-| Fixture | Funktionen (echt, Unicorn) | Fälle |
-|---|---|---|
-| `BattleTables.json` | .cctor von `TypeAffinity`, `CalcTool`, `calc` (Tabellen) | 101 Einträge |
-| `BattleStats.json` | `CalcMaxHp`, `CalcAtk/Def/SpAtk/SpDef/Agi`, `CalcCorrectedPowerBySeikaku`, `GetPowerTransformBySeikaku` | 1635 |
+| Fixture | Functions (real, Unicorn) | Cases |
+|---|---|---:|
+| `BattleTables.json` | .cctor for `TypeAffinity`, `CalcTool`, `calc` (tables) | 101 entries |
+| `BattleStats.json` | `CalcMaxHp`, `CalcAtk/Def/SpAtk/SpDef/Agi`, `CalcCorrectedPowerBySeikaku`, `GetPowerTransformBySeikaku` | 1,635 |
 | `BattleTypes.json` | `TypeAffinity.CalcAffinity`, `MulAffinity` | 918 |
-| `BattleCalc.json` | `DamageBase`, `AffDamage`, `MulRatio`, `MulRatio_OverZero`, `MulRatioInt`, `GetWeatherDmgRatio`, `StatusRank`, `HitPer`, `RoundValue` | 1855 |
+| `BattleCalc.json` | `DamageBase`, `AffDamage`, `MulRatio`, `MulRatio_OverZero`, `MulRatioInt`, `GetWeatherDmgRatio`, `StatusRank`, `HitPer`, `RoundValue` | 1,855 |
 | `BattleExp.json` | `Exp.CalcExp`, `getexp_calc_adjust_level`, `CalcBaseExp`, `CalcGakusyusoutiExp` | 740 |
-| `BattleRng.json` | `Xoroshiro128Plus..ctor`, `NextULong`, `NextUInt`, `Random.GetValue(max)` | 70 Ströme |
-| `BattleRngUse.json` | `IsOccurPer`, `RandRange`, `HitCountStd`, `CheckCritical` mit echtem RNG | 640 |
-| `BattleDamage.json` | `Event_CalcDamage` (Verbund) | 500 |
-| `BattleHit.json` | `Event_CheckHit` (Verbund) | 600 |
-| `BattleCrit.json` | `Event_CheckCritical` (Verbund) | 400 |
+| `BattleRng.json` | `Xoroshiro128Plus..ctor`, `NextULong`, `NextUInt`, `Random.GetValue(max)` | 70 streams |
+| `BattleRngUse.json` | `IsOccurPer`, `RandRange`, `HitCountStd`, `CheckCritical` with real RNG | 640 |
+| `BattleDamage.json` | `Event_CalcDamage` (composite) | 500 |
+| `BattleHit.json` | `Event_CheckHit` (composite) | 600 |
+| `BattleCrit.json` | `Event_CheckCritical` (composite) | 400 |
 
-## 10. Offenes
+## 10. Open questions
 
-1. **Handler (Fähigkeiten, Items, Attacken-Spezialfälle):** Kraft-, Angriffs-, Abwehr-, STAB- und Endfaktor-Anpassungen kommen aus ~2000 Handler-Methoden
-   (`Dpr.Battle.Logic.Handler.Tokusei/Item/Waza`). Scheibe 1 behandelt sie als Eingaben (Verhältnisse). Beispiel bestätigt: Anpassung = STAB 0x2000.
-2. **Ereignis-IDs** (0x3E, 0x3F, 0x40, 0x43, 0x45–0x4B, 0x53, 0x54, 0x58–0x5C, 0x95 …) sind hier nur nach Wirkung benannt; ein Katalog gegen die Handler fehlt.
-3. **Festschaden/Vorab-Ereignisse** 0x58/0x59 (Variablen 0x3A–0x3C) und der Schaden-Deckel durch Durchhalten/Delegator/Raid-Boss sind nur grob beschrieben.
-4. **Typenwirkung im Kampf:** `Section_CheckWazaDamageAffinity`, schwebende Ziele (Boden-Immunität), Fähigkeiten (Schwebe, Absorber), Zustände
-   (Verwandlungs-Typen) und das Umschreiben der Wirkung per `rewriteWazaAffinityBy...` sind nicht rekonstruiert; die Immunität (ID 0) setzt sich nur durch,
-   wenn diese Abschnitte sie vor `Event_CalcDamage` abfangen.
-5. **Trainerkampf-Erfahrung ×1,5**: kommt nicht in `Exp.CalcExp` vor; vermutlich in `Section_*Exp*`/`BTL_CLIENT`. Erfahrungsverteilung, EV-Vergabe und
-   Level-Aufstiege (Scheibe 2).
-6. **Sprach-/`isMyPoke`-Bedeutung:** `playerLanguageId` und `getPokeLanguageId` sind Sprach-IDs; ob der 0x1b33-Zweig im Spiel (nur eine Sprache pro Installation) je auftritt,
-   ist ungeklärt, bleibt aber nachgebildet.
-7. **Zuneigungseffekte** (Freundschaft 255): Nur Treffer (−10), Volltreffer (Teiler 2) bestätigt; weitere (Statusheilung, Überleben) sind Scheibe 2.
-8. **Wachstumsrate-Index im Pokémon**: Ob das Feld `grow` der Art direkt die Zeile der `GrowTable` ist, ist angenommen (Zeile 0–5; 6/7 ungenutzt).
-9. **Seed im Live-Kampf:** stammt aus `UnityEngine.Random`; der Rebuild kann deshalb nur *ab* einem gegebenen Seed deterministisch sein. Ob der Online-/Wiedergabe-Pfad
-   (`recRandSeed`, `commMode`) weitere Zufallsquellen hat, ist ungeklärt. `g_PublicRand` ist bewusst nicht reproduzierbar.
-10. **Nicht abgedeckt:** `BattleSimulator.CalcDamage` (KI-Vorschau), Fänge (`Capture.checkCapureSuccessByRandom`), Geldpreise (`calc.CalcWinMoney`), Wirkungs-Prozente
-    (`calc.IsOccurPer` ist da, die Verwendung nicht), Mehrfachtreffer-Ablauf, Fluchtformel, Initiative/Prioritäten, Statusschäden (Gift, Verwirrung), Wetterdauer.
-11. **Orakel-Grenzen:** Der Emulator stubt Klassenkonstruktoren; Funktionen mit Zugriff auf `PersonalSystem`/Masterdaten (`CalcLevel`, `GetGrowTable`) laufen nicht
-    ohne Engine-Zustand und sind nur per Pseudocode + Formelprüfung gegen `GrowTable.json` gedeckt [P]. `RecvWeatherDamage` ist nur [P].
+1. **Handlers (abilities, items, move-specific cases):** Power, attack, defense, STAB, and final-factor adjustments come from about 2,000 handler methods
+   (`Dpr.Battle.Logic.Handler.Tokusei/Item/Waza`). Slice 1 treats them as inputs (ratios). Confirmed example: Adaptability = STAB `0x2000`.
+2. **Event IDs** (`0x3E`, `0x3F`, `0x40`, `0x43`, `0x45–0x4B`, `0x53`, `0x54`, `0x58–0x5C`, `0x95`, …) are named here only by their effect; a catalog cross-referenced with handlers is missing.
+3. **Fixed damage/pre-events** `0x58`/`0x59` (variables `0x3A–0x3C`) and damage caps from Endure/Substitute/Raid Boss are described only at a high level.
+4. **In-battle type effectiveness:** `Section_CheckWazaDamageAffinity`, airborne targets (Ground immunity), abilities (Levitate, absorbers), status (transformed types), and effectiveness rewrites through `rewriteWazaAffinityBy...` have not been reconstructed. Immunity (ID 0) is preserved only if these sections handle it before `Event_CalcDamage`.
+5. **Trainer battle experience ×1.5:** absent from `Exp.CalcExp`; probably in `Section_*Exp*`/`BTL_CLIENT`. Experience distribution, EV awards, and level-ups are Slice 2.
+6. **Meaning of language/`isMyPoke`:** `playerLanguageId` and `getPokeLanguageId` are language IDs; it is unclear whether the `0x1b33` path can occur in-game (only one language per installation), but it is reproduced.
+7. **Friendship effects** (friendship 255): only accuracy (−10) and critical hit (divisor 2) are confirmed; other effects (status healing, survival) are Slice 2.
+8. **Growth-rate index in Pokémon:** it is assumed that the species' `grow` field directly indexes `GrowTable` rows (0–5; 6/7 unused).
+9. **Live battle seed:** comes from `UnityEngine.Random`; the rebuild can therefore be deterministic only *from* a given seed. Whether online/replay paths
+   (`recRandSeed`, `commMode`) use additional random sources is unknown. `g_PublicRand` is intentionally non-reproducible.
+10. **Not covered:** `BattleSimulator.CalcDamage` (AI preview), capture (`Capture.checkCapureSuccessByRandom`), prize money (`calc.CalcWinMoney`), effect chances
+    (the `calc.IsOccurPer` function is covered, its usage is not), multi-hit sequence, escape formula, speed/priority, status damage (poison, confusion), weather duration.
+11. **Oracle limitations:** the emulator stubs class constructors; functions using `PersonalSystem`/master data (`CalcLevel`, `GetGrowTable`) do not run without engine state
+    and are covered only by pseudocode plus formula checks against `GrowTable.json` [P]. `RecvWeatherDamage` is [P] only.

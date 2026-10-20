@@ -1,114 +1,116 @@
-# Player-Build 1: erste echte Builds für macOS und iPad (Todo `ap-packaging` / `ap-build-all`)
+# Player Build 1: First Real Builds for macOS and iPad (Todos `ap-packaging` / `ap-build-all`)
 
-> **Historisch (Stand 2026-10-20):** Dieser Bericht beschreibt den eingestellten Unity-Weg. Folgende Dateien sind auf `main` entfernt und nur noch auf Branch `unity` vorhanden: `scripts/bundle_retarget.py`, `scripts/ios_deploy.sh`, `scripts/tests/test_bundle_retarget.py`. Befehle mit diesen Skripten laufen auf `main` nicht mehr; für den aktuellen Bau gilt `docs/BUILD.md`.
+> **Historical (status 2026-10-20):** This report describes the discontinued Unity path. These files have been removed from `main` and remain only on branch `unity`: `scripts/bundle_retarget.py`, `scripts/ios_deploy.sh`, `scripts/tests/test_bundle_retarget.py`. Commands using these scripts no longer run on `main`; for current build instructions, see `docs/BUILD.md`.
 
-Stand: 2026-10-19. Erstmals wurden mit der Build-Pipeline echte Player-Builds (IL2CPP, arm64, nur Metal) mit den echten Bundles erzeugt, gestartet und ausgewertet: macOS (M1 Pro, 16 GB) und iPad Pro 12,9" (6. Generation, `iPad14,6`, M2, 7518 MB sichtbar, 128 GB, iPadOS 26.4.2). Alle Zahlen stammen aus diesen Läufen (Logs nur lokal unter `work/builds/`, gitignoriert). **Ton blieb aus** (`AudioSafety`, jeder Lauf meldete „Ton: aus“); die Lautstärke von Mac und iPad wurde nicht angefasst. Keine Spieldaten, Bilder oder Builds im Repo, die Team-ID steht nur in `work/local.env`.
+Status: 2026-10-19. For the first time, the build pipeline produced, launched, and evaluated real player builds (IL2CPP, arm64, Metal only) with real bundles: macOS (M1 Pro, 16 GB) and iPad Pro 12.9-inch (6th generation, `iPad14,6`, M2, 7,518 MB visible, 128 GB, iPadOS 26.4.2). All figures come from these runs (logs only under gitignored `work/builds/`). **Audio remained off** (`AudioSafety`; every run reported “Audio: off”); Mac and iPad volume untouched. No game data, images, or builds in repository; team ID only in `work/local.env`.
 
-## 1. Ergebnis in Kürze
+## 1. Summary
 
-| Frage | Ergebnis |
+| Question | Result |
 |---|---|
-| macOS-Build mit Pipeline-Skript | **läuft**: IL2CPP, arm64, Metal; erster Build 202 s, danach 44 s (inkrementell), nach Zielwechsel 92 s; App 4,1 GB (Ausgabeordner mit Symbolen 5,0 GB). |
-| macOS-App startet mit den Spieldaten im Paket | **ja**: Boot-Szene, `-xnuScene`/`XNU_START_SCENE` startet `FieldTest2`; Zone 422 (Zwieblüh) lädt in 1,2 s, 30 FPS, kein Absturz in 60 s. |
-| **Größter Fund: Switch-Bundles lädt kein Player** | Die Bundles tragen die Zielplattform 38 (Switch). Der Editor lädt sie trotzdem, der **Player lehnt sie ab** („The file can not be loaded because it was created for another build target…“). Lösung: `scripts/bundle_retarget.py` setzt die Plattformkennung (4 Bytes je Bundle) in der Stufe `assets`. |
-| iOS-Build, Installation, Start auf dem iPad | **läuft**: Unity-Build 19 s (inkrementell, 247 s mit erstem Zielwechsel), `scripts/ios_deploy.sh` 2 min 40 s (Xcode Release plus Installation), Start mit `devicectl --console`, Zone 422 lädt in 1,1 s, 30 FPS, thermisch nominal. |
-| **Offen und kritisch für iOS: Texturformate** | Die Karten-Bundles enthalten BC1/BC3/BC7 (DXT). Apple-GPUs unterstützen sie nicht, Unity kann sie nicht entpacken: auf dem iPad schlagen **1.884 Texturen** der Zone 422 fehl (Abschnitt 6). Ohne Umwandlung nach ASTC (oder RGBA) bleibt die Karte auf iOS ohne Texturen. |
-| Stripping | Ein Fund: iOS strippte `SkinnedMeshRenderer` („Could not produce class with ID 137“, 30-mal). `unity/Assets/link.xml` behebt es; danach 0 Fehler dieser Art. |
-| Generierte Shader im Player | **gelöst und belegt**: `Shader.Find` findet 61 von 61 Shadern im macOS-Player (Resources-Mechanismus). Der Build gleicht sie vorher automatisch ab. |
-| Tests | Unity EditMode **635 von 635 grün** (624 Bestand plus 4 neue Boot-Tests und 7 von anderen Agenten), Python-Suite 258 grün (8 neue Tests für den Retarget). |
+| macOS build via pipeline script | **works**: IL2CPP, arm64, Metal; first build 202 s, then 44 s (incremental), 92 s after target switch; app 4.1 GB (output directory with symbols 5.0 GB). |
+| macOS app starts with game data in package | **yes**: Boot scene; `-xnuScene`/`XNU_START_SCENE` starts `FieldTest2`; Zone 422 (Zwieblüh) loads in 1.2 s, 30 FPS, no crash for 60 s. |
+| **Key finding: player cannot load Switch bundles** | Bundles target platform 38 (Switch). Editor loads them, but **player rejects them** (“The file can not be loaded because it was created for another build target…”). Fix: `scripts/bundle_retarget.py` changes platform identifier (4 bytes per bundle) in `assets` stage. |
+| iOS build, installation, iPad launch | **works**: Unity build 19 s (incremental, 247 s on first target switch); `scripts/ios_deploy.sh` 2 min 40 s (Xcode Release + install); launch with `devicectl --console`; Zone 422 loads in 1.1 s, 30 FPS, nominal thermals. |
+| **Open and critical for iOS: texture formats** | Map bundles contain BC1/BC3/BC7 (DXT). Apple GPUs do not support them and Unity cannot decompress them: **1,884 Zone 422 textures** fail on iPad (section 6). Without conversion to ASTC (or RGBA), map has no textures on iOS. |
+| Stripping | One finding: iOS stripped `SkinnedMeshRenderer` (“Could not produce class with ID 137,” 30 times). `unity/Assets/link.xml` fixes it; then 0 errors of this type. |
+| Generated shaders in player | **fixed and verified**: `Shader.Find` finds all 61 of 61 shaders in macOS player (Resources mechanism). Build syncs them automatically beforehand. |
+| Tests | Unity EditMode **635/635 passing** (624 existing + 4 new Boot tests + 7 by other agents); Python suite 258 passing (8 new retarget tests). |
 
-## 2. Was gebaut und geändert wurde
+## 2. What Was Built and Changed
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `unity/Assets/Scripts/Boot/BootMenu.cs`, `BootOptions.cs` | Startszene **Boot**: zeigt Spieldaten-Zustand (Pfad, Bundles, Stammdaten, Ton), Gerät, Speicher und eine Auswahlliste der übrigen Build-Szenen (IMGUI, nur eigene Objekte). `-xnuScene <Name>` oder `XNU_START_SCENE=<Name>` startet eine Szene ohne Eingabe (Messläufe, iPad per `devicectl`). Nach dem Wechsel bleibt oben rechts eine Schaltfläche „Menü“. Alle 10 s eine Logzeile mit Szene, FPS, Speicher. |
-| `unity/Assets/Scenes/Boot.unity` | Kamera, `DisplayController`, `BootMenu`. Erzeugt von `BootSceneBuilder` (Menü `Xnu/Build/Boot-Szene erzeugen`, und automatisch, wenn der Build sie braucht und sie fehlt). |
-| `unity/Assets/Scripts/Build/Editor/BuildScript.cs` | Standard-Szenenliste: Boot, FieldTest2, FieldTest, UiTest, InputTest (Build Settings des Projekts bleiben leer). Vor jedem Build: **Abgleich der erzeugten Shader** nach `Assets/XnuGenerated/Resources` (Quelle `-xnuShaders`, `XNU_SHADERS`, `work/build/shaders`, `work/shaders/combined`, jeweils mit `variants.json`). Meldet Größe der Spieldaten im Paket. Assembly referenziert jetzt `Xnu.Boot`, `Xnu.Render.Editor`. |
-| `unity/Assets/Scripts/Boot/BundleSource.cs` | Eine Logzeile je geladenem Bundle (`[Boot] Bundle geladen: …`); damit lässt sich die Bundle-Menge einer Szene messen. |
-| `unity/Assets/link.xml` | Behält Core-, Animation-, Physik- und Partikelmodul (Abschnitt 5). Kein Audio-Modul. |
-| `scripts/bundle_retarget.py` | Setzt die Zielplattform in UnityFS-Bundles (`info`, `patch`, `tree`, `subset`). |
-| `scripts/build_all.sh`, `scripts/build_stages.py` | Stufe `assets`: `--bundle-platform macos|ios|keep` (Standard aus `--target`), `--bundle-subset DATEI`, kopiert zusätzlich `work/materials`; Marker-Hash berücksichtigt Plattform, Teilmenge und Materialien. |
-| `scripts/subsets/ipad-start.txt` | Bundle-Teilmenge für den iPad-Start (5 Bundles). |
-| `scripts/tests/test_bundle_retarget.py`, `unity/Assets/Tests/EditMode/BootOptionsTests.cs` | 8 Python-Tests mit synthetischen Bundles, 4 Unity-Tests. |
+| `unity/Assets/Scripts/Boot/BootMenu.cs`, `BootOptions.cs` | Start scene **Boot**: shows game-data status (path, bundles, master data, audio), device, memory, and list of other build scenes (IMGUI, custom objects only). `-xnuScene <name>` or `XNU_START_SCENE=<name>` starts a scene without input (measurement runs, iPad via `devicectl`). “Menu” button remains at upper right after scene switch. Log line every 10 s with scene, FPS, memory. |
+| `unity/Assets/Scenes/Boot.unity` | Camera, `DisplayController`, `BootMenu`. Generated by `BootSceneBuilder` (menu `Xnu/Build/Generate Boot Scene`, and automatically if build needs it and it is missing). |
+| `unity/Assets/Scripts/Build/Editor/BuildScript.cs` | Default scene list: Boot, FieldTest2, FieldTest, UiTest, InputTest (project Build Settings remain empty). Before each build: **sync generated shaders** to `Assets/XnuGenerated/Resources` (sources `-xnuShaders`, `XNU_SHADERS`, `work/build/shaders`, `work/shaders/combined`, each with `variants.json`). Reports packaged game-data size. Assembly now references `Xnu.Boot`, `Xnu.Render.Editor`. |
+| `unity/Assets/Scripts/Boot/BundleSource.cs` | One log line per loaded bundle (`[Boot] Bundle loaded: …`); measures which bundles each scene uses. |
+| `unity/Assets/link.xml` | Preserves Core, Animation, Physics, and Particle modules (section 5). No Audio module. |
+| `scripts/bundle_retarget.py` | Sets target platform in UnityFS bundles (`info`, `patch`, `tree`, `subset`). |
+| `scripts/build_all.sh`, `scripts/build_stages.py` | `assets` stage: `--bundle-platform macos|ios|keep` (default from `--target`), `--bundle-subset FILE`, also copies `work/materials`; marker hash includes platform, subset, materials. |
+| `scripts/subsets/ipad-start.txt` | Bundle subset for iPad startup (5 bundles). |
+| `scripts/tests/test_bundle_retarget.py`, `unity/Assets/Tests/EditMode/BootOptionsTests.cs` | 8 Python tests with synthetic bundles, 4 Unity tests. |
 | `.gitignore` | `unity/Assets/StreamingAssets.meta`. |
 
 ## 3. macOS
 
-### 3.1 Daten ablegen (Stufe `assets`)
-| Schritt | Zeit | Größe |
-|---|---|---|
-| nur Klonen der Bundles, 14.187 Dateien (erster Lauf, Plattform unverändert) | 4 s | 3,9 GB, ohne zusätzlichen Platz (APFS-Klon) |
-| Klonen und Plattform setzen (14.052 Bundles werden neu geschrieben, damit kein Klon mehr) | **24 s** mit unkomprimiertem Block, **42 s** mit LZ4HC-Neukompression | 4,8 GB bzw. **4,0 GB** (14.833 Dateien inkl. 646 Materialexporte und 104 MB Stammdaten) |
+### 3.1 Staging Data (`assets` stage)
+| Step | Time | Size |
+|---|---:|---:|
+| Clone bundles only, 14,187 files (first run, platform unchanged) | 4 s | 3.9 GB, no extra space (APFS clone) |
+| Clone and set platform (14,052 bundles rewritten, no longer clones) | **24 s** with uncompressed block, **42 s** with LZ4HC recompression | 4.8 GB or **4.0 GB** (14,833 files including 646 material exports and 104 MB master data) |
 
 ### 3.2 Build
-| Lauf | Dauer | Größe laut Bericht | Warnungen |
-|---|---|---|---|
-| erster Build (kalt, Bundles unverändert) | **202 s** | 4.827 MB | 237 (alle aus den erzeugten Shadern: „loop only executes for 1 iteration“, „unary negate of unsigned value“) |
-| zweiter Build (inkrementell, Plattform gesetzt, Block 0 unkomprimiert) | **44 s** | 5.728 MB | 4 |
-| letzter Build (nach Zielwechsel von iOS zurück, Stufe `assets` mit LZ4HC) | **92 s** | 5.052 MB (App 4,1 GB, Ausgabeordner 5,0 GB) | 237 |
+| Run | Duration | Reported size | Warnings |
+|---|---:|---:|---|
+| First build (cold, bundles unchanged) | **202 s** | 4,827 MB | 237 (all generated shaders: “loop only executes for 1 iteration,” “unary negate of unsigned value”) |
+| Second build (incremental, platform set, block 0 uncompressed) | **44 s** | 5,728 MB | 4 |
+| Final build (after switching target back from iOS, `assets` with LZ4HC) | **92 s** | 5,052 MB (app 4.1 GB, output directory 5.0 GB) | 237 |
 
-Fehler: 0. Das Skript meldet vorher die Spieldaten im Paket und den Shader-Abgleich („61 Varianten (ok), kopiert/unverändert“). Der Build schreibt außerdem in `ProjectSettings.asset` (Scripting-Backend IL2CPP für Standalone, nur Metal für macOS und iOS, Eintrag für Input-System-Einstellungen); das ist gewollt und gehört ins Repo.
+Errors: 0. Before build, script reports game data in package and shader sync (“61 variants (ok), copied/unchanged”). Build also writes to `ProjectSettings.asset` (IL2CPP backend for Standalone, Metal only for macOS/iOS, Input System settings entry); intended and belongs in repository.
 
-### 3.3 Lauf (Direktaufruf, `-logFile`, kein Ton, nach 60 s per `kill <PID>` beendet)
-- **Fehler 1 (ohne Retarget):** „The file can not be loaded because it was created for another build target … File's Build target is: 38“, danach `AssetBundle.LoadFromFile lieferte null`. Ursache: Bundles für die Switch. Lösung wie oben.
-- **Danach:** Boot: „Xnu 0.1, Unity 6000.3.26f1, OSXPlayer“, `MacBookPro18,3`, 16.384 MB, Grafik Apple M1 Pro (Metal); Spieldaten „im Paket (StreamingAssets)“; Bundles und Stammdaten vorhanden; Ton aus.
-- `FieldTest2`: Katalog 214 ms, Stammdaten 917 ms, Bundle `area001` geöffnet 930 ms, Prefab 1.144 ms, Zone 422 komplett nach **1,2 s** (433 Renderer, 12.465 Vertices, 75 Collider, Spielerfigur `fc0001_00` mit 3 von 3 Clips). **30,0 FPS** (Original-Vorgabe vSync 2 → 30), Unity-Speicher 102 MB (davon Texturen 47 MB), Prozess-RSS 470 bis 570 MB, in 60 s konstant, keine Ausnahme.
-- Es werden genau vier Bundles geladen: `Environments/fields/area001` (23,4 MB), `Characters/persons/field/fc0001_00` (2,7 MB), `fc0001_11` (1,9 MB), `pc_parts` (0,5 MB).
-- Warnungen im Log: „The referenced script (…) on this Behaviour is missing!“ (`FieldEventDoorEntity`, `EmissionColorChanger`, `AudioAmbient`, `FieldEffect`, `FieldPlayerEntity`): erwartet, die Originalskripte gibt es nicht (im Editor identisch). Keine Shader- oder Texturfehler auf macOS (BC wird von der Mac-GPU unterstützt).
-- **Generierte Shader im Player:** mit `XNU_GENERATED_SHADERS=1` und `XNU_MATERIALS=…`: „Umbau (Shader **61/61**, 124 Materialeinträge)“, 29,5 bis 29,9 FPS, kein Absturz (im Editor hatte derselbe Umbau das Bild schwarz gemacht bzw. den Editor blockiert, `docs/feld-szene-2.md`, Kapitel 6; im Player trat das nicht auf; ob das Bild richtig aussieht, wurde **nicht** geprüft, siehe Lücken).
-- `UiTest` 30,0 FPS, `InputTest` 59,6 FPS, Boot-Szene 59,4 FPS, jeweils ohne Fehler.
-- Ein Bildschirmfoto war nicht möglich (`screencapture`: „could not create image from display“, keine Berechtigung bzw. kein Display); die Sichtprüfung fehlt deshalb.
+### 3.3 Run (direct launch, `-logFile`, no audio, stopped after 60 s with `kill <PID>`)
+- **Error 1 (without retargeting):** “The file can not be loaded because it was created for another build target … File's Build target is: 38,” then `AssetBundle.LoadFromFile` returned null. Cause: bundles target Switch. Fixed as above.
+- **Afterward:** Boot: “Xnu 0.1, Unity 6000.3.26f1, OSXPlayer,” `MacBookPro18,3`, 16,384 MB, Apple M1 Pro graphics (Metal); game data “in package (StreamingAssets)”; bundles and master data present; audio off.
+- `FieldTest2`: catalog 214 ms, master data 917 ms, bundle `area001` opened at 930 ms, prefab at 1,144 ms, Zone 422 complete after **1.2 s** (433 renderers, 12,465 vertices, 75 colliders, character `fc0001_00` with 3/3 clips). **30.0 FPS** (original setting vSync 2 → 30), Unity memory 102 MB (47 MB textures), process RSS 470–570 MB, stable for 60 s, no exception.
+- Exactly four bundles loaded: `Environments/fields/area001` (23.4 MB), `Characters/persons/field/fc0001_00` (2.7 MB), `fc0001_11` (1.9 MB), `pc_parts` (0.5 MB).
+- Log warnings: “The referenced script (…) on this Behaviour is missing!” (`FieldEventDoorEntity`, `EmissionColorChanger`, `AudioAmbient`, `FieldEffect`, `FieldPlayerEntity`): expected because original scripts are absent (same in Editor). No shader/texture errors on macOS (Mac GPU supports BC).
+- **Generated shaders in player:** with `XNU_GENERATED_SHADERS=1` and `XNU_MATERIALS=…`: “Remap (Shader **61/61**, 124 material entries),” 29.5–29.9 FPS, no crash (same remap made image black or blocked Editor, `docs/feld-szene-2.md`, chapter 6; did not occur in player; whether image is correct was **not** checked, see gaps).
+- `UiTest` 30.0 FPS, `InputTest` 59.6 FPS, Boot scene 59.4 FPS, all without errors.
+- Screenshot was not possible (`screencapture`: “could not create image from display,” no permission or display); therefore no visual inspection.
 
-### 3.4 Endlauf
-Der letzte Build (mit `assets` und LZ4HC-Neukompression) wurde erneut gestartet: `FieldTest2` lädt dieselben vier Bundles, Zone 422 komplett, 30,0 FPS, Unity-Speicher 104 MB, keine Fehler. Danach wurden App und `StreamingAssets` gelöscht (Platz); alles ist mit den Befehlen aus Abschnitt 7 in rund 2 bis 5 Minuten reproduzierbar.
+### 3.4 Final Run
+Last build (with `assets` and LZ4HC recompression) was launched again: `FieldTest2` loads same four bundles, Zone 422 complete, 30.0 FPS, Unity memory 104 MB, no errors. App and `StreamingAssets` were then deleted to free space; all is reproducible with commands in section 7 in about 2–5 minutes.
 
 ## 4. iOS / iPad
 
-### 4.1 Teilmenge der Bundles
-Die gesamten Bundles (4,0 GB) wurden **nicht** auf das iPad gelegt. Gründe:
-1. Die Karten-Texturen sind auf iOS ohnehin unbrauchbar, bis die Umwandlung existiert (Abschnitt 6); 4 GB Daten mit 1.884 fehlerhaften Texturen belegen nichts Brauchbares.
-2. Die Installation per Xcode kopiert das ganze Paket; die Zeit für 4,9 GB über USB wurde nicht gemessen und stünde bei jedem Testlauf im Weg.
-3. Gerätespeicher: 128 GB laut `devicectl` (`internalStorageCapacity`). Der **freie** Platz ist weder über `devicectl` noch über `DriveInfo` in der App abfragbar (Boot-Zeile „Freier Speicher: unbekannt“ auf Mac und iPad). Der Platz ist also nicht belegt; eine Installation von 4,9 GB wurde nicht versucht.
+### 4.1 Bundle Subset
+The full bundles (4.0 GB) were **not** copied to iPad. Reasons:
+1. Map textures are unusable on iOS until conversion exists (section 6); 4 GB data with 1,884 broken textures proves nothing useful.
+2. Xcode installation copies the entire package; time to transfer 4.9 GB over USB was unmeasured and would slow every test.
+3. Device storage: 128 GB per `devicectl` (`internalStorageCapacity`). **Free** space cannot be queried via `devicectl` or in app via `DriveInfo` (Boot line says “Free storage: unknown” on Mac/iPad). Space is thus unknown; 4.9 GB installation was not attempted.
 
-Auswahl: die Bundles, die der Start der Szene `FieldTest2` **tatsächlich lädt**, gemessen mit dem macOS-Player (vier Bundles, 28,5 MB, Abschnitt 3.3), plus der Textbox-Skin der UI-Szene. Das steht in `scripts/subsets/ipad-start.txt`; `scripts/build_all.sh --only assets --target ios --bundle-subset scripts/subsets/ipad-start.txt` legt sie samt Katalog (`Dpr.bin` u. a., immer mitkopiert) ab. Ergebnis: 9 Dateien, 34,6 MB Bundles, mit Stammdaten (104 MB) und Materialexporten (47 MB) **179 MB** im Paket. Nicht enthalten: weitere Zonen (Türen und Zonenwechsel in `FieldTest2` führen auf Bundles, die fehlen), Kampf, UI-Bundles, Videos, Audio.
+Selection: bundles **actually loaded** when starting `FieldTest2`, measured by macOS player (four bundles, 28.5 MB, section 3.3), plus UI scene's textbox skin. Listed in `scripts/subsets/ipad-start.txt`; `scripts/build_all.sh --only assets --target ios --bundle-subset scripts/subsets/ipad-start.txt` stages them plus catalog (`Dpr.bin`, etc., always copied). Result: 9 files, 34.6 MB bundles; **179 MB** in package with master data (104 MB) and material exports (47 MB). Excludes other zones (doors/transitions in `FieldTest2` lead to missing bundles), battle, UI bundles, videos, audio.
 
-### 4.2 Build und Deploy
-| Schritt | Dauer / Größe |
+### 4.2 Build and Deploy
+| Step | Duration / size |
 |---|---|
-| Unity-Build (iOS) | 19 s inkrementell, 247 s beim ersten Zielwechsel (neuer Import für iOS); Xcode-Projekt 967 bis 1.055 MB (mit `link.xml`) |
-| `scripts/ios_deploy.sh --no-launch` (Xcode Release, signieren, installieren) | **2 min 40 s** (erster Lauf), ca. 2 min 25 s (zweiter) |
-| Entitlement „Increased Memory Limit“ | `Xnu.entitlements` im Projekt, `CODE_SIGN_ENTITLEMENTS` gesetzt |
-| Start | `xcrun devicectl device process launch --device <iPad> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"FieldTest2"}' dev.local.xnum0` |
+| Unity iOS build | 19 s incremental, 247 s on first target switch (new iOS import); Xcode project 967–1,055 MB (with `link.xml`) |
+| `scripts/ios_deploy.sh --no-launch` (Xcode Release, signing, install) | **2 min 40 s** first run; about 2 min 25 s second |
+| “Increased Memory Limit” entitlement | `Xnu.entitlements` in project, `CODE_SIGN_ENTITLEMENTS` set |
+| Launch | `xcrun devicectl device process launch --device <iPad> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"FieldTest2"}' dev.local.xnum0` |
 
-**Fehler 2 (Postbuild):** Der erste Build aus dem offenen Editor (aktives Ziel macOS) lieferte **kein** `Xnu.entitlements`: `IosPostBuild.cs` ist mit `#if UNITY_IOS` umschlossen und existiert nur, wenn beim Kompilieren das Ziel iOS aktiv ist. Beim Zielwechsel in `BuildPlayer` gilt das nicht sofort. Der Batchaufruf der Pipeline (`-buildTarget iOS`) ist davon nicht betroffen; im offenen Editor erst nach dem Wechsel (zweiter Aufruf) und nach einer neuen Kompilierung. Die Stufe prüft `Xnu.entitlements` nach dem Bau und bricht sonst ab (unverändert).
+**Error 2 (post-build):** First build in open Editor (active target macOS) had **no** `Xnu.entitlements`: `IosPostBuild.cs` is wrapped in `#if UNITY_IOS`, so exists only when iOS target is active at compile time. Changing target in `BuildPlayer` does not take effect immediately. Pipeline batch call (`-buildTarget iOS`) is unaffected; in open Editor, rebuild after target switch (second call) and recompilation. Stage checks for `Xnu.entitlements` after build and aborts if absent (unchanged).
 
-### 4.3 Lauf auf dem iPad (60 s, danach beendet)
-- Boot: `IPhonePlayer`, `iPad14,6`, 7518 MB RAM, Grafik **Apple M2 GPU (Metal)**, Spieldaten im App-Paket (`…/xnu.app/Data/Raw/GameData`), Ton aus.
-- Zone 422: Katalog 349 ms, Stammdaten 881 ms, **komplett nach 1,1 s**; 30,0 FPS konstant (Zielwert der Szene), `thermalState` nominal; Unity-Speicher 92 MB, Mono 73 bis 76 MB (Profiler-Zähler; „Grafik 0 MB“ ist auf Metal kein brauchbarer Zähler, der echte Footprint wurde in dieser App nicht gemessen).
-- Keine Abstürze, keine Ausnahmen. Fehler im Log: nur die Texturumwandlung (Abschnitt 6) und die erwarteten „script missing“-Meldungen.
+### 4.3 iPad Run (60 s, then stopped)
+- Boot: `IPhonePlayer`, `iPad14,6`, 7,518 MB RAM, graphics **Apple M2 GPU (Metal)**, game data in app package (`…/xnu.app/Data/Raw/GameData`), audio off.
+- Zone 422: catalog 349 ms, master data 881 ms, **complete in 1.1 s**; constant 30.0 FPS (scene target), nominal `thermalState`; Unity memory 92 MB, Mono 73–76 MB (Profiler counters; “Graphics 0 MB” is not useful on Metal; actual footprint was not measured in this app).
+- No crashes or exceptions. Log errors only for texture conversion (section 6) and expected “script missing” messages.
 
-## 5. Stripping und Reflection
-- **Reflection:** Die Suche nach `Activator`, `System.Reflection`, `GetType`, `JsonUtility` im Laufzeitcode ergab keine echte Reflection-Nutzung (Treffer waren Methodennamen wie `TryGetField`). Die Datenleser nutzen den eigenen `MiniJson`. Eine `link.xml` für Projektklassen war deshalb **nicht** nötig.
-- **Engine-Stripping:** Der iOS-Player (nicht der macOS-Player) strippte `SkinnedMeshRenderer` (Klassen-ID 137), weil nur Bundle-Inhalt, keine Szene ihn referenziert; Folge: Spielerfigur ohne Mesh-Komponente. `unity/Assets/link.xml` behält die Module Core, Animation, Physik und Partikel. Das ist breiter als nötig, aber sicher für fremde Bundle-Inhalte (Collider, Animator, Partikel). Kosten: Xcode-Projekt +88 MB. Danach 0 Meldungen „Could not produce class“. Audio ist bewusst nicht enthalten.
+## 5. Stripping and Reflection
+- **Reflection:** search for `Activator`, `System.Reflection`, `GetType`, `JsonUtility` in runtime code found no actual reflection use (hits were method names such as `TryGetField`). Data readers use custom `MiniJson`. No `link.xml` for project classes was therefore needed.
+- **Engine stripping:** iOS player (not macOS) stripped `SkinnedMeshRenderer` (class ID 137) because only bundle content, not a scene, references it; result: player character without mesh component. `unity/Assets/link.xml` preserves Core, Animation, Physics, Particle modules. Broader than necessary but safe for third-party bundle contents (colliders, Animator, particles). Cost: +88 MB Xcode project. Afterwards 0 “Could not produce class” messages. Audio deliberately excluded.
 
-## 6. Offene Lücken (mit Reihenfolge)
-1. **Texturen für iOS (Nachtrag 2026-10-19: Umwandlung umgesetzt, siehe `docs/ios-texturen.md`; auf dem iPad noch nicht gelaufen).** Die Karten-Bundles enthalten DXT1 (BC1), DXT5 (BC3), BC7 (und BC5/BC6H). iOS meldet je Textur „format is not supported, decompressing texture“, danach „Failed to decompress“ (Zone 422: 1.884 Meldungen; Figuren und UI nutzen ASTC 6×6 und sind unproblematisch). **Nächster Schritt:** BC → ASTC beim Bauen für iOS (Entwurf: pro Bundle die Texturen mit `texture2ddecoder`/`astc_encoder` aus `tools/pydeps` umschreiben, dabei `m_TextureFormat` und Datenblöcke tauschen; Speicherziel 2,5 GB beachten) oder zur Laufzeit beim Laden dekodieren (teurer, mehr Speicher). Auf macOS ist das nicht nötig.
-2. **Sichtprüfung.** Weder auf dem Mac (kein Bildschirmfoto möglich) noch auf dem iPad wurde das Bild gesehen; belegt sind Logs, FPS und Ladezeiten, nicht das Aussehen. Ebenso unverifiziert: Bedienung des Boot-Menüs per Maus/Touch (IMGUI mit dem Input System „nur neu“; Start per Argument funktioniert, das Anklicken wurde nicht getestet).
-3. **Volle Bundle-Menge auf dem iPad.** Installation von rund 4,9 GB, Ladezeit und Platz sind nicht gemessen (Abschnitt 4.1). Der Plan für „fertig gepacktes Binary“ (`docs/kernziel.md`): die volle Menge in das Paket, **nachdem** die Texturumwandlung läuft; bis dahin Teilmengen je Testszene aus den Logzeilen `[Boot] Bundle geladen`. Der Mechanismus (`--bundle-subset`) ist da; eine automatische Hülle aus dem Katalog (`Dpr.bin`) steht aus.
-4. **`--target all`** legt nur einen Satz `StreamingAssets/GameData` an (Plattform `macos`); für iOS die Stufe `assets` mit `--target ios` erneut laufen lassen und dann bauen.
-5. Generierte Shader im Player: geladen und gefunden (61/61), das Bild wurde nicht geprüft; auf iOS ohne Texturumwandlung nicht sinnvoll.
-6. Video und Audio nicht Teil dieses Laufs (Stufe `video` nicht gelaufen, `audio` nicht umgesetzt).
-7. Der Unity-Batch-Treiber der Pipeline (Editor geschlossen) wurde **nicht** ausgeführt, weil der Haupteditor lief; gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor. Die Stufe `unity-build` bleibt damit nur per Dry-run geprüft.
+## 6. Open Gaps (In Priority Order)
+1. **iOS textures (addendum 2026-10-19: conversion implemented, see `docs/ios-texturen.md`; not yet run on iPad).** Map bundles contain DXT1 (BC1), DXT5 (BC3), BC7 (also BC5/BC6H). iOS reports “format is not supported, decompressing texture,” then “Failed to decompress” for each (Zone 422: 1,884 messages; characters/UI use ASTC 6×6 and are fine). **Next:** convert BC→ASTC during iOS build (proposal: rewrite textures per bundle using `texture2ddecoder`/`astc_encoder` in `tools/pydeps`, update `m_TextureFormat` and data blocks; observe 2.5-GB memory target) or decode at runtime when loading (more expensive, more memory). Not needed on macOS.
+2. **Visual inspection.** Image was not seen on Mac (no screenshot) or iPad; logs, FPS, and load times are documented, not appearance. Also unverified: using Boot menu with mouse/touch (IMGUI with Input System “new only”; launch via argument works, clicking not tested).
+3. **Full bundle set on iPad.** Install size about 4.9 GB, load time and free space unmeasured (section 4.1). “Prepackaged binary” plan (`docs/kernziel.md`): include full set in package **after** texture conversion works; until then use subsets per test scene from `[Boot] Bundle loaded` log lines. `--bundle-subset` exists; automatic closure from catalog (`Dpr.bin`) does not.
+4. **`--target all`** creates only one `StreamingAssets/GameData` set (platform `macos`); rerun `assets` with `--target ios` for iOS, then build.
+5. Generated shaders load and are found in player (61/61), image was not inspected; not useful on iOS without texture conversion.
+6. Video and audio were not part of this run (`video` stage not run; `audio` not implemented).
+7. Unity pipeline batch driver (Editor closed) was **not** run because main Editor was active; built via `Xnu/Build/…` menu in open Editor. `unity-build` stage is therefore only dry-run tested.
 
-## 7. Wiederholung
+## 7. Reproduction
+
 ```sh
-# macOS (Editor geschlossen: Stufe unity-build, sonst Menü Xnu/Build/macOS im offenen Editor)
+# macOS (Editor closed: unity-build stage; otherwise Xnu/Build/macOS menu in open Editor)
 scripts/build_all.sh --only assets,unity-build --target macos --min-free-gb 20
-work/builds/macos/xnu.app/Contents/MacOS/xnu -logFile $PWD/work/builds/player.log     # -xnuScene FieldTest2 oder XNU_START_SCENE
-# iPad: Teilmenge, dann bauen und installieren
+work/builds/macos/xnu.app/Contents/MacOS/xnu -logFile $PWD/work/builds/player.log     # -xnuScene FieldTest2 or XNU_START_SCENE
+# iPad: subset, then build and install
 scripts/build_all.sh --only assets --target ios --bundle-subset scripts/subsets/ipad-start.txt --min-free-gb 20
-#   Unity: Menü Xnu/Build/iOS und iPadOS (Xcode-Projekt)   (im offenen Editor zweimal, falls Xnu.entitlements fehlt)
+#   Unity: menu Xnu/Build/iOS and iPadOS (Xcode project) (twice in open Editor if Xnu.entitlements missing)
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/ios_deploy.sh work/builds/ios/xnu --no-launch
 xcrun devicectl device process launch --device <iPad> --terminate-existing --console --environment-variables '{"XNU_START_SCENE":"FieldTest2"}' dev.local.xnum0
 ```
-Hinweis zu `-logFile`: Unity braucht einen **absoluten** Pfad; mit einem relativen Pfad entsteht keine Logdatei.
+
+Note for `-logFile`: Unity needs an **absolute** path; a relative path creates no log file.

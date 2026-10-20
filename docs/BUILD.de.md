@@ -13,15 +13,16 @@ und ein Grafik-Backend bereitstellt (Metal auf macOS und iPadOS, Vulkan unter Li
 - Du brauchst einen eigenen Dump des Spiels: die Basis-`.xci` (optional das `.nsp`-Update) und deine
   `prod.keys` (plus `title.keys`). Lege sie außerhalb des Repositorys ab. Die Skripte lesen sie nur.
 - Alles, was die Skripte erzeugen, landet in `work/`. Dieser Ordner ist von Git ignoriert. Committe ihn nie.
-- Ziele: die macOS-App (am weitesten), die iPadOS-App (ohne Ton), Linux mit Vulkan (in Arbeit, Abschnitt 6).
+- Ziele: die macOS-App (am weitesten), die iPadOS-App, Linux mit Vulkan (in Arbeit, Abschnitt 6).
 
 ## 2. Gemeinsame Voraussetzungen
 
 | Was | Wofür | Prüfen mit |
 |---|---|---|
-| Xcode (in `/Applications/Xcode.app`), Lizenz akzeptiert | macOS- und iPadOS-Bau | `xcodebuild -version` |
+| Xcode 26 oder neuer (in `/Applications/Xcode.app`), einschließlich Icon Composer, Lizenz akzeptiert | macOS-/iPadOS-Bau und native Liquid-Glass-Icons | `xcodebuild -version` |
 | Command Line Tools | Compiler, `codesign`, `otool`, `iconutil` | `xcode-select -p` |
 | Python 3.9 oder neuer | `build_all.sh`, Hilfsskripte | `python3 --version` |
+| Pillow | Originalicons konvertieren und deterministisch gestalten | `python3 -c 'from PIL import Image'` |
 | Homebrew-Pakete `llvm`, `sdl3`, `ffmpeg`, `pkg-config` | macOS-App (Stufe `recomp`) | `pkg-config --exists sdl3 libavcodec libavformat libavutil` |
 | Python-Pakete `capstone`, `unicorn` in `tools/pydeps` | Generator (Stufe `recomp`) | `ls tools/pydeps` |
 | `git`, `make`, `cc` | Stufe `tools` (baut `hactool`) | `command -v git make cc` |
@@ -114,7 +115,7 @@ Aus dem Terminal bleibt das Protokoll auf dem Bildschirm. Aus dem Finder geht es
 (`BDSP_LOG_STDOUT=1` erzwingt die Ausgabe im Terminal). Pfade für Konfigurationsdatei, Spielstand und
 Cache: `docs/recomp-macapp.md`.
 
-Einschränkungen: kein Ton, kein Netz. Beim ersten Start ggf. Rechtsklick → Öffnen (Gatekeeper, ad hoc
+Einschränkungen: kein Netz. Beim ersten Start ggf. Rechtsklick → Öffnen (Gatekeeper, ad hoc
 Signatur).
 
 ## 5. iPadOS-App (`scripts/recomp/ios/deploy_ios.sh`)
@@ -154,146 +155,35 @@ Die Signierung machst du selbst. Wähle bei einem fehlgeschlagenen Bau Team und 
 Das Skript übergibt `TEAM_ID` und `-allowProvisioningUpdates` an `xcodebuild`. Ändere
 `project.pbxproj` im Repository nicht, um das Team einzustellen.
 
-## 6. Linux mit Vulkan (in Arbeit)
+## 6. Linux mit Vulkan und Qt6
 
-Arbeitsstand. Noch nicht spielbar. Die bekannten Einschränkungen stehen in Abschnitt 6.4.
+Die vollständige, gepflegte Paketliste und alle Befehle stehen in
+[BUILD.md](BUILD.md), Abschnitt 6. Die Host-Skripte liegen jetzt unter
+`scripts/recomp/linux/`; lokale Ergebnisse unter `work/recomp/linux/`.
+SSH-Alias und Arbeitsordner werden weiterhin lokal über RZ_HOST/RZ_DIR festgelegt.
 
-### 6.1 Voraussetzungen
+Installiere auf dem Linux-Rechner die Entwicklungsdateien für Qt6 Widgets, SDL3,
+Vulkan-Header und -Loader, shaderc, Vulkan Memory Allocator und FFmpeg.
+Laufzeitpakete allein reichen nicht. Fedora benötigt insbesondere
+`qt6-qtbase-devel`, `vulkan-loader-devel`, `vulkan-headers`, `SDL3-devel`,
+`libshaderc-devel` und `VulkanMemoryAllocator-devel`. Dazu kommen passende
+FFmpeg-Devel-Pakete desselben Anbieters wie die vorhandenen Laufzeitbibliotheken.
 
-Du führst die Befehle auf dem Mac aus. Ein Linux-Rechner (x86-64) baut und startet das Spiel im Ordner
-`~/xnu-recomp`. Trage `RZ_HOST` in `work/local.env` (Abschnitt 3) als ssh-Alias dieses Rechners ein.
+Die Skripte installieren nichts und kopieren keine Homebrew-Header. Der reguläre
+Build verwendet Systempakete über pkg-config; alte include-vk- oder deps/include-
+Verzeichnisse werden nicht automatisch bevorzugt. Es werden keine zusätzlichen
+Qt-/SDL-/Vulkan-/FFmpeg-Bibliotheken ins Repository aufgenommen.
 
-**Linux-Rechner**
+Nach der Quellübertragung prüft `scripts/recomp/linux/check_deps.sh --qt`
+die Voraussetzungen. `scripts/recomp/linux/vk_build.sh --qt` baut die Qt-Hülle
+im Prozess der Laufzeit; `scripts/recomp/linux/vk_qt.sh` startet sie. Diese Variante
+unterstützt natives Wayland und X11. Die getrennte X11-Hülle bleibt mit
+BDSP_QT_PROCESS=1 verfügbar. Konkrete Sitzungs-, Benutzer- und Hostdaten bleiben lokal.
 
-- x86-64-Prozessor mit der Stufe `x86-64-v3` (AVX2), weil der Bau `-march=x86-64-v3` verwendet.
-- Vulkan-Loader und Vulkan-Treiber. Getestete GPU: NVIDIA GeForce RTX 2080 Ti mit Vulkan 1.4.
-- `clang`.
-- Laufzeitbibliotheken (zum Ausführen nötig; die Build-Abhängigkeiten unten sind davon getrennt): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
-  `/usr/lib64/libshaderc_shared.so.1`.
-- Für die Filmwiedergabe: `libavformat.so.62`, `libavcodec.so.62`, `libavutil.so.60`. Optional: ohne sie
-  baue mit `BDSP_NO_MOVIE=1`.
-
-**Mac**
-
-- ssh mit Schlüssel-Authentifizierung (ohne Passwortabfrage), `rsync`, `curl`.
-- Homebrew-Pakete `vulkan-headers`, `sdl3`, `shaderc` (nur Header).
-- Optional: Homebrew-Paket `ffmpeg` für die FFmpeg-Header (siehe Schritt 2 in Abschnitt 6.2).
-
-#### Build-Abhängigkeiten
-
-Die Qt-Hülle (Menüleiste und Fenster) braucht diese Pakete auf dem Linux-Rechner. Installiere sie selbst.
-Die Skripte installieren nichts.
-
-| Element | Debian/Ubuntu (apt) | Fedora (dnf) | Arch Linux (pacman) |
-|---|---|---|---|
-| Qt-6-Entwicklungsdateien (Widgets) | `qt6-base-dev` | `qt6-qtbase-devel` | `qt6-base` |
-| CMake | `cmake` | `cmake` | `cmake` |
-| pkg-config | `pkg-config` | `pkgconf` | `pkgconf` |
-| Vulkan-Header | `libvulkan-dev` | `vulkan-headers` | `vulkan-headers` |
-| SDL3-Entwicklungsdateien | `libsdl3-dev` | `SDL3-devel` | `sdl3` |
-| shaderc-Entwicklungsdateien | `libshaderc-dev` | `shaderc-devel` | `shaderc` |
-
-Installationsbefehl je Distribution:
-
-```sh
-# Debian/Ubuntu
-sudo apt install qt6-base-dev cmake pkg-config libvulkan-dev libsdl3-dev libshaderc-dev
-```
-
-```sh
-# Fedora
-sudo dnf install qt6-qtbase-devel cmake pkgconf vulkan-headers SDL3-devel shaderc-devel
-```
-
-```sh
-# Arch Linux
-sudo pacman -S qt6-base cmake pkgconf vulkan-headers sdl3 shaderc
-```
-
-Prüfstatus: Die Arch-Namen (`qt6-base`, `sdl3`, `shaderc`, `vulkan-headers`, `cmake`) sind im offiziellen
-Repository `extra` bestätigt. Die Debian-Namen (`qt6-base-dev`, `libsdl3-dev`, `libshaderc-dev`, `libvulkan-dev`)
-sind auf packages.debian.org (stable) bestätigt. Der Fedora-Name `qt6-qtbase-devel` ist im Fedora-Paketindex
-bestätigt; `SDL3-devel`, `shaderc-devel` und `vulkan-headers` sind die Namen, die auf dem Fedora-Build-Host
-verwendet werden (`docs/recomp-ryzen.md`, Abschnitt 11). Ubuntu verwendet die Debian-Namen; ob `libsdl3-dev`
-existiert, hängt von der Version ab (nicht für jede Ubuntu-Version verifiziert).
-PySide6 steht nicht in der Tabelle. Ob die oben genannten Qt-6-Pakete für PySide6 ausreichen, ist nicht
-verifiziert.
-
-Die Qt-Hülle läuft als X11-Client (`QT_QPA_PLATFORM=xcb`). Unter Wayland läuft sie über Xwayland. Das
-Spielfenster wird über X11 eingebettet: die Hülle startet das Spiel mit `SDL_VIDEODRIVER=x11`.
-
-### 6.2 Bauen und starten
-
-Führe diese Schritte auf dem Mac in dieser Reihenfolge aus:
-
-1. Header einmalig auf den Linux-Rechner kopieren: `scripts/recomp/ryzen/vk_sync_deps.sh`
-   - Beim ersten Lauf lädt das Skript `vk_mem_alloc.h` von GitHub, sofern die Datei nicht bereits in
-     `work/recomp/deps-vk/` liegt.
-2. Quellen und eigene Daten (RomFS, `main.npdm`) kopieren: `scripts/recomp/ryzen/vk_sync.sh --daten`
-   - Fehlt `work/recomp/img_gfx`, nennt das Skript den Befehl zum Erzeugen (`mkimages.sh`).
-   - Optional, für die Filmwiedergabe: `scripts/recomp/ryzen/sync_deps.sh` kopiert die FFmpeg-Header und die
-     SDL3-Header aus Homebrew nach `~/xnu-recomp/deps/include`. Setze `FFMPEG_PREFIX`, wenn ffmpeg nicht unter
-     `/opt/homebrew/opt/ffmpeg` liegt.
-3. Die vier Module auf dem Linux-Rechner nach `~/xnu-recomp/work/recomp/obj4-c` übersetzen:
-   `scripts/recomp/ryzen/build.sh` (Voraussetzungen auf dem Rechner: `docs/recomp-ryzen.md`).
-4. Vulkan-Laufzeit bauen: `scripts/recomp/ryzen/vk_build.sh` (Ergebnis: `work/recomp/bdsp_boot_vk` auf dem Linux-Rechner).
-5. Ohne Fenster starten (Standard): `scripts/recomp/ryzen/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300`
-6. Screenshots und Logs nach `work/recomp/ryzen/` auf dem Mac holen: `scripts/recomp/ryzen/vk_fetch.sh`
-
-`--headless` braucht kein Display. Es rendert in Bilder außerhalb des Bildschirms. Die Screenshots landen
-auf dem Linux-Rechner in `work/recomp/shots/frame_NNNNN.png`; Schritt 6 holt sie.
-
-### 6.3 Mit Fenster starten (Wayland)
-
-Das Fenster öffnet sich auf dem Desktop des Linux-Rechners. Übergib die Sitzungsvariablen des
-Desktop-Benutzers beim Aufruf. Die Benutzer-ID ermittelst du mit `id -u` auf dem Linux-Rechner. Ohne diese
-Variablen kann kein Fenster öffnen.
-
-```sh
-scripts/recomp/ryzen/vk_run.sh --tag=win XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
-  SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
-```
-
-`BDSP_NO_USER_INPUT=1` verhindert, dass das Fenster beim Öffnen den Tastaturfokus übernimmt. Ob es auch die
-unten genannten Tasten blockiert, ist nicht geprüft. Für das interaktive Spielen lässt du es weg.
-
-Einstellungen nur für Fensterläufe (ohne Wirkung mit `--headless`):
-
-- Startgröße: `--window 1280x720` oder `BDSP_WINDOW=1920x1080` (Standard 1280×720).
-- Bildrate: `BDSP_FPS=30`, `BDSP_FPS=60` oder `BDSP_FPS=120`. Übergib sie nach dem Skriptnamen, zum Beispiel
-  `scripts/recomp/ryzen/vk_run.sh BDSP_FPS=60 --tag=win ...`.
-- MangoHud-Anzeige (fps, Frame-Zeit, CPU- und GPU-Werte): `BDSP_MANGOHUD=1`. Benötigt das Paket `mangohud` auf
-  dem Linux-Rechner. Es wird nur zur Laufzeit gebraucht, nicht zum Bauen. Standard: aus.
-- Laufzeit: `--timeout N` in Sekunden (Standard 120).
-
-Tasten im Fenster:
-
-- F1 bis F4: Fenstergröße 960×540, 1280×720, 1920×1080, 2560×1440 (nicht im Vollbild).
-- F5, F6, F7: Bildrate 30, 60, 120.
-- F11: Vollbild ein- und ausschalten. Nicht geprüft.
-
-X11 ist nicht geprüft.
-
-### 6.3a Menüleiste (in Arbeit, Qt-Hülle)
-
-Eine Menüleiste mit Datei, Bearbeiten, Ansicht, Fenster und Hilfe ist in Arbeit, als Teil einer Qt-Hülle.
-Sie ist noch nicht geliefert, und die Qt-Hülle liegt nicht im Repository. Bis dahin nutzt du die Tasten aus
-Abschnitt 6.3.
-
-### 6.4 Bekannte Einschränkungen
-
-- **Spielfigur fehlt, Vertex-Explosionen, Fenster-Füllung:** im letzten Testlauf behoben (Feldszene mit
-  Spielfigur, NPCs und Wasser; Fenster vollständig gefüllt). Noch nicht über mehrere Sitzungen geprüft.
-- **Textur außerhalb des Gastfensters:** die Laufzeit meldet `[vk] Textur außerhalb des Gastfensters` und
-  überspringt den Upload (Schutz in `textures.c`). Wirkung auf das Bild nicht geprüft. Offen.
-- **Seltene Hänger am Ladebildschirm:** offen. Ursache nicht bekannt.
-- **FFmpeg-Header-Version:** noch nicht auf die Laufzeitbibliotheken abgestimmt. Schlägt die
-  Filmwiedergabe fehl, baue mit `BDSP_NO_MOVIE=1`.
-- **Bildrate:** `BDSP_FPS` begrenzt die Bildrate (30, 60, 120). Nur im Fenster gemessen; nicht über mehrere Sitzungen geprüft.
-- Kein Ton. Der Eingabezustand wird nicht gemeldet. Compute-Arbeitslasten werden nicht unterstützt.
-- Windows wird nicht unterstützt. X11 und Vollbild (F11) sind nicht geprüft.
-
-Details: `docs/recomp-vulkan.md`.
+Die frühere Variante mit kopierten Headern wurde gebaut und kurz gestartet.
+Ein neuer vollständiger Paket-Build muss nach Installation der noch fehlenden
+Devel-Pakete geprüft werden. Linux-Ton und längere Spiel-/Darstellungstests bleiben offen.
+Historische Messungen: [recomp-linux.de.md](recomp-linux.de.md).
 
 ## 7. Überblick über die Bau-Stufen
 

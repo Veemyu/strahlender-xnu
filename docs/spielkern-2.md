@@ -1,179 +1,164 @@
-# Spielkern, Scheibe 2: Host-Befehle, Pokécenter-Ablauf, Massenlauf und Story-Lauf (Todo `ap-game-flow-2`)
+# Game core, slice 2: host commands, Pokémon Center sequence, bulk and story runs (`ap-game-flow-2`)
 
-Stand: 2026-10-19. Nur Namen, Zahlen und Struktur; keine Spieltexte, keine Daten, keine echten Saves im Repo. Code: `unity/Assets/Scripts/Game` (Assembly `Xnu.Game`, reines C#),
-Tests: `unity/Assets/Tests/EditMode/GameSlice2Tests.cs`. Prüfstufen wie in `docs/evscript-spezifikation.md` und `docs/spielkern-1.md`: **[P]** Handler-Pseudocode gelesen (Ghidra-Export, `-readOnly`),
-**[A]** Annahme (Argumentform, Label-Namen, Zuordnung), **[N]** nur Name, Signatur und Aufrufliste; die Wirkung läuft dann über `IFieldHost.RunVisual` an die Feldschicht, **[O]** Orakel (laufendes Original): **weiterhin für nichts vorhanden**.
+Historical Unity-rebuild report (2026-10-19); the rebuild is deprecated. Names, counts, and structure only; no game text, data, or real saves in Git. Code: `unity/Assets/Scripts/Game` (`Xnu.Game`, pure C#); tests: `unity/Assets/Tests/EditMode/GameSlice2Tests.cs`. Evidence levels follow `docs/evscript-spezifikation.md` and `docs/spielkern-1.md`: **[P]** handler pseudocode read (read-only Ghidra export); **[A]** assumption (arguments, labels, mapping); **[N]** name/signature/call list only, with behavior delegated through `IFieldHost.RunVisual`; **[O]** running-original oracle: **still unavailable for every item**.
 
-## 1. Ergebnis in Kürze
+## 1. Results
 
-- **Alle 599 Host-Kennungen sind belegt** (vorher 168 = 28 %): 597 stehen in `HostCommands.Table`, zwei (`CMPWK` 19, `CASE_CANCEL` 38) sind jetzt **Kernbefehle** des Interpreters (63 statt 61). Es gibt keine Lücke mehr; der Zähler `GameEvHost.Gaps` bleibt für künftige Kennungen erhalten.
-- **Prüfstufen der 597 Tabelleneinträge** (Kennungen / Befehle in den Daten): **P 173 / 10 241 (75,2 %)**, A 69 / 1 719 (12,6 %), N 355 / 1 661 (12,2 %) von 13 621 Host-Befehlen. Scheibe 1 lag bei P 38 / 5 977 (43,9 %).
-  „Umgesetzt“ heißt hier: eine Kennung ist entweder mit Wirkung auf den Spielzustand ausgeführt (State: 138 Kennungen), an die Feldschicht/Oberfläche delegiert und im Ereignisprotokoll mit Dauer sichtbar (Field 414, Wait 29) oder stumm (Ton 16, 903 Befehle).
-  **N-Einträge sind Delegation, keine nachgebaute Wirkung**; ob die Feld-/UI-Schicht sie richtig ausführt, ist eine eigene Aufgabe (Abschnitt 8).
-- **Korrektur aus Scheibe 1:** Befehl **523 ist `GET_POKE_COUNT2` = Zahl der Teammitglieder ohne Ei, nicht die Teamgröße** (Abschnitt 3). Außerdem: `SXY_EXIT_POS_CHANGE` (507) hat keinen Objektnamen (Abschnitt 6), `TEMOTI_MONSNO` (543) liefert für Eier 0.
-- **Massenlauf** (alle 13 139 Skripte, echter Host, `NullFieldHost`, Zufallsantworten bei Dauerbestätigung): **0 unbekannte Befehle, 0 Fehler, 13 106 enden** (davon 263 erst mit Zufallsantworten), **33 hängen** (Abschnitt 7; vorher 12 811 / 328).
-- **Story-Lauf** (Abschnitt 7): ab dem Startskript der Anfangssequenz bis zum **ersten Kampf** (Tutorialkampf, 20 von 20 Läufen) und danach bis zum **ersten Pokécenter-Besuch mit Heilung** (20 von 20, 4 bis 6 Zonenbetritte, 13–14 Ereignisse ohne Fehler und ohne Hänger).
-- **Tests:** 92 von 92 grün im Wegwerfprojekt `work/dotnet-game` (38 EvScript + 28 Spielkern aus Scheibe 1 + 26 neu); die 38 EvScript-Tests laufen auch in `work/dotnet-evscript` grün. Andere Wegwerfprojekte: BattleEvents 101, BattleHandlers 101, PokePara 44, MasterData2 23, Text 35, Save 21, SaveWrite 56, Effects 17 grün;
-  `work/dotnet-battleflow` kompiliert nicht (Fremdänderung: neue KI-Tests `IAiHost`/`AiScriptBase`, Projektdatei veraltet) und `work/dotnet-battleai` hat 1 fehlschlagenden Test aus derselben laufenden Fremdarbeit; beides berührt `Xnu.Game` nicht. Im Unity-Test-Runner nicht gelaufen (Editor tabu).
+- **All 599 host IDs are accounted for**, previously 168 (28%): 597 in `HostCommands.Table`, plus `CMPWK` (19) and `CASE_CANCEL` (38), now **core interpreter commands** (63 instead of 61). No gaps remain; `GameEvHost.Gaps` is retained for future IDs.
+- **Evidence for the 597 entries** (IDs / commands in data): **P 173 / 10,241 (75.2%)**, A 69 / 1,719 (12.6%), N 355 / 1,661 (12.2%), out of 13,621 host commands. Slice 1 had P 38 / 5,977 (43.9%). “Implemented” means state-changing (138 IDs), delegated to field/UI and visible with duration in the event log (Field 414, Wait 29), or silent (Audio 16, 903 commands). **N entries are delegation, not reconstructed behavior**; correctness in field/UI remains separate (section 8).
+- **Slice 1 corrections:** **523 is `GET_POKE_COUNT2`, counting non-Egg party members, not party size** (section 3). `SXY_EXIT_POS_CHANGE` (507) has no object name (section 6); `TEMOTI_MONSNO` (543) returns zero for Eggs.
+- **Bulk run:** All 13,139 scripts, real host, `NullFieldHost`, random answers after repeated confirmation: **zero unknown commands/errors; 13,106 end**, including 263 requiring random answers; **33 remain blocked** (section 7; previously 12,811/328).
+- **Story run:** Opening script → **first tutorial battle**, 20/20 runs; then **first Pokémon Center healing visit**, 20/20, four to six zone entries and 13–14 events without errors or hangs.
+- **Tests:** 92/92 passed in disposable `work/dotnet-game` (38 EvScript, 28 slice 1, 26 new). The 38 EvScript tests also passed in `work/dotnet-evscript`. Other disposable projects passed: BattleEvents 101, BattleHandlers 101, PokePara 44, MasterData2 23, Text 35, Save 21, SaveWrite 56, Effects 17. `work/dotnet-battleflow` did not compile (concurrent AI tests `IAiHost`/`AiScriptBase`, stale project file); `work/dotnet-battleai` had one failure from the same concurrent work. Neither affects `Xnu.Game`. Unity Test Runner was not run; Editor use was prohibited.
 
-## 2. Aufbau und Änderungen
+## 2. Structure and changes
 
-**Herkunft des Codes:** Alle C#-Dateien sind von Hand nach dem gelesenen Pseudocode formuliert und durch Tests geprüft; es gibt keinen maschinell übersetzten Code im Repo. Die `Vis("id:NAME …")`-Listen sind reine Kennungs-/Namenstabellen (aus `scripts/evscript_stats.py`), keine Logik.
+**Code provenance:** All C# files were written manually from inspected pseudocode and tested; no machine-translated code is in Git. `Vis("id:NAME …")` lists are ID/name tables from `scripts/evscript_stats.py`, not logic.
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `HostCommandsMore.cs` (neu) | Befehle mit Wirkung auf den Spielzustand: Team/Box, Beutel, Flags/Zeit, Namenswörter, Fortbewegung/Objekte/Warp, Trainer, Dialog/Eingabe |
-| `HostCommandsVisual.cs` (neu) | delegierte Befehle (`Vis`, Stufe N), Läden, Kamera, Pokécenter-Animation, TV-Werte, Speicheranfragen, `Promote` (Stufe nach Lesen des Pseudocodes anheben) |
-| `WorldState.cs` (neu) | Sitzungszustand der Welt (Fahrrad/Surfen, Poketch-Apps, Sichttrainer, Objektsichtbarkeit/-position, Rekorde, Ballkapsel-Sticker, BP, Kamera, Pokécenter-Bälle, letzte Heilzone …) und `HostEvent` |
-| `GameSessionWorld.cs` (neu) | `GameSession.World`, Zugriff auf Team/Box nach Skriptart (`GetMon(pos, tray)`), Zählungen, Uhr → Arbeitswert 0x1A2, Tageszeit |
-| `ShopModel.cs` (neu) | Laden-Anfrage (`ShopRequest`), Angebot aus `ShopTables`, `Buy`/`Sell` mit Geld, BP und Beutelgrenze |
-| `GameEvHostEvents.cs` (neu) | Ereignisprotokoll `GameEvHost.Events` (nur mit `Record`), Namenswörter aus Textlabels |
-| `HostCommands.cs`, `GameSession.cs`, `GameEvHost.cs`, `GameTypes.cs`, `GameData.cs`, `GameLoop.cs` | kleine, abwärtskompatible Haken: `partial`, `InstallMore`, `GameInput.Text`, `GameData.Shops`, Dauer/Protokoll in `ExecuteCommand`, Niederlage (Abschnitt 3) |
-| `EvInterpreter.cs`, `EvCmdId.cs`, `EvCommandTable.cs` | Kernbefehle `CMPWK` (19) und `CASE_CANCEL` (38) |
+| New `HostCommandsMore.cs` | State-changing commands: party/Box, Bag, flags/time, message words, movement/objects/warps, trainers, dialog/input |
+| New `HostCommandsVisual.cs` | Delegated `Vis` commands (N), shops, camera, Pokémon Center animation, TV values, save requests, `Promote` evidence upgrades after pseudocode inspection |
+| New `WorldState.cs` | Session state: bicycle/surf, Pokétch apps, sight trainers, object visibility/position, records, capsule stickers, BP, camera, healing balls, last healing zone; `HostEvent` |
+| New `GameSessionWorld.cs` | `GameSession.World`, script party/Box access `GetMon(pos, tray)`, counts, clock → work 0x1A2, time of day |
+| New `ShopModel.cs` | `ShopRequest`, `ShopTables` inventory, `Buy`/`Sell` with money/BP/Bag limit |
+| New `GameEvHostEvents.cs` | `GameEvHost.Events` log (only with `Record`), message words from labels |
+| `HostCommands.cs`, `GameSession.cs`, `GameEvHost.cs`, `GameTypes.cs`, `GameData.cs`, `GameLoop.cs` | Small backward-compatible hooks: `partial`, `InstallMore`, `GameInput.Text`, `GameData.Shops`, `ExecuteCommand` duration/log, defeat handling (section 3) |
+| `EvInterpreter.cs`, `EvCmdId.cs`, `EvCommandTable.cs` | Core `CMPWK` (19), `CASE_CANCEL` (38) |
 
-`IFieldHost` blieb **unverändert** (die Feldschicht des UI-Agenten implementiert sie bereits in `FieldHostAdapter`); alle neuen Anfragen laufen über `RunVisual(EvCommandCall)`.
-Die Feldschicht kann das Ereignisprotokoll (`Events`: Kennung, Name, Argumente, Dauer in Frames) statt der Einzelaufrufe auswerten. **Dauer** = Zahl der Aufrufe bis der Befehl fertig meldet (30 Hz, wie `TIME_WAIT`); sie entsteht aus dem Warten auf die Feldschicht, nicht aus einer Tabelle. Zeitwerte im Skript (`TIME_WAIT`) bleiben im Interpreter.
-Neue Eingabe: `GameInput.Text` (Namenseingabe; `null` = nichts eingegeben, Bestätigen ohne Text behält den Namen **[A]**).
+`IFieldHost` is **unchanged** (already implemented by the UI agent's `FieldHostAdapter`); all new requests use `RunVisual(EvCommandCall)`. Field code may consume `Events` (ID, name, arguments, frame duration) instead of individual calls. **Duration** counts invocations until completion, at 30 Hz like `TIME_WAIT`; it arises from waiting on field code, not a duration table. Script `TIME_WAIT` remains in the interpreter. New `GameInput.Text` supports naming: null means no input; confirmation without text keeps the name **[A]**.
 
-## 3. Pokécenter, Heilung, Niederlage (belegt, Korrektur)
+## 3. Pokémon Center, healing, defeat (verified correction)
 
-Ablauf der Schwester (Skript `common_scr`, Beschriftungen nur als Namen): `TEMOTI_BALL_LOAD_WAIT` → `GET_POKE_COUNT2` (523) → Schleife `POKECEN_PUT_BALL n` (979) + Ton + `TIME_WAIT 15` bis `n == Zahl` →
-viermal `PC_RECOVER_ANM` (663) mit `TIME_WAIT 15` → `POKECEN_CLEAR_BALL` (980) → Kamera → Text → `PC_KAIFUKU` (480).
+Nurse script (`common_scr`, labels listed only by name): `TEMOTI_BALL_LOAD_WAIT` → `GET_POKE_COUNT2` (523) → loop `POKECEN_PUT_BALL n` (979), sound, `TIME_WAIT 15` until n equals count → four `PC_RECOVER_ANM` (663) with `TIME_WAIT 15` → `POKECEN_CLEAR_BALL` (980) → camera → text → `PC_KAIFUKU` (480).
 
-| Kennung | Name | Befund (Pseudocode `EvCmdGetPokeCount*`, `EvCmdPokecenPutBall`) |
+| ID | Name | Finding (`EvCmdGetPokeCount*`, `EvCmdPokecenPutBall` pseudocode) |
 |---|---|---|
-| 522 | GET_POKE_COUNT | `Work = playerParty.count` (Teamgröße) **[P]** |
-| **523** | **GET_POKE_COUNT2** | **Schleife über das Team, zählt `!IsEgg`**: Zahl der Mitglieder ohne Ei **[P]**. Scheibe 1 hatte „Teamgröße“ angenommen; mit einem Ei im Team hätte die Ballschleife dann einen Ball zu viel gesetzt |
-| 524 | GET_POKE_COUNT3 | nicht leer, kein Ei, KP ≠ 0 **[P]**; 525, 1213 gleiche Zählung **[A]** |
-| 979 | POKECEN_PUT_BALL | n-tes Mitglied **ohne Ei** (Zähler läuft nur über Nicht-Eier), Ball = `GetGetBall` → Ball im Kern gemerkt (`World.PokecenterBalls`), Modell/Platz in der Feldschicht **[P]** |
-| 980, 663 | POKECEN_CLEAR_BALL, PC_RECOVER_ANM | `FieldPokemonCenterEntity.DestroyAllBall` / `PlayHealEffect` **[P]** (Feldschicht) |
-| 480 | PC_KAIFUKU | Team und Boxen heilen **[P]**; Scheibe 2 merkt zusätzlich die Zone als Rücksetzzone (`World.LastHealZone`) **[A]** |
+| 522 | GET_POKE_COUNT | `Work = playerParty.count`, party size **[P]** |
+| **523** | **GET_POKE_COUNT2** | **Iterates party, counts `!IsEgg`**, non-Egg members **[P]**. Slice 1's party-size assumption would place one extra ball for an Egg. |
+| 524 | GET_POKE_COUNT3 | Nonempty, not Egg, HP ≠ 0 **[P]**; 525/1213 same count **[A]** |
+| 979 | POKECEN_PUT_BALL | nth **non-Egg** member, ball from `GetGetBall`; core stores `World.PokecenterBalls`, field supplies model/placement **[P]** |
+| 980, 663 | POKECEN_CLEAR_BALL, PC_RECOVER_ANM | `FieldPokemonCenterEntity.DestroyAllBall` / `PlayHealEffect` **[P]**, field responsibility |
+| 480 | PC_KAIFUKU | Heal party and Boxes **[P]**; slice 2 also records `World.LastHealZone` **[A]** |
 
-**Niederlage** (neu per Ghidra-Export `work/decomp/zenmetu`, zwei Läufe mit Sperre `work/ghidra.lock`, `-readOnly`, Heap 5 G): `FieldConnector.ZenmetuProc` setzt die Warp-Art „Zenmetsu“, **Systemflag 2 (Partner) aus**, entfernt den Begleiter und setzt den Spieler laut Tabelle
-`ZenmetuZone` (19 Einträge: Pokécenter-Zonen `T02PC0101` … `C11PC0101`, Gitter 8/6, Ausgang 0, `townMapZoneID`) **[P]**; gewählt wird der Eintrag mit `zoneID == PlayerWork.transitionZoneID`; `SET_WARP_ID` (478, nur 3 × in den Daten) setzt diese Zone über `ZoneChangeSetZenmetu`.
-`transitionZoneID` wird in `FieldConnector.SwitchingOperation/PrepareOperation/SetupOperation` gelesen und am Ende auf −1 gesetzt (Übergabewert, kein Dauerzustand) **[P]**. Der Dauerort „letztes Pokécenter“ steht im Save (`PlayerSaveData.zenmetu`/`ReturnZenmetsu_Ground`, `LOCATION_WORK`, Layout **[offen]**).
-Der Kern nimmt deshalb ersatzweise die Zone des zuletzt benutzten Pokécenters (`PC_KAIFUKU`) **[A]**; Partnerflag-Reset ist **[P]**. Die `TRAINER_LOSE*`-Befehle bleiben, wie in Scheibe 1 belegt, im Original ohne Wirkung.
+**Defeat:** New `work/decomp/zenmetu` Ghidra export, two read-only runs under `work/ghidra.lock`, 5-GB heap. `FieldConnector.ZenmetuProc` sets Zenmetsu warp type, **clears partner system flag 2**, removes companion, and places player using `ZenmetuZone` (19 Pokémon Center entries `T02PC0101` … `C11PC0101`, grid 8/6, exit 0, `townMapZoneID`) **[P]**. Select by `zoneID == PlayerWork.transitionZoneID`; `SET_WARP_ID` (478, only three occurrences) sets it through `ZoneChangeSetZenmetu`.
 
-## 4. Befehlsgruppen
+`transitionZoneID` is read by `FieldConnector.SwitchingOperation/PrepareOperation/SetupOperation` and reset to −1 afterward: a transition argument, not persistent state **[P]**. Persistent last Pokémon Center is in the save (`PlayerSaveData.zenmetu`/`ReturnZenmetsu_Ground`, `LOCATION_WORK`); layout **unresolved**. Core therefore substitutes the last `PC_KAIFUKU` zone **[A]**; partner reset is **[P]**. `TRAINER_LOSE*` remain original no-ops as established in slice 1.
 
-Zahlen aus `HostCommands.Table` (Kennungen) und `scripts/evscript_stats.py` (Befehle in den Daten); Gruppenzuordnung nach Namen.
+## 4. Command groups
 
-| Gruppe | Kennungen | Befehle | P / A / N (Kennungen) | P / A / N (Befehle) |
+IDs from `HostCommands.Table`, data occurrences from `scripts/evscript_stats.py`; grouping by name.
+
+| Group | IDs | Commands | P / A / N IDs | P / A / N commands |
 |---|---|---|---|---|
-| NPC, Objekte, Bewegung, Türen, Effekte | 82 | 3 528 | 42 / 1 / 39 | 3 001 / 203 / 324 |
-| Dialog, Menü, Eingabe | 44 | 2 909 | 11 / 1 / 32 | 2 539 / 5 / 365 |
-| Kamera | 24 | 1 376 | 8 / 0 / 16 | 1 316 / 0 / 60 |
-| Sonstige (Hilfen, Zufall, Karten-/Gymmechanik) | 41 | 1 179 | 4 / 3 / 34 | 1 068 / 10 / 101 |
-| Namenswörter | 37 | 1 142 | 13 / 18 / 6 | 853 / 252 / 37 |
-| Ton (stumm als Ereignis) | 16 | 903 | 0 / 16 / 0 | 0 / 903 / 0 |
-| Netz, Untergrund, Union, Wettbewerb, Kampfturm, TV, Safari, Pension, Naturpark, Begleiter, Pferd | 143 | 654 | 0 / 6 / 137 | 0 / 155 / 499 |
-| Überblendung | 9 | 615 | 6 / 0 / 3 | 609 / 0 / 6 |
-| Pokémon, Team, Zukan | 86 | 495 | 31 / 11 / 44 | 264 / 74 / 157 |
-| Beutel, Geld, Läden | 23 | 283 | 12 / 2 / 9 | 204 / 66 / 13 |
-| Flags, Works, Systemflags | 17 | 173 | 15 / 2 / 0 | 158 / 15 / 0 |
-| Trainer, Kampf | 20 | 134 | 8 / 4 / 8 | 65 / 13 / 56 |
-| Pokécenter, Box | 13 | 65 | 7 / 0 / 6 | 56 / 0 / 9 |
-| Fahrrad, Surf, Hidenwaza | 24 | 62 | 8 / 3 / 13 | 17 / 21 / 24 |
-| Zeit, Zufall | 7 | 52 | 4 / 1 / 2 | 49 / 1 / 2 |
-| Warp, Karte, Zone | 11 | 51 | 4 / 1 / 6 | 42 / 1 / 8 |
-| **Summe** | **597** | **13 621** | **173 / 69 / 355** | **10 241 / 1 719 / 1 661** |
+| NPCs, objects, movement, doors, effects | 82 | 3,528 | 42 / 1 / 39 | 3,001 / 203 / 324 |
+| Dialog, menu, input | 44 | 2,909 | 11 / 1 / 32 | 2,539 / 5 / 365 |
+| Camera | 24 | 1,376 | 8 / 0 / 16 | 1,316 / 0 / 60 |
+| Other (helpers, random, map/Gym mechanics) | 41 | 1,179 | 4 / 3 / 34 | 1,068 / 10 / 101 |
+| Message words | 37 | 1,142 | 13 / 18 / 6 | 853 / 252 / 37 |
+| Audio (silent events) | 16 | 903 | 0 / 16 / 0 | 0 / 903 / 0 |
+| Networking, Underground, Union, Contest, Battle Tower, TV, Safari, Nursery, park, companions, horse | 143 | 654 | 0 / 6 / 137 | 0 / 155 / 499 |
+| Fades | 9 | 615 | 6 / 0 / 3 | 609 / 0 / 6 |
+| Pokémon, party, Pokédex | 86 | 495 | 31 / 11 / 44 | 264 / 74 / 157 |
+| Bag, money, shops | 23 | 283 | 12 / 2 / 9 | 204 / 66 / 13 |
+| Flags, work, system flags | 17 | 173 | 15 / 2 / 0 | 158 / 15 / 0 |
+| Trainers, battle | 20 | 134 | 8 / 4 / 8 | 65 / 13 / 56 |
+| Pokémon Center, Box | 13 | 65 | 7 / 0 / 6 | 56 / 0 / 9 |
+| Bicycle, surf, hidden moves | 24 | 62 | 8 / 3 / 13 | 17 / 21 / 24 |
+| Time, random | 7 | 52 | 4 / 1 / 2 | 49 / 1 / 2 |
+| Warp, map, zone | 11 | 51 | 4 / 1 / 6 | 42 / 1 / 8 |
+| **Total** | **597** | **13,621** | **173 / 69 / 355** | **10,241 / 1,719 / 1,661** |
 
-### 4.1 Mit Pseudocode belegt und mit Wirkung umgesetzt (Auswahl, alle [P])
+### 4.1 Pseudocode-backed, state-changing implementations (selection, all [P])
 
-| Bereich | Kennungen (Argumente ab 1) |
+| Area | IDs (arguments numbered from 1) |
 |---|---|
-| Team zählen/prüfen | 522–524 Zählungen; 696 `PARTY_MONSNO_CHECK(Art, W)`; 1041 `TEMOTI_POKE_CHK_NUM(W, Art)` (Art 0: Doppelte?), 1141 `…GET_POS` (erster Platz oder −1); 543 `TEMOTI_MONSNO(Pos, W)` (Ei → 0); 683 `COUNT_MONSBOX_SPACE(W)` (1 = Boxen voll) |
-| Party-/Boxzugriff (`GetPokemonParam(tray, pos)`: tray ≥ 0 Box, sonst Team) | 221 `CHK_POKE_WAZA`, 571 `WAZA_COUNT`, 572 `WAZA_DEL` (Lücken schließen), 557/558 Freundschaft (0–255), 654/655 Bänder, 657 Fleißpunkte-Summe, 717/1197 Stufe, 625 Wesen, 995 Art aus Box, 994 Art in Team oder Box, 1216 alle Talentwerte 31, 1230 Persönlichkeitswert, 653 Zahl der Bänder im Team, 1172 Spitzname |
-| Namenswörter | 313 Attacke, 315 Zahl (Text mit führenden Nullen oder Zahlenwort), 322 Art, 324/325 Art von Rivale/Begleiter, 328 Wesen, 574 Attacke eines Teammitglieds |
-| Flags, Systemflags | 417–420 Poketch (Flag 0xCB, Apps), 445 (Flag 0x69 + Zukan an), 447 (Flag 0x4A), 449 Abzeichen setzen, 452, 456, 459, 461/463, 464, 467; 510 → Work 0xCD; 840 `LDVAL_VERSION` → Work 0xEE; 19 `CMPWK` (Work-von-Work); 38 `CASE_CANCEL` (Work 0xF2 gegen 0xF8) |
-| Zeit | 658 `CHK_WEEK`, 702 `GET_NOW_HOUR` lesen **Work 0x1A2** (`USE_COMMAND_TIME`): Woche = Wert / 10⁸ − 1, Stunde = (Wert mod 10⁴) / 100; der Kern schreibt den Wert aus `WorldState.Clock` (Aufbau des Mittelteils **[A]**) |
-| Beutel, Läden | 195 `CHECK_POCKET`, 215/216 Ballkapsel-Sticker, 747 (Item-Bereich 0x12A + 16), 612 Rekord +1, 236; Läden 912 (Zonenname), 921 (Nr.), 926 (Verkauf) mit `ShopRequest` |
-| Fortbewegung | 293 Fahrrad abfragen, 1171 Form (1 Rad, 2 Surfen), 292 `NAMINORI` (Surfen an, Rad ab), 302/303 Blitz/Nebel, 1093 Farbe |
-| NPC, Objekte | 165 Partner-Objekt, 505 Bewegungscode, 503 Position (`set_gridPosition` + Direct), 507 Ausgangsposition (Abschnitt 6), 813 Lage des Spielers zum Objekt im Zehnerblock (7 8 9 / 4 5 6 / 1 2 3, 0 = nicht benachbart), 549/550 sichtbar/unsichtbar |
-| Trainer | 334/276 Sichttrainer (`EyeTrainerIds`), 338 `TRAINER_TALK_TYPE_GET` (Einzel 0/2/0, sonst 3/5/6), 337 `TRAINER_MSG_SET` (Art 0/3/7 vor dem Kampf, 2/5/9 danach, 6 ein Pokémon, 17–19 Revanche), 404 Fangvorführung (Art 399, Stufe 2) |
-| Kamera | 942 `EVENT_CAMERA_INDEX(Index)` = `EventCamera.SetCameraData`, 943 wartet auf das Kameraende-Flag; Dauer aus der Feldschicht |
-| Dialog | 114 `EASY_VOICE_MSG` (wie `EASY_MSG` mit Objektrahmen, Stimme entfällt), 77 `AB_KEY_TIME_WAIT`, 80 `TALK_OPEN` (Work 199 = 1) |
-| Sonstige | 734 `GET_RANDOM_HIT(%, W)`, 1186 `SET_TELEPORT_ID`, 914 Türübergang, 1088 `AUTO_SAVE` (zählt Speicheranfragen, Schreiben macht die Oberfläche) |
+| Party counts/checks | 522–524 counts; 696 `PARTY_MONSNO_CHECK(species, W)`; 1041 `TEMOTI_POKE_CHK_NUM(W, species)` (species 0: duplicates?); 1141 `…GET_POS` (first slot or −1); 543 `TEMOTI_MONSNO(pos, W)` (Egg → 0); 683 `COUNT_MONSBOX_SPACE(W)` (1 = Boxes full) |
+| Party/Box access (`GetPokemonParam(tray, pos)`: tray ≥ 0 Box, otherwise party) | 221 `CHK_POKE_WAZA`, 571 `WAZA_COUNT`, 572 `WAZA_DEL` (close gaps), 557/558 friendship (0–255), 654/655 ribbons, 657 total EVs, 717/1197 level, 625 nature, 995 Box species, 994 party/Box species, 1216 all IVs 31, 1230 personality value, 653 total party ribbons, 1172 nickname |
+| Message words | 313 move, 315 number (leading zeros or number word), 322 species, 324/325 rival/companion species, 328 nature, 574 party member's move |
+| Flags/system flags | 417–420 Pokétch (flag 0xCB, apps), 445 (0x69 + enable Pokédex), 447 (0x4A), 449 set badge, 452, 456, 459, 461/463, 464, 467; 510 → work 0xCD; 840 `LDVAL_VERSION` → work 0xEE; 19 `CMPWK` (work-of-work); 38 `CASE_CANCEL` (work 0xF2 against 0xF8) |
+| Time | 658 `CHK_WEEK`, 702 `GET_NOW_HOUR` read **work 0x1A2** (`USE_COMMAND_TIME`): week = value / 10⁸ − 1, hour = (value mod 10⁴) / 100. Core writes from `WorldState.Clock`; middle-part encoding **[A]**. |
+| Bag/shops | 195 `CHECK_POCKET`, 215/216 capsule stickers, 747 (item range 0x12A + 16), 612 increment record, 236; shops 912 (zone name), 921 (number), 926 (sell), using `ShopRequest` |
+| Movement mode | 293 query bicycle, 1171 mode (1 bicycle, 2 surf), 292 `NAMINORI` (surf on/bicycle off), 302/303 Flash/Defog, 1093 color |
+| NPCs/objects | 165 partner object, 505 movement code, 503 position (`set_gridPosition` + Direct), 507 exit position (section 6), 813 player relative position on numeric-keypad grid (7 8 9 / 4 5 6 / 1 2 3; 0 nonadjacent), 549/550 visible/hidden |
+| Trainers | 334/276 sight trainers (`EyeTrainerIds`), 338 `TRAINER_TALK_TYPE_GET` (single 0/2/0, otherwise 3/5/6), 337 `TRAINER_MSG_SET` (types 0/3/7 before battle, 2/5/9 after, 6 one Pokémon, 17–19 rematch), 404 capture demonstration (species 399, level 2) |
+| Camera | 942 `EVENT_CAMERA_INDEX(index)` = `EventCamera.SetCameraData`; 943 waits for completion flag; duration supplied by field |
+| Dialog | 114 `EASY_VOICE_MSG` (like `EASY_MSG` with object frame, no voice), 77 `AB_KEY_TIME_WAIT`, 80 `TALK_OPEN` (work 199 = 1) |
+| Other | 734 `GET_RANDOM_HIT(%, W)`, 1186 `SET_TELEPORT_ID`, 914 door transition, 1088 `AUTO_SAVE` (counts requests; UI performs writes) |
 
-Zusätzlich auf [P] angehoben, weil ihr zentraler Aufruf gelesen wurde (Wirkung bleibt Feldschicht): Überblendung weiß (281/282), Türanimation (829/830), Blick/Animationstempo (981/982/1102/880/881), Effekte (1052–1054, 1161), Pause/Position/Richtung/Größe/Sichtbarkeit (142–145, 163, 504, 509, 1062, 1191, 1103, 1035, 1192),
-Statisten (816–819), 3D-Warten (487, 973), Kamerafahrten (1038/1069/972/814/815), Geldfenster (948/949), Verbeugung (1218), Wazen-Cutin (304), Suchrufe (1050/1051), 983, 1162, 323, 289.
+Also promoted to [P] after reading their central calls, while effects remain field responsibilities: white fade 281/282; door animation 829/830; gaze/animation speed 981/982/1102/880/881; effects 1052–1054, 1161; pause/position/direction/size/visibility 142–145, 163, 504, 509, 1062, 1191, 1103, 1035, 1192; extras 816–819; 3D waits 487, 973; camera movement 1038/1069/972/814/815; money windows 948/949; bow 1218; move cut-in 304; search calls 1050/1051; 983, 1162, 323, 289.
 
-### 4.2 Annahmen [A] (Kennung: was geraten ist)
+### 4.2 Assumptions [A] (ID: inferred detail)
 
-Label-Namen der Namenswörter (311 Beutel-Fach, 319 Poketch, 327 Beeren, 656 Bänder, 759 Sticker, 970 Sprecher, 1095/1114 Park-/Untergrund-Items, 1180 Typen, 1181 Pofin, 1182 Kleidung: Datei und `NNN`-Nummerierung folgen den Dateinamen, der Aufruf ist gelesen); 320 Trainerart-Label;
-217/545/599/626/671/672/762 (Argumentreihenfolge bei Team-Abfragen); 219 `ADD_TAMAGO` (Ei Stufe 1, Ball 4); 278/710 Namenseingabe über `GameInput.Text`; 316 Geburtstagsprüfung; 336 Doppelkampf-Anfrage; 348 `2VS2_BATTLE_CHECK`; 275 Sichttrainer-Typ;
-670/1055 Kassette (10 = Diamant, nur durch `LDVAL_VERSION` gestützt); 722/731/765/1189 Zähler im Weltzustand; 935 `TELEPORT`; 1105 UG-Items; 1145–1147/1211 TV-Themenwerte (leer); Laden-Zuordnung Zone/Abzeichen (Freundschaftsladen) und Verkaufspreis = halber Preis; 923 BP-Laden.
+Message-word labels: 311 Bag pocket, 319 Pokétch, 327 berries, 656 ribbons, 759 stickers, 970 speaker, 1095/1114 park/Underground items, 1180 types, 1181 Poffins, 1182 clothing. File and `NNN` numbering follow filenames; the call was read. Also 320 trainer-class label; argument order in party queries 217/545/599/626/671/672/762; 219 `ADD_TAMAGO` (level-1 Egg, ball 4); 278/710 naming through `GameInput.Text`; 316 birthday check; 336 double-battle request; 348 `2VS2_BATTLE_CHECK`; 275 sight-trainer type; 670/1055 cartridge (10 = Diamond, supported only by `LDVAL_VERSION`); 722/731/765/1189 world counters; 935 `TELEPORT`; 1105 Underground items; 1145–1147/1211 TV topic values (empty); zone/badge shop mapping (friendship shop), selling for half price, 923 BP shop.
 
-## 5. Läden, Namenseingabe, Menüs
+## 5. Shops, naming, menus
 
-- **Läden:** `SHOP_OPEN_FIXED(Nr.)` (921) lädt aus `ShopTables.FixedShop` die Waren der Nummer, `DPR_SHOP_OPEN(Zone)` (912) den Freundschaftsladen (Zone, Abzeichenzahl ≥ `BadgeNum`), `SHOP_OPEN_BATTLE` den BP-Laden.
-  Preis = `ItemRecord.Price` (BP-Laden `BpPrice`) **[A]**. `GameSession.Buy`/`Sell` prüfen Geld bzw. BP, Beutelgrenze 999 und das Angebot; Verkauf zum halben Preis **[A]**. Die Oberfläche zeigt `Session.Shop.Items` und ruft `Buy`/`Sell`; `DPR_SHOP_OPEN_WAIT` (913) schließt, sobald die Feldschicht fertig meldet. Seal-, Blumen-, Wetter-, Boutique-, Palpark-Läden sind nur Anfragen (Stufe N).
-- **Namenseingabe:** `NAMEIN_POKE(Pos, Box, W)` setzt den Spitznamen aus `GameInput.Text` und schreibt Team/Box zurück; Ergebnis 1 = geändert. Bestätigen ohne Text lässt alles unverändert, Abbrechen ebenfalls.
-- **Auswahl:** unverändert aus Scheibe 1 (Ja/Nein, eigenes Fenster). `TALKMSG_SP` (71, 31 ×) liest Datei/Label nicht aus einem Argument-String, sondern aus dem laufenden Skript; Auflösung **offen** (an die Oberfläche delegiert, öffnet keinen Text).
+- **Shops:** `SHOP_OPEN_FIXED(number)` (921) uses `ShopTables.FixedShop`; `DPR_SHOP_OPEN(zone)` (912) uses friendship-shop inventory filtered by zone and badges ≥ `BadgeNum`; `SHOP_OPEN_BATTLE` uses BP inventory. Price = `ItemRecord.Price` (BP: `BpPrice`) **[A]**. `GameSession.Buy/Sell` check money/BP, Bag limit 999, and stock; half-price sales **[A]**. UI displays `Session.Shop.Items`, calls `Buy/Sell`; `DPR_SHOP_OPEN_WAIT` (913) ends when field reports completion. Seal, flower, weather, boutique, and Pal Park shops are N-level requests only.
+- **Naming:** `NAMEIN_POKE(pos, box, W)` applies `GameInput.Text`, writes party/Box, result 1 = changed. Confirmation without text or cancellation leaves it unchanged.
+- **Choices:** Unchanged from slice 1 (Yes/No, custom window). `TALKMSG_SP` (71, 31 occurrences) takes file/label from the running script rather than a string argument. Resolution **unresolved**; delegated to UI, opens no text itself.
 
-## 6. Fehler, die der Lauf gefunden hat und die behoben sind
+## 6. Issues discovered by runs and fixed
 
-| Befund | Behebung |
+| Finding | Fix |
 |---|---|
-| 523 als Teamgröße angenommen (Abschnitt 3) | 523 zählt Nicht-Eier [P]; Test mit Ei im Team |
-| `CMPWK` fehlte (2 999 Wiederholungen im Massenlauf von Scheibe 1) | Kernbefehl, Work-von-Work-Vergleich [P] |
-| `SXY_EXIT_POS_CHANGE` (507, 470 ×) wurde wie `SXY_POS_CHANGE` mit Objektnamen behandelt; die Daten haben drei Zahlen (Ausgang, x, z) | eigener Handler: Ausgang → Position im Weltzustand, Feldschicht per `RunVisual` [P] |
-| `TEMOTI_MONSNO` (543) gab für Eier die Art zurück | Ei/leer → 0 [P] |
-| Artennamen fehlten im lokalen Lauf (`ss_monsname` liegt in `msg_common`, nicht in `msg_german`) | Lauf lädt die deutschen Dateien aus `msg_common`; **Hinweis an die UI-Schicht:** `GameDataLoader.Load` liest nur `msg_german`, dort fehlen `POKEMON_NAME`, `FIRST_POKEMON_NAME`, `RIVAL_POKEMON_NAME` usw. |
-| Niederlage: Partnerflag und Rücksetzzone nur über `SET_WARP_ID` | Partnerflag aus [P]; ohne `SET_WARP_ID` letzte Heilzone [A] |
-| Platzhalter im Test `UnknownHostCommandsAreCountedAsGapsAndDoNotBlock` (Kennung 1234 war nun belegt) | Test sucht eine freie Host-Kennung (bei null Lücken `Assert.Ignore`) |
+| 523 assumed party size (section 3) | Counts non-Eggs [P]; test with Egg |
+| Missing `CMPWK` (2,999 repetitions in slice 1 bulk run) | Core work-of-work comparison [P] |
+| `SXY_EXIT_POS_CHANGE` (507, 470 occurrences) treated like object-named `SXY_POS_CHANGE`; data has three numbers (exit, x, z) | Dedicated handler: exit → world position; `RunVisual` delegation [P] |
+| `TEMOTI_MONSNO` (543) returned species for Eggs | Egg/empty → 0 [P] |
+| Species names missing: `ss_monsname` is in `msg_common`, not `msg_german` | Run loads German common messages. **UI note:** `GameDataLoader.Load` only reads `msg_german`, missing `POKEMON_NAME`, `FIRST_POKEMON_NAME`, `RIVAL_POKEMON_NAME`, etc. |
+| Defeat partner flag/reset zone handled only through `SET_WARP_ID` | Clear partner [P]; fall back to last healing zone [A] |
+| Test `UnknownHostCommandsAreCountedAsGapsAndDoNotBlock` used now-assigned ID 1234 | Find a free host ID; `Assert.Ignore` if none |
 
-## 7. Lauf mit echten Daten (nur Zahlen)
+## 7. Real-data runs (counts only)
 
-Quelle: `work/dotnet-game/check` (`dotnet run -c Release -- ../../..`, lokal, Save nur gelesen und im Speicher verändert, danach byte-gleich geprüft). Daten: 856 Skriptdateien, 12 985 Labels, 707 Trainer, 119 + 9 deutsche Textdateien, 659 `ZoneID`-Namen.
+Source: `work/dotnet-game/check`, `dotnet run -c Release -- ../../..`; local save read-only, modified in memory, then verified byte-identical. Data: 856 script files, 12,985 labels, 707 trainers, 119 + 9 German message files, 659 `ZoneID` names.
 
-### 7.1 Alle 13 139 Skripte (Mock-Host, Team Stufe 50, 4 000 Ticks, Dauerbestätigung, danach bis zu 6 Läufe mit Zufallsantworten)
+### 7.1 All 13,139 scripts (mock field host, level-50 party, 4,000 ticks, repeated confirmation, then up to six random-answer runs)
 
-| Messgröße | Scheibe 1 | Scheibe 2 |
+| Metric | Slice 1 | Slice 2 |
 |---|---|---|
-| unbekannte Befehle / Skripte mit Lücken-Aufruf | 406 Kennungen / viele | **0 / 0** |
-| Fehler | 0 | **0** |
-| beendet | 12 811 | **13 106** (davon 263 erst mit Zufallsantworten) |
-| hängend nach 4 000 Ticks | 328 | **33** (`TALKMSG` 19, `TALK_KEYWAIT` 8, `TIME_WAIT` 4, `YES_NO_WIN` 2) |
-| Kämpfe im Lauf | 370 (210 Niederlagen) | 368 (209 Niederlagen, 5 übersprungen: Trainerteam fehlt) |
-| Host-Aufrufe | 1 307 386 umgesetzt, 78 569 Lücken | 1 335 736, Lücken 0; nach Stufe P 1 021 343 / A 205 693 / N 108 700 |
+| Unknown IDs / scripts calling gaps | 406 IDs / many | **0 / 0** |
+| Errors | 0 | **0** |
+| Ended | 12,811 | **13,106**, including 263 needing random answers |
+| Blocked after 4,000 ticks | 328 | **33**: `TALKMSG` 19, `TALK_KEYWAIT` 8, `TIME_WAIT` 4, `YES_NO_WIN` 2 |
+| Battles | 370 (210 losses) | 368 (209 losses; five skipped for missing trainer parties) |
+| Host calls | 1,307,386 implemented, 78,569 gaps | 1,335,736, zero gaps: P 1,021,343 / A 205,693 / N 108,700 |
 
-Die 33 Hänger sind Einstiegspunkte mitten in Abläufen, die ohne ihre Vorgänger nicht enden können: Heilanimationsschleife mit nicht belegtem Zähler (`pcwoman_pc_kaihuku_anim_common_loop*`, im Story-Lauf läuft dieselbe Animation ohne Hänger), Netz-/Union-Führer, Denkmal-Namenseingabe (verlangt echten Text),
-Bibliotheksmenü, Move-Reminder-Auswahl, Ball-Anzeige der Ruhmeshalle. Keiner davon ist ein Kernfehler.
+The 33 blocked cases begin mid-sequence and cannot finish without predecessor state: healing loops with unset counters (`pcwoman_pc_kaihuku_anim_common_loop*`; same animation completes in story runs), network/Union guides, monument naming requiring actual text, library menu, Move Reminder selection, Hall of Fame ball display. None is a core interpreter error.
 
-### 7.2 Story-Lauf (`Story.cs`; 20 Läufe mit Zufallsantworten, Starterwahl zufällig)
+### 7.2 Story run (`Story.cs`; 20 random-answer runs, random starter)
 
-Aufbau (soweit aus den Daten ableitbar): Neues Spiel = alle Arbeitswerte/Flags 0, dann `ev_init_script` (init_scr). Startzone ist die der Anfangssequenz (`D27R0101`: ihr Szenenskript `SP_D27R0101_SCENE` ruft bei `WK_SCENE_D27R0101 == 0` das Rivalen-Ereignis auf, es endet mit `MAP_CHANGE "L01"`).
-Je Zonenbetritt laufen `SP_<ZONE>_INIT`, `_FLAG`, `_SCENE`, danach die Kontaktfelder (`StopData`: `Work == Param`). Der Weg zwischen Zonen ist die kürzeste Strecke im Graphen aus `MapWarp` (Innenräume) und benachbarten Zellen des Zonenrasters `ZoneTable` (Außenwelt); Ziel ist das nächste Pokécenter
-(Läufe mit geradem Startwert: ausdrücklich `C01PC0101`), dort Gespräch mit der Schwester (`PlaceData`-Label `…pcwoman…`).
+Data-derived setup: New Game clears all work/flags, then runs `ev_init_script` (init_scr). Starting zone is opening `D27R0101`: `SP_D27R0101_SCENE` calls rival event when `WK_SCENE_D27R0101 == 0`, ending with `MAP_CHANGE "L01"`. Each entry runs `SP_<ZONE>_INIT`, `_FLAG`, `_SCENE`, then contact fields (`StopData`: `Work == Param`).
 
-| Messgröße (20 Läufe) | Wert |
+Routing uses shortest paths through `MapWarp` interiors and adjacent `ZoneTable` outdoor grid cells, targeting the nearest Pokémon Center (even seeds explicitly target `C01PC0101`), then nurse `PlaceData` label `…pcwoman…`.
+
+| Metric (20 runs) | Result |
 |---|---|
-| erster Kampf erreicht (Tutorial-Wildkampf der Anfangssequenz, Gegner Stufe 2) | 20 / 20 |
-| Pokécenter erreicht, Schwester-Gespräch beendet, `PC_KAIFUKU` ausgeführt | 20 / 20 |
-| Zonenbetritte je Lauf | 4–6 (z. B. `D27R0101 > L01 > C02 > C02PC0101`, mit Ziel `C01PC0101`: `… > C02 > R218 > C01 > C01PC0101`) |
-| Ereignisse je Lauf / beendet / hängend / Fehler / unbekannter Befehl | 13–14 / alle / 0 / 0 / 0 |
-| ausgeführte Host-Kennungen im Lauf | 61 (127 Aufrufe) |
+| First battle (opening tutorial wild battle, level-2 opponent) | 20/20 |
+| Pokémon Center reached, nurse dialog ended, `PC_KAIFUKU` executed | 20/20 |
+| Zone entries per run | 4–6: e.g. `D27R0101 > L01 > C02 > C02PC0101`; targeting `C01PC0101`: `… > C02 > R218 > C01 > C01PC0101` |
+| Events / ended / blocked / errors / unknown commands | 13–14 / all / 0 / 0 / 0 |
+| Executed host IDs | 61 (127 calls) |
 
-**Grenzen:** Die Strecke ist eine Graphensuche, nicht der Spielweg. Kontaktfelder lösten nicht aus (ihre Arbeitswerte stehen am Anfang nicht auf dem Sollwert; die Spielstände dazwischen entstehen im echten Spiel durch Gespräche, die hier nicht geführt werden),
-Sichtkämpfe und Gespräche mit Personen fehlen, Positionen und Sperren (Flaggen an Warps) sind nicht modelliert. Der Lauf zeigt, dass die Skripte der Anfangszonen samt Szenenskripten, Rivalenereignis, Kampf, Zonenwechsel und Pokécenter-Ablauf mit dem Host durchlaufen; er sagt nichts über Dauer, Reihenfolge oder Darstellung **[O fehlt]**.
+**Limits:** Routes are graph searches, not actual gameplay paths. Contact fields did not trigger: initial work values lack prerequisites normally established through omitted conversations. Sight battles, other conversations, positions, and warp-blocking flags are not modeled. This demonstrates traversal of initial-zone/scene scripts, rival event, battle, zone changes, and healing through the host, not matching timing, order, or presentation. **No [O] oracle.**
 
-## 8. Lücken und Aufwand
+## 8. Gaps and estimated effort
 
-| Lücke | Aufwand (Schätzung) |
+| Gap | Estimate |
 |---|---|
-| 355 Kennungen nur [N] (Kampfturm, Wettbewerb, Netz/Union/Untergrund, Pension, Safari, Naturpark, Begleiter, Pferd, Ballkapsel, TV-Erzeugung, Arenenmechanik, Beerenbeete, Honigbäume): je Gruppe Pseudocode lesen und Zustand im Kern bauen | 1–2 Tage je Gruppe (Pension, Beerenbeete, Honigbäume zuerst; Kampfturm 3 Tage) |
-| Feld- und UI-Schicht: `RunVisual` für die 414 Feld- und 29 Warte-Kennungen, Ereignisprotokoll mit Dauern auswerten, Läden/Teamliste/Beutel/Box-Oberfläche, Namenstastatur | 5–8 Tage (Feldschicht: 3–4, Oberfläche: 3–4) |
-| Zustand ohne Ort im Save (`WorldState`: Poketch-Apps, Rekorde, Ballkapsel-Sticker, UG-Items, BP, TV-Werte, Rücksetzort `zenmetu`, Zukan): Offsets aus `docs/save-spec-entwurf.md` ergänzen, sonst gehen sie beim Speichern verloren | 2–3 Tage |
-| Wildgenerierung, Begegnungsschritt, Tageszeit/Wetter (Scheibe 1, unverändert) | 2–3 Tage |
-| `TALKMSG_SP`, `SEACRET_POKE_RETRY_CHECK`, `GROUP_EXIST_CHECK`, `WAZA_ITEM_CHK`/`ITEM_WAZA_NAME` (Maschinentabelle in `IBattleData`), `GET_TAG_PATNER_ID` | 1 Tag |
-| Story-Lauf mit echten Gesprächen/Kontaktfeldern (Positionen, Sperrflaggen der Warps, Sichtkämpfe) | 3–4 Tage, braucht die Feldschicht |
-| Orakel [O] für Dialog-/Bewegungs-/Kameraabläufe | nicht möglich ohne laufendes Original |
-| Unity-Test-Runner, `.meta`-Dateien der neuen Dateien (Unity erzeugt sie beim ersten Import) | 15–30 Minuten, sobald der Editor frei ist |
+| 355 N-only IDs: Battle Tower, Contest, networking/Union/Underground, Nursery, Safari, park, companions, horse, capsules, TV generation, Gym mechanics, berry plots, honey trees. Inspect pseudocode and implement state per group. | 1–2 days/group; Nursery/berries/honey first; Tower three days |
+| Field/UI: `RunVisual` for 414 field and 29 wait IDs; timed event log; shop/party/Bag/Box UI, naming keyboard | 5–8 days (field 3–4, UI 3–4) |
+| `WorldState` not mapped to save: Pokétch apps, records, stickers, Underground items, BP, TV, `zenmetu`, Pokédex. Add offsets from `docs/save-spec-entwurf.md` or lose state on save. | 2–3 days |
+| Wild generation, encounter-step checks, time/weather (unchanged from slice 1) | 2–3 days |
+| `TALKMSG_SP`, `SEACRET_POKE_RETRY_CHECK`, `GROUP_EXIST_CHECK`, `WAZA_ITEM_CHK`/`ITEM_WAZA_NAME` (machine table in `IBattleData`), `GET_TAG_PATNER_ID` | One day |
+| Story run with actual conversations/contact fields, positions, warp flags, sight battles | 3–4 days; needs field |
+| Dialog/movement/camera oracle [O] | Requires running original |
+| Unity Test Runner and new `.meta` files (generated on import) | 15–30 min once Editor available |
 
-## 9. Reproduktion
+## 9. Reproduction
 
-- Tests: `dotnet test work/dotnet-game/Game.csproj` (Wegwerfprojekt, kompiliert die Unity-Quellen direkt; `GameUnityTests.cs` ist ausgenommen, weil es Unity braucht).
-- Massenlauf und Story-Lauf: `cd work/dotnet-game/check && dotnet run -c Release -- ../../..` (alles), `… -- ../../.. story 20` (nur Story-Lauf mit 20 Seeds), `… -- ../../.. table` (Tabelle Kennung, Name, Stufe, Art).
-- Pseudocode: `python3 work/evscript/fn2.py <Kennung> …` (kompakte Ansicht des Handlers, folgt einem Aufruf eine Ebene tief), `python3 work/evscript/listscr.py <Datei> [Label-Regex]` (Skript als Befehlsliste).
-  Neuer Ghidra-Lauf nur für die Niederlage: `scripts/ghidra/run_headless.sh … -postScript ExportDecompiled.java 'ZenmetuProc|ZoneChangeSetZenmetu|…' work/decomp/zenmetu` und `CallersOf.java` (Sperre `work/ghidra.lock`).
+- Tests: `dotnet test work/dotnet-game/Game.csproj`; disposable project compiles Unity sources directly, excluding Unity-dependent `GameUnityTests.cs`.
+- Bulk/story: `cd work/dotnet-game/check && dotnet run -c Release -- ../../..` (all), `… -- ../../.. story 20` (20 story seeds), `… -- ../../.. table` (ID/name/evidence/kind).
+- Pseudocode: `python3 work/evscript/fn2.py <ID> …` (compact handler, follows calls one level); `python3 work/evscript/listscr.py <file> [label-regex]` (command list).
+- Only defeat needed a new Ghidra run: `scripts/ghidra/run_headless.sh … -postScript ExportDecompiled.java 'ZenmetuProc|ZoneChangeSetZenmetu|…' work/decomp/zenmetu`, plus `CallersOf.java`, under `work/ghidra.lock`.

@@ -1,120 +1,123 @@
-# Machbarkeit Shader und Audio für ein Mac/iPad-Rebuild (Stand: 2026-10-18)
+# Shader and audio feasibility for a Mac/iPad rebuild (as of 2026-10-18)
 
-Alles hier ist eigene Auswertung aus dem eigenen Dump und lokal erzeugten Daten. Es wurden nur Zahlen, Größen und Formate notiert, keine Spielinhalte ins Repo gelegt.
-Ausgaben liegen unter `work/shader-test/`, `work/audio-test/` und `tools/vgmstream/` (alles gitignored).
-Hilfsskripte: `scripts/shader_bundle_scan.py`, `scripts/shader_cache_scan.py`, `scripts/shader_msl_check.swift`.
-Markierung: **belegt** = selbst gemessen oder gelesen, *vermutet* = Schluss ohne Test.
+This is our own analysis based on our dump and locally generated data. Only counts, sizes, and formats are recorded here; no game content is checked into the repository.
+Outputs are under `work/shader-test/`, `work/audio-test/`, and `tools/vgmstream/` (all gitignored).
+Helper scripts: `scripts/shader_bundle_scan.py`, `scripts/shader_cache_scan.py`, `scripts/shader_msl_check.swift`.
+Labels: **verified** = measured directly or read from source; *suspected* = inference without a test.
 
-## Kurzfazit
+## Summary
 
-- Shader: Der Ryujinx-Vulkan-Cache enthält 5937 fertige SPIR-V-Module. `spirv-cross` übersetzt alle 5932 Grafik-Module ohne Fehler nach MSL. 401 Stichproben-Module (6 + jedes 15. von 5932 = 395) lassen sich mit dem Metal-Laufzeit-Compiler übersetzen (Apple M1 Pro). Technisch ist Weg B also machbar.
-- Der eigentliche Aufwand ist nicht die Übersetzung, sondern Bindings, Renderzustand und die Zuordnung zu Unity-Shadern und Materialien.
-- Audio: Alle 3241 `.wem` sind Wwise-Vorbis. `vgmstream` dekodiert die getesteten Dateien sauber. Die Bänke haben Version 135 (Wwise 2019.2) und passen zur Wwise-Version in opendpr.
-- Empfehlung: Weg A (Unity-Neuprojekt über das opendpr-Gerüst), den Cache nur als Referenz für Shader-Rewrites nutzen. Weg B nur als späteres Forschungsprojekt.
+- Shaders: the Ryujinx Vulkan cache contains 5,937 compiled SPIR-V modules. `spirv-cross` translates all 5,932 graphics modules to MSL without errors. A sample of 401 modules (6 plus every 15th of 5,932 = 395) compiles with the Metal runtime compiler (Apple M1 Pro). Path B is technically feasible.
+- The main effort is not translation, but bindings, render state, and mapping Unity shaders to materials.
+- Audio: all 3,241 `.wem` files use Wwise Vorbis. `vgmstream` cleanly decodes the files tested. The banks are version 135 (Wwise 2019.2), matching the Wwise version in opendpr.
+- Recommendation: pursue Path A (a new Unity project using the opendpr scaffold), using the cache only as a reference for shader rewrites. Keep Path B as a later research project.
 
-## 1. Shader
+## 1. Shaders
 
-### 1a. Shader-Bundles im RomFS
+### 1a. Shader bundles in RomFS
 
-| Datei | Größe | UnityFS | Inhalt (UnityPy) |
+| File | Size | UnityFS | Contents (UnityPy) |
 |---|---|---|---|
-| `AssetAssistant/Dpr/shaders` | 6.744.100 B | Format 7, Unity `2019.4.27f1`, Flags `0x43` | 63 `Shader`, 1 `Material`, 1 `AssetBundle` |
-| `AssetAssistant/Effects/fxparticle` | 3.857.759 B | Format 7, Unity `2019.4.27f1`, Flags `0x43` | 400 `ShaderVariantCollection`, 1 `Shader`, 1 `AssetBundle` |
+| `AssetAssistant/Dpr/shaders` | 6,744,100 B | Format 7, Unity `2019.4.27f1`, flags `0x43` | 63 `Shader`, 1 `Material`, 1 `AssetBundle` |
+| `AssetAssistant/Effects/fxparticle` | 3,857,759 B | Format 7, Unity `2019.4.27f1`, flags `0x43` | 400 `ShaderVariantCollection`, 1 `Shader`, 1 `AssetBundle` |
 
-- **belegt:** Flags `0x43` heißt Kompressionsart 3 (LZ4HC) für den Blockindex, Verzeichnis und Blockindex liegen zusammen (Bit `0x40`).
-- **belegt:** Beide Bundles haben nur eine Plattform-ID: `19`. *Vermutet:* das ist die Unity-Plattform "Switch" (NVN-Binärcode), also kein Windows-, Metal- oder Vulkan-Code.
-- **belegt:** In `shaders` sind die 63 Shader-Objekte zusammen 7.909.771 B komprimiert (LZ4) und 42.487.172 B entpackt. Das größte ist `Delphis/Map/Standard` (rund 10,7 MB als Objekt). Namensgruppen: Delphis 22, Custom 17, Mitake 9, UI 6, Dpr 6, TextMeshPro 2, MovieTexture 1.
-- **belegt:** Die Subprogramme enthalten Binärdaten und Uniform-Namen (zum Beispiel `unity_MatrixVP`, `_MainTex_ST`), keinen lesbaren Quelltext.
-- **belegt:** Der Dump-Export von AssetRipper (`work/ripper/out/ExportedProject/Assets/Shader`) enthält 9 `.shader`-Dateien (insgesamt 11.593 B), alle mit der Zeile `//DummyShaderTextExporter`. Das sind Platzhalter mit Name und Properties und einem Standard-Surface-Shader, aber keine Originallogik. Es sind 9 von rund 64 Shadern; kein Quelltext, kein Binärcode.
+- **Verified:** Flags `0x43` indicate compression type 3 (LZ4HC) for the block index, with the directory and block index stored together (bit `0x40`).
+- **Verified:** Both bundles have a single platform ID: `19`. *Suspected:* this is Unity's Switch platform (NVN binary code), so the bundles do not contain Windows, Metal, or Vulkan code.
+- **Verified:** The 63 Shader objects in `shaders` total 7,909,771 B compressed (LZ4) and 42,487,172 B uncompressed. The largest is `Delphis/Map/Standard` (about 10.7 MB as an object). Name groups: Delphis 22, Custom 17, Mitake 9, UI 6, Dpr 6, TextMeshPro 2, MovieTexture 1.
+- **Verified:** Subprograms contain binary data and uniform names (for example, `unity_MatrixVP`, `_MainTex_ST`), not readable source code.
+- **Verified:** The AssetRipper dump export (`work/ripper/out/ExportedProject/Assets/Shader`) contains 9 `.shader` files (11,593 B total), all with the line `//DummyShaderTextExporter`. They are placeholders with a name, properties, and a default surface shader, not the original logic. There are 9 of roughly 64 shaders; they contain neither source nor binary code.
 
-### 1b. Ryujinx-Shader-Cache
+### 1b. Ryujinx shader cache
 
-Das Format steht im öffentlichen Ryujinx-Quellcode (`Ryujinx.Graphics.Gpu/Shader/DiskCache`). Die Originalrepos `Ryujinx/Ryujinx` und `Ryubing/Ryujinx` liefern auf GitHub 404. Gelesen habe ich den Fork `NextendoNetwork/Ryujinx-Nextendo`. Das Layout ist selbst nachgebaut (kein Code kopiert).
+The format is documented in the public Ryujinx source (`Ryujinx.Graphics.Gpu/Shader/DiskCache`). The original `Ryujinx/Ryujinx` and `Ryubing/Ryujinx` repositories return 404 on GitHub. I read the `NextendoNetwork/Ryujinx-Nextendo` fork. The layout was independently reimplemented; no code was copied.
 
-Grundaufbau, alles little-endian, Header je 32 B:
+Basic layout, all little-endian, with 32 B headers:
 
-| Datei | Magic | Eintrag | Inhalt |
+| File | Magic | Entry | Contents |
 |---|---|---|---|
-| `guest.toc/.data` | `TOCG` | 16 B: Offset, Code-Größe, CB1-Größe, Hash | Maxwell-Shadercode der Konsole (hardwareunabhängig) |
-| `shared.toc/.data` | `TOCS` | 8 B: Offset | je Programm: Stufenmaske, Guest-Indizes, Spezialisierungszustand |
-| `vulkan_apple.toc/.data` | `TOCH` | 16 B: Offset, entpackte Größe, gepackte Größe | je Programm: Paket mit SPIR-V je Stufe (`[Anzahl][Stufe, Länge, Bytes]`), danach Stufeninfos |
+| `guest.toc/.data` | `TOCG` | 16 B: offset, code size, CB1 size, hash | Console Maxwell shader code (hardware-independent) |
+| `shared.toc/.data` | `TOCS` | 8 B: offset | Per program: stage mask, guest indices, specialization state |
+| `vulkan_apple.toc/.data` | `TOCH` | 16 B: offset, uncompressed size, compressed size | Per-program package with SPIR-V per stage (`[count][stage, length, bytes]`), followed by stage information |
 
-Die Datenblöcke beginnen mit einem Byte für den Kompressionsalgorithmus (0 keine, 1 Deflate, 2 Brotli).
+Data blocks begin with one byte identifying the compression algorithm (0 none, 1 Deflate, 2 Brotli).
 
-**belegt (selbst gezählt):**
+**Verified (counted directly):**
 
-| Datei | TOC-Version | Einträge | Datengröße |
-|---|---|---|---|
-| `guest.toc` | 1.1 | 1388 | 2.256.780 B |
-| `shared.toc` | 1.2, Codegen 5311 | 2971 | 623.941 B |
-| `vulkan_apple.toc` | 1.2 | 2971 | 58.521.808 B |
+| File | TOC version | Entries | Data size |
+|---|---|---:|---:|
+| `guest.toc` | 1.1 | 1,388 | 2,256,780 B |
+| `shared.toc` | 1.2, codegen 5311 | 2,971 | 623,941 B |
+| `vulkan_apple.toc` | 1.2 | 2,971 | 58,521,808 B |
 
-- Zeitstempel in `shared`/`vulkan_apple`: 2023-07-07. Der Codegen-Stand 5311 ist älter als der aktuelle Quellstand (7355). Moderne Ryujinx-Builds würden den Host-Cache verwerfen. Das ist für uns egal, da wir ihn selbst lesen.
-- Alle 2971 Host-Einträge sind Deflate-komprimiert und ließen sich ohne Fehler entpacken (entpackt zusammen 199.915.580 B, 5528 bis 99.864 B je Eintrag).
-- **SPIR-V ja:** 5937 Module (Magic `0x07230203`), davon 2966 Vertex, 2966 Fragment und 5 Compute. Das sind 2966 Vertex+Fragment-Paare plus 5 Compute-Programme. Keine Geometry- oder Tessellation-Shader (das passt gut zu Metal).
-- Das ist nur die Auswahl, die beim damaligen Spielen tatsächlich gebraucht wurde. Sie ist nicht vollständig. Auch Namen und Materialzuordnung fehlen.
+- Timestamps in `shared`/`vulkan_apple`: 2023-07-07. Codegen version 5311 predates the current source version (7355). Current Ryujinx builds would discard the host cache. That does not affect us because we read it ourselves.
+- All 2,971 host entries are Deflate-compressed and decompressed without errors (199,915,580 B total uncompressed, 5,528 to 99,864 B per entry).
+- **SPIR-V is present:** 5,937 modules (magic `0x07230203`): 2,966 vertex, 2,966 fragment, and 5 compute. That is 2,966 vertex/fragment pairs plus 5 compute programs. There are no geometry or tessellation shaders, which suits Metal.
+- This is only the selection needed during the recorded gameplay; it is incomplete. Names and material mappings are also missing.
 
-### 1c. spirv-cross nach MSL
+### 1c. spirv-cross to MSL
 
-Aufruf: `spirv-cross --msl --msl-version 20300 <modul>.spv`. Alle 5932 Vertex- und Fragment-Module wurden extrahiert (202 MB unter `work/shader-test/all`).
+Command: `spirv-cross --msl --msl-version 20300 <module>.spv`. All 5,932 vertex and fragment modules were extracted (202 MB under `work/shader-test/all`).
 
-- **belegt:** 5932 von 5932 geben Exit-Code 0 (keine Fehler).
-- **belegt:** Die 3 Stichproben-Programme (je Vertex + Fragment, also 6 Module) ergaben 102 bis 247 Zeilen MSL. Zusätzlich wurden 395 weitere Module übersetzt (jedes 15.).
-- **belegt:** Alle 401 MSL-Dateien kompiliert der Metal-Laufzeit-Compiler (`MTLDevice.makeLibrary`, MSL 2.3, Apple M1 Pro) ohne Fehler. Das Kommandozeilenwerkzeug `metal` ist nicht nutzbar, weil die Metal-Toolchain nicht installiert ist. Ich habe sie nicht nachgeladen.
-- Qualität: syntaktisch korrekt, aber maschinell. Variablennamen wie `_42`, jede Komponente einzeln, Konstantenpuffer als `float4[4096]` (64 KB, Ryujinx-Layout), Eingänge als `user(locn0)`. Lesbar genug zur Analyse, nicht zum Pflegen.
-- *Vermutet:* Es ist nur Kompilierbarkeit geprüft, nicht Bildgleichheit. Ungeprüft sind Bindings (Buffer-/Textur-Indizes), y-Flip/Clipspace (`--flip-vert-y`, `--fixup-clipspace`) und Spezialisierungszustand (Blending, Vertexformat).
+- **Verified:** All 5,932 exit with code 0 (no errors).
+- **Verified:** The 3 sample programs (vertex plus fragment, 6 modules total) produced 102 to 247 lines of MSL. Another 395 modules were translated (every 15th module).
+- **Verified:** The Metal runtime compiler (`MTLDevice.makeLibrary`, MSL 2.3, Apple M1 Pro) compiled all 401 MSL files without errors. The `metal` command-line tool is unavailable because the Metal toolchain is not installed; I did not download it.
+- Quality: syntactically correct, but machine-generated. Variable names such as `_42`, each component handled separately, constant buffers represented as `float4[4096]` (64 KB, Ryujinx layout), and inputs as `user(locn0)`. Readable enough for analysis, not for maintenance.
+- *Suspected:* Only compilation was checked, not image equivalence. Bindings (buffer/texture indices), y-flip/clip space (`--flip-vert-y`, `--fixup-clipspace`), and specialization state (blending, vertex format) remain untested.
 
-### 1d. Bewertung
+### 1d. Assessment
 
-**Weg A: Unity-Neuprojekt, Shader als ShaderLab neu schreiben.**
-- Pro: passt zu opendpr (Unity 2019.4.27f1, Scripts, Wwise). Läuft auf Mac per Rosetta-Editor und kann auf iPad gebaut werden. Rund 64 Shader, davon etwa 9 Standard-Shader (TMP, UI, Bloom, FXAA) sind Standardware.
-- Contra: Handarbeit pro Shader (Delphis/Map/Standard, Character, Poffin, Mitake). Als Vorlage dienen die MSL-Ausgaben, Uniform-Namen aus den Bundles und die Referenz-SPIR-V. Es entsteht kein 1:1-Ergebnis, nur "sieht ähnlich aus". Das Hauptproblem bleibt der Blocker B1 aus `opendpr-machbarkeit.md`: Die Switch-Shaderbundles sind auf Mac unbrauchbar.
+**Path A: create a Unity project and rewrite shaders in ShaderLab.**
 
-**Weg B: eigene Runtime, SPIR-V nach MSL.**
-- Pro: 100 % der im Cache vorhandenen Shader sind automatisch übersetzbar; keine Handarbeit pro Shader.
-- Contra: Man bräuchte eine komplette eigene Engine (Szenen, Materialien, Zustände, Spiellogik). Das ist der größte Posten und hat mit Shadern nur am Rand zu tun. Zusätzlich fehlen die Zuordnung Cache-Programm ↔ Material und die Zustände aus `shared`. Cache-Abdeckung ist lückenhaft (nur gespielte Varianten). *Vermutet:* Man könnte Cache-Programme über den Guest-Code mit den Switch-Binärdaten in den Bundles abgleichen und so Namen gewinnen. Das ist ungetestet.
+- Pros: fits opendpr (Unity 2019.4.27f1, scripts, Wwise). It runs on Mac with the editor under Rosetta and can be built for iPad. There are roughly 64 shaders, of which about 9 standard shaders (TMP, UI, Bloom, FXAA) are commonplace.
+- Cons: each shader requires manual work (Delphis/Map/Standard, Character, Poffin, Mitake). MSL outputs, bundle uniform names, and reference SPIR-V serve as guides. The result will not be 1:1, only “visually similar.” The main blocker remains B1 from `opendpr-machbarkeit.md`: the Switch shader bundles are unusable on Mac.
 
-**Gerüst (opendpr-Skripte, Unity-Projekt):** ist die Grundlage von Weg A. Es ersetzt keine Shader.
+**Path B: custom runtime, SPIR-V to MSL.**
 
-**Empfehlung:** Weg A. Die Cache-Übersetzung (spirv-cross → MSL) ist ein gutes Referenzwerkzeug, um Rewrites zu prüfen, und erlaubt später ein reines Metal-Rendering einzelner Effekte. Eine eigene Runtime nach Weg B lohnt erst, wenn Weg A scheitert.
+- Pros: 100% of shaders present in the cache can be translated automatically; no per-shader manual work.
+- Cons: this requires a complete custom engine (scenes, materials, state, game logic). That is the largest effort and only loosely related to shaders. The mapping from cache programs to materials and the state from `shared` are also missing. Cache coverage is incomplete (only variants used during gameplay). *Suspected:* cache programs could be matched to Switch binaries in the bundles through their guest code to recover names. This has not been tested.
+
+**Scaffold (opendpr scripts, Unity project):** this is the basis for Path A. It does not replace shaders.
+
+**Recommendation:** Path A. Cache translation (`spirv-cross` → MSL) is a useful reference for checking rewrites and may later support rendering individual effects directly with Metal. A custom runtime under Path B is worthwhile only if Path A fails.
 
 ## 2. Audio
 
-Pfad: `work/romfs/Data/StreamingAssets/Audio/GeneratedSoundBanks/Switch` (427 MB).
+Path: `work/romfs/Data/StreamingAssets/Audio/GeneratedSoundBanks/Switch` (427 MB).
 
-**belegt:**
+**Verified:**
 
-| Messwert | Wert |
+| Measurement | Value |
 |---|---|
-| `.bnk` | 696, alle `BKHD`-Version 135 (Wwise 2019.2.x) |
-| `.wem` | 3241, zusammen 379.052.108 B (529 B bis 9.163.998 B, Median 7379 B) |
-| Weitere Dateien | `Wwise_IDs.h` (1,7 MB), `PluginInfo.xml` |
-| Bank-Chunks | `BKHD`, `HIRC` je 696, `DIDX`/`DATA` je 695 (eingebettete Medien: 2344 Einträge, 56.496.146 B), je 1x `INIT`, `STMG`, `ENVS`, `PLAT` |
-| Größte Bank | `Delphis_Main.bnk`, 24.561.004 B |
-| Codec | RIFF-Format-Tag `0xFFFF`: Wwise-Vorbis (kein Opus) |
-| Abtastraten | 32 kHz 2337, 48 kHz 371, 36 kHz 344, 24 kHz 162, andere 27 |
-| Events in `Wwise_IDs.h` | 24.278 benannte IDs im Namespace `EVENTS` |
+| `.bnk` | 696, all with `BKHD` version 135 (Wwise 2019.2.x) |
+| `.wem` | 3,241, 379,052,108 B total (529 B to 9,163,998 B, 7,379 B median) |
+| Other files | `Wwise_IDs.h` (1.7 MB), `PluginInfo.xml` |
+| Bank chunks | `BKHD`, `HIRC`: 696 each; `DIDX`/`DATA`: 695 each (embedded media: 2,344 entries, 56,496,146 B); one each of `INIT`, `STMG`, `ENVS`, `PLAT` |
+| Largest bank | `Delphis_Main.bnk`, 24,561,004 B |
+| Codec | RIFF format tag `0xFFFF`: Wwise Vorbis (not Opus) |
+| Sample rates | 32 kHz: 2,337; 48 kHz: 371; 36 kHz: 344; 24 kHz: 162; other: 27 |
+| Events in `Wwise_IDs.h` | 24,278 named IDs in namespace `EVENTS` |
 
-- Versionsabgleich: opendpr bringt Wwise 2019.2.4 mit Mac-Plugins mit (siehe `opendpr-machbarkeit.md`). Bankversion 135 passt dazu. *Vermutet:* Die Switch-Bänke laufen mit dem Umbenennen des Ordners nach `Windows` (so schreibt es opendpr vor), ungetestet.
-- **vgmstream:** Release `r2117`. Das Mac-Release `vgmstream-mac.zip` hat feste Pfade zu Homebrew-Bibliotheken (`libvorbis`, `libogg`, ffmpeg-Version 62), die hier fehlen oder zu neu sind. Also habe ich vgmstream r2117 samt libogg 1.3.5 und libvorbis 1.3.7 nach `tools/vgmstream/` gebaut (ohne ffmpeg/mpg123/speex/celt). Der Build liegt unter `tools/vgmstream/b-vgm/cli/vgmstream-cli`. Homebrew wurde nicht verändert.
-- Dekodiertests nach `work/audio-test/*.wav` (alle erfolgreich, Encoding "Custom Vorbis"):
+- Version check: opendpr includes Wwise 2019.2.4 with Mac plugins (see `opendpr-machbarkeit.md`). Bank version 135 matches. *Suspected:* the Switch banks will work if their folder is renamed to `Windows`, as opendpr instructs; this is untested.
+- **vgmstream:** release `r2117`. The Mac release `vgmstream-mac.zip` hardcodes paths to Homebrew libraries (`libvorbis`, `libogg`, FFmpeg version 62) that are missing or too new here. I therefore built vgmstream r2117 with libogg 1.3.5 and libvorbis 1.3.7 under `tools/vgmstream/` (without ffmpeg/mpg123/speex/celt). The build is at `tools/vgmstream/b-vgm/cli/vgmstream-cli`. Homebrew was not changed.
+- Decode tests to `work/audio-test/*.wav` (all succeeded, encoding “Custom Vorbis”):
 
-| Datei | Quelle | Format | Dauer |
-|---|---|---|---|
-| `284133277.wem` | 1661 B | 32 kHz, mono | 0,22 s |
-| `1000209917.wem` | 10.663 B | 32 kHz, mono | 1,32 s |
-| `382403544.wem` | 563 B | 6 kHz, 2 Kanäle | 5,00 s |
+| File | Source size | Format | Duration |
+|---|---:|---|---:|
+| `284133277.wem` | 1,661 B | 32 kHz, mono | 0.22 s |
+| `1000209917.wem` | 10,663 B | 32 kHz, mono | 1.32 s |
+| `382403544.wem` | 563 B | 6 kHz, 2 channels | 5.00 s |
 
-- Alle 3241 `.wem` wurden zusätzlich nur per Metadaten (`-m`) geprüft und von vgmstream als Custom Vorbis erkannt, keine Fehlermeldung. Vollständig dekodiert habe ich nur die 3 Dateien oben.
-- **wwiser (bnnm/wwiser, nur README gelesen):** liest `.bnk` komplett inklusive `HIRC` (Event-, Aktions-, Container-Struktur), kann Namen aus `Wwise_IDs.h` und `SoundbanksInfo.xml` nutzen, erzeugt XML/TXT-Dumps und `.txtp`-Dateien, die vgmstream abspielt. *Vermutet:* Das ist unser Werkzeug, um Event → Aktion → `.wem` aufzulösen. Es kann Wwise-Features nur teilweise simulieren und verändert keine Bänke.
+- All 3,241 `.wem` files were also checked by metadata only (`-m`); vgmstream recognized each as Custom Vorbis without an error. Only the 3 files above were fully decoded.
+- **wwiser (bnnm/wwiser; README only):** reads complete `.bnk` files, including `HIRC` (event, action, and container structure); can use names from `Wwise_IDs.h` and `SoundbanksInfo.xml); and produces XML/TXT dumps and `.txtp` files that vgmstream can play. *Suspected:* this is the tool to resolve event → action → `.wem`. It only partially simulates Wwise features and does not modify banks.
 
-### Bewertung Audio
-- Bei Weg A läuft Wwise 2019.2.4 über das opendpr-Gerüst nativ auf Mac (Plugins im Repo). Auf iPad fehlen nach unserem Wissensstand iOS-Plugins in opendpr (*vermutet*, nicht geprüft). Das SDK ist proprietär (Audiokinetic-Konto/Lizenz nötig).
-- Alternative ohne Wwise-Runtime: `.wem` mit vgmstream nach WAV/OGG wandeln und Events über wwiser-Dumps in einen eigenen Mixer abbilden. Das ist deutlich mehr Arbeit (RTPC, Switches, States, Container-Logik).
+### Audio assessment
 
-## 3. Empfehlung und nächste Schritte
+- Under Path A, Wwise 2019.2.4 runs natively on Mac through the opendpr scaffold (plugins are in the repository). To our knowledge, opendpr lacks iOS plugins (*suspected*, not checked). The SDK is proprietary (Audiokinetic account/license required).
+- Alternative without the Wwise runtime: convert `.wem` to WAV/OGG with vgmstream and map events from wwiser dumps into a custom mixer. This requires substantially more work (RTPCs, switches, states, container logic).
 
-1. Weg A weiterverfolgen. Shader: eine kleine Liste priorisieren (TMP/UI/Bloom/FXAA zuerst, dann Delphis Map/Character).
-2. Die Cache-Programme mit den Bundle-Shadern abgleichen (Guest-Code ↔ Switch-Binärdaten), um Namen/Varianten zu bekommen. Das ist der einzige noch unbekannte Schritt für Weg B.
-3. Audio: wwiser einmal über `Delphis_Main.bnk` laufen lassen, Eventliste prüfen, danach Wwise-Bänke im Unity-Projekt auf Mac testen.
-4. Offene Risiken: Spielversion von Dump und Ryujinx-Cache (2023) nicht verglichen; MSL nur kompiliert, nicht gerendert; iPad-Wwise-Plugins ungeprüft.
+## 3. Recommendation and next steps
+
+1. Continue with Path A. Prioritize a small shader list (TMP/UI/Bloom/FXAA first, then Delphis Map/Character).
+2. Match cache programs with bundle shaders (guest code ↔ Switch binaries) to recover names and variants. This is the only unknown step remaining for Path B.
+3. Audio: run wwiser on `Delphis_Main.bnk`, inspect the event list, then test the Wwise banks in the Unity project on Mac.
+4. Open risks: the game version in the dump has not been compared with the 2023 Ryujinx cache; MSL was compiled but not rendered; iPad Wwise plugins are unverified.

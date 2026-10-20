@@ -1,161 +1,167 @@
-# Build-Pipeline: Stufen, Marker und Werkzeuge
+# Build Pipeline: Stages, Markers, and Tools
 
-> **Stand 2026-10-19:** Die Stufen `assets`, `stubs`, `unity-build` und `deploy` (Unity-Projekt) sind aus `main` entfernt, ebenso die Optionen `--shaders-into-unity`, `--target` für Unity und die Editor-Erkennung. Verbleibende Stufen: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio`. Die Abschnitte zu den entfernten Stufen gelten nur noch für den Branch `unity`. Ebenfalls entfernt (nur Branch `unity`): `scripts/bundle_retarget.py` und `scripts/ios_deploy.sh`.
+> **Status 2026-10-19:** Unity project stages `assets`, `stubs`, `unity-build`, and `deploy` have been removed from `main`, as have `--shaders-into-unity`, Unity's `--target`, and editor detection. Remaining stages: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio`. Sections about removed stages apply only to branch `unity`. Also removed (only on branch `unity`): `scripts/bundle_retarget.py` and `scripts/ios_deploy.sh`.
 
-Einstiegspunkt ist `scripts/build_all.sh` (bash 3.2-kompatibel). Hilfslogik: `scripts/build_helpers.py` (Entschlüsselung, Manifest) und `scripts/build_stages.py` (Stufenauswahl, Marker mit Eingabe-Hashes, Preflight). Die Nutzeranleitung „NSP/XCI angeben, App erhalten“ steht in `docs/bauen.md`; dieses Dokument beschreibt die Technik.
-Stufen in fester Reihenfolge: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio` (Platzhalter). Die Unity-Stufen `assets`, `stubs`, `unity-build`, `deploy` sind entfernt (Branch `unity`). (`recomp` = macOS-App aus der Rekompilation, Hauptweg seit Entscheidung 3; Technik: `docs/recomp-macapp.md`.) Vor den Stufen läuft ein Preflight. Stand der Umsetzung: alle Stufen sind im Skript vorhanden; `audio` meldet „nicht implementiert“. Getestet sind Dry-run, `extract` (früherer Lauf, siehe unten), `il2cpp`, `masterdata`, `video` (Stichprobe), `shaders` (Stichprobe) und `recomp`. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor. **Neu (2026-10-19):** echte Player-Builds mit den echten Bundles für macOS und iPad (Abschnitt „Ergebnis des ersten Player-Builds“, Details in `docs/player-build-1.md`); der Unity-Batch-Treiber (Editor geschlossen) wurde dabei nicht benutzt, gebaut wurde über die Menüeinträge `Xnu/Build/…` im offenen Editor.
+Entry point is `scripts/build_all.sh` (bash 3.2 compatible). Helpers: `scripts/build_helpers.py` (decryption, manifest) and `scripts/build_stages.py` (stage selection, markers with input hashes, preflight). User guide “provide NSP/XCI, get app” is `docs/bauen.md`; this document describes implementation.
 
-## Aufruf
+Stages run in this order: `tools`, `extract`, `il2cpp`, `recomp`, `masterdata`, `shaders`, `video`, `audio` (placeholder). Unity stages `assets`, `stubs`, `unity-build`, `deploy` are removed (branch `unity`). (`recomp` = macOS app from recompilation, main path since decision 3; technical details: `docs/recomp-macapp.md`.) Preflight runs first. All stages are present in script; `audio` reports “not implemented.” Tested: dry run, `extract` (earlier run, see below), `il2cpp`, `masterdata`, `video` (sample), `shaders` (sample), and `recomp`. **Update (2026-10-19):** real player builds using real bundles for macOS and iPad (section “First Player Build Results,” details in `docs/player-build-1.md`); Unity batch driver (Editor closed) was not used; build was made via `Xnu/Build/…` menu items in open Editor. The same update was inadvertently repeated in the source.
+
+## Invocation
 
 ```
-scripts/build_all.sh all --xci <x.xci> --nsp <update.nsp> --keys <Ordner> [--target macos|ios|all]
-scripts/build_all.sh --dry-run all --xci … --keys …       # Plan, Marker-Status, Kommandos; ändert nichts
+scripts/build_all.sh all --xci <x.xci> --nsp <update.nsp> --keys <directory> [--target macos|ios|all]
+scripts/build_all.sh --dry-run all --xci … --keys …       # plan, marker status, commands; changes nothing
 scripts/build_all.sh --from masterdata --to video
 scripts/build_all.sh --only shaders,video
 scripts/build_all.sh preflight
 ```
 
-| Option | Bedeutung |
+| Option | Meaning |
 |---|---|
-| `--xci`, `--nsp`, `--keys`, `--prod-keys`, `--title-keys` | Eingaben für `extract` (NSP optional; `title.keys` nur Rückfall). Nach einem erfolgreichen `extract` ist `--xci` nicht mehr nötig. |
-| `--work` | Arbeitsordner, Standard **`work/`** (früher `work/build`). Dort erwarten auch die übrigen Skripte `exefs/`, `romfs/`, `il2cpp/`, `masterdata/`. |
-| `--target` | `macos`, `ios`, `all` (Standard) für `recomp`. |
-| `--dry-run` | Nichts ausführen, schreiben oder installieren; Kommandos mit `[dry-run]` anzeigen. |
-| `--from`, `--to`, `--only` | Bereich bzw. genaue Auswahl der Stufen (`--only` nicht mit `--from/--to` kombinierbar). |
-| `--force` | Gewählte Stufen neu erzeugen, auch wenn der Marker passt. |
-| `--no-preflight`, `--min-free-gb N` | Preflight auslassen bzw. Mindestplatz ändern (Standard 60). |
-| `--keep-nca` | Entpackte NCAs (mehrere GB) behalten. |
-| `--video-profile`, `--movie-src` | `h265-crf18` (Standard) oder `h265-crf14`; abweichende Videoquelle (Stichproben, ohne Marker). |
-| `--shader-only NAME` | Nur ein Shader (Test, ohne Marker). |
-| `--launch` | iOS-App nach der Installation starten (Standard: nicht starten). |
-| `--bundle-platform`, `--bundle-subset`, `--texture-format` | Optionen der entfernten Stufe `assets` (Branch `unity`). |
+| `--xci`, `--nsp`, `--keys`, `--prod-keys`, `--title-keys` | Inputs for `extract` (NSP optional; `title.keys` is fallback only). After successful `extract`, `--xci` is no longer needed. |
+| `--work` | Work directory; default **`work/`** (formerly `work/build`). Other scripts also expect `exefs/`, `romfs/`, `il2cpp/`, `masterdata/` there. |
+| `--target` | `macos`, `ios`, `all` (default), for `recomp`. |
+| `--dry-run` | Do not execute, write, or install; show commands with `[dry-run]`. |
+| `--from`, `--to`, `--only` | Stage range or exact selection (`--only` cannot combine with `--from/--to`). |
+| `--force` | Regenerate selected stages even if marker matches. |
+| `--no-preflight`, `--min-free-gb N` | Skip preflight or change minimum free space (default 60). |
+| `--keep-nca` | Keep extracted NCAs (several GB). |
+| `--video-profile`, `--movie-src` | `h265-crf18` (default) or `h265-crf14`; alternate video source (samples only, no marker). |
+| `--shader-only NAME` | One shader only (test, no marker). |
+| `--launch` | Launch iOS app after installation (default: do not launch). |
+| `--bundle-platform`, `--bundle-subset`, `--texture-format` | Options from removed `assets` stage (branch `unity`). |
 
-Umgebungsvariablen: `TOOLS_DIR` (Standard `tools/`), `MIN_FREE_GB` (Reserve in `extract`, Standard 25), `PREFLIGHT_MIN_FREE_GB`, `DEVELOPER_DIR`, `SHADER_USED` (JSON der benutzten Keyword-Mengen).
+Environment variables: `TOOLS_DIR` (default `tools/`), `MIN_FREE_GB` (reserve for `extract`, default 25), `PREFLIGHT_MIN_FREE_GB`, `DEVELOPER_DIR`, `SHADER_USED` (JSON of used keyword sets).
 
 ## Preflight
 
-Nur Prüfung, nie Installation, nie `sudo`. Geprüft wird, was die gewählten Stufen brauchen:
+Checks only; never installs and never uses `sudo`. Checks requirements of selected stages:
 
-- **Plattenplatz ≥ 60 GB** frei (bei allen Stufen außer `tools`/`audio`, `recomp` allein: **≥ 25 GB**, siehe `docs/bauen.md`); knapper Platz → Exit-Code 8 und Hinweis auf `--min-free-gb`.
-- `recomp`: Homebrew-`clang` und Apple-`clang`, `pkg-config` mit `sdl3`, `libavcodec`, `libavformat`, `libavutil`, `rsync`, `codesign`, `install_name_tool`, `otool`, `iconutil`, `plutil`, `tools/pydeps/{capstone,unicorn}`, vendorte LASRecomp-Teile unter `scripts/recomp/upstream/` und `scripts/recomp/rt-bdsp/nvn/upstream/` (kein Klon nötig).- `tools`: git, make, cc. `extract`: `tools/hactool/hactool` (oder wird von `tools` gebaut). `il2cpp`: `dotnet` ≥ 8 und `tools/il2cppdumper-bin/Il2CppDumper.dll`. `masterdata`/`shaders`: `tools/pydeps/UnityPy`; `shaders`: make, cc. `video`: `ffmpeg` mit `libx265`.
-Fehlendes erscheint als **Installationsliste** (Befehle zum selbst Ausführen). Exit-Code 4 bei fehlenden Werkzeugen, 8 bei zu wenig Platz. Im Dry-run endet ein nicht bestandener Preflight nicht; er zeigt, mit welchem Code der echte Lauf enden würde.
+- **At least 60 GB free** (all stages except `tools`/`audio`; `recomp` alone: **at least 25 GB**, see `docs/bauen.md`). Less space → exit 8 and hint to `--min-free-gb`.
+- `recomp`: Homebrew `clang` and Apple `clang`, `pkg-config` with `sdl3`, `libavcodec`, `libavformat`, `libavutil`, `rsync`, `codesign`, `install_name_tool`, `otool`, `iconutil`, `plutil`, `tools/pydeps/{capstone,unicorn}`, vendored LASRecomp components in `scripts/recomp/upstream/` and `scripts/recomp/rt-bdsp/nvn/upstream/` (no clone needed).
+- `tools`: git, make, cc. `extract`: `tools/hactool/hactool` (or built by `tools`). `il2cpp`: `dotnet` ≥ 8 and `tools/il2cppdumper-bin/Il2CppDumper.dll`. `masterdata`/`shaders`: `tools/pydeps/UnityPy`; `shaders`: make, cc. `video`: `ffmpeg` with `libx265`.
 
-## Marker und Idempotenz
+Missing requirements appear as an **installation list** (commands for user to run). Exit 4 for missing tools, 8 for insufficient space. In dry run, failed preflight does not terminate; it shows the exit code a real run would return.
 
-Nach Erfolg schreibt jede Stufe (außer `tools`, `audio`, Stichproben) `work/.stages/<Stufe>.json`: Schema, Stufe, Eingabe-Hash, Zeitstempel, Notizen (Zählwerte, Größen). Der Hash (`build_stages.py stage-hash`) umfasst je Stufe:
+## Markers and Idempotency
 
-| Stufe | Eingabe-Hash aus |
+After success, every stage except `tools`, `audio`, and samples writes `work/.stages/<stage>.json`: schema, stage, input hash, timestamp, notes (counts, sizes). Per-stage hash (`build_stages.py stage-hash`) includes:
+
+| Stage | Inputs hashed |
 |---|---|
-| `il2cpp` | Kern von `manifest.json`, SHA-256 von `global-metadata.dat` und Il2CppDumper |
-| `recomp` | Module des Dumps (SHA-256 von `exefs/main`, `sdk`, `subsdk0`, `rtld`), Generatorskripte und die Werkzeuge des Klons, Teilmarker `recomp-gen` (C erzeugt) und `recomp-obj` (Objekte übersetzt), Quellen von `rt-bdsp/` (ohne `test/`, `vulkan/`), der NVN-Quellen des Klons, `shader_translator/`, `scripts/recomp/app/`, `main.npdm`, Optionen (`-O0`-Schwelle, Hardened Runtime, Daten) |
-| `masterdata` | Manifest-Kern, `masterdata_export.py` |
-| `shaders` | Manifest-Kern, alle `shader_*.py`/`shader_build.sh`, Quellen von `shader_translator/`, `SHADER_USED` |
-| `video` | Manifest-Kern, `video_convert.sh`, Profil, Pfade und Größen der WebM-Quellen |
-| `il2cpp` | Kern von `manifest.json`, SHA-256 von `global-metadata.dat` und Il2CppDumper |
+| `il2cpp` | core of `manifest.json`, SHA-256 of `global-metadata.dat` and Il2CppDumper |
+| `recomp` | dump modules (SHA-256 of `exefs/main`, `sdk`, `subsdk0`, `rtld`), generator scripts and clone tools, submarkers `recomp-gen` (generated C) and `recomp-obj` (compiled objects), `rt-bdsp/` sources (excluding `test/`, `vulkan/`), clone NVN sources, `shader_translator/`, `scripts/recomp/app/`, `main.npdm`, options (`-O0` threshold, Hardened Runtime, data) |
+| `masterdata` | manifest core, `masterdata_export.py` |
+| `shaders` | manifest core, all `shader_*.py`/`shader_build.sh`, `shader_translator/` sources, `SHADER_USED` |
+| `video` | manifest core, `video_convert.sh`, profile, WebM source paths and sizes |
+| `il2cpp` | manifest core, SHA-256 of `global-metadata.dat` and Il2CppDumper |
 
-Stufen mit passendem Marker (und vorhandener Ausgabe) werden übersprungen; ein abgebrochener Lauf setzt dort fort, wo die Marker enden. `extract` behält sein eigenes `manifest.json`-Verfahren (siehe unten). Marker, Logs und Ausgaben enthalten nie Schlüssel; die Team-ID erscheint nirgends im Klartext.
+Stages with matching marker and existing output are skipped; interrupted run resumes where markers end. `extract` uses its own `manifest.json` process (below). Markers, logs, and outputs never contain keys; team ID is never stored in plaintext.
 
-## Stufen im Einzelnen
+## Individual Stages
 
 ### `il2cpp`
-`DOTNET_ROLL_FORWARD=Major dotnet tools/il2cppdumper-bin/Il2CppDumper.dll exefs/main global-metadata.dat work/il2cpp.stage`, danach Umbenennen nach `work/il2cpp/` (`dump.cs`, `script.json`, `il2cpp.h`, `DummyDll`, `stringliteral.json`). Der Dumper wirft am Ende ohne Terminal eine harmlose Ausnahme (Tastenabfrage); der Erfolg zählt am Ergebnis. Test: Lauf in einen Sandbox-Arbeitsordner (5,7 s) lieferte `dump.cs` und `script.json` **byte-identisch** zum früheren manuellen Lauf. Für die App selbst wird diese Stufe nicht gebraucht, nur für Analyse und den Abgleich der Stammdaten.
+`DOTNET_ROLL_FORWARD=Major dotnet tools/il2cppdumper-bin/Il2CppDumper.dll exefs/main global-metadata.dat work/il2cpp.stage`, then rename to `work/il2cpp/` (`dump.cs`, `script.json`, `il2cpp.h`, `DummyDll`, `stringliteral.json`). Dumper raises a harmless exception at end without a terminal (key prompt); success is determined from output. Test: sandbox run (5.7 s) produced `dump.cs` and `script.json` **byte-identical** to earlier manual run. This stage is not needed for the app itself, only analysis and master-data comparison.
 
 ### `masterdata`
-`masterdata_export.py export --set all --messages` und `counts` mit `PYTHONPATH=tools/pydeps` nach `work/masterdata/`. Test (Sandbox): 9 s, 129 Dateien, 104.649.610 Byte.
+`masterdata_export.py export --set all --messages` and `counts` with `PYTHONPATH=tools/pydeps` to `work/masterdata/`. Test (sandbox): 9 s, 129 files, 104,649,610 bytes.
 
 ### `shaders`
-Ruft `scripts/shader_build.sh` (`docs/shader-translator.md`). Standardausgabe `work/build/shaders/`. Exit 9 (16 Varianten mit Subgroup-Shuffle nicht verpackbar) ist eine Warnung. Weil die Hilfsskripte fest `work/romfs` lesen, legt die Stufe bei einem anderen `--work` einen Symlink dorthin an (oder bricht ab, wenn dort ein echter, anderer Ordner liegt). Test: Stichprobe `Custom/EffectCopyTexture` in 1,3 s. Ein Vollauf (6.804 Varianten) wurde hier nicht gestartet; ohne Strippen (`SHADER_USED`) sind Importzeit und Dateimenge im Unity-Projekt unverhältnismäßig, deshalb der Standard außerhalb des Projekts.
+Calls `scripts/shader_build.sh` (`docs/shader-translator.md`). Default output `work/build/shaders/`. Exit 9 (16 variants with subgroup shuffle cannot be packaged) is a warning. Because helper scripts read fixed `work/romfs`, stage creates a symlink there for another `--work` (or aborts if a different real directory exists). Test: sample `Custom/EffectCopyTexture` in 1.3 s. Full run (6,804 variants) not started; without stripping (`SHADER_USED`), import time and file count in Unity project are excessive, so default is outside project.
+
 ### `video`
-`scripts/video_convert.sh <Movie> work/video <Profil>`: libx265, `hvc1`, kein H.264-Rückfall (`docs/video-umwandlung.md`). Das Skript ist über `video-manifest.json` selbst idempotent. Test: 4-s-Loop in 2,5 s, zweiter Lauf „unverändert, übersprungen“; ein Vollauf der 18 Videos wurde nicht gestartet (rund 10 Minuten Kodierzeit).
+`scripts/video_convert.sh <Movie> work/video <Profile>`: libx265, `hvc1`, no H.264 fallback (`docs/video-umwandlung.md`). Script is idempotent via `video-manifest.json`. Test: 4-s loop in 2.5 s; second run “unchanged, skipped.” Full run of 18 videos not started (about 10 min encoding).
 
 ### `audio`
-**Nicht implementiert.** Die Stufe meldet das deutlich und endet mit Erfolg ohne Marker. Vorgesehen ist ausschließlich Offline-Konvertierung der Wwise-Banks in Dateien (vgmstream); die Pipeline spielt nie Ton ab, die App ist standardmäßig stumm (`AudioSafety`).
+**Not implemented.** Stage says so clearly and exits successfully without a marker. Planned work is offline conversion of Wwise banks to files (vgmstream); pipeline never plays audio, and app is silent by default (`AudioSafety`).
 
-### `assets` (entfernt, Branch `unity`; historisch)
-Legt für den Player unter `unity/Assets/StreamingAssets/GameData/` (gitignoriert, per `git check-ignore` erzwungen; sonst Abbruch, Exit 2) bereit:
+### `assets` (Removed, Branch `unity`; Historical)
+Places data for player under gitignored `unity/Assets/StreamingAssets/GameData/` (enforced with `git check-ignore`; otherwise abort, exit 2):
 
 ```
-GameData/romfs/Data/StreamingAssets/AssetAssistant/   alle Bundles (APFS-Klon, sonst Kopie)
-GameData/romfs/Data/StreamingAssets/Movie/            H.265-Videos aus work/video
-GameData/masterdata/                                  JSON aus work/masterdata
+GameData/romfs/Data/StreamingAssets/AssetAssistant/   all bundles (APFS clone, otherwise copy)
+GameData/romfs/Data/StreamingAssets/Movie/            H.265 videos from work/video
+GameData/masterdata/                                  JSON from work/masterdata
 ```
 
-Die Struktur entspricht `GameDataPaths` (`Root` = `StreamingAssets/GameData`, wenn `XNU_GAMEDATA` nicht gesetzt ist), sodass `AssetAssistant` und `masterdata` ohne Codeänderung der Verbraucher gefunden werden. Zusätzlich `GameData/materials/` (Materialexporte aus `work/materials`, falls vorhanden; sie braucht der Shader-Umbau). Audio wird nicht kopiert. Anzahl und Größe werden gemessen und ausgegeben. Test (Sandbox, echte Bundles): 14.183 Dateien, 3,9 GB in 4 s ohne zusätzlichen Plattenverbrauch (Klon).
+Structure matches `GameDataPaths` (`Root` = `StreamingAssets/GameData` if `XNU_GAMEDATA` is unset), so `AssetAssistant` and `masterdata` consumers need no code changes. Also `GameData/materials/` (material exports from `work/materials`, if present; required for shader remapping). Audio is not copied. Counts and size are measured and printed. Test (sandbox, real bundles): 14,183 files, 3.9 GB in 4 s without extra disk use (clone).
 
-**Plattformkennung der Bundles (Pflicht für den Player).** Die Original-Bundles tragen die Zielplattform 38 (Switch). Der Editor lädt sie, ein **Player nicht** („The file can not be loaded because it was created for another build target…“). Die Stufe ruft deshalb `scripts/bundle_retarget.py tree … --platform macos|ios` auf: je Bundle wird nur die Plattformkennung im Serialized File geändert (Block mit den vier Bytes entpacken, patchen, mit LZ4HC neu packen, Blockinfo neu schreiben, übrige Blöcke unverändert kopieren; Texturformate und Inhalt bleiben). Ergebnis auf echten Daten: 14.052 Bundles, 0 Fehler; die Klone sind danach echte Kopien (4,0 GB Plattenverbrauch). Zeit gesamt 42 s (24 s, wenn der gepatchte Block unkomprimiert bleibt, dafür +0,9 GB). UnityPy öffnet gepatchte und Originalbundle mit identischen Objekten (28.225 Objekte in `area001`, gleiche Prüfsumme der ersten 300).
-- `--bundle-platform macos|ios|keep`: Standard aus `--target` (`ios` → ios, sonst macos; bei `all` gilt `macos`, für iOS die Stufe mit `--target ios` wiederholen). `keep` lässt die Kennung (nur für Tools, ein Player lädt die Bundles dann nicht).
-- `--bundle-subset DATEI`: statt aller Bundles nur die gelisteten (Namen relativ zu `AssetAssistant`, `#` für Kommentare) plus alle Nicht-Bundle-Dateien (Katalog `Dpr.bin` u. a.). Für das iPad: `scripts/subsets/ipad-start.txt` (Start der Szene `FieldTest2`, 5 Bundles, 34,6 MB; Begründung und Messung in `docs/player-build-1.md`).
-- `--texture-format 4x4|6x6|8x8|off`: BC-Texturen (BC1/BC3/BC4/BC5/BC7, Crunch) der Bundles nach ASTC umwandeln (`scripts/texture_transcode.py tree`, nach dem Setzen der Plattformkennung). Standard `6x6` bei Bundle-Plattform `ios` (Apple-GPUs kennen kein BC), sonst `off`. Mip-Ketten, Größen, Namen, PathIDs, ColorSpace und das Streaming über `.resS` bleiben erhalten; BC4/BC5 nutzen immer ASTC 4×4. Idempotent (ein Bundle ohne BC-Texturen bleibt unverändert). Messung (Teilmenge `ipad-start`): 24 s, 34,6 → 47,9 MB auf der Platte, Texturspeicher der Zone 422 46,4 → 25,5 MiB; alle Bundles: 2.838 mit BC-Texturen (5,2 GB roh), Hochrechnung 10 bis 15 Minuten bei 4 bis 6 Prozessen. Details: `docs/ios-texturen.md`.
-- Der Marker-Hash der Stufe enthält `bundle_retarget.py`, `texture_transcode.py`, Plattform, Texturformat, Teilmenge und die Liste der Materialexporte.
-- Beim Unity-Build kopiert Unity die Daten danach einmal vollständig in das Paket (macOS: App 4,1 GB, Ausgabeordner mit Symbolen 5,0 GB; iOS ohne Teilmenge entsprechend ca. 4,4 GB plus Xcode-Derived-Data).
+**Bundle platform identifier (required for player).** Original bundles identify target platform 38 (Switch). Editor loads them; **player does not** (“The file can not be loaded because it was created for another build target…”). Stage therefore runs `scripts/bundle_retarget.py tree … --platform macos|ios`: for each bundle, only platform identifier in Serialized File changes (decompress block with four bytes, patch, repack with LZ4HC, rewrite block info, copy other blocks unchanged; texture formats and contents stay the same). Real-data result: 14,052 bundles, 0 errors; clones become real copies (4.0 GB disk). Total time 42 s (24 s if patched block remains uncompressed, but +0.9 GB). UnityPy opens patched and original bundles with identical objects (28,225 objects in `area001`, same checksum for first 300).
+- `--bundle-platform macos|ios|keep`: default from `--target` (`ios` → ios, else macos; `all` means macos, rerun stage with `--target ios` for iOS). `keep` leaves identifier unchanged (tools only; player then cannot load bundles).
+- `--bundle-subset FILE`: instead of all bundles, select listed names (relative to `AssetAssistant`, `#` comments) plus all non-bundle files (catalog `Dpr.bin`, etc.). For iPad: `scripts/subsets/ipad-start.txt` (scene `FieldTest2` startup, 5 bundles, 34.6 MB; rationale/measurement in `docs/player-build-1.md`).
+- `--texture-format 4x4|6x6|8x8|off`: convert BC textures (BC1/BC3/BC4/BC5/BC7, Crunch) in bundles to ASTC (`scripts/texture_transcode.py tree`, after platform identifier). Default `6x6` for bundle platform `ios` (Apple GPUs do not support BC), otherwise `off`. Mip chains, dimensions, names, PathIDs, ColorSpace, and streaming through `.resS` are preserved; BC4/BC5 always use ASTC 4×4. Idempotent (bundle without BC remains unchanged). Measurement (`ipad-start` subset): 24 s, 34.6 → 47.9 MB on disk, Zone 422 texture memory 46.4 → 25.5 MiB; all bundles: 2,838 contain BC textures (5.2 GB raw), estimated 10–15 min with 4–6 processes. Details: `docs/ios-texturen.md`.
+- Stage marker hash includes `bundle_retarget.py`, `texture_transcode.py`, platform, texture format, subset, and material-export list.
+- Unity build then copies all data into package (macOS app 4.1 GB, output directory with symbols 5.0 GB; iOS without subset about 4.4 GB plus Xcode Derived Data).
 
-### `unity-build` (entfernt, Branch `unity`; historisch)
-Je Ziel ein Batch-Build mit `Xnu.Build.Editor.BuildScript` (`BuildMacOS`, `BuildIos`):
+### `unity-build` (Removed, Branch `unity`; Historical)
+Batch build per target with `Xnu.Build.Editor.BuildScript` (`BuildMacOS`, `BuildIos`):
 
-- Treiber `cli`: `unity --non-interactive --no-banner build unity --target StandaloneOSX|iOS --execute-method … --output-path … --editor-version 6000.3.26f1 --architecture arm64 --allow-dirty-build --log-file …`.
-- Treiber `editor` (Rückfall oder `XNU_UNITY_DRIVER=editor`): `Unity -batchmode -quit -projectPath unity -buildTarget … -executeMethod … -xnuOutput …`.
-- Das Buildskript setzt vor dem Bauen: Scripting-Backend IL2CPP, **nur Metal** als Grafik-API, macOS-Architektur arm64 (per Reflection, fällt sonst auf den Editor-Standard zurück), iOS Gerätetyp iPhone und iPad. Szenen: aktivierte Szenen der Build Settings, sonst `Boot` (Auswahlmenü, Einstieg), `FieldTest2`, `FieldTest`, `UiTest`, `InputTest`; `-xnuScenes a;b` überschreibt. Die Boot-Szene wird bei Bedarf automatisch erzeugt (`BootSceneBuilder`). **Vor dem Bauen** gleicht das Skript die erzeugten Shader nach `Assets/XnuGenerated/Resources` ab (`GeneratedShaderSync`; Quelle `-xnuShaders`, `XNU_SHADERS`, `work/build/shaders`, `work/shaders/combined` mit je einer `variants.json`); Resources-Inhalt ist im Player enthalten, `Shader.Find` findet die Shader dort (belegt: 61 von 61 im macOS-Player). `unity/Assets/link.xml` verhindert das Strippen von Engine-Klassen, die nur Bundle-Inhalt braucht (iOS: `SkinnedMeshRenderer`). Der Player startet mit `-xnuScene <Name>` oder `XNU_START_SCENE` direkt in eine Szene. Ausgabe: `-xnuOutput` bzw. `-buildOutput`. Im Batchmodus Exit-Code 1 bei Fehlern. Der iOS-Postbuild `IosPostBuild.cs` (Entitlement „Increased Memory Limit“) bleibt unverändert; er existiert nur, wenn beim Kompilieren das Ziel iOS aktiv ist: Beide Treiber (`--target iOS` bzw. `-buildTarget iOS`) erfüllen das; **im offenen Editor mit aktivem Ziel macOS fehlte beim ersten Aufruf das Entitlement** (Wiederholung nach dem Zielwechsel liefert es). Das Skript prüft nach dem Bau, dass `Xnu.entitlements` im Xcode-Projekt liegt. `ApplyPlayerSettings` schreibt dabei in `ProjectSettings.asset`: Scripting-Backend IL2CPP für Standalone und nur Metal für macOS und iOS (gewollt, gehört ins Repo).
-- Die Ausgabe wird vorher gelöscht (Unity würde sonst an alte Xcode-Projekte anhängen).
-- **Editor offen:** Erkennt `build_stages.py editor-open` einen Unity-Prozess mit `-projectpath unity` (Import-Worker und Shader-Compiler zählen nicht), wird der Build nicht versucht. Das Skript nennt die PID und zwei Auswege, überspringt `unity-build` und `deploy` und endet mit Exit-Code **11**.
-- Exit-Code 12: Unity-Build fehlgeschlagen (Auszug aus dem Unity-Log).
+- Driver `cli`: `unity --non-interactive --no-banner build unity --target StandaloneOSX|iOS --execute-method … --output-path … --editor-version 6000.3.26f1 --architecture arm64 --allow-dirty-build --log-file …`.
+- Driver `editor` (fallback or `XNU_UNITY_DRIVER=editor`): `Unity -batchmode -quit -projectPath unity -buildTarget … -executeMethod … -xnuOutput …`.
+- Build script sets before building: IL2CPP scripting backend, **Metal only** graphics API, macOS arm64 architecture (via reflection, otherwise Editor default), iPhone and iPad device types for iOS. Scenes: enabled Build Settings scenes; otherwise `Boot` (selection menu/start), `FieldTest2`, `FieldTest`, `UiTest`, `InputTest`; `-xnuScenes a;b` overrides. Creates Boot scene automatically if needed (`BootSceneBuilder`). **Before build**, syncs generated shaders into `Assets/XnuGenerated/Resources` (`GeneratedShaderSync`; source `-xnuShaders`, `XNU_SHADERS`, `work/build/shaders`, `work/shaders/combined`, each with `variants.json`); Resources are included in player and `Shader.Find` finds shaders there (verified 61 of 61 in macOS player). `unity/Assets/link.xml` prevents stripping engine classes referenced only by bundle contents (iOS: `SkinnedMeshRenderer`). Player can start directly in a scene with `-xnuScene <Name>` or `XNU_START_SCENE`. Output: `-xnuOutput` or `-buildOutput`. Batch exit code 1 on errors. iOS postbuild `IosPostBuild.cs` (Increased Memory Limit entitlement) unchanged; it exists only if iOS is active at compile time: both drivers (`--target iOS` or `-buildTarget iOS`) satisfy this; **with open Editor targeting macOS, entitlement was missing on first call** (repeat after target switch adds it). Script checks `Xnu.entitlements` in Xcode project afterward. `ApplyPlayerSettings` writes `ProjectSettings.asset`: IL2CPP for Standalone and Metal only for macOS/iOS (intended, belongs in repo).
+- Output is deleted first (Unity otherwise appends to old Xcode projects).
+- **Editor open:** if `build_stages.py editor-open` detects Unity process with `-projectpath unity` (import workers and shader compiler do not count), build is not attempted. Script prints PID and two alternatives, skips `unity-build` and `deploy`, exits **11**.
+- Exit 12: Unity build failed (excerpt from Unity log).
 
-### `deploy` (entfernt, Branch `unity`; historisch)
-- macOS: prüft `work/builds/macos/xnu.app` und `codesign --verify` (nur lesend); die App liegt bereits im Zielordner.
-- iOS: ohne Team-ID (Umgebung `TEAM_ID` oder `work/local.env`) nur Hinweis „nur gebaut“. Mit Team-ID `scripts/ios_deploy.sh work/builds/ios/xnu --no-launch` (mit `--launch` startet die App). Kein iPad → übersprungen mit Hinweis; sonst Exit-Code 13.
+### `deploy` (Removed, Branch `unity`; Historical)
+- macOS: checks `work/builds/macos/xnu.app` and `codesign --verify` (read-only); app is already in destination directory.
+- iOS: without team ID (environment `TEAM_ID` or `work/local.env`), reports “built only.” With team ID, `scripts/ios_deploy.sh work/builds/ios/xnu --no-launch` (`--launch` starts app). No iPad → skip with message; otherwise exit 13.
 
-## Stufe `tools`
+## `tools` Stage
 
-Prüft oder erzeugt alles lokal, nichts wird systemweit installiert: hactool (Klon von github.com/SciresM/hactool, `config.mk`, `make`, Log `tools/hactool/build.log`), ffmpeg, python3 ≥ 3.9, Unity Hub CLI und Editor samt iOS-Modul, Xcode. Fehlt etwas, werden alle Lücken aufgelistet (Exit-Code 4).
+Checks or builds everything locally; installs nothing system-wide: hactool (clone of github.com/SciresM/hactool, `config.mk`, `make`, log `tools/hactool/build.log`), ffmpeg, python3 ≥ 3.9, Unity Hub CLI and Editor with iOS module, Xcode. Lists all missing items (exit 4).
 
-## Stufe `extract`
+## `extract` Stage
 
-1. Secure-Partition der XCI und Inhalt der NSP nach `<work>/nca-base` bzw. `<work>/nca-update` entpacken.
-2. Jede NCA per `hactool -i` lesen; nur Content-Type, Titel-ID, Master-Key-Revision, Rights-ID und Größe werden übernommen. Das Base-Programm ist die größte Program-NCA der XCI, das Update-Programm die Program-NCA der NSP mit derselben Titel-ID.
-3. Titlekey: Ticket (`.tik`) in der NSP parsen (Signaturtyp bestimmt die Offsets); bei einem Common-Ticket sind die ersten 16 Byte des Schlüsselblocks der Titlekey; sonst `title.keys`.
-4. Update per `--basenca` anwenden; ExeFS und RomFS landen in `<work>/exefs` und `<work>/romfs`.
-5. Version aus cnmt und `control.nacp`, dann `<work>/manifest.json` (Titel-ID, Versionen, Eingabegrößen, SHA-256/SHA-1 von `exefs/main`, SHA-256 der ExeFS-Dateien, Anzahl und Größe der RomFS-Dateien; kein Schlüsselmaterial).
-6. Temporäre NCAs werden gelöscht (auch bei Fehlern), außer mit `--keep-nca`.
+1. Unpack XCI secure partition and NSP contents into `<work>/nca-base` and `<work>/nca-update`.
+2. Read each NCA with `hactool -i`; retain only content type, title ID, Master Key Revision, Rights ID, and size. Base program is largest Program NCA in XCI; update program is NSP Program NCA with matching title ID.
+3. Title key: parse ticket (`.tik`) in NSP (signature type determines offsets); for Common Ticket, first 16 bytes of key block are title key; otherwise use `title.keys`.
+4. Apply update with `--basenca`; ExeFS and RomFS go to `<work>/exefs` and `<work>/romfs`.
+5. Version from CNMT and `control.nacp`, then write `<work>/manifest.json` (title ID, versions, input sizes, SHA-256/SHA-1 of `exefs/main`, SHA-256 of ExeFS files, RomFS file count/size; no key material).
+6. Temporary NCAs are deleted even on error unless `--keep-nca`.
 
-**Idempotenz:** Passt `manifest.json` zu den Eingabegrößen und den vorhandenen Ergebnissen, wird die Stufe übersprungen. **Schutz vor Schlüssel-Leaks:** hactool schreibt Schlüsselwerte nach stdout und stderr; das Skript verwirft beides. Der Titlekey liegt nur in einer Shell-Variable und wird hactool als Argument übergeben (kurzzeitig in der Prozessliste desselben Benutzers sichtbar). **Platz:** Es müssen nach dem Lauf mindestens `MIN_FREE_GB` frei bleiben (Bedarf ca. 2 × XCI + NSP, Spitze rund 12 GB).
+**Idempotency:** if `manifest.json` matches input sizes and existing outputs, skip stage. **Key-leak prevention:** hactool prints key values to stdout/stderr; script discards both. Title key exists only in shell variable and is passed to hactool as an argument (briefly visible in same user's process list). **Disk space:** at least `MIN_FREE_GB` must remain after run (need about 2× XCI + NSP, peak about 12 GB).
 
-## Exit-Codes
+## Exit Codes
 
-0 ok · 2 Aufruf · 3 Eingabedatei fehlt · 4 Werkzeug fehlt oder Build fehlgeschlagen · 5 hactool-Fehler · 6 Schlüssel/Titlekey · 7 passende NCA nicht gefunden · 8 zu wenig Platz · 9 Ergebnisprüfung fehlgeschlagen · 10 Voraussetzung/Vorstufe fehlt · 14 il2cpp/masterdata/shaders/video fehlgeschlagen (11 bis 13 entfielen mit den Unity-Stufen).
+0 success · 2 invocation · 3 input file missing · 4 tool missing or build failed · 5 hactool error · 6 key/title key · 7 matching NCA not found · 8 insufficient space · 9 output validation failed · 10 prerequisite/upstream stage missing · 14 il2cpp/masterdata/shaders/video failed (11–13 were removed with Unity stages).
 
 ## Tests
 
-- `python3 -m unittest discover -s scripts/tests` (alle grün). Neu: `test_build_stages.py` (Stufenauswahl, Marker, Hash-Abhängigkeiten, Team-ID nie im Klartext, Editor-Erkennung an Beispielausgaben von `ps`, Preflight mit simulierten Werkzeugen, Installationsliste ohne `sudo`) und `test_build_all.py` (Dry-run ohne Schreibzugriff, `--from/--to/--only`, Aufruffehler, Audio-Platzhalter, Assets-Stufe mit synthetischen Bundles: Kopie, Überspringen, Neu-Erzeugen, gitignore-Erzwingung). `test_build_helpers.py` deckt weiter Ticket-Parser, NCA-Auswahl und Manifest ab.
-- Das C#-Buildskript wurde zunächst ohne Editorstart gegen die Unity-6000.3.26f1-Assemblies **übersetzt** (0 Fehler); seit 2026-10-19 läuft es im offenen Editor (macOS und iOS, Abschnitt „Ergebnis des ersten Player-Builds“). Neu: `test_bundle_retarget.py` (8 Tests mit synthetischen UnityFS-Bundles: Plattform lesen und ändern, Inhalt bleibt gleich, Original unberührt, unkomprimiert/Big-Endian, `tree` und `subset`, fehlende Einträge); Python-Suite insgesamt 258 Tests grün. Unity EditMode: 635 von 635 grün (inkl. `BootOptionsTests`).
-- `bash -n scripts/build_all.sh` ist sauber; `shellcheck` ist hier nicht installiert. Neu: `test_texture_transcode.py` (10 Tests: BC → ASTC mit synthetischen Texturen und einem handgebauten Mini-Bundle mit `.resS`, Idempotenz, Teilmenge/Probelauf; Voraussetzung `astc_encoder`, `etcpak`, `texture2ddecoder` in `tools/pydeps`, sonst übersprungen).
+- `python3 -m unittest discover -s scripts/tests` (all passing). New: `test_build_stages.py` (stage selection, markers, hash dependencies, team ID never plaintext, editor detection against sample `ps` output, preflight with simulated tools, installation list without `sudo`) and `test_build_all.py` (dry run without writes, `--from/--to/--only`, invocation errors, audio placeholder, assets stage with synthetic bundles: copy, skip, regenerate, enforce gitignore). `test_build_helpers.py` still covers ticket parser, NCA selection, manifest.
+- C# build script first **compiled** without starting Editor against Unity 6000.3.26f1 assemblies (0 errors); since 2026-10-19 runs in open Editor (macOS and iOS, section “First Player Build Results”). New `test_bundle_retarget.py` (8 synthetic UnityFS bundle tests: read/change platform, preserve contents, leave original, uncompressed/big-endian, `tree` and `subset`, missing entries); Python suite 258 passing total. Unity EditMode: 635/635 passing (including `BootOptionsTests`).
+- `bash -n scripts/build_all.sh` is clean; `shellcheck` not installed here. New `test_texture_transcode.py` (10 tests: BC→ASTC with synthetic textures and hand-built mini bundle with `.resS`, idempotency, subset/dry run; requires `astc_encoder`, `etcpak`, `texture2ddecoder` in `tools/pydeps`, otherwise skipped).
 
-## Testergebnis `extract` (Stand 2026-10-18, macOS arm64)
+## `extract` Test Result (Status 2026-10-18, macOS arm64)
 
-Lauf in ein neues Verzeichnis (inzwischen gelöscht): `tools` unter 1 s; `extract` komplett 31 s und 34 s; zweiter Aufruf mit passendem Manifest 0,3 s (übersprungen). Fehlerfälle: fehlende XCI/Keys Exit 3, fehlender Parameter Exit 2, leere Keys Exit 6. Vergleich mit dem manuellen Stand: `exefs/main` und alle fünf ExeFS-Dateien identisch; RomFS byte-identisch bis auf sechs `.DS_Store`-Dateien. Ermittelte Version: Titelversion 393216, Anzeigeversion 1.3.0.
+Run into a new directory (since deleted): `tools` under 1 s; full `extract` 31 s and 34 s; second run with matching manifest 0.3 s (skipped). Error cases: missing XCI/keys exit 3, missing argument exit 2, empty keys exit 6. Compared with manual result: `exefs/main` and all five ExeFS files identical; RomFS byte-identical except six `.DS_Store` files. Detected version: title version 393216, display version 1.3.0.
 
-## Ergebnis des ersten Player-Builds (Stand 2026-10-19, M1 Pro und iPad Pro M2; Unity-Pipeline, historisch)
+## First Player Build Results (Status 2026-10-19, M1 Pro and iPad Pro M2; Unity pipeline, historical)
 
-Ausführlich in `docs/player-build-1.md`. Kurz:
+Details in `docs/player-build-1.md`. Summary:
 
-| Messung | Wert |
+| Measurement | Value |
 |---|---|
-| Stufe `assets`, nur Klon (Plattform unverändert) | 4 s, 14.187 Dateien, 3,9 GB (kein Plattenverbrauch) |
-| Stufe `assets` mit Plattformkennung (macOS, alle Bundles) | 42 s, 14.833 Dateien, 4,0 GB (echte Kopien) |
-| Stufe `assets` für iPad (Teilmenge) | 7 s, 9 Dateien Bundles/Katalog (34,6 MB), mit Stammdaten und Materialien 179 MB |
-| macOS-Build | erster Build 202 s, danach 44 s und nach Zielwechsel 92 s; 0 Fehler; App 4,1 GB, Ausgabeordner 5,0 GB |
-| iOS-Build (Unity) | 19 s inkrementell, 247 s bei erstem Zielwechsel; Xcode-Projekt 1.055 MB |
-| `ios_deploy.sh` (Xcode Release, Signatur, Installation) | 2 min 25 s bis 2 min 40 s |
-| Start Zone 422 | macOS 1,2 s, iPad 1,1 s; je 30 FPS |
+| `assets` stage, clone only (platform unchanged) | 4 s, 14,187 files, 3.9 GB (no disk use) |
+| `assets` stage with platform identifier (macOS, all bundles) | 42 s, 14,833 files, 4.0 GB (real copies) |
+| `assets` stage for iPad (subset) | 7 s, 9 bundle/catalog files (34.6 MB), 179 MB with master data and materials |
+| macOS build | first 202 s, then 44 s and 92 s after target switch; 0 errors; app 4.1 GB, output directory 5.0 GB |
+| iOS build (Unity) | 19 s incremental, 247 s on first target switch; Xcode project 1,055 MB |
+| `ios_deploy.sh` (Xcode Release, sign, install) | 2 min 25 s to 2 min 40 s |
+| Zone 422 startup | macOS 1.2 s, iPad 1.1 s; both 30 FPS |
 
-Gefundene Fehler und Lösungen:
-1. **Bundles mit Plattform 38 (Switch) lädt der Player nicht** → `bundle_retarget.py` in der Stufe `assets` (Plattformkennung je Bundle).
-2. **iOS strippte `SkinnedMeshRenderer`** („Could not produce class with ID 137“) → `unity/Assets/link.xml`.
-3. **`IosPostBuild` fehlte im ersten iOS-Build aus dem offenen Editor** (`#if UNITY_IOS`, aktives Ziel war macOS) → Build nach dem Zielwechsel wiederholen; Batchtreiber nicht betroffen; die Stufe prüft `Xnu.entitlements`.
-4. **`-logFile` mit relativem Pfad** erzeugt keine Datei → absolute Pfade verwenden.
-5. **Generierte Shader im Player:** kein Fehler; Abgleich nach `Assets/XnuGenerated/Resources` vor jedem Build (`BuildScript`), 61 von 61 per `Shader.Find` gefunden. 237 Build-Warnungen stammen aus diesen Shadern (Schleifen mit einer Iteration, Negation unsigned) und sind unkritisch.
-6. **Noch offen:** BC1/BC3/BC7-Texturen der Karten laufen auf iOS nicht (1.884 Fehlermeldungen in Zone 422); Umwandlung nach ASTC fehlt (`docs/player-build-1.md`, Abschnitt 6).
+Errors found and fixes:
+1. **Player cannot load bundles with platform 38 (Switch)** → `bundle_retarget.py` in `assets` stage (per-bundle platform identifier).
+2. **iOS stripped `SkinnedMeshRenderer`** (“Could not produce class with ID 137”) → `unity/Assets/link.xml`.
+3. **`IosPostBuild` missing from first iOS build in open Editor** (`#if UNITY_IOS`, active target was macOS) → rebuild after target switch; batch driver unaffected; stage checks `Xnu.entitlements`.
+4. **Relative `-logFile` path** creates no file → use absolute path.
+5. **Generated player shaders:** no error; synced to `Assets/XnuGenerated/Resources` before each build (`BuildScript`), all 61 found by `Shader.Find`. 237 build warnings come from those shaders (single-iteration loops, unsigned negation), harmless.
+6. **Still open:** BC1/BC3/BC7 map textures fail on iOS (1,884 errors in Zone 422); ASTC conversion missing (`docs/player-build-1.md`, section 6).
 
-## Offene Punkte
+## Open Items
 
-- (Historisch, Stufe entfernt) Der Unity-Batch-Treiber (Editor geschlossen, `build_all.sh --only unity-build,deploy`) wurde mit echten Bundles noch nicht gelaufen; die Builds entstanden im offenen Editor über `Xnu/Build/…`. Die Startszene ist jetzt `Boot` (Auswahlmenü).- Texturumwandlung BC → ASTC ist umgesetzt (`scripts/texture_transcode.py`, `docs/ios-texturen.md`; Stufe `assets` entfernt), aber auf dem iPad noch nicht gelaufen; volle Bundle-Menge auf dem iPad (Installation, Platz, Ladezeit) nicht gemessen; keine Sichtprüfung des Bildes (Mac: kein Bildschirmfoto möglich).- (Historisch) `--target all` legte nur einen Datensatz `StreamingAssets/GameData` an (Plattform macOS).
-- Auf dieser Entwicklungsmaschine liegt der freie Platz (≈ 41 GB) unter dem Preflight-Mindestwert von 60 GB; der echte Gesamtlauf braucht dort `--min-free-gb` oder mehr Platz.
-- `audio` fehlt; Shader-Strippen (`SHADER_USED`) fehlt.
+- (Historical, stage removed) Unity batch driver (Editor closed, `build_all.sh --only unity-build,deploy`) has not been run with real bundles; builds were made from `Xnu/Build/…` menu in open Editor. Boot is now start scene (selection menu).
+- BC→ASTC texture conversion is implemented (`scripts/texture_transcode.py`, `docs/ios-texturen.md`; `assets` stage removed), but has not been run on iPad; full bundle set on iPad (installation, space, load time) unmeasured; no visual inspection (Mac: screenshot not possible).
+- (Historical) `--target all` created only one `StreamingAssets/GameData` data set (macOS platform).
+- Free space on this development machine (≈ 41 GB) is below the 60-GB preflight minimum; a real full run requires `--min-free-gb` or more space.
+- `audio` missing; shader stripping (`SHADER_USED`) missing.

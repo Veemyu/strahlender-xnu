@@ -1,104 +1,105 @@
-# iPad-Messung 1: Speicher, Bildrate, Thermik (Todo `ap-ipad-perf`)
+# iPad Measurement 1: Memory, Frame Rate, Thermals (Todo `ap-ipad-perf`)
 
-> **Historisch (Stand 2026-10-20):** Unity-Messung. `scripts/ios_deploy.sh` ist auf `main` entfernt (nur Branch `unity`). Für die Rekompilation gilt `scripts/recomp/ios/deploy_ios.sh`.
+> **Historical (status 2026-10-20):** Unity measurement. `scripts/ios_deploy.sh` has been removed from `main` (only on the `unity` branch). For recompilation, use `scripts/recomp/ios/deploy_ios.sh`.
 
-Stand: 2026-10-19. Gemessen auf dem iPad Pro 12,9" (6. Generation, `iPad14,6`, M2, 8 GB, iPadOS 26.4.2) mit der Mess-App **MemoryProbe** (Unity 6000.3.26f1, IL2CPP, nur Metal, Release-Build, kostenloses Team, per `scripts/ios_deploy.sh` installiert). Die App enthält keine Spielinhalte, nur eine leere Szene, einen eigenen Lastshader und Allokationen. Ton blieb aus (`AudioSafety` aktiv, in jedem Lauf `audioListenerVolume=0`, `audioPause=1`); die Gerätelautstärke wurde nicht angefasst.
-Rohlogs (Gerätekonsole, jede Zeile `XNUPROBE|...`) liegen nur lokal unter `work/measurement/` (gitignoriert).
+Status: 2026-10-19. Measured on an iPad Pro 12.9-inch (6th generation, `iPad14,6`, M2, 8 GB, iPadOS 26.4.2) with the **MemoryProbe** measurement app (Unity 6000.3.26f1, IL2CPP, Metal only, Release build, free team, installed via `scripts/ios_deploy.sh`). The app contains no game content, just an empty scene, a custom load shader, and allocations. Audio stayed off (`AudioSafety` active, `audioListenerVolume=0` and `audioPause=1` in every run); device volume was not touched.
 
-## 1. Ergebnis in Kürze
-| Frage | Ergebnis |
+Raw logs (device console, each line `XNUPROBE|...`) are stored locally under `work/measurement/` (gitignored).
+
+## 1. Summary
+| Question | Result |
 |---|---|
-| Speicherlimit **ohne** Entitlement | **5120 MiB (5 GiB)**, in 3 Läufen und allen Phasen identisch (Summe aus `os_proc_available_memory` und `phys_footprint`). |
-| Speicherlimit **mit** Increased Memory Limit | **8192 MiB (8 GiB)**, bereits beim Start sichtbar. Das liegt über dem Arbeitsspeicher des Geräts (7518 MiB sichtbar), ist also eine Obergrenze und keine Garantie. |
-| Entitlement mit dem kostenlosen Team | Wird akzeptiert, signiert und wirkt (`codesign -d --entitlements` zeigt es, die App läuft, das Limit steigt um 3 GiB). |
-| Systemwarnung (`Application.lowMemory`) | ohne Entitlement bei **ca. 4,0 bis 4,2 GB** Footprint, mit Entitlement erst bei **ca. 5,9 GB** (nur der native Test). |
-| Footprint einer leeren Unity-Szene (Metal) | **ca. 180 MiB** nach dem Start, ca. 193 MiB nach 8 Minuten Last. |
-| Bildrate | **120 FPS erreichbar** (119,9 gemessen), 60 und 30 ebenso, sofern `Application.targetFrameRate` gesetzt ist. Ohne gesetztes Ziel liefert Unity 30 FPS. |
-| ProMotion-Schlüssel `CADisableMinimumFrameDurationOnPhone` | Für das iPad **ohne Wirkung** (120 FPS auch bei `false`; mit `true` unverändert). |
-| Thermik | `thermalState` blieb in allen Läufen **nominal (0)**, auch bei 150 s GPU-Last und 300 s GPU- plus CPU-Last. Kein Aussagewert für längere Spielsitzungen. |
-| Budget fürs Spiel | Richtwert **2,5 GB**, harte Obergrenze **4 GB** Footprint, Entitlement an lassen (Abschnitt 6). |
+| Memory limit **without** entitlement | **5120 MiB (5 GiB)**, identical across all phases in 3 runs (sum of `os_proc_available_memory` and `phys_footprint`). |
+| Memory limit **with** Increased Memory Limit | **8192 MiB (8 GiB)**, visible at startup. This exceeds the device's visible memory (7518 MiB), so it is an upper bound, not a guarantee. |
+| Entitlement with a free team | Accepted, signed, and effective (`codesign -d --entitlements` shows it; the app runs and the limit rises by 3 GiB). |
+| System warning (`Application.lowMemory`) | Without entitlement at **about 4.0–4.2 GB** footprint; with entitlement at about **5.9 GB** (native test only). |
+| Footprint of an empty Unity scene (Metal) | **about 180 MiB** after startup, about 193 MiB after 8 minutes under load. |
+| Frame rate | **120 FPS is reachable** (119.9 measured), as are 60 and 30, if `Application.targetFrameRate` is set. Without a target, Unity delivers 30 FPS. |
+| ProMotion key `CADisableMinimumFrameDurationOnPhone` | No effect on this iPad (120 FPS also with `false`; unchanged with `true`). |
+| Thermals | `thermalState` stayed **nominal (0)** in all runs, including 150 s of GPU load and 300 s of GPU plus CPU load. Says nothing about longer play sessions. |
+| Game budget | Target **2.5 GB**, hard ceiling **4 GB** footprint; leave entitlement enabled (section 6). |
 
-## 2. Aufbau der Messung
-- **Code:** `unity/Assets/Scripts/Probe/` (`MemoryProbe.cs`, `NativeProbe.cs`, `ProbeMath.cs`, Shader `ProbeLoad`), natives Plugin `unity/Assets/Plugins/iOS/XnuMemoryProbe.m` (`os_proc_available_memory`, `task_info(TASK_VM_INFO)` mit `phys_footprint`, `internal`, `compressed`, `limit_bytes_remaining`, `NSProcessInfo.thermalState`, `physicalMemory`, `UIScreen.maximumFramesPerSecond`, Info.plist-Schlüssel, Metal-`currentAllocatedSize`). Tests der Rechenlogik: `ProbeTests.cs` (5 Tests, in der Suite grün).
-- **Szene und Build:** `unity/Assets/Scenes/MemoryProbe.unity`, gebaut über `Xnu/Probe/...` im Editor (`MemoryProbeBuild.cs`) mit **eigener Szenenliste**; die Build-Settings des Projekts bleiben leer und unverändert. Bundle-ID `dev.local.xnumemprobe` und Produktname gelten nur während des Builds und werden danach zurückgesetzt. Ausgabe nach `work/builds/ios/memprobe-*`.
-- **Entitlement-Schalter:** `IosPostBuild` trägt das Entitlement standardmäßig ein (Standard bleibt an). Ausschalten per Compile-Symbol `XNU_NO_INCREASED_MEMORY` oder per `SessionState`-Schlüssel `Xnu.Build.NoIncreasedMemoryLimit` (setzt `MemoryProbeBuild`). Die Messung ohne Entitlement wurde zusätzlich geprüft: das gebaute Xcode-Projekt hat dann kein `CODE_SIGN_ENTITLEMENTS`, `codesign` zeigt das Entitlement nicht.
-- **Ablauf je Start (ca. 9 Minuten, mit Modus `fps` ca. 3):** Schnappschüsse bei Awake, erstem Bild und alle 5 s; Basis (8 s mit Projektvorgabe); Bildraten-Matrix (idle und mit leichter GPU-Last, je 5 s, die ersten 1,5 s verworfen); Dauerlast 150 s (GPU voll ausgelastet, Vollbild-Shader, ca. 44 FPS) und 300 s (zusätzlich 6 CPU-Threads); dann drei Speicherrampen in 128-MiB-Schritten: **nativ** (`AllocHGlobal`, mit Zufallsdaten gefüllt, damit nichts als Nullseite oder durch Wiederholung verschwindet), **Render** (RenderTexture 4096 × 4096 ARGBHalf = 128 MiB, einmal beschrieben) und **managed** (`byte[]`, Obergrenze 3 GB). Vor jedem Schritt Stopp, wenn `available - 128 MiB < 300 MiB` oder Footprint über 6 GiB läge; danach alles freigeben und 3 s warten. Jede Zeile wird sofort auf Platte geschrieben (`Documents/memprobe_*.log`), so wäre auch ein Kill nachvollziehbar gewesen.
-- **Wiederholung:** `Xnu/Probe/Build iPad (Entitlement an|aus)` im Editor, dann
-  `DERIVED_DATA=work/builds/ios-derived-memprobe BUNDLE_ID=dev.local.xnumemprobe scripts/ios_deploy.sh work/builds/ios/memprobe-ent --no-launch` und
-  `xcrun devicectl device process launch --device <ID> --terminate-existing --console dev.local.xnumemprobe > work/measurement/console_....log` (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`). `ios_deploy.sh` kennt dafür jetzt `DERIVED_DATA` und `DEPLOY_LOG`. Die Datei in `Documents` lässt sich mit `devicectl device copy from --domain-type appDataContainer` holen (getestet).
-- **Läufe:** mit Entitlement 2 vollständige (davon einer mit gesetztem ProMotion-Schlüssel) plus 1 Bildraten-Lauf; ohne Entitlement 3 vollständige. Kein Lauf endete durch Jetsam; kein Neustart oder Absturz.
+## 2. Measurement Setup
+- **Code:** `unity/Assets/Scripts/Probe/` (`MemoryProbe.cs`, `NativeProbe.cs`, `ProbeMath.cs`, shader `ProbeLoad`), native plugin `unity/Assets/Plugins/iOS/XnuMemoryProbe.m` (`os_proc_available_memory`, `task_info(TASK_VM_INFO)` with `phys_footprint`, `internal`, `compressed`, `limit_bytes_remaining`, `NSProcessInfo.thermalState`, `physicalMemory`, `UIScreen.maximumFramesPerSecond`, Info.plist keys, Metal `currentAllocatedSize`). Math tests: `ProbeTests.cs` (5 tests, passing in suite).
+- **Scene and build:** `unity/Assets/Scenes/MemoryProbe.unity`, built via `Xnu/Probe/...` in the Editor (`MemoryProbeBuild.cs`) with its **own scene list**; project Build Settings remain empty and unchanged. Bundle ID `dev.local.xnumemprobe` and product name apply only during the build, then are reset. Output under `work/builds/ios/memprobe-*`.
+- **Entitlement switch:** `IosPostBuild` adds the entitlement by default (enabled by default). Disable with compile symbol `XNU_NO_INCREASED_MEMORY` or SessionState key `Xnu.Build.NoIncreasedMemoryLimit` (set by `MemoryProbeBuild`). The no-entitlement case was also checked: the generated Xcode project has no `CODE_SIGN_ENTITLEMENTS`, and `codesign` does not show the entitlement.
+- **Each launch (about 9 minutes, about 3 in `fps` mode):** snapshots at Awake, first image, and every 5 s; baseline (8 s with project setting); frame-rate matrix (idle and light GPU load, 5 s each, first 1.5 s discarded); sustained load for 150 s (GPU saturated, full-screen shader, about 44 FPS) and 300 s (plus 6 CPU threads); then three memory ramps in 128-MiB steps: **native** (`AllocHGlobal`, filled with random data so it cannot disappear as a zero page or through repetition), **render** (RenderTexture 4096 × 4096 ARGBHalf = 128 MiB, written once), and **managed** (`byte[]`, capped at 3 GB). Before each step, stop if `available - 128 MiB < 300 MiB` or footprint would exceed 6 GiB; then free everything and wait 3 s. Each line is written to disk immediately (`Documents/memprobe_*.log`), so even a kill would have been traceable.
+- **Repeat:** `Xnu/Probe/Build iPad (Entitlement on|off)` in the Editor, then
+  `DERIVED_DATA=work/builds/ios-derived-memprobe BUNDLE_ID=dev.local.xnumemprobe scripts/ios_deploy.sh work/builds/ios/memprobe-ent --no-launch` and
+  `xcrun devicectl device process launch --device <ID> --terminate-existing --console dev.local.xnumemprobe > work/measurement/console_....log` (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`). `ios_deploy.sh` now accepts `DERIVED_DATA` and `DEPLOY_LOG`. The file in `Documents` can be retrieved with `devicectl device copy from --domain-type appDataContainer` (tested).
+- **Runs:** 2 complete with entitlement (one with ProMotion key set) plus 1 frame-rate run; 3 complete without entitlement. No run ended due to Jetsam; no restart or crash.
 
-## 3. Speicher mit und ohne Entitlement
-Alle Werte in MiB. „Limit“ = `os_proc_available_memory` + `phys_footprint` zum selben Zeitpunkt (Summe war stets 5120,0 bzw. 8192,0 ± 0,5, auch während der Rampen).
+## 3. Memory With and Without Entitlement
+All values in MiB. “Limit” = `os_proc_available_memory` + `phys_footprint` at the same time (sum was always 5120.0 or 8192.0 ± 0.5, including during ramps).
 
-| | ohne Entitlement | mit Increased Memory Limit |
-|---|---|---|
-| `os_proc_available_memory` im ersten Bild | 4941,9 (3 Läufe: 4941 bis 4963) | 8013,8 (2 Läufe: 8014) |
-| Limit (Summe) | **5120** | **8192** |
-| nativ: gehalten bis Stopp | 4480 (Grund: Reserve, 402,7 verfügbar) | 5888 (Grund: 6-GiB-Obergrenze, 2108,8 verfügbar) |
-| Render: gehalten bis Stopp | 4480 bis 4608 (Reserve, 289,6 bis 420,4 verfügbar) | 5888 (Obergrenze, 2076 verfügbar) |
-| managed: gehalten bis Stopp | 2816 (Obergrenze 3 GiB) | 2816 |
-| `lowMemory` | ab Footprint 4035 bis 4205 (nativ) und 4057 bis 4164 (Render), in allen 3 Läufen | nativ bei 6083, Render **keine** Warnung bis 6116 |
-| Jetsam | nicht ausgelöst (Stopp mit Reserve) | nicht ausgelöst |
+| | Without entitlement | With Increased Memory Limit |
+|---|---:|---:|
+| `os_proc_available_memory` at first image | 4941.9 (3 runs: 4941–4963) | 8013.8 (2 runs: 8014) |
+| Limit (sum) | **5120** | **8192** |
+| Native: held until stop | 4480 (reason: reserve, 402.7 available) | 5888 (reason: 6-GiB ceiling, 2108.8 available) |
+| Render: held until stop | 4480–4608 (reserve, 289.6–420.4 available) | 5888 (ceiling, 2076 available) |
+| Managed: held until stop | 2816 (3-GiB ceiling) | 2816 |
+| `lowMemory` | at footprint 4035–4205 (native) and 4057–4164 (render), in all 3 runs | native at 6083, render **no** warning through 6116 |
+| Jetsam | not triggered (stopped with reserve) | not triggered |
 
-Beobachtungen:
-- Das Limit lässt sich zur Laufzeit exakt berechnen: `Limit = os_proc_available_memory() + phys_footprint`. Das Spiel kann so sein Budget selbst bestimmen, statt Zahlen fest zu verdrahten.
-- **GPU-Speicher zählt voll in den Footprint:** pro 128-MiB-RenderTexture stieg der Footprint um ca. 128 MiB (`mtlAllocMiB` erreichte 6028 MiB, also mehr als `recommendedMaxWorkingSetSize` mit 5461 MiB, ohne Folgen). Unified Memory heißt: Texturen und Render-Ziele gehen vom selben Budget ab wie der Rest. `SystemInfo.graphicsMemorySize` meldet nur 2048 MB und ist als Budget unbrauchbar.
-- **Native Seiten werden auf diesem iPad stark komprimiert oder ausgelagert** (mit Entitlement `compressed` 5326 bei `internal` 626 MiB, ohne 4324 bei 220 MiB), obwohl die Daten zufällig sind. Der Footprint zählt sie dennoch voll. Nach `FreeHGlobal` fiel der Footprint von 6083 auf 832 (3 s später; `compressed` 320 bis 484 blieben zunächst stehen). Zugriffe auf ausgelagerte Seiten kosten Zeit; das ist nicht gemessen.
-- **Der Managed-Heap (Mono/Boehm) gibt Speicher nicht zurück:** nach dem Freigeben der `byte[]` blieb der Footprint bei ca. 3025 MiB (`internal` 2851), bis die App endete. Große kurzlebige Managed-Spitzen sind teuer; native Puffer und RenderTextures werden sauber freigegeben.
-- Einmaliger kleiner Mehrverbrauch beim Render-Schritt: Der Footprint wächst pro Schritt etwas mehr als 128 MiB (ohne Entitlement unterschritt die Reserve bei zwei Läufen mit 289,6 MiB den Wert 300, ohne Folgen).
+Observations:
+- The limit can be calculated exactly at runtime: `Limit = os_proc_available_memory() + phys_footprint`. The game can determine its own budget instead of hard-coding values.
+- **GPU memory fully counts toward footprint:** each 128-MiB RenderTexture increased footprint by about 128 MiB (`mtlAllocMiB` reached 6028 MiB, above `recommendedMaxWorkingSetSize` of 5461 MiB, without consequences). Unified memory means textures and render targets use the same budget as everything else. `SystemInfo.graphicsMemorySize` reports only 2048 MB and is not useful as a budget.
+- **Native pages are heavily compressed or paged out on this iPad** (`compressed` 5326 with entitlement at `internal` 626 MiB; 4324 without at 220 MiB), despite the data being random. Footprint still counts them fully. After `FreeHGlobal`, footprint fell from 6083 to 832 (3 s later; `compressed` initially remained at 320–484). Accessing paged-out pages costs time; this was not measured.
+- **The managed heap (Mono/Boehm) does not return memory:** after freeing the `byte[]`, footprint stayed around 3025 MiB (`internal` 2851) until the app exited. Large short-lived managed peaks are costly; native buffers and RenderTextures are freed correctly.
+- A small one-time extra cost appeared during render steps: footprint grew by slightly more than 128 MiB per step (without entitlement, the reserve fell below 300 MiB in two runs, to 289.6, with no consequences).
 
-## 4. Footprint der leeren Unity-Szene (Metal, Release)
-| Zeitpunkt | Footprint | davon `internal` | Resident | Unity-Allokator | Metal `currentAllocatedSize` |
-|---|---|---|---|---|---|
-| `Awake` (ca. 2,1 s) | 156,4 bis 177,9 | 52 | 141 | 48 | 97 bis 119 |
-| erstes Bild | 178,1 bis 178,5 | 52 | 142 | 48 | 119 |
-| nach 8 s (Basis) | 179,4 bis 179,6 | 53 | 143 | 48 | 117 |
-| während der Dauerlast | 190,7 bis 192,9 | 64 | 154 | 48 | 117 |
+## 4. Empty Unity Scene Footprint (Metal, Release)
+| Time | Footprint | Of which `internal` | Resident | Unity allocator | Metal `currentAllocatedSize` |
+|---|---:|---:|---:|---:|---:|
+| `Awake` (about 2.1 s) | 156.4–177.9 | 52 | 141 | 48 | 97–119 |
+| First image | 178.1–178.5 | 52 | 142 | 48 | 119 |
+| After 8 s (baseline) | 179.4–179.6 | 53 | 143 | 48 | 117 |
+| During sustained load | 190.7–192.9 | 64 | 154 | 48 | 117 |
 
-**Basis: ca. 180 MiB** (ohne Spielinhalte, mit Metal-Gerät, Layer, Backbuffer in 2732 × 2048 und Unity-Kern). Das sind 7 % des 2,5-GB-Richtwerts. Die `Profiler`-Zähler liefern auch im Release-Build Werte (`unityAllocMiB`, `monoHeapMiB`). Hinweis: Das Spiel bringt IL2CPP-Metadaten, Assemblies und Shader-Variantenspeicher dazu, die hier fehlen.
+**Baseline: about 180 MiB** (no game content, with Metal device, layer, backbuffer at 2732 × 2048, and Unity core). This is 7% of the 2.5-GB target. The `Profiler` counters also return values in Release builds (`unityAllocMiB`, `monoHeapMiB`). Note: the game adds IL2CPP metadata, assemblies, and shader-variant memory, which are absent here.
 
-## 5. Bildrate, ProMotion, Thermik
-Anzeige: `Screen.currentResolution` 120 Hz, `UIScreen.maximumFramesPerSecond` 120, Auflösung 2732 × 2048 bei 264 dpi. Mittelwerte aus je 3 bis 4 Läufen, alle Läufe stimmen auf ±0,1 FPS überein. „idle“ = leere Szene, „leicht“ = Vollbild-Shader mit 24 Iterationen.
+## 5. Frame Rate, ProMotion, Thermals
+Display: `Screen.currentResolution` 120 Hz, `UIScreen.maximumFramesPerSecond` 120, resolution 2732 × 2048 at 264 dpi. Averages over 3–4 runs; all runs agree within ±0.1 FPS. “Idle” = empty scene, “light” = full-screen shader with 24 iterations.
 
-| `vSyncCount` | `targetFrameRate` | gemessen idle | gemessen leicht | p99-Bilddauer |
-|---|---|---|---|---|
-| 0 | -1 (Standard) | **30,0** | – | 33,4 ms |
-| 1 | -1 | **30,0** | – | 33,4 ms |
-| 2 | -1 | **30,0** | – | 33,4 ms |
-| 0 | 120 | **119,9** (min 107 bis 117) | 119,9 | 8,5 ms |
-| 1 | 120 | 119,9 | 119,9 | 8,5 ms |
-| 2 | 120 | 119,9 | – | 8,5 ms |
-| 0 | 60 | 60,0 | 60,0 | 16,8 ms |
-| 1 | 60 | 60,0 | – | 16,8 ms |
-| 2 | 60 | 60,0 | 60,0 | 16,8 ms |
-| 0 | 30 | 30,0 | 30,0 | 33,4 ms |
-| 4 | 30 | 30,0 | 30,0 | 33,4 ms |
+| `vSyncCount` | `targetFrameRate` | Measured idle | Measured light | p99 frame time |
+|---|---:|---:|---:|---:|
+| 0 | -1 (default) | **30.0** | – | 33.4 ms |
+| 1 | -1 | **30.0** | – | 33.4 ms |
+| 2 | -1 | **30.0** | – | 33.4 ms |
+| 0 | 120 | **119.9** (min 107–117) | 119.9 | 8.5 ms |
+| 1 | 120 | 119.9 | 119.9 | 8.5 ms |
+| 2 | 120 | 119.9 | – | 8.5 ms |
+| 0 | 60 | 60.0 | 60.0 | 16.8 ms |
+| 1 | 60 | 60.0 | – | 16.8 ms |
+| 2 | 60 | 60.0 | 60.0 | 16.8 ms |
+| 0 | 30 | 30.0 | 30.0 | 33.4 ms |
+| 4 | 30 | 30.0 | 30.0 | 33.4 ms |
 
-- **Unity unter iOS richtet sich nach `Application.targetFrameRate`; `vSyncCount` allein ändert nichts** (alle Werte mit Ziel -1 ergaben 30 FPS, alle Werte mit Ziel 60 ergaben 60 FPS). Das Projekt muss das Ziel immer setzen. `DisplayController` setzt beides (`FrameRatePlanner`: 120 Hz, 60 FPS → vSync 2, Ziel 60; 30 FPS → vSync 4, Ziel 30) und liegt damit richtig; alle drei Kombinationen wurden gemessen. Die Projektvorgabe im Probe-Build (iOS-Qualitätsstufe des Projekts, gemessen `vSyncCount` 1, Ziel -1) ergab ohne Ziel ebenfalls 30 FPS. Auffällig: `ProjectSettings/QualitySettings.asset` enthält sechs Standardstufen (vSync 0 bis 2), nicht die eine Original-Stufe mit vSync 2 aus `docs/render-treue.md`; das wurde hier nicht weiter verfolgt.
-- **ProMotion-Schlüssel:** `CADisableMinimumFrameDurationOnPhone` ist laut Apple nur für iPhone nötig. Auf dem iPad waren 120 FPS mit `false` (Unity-Standard, `appleEnableProMotion: 0`) und mit `true` (separater Build) gleich. Die Info.plist enthielt in beiden Fällen auch `CADisableMinimumFrameDuration` (Unity setzt beide gleich). Der Schalter bleibt aus.
-- Ob das System die Rate im variablen ProMotion-Betrieb zeitweise unter das Ziel senkt, zeigten die 5-s-Fenster nicht (kleinster Wert der Einzelbilder ca. 107 FPS in einem Fenster, sonst 113 bis 117). `FrameRateMode.Variable120` ist damit nur mit dem Ziel 120 und vSync 0 geprüft, nicht der Lastwechsel.
-- **Dauerlast:** Fenster zu 10 s, 150 s, Vollbild-Shader (160 Iterationen), GPU voll ausgelastet: konstant **44,5 bis 44,7 FPS**, kleinste Einzelbildrate ca. 27 bis 30 FPS, `thermalState` 0 in allen 15 Fenstern, kein Abfall. Danach 300 s mit zusätzlich 6 Hintergrund-Threads (Rechenschleife): FPS fiel sofort auf **31,2** (erstes Fenster 33,9) und blieb 15 Fenster lang gleich, `thermalState` weiter 0. Der Abfall kam daher von der CPU-Konkurrenz, nicht von Wärme; die Ursache wurde nicht weiter zerlegt.
-- Footprint während der Dauerlast stabil (190 bis 193 MiB, kein Leck).
+- **Unity on iOS follows `Application.targetFrameRate`; `vSyncCount` alone changes nothing** (all values with target -1 gave 30 FPS; all with target 60 gave 60 FPS). The project must always set the target. `DisplayController` sets both (`FrameRatePlanner`: 120 Hz, 60 FPS → vSync 2, target 60; 30 FPS → vSync 4, target 30), which is correct; all three combinations were measured. The Probe build's project setting (iOS quality level, measured `vSyncCount` 1, target -1) also gave 30 FPS. Note: `ProjectSettings/QualitySettings.asset` contains six default levels (vSync 0–2), not the single original level with vSync 2 from `docs/render-treue.md`; not investigated further here.
+- **ProMotion key:** Apple says `CADisableMinimumFrameDurationOnPhone` is needed only for iPhone. On iPad, 120 FPS was the same with `false` (Unity default, `appleEnableProMotion: 0`) and `true` (separate build). Both cases had `CADisableMinimumFrameDuration` in Info.plist (Unity sets both identically). Keep the switch off.
+- The 5-s windows did not show whether the system temporarily lowers the rate below target during variable ProMotion operation (minimum individual frame rate about 107 FPS in one window, otherwise 113–117). `FrameRateMode.Variable120` has thus only been checked with target 120 and vSync 0, not under changing load.
+- **Sustained load:** 10-s window, then 150 s with a full-screen shader (160 iterations), GPU saturated: steady **44.5–44.7 FPS**, minimum individual frame rate about 27–30 FPS, `thermalState` 0 in all 15 windows, no decline. Then 300 s with 6 additional background threads (compute loop): FPS immediately fell to **31.2** (first window 33.9) and stayed there for 15 windows; `thermalState` remained 0. The decline was due to CPU contention, not heat; the cause was not analyzed further.
+- Footprint remained stable during sustained load (190–193 MiB, no leak).
 
-## 6. Abgeleitetes Speicherbudget
-Grundlage: Limit ohne Entitlement 5120 MiB, mit 8192 MiB; Warnschwelle ohne Entitlement ab ca. 4,1 GB, mit ca. 5,9 GB; Basis 0,18 GB.
-- **Harte Obergrenze 4 GB Footprint** (Nutzervorgabe, Switch-Niveau): Mit Entitlement liegt das 1,9 GB unter der ersten Warnung und 4,1 GB unter dem Limit. **Ohne** Entitlement liegt 4 GB genau an der Warnschwelle und 1 GiB unter dem Limit, also zu knapp. Deshalb: **Entitlement bleibt an** (Standard in `IosPostBuild`).
-- **Richtwert 2,5 GB** Footprint im Dauerbetrieb: lässt auch ohne Entitlement 2,6 GB bis zum Limit und 1,6 GB bis zur Warnung. Abzüglich Basis bleiben ca. **2,3 GB für Inhalte**.
-- **Vorschlag zur Aufteilung** (nicht gemessen, nur Planungswert, bei Messung des echten Spiels anpassen): Texturen und Render-Ziele ca. 1,2 GB, Meshes, Animation und Material ca. 0,4 GB, native Puffer und geladene Bundles ca. 0,4 GB, Managed-Heap höchstens 0,3 GB (wegen fehlender Rückgabe klein halten), Rest Reserve.
-- **Folgerungen für den Code:**
-  1. Beim Start und vor jedem Zonenwechsel `Limit = available + footprint` lesen und das Budget daran messen (nicht fest verdrahten, andere iPads mit 4 oder 6 GB werden abweichen).
-  2. `Application.lowMemory` behandeln (Caches leeren, Bundles entladen): ohne Entitlement kam die Warnung 1 GiB vor dem Limit.
-  3. Große Texturen und Bundles nur zonenweise halten (siehe `docs/feld-szene-1.md`, Abschnitt 9) und danach entladen; Managed-Allokationen im Ladepfad vermeiden.
-  4. Unified Memory: Render-Ziele (z. B. Schatten, Nachbearbeitung in 2732 × 2048) zählen voll mit.
-  5. `Application.targetFrameRate` immer setzen (Abschnitt 5).
+## 6. Derived Memory Budget
+Basis: limit without entitlement 5120 MiB, with entitlement 8192 MiB; warning threshold about 4.1 GB without entitlement and 5.9 GB with it; baseline 0.18 GB.
+- **Hard ceiling 4 GB footprint** (user requirement, Switch-level): with entitlement this is 1.9 GB below the first warning and 4.1 GB below the limit. **Without** entitlement, 4 GB is right at the warning threshold and only 1 GiB below the limit, too tight. Therefore: **leave entitlement enabled** (default in `IosPostBuild`).
+- **Target 2.5 GB** footprint during sustained operation: leaves 2.6 GB to the limit and 1.6 GB to the warning even without entitlement. After subtracting baseline, about **2.3 GB for content** remains.
+- **Proposed allocation** (not measured, planning value only; adjust after measuring the actual game): textures and render targets about 1.2 GB, meshes/animation/material about 0.4 GB, native buffers and loaded bundles about 0.4 GB, managed heap at most 0.3 GB (keep small because memory is not returned), remainder as reserve.
+- **Code implications:**
+  1. Read `Limit = available + footprint` at startup and before each zone transition, and budget against it (do not hard-code it; other iPads with 4 or 6 GB will differ).
+  2. Handle `Application.lowMemory` (clear caches, unload bundles): without entitlement the warning came 1 GiB before the limit.
+  3. Keep large textures and bundles only for the current zone (see `docs/feld-szene-1.md`, section 9), then unload them; avoid managed allocations in the loading path.
+  4. Unified memory: render targets (e.g. shadows, post-processing at 2732 × 2048) count fully.
+  5. Always set `Application.targetFrameRate` (section 5).
 
-## 7. Messunsicherheiten und Lücken
-- **Ein Gerät, eine iPadOS-Version (26.4.2), eine App ohne Spielinhalte.** 8-GB-Modell; die Zahlen gelten nicht für iPads mit 4 oder 6 GB oder den 16-GB-Modellen (1 und 2 TB).
-- Der Wert **8192 MiB mit Entitlement** wurde nur bis 6116 MiB Footprint belegt; wir stoppten absichtlich (Vorgabe: ca. 6 GB). Wo der echte Kill durch Systemdruck bei 7,5 GB Arbeitsspeicher einsetzt, ist **nicht gemessen**. Das Limit ist eine Obergrenze, nicht verfügbarer Speicher: andere Apps im Hintergrund drücken das praktische Maximum, und dazu hat keine Messung stattgefunden (Hintergrund-Apps während der Läufe nicht kontrolliert).
-- Die Entwicklungs-Signatur (`get-task-allow`, 7-Tage-Profil, kostenloses Team) kann sich von einer anderen Verteilung unterscheiden. Beobachtet wurde nur dieser Fall; zudem lief die App unter `devicectl --console` (ohne Debugger, aber mit Konsolenanbindung).
-- Die Rampen füllen Speicher mit Zufallsdaten. Echte Spielzustände (Texturen, die sich komprimieren lassen; Streaming) verhalten sich bei Kompression und Auslagerung anders. Der Einfluss der Auslagerung auf die Bildzeit wurde nicht gemessen.
-- `os_proc_available_memory` und `phys_footprint` sind Systemzähler mit Rundung; Differenzen unter 1 MiB zwischen Läufen sind Rauschen. Der Footprint-Anstieg pro Render-Schritt (> 128 MiB) enthält Treiberhilfsspeicher.
-- Die Bildraten-Fenster dauern je 3,5 bis 6,5 s; das reicht für Mittelwerte, nicht für seltene Aussetzer. Last war synthetisch (ein Vollbild-Shader), nicht das Spiel. Ein **echter** Hitzetest (30 Minuten Spielbetrieb, Gehäuse, Raumtemperatur) fehlt: `thermalState` blieb nach rund 8 Minuten nominal, das sagt nichts über Dauerbetrieb aus. Die Raumtemperatur und der Ladezustand des iPads wurden nicht erfasst.
-- Während der Läufe war das Display an (App hält `Screen.sleepTimeout = NeverSleep`, gilt nur solange sie läuft); die Messung hängt davon ab, dass das iPad entsperrt blieb.
-- Ablaufnebenwirkung: Beim Lauf der Probe mit gesetztem ProMotion-Schlüssel wurde zuerst irrtümlich die Bundle-ID `dev.local.xnum0` überschrieben (Fehler im Build-Skript: veraltetes SerializedObject). Das Skript wurde korrigiert, `xnu-m0` auf dem iPad danach neu installiert. Die Projekteinstellungen wurden jedes Mal zurückgesetzt (`git status` auf `ProjectSettings` blieb leer).
+## 7. Measurement Uncertainty and Gaps
+- **One device, one iPadOS version (26.4.2), one app with no game content.** 8-GB model; these numbers do not apply to 4- or 6-GB iPads or 16-GB models (1 and 2 TB).
+- The **8192 MiB with entitlement** figure was demonstrated only up to 6116 MiB footprint; we deliberately stopped (target was about 6 GB). The point at which system pressure causes a real kill at 7.5 GB of memory use was **not measured**. The limit is an upper bound, not available memory: other background apps reduce the practical maximum, and this was not measured (background apps were not controlled during runs).
+- The development signature (`get-task-allow`, 7-day profile, free team) may differ from another distribution. Only this case was observed; the app also ran under `devicectl --console` (without debugger, but with console attached).
+- The ramps fill memory with random data. Real game state (compressible textures, streaming) behaves differently under compression and paging. The effect of paging on frame time was not measured.
+- `os_proc_available_memory` and `phys_footprint` are rounded system counters; differences below 1 MiB between runs are noise. Footprint growth per render step (>128 MiB) includes driver auxiliary memory.
+- Frame-rate windows last 3.5–6.5 s each, enough for averages but not rare stutters. Load was synthetic (a full-screen shader), not the game. A **real** heat test (30 minutes of gameplay, device case, room temperature) is missing: `thermalState` stayed nominal after about 8 minutes, which says nothing about sustained operation. Room temperature and iPad charge level were not recorded.
+- The display was on during runs (the app sets `Screen.sleepTimeout = NeverSleep`, only while it is running); measurement depends on the iPad staying unlocked.
+- Process side effect: during the Probe run with ProMotion key set, bundle ID `dev.local.xnum0` was accidentally overwritten at first (build-script bug: stale SerializedObject). The script was fixed and `xnu-m0` reinstalled on the iPad. Project settings were reset every time (`git status` for `ProjectSettings` remained empty).
