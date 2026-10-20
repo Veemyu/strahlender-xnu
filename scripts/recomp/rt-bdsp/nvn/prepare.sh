@@ -5,6 +5,7 @@
 # Schreibt $DST/.stamp (SHA-256 über nvn/src, translate.c, shader.h, prepare.sh) und kopiert nur bei abweichendem Stempel.
 # Aufruf: prepare.sh [--check]      Umgebung: NVN_SRC=work/recomp/nvn-src
 # --check: kopiert nichts, Exit 0 wenn der Stempel zur Quelle passt, sonst 1.
+# --print: gibt nur den Quell-Hash aus (einzige Definition; build_stages.py nutzt ihn für die Stufe recomp).
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 SRC=scripts/recomp/rt-bdsp/nvn/src
@@ -12,6 +13,10 @@ DST=${NVN_SRC:-work/recomp/nvn-src}
 HERE=scripts/recomp/rt-bdsp/nvn
 want=$({ find "$SRC" -type f ! -name .DS_Store; echo shader_translator/translate.c; echo shader_translator/shader.h; echo "$HERE/prepare.sh"; } \
   | LC_ALL=C sort | while IFS= read -r f; do shasum -a 256 "$f"; done | shasum -a 256 | cut -d' ' -f1)
+if [ "${1:-}" = "--print" ]; then
+  echo "$want"
+  exit 0
+fi
 have=$(cat "$DST/.stamp" 2>/dev/null || true)
 if [ "${1:-}" = "--check" ]; then
   [ -d "$DST/nvn" ] && [ "$want" = "$have" ] && exit 0

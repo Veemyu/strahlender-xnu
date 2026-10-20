@@ -11,22 +11,23 @@ if [ -z "${NVN_KEEP:-}" ]; then
   NVN_SRC="$SRC" "$HERE/prepare.sh" > /dev/null   # kopiert nur bei abweichendem Stempel
 fi
 INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/rt-bdsp $(pkg-config --cflags sdl3)"
-W="-w"
+. "$HERE/flags.inc.sh"
+W="$BDSP_NOWARN"
 build() {  # Quelle Objekt [Zusatzflags]
   local f=$1 o=$2; shift 2
   if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/src" \( -name '*.h' -o -name '*.inc' \) -newer "$o" -print -quit)" ]; then
     # Objective-C mit dem Apple-Compiler: der Homebrew-LLVM erzeugt Klassen-Stubs, die der Apple-Linker nicht auflöst
     local cc=clang; case "$f" in *.m) cc=/usr/bin/clang;; esac
-    $cc -O1 -g $W $INC "$@" -c "$f" -o "$o"
+    $cc $BDSP_OPT $W $INC "$@" -c "$f" -o "$o"
   fi
 }
 for f in objects cmdbuf formats tegra astc; do build "$SRC/nvn/$f.c" "$RT/nvn/$f.o" "$@"; done
 build "$SRC/nvn/maxwell/translate.c" "$RT/nvn/translate.o" "$@"
 build "$SRC/nvn/renderer.m" "$RT/nvn/renderer.o" -fobjc-arc "$@"
 build "$SRC/nvn/metal.m" "$RT/nvn/metal.o" -fobjc-arc "$@"
-build "$HERE/nvn_glue.c" "$RT/nvn/nvn_glue.o" -Wall -Wextra -Wno-unused-parameter "$@"
+build "$HERE/nvn_glue.c" "$RT/nvn/nvn_glue.o" $BDSP_WARN_GLUE "$@"
 build "$HERE/debug_thread.c" "$RT/nvn/debug_thread.o" -Wall -Wextra "$@"
 # Filmwiedergabe (movie:: des SDK mit FFmpeg); ohne FFmpeg: BDSP_NO_MOVIE=1 (dann bleibt der SDK-Pfad, der ohne Decoder abbricht)
 if [ -z "${BDSP_NO_MOVIE:-}" ]; then
-  build "$HERE/movie_glue.c" "$RT/nvn/movie_glue.o" $(pkg-config --cflags libavcodec libavformat libavutil) -Wall -Wextra -Wno-unused-parameter "$@"
+  build "$HERE/movie_glue.c" "$RT/nvn/movie_glue.o" $(pkg-config --cflags libavcodec libavformat libavutil) $BDSP_WARN_GLUE "$@"
 fi

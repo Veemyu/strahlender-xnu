@@ -204,6 +204,17 @@ def read_env_value(path, key):
     return value or None
 
 
+def nvn_source_stamp(rec):
+    """Quell-Hash der NVN-Schicht (nvn/src, translate.c, shader.h, prepare.sh); einzige Definition steht in prepare.sh."""
+    script = os.path.join(rec, "rt-bdsp", "nvn", "prepare.sh")
+    if not os.path.isfile(script):
+        return "ohne-prepare"
+    r = subprocess.run(["bash", script, "--print"], capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 or not r.stdout.strip():
+        raise RuntimeError("prepare.sh --print fehlgeschlagen: " + r.stderr.strip())
+    return r.stdout.strip()
+
+
 def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
     """Hash der Eingaben einer Stufe; ändert sich er, läuft die Stufe neu. Liefert (hash, teile)."""
     env = os.environ if env is None else env
@@ -232,8 +243,7 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
             parts["gen"] = _marker_hash(work, "recomp-gen")
             parts["obj"] = _marker_hash(work, "recomp-obj")
             parts["runtime"] = hash_tree_content(os.path.join(rec, "rt-bdsp"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
-            parts["nvn_las"] = hash_tree_content(os.path.join(rec, "rt-bdsp", "nvn", "src", "nvn"), (".c", ".h", ".m"), skip_dirs=("vulkan",))
-            parts["translator"] = hash_tree_content(os.path.join(root, "shader_translator"), (".c", ".h"), skip_dirs=("build", "__pycache__"))
+            parts["nvn_stamp"] = nvn_source_stamp(rec)
             parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".in", ".entitlements"), skip_dirs=("__pycache__",))
             parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh")
             parts["npdm"] = hash_file(os.path.join(work, "exefs", "main.npdm"))

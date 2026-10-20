@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -289,6 +290,23 @@ class RecompStageTests(unittest.TestCase):
         self.assertNotEqual(h1, h2)
         h3, _ = bs.stage_hash("recomp", self.root, self.work, env={"XNU_RECOMP_OPTS": "o0kb=1000"})
         self.assertNotEqual(h2, h3)
+
+    def test_nvn_stamp_covers_src_translator_and_prepare(self):
+        nvn = os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "nvn")
+        os.makedirs(nvn, exist_ok=True)
+        shutil.copy(os.path.join(os.path.dirname(bs.__file__), "recomp", "rt-bdsp", "nvn", "prepare.sh"), nvn)
+        for rel in ("nvn/src/nvn/metal.m", "nvn/src/rt.h", "shader_translator/translate.c", "shader_translator/shader.h"):
+            write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", rel) if rel.startswith("nvn") else os.path.join(self.root, rel), "v1")
+        rec = os.path.join(self.root, "scripts", "recomp")
+        s0 = bs.nvn_source_stamp(rec)
+        self.assertEqual(s0, bs.nvn_source_stamp(rec))
+        for path in (os.path.join(nvn, "src", "rt.h"), os.path.join(self.root, "shader_translator", "shader.h"),
+                     os.path.join(nvn, "prepare.sh")):
+            old = open(path).read()
+            write(path, old + "\n# x")
+            self.assertNotEqual(s0, bs.nvn_source_stamp(rec), path)
+            write(path, old)
+        self.assertEqual(s0, bs.nvn_source_stamp(rec))
 
     def test_generator_hash_ignores_runtime(self):
         h0, _ = bs.stage_hash("recomp-gen", self.root, self.work)

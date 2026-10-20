@@ -39,6 +39,7 @@ case "$TARGET" in
   *) echo "Aufruf: build_rt32.sh mac|ios" >&2; exit 2 ;;
 esac
 mkdir -p "$RT/nvn"
+. scripts/recomp/rt-bdsp/nvn/flags.inc.sh
 DEFS="-DBDSP_REBASE32"
 [ "$TARGET" = ios ] && SDLINC="-I scripts/recomp/ios/shim" || SDLINC=""
 
@@ -52,9 +53,9 @@ CC="clang"; [ "$TARGET" = ios ] && CC="clang $CCFLAGS"
 for f in "$SRC"/*.c; do
   b=$(basename "$f" .c)
   [ "$TARGET" = ios ] && [ "$b" = main ] && extra="-Dmain=bdsp_runtime_main" || extra=""
-  compile "$f" "$RT/$b.o" "$CC" -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function $DEFS $SDLINC $BASEINC $extra "${@:2}"
+  compile "$f" "$RT/$b.o" "$CC" $BDSP_OPT $BDSP_WARN_GLUE -Wno-sign-compare -Wno-unused-function $DEFS $SDLINC $BASEINC $extra "${@:2}"
 done
-W="-w -O1 -g $DEFS"
+W="$BDSP_NOWARN $BDSP_OPT $DEFS"
 for f in objects cmdbuf formats tegra astc; do compile "$NVN32/nvn/$f.c" "$RT/nvn/$f.o" "$CC" $W $NVINC; done
 compile "$NVN32/nvn/maxwell/translate.c" "$RT/nvn/translate.o" "$CC" $W $NVINC
 if [ "$TARGET" = mac ]; then
@@ -68,10 +69,10 @@ else
   compile "$NVN32/nvn/renderer_ios.m" "$RT/nvn/renderer.o" "$MCC" $W $NVINC -fobjc-arc
   compile "$NVN32/nvn/metal_ios.m" "$RT/nvn/metal.o" "$MCC" $W $NVINC -fobjc-arc
 fi
-compile "$SRC/nvn/nvn_glue.c" "$RT/nvn/nvn_glue.o" "$CC" -O1 -g -w $DEFS $NVINC
-compile "$SRC/nvn/debug_thread.c" "$RT/nvn/debug_thread.o" "$CC" -O1 -g -w $DEFS $NVINC
+compile "$SRC/nvn/nvn_glue.c" "$RT/nvn/nvn_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC
+compile "$SRC/nvn/debug_thread.c" "$RT/nvn/debug_thread.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC
 if [ "$TARGET" = mac ] || [ -n "$FFINC" ]; then
-  compile "$NVN32/movie_glue32.c" "$RT/nvn/movie_glue.o" "$CC" -O1 -g -w $DEFS $NVINC $FFINC
+  compile "$NVN32/movie_glue32.c" "$RT/nvn/movie_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC $FFINC
 fi
 
 if [ "$TARGET" = mac ]; then
