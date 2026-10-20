@@ -21,6 +21,13 @@ static SDL_Window *window;
 static bool headless;  // BDSP: --headless renders into images of its own, no window, surface or swapchain (screenshots only)
 static VmaAllocation hl_mem[8];
 static atomic_bool ui_ready;
+// Host-Modus (Qt-Hülle, app/linux/qt_ui.cpp): Qt legt Fenster und VkSurfaceKHR an, die Laufzeit läuft im selben Prozess. Größe in Pixeln kommt vom Host.
+static bool host_mode;
+static atomic_int host_w, host_h;
+static void window_pixel_size(int *w, int *h) {
+    if (host_mode) { *w = atomic_load(&host_w); *h = atomic_load(&host_h); }
+    else SDL_GetWindowSizeInPixels(window, w, h);
+}
 static VkDebugUtilsMessengerEXT messenger;
 
 // ================================================================== instance / device
@@ -35,7 +42,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
 // BDSP_VK_VALIDATION=1: Khronos validation layer (MSYS2 package vulkan-validation-layers)
 static void create_instance(void) {
     Uint32 n_sdl = 0;
-    const char *const *sdl_ext = headless ? NULL : SDL_Vulkan_GetInstanceExtensions(&n_sdl);
+    const char *const *sdl_ext = headless || host_mode ? NULL : SDL_Vulkan_GetInstanceExtensions(&n_sdl);
     const char *ext[16];
     uint32_t n_ext = 0;
     for (Uint32 i = 0; i < n_sdl && n_ext < 14; i++) ext[n_ext++] = sdl_ext[i];
@@ -299,7 +306,7 @@ static void create_swapchain(void) {
     VkSurfaceCapabilitiesKHR caps;
     VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vk.phys, g_vk.surface, &caps));
     int w, h;
-    SDL_GetWindowSizeInPixels(window, &w, &h);
+    window_pixel_size(&w, &h);
     VkExtent2D ext = caps.currentExtent.width != UINT32_MAX ? caps.currentExtent : (VkExtent2D){(uint32_t)w, (uint32_t)h};
     if (!ext.width || !ext.height) return;  // minimised
     uint32_t nf = 0;
@@ -386,7 +393,7 @@ bool vk_frame_begin(const float clear[4]) {
             w = (int)caps.currentExtent.width;
             h = (int)caps.currentExtent.height;
         } else {
-            SDL_GetWindowSizeInPixels(window, &w, &h);
+            window_pixel_size(&w, &h);
         }
     }
     if (!w || !h) return false;  // minimised
@@ -787,7 +794,33 @@ void backend_clear_window(void) {
     if (g_vk.dev && vk_frame_begin(black)) vk_frame_end(NULL);
 }
 
+// ---- Host-Modus (Qt-Hülle app/linux/qt_ui.cpp, Hauptthread des Hosts): Qt legt Instanz, Fenster und VkSurfaceKHR an (plattformneutral: nur Vulkan-Typen
+// und Pixelgrößen), ui_run() ruft den Host. Die Instanz braucht Vulkan 1.3 und die Flächenerweiterungen, die der Host für seine Plattform wählt.
+void vk_host_attach_instance(void *vk_instance) {
+    host_mode = true;
+    atexit(quick_exit_handler);
+    settings_load();
+    if (getenv("BDSP_FPS")) { extern void bdsp_set_fps(int fps); bdsp_set_fps(atoi(getenv("BDSP_FPS"))); }
+    g_vk.inst = (VkInstance)vk_instance;
+}
+void vk_host_set_size(int w, int h) {
+    atomic_store(&host_w, w);
+    atomic_store(&host_h, h);
+}
+void vk_host_surface_ready(unsigned long long surface) {  // Gerät, Swapchain und Laufzeit-Zustand; danach darf das Spiel losrennen (backend_init)
+    g_vk.surface = (VkSurfaceKHR)surface;
+    pick_device();
+    create_device();
+    create_swapchain();
+    vk_exec_init();
+    vk_shaders_init();
+    window = (SDL_Window *)(uintptr_t)1;  // (Marke: ui_window_init lief)
+    atomic_store(&ui_ready, true);
+}
+
 int ui_run(void) {
+    extern int bdsp_qt_ui_run(void) __attribute__((weak));  // nur im Qt-Bau gelinkt (app/linux/qt_ui.cpp)
+    if (bdsp_qt_ui_run && !getenv("BDSP_HIDDEN")) return bdsp_qt_ui_run();
     ui_window_init();
     atomic_store(&ui_ready, true);
     for (;;) {

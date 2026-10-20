@@ -1,10 +1,10 @@
 #!/bin/bash
 # Baut die Vulkan-Fassung der NVN-Schicht (LAS-Quellen aus prepare_vk.sh + nvn_glue.c + vk_glue.c) zu Objekten in $RT/nvnvk. Inkrementell.
 # Aufruf: build_vk.sh [-DMakro ...]      Umgebung: RT=work/recomp/rt-bdsp-vk  NVN_SRC_VK=work/recomp/nvn-src-vk
-#   VK_INC   Ordner mit vulkan/, SDL3/, shaderc/, vk_mem_alloc.h (Standard: ./include-vk auf dem Ryzen, sonst Homebrew auf dem Mac, siehe
-#            scripts/recomp/ryzen/vk_sync_deps.sh; kein -devel-Paket nötig)
+#   Linux uses installed development packages through pkg-config; no copied headers.
+#   VK_INC explicitly adds an include prefix for manual/macOS syntax checks.
 #   VK_SYNTAX=1  nur Syntaxprüfung (clang -fsyntax-only), keine Objekte (Mac mit Homebrew-Headern)
-# Gelinkt wird gegen die Laufzeitbibliotheken (siehe vk_libs): libvulkan.so.1, libSDL3.so.0, libshaderc_shared.so.1 per Vollpfad.
+# The runtime links against installed development libraries through pkg-config.
 set -euo pipefail
 cd "$(dirname "$0")/../../../../.."
 RT=${RT:-work/recomp/rt-bdsp-vk}
@@ -15,14 +15,17 @@ if [ -z "${NVN_KEEP:-}" ]; then
   NVN_SRC_VK="$SRC" "$HERE/vulkan/prepare_vk.sh" > /dev/null   # kopiert nur bei abweichendem Stempel
 fi
 . "$HERE/flags.inc.sh"
-if [ -z "${VK_INC:-}" ]; then
-  if [ -d include-vk/vulkan ]; then VK_INC=$PWD/include-vk
-  else VK_INC="/opt/homebrew/opt/vulkan-headers/include -I work/recomp/deps-vk -I /opt/homebrew/opt/sdl3/include -I /opt/homebrew/opt/shaderc/include"; fi
-fi
 INCV=""
-for d in $VK_INC; do case "$d" in -I) ;; *) INCV="$INCV -I $d";; esac; done
+if [ "$(uname -s)" = Linux ]; then
+  source scripts/recomp/linux/deps.sh
+  linux_require_runtime
+  INCV="$(linux_vulkan_cflags)"
+elif [ -z "${VK_INC:-}" ]; then
+  VK_INC="/opt/homebrew/opt/vulkan-headers/include /opt/homebrew/opt/sdl3/include /opt/homebrew/opt/shaderc/include"
+fi
+for d in ${VK_INC:-}; do case "$d" in -I) ;; *) INCV="$INCV -I $d";; esac; done
 INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/rt-bdsp $INCV"
-if [ "$(uname -s)" = Linux ]; then INC="$INC -I scripts/recomp/ryzen/compat"; fi
+if [ "$(uname -s)" = Linux ]; then INC="$INC -I scripts/recomp/linux/compat"; fi
 CC=${CC:-clang}
 [ "$(uname -s)" = Linux ] && ARCHF="-march=x86-64-v3" || ARCHF=""
 build() {  # Quelle Objekt [Zusatzflags]
@@ -41,8 +44,8 @@ for f in device exec shaders textures; do build "$SRC/nvn/vulkan/$f.c" "$O/vk_$f
 build "$SRC/nvn/vulkan/vma.cpp" "$O/vk_vma.o" "$@"
 build "$HERE/nvn_glue.c" "$O/nvn_glue.o" -Dg_debug_frame=bdsp_glue_debug_frame -include SDL3/SDL.h -include stdatomic.h -include string.h -include strings.h "$@"  # (exec.c definiert g_debug_frame selbst; nvn_glue.c bindet SDL/stdatomic/string nur unter __APPLE__ ein, braucht sie aber auch hier für die Eingabeschicht)
 build "$HERE/vulkan/vk_glue.c" "$O/vk_glue.o" "$@"
-# Filmwiedergabe (Eröffnungsfilm, FFmpeg-HLE von movie::): ohne sie stürzt/hängt der Gast im Stagefright-Pfad (OMXCodec::findMatchingCodecs). FFmpeg-Header: deps/include (sync_deps.sh) oder System
+# Movie playback uses FFmpeg headers from the same installed development packages as the link step.
 if [ -z "${BDSP_NO_MOVIE:-}" ]; then
-  FFI=""; [ -d deps/include/libavcodec ] && FFI="-I deps/include"
+  FFI=$(pkg-config --cflags libavcodec libavformat libavutil)
   build "$HERE/movie_glue.c" "$O/movie_glue.o" $FFI $BDSP_WARN_GLUE "$@"
 fi

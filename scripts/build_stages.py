@@ -244,9 +244,10 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
             parts["obj"] = _marker_hash(work, "recomp-obj")
             parts["runtime"] = hash_tree_content(os.path.join(rec, "rt-bdsp"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
             parts["nvn_stamp"] = nvn_source_stamp(rec)
-            parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".in", ".entitlements"), skip_dirs=("__pycache__",))
+            parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".h", ".in", ".entitlements"), skip_dirs=("__pycache__",))
             parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh")
             parts["npdm"] = hash_file(os.path.join(work, "exefs", "main.npdm"))
+            parts["icons"] = hash_tree_content(env.get("BDSP_ICON_SOURCE", os.path.join(work, "recomp/icons/source")), (".json", ".png"))
             parts["options"] = env.get("XNU_RECOMP_OPTS", "")
     elif stage == "shaders":
         parts["scripts"] = files("shader_build.sh", "shader_extract_blobs.py", "shader_inventory.py",
@@ -356,6 +357,8 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         pc = which("pkg-config")
         ok, _ = run([pc, "--exists", "sdl3", "libavcodec", "libavformat", "libavutil"]) if pc else (False, "")
         add("SDL3 und FFmpeg-Bibliotheken (pkg-config)", ok, "", "brew install sdl3 ffmpeg")
+        ok, _ = run([sys.executable, "-c", "from PIL import Image"])
+        add("Pillow (App-Icons)", ok, "", "python3 -m pip install Pillow")
         pyd = os.path.join(tools_dir, "pydeps")
         add("Python-Pakete capstone, unicorn in tools/pydeps (Generator)",
             os.path.isdir(os.path.join(pyd, "capstone")) and os.path.isdir(os.path.join(pyd, "unicorn")), pyd,

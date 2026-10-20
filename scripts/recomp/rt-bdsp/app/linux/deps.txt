@@ -1,9 +1,10 @@
-# Build-Abhängigkeiten der Linux-Fassung (Vulkan-Laufzeit und Qt-Hülle). Format: <Familie> | <Installationsbefehl> | <Stand der Paketnamen>
-# Genutzt von build_qt.sh (nennt den Befehl, wenn Qt6/CMake fehlen) und von docs/recomp-vulkan.md. Der Befehl braucht Administratorrechte und wird
-# vom Nutzer selbst ausgeführt; die Skripte installieren nichts.
-# Qt: nur öffentliche API (QWindow::fromWinId, createWindowContainer): die privaten Qt-Header (qt6-qtbase-private-devel) sind NICHT nötig.
-# Laufzeit der Hülle: Qt-xcb-Plugin (in qt6-qtbase / qt6-base enthalten; Debian/Ubuntu zusätzlich libxcb-cursor0) und Xwayland unter Wayland.
-# Optional zur Laufzeit: mangohud (Overlay, Menü Ansicht > Debug), spectacle (nur Testläufe unter KDE).
-apt | sudo apt install qt6-base-dev cmake pkgconf libsdl3-dev libvulkan-dev libshaderc-dev glslc libxcb-cursor0 | geprüft (Debian testing): qt6-base-dev, libsdl3-dev, libshaderc-dev; nicht geprüft: libvulkan-dev, glslc, libxcb-cursor0; Ubuntu LTS ohne libsdl3-dev (nicht geprüft)
-dnf | sudo dnf install qt6-qtbase-devel cmake pkgconf-pkg-config SDL3-devel vulkan-headers vulkan-loader-devel shaderc-devel glslc xcb-util-cursor | geprüft (Fedora): qt6-qtbase-devel (Seite vorhanden; auf dem Ryzen ist qt6-qtbase 6.11.2 ohne -devel); nicht geprüft: übrige Namen
-pacman | sudo pacman -S --needed qt6-base cmake pkgconf sdl3 vulkan-headers vulkan-icd-loader shaderc xcb-util-cursor | geprüft (Arch extra): qt6-base, cmake; nicht geprüft: sdl3, vulkan-headers, vulkan-icd-loader, shaderc, pkgconf, xcb-util-cursor
+# Native Linux build dependencies. Parsed by build_qt.sh; see docs/BUILD.md section 6.
+# Install packages yourself using your normal administrator workflow. Scripts never install them.
+# Public Qt APIs only: private Qt headers, PySide6, and Qt vendoring are unnecessary.
+# Format: package family | user-run install command | caveat
+apt | apt install clang build-essential cmake pkg-config qt6-base-dev libvulkan-dev libsdl3-dev libshaderc-dev libvulkan-memory-allocator-dev libavcodec-dev libavformat-dev libavutil-dev python3-pil | Debian current/testing; older Ubuntu releases may lack SDL3/VMA packages
+dnf | dnf install clang gcc-c++ cmake pkgconf-pkg-config qt6-qtbase-devel vulkan-headers vulkan-loader-devel SDL3-devel libshaderc-devel VulkanMemoryAllocator-devel libavcodec-free-devel libavformat-free-devel libavutil-free-devel python3-pillow | Fedora package names verified; derivative distributions must match their installed FFmpeg provider
+pacman | pacman -S --needed clang base-devel cmake pkgconf qt6-base vulkan-headers vulkan-icd-loader sdl3 shaderc ffmpeg python-pillow | VMA is separate: vulkan-memory-allocator is in AUR, not the official repositories; review/install it yourself
+# Wayland platform plugin: Debian qt6-wayland; Fedora qt6-qtwayland; check the Qt platform-plugin packaging for your Arch release.
+# X11 platform support and a GPU-specific Vulkan driver must also be installed.
+# Runtime-only packages are insufficient: pkg-config modules and vk_mem_alloc.h are required.

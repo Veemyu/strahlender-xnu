@@ -11,6 +11,23 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <sys/stat.h>
+#import "../../app/icon_variants.h"
+
+static void ApplyAppIcon(void) {
+    static BOOL pending;
+    UIApplication *app = UIApplication.sharedApplication;
+    if (pending || !app.supportsAlternateIcons || app.applicationState != UIApplicationStateActive) return;
+    NSDictionary *icons = BDSPReadIcons(NSBundle.mainBundle.resourcePath);
+    NSDictionary *variant = BDSPFindIcon(icons, BDSPIconSelection(icons));
+    if (!variant) return;
+    NSString *name = [variant[@"icon"] isEqual:icons[@"primary_icon"]] ? nil : variant[@"icon"];
+    if ((!name && !app.alternateIconName) || [name isEqualToString:app.alternateIconName]) return;
+    pending = YES;
+    [app setAlternateIconName:name completionHandler:^(NSError *error) {
+        if (error) fprintf(stderr, "[icon] Icon change failed: %s\n", error.localizedDescription.UTF8String);
+        dispatch_async(dispatch_get_main_queue(), ^{ pending = NO; });
+    }];
+}
 
 extern int bdsp_runtime_main(int argc, char **argv);
 #ifndef BDSP_STUB
@@ -437,6 +454,7 @@ static void *RuntimeThread(void *arg) {
 - (void)applicationDidBecomeActive:(UIApplication *)app {
     (void)app;
     if (!audioInterrupted) SetAudioActive(YES);
+    ApplyAppIcon();
 }
 
 // Aufruf aus viewDidAppear: erst dann gibt es die CAMetalLayer mit ihrer Größe

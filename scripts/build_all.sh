@@ -285,7 +285,7 @@ stage_extract() {
   if [ -n "$meta_nca" ] && hq --section0dir="$stage/cnmt" "$meta_nca"; then
     ver="$(python3 "$HELPERS" cnmt-version "$stage/cnmt" 2>/dev/null || echo 0)"
   fi
-  ctl_nca="$(pick "$vtsv" Control)"
+  ctl_nca="$(python3 "$ROOT/scripts/recomp/app/game_icons.py" pick-control --tsv "$vtsv" --title-id "$base_tid")"
   if [ -n "$ctl_nca" ]; then
     ctl_rights="$(tsv_field "$vtsv" "$ctl_nca" 6)"
     if [ -n "$ctl_rights" ]; then
@@ -296,6 +296,20 @@ stage_extract() {
     fi
   fi
   tkc=""
+
+  # Preserve all original icon variants outside Git; fill missing update languages from the base Control NCA.
+  local base_ctl base_ctl_rights base_ctl_key=""
+  base_ctl="$(python3 "$ROOT/scripts/recomp/app/game_icons.py" pick-control --tsv "$stage/base.tsv" --title-id "$base_tid")"
+  if [ -n "$base_ctl" ]; then
+    base_ctl_rights="$(tsv_field "$stage/base.tsv" "$base_ctl" 6)"
+    if [ -n "$base_ctl_rights" ]; then
+      base_ctl_key="$(python3 "$HELPERS" titlekey --rights-id "$base_ctl_rights" --tik-dir "$WORK/nca-base" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"} 2>/dev/null || true)"
+    fi
+    hq ${base_ctl_key:+--titlekey="$base_ctl_key"} --romfsdir="$stage/control-base" "$base_ctl" || true
+  fi
+  base_ctl_key=""
+  python3 "$ROOT/scripts/recomp/app/game_icons.py" ingest --base-control "$stage/control-base" \
+    --update-control "$stage/control" --title-id "$base_tid" --output "$WORK/recomp/icons/source"
 
   rm -rf "$WORK/exefs" "$WORK/romfs" "$WORK/manifest.json"
   mv "$stage/exefs" "$WORK/exefs"

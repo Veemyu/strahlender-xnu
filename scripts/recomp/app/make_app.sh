@@ -38,7 +38,7 @@ if [[ -d work/recomp/cache/shaders-bin-macosx ]]; then cp -R work/recomp/cache/s
 if [[ -f work/recomp/cache/pipelines.bin ]]; then cp work/recomp/cache/pipelines.bin "$NEW/Contents/Resources/pipelines.bin"; fi
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" "$HERE/Info.plist.in" > "$NEW/Contents/Info.plist"
 plutil -lint "$NEW/Contents/Info.plist" > /dev/null
-python3 "$HERE/make_icon.py" "$NEW/Contents/Resources/BDSP.icns" > /dev/null
+python3 "$HERE/game_icons.py" mac --source "${BDSP_ICON_SOURCE:-work/recomp/icons/source}" --output "$NEW/Contents/Resources"
 python3 "$HERE/bundle_dylibs.py" "$NEW/Contents/MacOS/BDSP" "$NEW/Contents/Frameworks"
 
 # Signatur: Bibliotheken zuerst, dann das Bundle. Ad hoc ("-"): lokal startbar, kein Entwicklerkonto nötig.

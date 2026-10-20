@@ -44,6 +44,10 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 [ "${1:-}" = "--check" ] && { echo "Qt6-Bauvoraussetzungen vorhanden."; exit 0; }
 
+cd "$ROOT"
+python3 scripts/recomp/app/game_icons.py linux --source "${BDSP_ICON_SOURCE:-work/recomp/icons/source}" \
+  --output work/recomp/icons/linux --executable work/recomp/qt-host/bdsp_qt_host
+
 mkdir -p "$BUILD"
 cmake -S "$HERE" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release > "$BUILD/configure.log" 2>&1 || { tail -n 20 "$BUILD/configure.log" >&2; exit 4; }
 cmake --build "$BUILD" -j"$(nproc)" > "$BUILD/build.log" 2>&1 || { tail -n 30 "$BUILD/build.log" >&2; exit 4; }

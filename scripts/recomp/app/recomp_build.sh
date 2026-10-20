@@ -135,6 +135,7 @@ fi
 # ---------- 5 App ----------
 log "5/6 BDSP.app zusammensetzen und signieren (ad hoc$([ "$HARDENED" -eq 1 ] && echo ', Hardened Runtime'))"
 APPARGS=(--bin "$BIN" --img "$IMG" --npdm "$ROOT/work/exefs/main.npdm" --out "$OUT")
+export BDSP_ICON_SOURCE="${BDSP_ICON_SOURCE:-$R/icons/source}"
 [ "$HARDENED" -eq 0 ] || APPARGS+=(--hardened)
 doit "App" "$ROOT/scripts/recomp/app/make_app.sh" "${APPARGS[@]}"
 

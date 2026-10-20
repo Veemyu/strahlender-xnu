@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-add_executable(bdsp_qt_host bdsp_qt_host.cpp bdsp_l10n.h)
+add_executable(bdsp_qt_host bdsp_qt_host.cpp bdsp_l10n.h bdsp_icons.h)
 target_link_libraries(bdsp_qt_host PRIVATE Qt6::Widgets)
 target_compile_options(bdsp_qt_host PRIVATE -Wall -Wextra)
 # Übersetzungen (lproj/<Ort>.lproj/Localizable.strings): neben die Binärdatei kopieren, Rückfall ist der Quellordner

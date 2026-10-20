@@ -10,6 +10,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include "bdsp_icons.h"
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -120,6 +121,7 @@ public:
         hudOn_ = qEnvironmentVariable("BDSP_MANGOHUD") == QLatin1String("1");  // Standard aus; im Menü (Ansicht > Debug) im Lauf umschaltbar
         writeHudConf(hudOn_);
         buildMenus();
+        bdsp::installIconMenu(menuBar(), this);
         hudAct_->setChecked(hudOn_);
         startGame();
     }

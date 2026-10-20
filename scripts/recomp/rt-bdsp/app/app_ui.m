@@ -10,6 +10,19 @@
 #include <unistd.h>
 
 #include "app.h"
+#import "../../app/icon_variants.h"
+
+static void ApplyDockIcon(void) {
+    NSDictionary *icons = BDSPReadIcons([NSString stringWithUTF8String:g_app.resources]);
+    NSDictionary *variant = BDSPFindIcon(icons, BDSPIconSelection(icons));
+    if ([variant[@"id"] isEqualToString:icons[@"default"]]) {
+        // Preserve the system-rendered layered icon for the embedded default.
+        NSApp.applicationIconImage = nil;
+        return;
+    }
+    NSString *path = [[NSString stringWithUTF8String:g_app.resources] stringByAppendingPathComponent:@"AppIcons"];
+    if (variant) NSApp.applicationIconImage = [[NSImage alloc] initWithContentsOfFile:[path stringByAppendingPathComponent:variant[@"mac_image"] ?: variant[@"image"]]];
+}
 
 extern char **environ;
 SDL_Window *ui_window(void);
@@ -256,10 +269,18 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:[NSString stringWithUTF8String:g_app.config]]]];
 }
 - (void)showKeys:(id)s { ask(@"Tastenbelegung", [NSString stringWithUTF8String:k_keys_help], @[@"OK"]); }
+- (void)selectAppIcon:(NSMenuItem *)sender {
+    [NSUserDefaults.standardUserDefaults setObject:sender.representedObject forKey:@"bdsp_app_icon"];
+    ApplyDockIcon();
+}
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     if (item.action == @selector(togglePause:)) item.state = g_user_paused ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setFps:)) item.state = item.tag == g_bdsp_fps ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(toggleMetalHud:)) item.state = [[NSUserDefaults standardUserDefaults] boolForKey:@"bdsp_metal_hud"] ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(selectAppIcon:)) {
+        NSString *selected = BDSPIconSelection(BDSPReadIcons([NSString stringWithUTF8String:g_app.resources]));
+        item.state = [item.representedObject isEqualToString:selected] ? NSControlStateValueOn : NSControlStateValueOff;
+    }
     if (item.action == @selector(toggleFullscreen:)) {
         SDL_Window *w = ui_window();
         item.state = w && (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -286,6 +307,26 @@ static void install_menu(void) {
     NSMenu *am = [[NSMenu alloc] initWithTitle:name];
     ai.submenu = am;
     item(am, @"Über BDSP", @selector(orderFrontStandardAboutPanel:), @"", 0, NSApp);
+    BOOL germanIcons = [[NSLocale.preferredLanguages.firstObject lowercaseString] hasPrefix:@"de"];
+    NSMenuItem *iconItem = [am addItemWithTitle:germanIcons ? @"App-Symbol" : @"App icon" action:nil keyEquivalent:@""];
+    NSMenu *iconMenu = [[NSMenu alloc] initWithTitle:iconItem.title];
+    iconItem.submenu = iconMenu;
+    NSMenuItem *defaultIcon = item(iconMenu, germanIcons ? @"Standard (Englisch)" : @"Default (English)", @selector(selectAppIcon:), @"", 0, g_target);
+    defaultIcon.representedObject = @"default";
+    NSDictionary *icons = BDSPReadIcons([NSString stringWithUTF8String:g_app.resources]);
+    NSDictionary *recommended = BDSPRecommendedIcon(icons, NSLocale.preferredLanguages);
+    NSDictionary *standardIcon = BDSPFindIcon(icons, @"default");
+    if (standardIcon && ![icons[@"default"] hasPrefix:@"en-"])
+        defaultIcon.title = [NSString stringWithFormat:@"%@ (%@)", germanIcons ? @"Standard" : @"Default", standardIcon[@"label"]];
+    for (NSDictionary *variant in icons[@"variants"]) {
+        NSString *label = variant[@"label"];
+        if ([variant[@"id"] isEqual:recommended[@"id"]]) label = [label stringByAppendingString:germanIcons ? @" (empfohlen)" : @" (recommended)"];
+        NSMenuItem *entry = item(iconMenu, label, @selector(selectAppIcon:), @"", 0, g_target);
+        entry.representedObject = variant[@"id"];
+        entry.image = [[NSImage alloc] initWithContentsOfFile:[[[NSString stringWithUTF8String:g_app.resources] stringByAppendingPathComponent:@"AppIcons"] stringByAppendingPathComponent:variant[@"mac_image"] ?: variant[@"image"]]];
+        entry.image.size = NSMakeSize(24, 24);
+    }
+    ApplyDockIcon();
     [am addItem:[NSMenuItem separatorItem]];
     item(am, @"BDSP ausblenden", @selector(hide:), @"h", NSEventModifierFlagCommand, NSApp);
     item(am, @"Andere ausblenden", @selector(hideOtherApplications:), @"h", NSEventModifierFlagCommand | NSEventModifierFlagOption, NSApp);
