@@ -1,0 +1,24 @@
+/* Deutsche Menütexte der Linux-Qt-Hülle (bdsp_qt_host.py). Die Schlüssel sind die deutschen Texte, wie in app_ui.m / Localizable.strings der Mac-App. */
+"Datei" = "Datei";
+"Ansicht" = "Ansicht";
+"Fenster" = "Fenster";
+"Hilfe" = "Hilfe";
+"Spielstand-Ordner öffnen" = "Spielstand-Ordner öffnen";
+"Spielstand importieren …" = "Spielstand importieren …";
+"Pause" = "Pause";
+"Neustart" = "Neustart";
+"Spiel zurücksetzen …" = "Spiel zurücksetzen …";
+"BDSP beenden" = "BDSP beenden";
+"Vollbild" = "Vollbild";
+"Bildrate" = "Bildrate";
+"Fenstergröße %d × %d" = "Fenstergröße %d × %d";
+"Debug" = "Debug";
+"MangoHud anzeigen" = "MangoHud anzeigen";
+"Minimieren" = "Minimieren";
+"Tastenbelegung …" = "Tastenbelegung …";
+"Cache-Ordner öffnen (Shader, Bilder)" = "Cache-Ordner öffnen (Shader, Bilder)";
+"Log-Ordner öffnen" = "Log-Ordner öffnen";
+"Tastenbelegung" = "Tastenbelegung";
+"Spiel zurücksetzen" = "Spiel zurücksetzen";
+"KEYS_HELP" = "Tastatur: Eingabe/Leertaste = A, Rücktaste/J = B, X, Y, Pfeiltasten und WASD = Steuerkreuz, Q/E = L/R, P = Plus, O = Minus.\nFenster: F1–F4 Größe, F5–F7 Bildrate 30/60/120, F11 Vollbild (im Menü auch Strg+1–4, Strg+F). Kein Ton.";
+"RESET_CONFIRM" = "Der Spielstand wird gesichert und gelöscht, das Spiel startet neu und beginnt von vorn.";

@@ -1,0 +1,24 @@
+/* English menu texts of the Linux Qt host (bdsp_qt_host.py); default and fallback language. Keys are the German texts as in the Mac app. */
+"Datei" = "File";
+"Ansicht" = "View";
+"Fenster" = "Window";
+"Hilfe" = "Help";
+"Spielstand-Ordner öffnen" = "Open Save Folder";
+"Spielstand importieren …" = "Import Save …";
+"Pause" = "Pause";
+"Neustart" = "Restart";
+"Spiel zurücksetzen …" = "Reset Game …";
+"BDSP beenden" = "Quit BDSP";
+"Vollbild" = "Full Screen";
+"Bildrate" = "Frame Rate";
+"Fenstergröße %d × %d" = "Window Size %d × %d";
+"Debug" = "Debug";
+"MangoHud anzeigen" = "Show MangoHud";
+"Minimieren" = "Minimize";
+"Tastenbelegung …" = "Key Bindings …";
+"Cache-Ordner öffnen (Shader, Bilder)" = "Open Cache Folder (Shaders, Images)";
+"Log-Ordner öffnen" = "Open Log Folder";
+"Tastenbelegung" = "Key Bindings";
+"Spiel zurücksetzen" = "Reset Game";
+"KEYS_HELP" = "Keyboard: Enter/Space = A, Backspace/J = B, X, Y, arrow keys and WASD = D-pad, Q/E = L/R, P = Plus, O = Minus.\nWindow: F1–F4 size, F5–F7 frame rate 30/60/120, F11 full screen (menu: also Ctrl+1–4, Ctrl+F). No sound.";
+"RESET_CONFIRM" = "The save is backed up and deleted, the game restarts and begins anew.";

@@ -154,54 +154,95 @@ repository to set the team.
 
 Work in progress. Not playable yet. See section 6.4 for the known limits.
 
-### 6.1 Requirements and roles
+### 6.1 Requirements
 
-The scripts run on the Mac. They connect to the Linux machine over ssh (`RZ_HOST`, section 3) and
-sync files with rsync. The Linux machine builds and runs the game in `~/xnu-recomp`.
+You run the commands on a Mac. A Linux x86-64 machine builds and runs the game in `~/xnu-recomp`.
+Set `RZ_HOST` in `work/local.env` (section 3) to the ssh alias of that machine.
 
-- **Mac:** ssh with key authentication (no password prompt), `rsync`, `curl`. Homebrew packages
-  `vulkan-headers`, `sdl3`, `shaderc` (headers only). Optional: `ffmpeg` (FFmpeg headers, path via `FFMPEG_PREFIX`).
-- **Linux machine:** x86-64, Vulkan loader and Vulkan driver, `clang`. Runtime libraries (no `-devel`
-  packages needed): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
-  `/usr/lib64/libshaderc_shared.so.1`; for film playback also `libavformat.so.62`, `libavcodec.so.62`,
-  `libavutil.so.60`.
-- Tested GPU: NVIDIA GeForce RTX 2080 Ti with Vulkan 1.4.
+**Linux machine**
+
+- x86-64 CPU with the `x86-64-v3` level (AVX2), because the build uses `-march=x86-64-v3`.
+- Vulkan loader and Vulkan driver. Tested GPU: NVIDIA GeForce RTX 2080 Ti with Vulkan 1.4.
+- `clang`.
+- Runtime libraries (no `-devel` packages needed): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
+  `/usr/lib64/libshaderc_shared.so.1`.
+- For film playback: `libavformat.so.62`, `libavcodec.so.62`, `libavutil.so.60`. Optional: without them,
+  build with `BDSP_NO_MOVIE=1`.
+
+**Mac**
+
+- ssh with key authentication (no password prompt), `rsync`, `curl`.
+- Homebrew packages `vulkan-headers`, `sdl3`, `shaderc` (headers only).
+- Optional: Homebrew `ffmpeg` for the FFmpeg headers (see step 2 in section 6.2).
 
 ### 6.2 Build and run
 
-Run these in order, on the Mac:
+Run these steps on the Mac, in this order:
 
-1. Sync headers (once): `scripts/recomp/ryzen/vk_sync_deps.sh`
-2. Sync sources and your own data (RomFS, `main.npdm`): `scripts/recomp/ryzen/vk_sync.sh --daten`
+1. Copy the headers to the Linux machine (once): `scripts/recomp/ryzen/vk_sync_deps.sh`
+   - On the first run, the script downloads `vk_mem_alloc.h` from GitHub, unless it is already in
+     `work/recomp/deps-vk/`.
+2. Copy the sources and your own data (RomFS, `main.npdm`): `scripts/recomp/ryzen/vk_sync.sh --daten`
    - If `work/recomp/img_gfx` is missing, the script prints the command to create it (`mkimages.sh`).
-3. Translate the four modules into `work/recomp/obj4-c`: `scripts/recomp/ryzen/build.sh`
-   (host prerequisites: `docs/recomp-ryzen.md`)
-4. Build the Vulkan runtime: `scripts/recomp/ryzen/vk_build.sh`
+   - Optional, for film playback: `scripts/recomp/ryzen/sync_deps.sh` copies the FFmpeg headers and the SDL3
+     headers from Homebrew to `~/xnu-recomp/deps/include`. Set `FFMPEG_PREFIX` if ffmpeg is not in
+     `/opt/homebrew/opt/ffmpeg`.
+3. Translate the four modules on the Linux machine into `~/xnu-recomp/work/recomp/obj4-c`:
+   `scripts/recomp/ryzen/build.sh` (host prerequisites: `docs/recomp-ryzen.md`).
+4. Build the Vulkan runtime: `scripts/recomp/ryzen/vk_build.sh` (result: `work/recomp/bdsp_boot_vk` on the Linux machine).
 5. Run without a window (default): `scripts/recomp/ryzen/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300`
-6. Fetch screenshots and logs: `scripts/recomp/ryzen/vk_fetch.sh`
+6. Fetch screenshots and logs to `work/recomp/ryzen/` on the Mac: `scripts/recomp/ryzen/vk_fetch.sh`
 
-`--headless` needs no display and renders into images.
+`--headless` needs no display. It renders into offscreen images. The screenshots are written to
+`work/recomp/shots/frame_NNNNN.png` on the Linux machine, and step 6 fetches them.
 
 ### 6.3 Run with a window (Wayland)
 
-Pass the session variables of the desktop user. An ssh session has no display.
+A window opens on the desktop of the Linux machine. Pass the session variables of the desktop user
+with the run. Get the user ID with `id -u` on the Linux machine. Without these variables no window can open.
 
 ```sh
 scripts/recomp/ryzen/vk_run.sh --tag=win XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
   SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
 ```
 
-X11 and full screen are not tested.
+`BDSP_NO_USER_INPUT=1` keeps the window from taking keyboard focus when it opens. Whether it also blocks
+the keys below is not verified. Run without it for interactive play.
+
+Settings for window runs only (they have no effect with `--headless`):
+
+- Start size: `--window 1280x720` or `BDSP_WINDOW=1920x1080` (default 1280×720).
+- Frame rate: `BDSP_FPS=30`, `BDSP_FPS=60` or `BDSP_FPS=120`. Pass it after the script name, for example
+  `scripts/recomp/ryzen/vk_run.sh BDSP_FPS=60 --tag=win ...`.
+- MangoHud overlay (fps, frame time, CPU and GPU): `BDSP_MANGOHUD=1`. Needs the `mangohud` package on the
+  Linux machine. It is needed only at run time, not for the build. Off by default.
+- Run time: `--timeout N` in seconds (default 120).
+
+Keys in the window:
+
+- F1 to F4: window size 960×540, 1280×720, 1920×1080, 2560×1440 (not in full screen).
+- F5, F6, F7: frame rate 30, 60, 120.
+- F11: toggle full screen. Not verified.
+
+X11 is not tested.
+
+### 6.3a Menu bar (in progress, Qt host)
+
+A menu bar with File, Edit, View, Window and Help is in progress, as part of a Qt host. It is not delivered
+yet, and the Qt host is not in the repository. Use the keys in section 6.3 until then.
 
 ### 6.4 Known limitations
 
-- **Player character missing** and **vertex explosions** (distorted geometry): in progress.
-- **Window fill:** the game renders 1280×720. The crop from `nvnWindowSetCrop` is not applied yet, so the
-  bottom and right edges stay black: in progress.
+- **Player character missing, vertex explosions, window fill:** fixed in the last test run (field scene with
+  player character, NPCs and water; window fully filled). Not yet verified across sessions.
+- **Texture outside the guest window:** the runtime logs `[vk] Textur außerhalb des Gastfensters` and skips
+  the upload (guard in `textures.c`). Effect on the picture not verified. Open.
+- **Rare hangs on the loading screen:** open. Cause not known.
 - **FFmpeg header version:** not matched to the runtime libraries yet. If film playback fails, build with
   `BDSP_NO_MOVIE=1`.
-- No sound. No frame pacing. Input state is not reported. Compute workloads are not supported.
-- Windows is not supported.
+- **Frame rate:** `BDSP_FPS` caps the frame rate (30, 60, 120). Measured in a window only; not verified across sessions.
+- No sound. Input state is not reported. Compute workloads are not supported.
+- Windows is not supported. X11 and full screen (F11) are not tested.
 
 Details: `docs/recomp-vulkan.md`.
 

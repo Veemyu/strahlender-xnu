@@ -495,7 +495,7 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     b->checked_frame = frame;
     if (t->addr + total > 0x7320000000ull || t->addr < 0x7000000000ull) {  // außerhalb des Gastfensters: Zugriff wäre ein Absturz
         static int warned;
-        if (warned++ < 8) fprintf(stderr, "[vk] Textur außerhalb des Gastfensters: addr %llx größe %llx fmt %u target %u\n", (unsigned long long)t->addr, (unsigned long long)total, (unsigned)t->format, (unsigned)t->target);
+        if (warned++ < 8) fprintf(stderr, "[vk] Textur außerhalb des Gastfensters: addr %llx größe %llx fmt %u target %u %ux%ux%u mips %u flags %x layers %u pool %p off %llx label '%.24s'\n", (unsigned long long)t->addr, (unsigned long long)total, (unsigned)t->format, (unsigned)t->target, t->width, t->height, t->depth, t->levels, t->flags, (unsigned)t->layout.layers, (void *)t->pool, (unsigned long long)t->pool_offset, t->label);
         return;
     }
     prof_tex_checks++;

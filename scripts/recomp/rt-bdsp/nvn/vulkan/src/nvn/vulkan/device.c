@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -267,7 +268,8 @@ static VkPresentModeKHR present_mode(void) {
     VkPresentModeKHR m[16];
     if (n > 16) n = 16;
     vkGetPhysicalDeviceSurfacePresentModesKHR(g_vk.phys, g_vk.surface, &n, m);
-    for (uint32_t i = 0; i < n; i++) if (m[i] == want) return want;
+    for (uint32_t i = 0; i < n; i++) if (m[i] == want) { LOG("[vk] present mode %d (wanted %d)\n", (int)want, (int)want); return want; }
+    LOG("[vk] present mode FIFO (wanted %d not offered by this surface)\n", (int)want);
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
@@ -546,6 +548,9 @@ void backend_present(NvnTexture *t) {
         extern void widescreen_present_crop(uint64_t, double, float *, double *, double *, double *, double *);
         float crop[4];  // uv origin and size
         widescreen_present_crop(total_frames, shape, crop, &vx, &vy, &vw, &vh);
+        extern bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th);
+        float wc[4];
+        if (nvn_window_crop(wc, t->width, t->height)) memcpy(crop, wc, sizeof crop);  // vom Spiel gesetzter Ausschnitt (nvnWindowSetCrop), wie metal.m present_gpu
         widescreen_set_factor((float)shape);
         renderer_set_scale((float)sx, (float)sy);
         VkCommandBuffer cb = vk_cmd();
@@ -675,6 +680,21 @@ static void quick_exit_handler(void) {
 #endif
 }
 
+// Qt-Hülle (scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.py): BDSP_EMBED=1 -> randloses X11-Fenster, die Kennung geht auf stdout, Befehle kommen auf stdin
+// ("fps 30|60|120", "pause 0|1"); dieselben Stellen wie die F-Tasten in ui_run.
+static void *embed_commands(void *arg) {
+    (void)arg;
+    extern void bdsp_set_fps(int fps);
+    extern volatile int g_bdsp_paused;
+    char l[128];
+    while (fgets(l, sizeof l, stdin)) {
+        int v;
+        if (sscanf(l, "fps %d", &v) == 1) bdsp_set_fps(v);
+        else if (sscanf(l, "pause %d", &v) == 1) g_bdsp_paused = v;
+    }
+    return NULL;
+}
+
 void ui_window_init(void) {
     if (window) return;
     atexit(quick_exit_handler);
@@ -694,8 +714,11 @@ void ui_window_init(void) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) FATAL("SDL_Init: %s\n", SDL_GetError());
     int win_w = 1280, win_h = 720;
     if (getenv("BDSP_WINDOW")) sscanf(getenv("BDSP_WINDOW"), "%dx%d", &win_w, &win_h);
+    if (getenv("BDSP_FPS")) { extern void bdsp_set_fps(int fps); bdsp_set_fps(atoi(getenv("BDSP_FPS"))); }  // 30/60/120 wie am Mac
     SDL_WindowFlags wflags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     if (getenv("BDSP_HIDDEN")) wflags |= SDL_WINDOW_HIDDEN;
+    bool embed = getenv("BDSP_EMBED") && atoi(getenv("BDSP_EMBED"));
+    if (embed) wflags |= SDL_WINDOW_BORDERLESS;
     {   // scripted test runs (user input ignored: runtime/hle/input.c input_user_blocked) open without taking the
         // keyboard focus from whatever the player is doing
         const char *v = getenv("BDSP_NO_USER_INPUT");
@@ -706,8 +729,20 @@ void ui_window_init(void) {
     window = SDL_CreateWindow("BDSP Recomp", win_w, win_h, wflags);
     if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
     rt_window_icon(window);
+    if (embed) {
+        SDL_PropertiesID wp = SDL_GetWindowProperties(window);
+        printf("[embed] xid=%lld\n", (long long)SDL_GetNumberProperty(wp, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0));
+        fflush(stdout);
+        pthread_t th;
+        pthread_create(&th, NULL, embed_commands, NULL);
+        pthread_detach(th);
+    }
     // the Fullscreen setting applies from the start screen on (not only once the game runs); test windows stay windows
-    if (g_settings.fullscreen && !getenv("BDSP_WINDOW") && !getenv("BDSP_HIDDEN")) SDL_SetWindowFullscreen(window, true);
+    if (g_settings.fullscreen && !embed && !getenv("BDSP_WINDOW") && !getenv("BDSP_HIDDEN")) SDL_SetWindowFullscreen(window, true);
+    if (getenv("BDSP_MANGOHUD") && atoi(getenv("BDSP_MANGOHUD"))) {  // Linux: MangoHud-Overlay (Vulkan-Layer, Paket mangohud) einblenden; Standard aus
+        setenv("MANGOHUD", "1", 1);   // schaltet den impliziten Layer; muss vor vkCreateInstance stehen
+        if (!getenv("MANGOHUD_CONFIGFILE")) setenv("MANGOHUD_CONFIG", "fps,frametime,frame_timing=1,cpu_stats,gpu_stats,font_size=26,position=top-left", 0);
+    }
     create_instance();
     if (!SDL_Vulkan_CreateSurface(window, g_vk.inst, NULL, &g_vk.surface)) FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
     pick_device();
@@ -757,6 +792,17 @@ int ui_run(void) {
             extern bool input_user_blocked(const SDL_Event *e);
             if (input_user_blocked(&e)) continue;  // scripted test runs: the real keyboard / mouse / pads do nothing (as metal.m)
             if (menu_handle_event(&e)) continue;
+            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {  // Linux: Tasten wie die Mac-Menüs Ansicht > Fenstergröße (Cmd+1..4) und Bildrate
+                static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
+                extern void bdsp_set_fps(int fps);
+                SDL_Keycode k = e.key.key;
+                if (k >= SDLK_F1 && k <= SDLK_F4 && !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN)) {
+                    SDL_SetWindowSize(window, sizes[k - SDLK_F1][0], sizes[k - SDLK_F1][1]);
+                    continue;
+                }
+                if (k == SDLK_F5 || k == SDLK_F6 || k == SDLK_F7) { bdsp_set_fps(k == SDLK_F5 ? 30 : k == SDLK_F6 ? 60 : 120); continue; }
+                if (k == SDLK_F11) { SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN)); continue; }
+            }
             input_handle_event(&e);
         }
         menu_apply_window_requests(window);

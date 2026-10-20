@@ -1966,13 +1966,14 @@ static uint64_t gmem_tried;  // heap size the import was last attempted for (gme
 static VkDescriptorBufferInfo gmem_info(void) {
     static int off = -1;
     if (off < 0) off = getenv("BDSP_VK_NO_GMEM") != NULL || !g_vk.host_import;
-    uint64_t want = (kernel_heap_size() + 0xFFFF) & ~0xFFFFull;
+    // BDSP legt den Spielspeicher per MapPhysicalMemory in die Alias-Region (SetHeapSize bleibt 0): dann gilt der ganze NVN-Speicherbereich
+    uint64_t want = kernel_heap_size() ? (kernel_heap_size() + 0xFFFF) & ~0xFFFFull : HEAP_MAX & ~0xFFFFull;
     if (want > HEAP_MAX) want = HEAP_MAX;
     if (!off && want > gmem_size && !gmem_import(want)) {
         LOG("[vk] guest heap import failed (%llu MB): shader global memory reads return zero\n", (unsigned long long)(want >> 20));
         off = 1;
     }
-    if (gmem_buf) return (VkDescriptorBufferInfo){gmem_buf, 0, gmem_size};
+    if (gmem_buf) return (VkDescriptorBufferInfo){gmem_buf, 0, gmem_size > g_vk.props.limits.maxStorageBufferRange ? g_vk.props.limits.maxStorageBufferRange : gmem_size};
     static uint32_t zero[1024];
     VkSpan s = vk_transient_copy(zero, sizeof zero, 256);
     return (VkDescriptorBufferInfo){s.buf, s.off, sizeof zero};
@@ -2282,7 +2283,8 @@ static bool guest_direct(uint64_t addr, uint64_t size, VkBuffer *buf, VkDeviceSi
     static int copy = -1;
     if (copy < 0) copy = getenv("BDSP_VK_COPY_VERTICES") != NULL;
     if (copy || addr < HEAP_BASE) return false;
-    if (addr + size > HEAP_BASE + gmem_size && kernel_heap_size() != gmem_tried) { gmem_tried = kernel_heap_size(); gmem_info(); }
+    uint64_t tried_key = kernel_heap_size() ? kernel_heap_size() : HEAP_MAX;
+    if (addr + size > HEAP_BASE + gmem_size && tried_key != gmem_tried) { gmem_tried = tried_key; gmem_info(); }
     if (!gmem_buf || addr + size > HEAP_BASE + gmem_size) return false;
     if (vcache_lookup(addr, size, buf, off)) return true;
     *buf = gmem_buf;
