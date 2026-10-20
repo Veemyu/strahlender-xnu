@@ -297,6 +297,43 @@ static const char *in_path(IpcReq *req, int i) {
     return "";
 }
 static void host_path(HostFs *fs, const char *p, char *out, size_t n) { snprintf(out, n, "%s%s%s", fs->root, p[0] == '/' ? "" : "/", p); }
+
+// Spielstände: Löschen wird zu Umbenennen nach _safety/ (außerhalb des Spielstand-Ordners). Bricht der Lauf
+// mitten im Speichern ab, bleibt der letzte vollständige Stand in <Datei>.prev erhalten.
+static bool is_save_root(const HostFs *fs) { return strstr(fs->root, "save_") != NULL; }
+static void safety_path(const HostFs *fs, const char *p, const char *suffix, char *out, size_t n) {
+    const char *sub = strrchr(fs->root, '/'), *base = strrchr(p, '/');
+    snprintf(out, n, "%s/_safety/%s_%s%s", g_save_dir, sub ? sub + 1 : fs->root, base ? base + 1 : p, suffix);
+}
+static void copy_file(const char *src, const char *dst) {
+    int in = open(src, O_RDONLY);
+    if (in < 0) return;
+    int out = open(dst, O_CREAT | O_TRUNC | O_WRONLY, 0644);
+    if (out >= 0) {
+        char buf[65536];
+        ssize_t n;
+        while ((n = read(in, buf, sizeof buf)) > 0) if (write(out, buf, (size_t)n) != n) break;
+        close(out);
+    }
+    close(in);
+}
+static void save_startup(HostFs *fs) {
+    static const char *names[] = {"SaveData.bin", "Backup.bin"};
+    char sf[2200], pv[2200], st[2200], dir[1200];
+    snprintf(dir, sizeof dir, "%s/_safety", g_save_dir);
+    mkdir(dir, 0755);
+    for (int i = 0; i < 2; i++) {
+        snprintf(sf, sizeof sf, "%s/%s", fs->root, names[i]);
+        safety_path(fs, sf, ".prev", pv, sizeof pv);
+        safety_path(fs, sf, ".start", st, sizeof st);
+        struct stat sb;
+        if (!stat(sf, &sb) && sb.st_size > 0) {
+            copy_file(sf, st);
+        } else if (!stat(pv, &sb) && rename(pv, sf) == 0) {
+            LOG("[save] %s fehlte oder war leer, aus %s wiederhergestellt\n", names[i], pv);
+        }
+    }
+}
 static uint32_t errno_result(void) {
     if (errno == ENOENT || errno == ENOTDIR) return FS_PATH_NOT_FOUND;
     if (errno == EEXIST) return FS_PATH_EXISTS;
@@ -409,7 +446,17 @@ static void host_filesystem(Service *s, IpcReq *req, IpcResp *resp) {
         close(fd);
         break;
     }
-    case 1: if (unlink(p)) resp->result = errno_result(); break;
+    case 1: {
+        struct stat sb;
+        if (is_save_root(fs) && !stat(p, &sb) && S_ISREG(sb.st_mode)) {
+            char pv[2200];
+            safety_path(fs, p, ".prev", pv, sizeof pv);
+            if (rename(p, pv)) resp->result = errno_result();
+            break;
+        }
+        if (unlink(p)) resp->result = errno_result();
+        break;
+    }
     case 2: if (mkdir(p, 0755)) resp->result = errno_result(); break;
     case 3: if (rmdir(p)) resp->result = errno_result(); break;
     case 4: if (rm_rf(p, false)) resp->result = errno_result(); break;
@@ -461,6 +508,7 @@ static Service *open_host_fs(const char *sub) {
     for (char *q = cmd + 1; *q; q++)
         if (*q == '/') { *q = 0; mkdir(cmd, 0755); *q = '/'; }
     mkdir(cmd, 0755);
+    if (is_save_root(fs)) save_startup(fs);
     LOG("[fs] Host-Ordner eingehängt: %s\n", fs->root);
     return service_new("IFileSystem", host_filesystem, fs);
 }
