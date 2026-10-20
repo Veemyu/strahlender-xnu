@@ -7,8 +7,8 @@ RT=${RT:-work/recomp/rt-bdsp}
 SRC=${NVN_SRC:-work/recomp/nvn-src}
 HERE=scripts/recomp/rt-bdsp/nvn
 mkdir -p "$RT/nvn"
-if [ -z "${NVN_KEEP:-}" ] && { [ ! -d "$SRC/nvn" ] || [ -n "$(find "$HERE/src" "$HERE/prepare.sh" -newer "$SRC/nvn/nvn.h" -print -quit 2>/dev/null)" ]; }; then
-  "$HERE/prepare.sh" > /dev/null
+if [ -z "${NVN_KEEP:-}" ]; then
+  NVN_SRC="$SRC" "$HERE/prepare.sh" > /dev/null   # kopiert nur bei abweichendem Stempel
 fi
 INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/rt-bdsp $(pkg-config --cflags sdl3)"
 W="-w"
