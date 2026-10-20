@@ -72,7 +72,7 @@ Stand beim Stilllegen: 763 EditMode-Tests grün; Kampf (Handler, Ablauf, KI voll
 | Gerät | Rolle |
 |---|---|
 | MacBook Pro M1 Pro, 16 GB | Hauptrechner; Generator, Mac-App, iOS-Build (Xcode 26.0.1 über `DEVELOPER_DIR`), ca. 36 GB Platz |
-| Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora (`ssh nobara`) | Build-/Testfarm, Vulkan-Lauf, Ryujinx 1.2.78 für Referenzbilder; nur unter `~/xnu-recomp` (+ Ryujinx-Screenshots) |
+| Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora (`ssh <RZ_HOST>`) | Build-/Testfarm, Vulkan-Lauf, Ryujinx 1.2.78 für Referenzbilder; nur unter `~/xnu-recomp` (+ Ryujinx-Screenshots) |
 | iPad Pro 12.9" (M2), iPadOS 26 | Zielgerät; Increased Memory Limit: 8 GiB statt 5 GiB (kostenloses Team, Signatur 7 Tage) |
 
 Lokal und nie im Repo: `work/`, `tools/`, `research/`, `nsp/`, `Ryujinx/`, `Ryujinx_July23/`, `unity/Assets/XnuStubs|XnuGenerated`, `cache/`.

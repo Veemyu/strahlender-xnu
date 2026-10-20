@@ -15,7 +15,7 @@ Stand: 2026-10-19 17:20. Ergänzt `docs/arbeitsstand-2026-10-19.md` (Technik, Me
 | Modelle | Nicht mit Kanonen auf Spatzen schießen: kleine Aufgaben (Läufe, Messungen, Sichtung, Doku) an `claude-haiku-5.5` oder `gpt-6-luna`; Fehlersuche und zentraler Code an Sonnet. Höchstens zwei große Agenten gleichzeitig. Agenten committen nie. |
 | Platz | Mac: mindestens 15 GB frei halten (zuletzt ca. 36 GB). Bei weniger stoppen und melden. |
 | Strategie | Unity-Rebuild ist deprecated (Entscheidung 4, `unity/DEPRECATED.md`): keine weitere Arbeit, nur Referenz. Es gibt einen Strang, die Rekompilation. Nicht drei Dinge parallel entwickeln. |
-| Ryzen | Nur über `ssh nobara`, nur unter `~/xnu-recomp` (und Ryujinx-Screenshots lesen), kein sudo, kein Internet. Tasten nur an Ryujinx senden (`ryzen_keys.py`, Fokusprüfung); Bewegungs- und Menütasten erst nach Freigabe des Nutzers. |
+| Ryzen | Nur über `ssh <RZ_HOST>` (Host steht in `work/local.env` als `RZ_HOST`, nicht im Repo), nur unter `~/xnu-recomp` (und Ryujinx-Screenshots lesen), kein sudo, kein Internet. Tasten nur an Ryujinx senden (`ryzen_keys.py`, Fokusprüfung); Bewegungs- und Menütasten erst nach Freigabe des Nutzers. |
 
 ## 2. Befehls-Spickzettel (aus den Kopfzeilen der Skripte, Stand geprüft)
 

@@ -2,7 +2,6 @@
   "version": 1,
   "comment": "Zuordnung der Ryujinx-Referenzbilder (F8) zu Ansichten und Szenarien (docs/visuelle-pruefung.md, Abschnitt Ryujinx-Referenz). Die Bilder werden der Reihe nach (Dateizeit) den views zugeordnet, sofern der Nutzer sie nicht umbenennt: eine Datei, deren Name (ohne Endung) mit dem Namen einer Ansicht beginnt, belegt genau diese Ansicht. Weitere Dateien heißen free_<Name> und werden nur zum Ansehen mitgeführt. mask = ausgeschlossene Rechtecke [x0,y0,x1,y1] in Bruchteilen der Bildgröße (HUD/Debugtext der Unity-Spielszene, links oben).",
   "ryzen": {
-    "host": "nobara",
     "screenshots": ".config/Ryujinx/screenshots",
     "config": ".config/Ryujinx/Config.json",
     "shader_cache": ".config/Ryujinx/games/0100000011d90000/cache/shader"

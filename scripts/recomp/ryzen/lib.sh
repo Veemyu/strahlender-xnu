@@ -5,7 +5,6 @@
 # verhindern, dass sich zwei schwere Jobs überschneiden.
 
 # --- Einstellungen (per Umgebungsvariable überschreibbar) ---
-RZ_HOST=${RZ_HOST:-nobara}          # ssh-Alias (~/.ssh/config), einziger Bezug auf den Rechner
 RZ_DIR=${RZ_DIR:-xnu-recomp}        # Arbeitsordner relativ zu $HOME auf dem Ryzen; außerhalb wird nichts angelegt
 RZ_LANE_A=${RZ_LANE_A:-a}           # Bahn für Erzeugen/Bauen
 RZ_LANE_B=${RZ_LANE_B:-b}           # Bahn für Proben/Tests
@@ -13,6 +12,11 @@ RZ_TIMEOUT=${RZ_TIMEOUT:-5400}      # längste Wartezeit (s) beim Mitlesen eines
 RZ_POLL=${RZ_POLL:-5}               # Abfrageintervall (s)
 
 RZ_REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+# Host (ssh-Alias) nur aus Umgebung oder work/local.env (gitignoriert); nie im Repo. Nur die Zeile RZ_HOST=..., Wert wird nicht ausgegeben.
+if [ -z "${RZ_HOST:-}" ] && [ -f "$RZ_REPO/work/local.env" ]; then
+  RZ_HOST=$(sed -n 's/^RZ_HOST=//p' "$RZ_REPO/work/local.env" | tail -n 1)
+fi
+[ -n "${RZ_HOST:-}" ] || { echo "FEHLER: RZ_HOST fehlt. RZ_HOST in work/local.env setzen (Datei ist gitignoriert) oder als Umgebungsvariable." >&2; exit 2; }
 RZ_LOCAL_OUT="$RZ_REPO/work/recomp/ryzen"   # lokale Ablage (gitignoriert): Manifest, geholte Logs und Zahlen
 
 rz_die() { echo "FEHLER: $*" >&2; exit 1; }

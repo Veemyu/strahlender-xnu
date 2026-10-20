@@ -11,7 +11,10 @@
 # Exit-Codes: Durchreichung von ryzen_keys.py (3 STOP, 4 Zeitlimit, 5 Fokus, 6 kein Bild, 7 uinput, 8 läuft schon), 2 Aufruf/Verbindung, 1 sonstiges.
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-RZ_HOST="${RZ_HOST:-nobara}"
+if [ -z "${RZ_HOST:-}" ] && [ -f "$HERE/work/local.env" ]; then   # nur die Zeile RZ_HOST=..., Wert wird nicht ausgegeben
+  RZ_HOST=$(sed -n 's/^RZ_HOST=//p' "$HERE/work/local.env" | tail -n 1)
+fi
+[ -n "${RZ_HOST:-}" ] || { echo "FEHLER: RZ_HOST fehlt. RZ_HOST in work/local.env setzen (Datei ist gitignoriert) oder als Umgebungsvariable." >&2; exit 2; }
 PY="${PYTHON:-python3}"
 REFDIR="${XNU_REF_DIR:-$HERE/work/visual/ref/ryujinx}"
 AUTO="$HERE/work/visual/auto"

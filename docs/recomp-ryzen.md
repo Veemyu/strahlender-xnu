@@ -37,7 +37,7 @@ Jobs laufen entkoppelt (`setsid nohup … &`, Ein-/Ausgabe umgeleitet), überleb
 
 | Datei | Aufgabe |
 |---|---|
-| `lib.sh` | Mac-Seite: Einstellungen am Anfang (`RZ_HOST=nobara` = einziger Bezug auf den Rechner, `RZ_DIR=xnu-recomp`, Bahnen, Zeitlimit), `rz_run`/`rz_dispatch`/`rz_wait`, deutsche Fehlermeldungen |
+| `lib.sh` | Mac-Seite: Einstellungen am Anfang (`RZ_HOST` = einziger Bezug auf den Rechner; Pflicht, steht in `work/local.env` (gitignoriert) oder in der Umgebung, nie im Repo; ohne Wert bricht das Skript ab, `RZ_DIR=xnu-recomp`, Bahnen, Zeitlimit), `rz_run`/`rz_dispatch`/`rz_wait`, deutsche Fehlermeldungen |
 | `sync.sh` | Mac → Ryzen, idempotent: nur `work/exefs/{rtld,main,sdk,subsdk0}` (keine NPDM, Keys, NCA, XCI, NSP, Saves), `research/LASRecomp` (ohne `.git`, `third_party`, `fonts`, `docs`), `scripts/recomp` (ohne `rt-bdsp`, außer `--mit-rt-bdsp`), `scripts/recomp_survey.py`; Schutz gegen Dateien > 2 MB in `scripts/recomp`; schreibt die sha256-Liste (`work/recomp/ryzen/exefs.sha256`), kopiert sie und prüft sie auf dem Ryzen (`setup.sh`) |
 | `build.sh` | Generator + Übersetzung + Link (Job `build`, Bahn a). Optionen `--neu`, `--nur-gen`, `--nur-compile`, `--tag=`, `--schwelle=`, `--jobs=`, `--sync`, `--detach`; `--inkrementell` misst Neubauten, `--las-runtime` baut den Linux-Pfad der LAS-Laufzeit |
 | `run_probe.sh` | Proben/Tests (Bahn b): `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `boot-las`, `bdsp`, `alle` |
@@ -51,7 +51,7 @@ Jedes Joblog beginnt mit einer Zeile `# Stand: eh_gen …, rt/cpu.h …, Baum �
 
 ## 3. Einrichtung (gemessen)
 
-Ryzen: Fedora/Nobara 44, Linux 7.2, clang 22.1.8, gcc 16.2.1, GNU make 4.4.1, Python 3.14.7 (wie `tools/pydeps` auf dem Mac, cpython-314), x86_64 mit AVX2/FMA/BMI2, 174 GB frei auf `/home`. Der clang kennt das Ziel `aarch64-linux-gnu` (für die synthetischen Gastprogramme der Proben). `pip install --user lz4==4.4.5 capstone==5.0.9 unicorn==2.1.4`, Versionen wie auf dem Mac, Import geprüft.
+Ryzen: Fedora 44, Linux 7.2, clang 22.1.8, gcc 16.2.1, GNU make 4.4.1, Python 3.14.7 (wie `tools/pydeps` auf dem Mac, cpython-314), x86_64 mit AVX2/FMA/BMI2, 174 GB frei auf `/home`. Der clang kennt das Ziel `aarch64-linux-gnu` (für die synthetischen Gastprogramme der Proben). `pip install --user lz4==4.4.5 capstone==5.0.9 unicorn==2.1.4`, Versionen wie auf dem Mac, Import geprüft.
 
 Eingaben (nach dem Kopieren auf dem Ryzen mit `sha256sum -c` gegen die Mac-Liste geprüft, alle vier **OK**; Kurz-Hash = erste 16 Hex-Stellen):
 

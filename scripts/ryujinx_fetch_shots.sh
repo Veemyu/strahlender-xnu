@@ -11,10 +11,13 @@
 # Ansichtsnamen beginnt (z. B. ref_03_innen_eintritt.png, auf dem Ryzen oder in raw/), belegt genau diese Ansicht.
 # Idempotent: schon geholte/zugeordnete Dateien bleiben unverändert. Es wird nichts auf dem Ryzen verändert oder gelöscht.
 # Exit-Codes: 0 ok, 2 Ryzen nicht erreichbar, 3 Screenshot-Ordner fehlt (F8 noch nie gedrückt), 1 sonstiger Fehler.
-# Umgebung: RZ_HOST (Standard nobara), RZ_SHOTS (Standard .config/Ryujinx/screenshots, relativ zu ~), RZ_CONFIG, RZ_CACHE.
+# Umgebung: RZ_HOST (Pflicht; Umgebung oder work/local.env), RZ_SHOTS (Standard .config/Ryujinx/screenshots, relativ zu ~), RZ_CONFIG, RZ_CACHE.
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-RZ_HOST="${RZ_HOST:-nobara}"
+if [ -z "${RZ_HOST:-}" ] && [ -f "$HERE/work/local.env" ]; then   # nur die Zeile RZ_HOST=..., Wert wird nicht ausgegeben
+  RZ_HOST=$(sed -n 's/^RZ_HOST=//p' "$HERE/work/local.env" | tail -n 1)
+fi
+[ -n "${RZ_HOST:-}" ] || { echo "FEHLER: RZ_HOST fehlt. RZ_HOST in work/local.env setzen (Datei ist gitignoriert) oder als Umgebungsvariable." >&2; exit 2; }
 RZ_SHOTS="${RZ_SHOTS:-.config/Ryujinx/screenshots}"
 RZ_CONFIG="${RZ_CONFIG:-.config/Ryujinx/Config.json}"
 RZ_CACHE="${RZ_CACHE:-.config/Ryujinx/games/0100000011d90000/cache/shader}"

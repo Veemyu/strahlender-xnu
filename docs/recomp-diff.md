@@ -204,6 +204,6 @@ python3 scripts/recomp/diff/mktests.py                    # Mac, 40 s
 bash scripts/recomp/diff/build_c.sh base && bash scripts/recomp/diff/build_c.sh c mac_o1 -O1 -ffp-contract=off
 python3 scripts/recomp/diff/difftest.py --src m1,uc,c:mac_o1=work/recomp/diff/lib_mac_o1.so --jobs 2 --out work/recomp/diff/rep_mac.json
 # Ryzen: rsync scripts/recomp/diff, c_exact und work/recomp/diff/{tests.json,lifted.c} nach ~/xnu-recomp, dann
-ssh nobara 'cd ~/xnu-recomp && bash scripts/recomp/diff/run_ryzen.sh base'     # Varianten; `neg`: Negativkontrolle
+ssh <RZ_HOST> 'cd ~/xnu-recomp && bash scripts/recomp/diff/run_ryzen.sh base'     # Varianten; `neg`: Negativkontrolle
 bash scripts/recomp/diff/exh_run.sh m1                                        # Mac; Ryzen: exh_run.sh c "-O1 -march=x86-64-v3 -ffp-contract=off" 4
 ```

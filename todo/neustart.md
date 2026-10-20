@@ -53,7 +53,7 @@ Kein sudo, kein Plattenscan. Repo-Dateien nur mit `edit`/`create`. Prozesse nur 
 | Laufzeit-Quellen | `scripts/recomp/rt-bdsp/` (`kernel.c`, `ipc.c`, `services*.c`, `loader.c`, `main.c`), NVN/Metal `scripts/recomp/rt-bdsp/nvn/`, Vulkan `…/nvn/vulkan/` |
 | iPad-Bau und Deploy | `scripts/recomp/ios/` (`deploy_ios.sh`, `gen32.sh`, `build_rt32.sh`, `app/`) |
 | QA-Harness | `scripts/recomp/qa/` (`qa_run.sh`, `scenarios/`) |
-| Ryzen-Farm | `scripts/recomp/ryzen/`, Zugang `ssh nobara`, nur `~/xnu-recomp` |
+| Ryzen-Farm | `scripts/recomp/ryzen/`, Zugang `ssh <RZ_HOST>`, nur `~/xnu-recomp` |
 | Spielstand-Werkzeuge | `scripts/ryujinx_sync_save.sh`, `scripts/ios_push_save.sh`, `scripts/recomp/rt-bdsp/install_save.sh` |
 | Unity (deprecated, nur Referenz) | `unity/DEPRECATED.md`, `docs/unity-autopilot.md`, `scripts/unity_safe.sh` |
 | Spezifikationen des Originalverhaltens | `docs/kampf-spezifikation-1…7.md`, `docs/pokepara-spezifikation.md`, `docs/evscript-spezifikation.md`, `docs/ui-spezifikation-1…3.md` |

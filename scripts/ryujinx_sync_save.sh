@@ -9,7 +9,10 @@
 # (Ryujinx vergibt Nummern je Installation) wird über SaveData.bin der Größe 979108 Byte erkannt.
 set -eu
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-RZ_HOST="${RZ_HOST:-nobara}"
+if [ -z "${RZ_HOST:-}" ] && [ -f "$HERE/work/local.env" ]; then   # nur die Zeile RZ_HOST=..., Wert wird nicht ausgegeben
+  RZ_HOST=$(sed -n 's/^RZ_HOST=//p' "$HERE/work/local.env" | tail -n 1)
+fi
+[ -n "${RZ_HOST:-}" ] || { echo "FEHLER: RZ_HOST fehlt. RZ_HOST in work/local.env setzen (Datei ist gitignoriert) oder als Umgebungsvariable." >&2; exit 2; }
 LOCAL_SAVE="${XNU_LOCAL_SAVE:-$HERE/Ryujinx/bis/user/save/0000000000000006/0}"   # Mac: nur lesen
 RZ_SAVE_ROOT="${RZ_SAVE_ROOT:-.config/Ryujinx/bis/user/save}"                    # relativ zu ~ auf dem Ryzen
 RZ_BACKUP_DIR="${RZ_BACKUP_DIR:-xnu-recomp/backup}"

@@ -21,7 +21,7 @@
 - Repo: alles gepusht, nur Veemyu als Autor, kein Co-Author-Trailer.
 - Lokal, gitignored: `work/` (Dump, Ghidra-Projekt, Exporte), `tools/`.
 - Ghidra-Projekt `work/ghidra/bdsp`: 166.095 Funktionen, Pseudocode-Export in `work/decomp/`.
-- Nicht angefasst: `~/.copilot/mcp-config.json` (außer der REA-Konfiguration früher), nobara (Ryzen).
+- Nicht angefasst: `~/.copilot/mcp-config.json` (außer der REA-Konfiguration früher), der Ryzen.
 
 ## Offene Entscheidungen
 Siehe `architektur-entscheidung.md` (Abschnitt „Offene Fragen“).

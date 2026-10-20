@@ -1,8 +1,8 @@
 # Rekompilation: Vulkan-Pfad für Linux (und später Windows) (`ap-recomp` Vulkan)
 
-Stand: 2026-10-19, Zwischenstand nach Etappe 3 (wird je Etappe fortgeschrieben). Grundlage: `docs/recomp-gate2.md` (NVN/Metal-Schicht, Backend-Abstraktion), `docs/recomp-ryzen.md` (Linux-Rechner „Ryzen“, ssh-Alias `nobara`), `docs/shader-translator.md`, `research/LASRecomp/docs/linux.md`. Auftrag: das rekompilierte BDSP soll unter Linux x86-64 mit Vulkan zeichnen (ohne Ton), Fenster über SDL3, für Tests Offscreen mit PNG-Ausgabe.
+Stand: 2026-10-19, Zwischenstand nach Etappe 3 (wird je Etappe fortgeschrieben). Grundlage: `docs/recomp-gate2.md` (NVN/Metal-Schicht, Backend-Abstraktion), `docs/recomp-ryzen.md` (Linux-Rechner „Ryzen“, ssh-Alias aus `RZ_HOST`, siehe `docs/recomp-ryzen.md`), `docs/shader-translator.md`, `research/LASRecomp/docs/linux.md`. Auftrag: das rekompilierte BDSP soll unter Linux x86-64 mit Vulkan zeichnen (ohne Ton), Fenster über SDL3, für Tests Offscreen mit PNG-Ausgabe.
 
-**Kennzeichnung:** **gemessen** = mit den Skripten unter `scripts/recomp/ryzen/vk_*.sh` auf dem Ryzen (Ryzen 5 7500F, RTX 2080 Ti, Treiber mit Vulkan 1.4.329, Fedora/Nobara 44) bzw. auf dem Mac ermittelt; Rohlogs unter `~/xnu-recomp/logs/vk-*.log` (per `vk_fetch.sh logs` nach `work/recomp/ryzen/logs/`). *vermutet* = Schluss ohne Test. Im Repo liegen weder Spielbytes noch erzeugter Code, Shader, Zwischenspeicher oder Bilder (alles unter `work/` bzw. `~/xnu-recomp/work/`).
+**Kennzeichnung:** **gemessen** = mit den Skripten unter `scripts/recomp/ryzen/vk_*.sh` auf dem Ryzen (Ryzen 5 7500F, RTX 2080 Ti, Treiber mit Vulkan 1.4.329, Fedora 44) bzw. auf dem Mac ermittelt; Rohlogs unter `~/xnu-recomp/logs/vk-*.log` (per `vk_fetch.sh logs` nach `work/recomp/ryzen/logs/`). *vermutet* = Schluss ohne Test. Im Repo liegen weder Spielbytes noch erzeugter Code, Shader, Zwischenspeicher oder Bilder (alles unter `work/` bzw. `~/xnu-recomp/work/`).
 
 ## Ergebnis in Kürze
 
