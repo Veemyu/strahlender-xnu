@@ -168,7 +168,7 @@ Du führst die Befehle auf dem Mac aus. Ein Linux-Rechner (x86-64) baut und star
 - x86-64-Prozessor mit der Stufe `x86-64-v3` (AVX2), weil der Bau `-march=x86-64-v3` verwendet.
 - Vulkan-Loader und Vulkan-Treiber. Getestete GPU: NVIDIA GeForce RTX 2080 Ti mit Vulkan 1.4.
 - `clang`.
-- Laufzeitbibliotheken (keine `-devel`-Pakete nötig): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
+- Laufzeitbibliotheken (zum Ausführen nötig; die Build-Abhängigkeiten unten sind davon getrennt): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
   `/usr/lib64/libshaderc_shared.so.1`.
 - Für die Filmwiedergabe: `libavformat.so.62`, `libavcodec.so.62`, `libavutil.so.60`. Optional: ohne sie
   baue mit `BDSP_NO_MOVIE=1`.
@@ -178,6 +178,50 @@ Du führst die Befehle auf dem Mac aus. Ein Linux-Rechner (x86-64) baut und star
 - ssh mit Schlüssel-Authentifizierung (ohne Passwortabfrage), `rsync`, `curl`.
 - Homebrew-Pakete `vulkan-headers`, `sdl3`, `shaderc` (nur Header).
 - Optional: Homebrew-Paket `ffmpeg` für die FFmpeg-Header (siehe Schritt 2 in Abschnitt 6.2).
+
+#### Build-Abhängigkeiten
+
+Die Qt-Hülle (Menüleiste und Fenster) braucht diese Pakete auf dem Linux-Rechner. Installiere sie selbst.
+Die Skripte installieren nichts.
+
+| Element | Debian/Ubuntu (apt) | Fedora (dnf) | Arch Linux (pacman) |
+|---|---|---|---|
+| Qt-6-Entwicklungsdateien (Widgets) | `qt6-base-dev` | `qt6-qtbase-devel` | `qt6-base` |
+| CMake | `cmake` | `cmake` | `cmake` |
+| pkg-config | `pkg-config` | `pkgconf` | `pkgconf` |
+| Vulkan-Header | `libvulkan-dev` | `vulkan-headers` | `vulkan-headers` |
+| SDL3-Entwicklungsdateien | `libsdl3-dev` | `SDL3-devel` | `sdl3` |
+| shaderc-Entwicklungsdateien | `libshaderc-dev` | `shaderc-devel` | `shaderc` |
+
+Installationsbefehl je Distribution:
+
+```sh
+# Debian/Ubuntu
+sudo apt install qt6-base-dev cmake pkg-config libvulkan-dev libsdl3-dev libshaderc-dev
+```
+
+```sh
+# Fedora
+sudo dnf install qt6-qtbase-devel cmake pkgconf vulkan-headers SDL3-devel shaderc-devel
+```
+
+```sh
+# Arch Linux
+sudo pacman -S qt6-base cmake pkgconf vulkan-headers sdl3 shaderc
+```
+
+Prüfstatus: Die Paketnamen sind nicht gegen die Distributionen verifiziert. Ausnahme sind die Fedora-Namen
+`vulkan-headers`, `SDL3-devel` und `shaderc-devel`. Sie stehen in der Fedora-Paketliste in
+`docs/recomp-ryzen.md` (Abschnitt 11). Die apt-Namen, die Arch-Namen sowie `cmake` und `pkgconf` sind nicht
+verifiziert. Die Verfügbarkeit hängt von deiner Version ab (zum Beispiel könnte `libsdl3-dev` auf älteren
+Ubuntu-Versionen fehlen; nicht verifiziert).
+
+Die Qt-Hülle ist ein Python-Skript (`scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.py`), das PySide6 importiert.
+PySide6 steht nicht in der Tabelle. Ob die oben genannten Qt-6-Pakete für PySide6 ausreichen, ist nicht
+verifiziert.
+
+Die Qt-Hülle läuft als X11-Client (`QT_QPA_PLATFORM=xcb`). Unter Wayland läuft sie über Xwayland. Das
+Spielfenster wird über X11 eingebettet: die Hülle startet das Spiel mit `SDL_VIDEODRIVER=x11`.
 
 ### 6.2 Bauen und starten
 

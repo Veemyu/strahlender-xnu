@@ -164,7 +164,7 @@ Set `RZ_HOST` in `work/local.env` (section 3) to the ssh alias of that machine.
 - x86-64 CPU with the `x86-64-v3` level (AVX2), because the build uses `-march=x86-64-v3`.
 - Vulkan loader and Vulkan driver. Tested GPU: NVIDIA GeForce RTX 2080 Ti with Vulkan 1.4.
 - `clang`.
-- Runtime libraries (no `-devel` packages needed): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
+- Runtime libraries (needed to run; the build dependencies below are separate): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0`,
   `/usr/lib64/libshaderc_shared.so.1`.
 - For film playback: `libavformat.so.62`, `libavcodec.so.62`, `libavutil.so.60`. Optional: without them,
   build with `BDSP_NO_MOVIE=1`.
@@ -174,6 +174,49 @@ Set `RZ_HOST` in `work/local.env` (section 3) to the ssh alias of that machine.
 - ssh with key authentication (no password prompt), `rsync`, `curl`.
 - Homebrew packages `vulkan-headers`, `sdl3`, `shaderc` (headers only).
 - Optional: Homebrew `ffmpeg` for the FFmpeg headers (see step 2 in section 6.2).
+
+#### Build dependencies
+
+The Qt host (menu bar and window) needs these packages on the Linux machine. Install them yourself. The scripts
+install nothing.
+
+| Item | Debian/Ubuntu (apt) | Fedora (dnf) | Arch Linux (pacman) |
+|---|---|---|---|
+| Qt 6 Widgets development files | `qt6-base-dev` | `qt6-qtbase-devel` | `qt6-base` |
+| CMake | `cmake` | `cmake` | `cmake` |
+| pkg-config | `pkg-config` | `pkgconf` | `pkgconf` |
+| Vulkan headers | `libvulkan-dev` | `vulkan-headers` | `vulkan-headers` |
+| SDL3 development files | `libsdl3-dev` | `SDL3-devel` | `sdl3` |
+| shaderc development files | `libshaderc-dev` | `shaderc-devel` | `shaderc` |
+
+Install command per distribution:
+
+```sh
+# Debian/Ubuntu
+sudo apt install qt6-base-dev cmake pkg-config libvulkan-dev libsdl3-dev libshaderc-dev
+```
+
+```sh
+# Fedora
+sudo dnf install qt6-qtbase-devel cmake pkgconf vulkan-headers SDL3-devel shaderc-devel
+```
+
+```sh
+# Arch Linux
+sudo pacman -S qt6-base cmake pkgconf vulkan-headers sdl3 shaderc
+```
+
+Verification status: the package names are not verified against the distributions, except the Fedora names
+`vulkan-headers`, `SDL3-devel` and `shaderc-devel`, which appear in the Fedora package list in
+`docs/recomp-ryzen.md` (section 11). The apt names, the Arch names and `cmake`/`pkgconf` are not verified.
+Package availability depends on your release (for example, `libsdl3-dev` may be missing on older Ubuntu releases;
+not verified).
+
+The Qt host is a Python script (`scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.py`) that imports PySide6.
+PySide6 is not in the table. Whether the Qt 6 packages above are enough for PySide6 is not verified.
+
+The Qt host runs as an X11 client (`QT_QPA_PLATFORM=xcb`). Under Wayland it runs through Xwayland. The
+game window is embedded through X11: the host starts the game with `SDL_VIDEODRIVER=x11`.
 
 ### 6.2 Build and run
 
