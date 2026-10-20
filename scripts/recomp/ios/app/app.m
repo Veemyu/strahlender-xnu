@@ -147,16 +147,6 @@ static void *StatsLoop(void *arg) {
         l.opaque = YES;
         l.contentsScale = UIScreen.mainScreen.scale;
         g_ios_layer = l;
-        // Lade-Hinweis, bis die Laufzeit das erste Bild zeigt (Module binden, Shader/Pipelines anlegen dauert einige Sekunden)
-        UILabel *lab = [[UILabel alloc] initWithFrame:f];
-        lab.text = @"BDSP startet …";
-        lab.textColor = [UIColor colorWithWhite:1 alpha:0.7];
-        lab.textAlignment = NSTextAlignmentCenter;
-        lab.font = [UIFont systemFontOfSize:28 weight:UIFontWeightLight];
-        lab.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        lab.userInteractionEnabled = NO;
-        [self addSubview:lab];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 12 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [lab removeFromSuperview]; });
     }
     return self;
 }
