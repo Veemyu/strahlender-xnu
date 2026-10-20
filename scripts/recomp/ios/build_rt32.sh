@@ -12,7 +12,10 @@ SRC=scripts/recomp/rt-bdsp
 NVN32=work/recomp/nvn-src32
 OBJ=${OBJ:-work/recomp/obj32}
 BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
-[ -d work/recomp/nvn-src/nvn ] || scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null
+# Kopie neu anlegen, wenn sie fehlt oder die Repo-Quellen neuer sind (sonst läuft das iPad mit veraltetem Renderer)
+if [ ! -d work/recomp/nvn-src/nvn ] || [ -n "$(find scripts/recomp/rt-bdsp/nvn/src shader_translator/translate.c shader_translator/shader.h -newer work/recomp/nvn-src/nvn/nvn.h -type f -print -quit)" ]; then
+  scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null
+fi
 if [ ! -d "$NVN32/nvn" ] || [ -n "$(find work/recomp/nvn-src scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c" -newer "$NVN32/nvn/nvn.h" -type f -print -quit)" ]; then
   python3 scripts/recomp/ios/nvn_rebase32.py work/recomp/nvn-src "$NVN32" > /dev/null
 fi

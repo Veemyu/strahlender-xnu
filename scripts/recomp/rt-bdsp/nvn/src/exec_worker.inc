@@ -23,6 +23,12 @@ static uint64_t xw_pres_enq, xw_pres_done;   // eingereihte / fertige Präsentat
 static int xw_max_frames = 2;   // so viele Bilder darf der Gast dem Worker voraus sein (BDSP_EXEC_FRAMES)
 static int xw_on = -1;
 static __thread int xw_is_worker;
+// BDSP_XW_LOG=1: Zeitstempel je Job, Warteschlangenlänge, Wartezeit des Gasts (alle 2 s eine Zeile [xw-t], Ausreißer einzeln)
+static int xw_log;
+static uint64_t xw_ts[XW_CAP];
+static uint64_t xw_now_ns(void) { return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
+static void xw_cond_wait(const char *what);
+static struct { uint64_t t0, njobs, npres, qmax, lat_max, list_max, pres_max, guest_wait_max, guest_wait_sum, nwait; } xw_st;
 
 bool renderer_on_worker(void) { return xw_is_worker; }
 
@@ -37,6 +43,8 @@ static void *xw_main(void *arg) {
         uint64_t chk = xw_chk[xw_next % XW_CAP];
         void *snap = xw_snaps[xw_next % XW_CAP];
         int isp = xw_isp[xw_next % XW_CAP];
+        uint64_t enq_ts = xw_ts[xw_next % XW_CAP], t_start = xw_log ? xw_now_ns() : 0;
+        uint64_t qlen = xw_tail - xw_next;
         xw_next++;
         pthread_mutex_unlock(&xw_lock);
         @autoreleasepool {
@@ -63,6 +71,22 @@ static void *xw_main(void *arg) {
         xw_done++;
         pthread_cond_broadcast(&xw_cond);
         pthread_mutex_unlock(&xw_lock);
+        if (xw_log) {
+            uint64_t t_end = xw_now_ns(), lat = t_start - enq_ts, dur = t_end - t_start;
+            if (!xw_st.t0) xw_st.t0 = t_end;
+            xw_st.njobs++;
+            if (qlen > xw_st.qmax) xw_st.qmax = qlen;
+            if (lat > xw_st.lat_max) xw_st.lat_max = lat;
+            if (blk && isp) { xw_st.npres++; if (dur > xw_st.pres_max) xw_st.pres_max = dur; }
+            else if (!blk && dur > xw_st.list_max) xw_st.list_max = dur;
+            if (dur > 12000000ull) printf("[xw-t] t=%.3f %s dauert %.2f ms (Latenz %.2f ms, Warteschlange %llu)\n", t_end / 1e9, blk ? (isp ? "Präsentation" : "Zustandsjob") : "Befehlsliste", dur / 1e6, lat / 1e6, (unsigned long long)qlen);
+            if (t_end - xw_st.t0 >= 2000000000ull) {
+                printf("[xw-t] t=%.3f Jobs %llu, Präsentationen %llu, Warteschlange max %llu, Latenz max %.2f ms, Liste max %.2f ms, Präsentation max %.2f ms, Gast-Wartezeit max %.2f ms Mittel %.2f ms\n", t_end / 1e9,
+                       (unsigned long long)xw_st.njobs, (unsigned long long)xw_st.npres, (unsigned long long)xw_st.qmax, xw_st.lat_max / 1e6, xw_st.list_max / 1e6, xw_st.pres_max / 1e6,
+                       xw_st.guest_wait_max / 1e6, xw_st.nwait ? xw_st.guest_wait_sum / 1e6 / xw_st.nwait : 0.0);
+                memset(&xw_st, 0, sizeof xw_st);
+            }
+        }
     }
     return NULL;
 }
@@ -72,6 +96,7 @@ static int xw_enabled(void) {
         const char *ew = getenv("BDSP_EXEC_WORKER");   // Mac: Standard an; BDSP_EXEC_WORKER=0 schaltet auf den alten synchronen Pfad
         xw_on = !(ew && !strcmp(ew, "0"));
         xw_check = xw_on && getenv("BDSP_XW_CHECK") != NULL;
+        xw_log = xw_on && getenv("BDSP_XW_LOG") != NULL;
         if (xw_on) {
             extern bool (*g_nvn_ordered)(void (*)(void *), void *);
             g_nvn_ordered = xw_ordered;
@@ -92,6 +117,7 @@ static void xw_enqueue(uint64_t h, uint64_t chk, void *snap) {
     xw_isp[xw_tail % XW_CAP] = 0;
     xw_chk[xw_tail % XW_CAP] = chk;
     xw_snaps[xw_tail % XW_CAP] = snap;
+    xw_ts[xw_tail % XW_CAP] = xw_log ? xw_now_ns() : 0;
     xw_tail++;
     pthread_cond_broadcast(&xw_cond);
     pthread_mutex_unlock(&xw_lock);
@@ -108,10 +134,17 @@ bool renderer_worker_present(void (^job)(void)) {
     xw_blocks[xw_tail % XW_CAP] = blk;
     xw_isp[xw_tail % XW_CAP] = 1;
     xw_snaps[xw_tail % XW_CAP] = NULL;
+    xw_ts[xw_tail % XW_CAP] = xw_log ? xw_now_ns() : 0;
     xw_tail++;
     xw_pres_enq++;
     pthread_cond_broadcast(&xw_cond);
-    while (xw_pres_enq - xw_pres_done > (uint64_t)xw_max_frames) pthread_cond_wait(&xw_cond, &xw_lock);
+    uint64_t w0 = xw_log ? xw_now_ns() : 0;
+    while (xw_pres_enq - xw_pres_done > (uint64_t)xw_max_frames) xw_cond_wait("Präsentations-Vorlauf");
+    if (xw_log) {
+        uint64_t w = xw_now_ns() - w0;
+        xw_st.nwait++; xw_st.guest_wait_sum += w;
+        if (w > xw_st.guest_wait_max) xw_st.guest_wait_max = w;
+    }
     pthread_mutex_unlock(&xw_lock);
     return true;
 }
@@ -130,6 +163,7 @@ bool xw_ordered(void (*fn)(void *), void *arg) {
     xw_blocks[xw_tail % XW_CAP] = blk;
     xw_isp[xw_tail % XW_CAP] = 0;
     xw_snaps[xw_tail % XW_CAP] = NULL;
+    xw_ts[xw_tail % XW_CAP] = xw_log ? xw_now_ns() : 0;
     xw_tail++;
     pthread_cond_broadcast(&xw_cond);
     pthread_mutex_unlock(&xw_lock);
@@ -149,10 +183,20 @@ static uint64_t xw_next_token(void) {   // Token des Jobs, der als nächster ein
     pthread_mutex_unlock(&xw_lock);
     return XW_TAG | t;
 }
+// Mit BDSP_XW_LOG meldet ein Wartender, der länger als 1 s hängt, den Zustand der Warteschlange (Hänger-Diagnose).
+static void xw_cond_wait(const char *what) {
+    if (!xw_log) { pthread_cond_wait(&xw_cond, &xw_lock); return; }
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 1;
+    if (pthread_cond_timedwait(&xw_cond, &xw_lock, &ts))
+        printf("[xw-t] t=%.3f HÄNGT in %s: eingereiht %llu, übernommen %llu, fertig %llu, Präsentationen %llu/%llu\n", xw_now_ns() / 1e9, what,
+               (unsigned long long)xw_tail, (unsigned long long)xw_next, (unsigned long long)xw_done, (unsigned long long)xw_pres_done, (unsigned long long)xw_pres_enq);
+}
 static void xw_wait_job(uint64_t n) {
     if (xw_is_worker) return;
     pthread_mutex_lock(&xw_lock);
-    while (xw_done < n) pthread_cond_wait(&xw_cond, &xw_lock);
+    while (xw_done < n) xw_cond_wait("xw_wait_job");
     pthread_mutex_unlock(&xw_lock);
 }
 
@@ -160,6 +204,6 @@ static void xw_wait_job(uint64_t n) {
 static void xw_drain(void) {
     if (xw_is_worker) return;
     pthread_mutex_lock(&xw_lock);
-    while (xw_done < xw_tail) pthread_cond_wait(&xw_cond, &xw_lock);
+    while (xw_done < xw_tail) xw_cond_wait("xw_drain");
     pthread_mutex_unlock(&xw_lock);
 }

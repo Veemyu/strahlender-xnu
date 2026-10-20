@@ -20,11 +20,7 @@
 static id<MTLDevice> dev;
 static id<MTLCommandQueue> queue;
 static CAMetalLayer *layer;
-#if TARGET_OS_OSX
-#define PRESENT_AT_DEFAULT 3   // phasenstarre Präsentation (Messung siehe docs/framerate.md); iPad bis zur Messung aus
-#else
-#define PRESENT_AT_DEFAULT 0
-#endif
+#define PRESENT_AT_DEFAULT 3   // phasenstarre Präsentation (Messung siehe docs/framerate.md); BDSP_PRESENT_AT=off schaltet ab
 extern volatile int g_bdsp_fps;
 static inline double g_bdsp_fps_now(void) { return g_bdsp_fps; }
 static SDL_Window *window;
