@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <TargetConditionals.h>
 #import <Metal/Metal.h>
 #include <mach/mach_time.h>
 #include <stdlib.h>
@@ -399,6 +400,7 @@ static id<MTLTexture> view_texture(NvnTexture *t, const NvnTextureView *v, bool 
     MTLTextureType type = base.textureType;
     if (render && (type == MTLTextureType2DArray || type == MTLTextureTypeCube) && nly == 1) type = MTLTextureType2D;
     if (lv0 + nlv > base.mipmapLevelCount) nlv = base.mipmapLevelCount - lv0;
+    if (nlv == 0 || nly == 0) return base;  // leerer View: Metal bricht ab, Basis verwenden
     if (pf == base.pixelFormat && lv0 == 0 && nlv == base.mipmapLevelCount && ly0 == 0 && type == base.textureType)
         return base;
     static int vlog;  // BDSP_LOG_VIEWS: texture views that change the pixel format
@@ -640,7 +642,8 @@ static int cbuf_base = 3, tex_base = 8;
     id<MTLFunction> vs, fs;
     ShaderInfo *vi, *fi;
     bool failed;
-    _Atomic bool ready;  // functions compiled (async compile: draws are skipped until then)
+    bool ready;
+    uint64_t vh, fh;     // fnv64 der MSL-Quelltexte (Namen der vorübersetzten Bibliotheken)
 }
 @end
 @implementation Prog
@@ -834,6 +837,10 @@ static int rt_kind(uint32_t f) {
 #define PROG_TAB 4096
 static struct { uint64_t key; void *prog; } prog_tab[PROG_TAB];
 
+// Compiler-Warnungen des Shader-Übersetzers (unbenutzte Funktionen und Variablen) stören nur die Konsole; sie stehen
+// vor jedem Shader-Quelltext.
+#define MSL_QUIET @"#pragma clang diagnostic ignored \"-Wunused-function\"\n#pragma clang diagnostic ignored \"-Wunused-variable\"\n#pragma clang diagnostic ignored \"-Wunused-but-set-variable\"\n#pragma clang diagnostic ignored \"-Wunused-label\"\n"
+
 // Shader warm-up cache: every translated shader's MSL is kept in cache/shaders/ (v_/f_<hash>.metal). At startup
 // they're all compiled once on a background queue, which fills Metal's own on-disk shader cache so that a later
 // first use in-game costs ~0.1 ms instead of ~40 ms. Delete cache/ to reset it.
@@ -856,36 +863,43 @@ static void shader_cache_note(const char *vs, const char *fs) {
     }
 }
 
-void shader_cache_warm(void) {
-    static int started;
-    if (started++ || getenv("BDSP_NO_SHADER_WARM")) return;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        DIR *d = opendir("work/recomp/cache/shaders");
-        if (!d) return;
-        MTLCompileOptions *vopts = [MTLCompileOptions new];
-        vopts.preserveInvariance = YES;
-        double t0 = now_ms();
-        int n = 0;
-        struct dirent *e;
-        while ((e = readdir(d))) {
-            if (e->d_name[0] != 'v' && e->d_name[0] != 'f') continue;
-            char path[300];
-            snprintf(path, sizeof path, "work/recomp/cache/shaders/%s", e->d_name);
-            NSString *src = [NSString stringWithContentsOfFile:@(path) encoding:NSUTF8StringEncoding error:nil];
-            if (!src) continue;
-            @autoreleasepool { (void)[dev newLibraryWithSource:src options:e->d_name[0] == 'v' ? vopts : nil error:nil]; }
-            n++;
-        }
-        closedir(d);
-        LOG("[shader] warm-up: %d cached shaders compiled in %.0f ms\n", n, now_ms() - t0);
-    });
+static NSMutableDictionary *prebuilt_libs;  // Pfad -> MTLLibrary (Gate und Draws teilen sich die Bibliotheken)
+static NSString *prebuilt_dir_path;
+static bool prebuilt_dir_looked;
+
+static NSString *prebuilt_dir(void) {
+    if (!prebuilt_dir_looked) {
+        prebuilt_dir_looked = true;
+        prebuilt_libs = [NSMutableDictionary new];
+        NSString *b = [[NSBundle mainBundle].resourcePath stringByAppendingPathComponent:@"shaders-bin"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:b]) prebuilt_dir_path = b;
+        else if ([[NSFileManager defaultManager] fileExistsAtPath:@"work/recomp/cache/shaders-bin-macosx"]) prebuilt_dir_path = @"work/recomp/cache/shaders-bin-macosx";
+        if (getenv("BDSP_SHADER_SALT") || getenv("BDSP_NO_PREBUILT")) prebuilt_dir_path = nil;
+        LOG("[shader] vorübersetzte Bibliotheken: %s\n", prebuilt_dir_path ? prebuilt_dir_path.UTF8String : "keine gefunden");
+    }
+    return prebuilt_dir_path;
 }
 
-static bool sync_shaders(void) {  // BDSP_SYNC_SHADERS: compile on first use, blocking (deterministic tests)
-    static int v = -1;
-    if (v < 0) v = getenv("BDSP_SYNC_SHADERS") != NULL;
-    return v;
+// Vorübersetzte Shader-Bibliothek (scripts/recomp/shader_bin.sh, Ordner shaders-bin im App-Bundle) per Hash des
+// MSL-Quelltexts. Fehlt die Datei, liefert sie nil.
+static id<MTLLibrary> prebuilt_library_hash(uint64_t h, char kind) {
+    NSString *dir = prebuilt_dir();
+    if (!dir) return nil;
+    NSString *path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%c_%016llx.metallib", kind, (unsigned long long)h]];
+    @synchronized(prebuilt_libs) { id l = prebuilt_libs[path]; if (l) return l; }
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
+    NSError *err = nil;
+    id<MTLLibrary> lib = [dev newLibraryWithURL:[NSURL fileURLWithPath:path] error:&err];
+    if (lib) @synchronized(prebuilt_libs) { prebuilt_libs[path] = lib; }
+    return lib;
 }
+
+static id<MTLLibrary> prebuilt_library(const char *msl, char kind) {
+    return prebuilt_library_hash(fnv64(msl), kind);
+}
+// Compiler-Warnungen des Shader-Übersetzers (unbenutzte Funktionen und Variablen aus den übersetzten Shadern) stören
+// nur die Konsole; sie stehen vor jedem Shader-Quelltext.
+#define MSL_QUIET @"#pragma clang diagnostic ignored \"-Wunused-function\"\n#pragma clang diagnostic ignored \"-Wunused-variable\"\n#pragma clang diagnostic ignored \"-Wunused-but-set-variable\"\n#pragma clang diagnostic ignored \"-Wunused-label\"\n"
 
 static void compile_program(Prog *pr) {
     NSError *err = nil;
@@ -895,9 +909,11 @@ static void compile_program(Prog *pr) {
     double t0 = now_ms();
     // BDSP_SHADER_SALT=<text>: tag sources so Metal's disk cache misses (measure cold first-use compiles)
     NSString *salt = getenv("BDSP_SHADER_SALT") ? [NSString stringWithFormat:@"\n// %s\n", getenv("BDSP_SHADER_SALT")] : @"";
-    id<MTLLibrary> vl = [dev newLibraryWithSource:[@(pr->vi->msl) stringByAppendingString:salt] options:vopts error:&err];
+    id<MTLLibrary> vl = prebuilt_library(pr->vi->msl, 'v');
+    if (!vl) vl = [dev newLibraryWithSource:[MSL_QUIET stringByAppendingString:[@(pr->vi->msl) stringByAppendingString:salt]] options:vopts error:&err];
     if (!vl) { LOG("[shader] VS compile failed: %s\n%s\n", err.localizedDescription.UTF8String, pr->vi->msl); pr->failed = true; return; }
-    id<MTLLibrary> fl = [dev newLibraryWithSource:[@(pr->fi->msl) stringByAppendingString:salt] options:nil error:&err];
+    id<MTLLibrary> fl = prebuilt_library(pr->fi->msl, 'f');
+    if (!fl) fl = [dev newLibraryWithSource:[MSL_QUIET stringByAppendingString:[@(pr->fi->msl) stringByAppendingString:salt]] options:nil error:&err];
     if (!fl) { LOG("[shader] FS compile failed: %s\n%s\n", err.localizedDescription.UTF8String, pr->fi->msl); pr->failed = true; return; }
     pr->vs = [vl newFunctionWithName:@"main0"];
     pr->fs = [fl newFunctionWithName:@"main0"];
@@ -907,8 +923,9 @@ static void compile_program(Prog *pr) {
     pr->ready = true;
 }
 
+static void startup_gate(void);
 static Prog *get_program(NvnProgram *p, ShaderKey *vkey, ShaderKey *fkey) {
-    shader_cache_warm();
+    startup_gate();
     if (!(p->stage_mask & 1) || !(p->stage_mask & 2)) return nil;
     // fast path: hash of the code addresses and keys
     uint64_t h = 0xcbf29ce484222325ull;
@@ -976,16 +993,10 @@ static Prog *get_program(NvnProgram *p, ShaderKey *vkey, ShaderKey *fkey) {
         f = fopen(path, "w"); fputs(pr->fi->msl, f); fclose(f);
     }
     shader_cache_note(pr->vi->msl, pr->fi->msl);
-    if (sync_shaders()) {
-        compile_program(pr);
-        return pr->failed ? nil : pr;
-    }
-    // First-time compiles take ~40 ms each on Metal: build off the render thread; draws using this program are
-    // skipped until it's ready (the object appears a few frames later instead of the game stalling).
-    static dispatch_queue_t q;
-    if (!q) q = dispatch_queue_create("larecomp.shaders", DISPATCH_QUEUE_CONCURRENT);
-    dispatch_async(q, ^{ compile_program(pr); });
-    return pr;
+    pr->vh = fnv64(pr->vi->msl);
+    pr->fh = fnv64(pr->fi->msl);
+    compile_program(pr);
+    return pr->failed ? nil : pr;
 }
 
 static id<MTLSamplerState> sampler_for(NvnSamplerDesc *d) {
@@ -1073,7 +1084,7 @@ static id<MTLTexture> apply_swizzle(id<MTLTexture> tex, NvnTexture *t, const Nvn
     if (renderer_format_alpha_one(t->format))
         for (int i = 0; i < 4; i++) if (c[i] == MTLTextureSwizzleAlpha) c[i] = MTLTextureSwizzleOne;
     if (c[0] == 2 && c[1] == 3 && c[2] == 4 && c[3] == (renderer_format_alpha_one(t->format) ? 1 : 5)) return tex;
-    if (tex.sampleCount > 1 || renderer_format_is_depth(t->format)) return tex;
+    if (tex.sampleCount > 1 || renderer_format_is_depth(t->format) || tex.mipmapLevelCount == 0) return tex;
     uint32_t swz = c[0] | c[1] << 8 | c[2] << 16 | (uint32_t)c[3] << 24;
     MTLTextureSwizzleChannels chans = MTLTextureSwizzleChannelsMake(c[0], c[1], c[2], c[3]);
     id<MTLTexture> view = view_cached(tex, 0x5000000000000000ull | swz, ^{
@@ -1090,6 +1101,7 @@ static id<MTLTexture> sampled_texture(NvnTexture *t, const NvnTextureView *v, bo
     // uploads (if the CPU-side contents changed) go into their own command buffer, committed before
     // the current one so they land first
     id<MTLTexture> tex = view_texture(t, v, has_view, false, nil);
+    if (tex.mipmapLevelCount == 0) return dummy_texture(want_type);  // ungültige Textur (Ziel/Format 0), kein Metal-View
     tex = apply_swizzle(tex, t, v, has_view);
     MTLTextureType want = mtl_type_for(want_type);
     if (tex.textureType != want && tex.textureType != MTLTextureType2DMultisample) {
@@ -1333,6 +1345,24 @@ static void bind_cbufs(int stage, ShaderInfo *si) {
                 e[0] = (uint32_t)st.sbuf[stage][i].addr;
                 e[1] = (uint32_t)(st.sbuf[stage][i].addr >> 32);
                 e[2] = (uint32_t)st.sbuf[stage][i].size;
+                if (ENV("BDSP_LOG_SBUF") && st.sbuf[stage][i].addr && st.sbuf[stage][i].size >= 16) {  // (debug) storage buffer contents per frame, once per address
+                    extern uint64_t renderer_present_count(void);
+                    static uint64_t seen_frame[4096], seen_addr[4096];
+                    static FILE *lf;
+                    uint64_t f = renderer_present_count(), lo = (uint64_t)atol(ENV("BDSP_LOG_SBUF")), a = st.sbuf[stage][i].addr;
+                    unsigned h = (unsigned)((a >> 4) * 2654435761u) & 4095;
+                    if (f >= lo && f < lo + 240 && !(seen_addr[h] == a && seen_frame[h] == f)) {
+                        seen_addr[h] = a; seen_frame[h] = f;
+                        if (!lf) lf = fopen(ENV("BDSP_LOG_SBUF_FILE") ? ENV("BDSP_LOG_SBUF_FILE") : "sbuf.log", "w");
+                        if (lf) {
+                            uint64_t sz = st.sbuf[stage][i].size, n = sz > 4096 ? 4096 : sz;
+                            fprintf(lf, "S %llu %llu %llx %d %llu", (unsigned long long)f, (unsigned long long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000), (unsigned long long)a, stage * 16 + i, (unsigned long long)sz);
+                            for (uint64_t j = 0; j + 4 <= n; j += 4) fprintf(lf, " %08x", *(const uint32_t *)((const uint8_t *)(uintptr_t)a + j));
+                            fputc('\n', lf);
+                            fflush(lf);
+                        }
+                    }
+                }
             }
             uint64_t size = si->cbuf_size[0] > sizeof drv ? sizeof drv : (si->cbuf_size[0] ? si->cbuf_size[0] : 256);
             uint64_t off = ring_alloc(drv, size);
@@ -1363,6 +1393,24 @@ static void bind_cbufs(int stage, ShaderInfo *si) {
         if (size > r.size && r.size) size = r.size;
         if (size < 16) size = 16;
         uint64_t off = ring_alloc((void *)(uintptr_t)r.addr, size);  // snapshot, as later CPU writes must not leak in
+        if (ENV("BDSP_LOG_UBUF")) {  // (debug) per frame once per guest address: time-like values show up as a steady rise
+            extern uint64_t renderer_present_count(void);
+            static uint64_t seen_frame[4096], seen_addr[4096];
+            static FILE *lf;
+            uint64_t f = renderer_present_count(), lo = (uint64_t)atol(ENV("BDSP_LOG_UBUF"));
+            unsigned h = (unsigned)((r.addr >> 4) * 2654435761u) & 4095;
+            if (f >= lo && f < lo + 240 && !(seen_addr[h] == r.addr && seen_frame[h] == f)) {
+                seen_addr[h] = r.addr; seen_frame[h] = f;
+                if (!lf) lf = fopen(ENV("BDSP_LOG_UBUF_FILE") ? ENV("BDSP_LOG_UBUF_FILE") : "ubuf.log", "w");
+                if (lf) {
+                    uint64_t n = size > 256 ? 256 : size;
+                    fprintf(lf, "F %llu %llu %llx %d %llu", (unsigned long long)f, (unsigned long long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000), (unsigned long long)r.addr, k, (unsigned long long)size);
+                    for (uint64_t i = 0; i + 4 <= n; i += 4) fprintf(lf, " %08x", *(const uint32_t *)((const uint8_t *)(uintptr_t)r.addr + i));
+                    fputc('\n', lf);
+                    fflush(lf);
+                }
+            }
+        }
         if (stage == 0) [enc setVertexBuffer:ring offset:off atIndex:k];
         else [enc setFragmentBuffer:ring offset:off atIndex:k];
     }
@@ -1435,6 +1483,24 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
                 if (i < 18) { u[0] = (uint32_t)st.ubuf[5][i].addr; u[1] = (uint32_t)(st.ubuf[5][i].addr >> 32); u[2] = (uint32_t)st.ubuf[5][i].size; }
                 uint32_t *e = &drv[(0x310 + 16 * i) / 4];
                 e[0] = (uint32_t)st.sbuf[5][i].addr; e[1] = (uint32_t)(st.sbuf[5][i].addr >> 32); e[2] = (uint32_t)st.sbuf[5][i].size;
+                if (ENV("BDSP_LOG_SBUF") && st.sbuf[5][i].addr && st.sbuf[5][i].size >= 16) {  // (debug) compute storage buffers per frame, once per address (before the dispatch runs)
+                    extern uint64_t renderer_present_count(void);
+                    static uint64_t seen_frame[4096], seen_addr[4096];
+                    static FILE *lf;
+                    uint64_t f = renderer_present_count(), lo = (uint64_t)atol(ENV("BDSP_LOG_SBUF")), a = st.sbuf[5][i].addr;
+                    unsigned h = (unsigned)((a >> 4) * 2654435761u) & 4095;
+                    if (f >= lo && f < lo + 240 && !(seen_addr[h] == a && seen_frame[h] == f)) {
+                        seen_addr[h] = a; seen_frame[h] = f;
+                        if (!lf) lf = fopen(ENV("BDSP_LOG_SBUF_FILE") ? ENV("BDSP_LOG_SBUF_FILE") : "sbuf.log", "a");
+                        if (lf) {
+                            uint64_t sz = st.sbuf[5][i].size, n = sz > 4096 ? 4096 : sz;
+                            fprintf(lf, "S %llu %llu %llx %d %llu", (unsigned long long)f, (unsigned long long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000), (unsigned long long)a, 100 + i, (unsigned long long)sz);
+                            for (uint64_t j = 0; j + 4 <= n; j += 4) fprintf(lf, " %08x", *(const uint32_t *)((const uint8_t *)(uintptr_t)a + j));
+                            fputc('\n', lf);
+                            fflush(lf);
+                        }
+                    }
+                }
             }
             off = ring_alloc(drv, sizeof drv);
         } else if (k == 1) {
@@ -1618,7 +1684,6 @@ static void debug_draw(Prog *pr, CmdRec *r, bool indexed) {
 // Pipelines are keyed by their shader functions' addresses: a reboot frees the old functions, so keys carry the
 // boot generation (a build still in flight can't land on a new function at a reused address).
 static unsigned g_boot_gen;
-static NSMutableDictionary *g_ready_pipes;
 
 static uint64_t hmix(uint64_t h, const void *p, size_t n) {
     const uint8_t *b = p;
@@ -1648,6 +1713,224 @@ static uint64_t pipeline_state_hash(Prog *pr) {
     h = hmix(h, &st.color_state[0], sizeof st.color_state[0]);
     h = hmix(h, &st.ms[0xC], 1);
     return h ? h : 1;
+}
+
+// Pipeline als Daten (keine Zeiger, kein Draw-Zustand). Sie ist zugleich der Cache-Schlüssel und der Eintrag in
+// pipelines.bin; beim Start baut das Gate alle Einträge der Datei vorab (startup_gate).
+typedef struct {
+    uint64_t vh, fh;  // fnv64 der MSL-Quelltexte (Namen der vorübersetzten Bibliotheken)
+    uint32_t depth_fmt, stencil_fmt, samples, a2c, ncolor;
+    struct { uint32_t present, fmt, wmask, blend, sf, df, sa, da, ro, ao; } ca[8];
+    struct { uint32_t present, fmt, off, buf; } attr[32];
+    struct { uint32_t present, stride, step, rate; } lay[32];
+} PipeRec;
+
+typedef struct { char magic[4]; uint32_t ver, recsize; } PipeHdr;
+#define PIPE_MAGIC "BDPL"
+#define PIPE_VER 1
+
+static void rec_from_state(const Prog *pr, uint32_t used_streams, PipeRec *r) {
+    memset(r, 0, sizeof *r);
+    r->vh = pr->vh;
+    r->fh = pr->fh;
+    r->ncolor = st.rt.ncolor < 8 ? st.rt.ncolor : 8;
+    for (int i = 0; i < r->ncolor; i++) {
+        if (!st.rt.color[i]) continue;
+        uint32_t m = (st.channel_mask >> (i * 4)) & 0xF;
+        r->ca[i].present = 1;
+        r->ca[i].fmt = (uint32_t)view_texture(st.rt.color[i], &st.rt.cview[i], st.rt.has_cview[i], true, nil).pixelFormat;
+        r->ca[i].wmask = (m & 1 ? MTLColorWriteMaskRed : 0) | (m & 2 ? MTLColorWriteMaskGreen : 0) |
+                         (m & 4 ? MTLColorWriteMaskBlue : 0) | (m & 8 ? MTLColorWriteMaskAlpha : 0);
+        if (((st.color_state[0] >> i) & 1) && !rt_kind(st.rt.color[i]->format)) {
+            uint8_t *b = st.blend[i];
+            r->ca[i].blend = 1;
+            r->ca[i].sf = blend_factor(b[1]);
+            r->ca[i].df = blend_factor(b[2]);
+            r->ca[i].sa = blend_factor(b[3]);
+            r->ca[i].da = blend_factor(b[4]);
+            r->ca[i].ro = blend_op(b[5]);
+            r->ca[i].ao = blend_op(b[6]);
+        }
+    }
+    if (st.rt.depth) {
+        uint32_t pf = (uint32_t)renderer_pixel_format(st.rt.depth->format);
+        if (renderer_format_is_depth(st.rt.depth->format) && st.rt.depth->format != 0x31) r->depth_fmt = pf;
+        if (renderer_format_has_stencil(st.rt.depth->format)) r->stencil_fmt = pf;
+    }
+    for (int i = 0; i < r->ncolor; i++)
+        if (st.rt.color[i] && st.rt.color[i]->samples > 1) r->samples = st.rt.color[i]->samples;
+    r->a2c = st.ms[0xC] != 0;
+    for (int i = 0; i < 32; i++) {
+        if (!(pr->vi->attr_mask & (1u << i))) continue;
+        uint32_t a = i < st.nattrib ? st.attrib[i] : 0x2E;
+        uint32_t fmt = a & 0xFF, stream = (a >> 8) & 0x1F, off = a >> 13;
+        if (i >= st.nattrib || fmt == 0) {  // unbound attribute: zeros from a constant stream
+            r->attr[i] = (typeof(r->attr[0])){1, MTLVertexFormatFloat4, 0, 30};
+            r->lay[30] = (typeof(r->lay[0])){1, 16, MTLVertexStepFunctionConstant, 0};
+            continue;
+        }
+        r->attr[i] = (typeof(r->attr[0])){1, vertex_format(fmt), off, 18 + stream};
+    }
+    for (int s = 0; s < 12; s++) {
+        if (!(used_streams & (1u << s))) continue;
+        uint32_t stride = s < st.nstream ? st.stream[s][0] : 0, div = s < st.nstream ? st.stream[s][1] : 0;
+        if (stride == 0) r->lay[18 + s] = (typeof(r->lay[0])){1, 16, MTLVertexStepFunctionConstant, 0};
+        else {
+            r->lay[18 + s] = (typeof(r->lay[0])){1, (stride + 3) & ~3u, MTLVertexStepFunctionPerVertex, 1};
+            if (div) { r->lay[18 + s].step = MTLVertexStepFunctionPerInstance; r->lay[18 + s].rate = div; }
+        }
+    }
+}
+
+static MTLRenderPipelineDescriptor *pd_from_rec(const PipeRec *r, id<MTLFunction> vs, id<MTLFunction> fs) {
+    MTLRenderPipelineDescriptor *pd = [MTLRenderPipelineDescriptor new];
+    pd.vertexFunction = vs;
+    pd.fragmentFunction = fs;
+    for (int i = 0; i < r->ncolor; i++) {
+        if (!r->ca[i].present) continue;
+        MTLRenderPipelineColorAttachmentDescriptor *ca = pd.colorAttachments[i];
+        ca.pixelFormat = (MTLPixelFormat)r->ca[i].fmt;
+        ca.writeMask = r->ca[i].wmask;
+        if (r->ca[i].blend) {
+            ca.blendingEnabled = YES;
+            ca.sourceRGBBlendFactor = (MTLBlendFactor)r->ca[i].sf;
+            ca.destinationRGBBlendFactor = (MTLBlendFactor)r->ca[i].df;
+            ca.sourceAlphaBlendFactor = (MTLBlendFactor)r->ca[i].sa;
+            ca.destinationAlphaBlendFactor = (MTLBlendFactor)r->ca[i].da;
+            ca.rgbBlendOperation = (MTLBlendOperation)r->ca[i].ro;
+            ca.alphaBlendOperation = (MTLBlendOperation)r->ca[i].ao;
+        }
+    }
+    if (r->depth_fmt) pd.depthAttachmentPixelFormat = (MTLPixelFormat)r->depth_fmt;
+    if (r->stencil_fmt) pd.stencilAttachmentPixelFormat = (MTLPixelFormat)r->stencil_fmt;
+    if (r->samples > 1) pd.rasterSampleCount = r->samples;
+    pd.alphaToCoverageEnabled = r->a2c;
+    MTLVertexDescriptor *vd = [MTLVertexDescriptor vertexDescriptor];
+    for (int i = 0; i < 32; i++) {
+        if (!r->attr[i].present) continue;
+        vd.attributes[i].format = (MTLVertexFormat)r->attr[i].fmt;
+        vd.attributes[i].offset = r->attr[i].off;
+        vd.attributes[i].bufferIndex = r->attr[i].buf;
+    }
+    for (int s = 0; s < 32; s++) {
+        if (!r->lay[s].present) continue;
+        vd.layouts[s].stride = r->lay[s].stride;
+        vd.layouts[s].stepFunction = (MTLVertexStepFunction)r->lay[s].step;
+        vd.layouts[s].stepRate = r->lay[s].rate;
+    }
+    pd.vertexDescriptor = vd;
+    return pd;
+}
+
+static id<MTLRenderPipelineState> build_pipeline(const PipeRec *r, id<MTLFunction> vs, id<MTLFunction> fs) {
+    NSError *err = nil;
+    id<MTLRenderPipelineState> p = TIMED_COMPILE([dev newRenderPipelineStateWithDescriptor:pd_from_rec(r, vs, fs) error:&err]);
+    if (!p) { static int n; if (n++ < 10) LOG("[metal] pipeline failed: %s\n", err.localizedDescription.UTF8String); }
+    return p;
+}
+
+static NSString *pipe_key(const PipeRec *r) { return [[NSData dataWithBytes:r length:sizeof *r] base64EncodedStringWithOptions:0]; }
+
+// Alle Pipeline-Schlüssel, die bekannt sind (aus den Manifesten geladen oder schon angehängt).
+static NSMutableSet *known_recs;
+
+static NSString *pipe_manifest_path(void) {
+    NSString *d = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject];
+    d = [d stringByAppendingPathComponent:@"BDSP"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];
+    return [d stringByAppendingPathComponent:@"pipelines.bin"];
+}
+
+// Neue Pipeline aus dem Draw: einmalig an die Caches-Datei anhängen (das ausgelieferte pipelines.bin im Bundle wird
+// nur von Hand aus dieser Datei erzeugt).
+static void pipe_record_add(const PipeRec *r) {
+    NSString *k = pipe_key(r);
+    if ([known_recs containsObject:k]) return;
+    [known_recs addObject:k];
+    FILE *f = fopen(pipe_manifest_path().fileSystemRepresentation, "ab");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    if (ftell(f) == 0) {
+        PipeHdr h = {{'B', 'D', 'P', 'L'}, PIPE_VER, sizeof(PipeRec)};
+        fwrite(&h, sizeof h, 1, f);
+    }
+    fwrite(r, sizeof *r, 1, f);
+    fclose(f);
+}
+
+static void load_manifest(NSString *path, NSMutableArray *out) {
+    FILE *f = fopen(path.fileSystemRepresentation, "rb");
+    if (!f) return;
+    PipeHdr h;
+    if (fread(&h, sizeof h, 1, f) == 1 && !memcmp(h.magic, PIPE_MAGIC, 4) && h.ver == PIPE_VER && h.recsize == sizeof(PipeRec)) {
+        PipeRec r;
+        while (fread(&r, sizeof r, 1, f) == 1) {
+            NSString *k = pipe_key(&r);
+            if ([known_recs containsObject:k]) continue;
+            [known_recs addObject:k];
+            [out addObject:[NSData dataWithBytes:&r length:sizeof r]];
+        }
+    }
+    fclose(f);
+}
+
+// Start-Gate: vor dem ersten Gast-Draw werden alle Pipelines aus pipelines.bin gebaut. Solange steht der Gast still;
+// ein Präsentationsthread zeigt den Zähler (renderer_gate_present, metal.m) fest mit 60 Hz.
+static uint64_t gate_done, gate_total;
+static bool gate_finished;
+void renderer_gate_present(uint64_t done, uint64_t total);  // metal.m
+
+static void *gate_presenter(void *arg) {
+    (void)arg;
+    double next = now_ms();
+    while (!__atomic_load_n(&gate_finished, __ATOMIC_ACQUIRE)) {
+        renderer_gate_present(__atomic_load_n(&gate_done, __ATOMIC_RELAXED), gate_total);
+        next += 1000.0 / 60.0;
+        double wait = next - now_ms();
+        if (wait > 0) usleep((useconds_t)(wait * 1000.0));
+        else next = now_ms();
+    }
+    return NULL;
+}
+
+static void startup_gate(void) {
+    static bool started;
+    if (started) return;
+    started = true;
+    known_recs = [NSMutableSet new];
+    if (getenv("BDSP_NO_GATE")) return;
+    NSMutableArray *recs = [NSMutableArray new];
+    load_manifest([[NSBundle mainBundle].resourcePath stringByAppendingPathComponent:@"pipelines.bin"], recs);
+    load_manifest(pipe_manifest_path(), recs);
+    NSMutableArray *gated = [NSMutableArray new];  // nur Einträge, deren Bibliotheken vorliegen
+    for (NSData *d in recs) {
+        const PipeRec *r = d.bytes;
+        NSString *dir = prebuilt_dir();
+        if (!dir) break;
+        NSFileManager *fm = [NSFileManager defaultManager];
+        if ([fm fileExistsAtPath:[dir stringByAppendingPathComponent:[NSString stringWithFormat:@"v_%016llx.metallib", (unsigned long long)r->vh]]] &&
+            [fm fileExistsAtPath:[dir stringByAppendingPathComponent:[NSString stringWithFormat:@"f_%016llx.metallib", (unsigned long long)r->fh]]])
+            [gated addObject:d];
+    }
+    if (!gated.count) return;
+    gate_total = gated.count;
+    gate_done = 0;
+    gate_finished = false;
+    double t0 = now_ms();
+    pthread_t th;
+    pthread_create(&th, NULL, gate_presenter, NULL);
+    dispatch_apply(gated.count, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^(size_t i) {
+        const PipeRec *r = [gated[i] bytes];
+        id<MTLLibrary> vl = prebuilt_library_hash(r->vh, 'v');
+        id<MTLLibrary> fl = prebuilt_library_hash(r->fh, 'f');
+        id<MTLRenderPipelineState> p = nil;
+        if (vl && fl) p = build_pipeline(r, [vl newFunctionWithName:@"main0"], [fl newFunctionWithName:@"main0"]);
+        @synchronized(cache) { cache[pipe_key(r)] = p ? (id)p : (id)[NSNull null]; }
+        __atomic_fetch_add(&gate_done, 1, __ATOMIC_RELAXED);
+    });
+    __atomic_store_n(&gate_finished, true, __ATOMIC_RELEASE);
+    pthread_join(th, NULL);
+    LOG("[gate] %llu Pipelines in %.0f ms vorgebaut\n", (unsigned long long)gate_total, now_ms() - t0);
 }
 
 static void draw(CmdRec *r, bool indexed) {
@@ -1760,115 +2043,19 @@ static void draw(CmdRec *r, bool indexed) {
     while (pipe_tab[pslot].key && pipe_tab[pslot].key != phash) pslot = (pslot + 1) & (PIPE_TAB - 1);
     id<MTLRenderPipelineState> pipe = pipe_tab[pslot].key ? (__bridge id<MTLRenderPipelineState>)pipe_tab[pslot].pipe : nil;
     if (!pipe) {
-    MTLRenderPipelineDescriptor *pd = [MTLRenderPipelineDescriptor new];
-    pd.vertexFunction = pr->vs;
-    pd.fragmentFunction = pr->fs;
-    attachment_formats(pd);
-    MTLVertexDescriptor *vd = [MTLVertexDescriptor vertexDescriptor];
-    for (int i = 0; i < 32; i++) {
-        if (!(pr->vi->attr_mask & (1u << i))) continue;
-        uint32_t a = i < st.nattrib ? st.attrib[i] : 0x2E;
-        uint32_t fmt = a & 0xFF, stream = (a >> 8) & 0x1F, off = a >> 13;
-        if (i >= st.nattrib || fmt == 0) {
-            // unbound attribute: read zeros from a constant stream
-            vd.attributes[i].format = MTLVertexFormatFloat4;
-            vd.attributes[i].offset = 0;
-            vd.attributes[i].bufferIndex = 30;
-            vd.layouts[30].stepFunction = MTLVertexStepFunctionConstant;
-            vd.layouts[30].stepRate = 0;
-            vd.layouts[30].stride = 16;
-            used_streams |= 1u << 31;
-            continue;
+        PipeRec rec;
+        rec_from_state(pr, used_streams, &rec);
+        NSString *key = pipe_key(&rec);
+        id pobj = cache[key];
+        if (!pobj) {
+            pobj = build_pipeline(&rec, pr->vs, pr->fs) ?: (id)[NSNull null];
+            @synchronized(cache) { cache[key] = pobj; }
+            pipe_record_add(&rec);
         }
-        vd.attributes[i].format = vertex_format(fmt);
-        vd.attributes[i].offset = off;
-        vd.attributes[i].bufferIndex = 18 + stream;
-        used_streams |= 1u << stream;
-        (void)is_int_format;
-    }
-    for (int s = 0; s < 12; s++) {
-        if (!(used_streams & (1u << s))) continue;
-        uint32_t stride = s < st.nstream ? st.stream[s][0] : 0, div = s < st.nstream ? st.stream[s][1] : 0;
-        if (stride == 0) { vd.layouts[18 + s].stepFunction = MTLVertexStepFunctionConstant; vd.layouts[18 + s].stepRate = 0; vd.layouts[18 + s].stride = 16; }
-        else {
-            vd.layouts[18 + s].stride = (stride + 3) & ~3u;
-            if (div) { vd.layouts[18 + s].stepFunction = MTLVertexStepFunctionPerInstance; vd.layouts[18 + s].stepRate = div; }
-        }
-    }
-    pd.vertexDescriptor = vd;
-    for (int i = 0; i < st.rt.ncolor && i < 8; i++) {
-        if (!st.rt.color[i]) continue;
-        MTLRenderPipelineColorAttachmentDescriptor *ca = pd.colorAttachments[i];
-        uint32_t m = (st.channel_mask >> (i * 4)) & 0xF;
-        ca.writeMask = (m & 1 ? MTLColorWriteMaskRed : 0) | (m & 2 ? MTLColorWriteMaskGreen : 0) |
-                       (m & 4 ? MTLColorWriteMaskBlue : 0) | (m & 8 ? MTLColorWriteMaskAlpha : 0);
-        bool blend_on = (st.color_state[0] >> i) & 1;
-        if (blend_on && !rt_kind(st.rt.color[i]->format)) {
-            uint8_t *b = st.blend[i];
-            ca.blendingEnabled = YES;
-            ca.sourceRGBBlendFactor = blend_factor(b[1]);
-            ca.destinationRGBBlendFactor = blend_factor(b[2]);
-            ca.sourceAlphaBlendFactor = blend_factor(b[3]);
-            ca.destinationAlphaBlendFactor = blend_factor(b[4]);
-            ca.rgbBlendOperation = blend_op(b[5]);
-            ca.alphaBlendOperation = blend_op(b[6]);
-        }
-    }
-    pd.alphaToCoverageEnabled = st.ms[0xC] != 0;
-    NSMutableString *pk = [NSMutableString stringWithFormat:@"%u %p %p %lu %lu", g_boot_gen, pr->vs, pr->fs,
-                           (unsigned long)pd.depthAttachmentPixelFormat, (unsigned long)pd.stencilAttachmentPixelFormat];
-    for (int i = 0; i < 8; i++) {
-        MTLRenderPipelineColorAttachmentDescriptor *ca = pd.colorAttachments[i];
-        [pk appendFormat:@" %lu/%lu/%d/%lu/%lu/%lu/%lu/%lu/%lu", (unsigned long)ca.pixelFormat, (unsigned long)ca.writeMask,
-                         ca.blendingEnabled, (unsigned long)ca.sourceRGBBlendFactor, (unsigned long)ca.destinationRGBBlendFactor,
-                         (unsigned long)ca.sourceAlphaBlendFactor, (unsigned long)ca.destinationAlphaBlendFactor,
-                         (unsigned long)ca.rgbBlendOperation, (unsigned long)ca.alphaBlendOperation];
-    }
-    for (int i = 0; i < 32; i++)
-        if (pr->vi->attr_mask & (1u << i))
-            [pk appendFormat:@" a%d:%lu/%lu/%lu", i, (unsigned long)vd.attributes[i].format, (unsigned long)vd.attributes[i].offset, (unsigned long)vd.attributes[i].bufferIndex];
-    for (int s = 18; s < 31; s++)
-        [pk appendFormat:@" l%lu/%lu/%lu", (unsigned long)vd.layouts[s].stride, (unsigned long)vd.layouts[s].stepFunction, (unsigned long)vd.layouts[s].stepRate];
-    [pk appendFormat:@" s%lu a%d", (unsigned long)pd.rasterSampleCount, pd.alphaToCoverageEnabled];
-    id pobj = cache[pk];
-    NSMutableDictionary *ready_pipes = g_ready_pipes;  // async pipeline builds finished on Metal's threads
-    static id pending;
-    if (!ready_pipes) { ready_pipes = g_ready_pipes = [NSMutableDictionary new]; pending = [NSObject new]; }
-    if (pobj == pending) {
-        @synchronized(ready_pipes) {
-            id done = ready_pipes[pk];
-            if (done) { [ready_pipes removeObjectForKey:pk]; cache[pk] = done; pobj = done; }
-        }
-        if (pobj == pending) { stat_skipped++; return; }
-    }
-    if (!pobj) {
-        if (sync_shaders()) {
-            NSError *err;
-            pobj = TIMED_COMPILE([dev newRenderPipelineStateWithDescriptor:pd error:&err]);
-            if (!pobj) {
-                static int n;
-                if (n++ < 10) LOG("[metal] pipeline failed: %s\n", err.localizedDescription.UTF8String);
-                pobj = [NSNull null];
-            }
-            cache[pk] = pobj;
-        } else {
-            cache[pk] = pending;
-            NSString *k = [pk copy];
-            double t0 = now_ms();
-            [dev newRenderPipelineStateWithDescriptor:pd completionHandler:^(id<MTLRenderPipelineState> ps, NSError *e) {
-                if (!ps) { static int n; if (n++ < 10) LOG("[metal] pipeline failed: %s\n", e.localizedDescription.UTF8String); }
-                @synchronized(ready_pipes) { ready_pipes[k] = ps ? (id)ps : (id)[NSNull null]; }
-                @synchronized(cache) { stat_compile_ms += now_ms() - t0; }
-                __atomic_fetch_add(&stat_compiles, 1, __ATOMIC_RELAXED);
-            }];
-            stat_skipped++;
-            return;
-        }
-    }
-    if (pobj == [NSNull null]) { stat_skipped++; return; }
-    pipe = pobj;
-    pipe_tab[pslot].key = phash;
-    pipe_tab[pslot].pipe = (__bridge void *)pipe;  // retained by the cache dictionary
+        if (pobj == [NSNull null]) { stat_skipped++; return; }
+        pipe = pobj;
+        pipe_tab[pslot].key = phash;
+        pipe_tab[pslot].pipe = (__bridge void *)pipe;  // retained by the cache dictionary
     }
     [enc setRenderPipelineState:pipe];
 
@@ -2745,7 +2932,6 @@ void renderer_reset(void) {
     memset(pipe_tab, 0, sizeof pipe_tab);
     [cache removeAllObjects];
     [g_cs_progs removeAllObjects];
-    @synchronized(g_ready_pipes) { [g_ready_pipes removeAllObjects]; }
     g_boot_gen++;
     [g_snap_copies removeAllObjects];
     memset(snap_tex, 0, sizeof snap_tex);

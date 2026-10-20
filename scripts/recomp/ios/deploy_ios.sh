@@ -20,7 +20,42 @@ BUNDLE_ID="${BUNDLE_ID:-dev.local.xnubdsp}"
 DD="$ROOT/work/builds/ios-recomp-derived"
 RT=work/recomp/ios-rt
 RES=work/ios/res
-mkdir -p work/builds work/visual/ipad-recomp
+mkdir -p work/builds work/visual/ipad-recomp work/ios
+
+# RomFS-Manifest (Dateianzahl und Gesamtgröße von work/romfs). Liegt es auf dem iPad, ist der Stand vollständig.
+romfs_manifest() {
+  python3 - > work/ios/romfs.manifest <<'EOF'
+import os
+c = s = 0
+for dp, _, fn in os.walk("work/romfs"):
+    for f in fn:
+        c += 1
+        s += os.path.getsize(os.path.join(dp, f))
+print(f"{c} {s}")
+EOF
+}
+# Kopiert RomFS komplett (ersetzt den Ordner, damit keine verwaisten Dateien bleiben) und das Manifest.
+romfs_copy() {
+  echo "Kopiere work/romfs nach Documents/GameData/romfs (dauert) ..."
+  romfs_manifest
+  xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+    --source work/romfs --destination Documents/GameData/romfs --remove-existing-content true 2>&1 | tail -n 5
+  xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+    --source work/ios/romfs.manifest --destination Documents/GameData/romfs.manifest > /dev/null 2>&1
+}
+# Prüft das Manifest auf dem iPad und kopiert RomFS nur, wenn es fehlt oder nicht passt.
+romfs_ensure() {
+  romfs_manifest
+  rm -f work/ios/romfs.device.manifest
+  xcrun devicectl device copy from --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+    --source Documents/GameData/romfs.manifest --destination work/ios/romfs.device.manifest > /dev/null 2>&1 || true
+  if [[ -f work/ios/romfs.device.manifest ]] && cmp -s work/ios/romfs.device.manifest work/ios/romfs.manifest; then
+    echo "RomFS auf dem iPad aktuell."
+  else
+    echo "RomFS fehlt oder ist veraltet auf dem iPad."
+    romfs_copy
+  fi
+}
 
 device() {
   local tmp="$ROOT/work/ios/devices.json"
@@ -49,16 +84,23 @@ case "${1:-}" in
     cp work/exefs/main.npdm "$RES/main.npdm"
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
-      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
+      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates OTHER_LDFLAGS='$(inherited) -framework CoreText' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "gebaut: $(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
+    # Shader-Cache (lokal erzeugt, gitignoriert) ins App-Bundle, damit der Start nicht alles neu kompiliert
+    APPB="$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' -path '*iphoneos*' | head -1)"
+    if [[ -d work/recomp/cache/shaders && -n "$APPB" ]]; then
+      rm -rf "$APPB/shaders" && cp -R work/recomp/cache/shaders "$APPB/shaders" && echo "Shader-Cache ins Bundle: $(ls "$APPB/shaders" | wc -l | tr -d ' ') Dateien"
+    fi
+    if [[ -n "$APPB" && -f work/recomp/cache/pipelines.bin ]]; then cp work/recomp/cache/pipelines.bin "$APPB/pipelines.bin"; fi
+    if [[ -n "$APPB" && -d work/recomp/cache/shaders-bin-iphoneos ]]; then rm -rf "$APPB/shaders-bin" && cp -R work/recomp/cache/shaders-bin-iphoneos "$APPB/shaders-bin"; fi
     ;;
   build-stub)   # Sondenbau ohne Laufzeit und Gastcode: Gerätedaten, 4-GiB-Fenster, Metal-Puffer (Container für die Datenkopie)
     mkdir -p "$RES"
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
       -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates GCC_PREPROCESSOR_DEFINITIONS='BDSP_STUB=1' \
-      OTHER_LDFLAGS='-framework UIKit -framework Foundation -framework CoreGraphics -framework Metal -framework MetalFX -framework GameController -framework QuartzCore' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
+      OTHER_LDFLAGS='-framework UIKit -framework Foundation -framework CoreGraphics -framework Metal -framework MetalFX -framework GameController -framework QuartzCore -framework CoreText' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "Sondenbau gebaut"
     ;;
@@ -67,9 +109,11 @@ case "${1:-}" in
     APP="$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' -path '*iphoneos*' | head -1)"
     [[ -n "$APP" ]] || { echo "BDSP.app fehlt (deploy_ios.sh build)" >&2; exit 5; }
     xcrun devicectl device install app --device "$COREID" "$APP" 2>&1 | tail -n 4
+    romfs_ensure
     ;;
   run)
     device
+    romfs_ensure
     LOG="work/builds/ipad-recomp-$(date +%Y%m%d-%H%M%S).log"
     echo "Log: $LOG"
     ENVJ="${RUN_ENV:-}"
@@ -95,9 +139,7 @@ EOF
     ;;
   data)
     device
-    echo "Kopiere work/romfs nach Documents/GameData/romfs (dauert) ..."
-    xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
-      --source work/romfs --destination Documents/GameData/romfs --remove-existing-content true 2>&1 | tail -n 5
+    romfs_copy
     ;;
   save)
     device

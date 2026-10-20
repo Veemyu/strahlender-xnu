@@ -22,13 +22,24 @@ case "$NVN_BACKEND" in
     # NVN_RT: Objektordner der NVN-Schicht (unabhängig von RT, damit die App-Fassung dieselben Objekte nutzt)
     RT="${NVN_RT:-$RT}" scripts/recomp/rt-bdsp/nvn/build_nvn.sh "$@"
     nvnobjs=("${NVN_RT:-$RT}"/nvn/*.o)
-    FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $([ -n "${BDSP_NO_MOVIE:-}" ] || pkg-config --libs libavcodec libavformat libavutil)" ;;
+    FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $([ -n "${BDSP_NO_MOVIE:-}" ] || pkg-config --libs libavcodec libavformat libavutil)" ;;
   none) EXTRA="-DBDSP_NVN_NONE"; RT="${RT}-none"; mkdir -p "$RT" ;;
   vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/), Laufzeitbibliotheken per Vollpfad
     RT="$RT" scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh "$@"
     nvnobjs=("$RT"/nvnvk/*.o)
     FW="-l:libvulkan.so.1 -l:libSDL3.so.0 -l:libshaderc_shared.so.1 -lstdc++ -lm -lpthread -ldl"
-    [ -n "${BDSP_NO_MOVIE:-}" ] || FW="$FW -l:libavformat.so.62 -l:libavcodec.so.62 -l:libavutil.so.60" ;;
+    [ -n "${BDSP_NO_MOVIE:-}" ] || FW="$FW -l:libavformat.so.62 -l:libavcodec.so.62 -l:libavutil.so.60"
+    if [ -n "${BDSP_QT:-}" ]; then   # Qt-Hülle im Prozess (Menüleiste, Vulkan-Fläche von Qt): app/linux/qt_ui.cpp, Ausgabe bdsp_boot_vk_qt; Windows nur vorbereitet (nicht gebaut)
+      OUT="${OUT}_qt"; mkdir -p "$RT/qt"
+      QTCF=$(pkg-config --cflags Qt6Widgets) || { echo "Qt6 Widgets fehlt (Liste: scripts/recomp/rt-bdsp/app/linux/deps.txt)" >&2; exit 3; }
+      QTI=""; [ -d include-vk/SDL3 ] && QTI="-I $PWD/include-vk"
+      QTS=scripts/recomp/rt-bdsp/app/linux
+      if [ ! -f "$RT/qt/qt_ui.o" ] || [ "$QTS/qt_ui.cpp" -nt "$RT/qt/qt_ui.o" ] || [ "$QTS/bdsp_l10n.h" -nt "$RT/qt/qt_ui.o" ]; then
+        clang++ -std=c++17 -O1 -g -fPIC -Wall -Wextra -Wno-unused-parameter $QTCF $QTI -I "$QTS" -DBDSP_LPROJ_DIR="\"$PWD/$QTS/lproj\"" -c "$QTS/qt_ui.cpp" -o "$RT/qt/qt_ui.o"
+      fi
+      nvnobjs+=("$RT/qt/qt_ui.o")
+      FW="$FW $(pkg-config --libs Qt6Widgets)"
+    fi ;;
   *) echo "unbekanntes NVN_BACKEND=$NVN_BACKEND (metal|vulkan|none)" >&2; exit 2 ;;
 esac
 if [ "$(uname -s)" = Linux ]; then INC="$INC -I scripts/recomp/ryzen/compat"; fi

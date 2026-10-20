@@ -31,6 +31,11 @@ cp "$BIN" "$NEW/Contents/MacOS/BDSP"
 cp -c -R "$IMG" "$NEW/Contents/Resources/img" 2>/dev/null || cp -R "$IMG" "$NEW/Contents/Resources/img"
 cp -R "$HERE/lproj/." "$NEW/Contents/Resources/"
 cp "$NPDM" "$NEW/Contents/Resources/main.npdm"
+# Shader-Cache (lokal erzeugt, gitignoriert) ins Bundle, falls vorhanden
+if [[ -d work/recomp/cache/shaders ]]; then cp -R work/recomp/cache/shaders "$NEW/Contents/Resources/shaders"; fi
+# vorübersetzte Metal-Bibliotheken (scripts/recomp/shader_bin.sh macosx)
+if [[ -d work/recomp/cache/shaders-bin-macosx ]]; then cp -R work/recomp/cache/shaders-bin-macosx "$NEW/Contents/Resources/shaders-bin"; fi
+if [[ -f work/recomp/cache/pipelines.bin ]]; then cp work/recomp/cache/pipelines.bin "$NEW/Contents/Resources/pipelines.bin"; fi
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" "$HERE/Info.plist.in" > "$NEW/Contents/Info.plist"
 plutil -lint "$NEW/Contents/Info.plist" > /dev/null
 python3 "$HERE/make_icon.py" "$NEW/Contents/Resources/BDSP.icns" > /dev/null

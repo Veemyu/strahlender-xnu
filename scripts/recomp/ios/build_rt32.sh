@@ -28,7 +28,7 @@ case "$TARGET" in
     CCFLAGS=""; MCC=/usr/bin/clang
     NVINC="-I $NVN32 -I $NVN32/nvn $BASEINC $(pkg-config --cflags sdl3)"
     FFINC=$(pkg-config --cflags libavcodec libavformat libavutil)
-    FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $(pkg-config --libs libavcodec libavformat libavutil)"
+    FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $(pkg-config --libs libavcodec libavformat libavutil)"
     ;;
   ios)
     RT=work/recomp/ios-rt; OUT=

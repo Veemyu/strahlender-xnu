@@ -9,6 +9,7 @@
 #import <MetalFX/MetalFX.h>
 #include "output_scale.h"
 #import <QuartzCore/CAMetalLayer.h>
+#import <CoreText/CoreText.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
 #include <stdatomic.h>
@@ -208,6 +209,102 @@ static void dump_largest_textures(const char *why) {
             sz[k] / 1048576.0, t->width, t->height, t->format, t->target, t->levels, (unsigned long)b->tex.width,
             (unsigned long)b->tex.height, (unsigned long)b->tex.mipmapLevelCount, b->scalable, b->sx, b->sy, t->label);
     }
+}
+
+// Start-Gate-Anzeige (renderer.m startup_gate): "Shader-Kompilierung n / N" als Text. Der Präsentationsthread
+// ruft das mit 60 Hz auf; während des Gates ist er der einzige Presenter.
+static const char GATE_MSL[] =
+    "#include <metal_stdlib>\nusing namespace metal;\n"
+    "struct GOut { float4 pos [[position]]; float2 uv; };\n"
+    "vertex GOut gate_v(uint vid [[vertex_id]], constant float4 &rect [[buffer(0)]]) {\n"
+    "  const float2 p[6] = {float2(0,0), float2(1,0), float2(0,1), float2(0,1), float2(1,0), float2(1,1)};\n"
+    "  GOut o; o.pos = float4(rect.x + p[vid].x * rect.z, rect.y + p[vid].y * rect.w, 0, 1);\n"
+    "  o.uv = float2(p[vid].x, 1.0 - p[vid].y); return o;\n}\n"
+    "fragment float4 gate_f(GOut in [[stage_in]], texture2d<float> t [[texture(0)]]) {\n"
+    "  constexpr sampler s(filter::linear); return t.sample(s, in.uv);\n}\n";
+static id<MTLRenderPipelineState> gate_pipe;
+static MTLPixelFormat gate_pipe_format;
+
+static NSString *gate_label(uint64_t done, uint64_t total) {
+    static BOOL german;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ german = [[NSLocale preferredLanguages].firstObject hasPrefix:@"de"]; });
+    return [NSString stringWithFormat:german ? @"Shader-Kompilierung %llu / %llu" : @"Shader compilation %llu / %llu",
+                                      (unsigned long long)done, (unsigned long long)total];
+}
+
+// Text als Premultiplied-BGRA-Textur; die Schrift skaliert mit der Höhe des Bildes.
+static id<MTLTexture> gate_text(NSString *s, CGFloat pix_h, CGSize *size_out) {
+    CTFontRef font = CTFontCreateWithName(CFSTR("Helvetica"), pix_h / 50.0, NULL);
+    NSDictionary *attrs = @{ (id)kCTFontAttributeName: (__bridge id)font,
+                             (id)kCTForegroundColorFromContextAttributeName: @YES };
+    NSAttributedString *as = [[NSAttributedString alloc] initWithString:s attributes:attrs];
+    CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)as);
+    CGFloat asc = 0, desc = 0, lead = 0;
+    double w = CTLineGetTypographicBounds(line, &asc, &desc, &lead);
+    int pad = (int)(pix_h / 60.0) + 2;
+    size_t W = (size_t)ceil(w) + 2 * pad, H = (size_t)ceil(asc + desc) + 2 * pad;
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(NULL, W, H, 8, W * 4, cs,
+                                             kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGContextSetRGBFillColor(ctx, 1, 1, 1, 0.7);
+    CGContextSetTextPosition(ctx, pad, pad + desc);
+    CTLineDraw(line, ctx);
+    MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                                  width:W height:H mipmapped:NO];
+    td.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> t = [dev newTextureWithDescriptor:td];
+    [t replaceRegion:MTLRegionMake2D(0, 0, W, H) mipmapLevel:0 withBytes:CGBitmapContextGetData(ctx) bytesPerRow:W * 4];
+    *size_out = CGSizeMake(W, H);
+    CGContextRelease(ctx);
+    CGColorSpaceRelease(cs);
+    CFRelease(line);
+    CFRelease(font);
+    return t;
+}
+
+void renderer_gate_present(uint64_t done, uint64_t total) {
+    if (!layer) return;
+    id<CAMetalDrawable> drawable = [layer nextDrawable];
+    if (!drawable) return;
+    id<MTLTexture> target = drawable.texture;
+    if (!gate_pipe || gate_pipe_format != target.pixelFormat) {
+        NSError *err = nil;
+        id<MTLLibrary> lib = [dev newLibraryWithSource:@(GATE_MSL) options:nil error:&err];
+        if (!lib) { LOG("[gate] Shader fehlgeschlagen: %s\n", err.localizedDescription.UTF8String); return; }
+        MTLRenderPipelineDescriptor *d = [MTLRenderPipelineDescriptor new];
+        d.vertexFunction = [lib newFunctionWithName:@"gate_v"];
+        d.fragmentFunction = [lib newFunctionWithName:@"gate_f"];
+        MTLRenderPipelineColorAttachmentDescriptor *ca = d.colorAttachments[0];
+        ca.pixelFormat = target.pixelFormat;
+        ca.blendingEnabled = YES;
+        ca.sourceRGBBlendFactor = MTLBlendFactorOne;
+        ca.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        ca.sourceAlphaBlendFactor = MTLBlendFactorOne;
+        ca.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        gate_pipe = [dev newRenderPipelineStateWithDescriptor:d error:&err];
+        if (!gate_pipe) { LOG("[gate] Pipeline fehlgeschlagen: %s\n", err.localizedDescription.UTF8String); return; }
+        gate_pipe_format = target.pixelFormat;
+    }
+    CGSize tsize;
+    id<MTLTexture> t = gate_text(gate_label(done, total), target.height, &tsize);
+    float ndc_w = 2.0f * tsize.width / target.width, ndc_h = 2.0f * tsize.height / target.height;
+    float margin_x = 2.0f * (target.height / 45.0f) / target.width, margin_y = 2.0f * (target.height / 45.0f) / target.height;
+    float rect[4] = {-1.0f + margin_x, 1.0f - margin_y - ndc_h, ndc_w, ndc_h};  // linke obere Ecke
+    MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+    rp.colorAttachments[0].texture = target;
+    rp.colorAttachments[0].loadAction = MTLLoadActionClear;
+    rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
+    rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+    id<MTLCommandBuffer> cb = [queue commandBuffer];
+    id<MTLRenderCommandEncoder> enc = [cb renderCommandEncoderWithDescriptor:rp];
+    [enc setRenderPipelineState:gate_pipe];
+    [enc setVertexBytes:rect length:sizeof rect atIndex:0];
+    [enc setFragmentTexture:t atIndex:0];
+    [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
+    [enc endEncoding];
+    [cb presentDrawable:drawable];
+    [cb commit];
 }
 
 static uint64_t frames, total_frames, wk_frames;  // wk_frames: Bilder aus Sicht des Übersetzungs-Workers
