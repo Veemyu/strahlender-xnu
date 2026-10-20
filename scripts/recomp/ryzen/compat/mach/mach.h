@@ -3,7 +3,9 @@
 // übersetzen (`-I scripts/recomp/ryzen/compat`), ohne ihre Dateien anzufassen. Kein Ersatz für die Mach-Semantik auf dem
 // Mac: Anhalten per Signal (SIGUSR2), Speicherbelegung aus /proc, Regionen per mincore.
 #pragma once
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
@@ -15,6 +17,7 @@
 #include <unistd.h>
 
 typedef int kern_return_t;
+extern int pthread_getattr_np(pthread_t, pthread_attr_t *);
 typedef uint32_t mach_port_t;
 typedef uint32_t mach_msg_type_number_t;
 typedef int *thread_state_t;

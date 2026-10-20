@@ -15,6 +15,16 @@
 #include <unistd.h>
 #include "guestmem.h"
 #include "hle.h"
+// Frame-Takt: macOS CLOCK_UPTIME_RAW, sonst CLOCK_MONOTONIC (Linux/Vulkan)
+#ifdef __APPLE__
+static inline uint64_t frame_clock_ns(void) { return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
+#else
+static inline uint64_t frame_clock_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+}
+#endif
 #include "nvn.h"
 #include "output_scale.h"
 #include "settings.h"
@@ -325,7 +335,7 @@ static void frame_pace(void) {
     static int pace_pct = -1;   // BDSP_PACE_PCT: Taktgeber kürzer als die Anzeige (Rest übernimmt die Präsentation)
     if (pace_pct < 0) pace_pct = getenv("BDSP_PACE_PCT") ? atoi(getenv("BDSP_PACE_PCT")) : 100;
     period_ns = period_ns * (unsigned)pace_pct / 100;
-    uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    uint64_t now = frame_clock_ns();
     if (hist_on) {   // Frame-Zeit-Histogramm (nur mit BDSP_FRAMEHIST=1): Abstand zwischen zwei Frames in ms
         static const double edge[8] = {7.5, 8.0, 8.25, 8.5, 9.0, 10.0, 12.0, 16.0};
         if (last_ns) {

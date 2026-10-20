@@ -1,7 +1,9 @@
 // Einstieg der BDSP-Laufzeit (Gate 1): Gastfenster reservieren, Module laden, nn::init::Start auf einem Host-Thread
 // starten, den Lauf überwachen (Zeitlimit, Gate-Erkennung, Fortschrittszeilen) und das Ergebnisprotokoll ausgeben.
 // Kein Grafik-, kein Audioausgang. Eigener Code.
+#ifdef __APPLE__
 #include <TargetConditionals.h>
+#endif
 #include <errno.h>
 #include <mach/mach.h>
 #include <signal.h>
