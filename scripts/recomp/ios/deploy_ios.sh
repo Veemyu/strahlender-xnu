@@ -84,7 +84,7 @@ case "${1:-}" in
     cp work/exefs/main.npdm "$RES/main.npdm"
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
-      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates OTHER_LDFLAGS='$(inherited) -framework CoreText' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
+      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "gebaut: $(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
     # Shader-Cache (lokal erzeugt, gitignoriert) ins App-Bundle, damit der Start nicht alles neu kompiliert
@@ -100,7 +100,7 @@ case "${1:-}" in
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
       -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates GCC_PREPROCESSOR_DEFINITIONS='BDSP_STUB=1' \
-      OTHER_LDFLAGS='-framework UIKit -framework Foundation -framework CoreGraphics -framework Metal -framework MetalFX -framework GameController -framework QuartzCore -framework CoreText' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
+      OTHER_LDFLAGS='-framework UIKit -framework Foundation -framework CoreGraphics -framework Metal -framework MetalFX -framework GameController -framework QuartzCore -framework CoreText -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "Sondenbau gebaut"
     ;;

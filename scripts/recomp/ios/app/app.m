@@ -1,6 +1,7 @@
 // iPadOS-Hülle der BDSP-Rekompilation (Speichermodell B): UIKit-Fenster mit CAMetalLayer, Touch-Gamepad, GameController, Hardware-Tastatur,
 // Pfade (Documents), Spielstand-Import, Messzeilen. Die Laufzeit läuft auf einem eigenen Thread (bdsp_runtime_main = main.c mit -Dmain=...).
-// Kein Ton (die Audiodienste der Laufzeit sind stumm). Eigener Code.
+// PCM-Ton über Audio Queue Services und AVAudioSession. Eigener Code.
+#import <AVFAudio/AVFAudio.h>
 #import <GameController/GameController.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <UIKit/UIKit.h>
@@ -12,12 +13,42 @@
 #include <sys/stat.h>
 
 extern int bdsp_runtime_main(int argc, char **argv);
+#ifndef BDSP_STUB
+extern void audio_output_set_active(int active);
+#else
+static void audio_output_set_active(int active) { (void)active; }
+#endif
 extern void bdsp_set_fps(int fps);   // services_gfx.c: 30, 60 oder 120
 extern CAMetalLayer *g_ios_layer;
 extern _Atomic uint64_t g_ext_buttons;
 extern _Atomic int32_t g_ext_stick[4];
 
 static double FootprintMiB(void);
+static BOOL audioInterrupted;
+
+static void SetAudioActive(BOOL active) {
+    AVAudioSession *session = AVAudioSession.sharedInstance;
+    NSError *error = nil;
+    // Quiesce queues before deactivating the session. Guest completion keeps its clock.
+    if (!active) audio_output_set_active(0);
+    if (![session setActive:active error:&error]) {
+        audio_output_set_active(0);
+        fprintf(stderr, "[ipad-audio] Session: %s\n", error.localizedDescription.UTF8String);
+        return;
+    }
+    if (active) audio_output_set_active(1);
+}
+
+static void ConfigureAudioSession(void) {
+    NSError *error = nil;
+    if (![AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayback
+                                              mode:AVAudioSessionModeDefault options:0 error:&error]) {
+        fprintf(stderr, "[ipad-audio] Kategorie: %s\n", error.localizedDescription.UTF8String);
+        audio_output_set_active(0);
+        return;
+    }
+    SetAudioActive(UIApplication.sharedApplication.applicationState == UIApplicationStateActive && !audioInterrupted);
+}
 #ifdef BDSP_STUB
 // Sondenbau (deploy_ios.sh build-stub): ohne Laufzeit und Gastcode; meldet Gerätedaten und prüft das 4-GiB-Fenster auf dem Gerät.
 #import <Metal/Metal.h>
@@ -386,7 +417,26 @@ static void *RuntimeThread(void *arg) {
         v.overlayHidden = GCController.controllers.count > 0;
         [v buildOverlay];
     }];
+    ConfigureAudioSession();
+    [NSNotificationCenter.defaultCenter addObserverForName:AVAudioSessionInterruptionNotification object:nil queue:NSOperationQueue.mainQueue
+                                                usingBlock:^(NSNotification *n) {
+        AVAudioSessionInterruptionType type = [n.userInfo[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
+        audioInterrupted = type == AVAudioSessionInterruptionTypeBegan;
+        if (audioInterrupted) SetAudioActive(NO);
+        else if (([n.userInfo[AVAudioSessionInterruptionOptionKey] unsignedIntegerValue] & AVAudioSessionInterruptionOptionShouldResume) &&
+                 UIApplication.sharedApplication.applicationState == UIApplicationStateActive) SetAudioActive(YES);
+    }];
     return YES;
+}
+
+- (void)applicationWillResignActive:(UIApplication *)app {
+    (void)app;
+    SetAudioActive(NO);
+}
+
+- (void)applicationDidBecomeActive:(UIApplication *)app {
+    (void)app;
+    if (!audioInterrupted) SetAudioActive(YES);
 }
 
 // Aufruf aus viewDidAppear: erst dann gibt es die CAMetalLayer mit ihrer Größe

@@ -22,8 +22,9 @@ case "$NVN_BACKEND" in
     # NVN_RT: Objektordner der NVN-Schicht (unabhängig von RT, damit die App-Fassung dieselben Objekte nutzt)
     RT="${NVN_RT:-$RT}" scripts/recomp/rt-bdsp/nvn/build_nvn.sh "$@"
     nvnobjs=("${NVN_RT:-$RT}"/nvn/*.o)
-    FW="-framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $([ -n "${BDSP_NO_MOVIE:-}" ] || pkg-config --libs libavcodec libavformat libavutil)" ;;
-  none) EXTRA="-DBDSP_NVN_NONE"; RT="${RT}-none"; mkdir -p "$RT" ;;
+    FW="-framework AudioToolbox -framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $([ -n "${BDSP_NO_MOVIE:-}" ] || pkg-config --libs libavcodec libavformat libavutil)" ;;
+  none) EXTRA="-DBDSP_NVN_NONE"; RT="${RT}-none"; mkdir -p "$RT"
+    [ "$(uname -s)" != Darwin ] || FW="-framework AudioToolbox" ;;
   vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/), Laufzeitbibliotheken per Vollpfad
     RT="$RT" scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh "$@"
     nvnobjs=("$RT"/nvnvk/*.o)
@@ -54,7 +55,7 @@ objs=()
 for f in "$SRC"/*.c; do
   o="$RT/$(basename "$f" .c).o"
   objs+=("$o")
-  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/bdsp.h" -nt "$o" ] || [ "$SRC/guestmem.h" -nt "$o" ] || { [ -n "${BDSP_APP:-}" ] && [ "$SRC/app/app.h" -nt "$o" ]; }; then
+  if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/bdsp.h" -nt "$o" ] || [ "$SRC/guestmem.h" -nt "$o" ] || [ "$SRC/audio_output.h" -nt "$o" ] || { [ -n "${BDSP_APP:-}" ] && [ "$SRC/app/app.h" -nt "$o" ]; }; then
     clang -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function $INC $EXTRA "$@" -c "$f" -o "$o"
   fi
 done
