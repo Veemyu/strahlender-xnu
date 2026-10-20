@@ -378,7 +378,17 @@ bool vk_frame_begin(const float clear[4]) {
     cur_frame.ok = false;
     int w, h;
     if (headless) { w = (int)g_vk.sc_extent.width; h = (int)g_vk.sc_extent.height; }
-    else SDL_GetWindowSizeInPixels(window, &w, &h);
+    else {
+        // Maßgeblich ist die Fenstergröße der Oberfläche (X11: currentExtent). SDL_GetWindowSizeInPixels bleibt bei einem in Qt eingebetteten
+        // Fenster auf der Startgröße stehen, dann wurde die Swapchain in jedem Bild neu angelegt (24 statt 60 fps).
+        VkSurfaceCapabilitiesKHR caps;
+        if (g_vk.surface && vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vk.phys, g_vk.surface, &caps) == VK_SUCCESS && caps.currentExtent.width != UINT32_MAX) {
+            w = (int)caps.currentExtent.width;
+            h = (int)caps.currentExtent.height;
+        } else {
+            SDL_GetWindowSizeInPixels(window, &w, &h);
+        }
+    }
     if (!w || !h) return false;  // minimised
     if (!g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height) recreate_swapchain();
     if (!g_vk.swapchain) return false;
@@ -680,7 +690,7 @@ static void quick_exit_handler(void) {
 #endif
 }
 
-// Qt-Hülle (scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.py): BDSP_EMBED=1 -> randloses X11-Fenster, die Kennung geht auf stdout, Befehle kommen auf stdin
+// Qt-Hülle (scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.cpp): BDSP_EMBED=1 -> randloses X11-Fenster, die Kennung geht auf stdout, Befehle kommen auf stdin
 // ("fps 30|60|120", "pause 0|1"); dieselben Stellen wie die F-Tasten in ui_run.
 static void *embed_commands(void *arg) {
     (void)arg;
