@@ -206,13 +206,12 @@ sudo dnf install qt6-qtbase-devel cmake pkgconf vulkan-headers SDL3-devel shader
 sudo pacman -S qt6-base cmake pkgconf vulkan-headers sdl3 shaderc
 ```
 
-Verification status: the package names are not verified against the distributions, except the Fedora names
-`vulkan-headers`, `SDL3-devel` and `shaderc-devel`, which appear in the Fedora package list in
-`docs/recomp-ryzen.md` (section 11). The apt names, the Arch names and `cmake`/`pkgconf` are not verified.
-Package availability depends on your release (for example, `libsdl3-dev` may be missing on older Ubuntu releases;
-not verified).
-
-The Qt host is a Python script (`scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.py`) that imports PySide6.
+Verification status: the Arch Linux names (`qt6-base`, `sdl3`, `shaderc`, `vulkan-headers`, `cmake`) are
+confirmed in the official `extra` repository. The Debian names (`qt6-base-dev`, `libsdl3-dev`, `libshaderc-dev`,
+`libvulkan-dev`) are confirmed on packages.debian.org (stable). The Fedora `qt6-qtbase-devel` is confirmed in the
+Fedora package index; `SDL3-devel`, `shaderc-devel` and `vulkan-headers` are the names in use on the Fedora build
+host (`docs/recomp-ryzen.md`, section 11). Ubuntu uses the Debian names; whether `libsdl3-dev` exists depends on the
+release (not verified for every Ubuntu version).
 PySide6 is not in the table. Whether the Qt 6 packages above are enough for PySide6 is not verified.
 
 The Qt host runs as an X11 client (`QT_QPA_PLATFORM=xcb`). Under Wayland it runs through Xwayland. The

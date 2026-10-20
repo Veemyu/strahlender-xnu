@@ -210,13 +210,12 @@ sudo dnf install qt6-qtbase-devel cmake pkgconf vulkan-headers SDL3-devel shader
 sudo pacman -S qt6-base cmake pkgconf vulkan-headers sdl3 shaderc
 ```
 
-Prüfstatus: Die Paketnamen sind nicht gegen die Distributionen verifiziert. Ausnahme sind die Fedora-Namen
-`vulkan-headers`, `SDL3-devel` und `shaderc-devel`. Sie stehen in der Fedora-Paketliste in
-`docs/recomp-ryzen.md` (Abschnitt 11). Die apt-Namen, die Arch-Namen sowie `cmake` und `pkgconf` sind nicht
-verifiziert. Die Verfügbarkeit hängt von deiner Version ab (zum Beispiel könnte `libsdl3-dev` auf älteren
-Ubuntu-Versionen fehlen; nicht verifiziert).
-
-Die Qt-Hülle ist ein Python-Skript (`scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.py`), das PySide6 importiert.
+Prüfstatus: Die Arch-Namen (`qt6-base`, `sdl3`, `shaderc`, `vulkan-headers`, `cmake`) sind im offiziellen
+Repository `extra` bestätigt. Die Debian-Namen (`qt6-base-dev`, `libsdl3-dev`, `libshaderc-dev`, `libvulkan-dev`)
+sind auf packages.debian.org (stable) bestätigt. Der Fedora-Name `qt6-qtbase-devel` ist im Fedora-Paketindex
+bestätigt; `SDL3-devel`, `shaderc-devel` und `vulkan-headers` sind die Namen, die auf dem Fedora-Build-Host
+verwendet werden (`docs/recomp-ryzen.md`, Abschnitt 11). Ubuntu verwendet die Debian-Namen; ob `libsdl3-dev`
+existiert, hängt von der Version ab (nicht für jede Ubuntu-Version verifiziert).
 PySide6 steht nicht in der Tabelle. Ob die oben genannten Qt-6-Pakete für PySide6 ausreichen, ist nicht
 verifiziert.
 
