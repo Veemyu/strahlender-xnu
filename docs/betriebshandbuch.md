@@ -35,7 +35,7 @@ macOS-Werkzeuge sind BSD-Varianten (`ls --time-style` und GNU-Optionen fehlen). 
 | Ryzen-Farm | `scripts/recomp/ryzen/sync.sh`, `build.sh [--neu|--detach|--jobs=N]`, `run_probe.sh`, `vk_*.sh`, Logs `~/xnu-recomp/logs/` |
 | Bildvergleich | `scripts/visual_auto.sh run|compare|accept [--ref ryujinx|recomp|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
 | QA-Szenarien | `scripts/recomp/qa/qa_run.sh <szenario>|--list|--report <ordner>` (Sperrdatei, Spielstand-Kopie aus `work/recomp/qa/save_base`) |
-| Unity (nur falls je wieder nötig) | `scripts/unity_safe.sh open|restart|status|test|watch`; Tests nie im Play-Modus (hängt), vorher `editor_stop` |
+| Unity (deprecated, nur falls je wieder nötig) | `scripts/unity_safe.sh open|restart|status|test|watch` liegt nur auf Branch `unity` (auf `main` fehlt es; `visual_auto.sh` braucht es für den Editor-Start); Tests nie im Play-Modus (hängt), vorher `editor_stop` |
 
 Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `BDSP_WAIT` (Warteberichte), `BDSP_WATCH`, `BDSP_ALIAS_BASE/SIZE`, `BDSP_APPMEM`, `BDSP_SHOT_DIR`, `BDSP_SCREENSHOT_*`.
 

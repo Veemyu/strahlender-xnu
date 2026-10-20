@@ -1,6 +1,6 @@
 # Bauen: von der eigenen NSP/XCI zur App
 
-> **Stand 2026-10-19:** Die Unity-Stufen `assets`, `stubs`, `unity-build` und `deploy` sind aus `main` entfernt (Branch `unity`). Der Weg über `scripts/recomp/` (BDSP.app, iPad per `scripts/recomp/ios/deploy_ios.sh`) ist unverändert. Die Abschnitte unten zu diesen Stufen gelten nur noch für den Branch `unity`.
+> **Stand 2026-10-19:** Die Unity-Stufen `assets`, `stubs`, `unity-build` und `deploy` sind aus `main` entfernt (Branch `unity`). Der Weg über `scripts/recomp/` (BDSP.app, iPad per `scripts/recomp/ios/deploy_ios.sh`) ist unverändert. Die Abschnitte unten zu diesen Stufen gelten nur noch für den Branch `unity`. Ebenfalls auf `main` entfernt (nur Branch `unity`): `scripts/bundle_retarget.py` und `scripts/ios_deploy.sh`. Der Abschnitt „Daten im Player“ beschreibt den Unity-Weg.
 
 Dieses Repository enthält nur eigenen Code, Skripte und Doku. Alles Fremde (Texturen, Modelle, Stammdaten, Videos, Shader-Wrapper) entsteht lokal aus **deiner eigenen** Kopie von Pokémon Brilliant Diamond. Schlüssel, Dumps und Spieldaten gehören nie ins Repo; `work/`, `tools/`, `unity/Assets/StreamingAssets/` und `unity/Assets/GameData/` sind gitignoriert. Die gebauten Apps enthalten deine Spieldaten und sind nur für den persönlichen Gebrauch.
 

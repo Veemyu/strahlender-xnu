@@ -1,5 +1,7 @@
 # opendpr-Projekt aus eigenem Dump zusammengebaut (2026-10-18)
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. `scripts/opendpr_build.sh` ist auf `main` entfernt (nur Branch `unity`). Die Schritte unten gelten nicht mehr für `main`.
+
 Eigene Zusammenfassung. Nichts aus `opendpr` oder `Lumi_Small_Scripts` liegt im getrackten Repo.
 Das Projekt steht unter `work/opendpr-project/` (gitignored). Die Originale in `tools/` blieben unverändert.
 Alle Schritte laufen wiederholbar über `scripts/opendpr_build.sh` (eigenes Skript, bricht ab, wenn das Ziel schon existiert).

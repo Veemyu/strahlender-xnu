@@ -1,5 +1,7 @@
 # iPad-Messung 1: Speicher, Bildrate, Thermik (Todo `ap-ipad-perf`)
 
+> **Historisch (Stand 2026-10-20):** Unity-Messung. `scripts/ios_deploy.sh` ist auf `main` entfernt (nur Branch `unity`). Für die Rekompilation gilt `scripts/recomp/ios/deploy_ios.sh`.
+
 Stand: 2026-10-19. Gemessen auf dem iPad Pro 12,9" (6. Generation, `iPad14,6`, M2, 8 GB, iPadOS 26.4.2) mit der Mess-App **MemoryProbe** (Unity 6000.3.26f1, IL2CPP, nur Metal, Release-Build, kostenloses Team, per `scripts/ios_deploy.sh` installiert). Die App enthält keine Spielinhalte, nur eine leere Szene, einen eigenen Lastshader und Allokationen. Ton blieb aus (`AudioSafety` aktiv, in jedem Lauf `audioListenerVolume=0`, `audioPause=1`); die Gerätelautstärke wurde nicht angefasst.
 Rohlogs (Gerätekonsole, jede Zeile `XNUPROBE|...`) liegen nur lokal unter `work/measurement/` (gitignoriert).
 

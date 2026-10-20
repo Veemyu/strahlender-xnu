@@ -1,5 +1,7 @@
 # Stubs 1: Original-Objektgraph laden (generierte Stub-Klassen für Assembly-CSharp)
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. Auf `main` entfernt (nur Branch `unity`): `scripts/stub_gen.py`, `scripts/stub_dump.py`, `scripts/stub_verify.py`, `scripts/stub_probe.cs`, `scripts/stub_bridge/`, `scripts/tests/test_stub_gen.py`. Die Befehle unten laufen auf `main` nicht mehr.
+
 Stand: 2026-10-19, Todo `ap-stubgen`. Nur Zahlen, Verfahren und eigener Code; keine Spielinhalte, Texte, Klassennamen oder Feldnamen aus dem Spiel im Repo.
 Messungen: Unity 6000.3.26f1 (Apple Silicon, Batchmodus ohne Grafik), Apple M1 Pro; eigener Dump und Scans unter `work/` (gitignoriert).
 Belegstufen: **[D]** gemessen, **[S]** aus `dump.cs`, **[A]** Annahme, **[T]** durch Tests belegt.

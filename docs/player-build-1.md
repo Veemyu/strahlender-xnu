@@ -1,5 +1,7 @@
 # Player-Build 1: erste echte Builds für macOS und iPad (Todo `ap-packaging` / `ap-build-all`)
 
+> **Historisch (Stand 2026-10-20):** Dieser Bericht beschreibt den eingestellten Unity-Weg. Folgende Dateien sind auf `main` entfernt und nur noch auf Branch `unity` vorhanden: `scripts/bundle_retarget.py`, `scripts/ios_deploy.sh`, `scripts/tests/test_bundle_retarget.py`. Befehle mit diesen Skripten laufen auf `main` nicht mehr; für den aktuellen Bau gilt `docs/BUILD.md`.
+
 Stand: 2026-10-19. Erstmals wurden mit der Build-Pipeline echte Player-Builds (IL2CPP, arm64, nur Metal) mit den echten Bundles erzeugt, gestartet und ausgewertet: macOS (M1 Pro, 16 GB) und iPad Pro 12,9" (6. Generation, `iPad14,6`, M2, 7518 MB sichtbar, 128 GB, iPadOS 26.4.2). Alle Zahlen stammen aus diesen Läufen (Logs nur lokal unter `work/builds/`, gitignoriert). **Ton blieb aus** (`AudioSafety`, jeder Lauf meldete „Ton: aus“); die Lautstärke von Mac und iPad wurde nicht angefasst. Keine Spieldaten, Bilder oder Builds im Repo, die Team-ID steht nur in `work/local.env`.
 
 ## 1. Ergebnis in Kürze

@@ -129,3 +129,9 @@ VK_SYNTAX=1 scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh
 ```
 
 Diagnose-Schalter des Klons (Umgebung): `BDSP_VK_PROF=1` (CPU-/GPU-Zeit je Kategorie), `BDSP_DEBUG_FRAME=N` (Zeichenaufrufe von Bild N im Log), `BDSP_SAVE_MSL=1` (GLSL nach `build/glsl/`, Ordner `build/` vorher anlegen), `BDSP_VK_VALIDATION=1`, `BDSP_VK_NO_SPIRV_CACHE=1`.
+
+## Linux: Bildrate, Fenstergröße, Overlay (Stand 20.10.)
+
+- `BDSP_FPS=30|60|120` setzt den Takt (Vsync-Ereignis in `services_gfx.c`, Begrenzer `frame_pace` in `nvn_glue.c`); gemessen im Fenster: 30,0 / 60,0 / 120,0 fps. Im Lauf: F5 = 30, F6 = 60, F7 = 120.
+- Fenstergröße: `BDSP_WINDOW=BxH` beim Start; im Lauf F1 bis F4 = 960×540, 1280×720, 1920×1080, 2560×1440 (wie Cmd+1 bis Cmd+4 am Mac), F11 = Vollbild. Nur im Vulkan-Pfad (`nvn/vulkan/src/nvn/vulkan/device.c`, `ui_run`), der Mac-Pfad bleibt unberührt.
+- `BDSP_MANGOHUD=1` schaltet das MangoHud-Overlay ein (Standard aus). Abhängigkeit: Paket `mangohud` (Fedora, impliziter Vulkan-Layer), nur Laufzeit, nicht für den Bau. `MANGOHUD_CONFIG` überschreibt die Voreinstellung (fps, frametime, CPU/GPU).

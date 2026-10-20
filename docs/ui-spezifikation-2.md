@@ -1,5 +1,7 @@
 # UI-Spezifikation 2: Spike S1 (Original-UI-Prefabs ohne Skripte) und Meldungsfenster
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. `scripts/ui_s1_probe.cs` ist auf `main` entfernt (nur Branch `unity`). `scripts/ui_s1_scan.py` bleibt.
+
 Stand: 2026-10-19, Todo `ap-ui`, Scheibe 1. Nur Zahlen, Klassen-/Feldnamen und eigener Code; keine Spielinhalte, Texte oder Bilder im Repo.
 Messungen: Unity 6000.3.26f1 (Haupteditor `unity/`, Built-in-RP, Metal), Apple M1 Pro, eigener Dump unter `work/` (gitignoriert).
 Belegstufen wie in `docs/ui-spezifikation-1.md`: **[D]** gemessen, **[S]** aus `dump.cs`, **[A]** Annahme, **[T]** durch Tests belegt.

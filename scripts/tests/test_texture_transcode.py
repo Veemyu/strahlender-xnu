@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover
 
 if HAVE:
     import texture_transcode as tt
-    from test_bundle_retarget import make_bundle
+    from bundle_fixture import make_bundle
 
 UNITY = "2019.4.27f1"
 DXT1, DXT5, BC7, BC5, RGBA32, ASTC6 = 10, 12, 25, 27, 4, 50
@@ -226,10 +226,6 @@ class BundleTests(unittest.TestCase):
             for (o1, s1), (o2, _) in zip(offs, offs[1:]):
                 self.assertEqual(o1 + s1, o2)                            # lückenlos
             self.assertEqual(open(dst, "rb").read(8), b"UnityFS\0")
-            import bundle_retarget as br
-            self.assertEqual(br.read_platforms(dst)[0][1], 38)            # Plattform bleibt, lässt sich weiter patchen
-            br.retarget(dst, dst, 9)
-            self.assertEqual(br.read_platforms(dst)[0][1], 9)
 
     def test_bundle_inline_and_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:

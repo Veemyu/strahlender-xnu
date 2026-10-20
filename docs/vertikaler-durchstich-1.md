@@ -1,5 +1,7 @@
 # Vertikaler Durchstich: Titel → Weiter → Feld → Ereignis → Kampf → Speichern (Todo `ap-vertical-slice`)
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. `scripts/ios_deploy.sh` ist auf `main` entfernt (nur Branch `unity`).
+
 Stand: 2026-10-19, Messung im Haupteditor (Unity 6000.3.26f1, Metal) und im macOS-Player. Nur Namen, Zahlen und Struktur; keine Spieltexte, keine echten Saves, keine Bilder im Repo (Bilder und Logs liegen unter `work/`, gitignoriert).
 Prüfstufen wie in `docs/spielkern-1.md`: **[A]** Annahme, **[P]** belegt. Kein Ton (AudioSafety unverändert).
 

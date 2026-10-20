@@ -1,5 +1,7 @@
 # Sichtprüfung 2: Charaktere, Himmel, Nachbearbeitung, Helligkeitsfehler, Schatten (Todo `ap-effects-fidelity`, Teil 4)
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. Auf `main` entfernt (nur Branch `unity`): `scripts/environment_export.py`, `scripts/material_export.py`, `scripts/material_variants.py`, `scripts/runtime_variants.json` und die zugehörigen Tests. Die Befehle unten laufen auf `main` nicht mehr.
+
 Stand: 2026-10-19, Unity 6000.3.26f1 (Lab-Editor `work/unity-shader-lab`, nicht der Haupteditor), Built-in-Pipeline, Gamma, Metal, Apple M1 Pro. Es werden **nur** unsere erzeugten Shader gezeichnet (119 von 120 benutzten Varianten übersetzbar), kein Original-Shader geladen, **kein Ton**. Bilder, Exporte, erzeugte Shader und Logs liegen unter `work/` (`work/effects/shots/`, `work/materials_all/`, `work/shaders/combined_all/`), nicht im Repo; hier stehen Zahlen und Beschreibungen. Bildmessungen: `Camera.Render` in eine `RenderTexture` (1280 × 720), Bildmittel RGB, Zone 422, Stunde 12, Zeit eingefroren (`Time.timeScale = 0`), sofern nicht anders genannt.
 
 Markierung: **belegt** = gemessen oder im Quelltext/Pseudocode gelesen, *vermutet* = Schluss ohne Test.

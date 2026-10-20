@@ -1,5 +1,7 @@
 # iOS-Texturen: BC → ASTC beim Bauen (Todo `ap-ios-textures`)
 
+> **Hinweis (Stand 2026-10-20):** `scripts/bundle_retarget.py` ist auf `main` entfernt (nur Branch `unity`); die Schritte zur Plattformkennung sind historisch. `scripts/texture_transcode.py` bleibt.
+
 Stand: 2026-10-19. Ziel: Die Karten-Bundles des Spiels enthalten BC1/BC3/BC4/BC5/BC7 (DXT). Apple-GPUs (iPhone, iPad) unterstützen BC nicht, Unity meldet auf iOS je Textur „format is not supported, decompressing texture“ und danach „Failed to decompress“ (Zone 422: 1.884 Meldungen, `docs/player-build-1.md`, Abschnitt 6). Lösung: `scripts/texture_transcode.py` wandelt die Texturen **beim Bauen** nach ASTC um. Alle Zahlen stammen aus Läufen auf dem Entwicklungsrechner (Apple M1 Pro, 8 Kerne); es sind keine Spieldaten im Repo.
 
 ## Ergebnis in Kürze

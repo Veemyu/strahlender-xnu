@@ -21,7 +21,7 @@ Einstiegspunkt: `scripts/build_all.sh all --xci <Datei> --nsp <Datei> --keys <Or
 | 6 Audio | Wwise-Banks/WEM offline in ein Format für Unity wandeln (vgmstream) | Platzhalter „nicht implementiert“ (`ap-audio`) |
 | 7 Unity-Build (**deprecated, Entscheidung 4**) | IL2CPP-Player für macOS (arm64) und iOS/iPadOS (Xcode-Projekt) | Stufe `unity-build`: stillgelegt, nicht mehr gepflegt (`unity/DEPRECATED.md`) |
 | 7b Rekompilation (Hauptweg seit Entscheidung 3) | macOS-App aus der Rekompilation: Generator → C → Übersetzen → Laufzeit/Metal → `BDSP.app` | Stufe `recomp` (getestet, Kaltbau 27,5 min; `docs/recomp-macapp.md`) |
-| 8 Signieren/Installieren | Xcode mit eigenem Team, `scripts/ios_deploy.sh` | Stufe `deploy` (Team-ID aus `work/local.env`; ohne ID nur Build) |
+| 8 Signieren/Installieren | Xcode mit eigenem Team, `scripts/recomp/ios/deploy_ios.sh` | Stufe `recomp` mit `--target ios` (Team-ID `TEAM_ID` oder `work/local.env`; ohne ID nur Build) |
 
 ## Videos (Entscheidungsvorschlag)
 - 18 Dateien, VP8 in WebM (`docs/daten-inventar.md`). Ob Unitys VideoPlayer auf macOS und iOS VP8 abspielt, ist **ungeprüft**. Falls nicht, wandelt der Build sie um.

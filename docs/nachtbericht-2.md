@@ -1,5 +1,7 @@
 # Nachtbericht 2 (Autopilot, 2026-10-18 bis 2026-10-19)
 
+> **Historisch (Stand 2026-10-20):** `scripts/bundle_retarget.py` ist auf `main` entfernt (nur Branch `unity`). Der Bericht beschreibt den damaligen Stand.
+
 Dieser Bericht trennt Gemessenes von Angenommenem. **Ein fertiges, spielbares Spiel gibt es nicht.** Es gibt ein belegtes Fundament und einen headless lauffähigen Spielkern.
 
 ## 1. Was läuft (gemessen)

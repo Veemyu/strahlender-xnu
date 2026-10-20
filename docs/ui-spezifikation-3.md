@@ -1,5 +1,7 @@
 # UI-Spezifikation 3: Stubs im Hauptprojekt, Original-Fenster im Spiel, Kampf-UI
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. `scripts/stub_gen.py` ist auf `main` entfernt (nur Branch `unity`); die Stufe `stubs` gibt es auf `main` nicht mehr.
+
 Stand: 2026-10-19, Todo `ap-ui`, Scheibe 2. Nur Zahlen, Verfahren und eigener Code; keine Spielinhalte, Texte oder Bilder im Repo (Aufnahmen und Dumps unter `work/`, gitignoriert). Die Logik ist von Hand in eigener Formulierung geschrieben, nichts maschinell aus Pseudocode übersetzt.
 Messung: Haupteditor Unity 6000.3.26f1 (Metal), Spielstand und Daten lokal, Spielmodus im Editor mit Eingabeskript. Kein Ton.
 

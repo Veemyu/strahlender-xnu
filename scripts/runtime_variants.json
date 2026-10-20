@@ -1,9 +1,0 @@
-[
- {"shader": "Custom/Bloom Finalize", "keywords": ["_FOGMODE_NONE"]},
- {"shader": "Custom/Bloom Finalize", "keywords": ["_FOGMODE_LINEAR"]},
- {"shader": "Custom/Bloom Finalize", "keywords": ["_FOGMODE_EXP"]},
- {"shader": "Custom/Bloom Finalize", "keywords": ["_FOGMODE_EXP2"]},
- {"shader": "Custom/Fxaa", "keywords": ["_GRADING_NONE"]},
- {"shader": "Custom/Fxaa", "keywords": ["_GRADING_SINGLE"]},
- {"shader": "Custom/Fxaa", "keywords": ["_GRADING_MULTI"]}
-]

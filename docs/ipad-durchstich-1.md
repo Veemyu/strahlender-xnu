@@ -1,5 +1,7 @@
 # iPad-Durchstich 1: Titel → Weiter → Feld → Tür → Schwester → Wildkampf → Speichern auf dem iPad (Todo `ap-ipad-slice`)
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. Die Stufe `assets` und `scripts/bundle_retarget.py` sind auf `main` entfernt (nur Branch `unity`); die Befehle unten laufen dort nicht mehr.
+
 Stand: 2026-10-19, iPad Pro 12,9" (6. Generation, `iPad14,6`, M2, 8 GB, iPadOS 26), Unity 6000.3.26f1, IL2CPP, Metal, Built-in RP, Release-Build, Teilmenge `scripts/subsets/ipad-start.txt` (789 Dateien, 229 MB, ASTC 6×6). Nur Namen, Zahlen und Struktur; keine Spieltexte, keine echten Saves, keine Bilder im Repo (Logs und Bilder unter `work/`, gitignoriert). **Ton blieb aus** (`AudioSafety`, Lautstärke des Geräts nicht angefasst; das Gerät wurde nur gestartet und beendet). Prüfstufen wie in `docs/spielkern-1.md`: **[A]** Annahme, **[P]** belegt.
 
 ## 1. Ergebnis in Kürze

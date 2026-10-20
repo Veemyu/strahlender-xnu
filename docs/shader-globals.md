@@ -1,5 +1,7 @@
 # Spiel-Globals, Schatten, Wasser und Nachbar-Texturen (Todo `ap-effects-fidelity`, Teil 1)
 
+> **Historisch (Stand 2026-10-20):** Unity-Weg, eingestellt. Auf `main` entfernt (nur Branch `unity`): `scripts/environment_export.py`, `scripts/material_export.py` und ihre Tests. Die Befehle unten laufen auf `main` nicht mehr.
+
 Stand 2026-10-19. Fragen: Wer setzt die 35 Spiel-Globals der Original-Shader (`_ShadowColor`, `_CloudParam`, `_PokeLightColor` …) und woher kommen die Werte? Wie erzeugt das Original Schatten, und läuft das mit unseren Shadern? Was macht das Original beim Wasser (Grab-Pass)? Wie lösen wir Texturverweise in Nachbar-Bundles auf?
 
 Markierung: **belegt** = im dekompilierten Spielcode gelesen oder in Unity gemessen, *vermutet* = Schluss ohne Test. Quellen: `work/il2cpp/dump.cs` und `script.json` (Il2CppDumper), Ghidra-Projekt `work/ghidra/bdsp` (headless, `-readOnly`, Skripte `scripts/ghidra/`: `StringXrefs.java`, `CallersOf.java`, `ExportDecompiled.java`, Starter `run_headless.sh` mit Sperrdatei `work/ghidra.lock`), Pseudocode unter `work/decomp/effects*` (nicht im Repo). Adressen unten sind Il2CppDumper-RVAs (Ghidra = RVA + 0x100000). Im Repo stehen nur Code, Formeln und Zahlen, keine Spielwerte.

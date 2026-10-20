@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Baut die iPadOS-App der Rekompilation (Speichermodell B), installiert sie auf das gekoppelte iPad, startet sie und holt Dateien.
-# Eigener Code; Muster wie scripts/ios_deploy.sh und scripts/ios_push_save.sh. Die Team-ID kommt aus work/local.env (TEAM_ID=..., gitignoriert)
+# Eigener Code; Muster wie scripts/ios_push_save.sh. Die Team-ID kommt aus work/local.env (TEAM_ID=..., gitignoriert)
 # und wird nie ausgegeben oder gespeichert.
 #
 # Aufruf:  deploy_ios.sh build            Laufzeitbibliothek, libgame.a (aus work/recomp/obj32), Ressourcen und App bauen (xcodebuild)
