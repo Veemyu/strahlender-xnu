@@ -27,7 +27,8 @@ case "$NVN_BACKEND" in
   vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/), Laufzeitbibliotheken per Vollpfad
     RT="$RT" scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh "$@"
     nvnobjs=("$RT"/nvnvk/*.o)
-    FW="-l:libvulkan.so.1 -l:libSDL3.so.0 -l:libshaderc_shared.so.1 -lstdc++ -lm -lpthread -ldl" ;;
+    FW="-l:libvulkan.so.1 -l:libSDL3.so.0 -l:libshaderc_shared.so.1 -lstdc++ -lm -lpthread -ldl"
+    [ -n "${BDSP_NO_MOVIE:-}" ] || FW="$FW -l:libavformat.so.62 -l:libavcodec.so.62 -l:libavutil.so.60" ;;
   *) echo "unbekanntes NVN_BACKEND=$NVN_BACKEND (metal|vulkan|none)" >&2; exit 2 ;;
 esac
 if [ "$(uname -s)" = Linux ]; then INC="$INC -I scripts/recomp/ryzen/compat"; fi

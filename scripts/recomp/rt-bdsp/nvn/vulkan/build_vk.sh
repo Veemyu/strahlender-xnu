@@ -41,3 +41,8 @@ for f in device exec shaders textures; do build "$SRC/nvn/vulkan/$f.c" "$O/vk_$f
 build "$SRC/nvn/vulkan/vma.cpp" "$O/vk_vma.o" "$@"
 build "$HERE/nvn_glue.c" "$O/nvn_glue.o" -Dg_debug_frame=bdsp_glue_debug_frame -include SDL3/SDL.h -include stdatomic.h -include string.h -include strings.h "$@"  # (exec.c definiert g_debug_frame selbst; nvn_glue.c bindet SDL/stdatomic/string nur unter __APPLE__ ein, braucht sie aber auch hier für die Eingabeschicht)
 build "$HERE/vulkan/vk_glue.c" "$O/vk_glue.o" "$@"
+# Filmwiedergabe (Eröffnungsfilm, FFmpeg-HLE von movie::): ohne sie stürzt/hängt der Gast im Stagefright-Pfad (OMXCodec::findMatchingCodecs). FFmpeg-Header: deps/include (sync_deps.sh) oder System
+if [ -z "${BDSP_NO_MOVIE:-}" ]; then
+  FFI=""; [ -d deps/include/libavcodec ] && FFI="-I deps/include"
+  build "$HERE/movie_glue.c" "$O/movie_glue.o" $FFI $BDSP_WARN_GLUE "$@"
+fi

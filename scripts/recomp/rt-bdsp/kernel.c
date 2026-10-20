@@ -462,6 +462,7 @@ out:
 // ------------------------------------------------------------------ Anhalten fremder Threads (Boehm-GC)
 // SetThreadActivity(handle, paused) -> thread_suspend; GetThreadContext3 liefert den Gast-Registersatz aus Cpu.
 // Der Gast hält seine Register nur in Cpu und auf dem Gast-Stack (Messung im Spike: 100 % der Fenster).
+static uint64_t g_suspends, g_resumes;
 static uint32_t svc_set_thread_activity(uint32_t h, uint32_t activity) {
     KObject *o = handle_get(h);
     if (!o || o->type != KOBJ_THREAD) return R_INVALID_HANDLE;
@@ -470,6 +471,7 @@ static uint32_t svc_set_thread_activity(uint32_t h, uint32_t activity) {
     if (!t->started || t->finished) return R_INVALID_STATE;
     pthread_mutex_lock(&g_klock);  // das Ziel hält g_klock nie im Anhalten: kein Host-Lock bleibt in der Kernel-Sektion hängen
     mach_port_t mp = pthread_mach_thread_np(t->host);
+    __atomic_fetch_add(activity == 1 ? &g_suspends : &g_resumes, 1, __ATOMIC_RELAXED);
     if (activity == 1 && !t->suspended) { thread_suspend(mp); t->suspended = true; }
     else if (activity == 0 && t->suspended) { thread_resume(mp); t->suspended = false; }
     pthread_mutex_unlock(&g_klock);
@@ -809,6 +811,7 @@ void kernel_report(FILE *f) {
     fprintf(f, "Threads angelegt %d (gleichzeitig höchstens %d, aktuell %d), Handles aktuell %d (Spitze %d), SetHeapSize-Heap %llu MiB, per MapPhysicalMemory abgebildet %llu MiB (Spitze %llu MiB)\n",
             g_thread_count, g_thread_peak, g_thread_live, handles_used, handles_peak, (unsigned long long)(heap_size >> 20),
             (unsigned long long)(phys_mapped >> 20), (unsigned long long)(phys_peak >> 20));
+    fprintf(f, "SetThreadActivity: %llu Anhalten, %llu Fortsetzen\n", (unsigned long long)g_suspends, (unsigned long long)g_resumes);
     fprintf(f, "SVC-Zähler:");
     uint64_t total = 0;
     int distinct = 0;

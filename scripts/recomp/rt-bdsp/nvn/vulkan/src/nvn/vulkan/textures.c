@@ -493,6 +493,11 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     VkFmt mf = fmt_of(t->format);
     uint64_t total = tegra_total_size(&t->layout);
     b->checked_frame = frame;
+    if (t->addr + total > 0x7320000000ull || t->addr < 0x7000000000ull) {  // außerhalb des Gastfensters: Zugriff wäre ein Absturz
+        static int warned;
+        if (warned++ < 8) fprintf(stderr, "[vk] Textur außerhalb des Gastfensters: addr %llx größe %llx fmt %u target %u\n", (unsigned long long)t->addr, (unsigned long long)total, (unsigned)t->format, (unsigned)t->target);
+        return;
+    }
     prof_tex_checks++;
     if (t->flags & 0x10) b->dynamic = true;
     if (full_hash_budget_frame != frame) { full_hash_budget_frame = frame; full_hash_budget = 4 << 20; }
