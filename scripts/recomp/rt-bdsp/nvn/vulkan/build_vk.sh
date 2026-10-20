@@ -11,9 +11,10 @@ RT=${RT:-work/recomp/rt-bdsp-vk}
 SRC=${NVN_SRC_VK:-work/recomp/nvn-src-vk}
 HERE=scripts/recomp/rt-bdsp/nvn
 mkdir -p "$RT/nvnvk"
-if [ -z "${NVN_KEEP:-}" ] && { [ ! -d "$SRC/nvn/vulkan" ] || [ -n "$(find "$HERE" -type f \( -name '*.h' -o -name '*.patch' -o -name 'prepare*.sh' \) -newer "$SRC/nvn/nvn.h" -print -quit 2>/dev/null)" ]; }; then
-  "$HERE/vulkan/prepare_vk.sh" > /dev/null
+if [ -z "${NVN_KEEP:-}" ]; then
+  NVN_SRC_VK="$SRC" "$HERE/vulkan/prepare_vk.sh" > /dev/null   # kopiert nur bei abweichendem Stempel
 fi
+. "$HERE/flags.inc.sh"
 if [ -z "${VK_INC:-}" ]; then
   if [ -d include-vk/vulkan ]; then VK_INC=$PWD/include-vk
   else VK_INC="/opt/homebrew/opt/vulkan-headers/include -I work/recomp/deps-vk -I /opt/homebrew/opt/sdl3/include -I /opt/homebrew/opt/shaderc/include"; fi
@@ -28,9 +29,9 @@ build() {  # Quelle Objekt [Zusatzflags]
   local f=$1 o=$2; shift 2
   local cc=$CC lang=""
   case "$f" in *.cpp) cc=${CXX:-clang++}; lang="-std=c++17";; esac
-  if [ -n "${VK_SYNTAX:-}" ]; then $cc -fsyntax-only -w $lang $INC "$@" "$f"; return; fi
+  if [ -n "${VK_SYNTAX:-}" ]; then $cc -fsyntax-only $BDSP_NOWARN $lang $INC "$@" "$f"; return; fi
   if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE" -name '*.h' -newer "$o" -print -quit)" ]; then
-    $cc -O2 -g -w -fno-strict-aliasing $ARCHF $lang $INC "$@" -c "$f" -o "$o"
+    $cc -O2 -g $BDSP_NOWARN -fno-strict-aliasing $ARCHF $lang $INC "$@" -c "$f" -o "$o"
   fi
 }
 O=$RT/nvnvk

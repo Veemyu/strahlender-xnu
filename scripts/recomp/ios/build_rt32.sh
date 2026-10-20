@@ -15,7 +15,8 @@ BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/
 # Kopie neu anlegen, wenn sie fehlt oder die Repo-Quellen neuer sind (sonst läuft das iPad mit veraltetem Renderer)
 scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null   # kopiert nur bei abweichendem Stempel
 # nvn-src32: Stempel aus dem Quellstempel plus nvn_rebase32.py und movie_glue.c
-want32=$({ cat work/recomp/nvn-src/.stamp; shasum -a 256 scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c"; } | shasum -a 256 | cut -d' ' -f1)
+. scripts/recomp/rt-bdsp/nvn/hash.inc.sh
+want32=$({ cat work/recomp/nvn-src/.stamp; sha256 scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c"; } | sha256 | cut -d' ' -f1)
 if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
   python3 scripts/recomp/ios/nvn_rebase32.py work/recomp/nvn-src "$NVN32" > /dev/null
   echo "$want32" > "$NVN32/.stamp32"

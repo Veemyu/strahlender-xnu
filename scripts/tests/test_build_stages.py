@@ -294,7 +294,8 @@ class RecompStageTests(unittest.TestCase):
     def test_nvn_stamp_covers_src_translator_and_prepare(self):
         nvn = os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "nvn")
         os.makedirs(nvn, exist_ok=True)
-        shutil.copy(os.path.join(os.path.dirname(bs.__file__), "recomp", "rt-bdsp", "nvn", "prepare.sh"), nvn)
+        for name in ("prepare.sh", "hash.inc.sh"):
+            shutil.copy(os.path.join(os.path.dirname(bs.__file__), "recomp", "rt-bdsp", "nvn", name), nvn)
         for rel in ("nvn/src/nvn/metal.m", "nvn/src/rt.h", "shader_translator/translate.c", "shader_translator/shader.h"):
             write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", rel) if rel.startswith("nvn") else os.path.join(self.root, rel), "v1")
         rec = os.path.join(self.root, "scripts", "recomp")

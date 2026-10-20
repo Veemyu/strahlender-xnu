@@ -11,8 +11,9 @@ cd "$(dirname "$0")/../../../.."
 SRC=scripts/recomp/rt-bdsp/nvn/src
 DST=${NVN_SRC:-work/recomp/nvn-src}
 HERE=scripts/recomp/rt-bdsp/nvn
+. "$HERE/hash.inc.sh"
 want=$({ find "$SRC" -type f ! -name .DS_Store; echo shader_translator/translate.c; echo shader_translator/shader.h; echo "$HERE/prepare.sh"; } \
-  | LC_ALL=C sort | while IFS= read -r f; do shasum -a 256 "$f"; done | shasum -a 256 | cut -d' ' -f1)
+  | LC_ALL=C sort | while IFS= read -r f; do sha256 "$f"; done | sha256 | cut -d' ' -f1)
 if [ "${1:-}" = "--print" ]; then
   echo "$want"
   exit 0
