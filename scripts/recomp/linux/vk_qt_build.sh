@@ -1,6 +1,6 @@
 #!/bin/bash
-# Baut die C++-Qt-Hülle auf dem Linux host (Bahn a, Job vk-qt-build). Voraussetzung: Qt6-Entwicklungspakete (Liste und Befehl: rt-bdsp/app/linux/deps.txt).
-# Aufruf: vk_qt_build.sh [--detach] [--check]
+# Builds the C++ Qt shell on the Linux host (lane a, job vk-qt-build). Prerequisite: Qt6 development packages (list and command: rt-bdsp/app/linux/deps.txt).
+# Usage: vk_qt_build.sh [--detach] [--check]
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 ARGS=()

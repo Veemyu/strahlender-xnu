@@ -1,14 +1,14 @@
 #!/bin/bash
-# Holt Bilder (PNG) und das Log eines Vulkan-Laufs vom Linux host nach work/recomp/linux/shots/ (gitignoriert; nie ins Repo).
-# Aufruf: vk_fetch.sh [shots|logs|alles]     (Standard: alles)
+# Fetches images (PNG) and the log of a Vulkan run from the Linux host into work/recomp/linux/shots/ (gitignored; never into the repo).
+# Usage: vk_fetch.sh [shots|logs|alles]     (default: alles)
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 what=${1:-alles}
 rz_require
 mkdir -p "$RZ_LOCAL_OUT/shots" "$RZ_LOCAL_OUT/logs"
-case "$what" in shots|logs|alles) ;; *) rz_die "Aufruf: vk_fetch.sh [shots|logs|alles]";; esac
+case "$what" in shots|logs|alles) ;; *) rz_die "Usage: vk_fetch.sh [shots|logs|alles]";; esac
 if [ "$what" = shots ] || [ "$what" = alles ]; then
-  rsync -a --max-size=30m --include='*.png' --exclude='*' "$RZ_HOST:$RZ_DIR/work/recomp/shots/" "$RZ_LOCAL_OUT/shots/" || rz_info "keine Bilder auf dem Linux host"
+  rsync -a --max-size=30m --include='*.png' --exclude='*' "$RZ_HOST:$RZ_DIR/work/recomp/shots/" "$RZ_LOCAL_OUT/shots/" || rz_info "no images on the Linux host"
   ls -la "$RZ_LOCAL_OUT/shots" | tail -20
 fi
 if [ "$what" = logs ] || [ "$what" = alles ]; then

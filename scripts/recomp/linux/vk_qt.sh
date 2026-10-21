@@ -1,7 +1,7 @@
 #!/bin/bash
-# Startet die Qt-Hülle (Menüleiste) mit dem Vulkan-Spiel auf dem Linux host (Bahn b, Job vk-qt-<tag>), Fenster in der Sitzung des Desktops.
-# Aufruf: vk_qt.sh [--tag=NAME] [--detach] [NAME=WERT ...] [Optionen von bdsp_boot_vk]
-#   Beispiel: vk_qt.sh --tag=q1 DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/1000 BDSP_QT_SCRIPT=20:fps30,30:fps120,40:grab,45:quit --timeout 60
+# Starts the Qt shell (menu bar) with the Vulkan game on the Linux host (lane b, job vk-qt-<tag>), window in the desktop session.
+# Usage: vk_qt.sh [--tag=NAME] [--detach] [NAME=WERT ...] [options of bdsp_boot_vk]
+#   Example: vk_qt.sh --tag=q1 DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/1000 BDSP_QT_SCRIPT=20:fps30,30:fps120,40:grab,45:quit --timeout 60
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 TAG=run; ARGS=()

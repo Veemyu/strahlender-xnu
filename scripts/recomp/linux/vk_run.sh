@@ -1,9 +1,9 @@
 #!/bin/bash
-# Startet die Vulkan-Fassung auf dem Linux host (Bahn b, Job vk-run-<tag>) und zeigt das Ende des Logs. Kein Ton, kein Fenster (Standard: --headless).
-# Aufruf: vk_run.sh [--tag=NAME] [--detach] [NAME=WERT ...] [Optionen von bdsp_boot_vk]
-#   Beispiele: vk_run.sh --tag=t1 --headless --timeout 90 --screenshot-after 300
+# Starts the Vulkan build on the Linux host (lane b, job vk-run-<tag>) and shows the end of the log. No sound, no window (default: --headless).
+# Usage: vk_run.sh [--tag=NAME] [--detach] [NAME=WERT ...] [options of bdsp_boot_vk]
+#   Examples: vk_run.sh --tag=t1 --headless --timeout 90 --screenshot-after 300
 #              vk_run.sh BDSP_NVN_STATS=1 BDSP_VK_VALIDATION=1 --headless --timeout 60
-#   Ein Fenster nur kurz und mit Absicht: ohne --headless (braucht DISPLAY/WAYLAND_DISPLAY der Sitzung; ssh hat sie nicht) – hier nicht vorgesehen.
+#   A window only briefly and on purpose: without --headless (needs DISPLAY/WAYLAND_DISPLAY of the session; ssh does not have them) – not intended here.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 TAG=run; ARGS=()

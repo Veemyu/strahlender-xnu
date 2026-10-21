@@ -1,9 +1,9 @@
 #!/bin/bash
-# Läuft auf dem Linux host: startet work/recomp/bdsp_boot_vk (Vulkan-Fassung von rt-bdsp), standardmäßig ohne Fenster (--headless: Offscreen-Rendering in
-# Bilder eigener Größe, keine Anzeige nötig, nichts auf dem Desktop des Nutzers) und stumm (die Laufzeit hat keinen Tonpfad).
-# Aufruf: vk_run.sh [NAME=WERT ...] [Optionen von bdsp_boot_vk]   (Wörter der Form NAME=WERT mit Großbuchstaben sind Umgebungsvariablen)
-#   Standard: --headless --timeout 60 (gehört zur Laufzeit; Umgebung BDSP_IMG=work/recomp/img_gfx)
-# Bilder: work/recomp/shots/frame_NNNNN.png (BDSP_SHOT_DIR ändert den Ordner), Shader-Zwischenspeicher: work/recomp/cache/spirv
+# Runs on the Linux host: starts work/recomp/bdsp_boot_vk (Vulkan build of rt-bdsp), by default without window (--headless: offscreen rendering into
+# images of their own size, no display needed, nothing on the user's desktop) and silent (the runtime has no audio path).
+# Usage: vk_run.sh [NAME=WERT ...] [options of bdsp_boot_vk]   (words of the form NAME=WERT with uppercase names are environment variables)
+#   Default: --headless --timeout 60 (belongs to the runtime; environment BDSP_IMG=work/recomp/img_gfx)
+# Images: work/recomp/shots/frame_NNNNN.png (BDSP_SHOT_DIR changes the folder), shader cache: work/recomp/cache/spirv
 source "$(dirname "$0")/common.sh"
 [ -x "$W/bdsp_boot_vk" ] || die "$W/bdsp_boot_vk is missing (run scripts/recomp/linux/host/vk_build.sh)."
 [ -d work/romfs ] || die "work/romfs is missing (run the extract stage described in docs/BUILD.md first)."
@@ -16,5 +16,5 @@ done
 export SDL_AUDIODRIVER=dummy
 echo "# Start: ${ARGS[*]}"
 "${TIMEV[@]}" "$W/bdsp_boot_vk" "${ARGS[@]}"
-echo "# Ende, Code $?"
+echo "# End, code $?"
 ls -la "${BDSP_SHOT_DIR:-$W/shots}" 2>/dev/null | tail -20

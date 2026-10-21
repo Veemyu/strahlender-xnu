@@ -1,6 +1,6 @@
 #!/bin/bash
-# Baut rt-bdsp mit dem Vulkan-Backend auf dem Linux host (Bahn a, Job vk-build; Log ~/xnu-recomp/logs/vk-build.log). Überträgt vorher den Arbeitsstand (vk_sync.sh).
-# Aufruf: vk_build.sh [--ohne-sync] [--detach] [--qt] [-DMakro ...]   (--qt: zusätzlich bdsp_boot_vk_qt mit der Qt-Hülle, braucht qt6-qtbase-devel)
+# Builds rt-bdsp with the Vulkan backend on the Linux host (lane a, job vk-build; log ~/xnu-recomp/logs/vk-build.log). Transfers the working state beforehand (vk_sync.sh).
+# Usage: vk_build.sh [--ohne-sync] [--detach] [--qt] [-DMakro ...]   (--qt: additionally bdsp_boot_vk_qt with the Qt shell, needs qt6-qtbase-devel)
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 SYNC=1; ARGS=()
