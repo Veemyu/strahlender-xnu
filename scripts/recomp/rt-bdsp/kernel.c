@@ -647,7 +647,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         x[0] = R_OK;
         break;
     }
-    case 0x14: region_remove(x[1]); x[0] = R_OK; break;
+    case 0x14: region_remove(x[1]); hid_shmem_unmapped(x[1]); x[0] = R_OK; break;
     case 0x15: {
         KTransferMem *t = calloc(1, sizeof *t);
         t->obj.type = KOBJ_TMEM;

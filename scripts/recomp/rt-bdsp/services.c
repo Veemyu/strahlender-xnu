@@ -446,11 +446,59 @@ static void time_static(Service *s, IpcReq *req, IpcResp *resp) {
 }
 
 // ------------------------------------------------------------------ hid (gemeinsamer Speicher, Eingaben bleiben leer)
+// Der TouchScreen-Ring liegt im HID-Gemeinsamspeicher bei +0x400 (Switchbrew: HidSharedMemory.touch_screen; hier bestätigt durch die Disassemblierung von
+// nn::hid::server::RingLifo<TouchScreenState<16>,17>::ReadImpl, SDK 0x721f4b4 / iPad-Basis 0x7000000):
+//   Kopf (0x20): +0 u64 Zeitstempel, +8 u64 Pufferzahl (17), +0x10 u64 tail (Index des neuesten Eintrags), +0x18 u64 count (höchstens 16)
+//   Einträge ab +0x20, je 0x298 Byte = AtomicStorage {u64 Version = Sampling-Zähler; TouchScreenState (0x290): u64 Sampling-Zähler, s32 Zahl der Berührungen,
+//   4 Byte Füllung, 16 × TouchState (je 0x28)}. ReadImpl liest die letzten n = min(count, Anzahl) Einträge ältester zuerst, liest dabei die Version vor
+//   und nach dem Kopieren (Abweichung: von vorn) und verlangt, dass die Sampling-Zähler benachbarter Einträge genau um 1 steigen, sonst von vorn.
+// Die Laufzeit schreibt daher mit dem Vsync-Takt (hid_idle_tick, services_gfx.c) einen leeren Sample (0 Berührungen) nach dem Schema der echten HID-Dienste:
+// Zustand, dann Version, dann tail, dann count (Leser sehen nie einen halb geschriebenen neuesten Eintrag; der überschriebene Platz tail+1 wird bei
+// höchstens 16 gelesenen Einträgen nie gelesen).
+#define HID_TOUCH_OFF 0x400
+#define HID_RING_N 17
+#define HID_ENTRY 0x298
 static uint32_t hid_shmem_handle;
+static pthread_mutex_t g_hid_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t g_hid_base, g_hid_seq;   // Gastadresse des Gemeinsamspeichers (0 = noch nicht eingeblendet), Nummer des letzten Samples
+static void hid_touch_step(void) {   // g_hid_lock gehalten
+    uint8_t *ring = (uint8_t *)G2H(g_hid_base + HID_TOUCH_OFF);
+    uint64_t *hdr = (uint64_t *)ring;
+    uint64_t seq = ++g_hid_seq;
+    uint64_t tail = __atomic_load_n(&hdr[2], __ATOMIC_RELAXED);
+    uint64_t count = __atomic_load_n(&hdr[3], __ATOMIC_RELAXED);
+    if (hdr[1] != HID_RING_N) { hdr[1] = HID_RING_N; tail = HID_RING_N - 1; count = 0; }   // erster Aufruf: der nächste Sample landet in Platz 0
+    uint64_t next = (tail + 1) % HID_RING_N;
+    uint8_t *e = ring + 0x20 + next * HID_ENTRY;
+    memset(e + 8, 0, HID_ENTRY - 8);
+    *(uint64_t *)(e + 8) = seq;                                  // TouchScreenState.sampling_number (Berührungszahl 0)
+    __atomic_store_n((uint64_t *)e, seq, __ATOMIC_RELEASE);      // Version
+    hdr[0] = seq * 1000000ull;                                   // Zeitstempel (nur aufsteigend nötig)
+    __atomic_store_n(&hdr[2], next, __ATOMIC_RELEASE);
+    __atomic_store_n(&hdr[3], count < 16 ? count + 1 : 16, __ATOMIC_RELEASE);
+}
+static void hid_shmem_mapped(KSharedMem *s) {   // nach dem Einblenden (der Kernel hat den Bereich genullt)
+    pthread_mutex_lock(&g_hid_lock);
+    __atomic_store_n(&g_hid_base, s->guest_addr, __ATOMIC_RELEASE);
+    g_hid_seq = 0;
+    for (int i = 0; i < 16; i++) hid_touch_step();   // der Ring ist von Anfang an gefüllt: count 16, Zähler 1..16
+    pthread_mutex_unlock(&g_hid_lock);
+}
+void hid_idle_tick(void) {   // Vsync-Takt (services_gfx.c vsync_thread)
+    if (!__atomic_load_n(&g_hid_base, __ATOMIC_ACQUIRE)) return;
+    pthread_mutex_lock(&g_hid_lock);
+    if (g_hid_base) hid_touch_step();
+    pthread_mutex_unlock(&g_hid_lock);
+}
+void hid_shmem_unmapped(uint64_t addr) {
+    pthread_mutex_lock(&g_hid_lock);
+    if (g_hid_base && g_hid_base == addr) g_hid_base = 0;
+    pthread_mutex_unlock(&g_hid_lock);
+}
 static void hid_applet_resource(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     if (req->cmd == 0) {
-        if (!hid_shmem_handle) kernel_create_shared_memory(0x40000, NULL, &hid_shmem_handle);
+        if (!hid_shmem_handle) kernel_create_shared_memory(0x40000, hid_shmem_mapped, &hid_shmem_handle);
         resp->copy_handles[resp->ncopy++] = hid_shmem_handle;
     } else UNHANDLED("IAppletResource");
 }

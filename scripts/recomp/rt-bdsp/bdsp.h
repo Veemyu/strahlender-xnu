@@ -123,6 +123,8 @@ uint32_t kernel_new_handle(KObject *o);
 void kernel_signal(KObject *o);   // Aufrufer hält g_klock
 KEvent *kernel_create_event_pair(uint32_t *writable, uint32_t *readable);
 KSharedMem *kernel_create_shared_memory(uint64_t size, void (*on_map)(KSharedMem *), uint32_t *handle);
+void hid_idle_tick(void);   // services.c: leerer Touch-Sample je Vsync im HID-Gemeinsamspeicher
+void hid_shmem_unmapped(uint64_t addr);   // services.c: der Gast blendet den Gemeinsamspeicher aus (UnmapSharedMemory): keine Samples mehr dorthin
 KThread *kernel_current_thread(void);
 Cpu *kernel_current_cpu(void);
 void kernel_init(void);

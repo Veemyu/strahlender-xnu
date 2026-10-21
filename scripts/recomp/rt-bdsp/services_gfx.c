@@ -49,6 +49,7 @@ static void *vsync_thread(void *arg) {
         pthread_mutex_lock(&g_klock);
         kernel_signal(g_vsync);
         pthread_mutex_unlock(&g_klock);
+        hid_idle_tick();
     }
     return NULL;
 }
