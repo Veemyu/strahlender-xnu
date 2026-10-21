@@ -169,6 +169,7 @@ typedef struct {
     int reg;             // slot in g_reg (live textures, for the "largest textures" dump) + 1
     int tp;              // runtime/nvn/texpatch.c: 0 not checked yet, -1 none, else known UI texture + 1
     uint32_t tp_gen;     // texpatch_generation() it was last uploaded with
+    uint32_t key_target, key_w, key_h, key_fmt, key_samples;  // guest descriptor the Metal texture was created from
 } TexBackend;
 
 // Live textures (diagnostics: the overworld slowdown at 32:9 - the same textures used 870 MB and 4x the GPU time
@@ -418,7 +419,12 @@ void renderer_texture_gone(void *nvn_tex, void *mtl_tex);  // renderer.m
 static TexBackend *tex_backend(NvnTexture *t) {
     if (t->backend) {
         TexBackend *b = (TexBackend *)t->backend;
-        if (b->scalable && (b->sx != g_rs_x || b->sy != g_rs_y)) {  // output resolution changed: reallocate
+        // reallocate when the output resolution changed, or when the guest descriptor behind this NvnTexture changed
+        // (target, size, format, samples): the Metal texture no longer matches it
+        bool resized = b->scalable && (b->sx != g_rs_x || b->sy != g_rs_y);
+        bool redefined = b->key_target != t->target || b->key_w != t->width || b->key_h != t->height || b->key_fmt != t->format ||
+                         b->key_samples != t->samples;
+        if (resized || redefined) {
             release_backend_texture(t, b);
             create_backend_texture(t, b);
         }
@@ -442,6 +448,7 @@ int renderer_texpatch_of(NvnTexture *t) {
 }
 
 static void create_backend_texture(NvnTexture *t, TexBackend *b) {
+    b->key_target = t->target; b->key_w = t->width; b->key_h = t->height; b->key_fmt = t->format; b->key_samples = t->samples;
     MtlFormat mf = mtl_format(t->format);
     MTLTextureDescriptor *d = [MTLTextureDescriptor new];
     d.textureType = mtl_tex_type(t->target, t->samples);

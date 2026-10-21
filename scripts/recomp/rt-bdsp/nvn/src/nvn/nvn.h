@@ -66,6 +66,8 @@ typedef struct NvnShaderStage {
     uint64_t code_addr;       // GPU (== CPU) address of the code
     const uint8_t *control;   // control section
     uint32_t const_offset, const_size;  // compiler constants (bound as c1), within the code blob
+    uint32_t local_size[3];   // compute work group size, copied from the control section when the shaders are set (the game owns
+                              // that block and may reuse it later: reading it at the first dispatch gave garbage sizes)
     void *backend;
 } NvnShaderStage;
 

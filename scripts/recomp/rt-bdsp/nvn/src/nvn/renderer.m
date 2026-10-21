@@ -265,6 +265,13 @@ void renderer_submit(void) {
     }
 }
 
+// Compute dispatches write storage buffers on the GPU, but a draw copies its vertex streams from guest memory when it is
+// encoded (bind_guest). Skinned meshes are drawn from such buffers, so a stream that overlaps a range a still-pending
+// dispatch writes would be copied before the dispatch ran. The ranges are remembered here until the GPU has caught up.
+#define HZ_MAX 128
+static struct { uint64_t addr, size; } hz_ranges[HZ_MAX];
+static int hz_n;
+
 // Finish all recorded GPU work (the CPU is about to read GPU results, or reuse the ring).
 void renderer_flush(void) {
     renderer_submit();
@@ -274,8 +281,11 @@ void renderer_flush(void) {
     g_wait_kind = 1;
     wait_cb(c);
     g_wait_kind = 0;
+    hz_n = 0;  // the GPU has run everything submitted so far
     ring_reset();
 }
+
+#include "render_debug.inc"  // environment-driven debug tools (geometry check, draw hiding, compute MSL dump)
 
 // Wait for submitted work without committing anything new (nvnSyncWait / QueueFinish).
 // Callable from any thread: everything submitted so far was committed by renderer_submit.
@@ -1440,9 +1450,10 @@ static CsProg *compute_program(NvnProgram *p) {
     cp->si = maxwell_translate((const uint8_t *)(uintptr_t)ss->code_addr, ss->const_offset ? ss->const_offset : 0x10000, STAGE_COMPUTE, &k);
     if (!cp->si->msl) { LOG("[compute] translate failed: %s (code %llx)\n", cp->si->error, ss->code_addr); cp->failed = true; return NULL; }
     for (int i = 0; i < 3; i++) {
-        cp->local[i] = ss->control ? *(const uint32_t *)(ss->control + 0x748 + 4 * i) : 1;
+        cp->local[i] = ss->control ? ss->local_size[i] : 1;
         if (!cp->local[i]) cp->local[i] = 1;
     }
+    debug_save_compute_msl(ss->code_addr, cp->si->msl);
     NSError *err = nil;
     id<MTLLibrary> lib = TIMED_COMPILE([dev newLibraryWithSource:@(cp->si->msl) options:nil error:&err]);
     id<MTLFunction> f = lib ? [lib newFunctionWithName:@"main0"] : nil;
@@ -1462,6 +1473,10 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
     if (!st.program || !gx || !gy || !gz) return;
     CsProg *cp = compute_program(st.program);
     if (!cp) return;
+    for (int i = 0; i < 16; i++)  // every storage range this dispatch can write (see hz_ranges)
+        if (st.sbuf[5][i].addr && st.sbuf[5][i].size && hz_n < HZ_MAX) {
+            hz_ranges[hz_n].addr = st.sbuf[5][i].addr; hz_ranges[hz_n].size = st.sbuf[5][i].size; hz_n++;
+        }
     static int trace = -1;
     if (trace < 0) trace = getenv("BDSP_TRACE_CS") != NULL;
 #define CST(x) do { if (trace) { fprintf(stderr, "[cs] %s\n", x); fflush(stderr); } } while (0)
@@ -1933,8 +1948,20 @@ static void startup_gate(void) {
     LOG("[gate] %llu Pipelines in %.0f ms vorgebaut\n", (unsigned long long)gate_total, now_ms() - t0);
 }
 
+// True if one of the vertex streams in `used` covers a storage range that a compute dispatch may still write.
+static bool streams_hit_pending_compute(uint32_t used) {
+    for (int s = 0; s < 12; s++) {
+        if (!(used & (1u << s)) || !st.vbuf[s].addr) continue;
+        uint64_t lo = st.vbuf[s].addr, hi = lo + (st.vbuf[s].size ? st.vbuf[s].size : 16);
+        for (int i = 0; i < hz_n; i++)
+            if (lo < hz_ranges[i].addr + hz_ranges[i].size && hi > hz_ranges[i].addr) return true;
+    }
+    return false;
+}
+
 static void draw(CmdRec *r, bool indexed) {
     if (!st.program) { stat_skipped++; return; }
+    if (debug_skip_draw(r)) { stat_skipped++; return; }
     static bool logged_modes;
     if (!logged_modes) {
         logged_modes = true;
@@ -1947,6 +1974,7 @@ static void draw(CmdRec *r, bool indexed) {
     vkey.no_rscale = fkey.no_rscale = true;  // no resolution scaling (XNU translator option)
     vkey.depth_minus_one = nvn_depth_mode() == 0;
     for (int i = 0; i < st.nattrib; i++) vkey.attr_kind[i] = (uint8_t)attr_kind(st.attrib[i] & 0xFF);
+    GeomState geom = geom_state(&vkey);  // render_debug.inc: BDSP_GEOM_CHECK
     for (int i = 0; i < st.rt.ncolor; i++) if (st.rt.color[i]) fkey.rt_kind[i] = (uint8_t)rt_kind(st.rt.color[i]->format);
     Prog *pr = get_program(st.program, &vkey, &fkey);
     if (!pr || !pr->ready) { stat_skipped++; return; }
@@ -2027,8 +2055,6 @@ static void draw(CmdRec *r, bool indexed) {
     snap_reason = "draw-colorwrite";
     for (int i = 0; i < st.rt.ncolor; i++)
         if (st.rt.color[i] && ((st.channel_mask >> (i * 4)) & 0xF)) snapshots_invalidate(st.rt.color[i]);
-    begin_pass();
-
     // vertex streams this draw reads (also computed inside the pipeline build on a cache miss)
     uint32_t used_streams = 0;
     for (int i = 0; i < 32; i++) {
@@ -2037,6 +2063,11 @@ static void draw(CmdRec *r, bool indexed) {
         if (i >= st.nattrib || (a & 0xFF) == 0) used_streams |= 1u << 31;
         else used_streams |= 1u << ((a >> 8) & 0x1F);
     }
+    // A stream the draw copies now may overlap a compute write the GPU has not run yet (its ssbo range was recorded
+    // in dispatch_compute): finish the submitted work first, otherwise the copy holds the data from before the dispatch.
+    if (hz_n && streams_hit_pending_compute(used_streams)) renderer_flush();
+    begin_pass();
+
     // pipeline
     uint64_t phash = pipeline_state_hash(pr);
     uint32_t pslot = (uint32_t)(phash ^ (phash >> 29)) & (PIPE_TAB - 1);
@@ -2136,6 +2167,7 @@ static void draw(CmdRec *r, bool indexed) {
         [enc setVertexBuffer:dbgvs offset:0 atIndex:DBG_VS_BUFFER_INDEX];
     }
     if (pr->fi->uses_gmem) [enc setFragmentBuffer:g_guest_buffer offset:0 atIndex:GMEM_BUFFER_INDEX];
+    id<MTLBuffer> geom_buf = vkey.dbg_pos ? geom_bind(enc, geom.scan) : nil;
     bind_textures(0, pr->vi);
     bind_textures(1, pr->fi);
     extern bool pets_hide_item_cursor(void);  // (the cursor is on the companion card: runtime/hle/pets.c)
@@ -2354,6 +2386,7 @@ static void draw(CmdRec *r, bool indexed) {
     }
     }  // runs
     stat_draws++;
+    if (geom_buf) geom_report(r, indexed, geom_buf, &vkey, geom.frame);  // render_debug.inc
     if (dbg_this) {
         static int nlog;
         if (nlog++ < 4) {

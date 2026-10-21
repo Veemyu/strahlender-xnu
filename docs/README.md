@@ -13,6 +13,7 @@ standard `.md` counterparts are translated in full.
 | iPadOS build, deployment, memory, known issues | [recomp-ios.md](recomp-ios.md) |
 | Audio output, threading, evidence, remaining checks | [recomp-audio.md](recomp-audio.md) |
 | Original icon extraction, language variants, deterministic styling | [recomp-icons.md](recomp-icons.md) |
+| Debugging the Metal renderer: findings, tools, method | [recomp-render-debug.md](recomp-render-debug.md) |
 
 German versions use the corresponding `.de.md` suffix, including
 [BUILD.de.md](BUILD.de.md).

@@ -70,6 +70,7 @@ typedef struct {
     bool fast_math;         // XNU: MSL without the pragmas that disable fast math and FMA contraction (original behaviour)
     bool half_compat;       // XNU: Ryujinx-compatible half precision: no rounding to fp16 between half operations (see translate.c hstore)
     uint8_t hlsl;           // XNU: emit HLSL (Unity ShaderLab, Shader Model 5 subset) instead of MSL; the contract is listed above
+    uint8_t dbg_pos;        // XNU debug (BDSP_GEOM_CHECK): vertex shaders also store their clip position to buffer(29)[iid * 4096 + vid]
 } ShaderKey;
 
 typedef struct {

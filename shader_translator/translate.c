@@ -2728,8 +2728,8 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
         else sp(&args, ", texture%s<float> t%d [[texture(%d)]], sampler s%d [[sampler(%d)]]", tn, i, i, i, i);
     }
     if (stage == STAGE_VERTEX) {
-        sp(&s, "vertex VOut main0(VIn in [[stage_in]], uint vid [[vertex_id]], uint iid [[instance_id]]%s) {\n",
-           args.buf ? args.buf : "");
+        sp(&s, "vertex VOut main0(VIn in [[stage_in]], uint vid [[vertex_id]], uint iid [[instance_id]]%s%s) {\n",
+           args.buf ? args.buf : "", key && key->dbg_pos ? ", device float4 *dbgpos [[buffer(29)]]" : "");
         sp(&s, "  VOut out = {};\n  out.pos = float4(0, 0, 0, 1);\n");
         for (int i = 0; i < 32; i++)
             if (c->out_attr_mask & (1u << i)) sp(&s, "  out.v%d = float4(0, 0, 0, 1);\n", i);
@@ -2762,6 +2762,7 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
         if (key && key->flip_y) sp(&s, "  out.pos.y = -out.pos.y;\n");
         if (key && key->flip_x) sp(&s, "  out.pos.x = -out.pos.x;\n");
         if (key && key->depth_minus_one) sp(&s, "  out.pos.z = (out.pos.z + out.pos.w) * 0.5f;\n");
+        if (key && key->dbg_pos) sp(&s, "  if (vid < 4096 && iid < 8) dbgpos[iid * 4096 + vid] = out.pos;\n");
         sp(&s, "  return out;\n}\n");
     } else if (stage == STAGE_FRAGMENT) {
         sp(&s, "  FOut o;\n");

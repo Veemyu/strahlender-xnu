@@ -639,6 +639,7 @@ static void set_shaders(Cpu *c, int stride) {
         p->stages[stage].control = control;
         p->stages[stage].const_offset = *(const uint32_t *)(control + 0x700);
         p->stages[stage].const_size = *(const uint32_t *)(control + 0x6FC);
+        for (int k = 0; k < 3; k++) p->stages[stage].local_size[k] = *(const uint32_t *)(control + 0x748 + 4 * k);
         p->stage_mask |= 1u << stage;
     }
     RET(1);
