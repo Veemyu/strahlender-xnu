@@ -28,9 +28,12 @@ static uint64_t mono_ns(void) {
     return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
 }
 // Absolute Zielzeiten statt relativem nanosleep: sonst driftet der Takt auf ~20 ms (≈50 Hz) und das Spiel bleibt bei 50 fps.
+uint64_t g_vsync_ticks;   // Hänger-Diagnose: Zahl der Vsync-Ereignisse; BDSP_VSYNC_LOG=1 gibt sie alle 2 s aus (lebt der Takt noch, wenn der Gast nicht mehr weiterläuft?)
 static void *vsync_thread(void *arg) {
     (void)arg;
     uint64_t next = mono_ns();
+    static int vlog = -1;
+    if (vlog < 0) vlog = getenv("BDSP_VSYNC_LOG") != NULL;
     for (;;) {
         uint64_t period = 1000000000ull / (uint64_t)g_bdsp_fps;
         next += period;
@@ -50,6 +53,10 @@ static void *vsync_thread(void *arg) {
         kernel_signal(g_vsync);
         pthread_mutex_unlock(&g_klock);
         hid_idle_tick();
+        if (vlog) {   // BDSP_VSYNC_LOG only: no counting without it
+            uint64_t n = ++g_vsync_ticks;
+            if (n % 120 == 0) LOG("[vsync] %llu Ereignisse, signaled=%d\n", (unsigned long long)n, g_vsync ? (int)g_vsync->signaled : -1);
+        }
     }
     return NULL;
 }

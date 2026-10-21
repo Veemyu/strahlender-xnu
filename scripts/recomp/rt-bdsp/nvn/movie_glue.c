@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "hle.h"
 
@@ -23,6 +24,88 @@ uint64_t loader_find_symbol(const char *name);
 #define guest_sym loader_find_symbol
 
 #define MOVIE_EOS 4u
+
+// Hänger-Diagnose, nur in einem Build mit -DBDSP_DEBUG_MOVIE (nicht im Standard-Build; sonst bleibt nichts davon im Code).
+// Dann schreibt BDSP_MOVIE_LOG=1 Eintritt/Austritt der Decoder-/Extractor-Aufrufe sofort ins Log; BDSP_MOVIE_LOG=ring merkt sie nur in
+// einem Ringpuffer (kaum Zeitverschiebung) und gibt die letzten Einträge beim Beenden aus. Ohne die Variable: ein Vergleich je Aufruf.
+#ifdef BDSP_DEBUG_MOVIE
+#include <stdatomic.h>
+#include <time.h>
+static int mv_on = -1;  // 0 aus, 1 sofort, 2 Ring
+static inline int mv_mode(void) {
+    if (mv_on < 0) {
+        const char *e = getenv("BDSP_MOVIE_LOG");
+        mv_on = !e ? 0 : strcmp(e, "ring") ? 1 : 2;
+    }
+    return mv_on;
+}
+static inline double mv_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
+}
+static inline unsigned mv_tid(void) { return (unsigned)(((uintptr_t)pthread_self() >> 4) & 0xFFFFF); }
+typedef struct { double t; unsigned tid; const char *fn; char kind; double extra; } MvRec;
+#define MV_RING 16384
+static MvRec mv_ring[MV_RING];
+static atomic_uint mv_pos;
+static void mv_dump(void) {
+    unsigned end = atomic_load(&mv_pos), n = end < 600 ? end : 600;
+    LOG("[mv] Ring: letzte %u von %u Einträgen (> Eintritt, < Austritt, w wartet auf Sperre, g Sperre erhalten nach extra ms)\n", n, end);
+    for (unsigned i = end - n; i != end; i++) {
+        const MvRec *r = &mv_ring[i % MV_RING];
+        LOG("[mvr] %.1f T%05x %c %s %.1f\n", r->t, r->tid, r->kind, r->fn ? r->fn : "?", r->extra);
+    }
+}
+static void *mv_watchdog(void *arg) {  // gibt den Ring kurz vor dem Zeitlimit des Laufs aus (die Laufzeit beendet sich mit _exit: kein atexit)
+    (void)arg;
+    extern uint64_t g_proc_start_ns;
+    extern uint64_t rt_now_ns(void);
+    const char *to = getenv("BDSP_TIMEOUT");
+    double limit_s = (to ? atof(to) : 120) - 3;
+    while ((rt_now_ns() - g_proc_start_ns) / 1e9 < limit_s) usleep(200000);
+    mv_dump();
+    return NULL;
+}
+static void mv_note(char kind, const char *fn, double extra) {
+    static atomic_int once;
+    if (!atomic_exchange(&once, 1)) {
+        pthread_t th;
+        pthread_create(&th, NULL, mv_watchdog, NULL);
+        pthread_detach(th);
+    }
+    unsigned i = atomic_fetch_add(&mv_pos, 1) % MV_RING;
+    mv_ring[i] = (MvRec){mv_ms(), mv_tid(), fn, kind, extra};
+}
+static inline const char *mv_enter(const char *fn) {
+    int m = mv_mode();
+    if (!m) return NULL;
+    if (m == 2) mv_note('>', fn, 0);
+    else LOG("[mv] %.1f T%05x > %s\n", mv_ms(), mv_tid(), fn);
+    return fn;
+}
+static inline void mv_exit(const char **fn) {
+    if (!*fn) return;
+    if (mv_mode() == 2) mv_note('<', *fn, 0);
+    else LOG("[mv] %.1f T%05x < %s\n", mv_ms(), mv_tid(), *fn);
+}
+#define MV_SCOPE() const char *mv_scope_ __attribute__((cleanup(mv_exit))) = mv_enter(__func__)
+static inline int mv_lock(pthread_mutex_t *m, const char *fn) {
+    int mode = mv_mode();
+    if (!mode) return pthread_mutex_lock(m);
+    if (pthread_mutex_trylock(m) == 0) return 0;
+    double t0 = mv_ms();
+    if (mode == 2) mv_note('w', fn, 0);
+    else LOG("[mv] %.1f T%05x %s wartet auf Sperre %p\n", t0, mv_tid(), fn, (void *)m);
+    int r = pthread_mutex_lock(m);
+    if (mode == 2) mv_note('g', fn, mv_ms() - t0);
+    else LOG("[mv] %.1f T%05x %s Sperre %p erhalten nach %.1f ms\n", mv_ms(), mv_tid(), fn, (void *)m, mv_ms() - t0);
+    return r;
+}
+#define pthread_mutex_lock(m) mv_lock((m), __func__)
+#else
+#define MV_SCOPE() ((void)0)
+#endif
 
 // ------------------------------------------------------------------ MediaData (8-Byte-Handle)
 typedef struct { char *key; char *sval; int64_t ival; bool is_str; } MdEntry;
@@ -130,6 +213,7 @@ static pthread_mutex_t ex_lock = PTHREAD_MUTEX_INITIALIZER;
 static void *self_state(Cpu *c) { return (void *)(uintptr_t)((uint64_t *)(uintptr_t)c->x[0])[1]; }
 
 static void signal_guest_event(Cpu *c, uint64_t event) {
+    MV_SCOPE();
     if (!event) return;
     uint64_t saved[8];
     memcpy(saved, c->x, sizeof saved);
@@ -278,7 +362,7 @@ static void movie_log_slot(Cpu *c) {
 }
 
 #define EX_LOCKED(fn) \
-    static void fn##_l(Cpu *c) { pthread_mutex_lock(&ex_lock); fn(c); pthread_mutex_unlock(&ex_lock); }
+    static void fn##_l(Cpu *c) { MV_SCOPE(); pthread_mutex_lock(&ex_lock); fn(c); pthread_mutex_unlock(&ex_lock); }
 EX_LOCKED(ex_dtor)
 EX_LOCKED(ex_get_track_count)
 EX_LOCKED(ex_get_track_config)
@@ -341,6 +425,7 @@ typedef struct {
 } Decoder;
 
 static void dec_signal(Cpu *c, Decoder *d, int i) {
+    MV_SCOPE();
     pthread_mutex_lock(&d->lock);
     if (!d->stopped) signal_guest_event(c, d->events[i]);
     pthread_mutex_unlock(&d->lock);
@@ -389,6 +474,7 @@ static void dec_get_output_format(Cpu *c) { dec_output_format(self_state(c), md(
 static void dec_get_output_buffer_format(Cpu *c) { dec_output_format(self_state(c), md(c->x[2])); c->x[0] = 0; }
 
 static void dec_start(Cpu *c) {
+    MV_SCOPE();
     Decoder *d = self_state(c);
     pthread_mutex_lock(&d->lock);
     d->stopped = false;
@@ -400,6 +486,7 @@ static void dec_start(Cpu *c) {
 // Stop: danach meldet der Decoder nichts mehr; noch gesetzte Ereignisse werden gelöscht (der Spieler löscht seine Decoder und
 // weckt dann einen Thread, der sonst über den Nullzeiger virtuell aufriefe).
 static void dec_stop(Cpu *c) {
+    MV_SCOPE();
     Decoder *d = self_state(c);
     static uint64_t clear_event;
     if (!clear_event) clear_event = guest_sym("_ZN2nn2os10ClearEventEPNS0_9EventTypeE");
@@ -417,6 +504,7 @@ static void dec_stop(Cpu *c) {
 }
 
 static void dec_acquire_input(Cpu *c) {
+    MV_SCOPE();
     Decoder *d = self_state(c);
     pthread_mutex_lock(&d->lock);
     int out_free = 0;
@@ -483,6 +571,7 @@ static bool flush_pending(Decoder *d) {
 }
 
 static void dec_send_input(Cpu *c) {
+    MV_SCOPE();
     Decoder *d = self_state(c);
     int idx = (int)c->x[1], off = (int)c->x[2], size = (int)c->x[3];
     int64_t time = (int64_t)c->x[4];
@@ -517,6 +606,7 @@ static void dec_send_input(Cpu *c) {
 }
 
 static void dec_acquire_output(Cpu *c) {
+    MV_SCOPE();
     Decoder *d = self_state(c);
     pthread_mutex_lock(&d->lock);
     if (!d->nready) { pthread_mutex_unlock(&d->lock); c->x[0] = 1; return; }
@@ -551,6 +641,7 @@ static void dec_get_output_buffer(Cpu *c) {
 }
 
 static void dec_release_output(Cpu *c) {
+    MV_SCOPE();
     Decoder *d = self_state(c);
     dec_signal(c, d, 0);
     int i = (int)c->x[1];
@@ -563,6 +654,7 @@ static void dec_release_output(Cpu *c) {
 }
 
 static void dec_dtor(Cpu *c) {
+    MV_SCOPE();
     Decoder *d = self_state(c);
     if (!d) { c->x[0] = 0; return; }
     dec_stop(c);

@@ -48,6 +48,14 @@ they were encoded, missed texture updates in the cheap change check, stale shade
 | `BDSP_SAVE_CS_DIR=<absolute dir>` | Write the translated MSL of every compute program. |
 | `BDSP_DEBUG_FRAME=<f>` | Existing: detailed draw log of one frame; also accepted as `BDSP_GEOM_FROM`. |
 
+Hang diagnostics (runtime, not rendering). None of these does anything in a normal session:
+
+| Switch | Effect |
+|---|---|
+| `BDSP_HANG_DUMP=1` | The end-of-run report also prints the host state of every guest thread and briefly suspends busy ones to read their registers. |
+| `BDSP_VSYNC_LOG=1` | Counts vsync events and logs the count every 120 ticks (is the clock alive when the guest stalls?). Without it nothing is counted. |
+| `-DBDSP_DEBUG_MOVIE` at build time, then `BDSP_MOVIE_LOG=1` or `=ring` | Movie decoder/extractor entry and exit tracing; `ring` keeps the last entries in memory and dumps them shortly before the run's timeout. The code is not compiled into a standard build. |
+
 Apple's tools: `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1` run the app with Metal API and shader validation (it found the
 1D render target that was bound once at start-up). `gpudebug` and `gpucapture` are documented in the macOS 27 SDK but their
 executables are not part of Xcode 27.1 on macOS 26.6.

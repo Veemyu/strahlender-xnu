@@ -4,6 +4,9 @@
 // den Boehm-GC), kleine Host-Stacks, SVC-Zähler je Thread, Messung, kein Neustart-Mechanismus, Gast-Adressen über G2H.
 #include <mach/mach.h>
 #include <mach/mach_time.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #include <sched.h>
 #include <sys/mman.h>
 #include <time.h>
@@ -807,6 +810,16 @@ static unsigned resident_stack_kib(KThread *t) {
     return (unsigned)(total >> 10);
 }
 
+#ifdef __APPLE__
+// BDSP_HANG_DUMP=1: the report also prints the host thread state of every guest thread and briefly suspends busy ones to read
+// their registers. Off by default: it must not run when a normal session ends.
+static int hang_dump_on(void) {
+    static int on = -1;
+    if (on < 0) on = getenv("BDSP_HANG_DUMP") != NULL;
+    return on;
+}
+#endif
+
 void kernel_report(FILE *f) {
     fprintf(f, "Threads angelegt %d (gleichzeitig höchstens %d, aktuell %d), Handles aktuell %d (Spitze %d), SetHeapSize-Heap %llu MiB, per MapPhysicalMemory abgebildet %llu MiB (Spitze %llu MiB)\n",
             g_thread_count, g_thread_peak, g_thread_live, handles_used, handles_peak, (unsigned long long)(heap_size >> 20),
@@ -832,6 +845,40 @@ void kernel_report(FILE *f) {
             fprintf(f, "      wartet: %s addr %llx mutex %llx handle0 %x/%d seit %.1f s, letzter SVC vor %.1f s\n", k, (unsigned long long)t->wait_addr,
                     (unsigned long long)t->wait_mutex, t->wait_h0, t->wait_n, t->wait_since ? (now - t->wait_since) / 1e9 : 0.0,
                     t->svc_last_ns ? (now - t->svc_last_ns) / 1e9 : 0.0);
+#ifdef __APPLE__
+            if (hang_dump_on() && t->started && !t->finished) {   // Hänger-Diagnose: steht der Host-Thread (Anhaltezähler > 0), obwohl er laufen sollte?
+                thread_basic_info_data_t bi;
+                mach_msg_type_number_t cnt = THREAD_BASIC_INFO_COUNT;
+                if (thread_info(pthread_mach_thread_np(t->host), THREAD_BASIC_INFO, (thread_info_t)&bi, &cnt) == KERN_SUCCESS) {
+                    fprintf(f, "      Host-Thread: Anhaltezähler %d, Zustand %d (1 läuft, 2 angehalten, 3 wartet, 4 ununterbrechbar), Auslastung %d/1000, t->suspended %d\n",
+                            (int)bi.suspend_count, (int)bi.run_state, (int)bi.cpu_usage, (int)t->suspended);
+                    if (bi.run_state == TH_STATE_RUNNING && bi.cpu_usage > 500 && t != t_cur) {   // Dauerläufer: Befehlszeiger (Abbildadresse = pc - Verschiebung)
+                        mach_port_t mp = pthread_mach_thread_np(t->host);
+                        arm_thread_state64_t st;
+                        mach_msg_type_number_t sc = ARM_THREAD_STATE64_COUNT;
+                        thread_suspend(mp);
+                        if (thread_get_state(mp, ARM_THREAD_STATE64, (thread_state_t)&st, &sc) == KERN_SUCCESS) {
+                            fprintf(f, "      Host-Thread pc %llx lr %llx fp %llx sp %llx (Verschiebung %llx, Abbildadresse pc %llx lr %llx)\n",
+                                    (unsigned long long)arm_thread_state64_get_pc(st), (unsigned long long)arm_thread_state64_get_lr(st),
+                                    (unsigned long long)arm_thread_state64_get_fp(st), (unsigned long long)arm_thread_state64_get_sp(st),
+                                    (unsigned long long)_dyld_get_image_vmaddr_slide(0), (unsigned long long)(arm_thread_state64_get_pc(st) - _dyld_get_image_vmaddr_slide(0)),
+                                    (unsigned long long)(arm_thread_state64_get_lr(st) - _dyld_get_image_vmaddr_slide(0)));
+                            fprintf(f, "      Host-Register x0-x5 %llx %llx %llx %llx %llx %llx, x8 %llx x14 %llx x16 %llx x18 %llx\n", (unsigned long long)st.__x[0],
+                                    (unsigned long long)st.__x[1], (unsigned long long)st.__x[2], (unsigned long long)st.__x[3], (unsigned long long)st.__x[4],
+                                    (unsigned long long)st.__x[5], (unsigned long long)st.__x[8], (unsigned long long)st.__x[14], (unsigned long long)st.__x[16],
+                                    (unsigned long long)st.__x[18]);
+                            if (st.__x[0] >= 0x10000 && st.__x[0] < 0xFFFFF000ull) {   // Gast-Zeiger x0 (hier die Lifo): Kopf und erste Einträge
+                                const uint32_t *w = G2H32(st.__x[0]);
+                                fprintf(f, "      Gast-Speicher bei x0:");
+                                for (int k = 0; k < 24; k++) fprintf(f, " %08x", w[k]);
+                                fprintf(f, "\n");
+                            }
+                        }
+                        thread_resume(mp);
+                    }
+                }
+            }
+#endif
             if (t->wait_kind == WAIT_MUTEX || (t->wait_kind == WAIT_CONDVAR && t->wait_mutex)) {   // Besitzer des Mutex (Verklemmungssuche)
                 uint64_t ma = t->wait_kind == WAIT_MUTEX ? t->wait_addr : t->wait_mutex;
                 uint32_t v = *G2H32(ma), ow = v & ~WAITERS_BIT;
