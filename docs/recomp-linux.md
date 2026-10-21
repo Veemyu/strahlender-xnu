@@ -4,10 +4,11 @@ The native ARM64 recompilation builds an x86-64-v3 runtime with Vulkan and a
 Qt 6 frontend. The Unity rebuild is deprecated and unrelated to this target.
 
 The maintained commands and package list are in [BUILD.md](BUILD.md), section 6.
-Host orchestration and our small Mach compatibility shim live under
-scripts/recomp/linux/. Local artifacts/logs are under work/recomp/linux/.
-RZ_HOST and RZ_DIR remain compatible local configuration names; concrete host
-aliases, usernames, addresses, keys, game data, and generated code are not committed.
+The supported local Linux build workers are under
+scripts/recomp/linux/host/; our private SSH test orchestration remains in the
+parent directory. Local artifacts/logs are under work/recomp/linux/. RZ_HOST and
+RZ_DIR are local-only test configuration names; concrete host aliases,
+usernames, addresses, keys, game data, and generated code are not committed.
 
 Install Qt6 Widgets, SDL3, Vulkan headers/loader, shaderc, VMA, and FFmpeg
 development packages through the Linux distribution. Build scripts use pkg-config
@@ -16,8 +17,10 @@ The existing MIT-licensed recompilation runtime is not replaced by these changes
 
 The in-process Qt frontend owns its Vulkan surface and supports native Wayland
 and X11. The older separate-process host remains an X11 fallback. Compile with
-scripts/recomp/linux/vk_build.sh --qt; launch using vk_qt.sh in that directory.
-System packages and a valid desktop-session environment are required.
+`scripts/recomp/linux/host/vk_build.sh --qt`; launch using
+`scripts/recomp/linux/host/vk_qt.sh`.
+System packages and a valid desktop-session environment are required. See
+[BUILD.md](BUILD.md), section 6, for the local user workflow.
 
 Both Qt paths were previously built and briefly exercised with the old header
 setup. The package-only build needs a fresh native build after missing devel
@@ -28,7 +31,7 @@ Historical measurement details: [recomp-linux.de.md](recomp-linux.de.md).
 
 ## Historical investigation report
 
-The following report records measurements from the earlier recompilation farm workflow. Its scripts and header-copy setup are historical; use the maintained package requirements and commands above for current builds.
+The following report records measurements from the earlier private recompilation-farm workflow. Its SSH commands and header-copy setup are for historical/local testing only; use the maintained package requirements and local Linux commands above for user builds.
 
 ### The Ryzen Linux machine as a recompilation build and test farm (`ap-recomp-farm`)
 
@@ -58,7 +61,7 @@ Status: 2026-10-19 (final state of task `ap-recomp-farm`; measurements were take
 
 ```
 Mac ── sync.sh (rsync) ──► Ryzen <REMOTE_DIR>/{work/exefs, scripts/recomp (including scripts/recomp/upstream)}
-Mac ── build.sh / run_probe.sh ──► ssh → setsid nohup remote/job.sh <lane> <job> <script>
+Mac ── build.sh / run_probe.sh ──► ssh → setsid nohup host/job.sh <lane> <job> <script>
                                           ↳ logs/<job>.log   .rc (exit status, written at end)   .sec (wall time)   lane-<lane>.pid/.job
 Mac ── fetch.sh status|holen|log|stop ◄── ssh/rsync (logs and figures only)
 ```
@@ -75,7 +78,7 @@ Jobs are detached (`setsid nohup … &`, input/output redirected), so they survi
 | `run_probe.sh` | Probes/tests (lane b): `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `boot-las`, `bdsp`, `alle` |
 | `fetch.sh` | `status` (lanes, latest jobs, load/RAM), `holen` (only `*.log|stats|times|rc|sec`, maximum 3 MB per file), `log <job>`, `stop <lane>` |
 | `sync_deps.sh` | Optional: copies only SDL3/FFmpeg headers from Homebrew to Ryzen (no internet there), so the LAS runtime can at least compile |
-| `remote/*.sh` | Ryzen-side counterparts: `job.sh`, `common.sh`, `setup.sh`, `gen.sh`, `compile.sh`, `build_all.sh`, `incr_test.sh`, `probe.sh`, `las_runtime.sh` |
+| `host/*.sh` | Linux-side workers, runnable locally or dispatched by private SSH test wrappers: `job.sh`, `common.sh`, `setup.sh`, `gen.sh`, `compile.sh`, `build_all.sh`, `incr_test.sh`, `probe.sh`, `las_runtime.sh` |
 | `gc_prove_linux.c` | Linux version of the GC proof (signals instead of Mach) |
 | `compat/mach/*.h` | Mach compatibility layer (time, suspend thread by signal, `task_info`, `mach_vm_*`) so `rt-bdsp` compiles unchanged on Linux (section 6) |
 
@@ -98,7 +101,7 @@ Not transferred: `main.npdm`, keys, NCA/XCI/NSP, RomFS, saves, LASRecomp `third_
 
 ## 4. Generator (measured)
 
-`eh_gen.py gen` (LAS lifter plus phase 2 extensions), one core, four modules sequentially (`remote/gen.sh`). Generator revision as in Spike (repository state around 10:48, size-based chunk selection).
+`eh_gen.py gen` (LAS lifter plus phase 2 extensions), one core, four modules sequentially (`host/gen.sh`). Generator revision as in Spike (repository state around 10:48, size-based chunk selection).
 
 | Module | Functions | C files | C size | C time | C peak RAM | asm files | asm size | asm time |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -114,7 +117,7 @@ Not transferred: `main.npdm`, keys, NCA/XCI/NSP, RomFS, saves, LASRecomp `third_
 
 ## 5. Full build of the four modules (measured)
 
-`remote/compile.sh`: `clang -O1 -fno-strict-aliasing -fvisibility=hidden -w -fPIC -march=x86-64-v3` (LASRecomp/Makefile Linux/x86-64 flags), `xargs -P 10`, largest files first; per-function files above a threshold use `-O0`; time/RAM per file via `/usr/bin/time`; total peak RAM sampled from `/proc/meminfo`; link with `clang -shared`.
+`host/compile.sh`: `clang -O1 -fno-strict-aliasing -fvisibility=hidden -w -fPIC -march=x86-64-v3` (LASRecomp/Makefile Linux/x86-64 flags), `xargs -P 10`, largest files first; per-function files above a threshold use `-O0`; time/RAM per file via `/usr/bin/time`; total peak RAM sampled from `/proc/meminfo`; link with `clang -shared`.
 
 | Run (generator revision) | Files (`-O1`/`-O0`) | Compile wall time | + link | Σ wall / Σ user | Median | >10 s / >60 s | Largest compiler | Total peak RAM | Library |
 |---|---:|---:|---:|---|---:|---|---:|---:|---|
@@ -141,7 +144,7 @@ Not transferred: `main.npdm`, keys, NCA/XCI/NSP, RomFS, saves, LASRecomp `third_
 
 ## 6. Linux LAS runtime and probes (measured)
 
-### 6.1 LAS runtime (`remote/las_runtime.sh`, no graphics)
+### 6.1 LAS runtime (`host/las_runtime.sh`, no graphics)
 
 `runtime/platform/linux.c`, core (`dispatch`, `kernel`, `ipc`, `loader`, …), `services/*`, `hle/*`, and `nvn/*` (without Vulkan backend) were compiled individually: **53 of 55 sources succeeded; 2 failed because files from `third_party` were missing** (`AreaTex.h`, `imstb_truetype.h`, intentionally not transferred). `platform/linux.c` compiled. Ryzen has no SDL3, FFmpeg, Vulkan, or shaderc development packages and no internet; headers for this compile check came from Homebrew via `sync_deps.sh`. **It was not possible** to link and launch LAS itself (requires libraries, Vulkan driver, graphics); packages in section 10 are missing, and that was outside this task.
 
@@ -230,6 +233,9 @@ Nothing is missing for the recompilation farm itself (all present; `pip --user` 
 - no network access to Ryzen was required; it had none (SDL3 source download failed).
 
 ## 12. Reproduction
+
+The commands below reproduce measurements on the private SSH test host; they
+are historical test orchestration, not the supported local Linux user workflow.
 
 ```
 scripts/recomp/linux/sync.sh                       # transfer inputs + scripts, verify checksums on Ryzen

@@ -32,7 +32,7 @@ Stand: 2026-10-19 (Endstand der Aufgabe `ap-recomp-farm`; die Messungen entstand
 
 ```
 Mac ── sync.sh (rsync) ──► Ryzen ~/xnu-recomp/{work/exefs, scripts/recomp (mit scripts/recomp/upstream)}
-Mac ── build.sh / run_probe.sh ──► ssh → setsid nohup remote/job.sh <bahn> <job> <skript>
+Mac ── build.sh / run_probe.sh ──► ssh → setsid nohup host/job.sh <bahn> <job> <skript>
                                           ↳ logs/<job>.log   .rc (Rückgabewert, erst am Ende)   .sec (Wanduhr)   lane-<bahn>.pid/.job
 Mac ── fetch.sh status|holen|log|stop ◄── ssh/rsync (nur Logs und Zahlen)
 ```
@@ -49,7 +49,7 @@ Jobs laufen entkoppelt (`setsid nohup … &`, Ein-/Ausgabe umgeleitet), überleb
 | `run_probe.sh` | Proben/Tests (Bahn b): `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `boot-las`, `bdsp`, `alle` |
 | `fetch.sh` | `status` (Bahnen, letzte Jobs, Last/RAM), `holen` (nur `*.log|stats|times|rc|sec`, höchstens 3 MB je Datei), `log <job>`, `stop <bahn>` |
 | `sync_deps.sh` | optional: nur Header von SDL3/FFmpeg aus Homebrew auf den Ryzen (er hat kein Internet), damit die LAS-Laufzeit wenigstens übersetzt |
-| `remote/*.sh` | Gegenstücke auf dem Ryzen: `job.sh`, `common.sh`, `setup.sh`, `gen.sh`, `compile.sh`, `build_all.sh`, `incr_test.sh`, `probe.sh`, `las_runtime.sh` |
+| `host/*.sh` | Linux-seitige Worker, lokal ausführbar oder durch private SSH-Testskripte gestartet: `job.sh`, `common.sh`, `setup.sh`, `gen.sh`, `compile.sh`, `build_all.sh`, `incr_test.sh`, `probe.sh`, `las_runtime.sh` |
 | `gc_prove_linux.c` | Linux-Fassung des GC-Beweises (Signal statt Mach) |
 | `compat/mach/*.h` | Mach-Ersatz (Zeit, Thread anhalten per Signal, `task_info`, `mach_vm_*`), damit `rt-bdsp` unverändert unter Linux übersetzt (Abschnitt 6) |
 
@@ -72,7 +72,7 @@ Nicht übertragen: `main.npdm`, Schlüssel, NCA/XCI/NSP, RomFS, Saves, `third_pa
 
 ## 4. Generator (gemessen)
 
-`eh_gen.py gen` (LAS-Lifter plus die Erweiterungen aus Phase 2), ein Kern, die vier Module nacheinander (`remote/gen.sh`). Stand: Generator wie im Spike (Stand des Repos um 10:48 Uhr, Fensterwahl nach Größe).
+`eh_gen.py gen` (LAS-Lifter plus die Erweiterungen aus Phase 2), ein Kern, die vier Module nacheinander (`host/gen.sh`). Stand: Generator wie im Spike (Stand des Repos um 10:48 Uhr, Fensterwahl nach Größe).
 
 | Modul | Funktionen | Dateien `c` | C-Größe `c` | Zeit `c` | Spitzen-RAM `c` | Dateien `asm` | C-Größe `asm` | Zeit `asm` |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -88,7 +88,7 @@ Nicht übertragen: `main.npdm`, Schlüssel, NCA/XCI/NSP, RomFS, Saves, `third_pa
 
 ## 5. Vollständiger Build der vier Module (gemessen)
 
-`remote/compile.sh`: `clang -O1 -fno-strict-aliasing -fvisibility=hidden -w -fPIC -march=x86-64-v3` (die Flags von `LASRecomp/Makefile` für Linux/x86-64), `xargs -P 10`, große Dateien zuerst; Einzelfunktionsdateien über einer Schwelle mit `-O0`; Zeit/RAM je Datei über `/usr/bin/time`, Gesamt-Spitzen-RAM über einen Sampler auf `/proc/meminfo`; Link `clang -shared`.
+`host/compile.sh`: `clang -O1 -fno-strict-aliasing -fvisibility=hidden -w -fPIC -march=x86-64-v3` (die Flags von `LASRecomp/Makefile` für Linux/x86-64), `xargs -P 10`, große Dateien zuerst; Einzelfunktionsdateien über einer Schwelle mit `-O0`; Zeit/RAM je Datei über `/usr/bin/time`, Gesamt-Spitzen-RAM über einen Sampler auf `/proc/meminfo`; Link `clang -shared`.
 
 | Lauf (Generatorstand) | Dateien (`-O1`/`-O0`) | Wanduhr Übersetzen | + Link | Σ Wanduhr / Σ user | Median | > 10 s / > 60 s | größter Compiler | Spitzen-RAM gesamt | Bibliothek |
 |---|---|---:|---:|---|---:|---|---:|---:|---:|
@@ -115,7 +115,7 @@ Nicht übertragen: `main.npdm`, Schlüssel, NCA/XCI/NSP, RomFS, Saves, `third_pa
 
 ## 6. Linux-Pfad der LAS-Laufzeit und Proben (gemessen)
 
-### 6.1 LAS-Laufzeit (`remote/las_runtime.sh`, ohne Grafik)
+### 6.1 LAS-Laufzeit (`host/las_runtime.sh`, ohne Grafik)
 
 `runtime/platform/linux.c`, Kern (`dispatch`, `kernel`, `ipc`, `loader`, …), `services/*`, `hle/*`, `nvn/*` (ohne Vulkan-Backend) werden einzeln übersetzt: **53 von 55 Quellen ok, 2 scheitern an fehlenden Dateien aus `third_party`** (`AreaTex.h`, `imstb_truetype.h`, bewusst nicht übertragen). `platform/linux.c` übersetzt. Der Ryzen hat weder SDL3, FFmpeg, Vulkan noch shaderc als `-devel`-Pakete und kein Internet; die Header für das Übersetzungstest stammen über `sync_deps.sh` aus Homebrew. **Nicht möglich** ist das Linken und Starten des LAS-Programms selbst (braucht Bibliotheken, Vulkan-Treiber, Grafik): dafür fehlen die Pakete aus Abschnitt 10; nicht Teil dieser Aufgabe.
 

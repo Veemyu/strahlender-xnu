@@ -36,7 +36,7 @@ Stand: 2026-10-19, Zwischenstand nach Etappe 3 (wird je Etappe fortgeschrieben).
 
 Geändert in der gemeinsamen Datei `rt-bdsp/build.sh` (nach erneutem Lesen, minimal): der Zweig `vulkan)` ruft `build_vk.sh` auf, setzt `RT=…-vk`, `OUT=…_vk` und die Bibliotheken `-l:libvulkan.so.1 -l:libSDL3.so.0 -l:libshaderc_shared.so.1 -lstdc++`. Außerdem ein Satz in `rt-bdsp/NOTICE.md`.
 
-`scripts/recomp/linux/` (neu, Präfix `vk_`): `vk_sync_deps.sh` (Header), `vk_sync.sh` (Arbeitsstand, `--daten` für RomFS/NPDM), `vk_build.sh`, `vk_run.sh`, `vk_fetch.sh` (Bilder und Logs), dazu `remote/vk_build.sh`, `remote/vk_run.sh`. Alles läuft wie die bestehenden Skripte entkoppelt über `job.sh` (Bahnen a/b), schreibt nur unter `~/xnu-recomp` und braucht kein sudo.
+`scripts/recomp/linux/` (private Test-Orchestrierung, Präfix `vk_`): `vk_sync.sh` (Arbeitsstand und optional RomFS/NPDM), `vk_build.sh`, `vk_run.sh`, `vk_fetch.sh` (Bilder und Logs). Die früheren Remote-Worker liegen jetzt unter `host/` und sind lokal ausführbar. Der Header-Kopierschritt `vk_sync_deps.sh` ist veraltet; aktuelle Builds verwenden Systempakete.
 
 ### Änderungen an den Quellen des Klons (`las-vk.patch`)
 

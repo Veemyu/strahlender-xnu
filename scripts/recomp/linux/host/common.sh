@@ -1,4 +1,4 @@
-# Shared settings for the Linux host scripts (via `source`). All paths are relative to the work folder ~/xnu-recomp.
+# Shared settings for the Linux host scripts (via `source`). All paths are relative to the repository root.
 R=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 cd "$R" || exit 1
 export PATH="$HOME/.local/bin:$PATH"

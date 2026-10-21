@@ -24,11 +24,12 @@ icons, keys, and game data stay outside Git under ignored work/.
 
 ## Commands
 
-Use scripts/recomp/linux/vk_sync.sh to transfer source and selected user data.
-Use check_deps.sh --qt to check packages on the remote host, build.sh for guest
-modules, vk_build.sh --qt for the runtime/frontend, and vk_qt.sh to launch.
-RZ_HOST is read from local configuration; no real host or session path belongs
-in versioned commands. See BUILD.md for environment/session examples.
+The supported user workflow runs locally on Linux: use
+`scripts/recomp/linux/host/build_all.sh` for guest modules,
+`scripts/recomp/linux/host/vk_build.sh --qt` for the runtime/frontend, and
+`scripts/recomp/linux/host/vk_qt.sh` to launch. The root-level scripts
+`scripts/recomp/linux/*.sh` provide SSH orchestration for maintainers' private
+test host only. See BUILD.md for package and session requirements.
 
 Both Qt hosts were built and briefly launched before the system-package cleanup.
 The user confirmed visible Linux icons. Source identity and Qt syntax were
@@ -77,7 +78,7 @@ Status: 2026-10-19, interim after phase 3 (updated after each phase). Based on `
 
 The shared `rt-bdsp/build.sh` was changed minimally after rereading it: the `vulkan)` branch calls `build_vk.sh`, sets `RT=…-vk`, `OUT=…_vk`, and libraries `-l:libvulkan.so.1 -l:libSDL3.so.0 -l:libshaderc_shared.so.1 -lstdc++`. One sentence was also added to `rt-bdsp/NOTICE.md`.
 
-Historical scripts under `scripts/recomp/linux/` (prefix `vk_`): `vk_sync_deps.sh` (headers), `vk_sync.sh` (working tree, `--daten` for RomFS/NPDM), `vk_build.sh`, `vk_run.sh`, `vk_fetch.sh` (images and logs), plus `remote/vk_build.sh` and `remote/vk_run.sh`. Like the existing scripts, all jobs are detached through `job.sh` (lanes a/b), write only under `<REMOTE_DIR>`, and require no sudo.
+Historical private-test scripts under `scripts/recomp/linux/` (prefix `vk_`) transfer selected files over SSH and dispatch detached jobs. The former Linux-side worker scripts now live under `scripts/recomp/linux/host/`; they can also be run directly for local builds. The obsolete `vk_sync_deps.sh` header-copy step is not part of the current package-based workflow.
 
 ### Changes to the clone sources (`las-vk.patch`)
 
@@ -174,14 +175,17 @@ The clone's Vulkan component builds for Windows (MSYS2 `clang64`: `mingw-w64-cla
 
 ## Reproduction (historical workflow)
 
+The commands in this historical section are for our private SSH test host, not
+for a user's local Linux installation. The former remote workers are now in
+`scripts/recomp/linux/host/`.
+
 ```sh
-scripts/recomp/linux/vk_sync_deps.sh              # headers (once, ~27 MB)
 scripts/recomp/linux/vk_sync.sh --daten           # working tree + img_gfx (+ RomFS/NPDM from own dump)
-scripts/recomp/linux/vk_build.sh                  # NVN_BACKEND=vulkan on Ryzen → work/recomp/bdsp_boot_vk
-scripts/recomp/linux/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300
+scripts/recomp/linux/host/vk_build.sh             # NVN_BACKEND=vulkan on Linux → work/recomp/bdsp_boot_vk
+scripts/recomp/linux/host/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300
 scripts/recomp/linux/vk_fetch.sh alles            # images and logs to work/recomp/linux/{shots,logs}
 # Window (brief, no focus stealing; desktop Wayland session):
-scripts/recomp/linux/vk_run.sh --tag=win XDG_RUNTIME_DIR=<SESSION_RUNTIME_DIR> WAYLAND_DISPLAY=wayland-0 SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
+scripts/recomp/linux/host/vk_run.sh --tag=win XDG_RUNTIME_DIR=<SESSION_RUNTIME_DIR> WAYLAND_DISPLAY=wayland-0 SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
 # Mac syntax check with Homebrew headers:
 VK_SYNTAX=1 scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh
 ```

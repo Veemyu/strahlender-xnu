@@ -157,10 +157,12 @@ Das Skript übergibt `TEAM_ID` und `-allowProvisioningUpdates` an `xcodebuild`. 
 
 ## 6. Linux mit Vulkan und Qt6
 
-Die vollständige, gepflegte Paketliste und alle Befehle stehen in
-[BUILD.md](BUILD.md), Abschnitt 6. Die Host-Skripte liegen jetzt unter
-`scripts/recomp/linux/`; lokale Ergebnisse unter `work/recomp/linux/`.
-SSH-Alias und Arbeitsordner werden weiterhin lokal über RZ_HOST/RZ_DIR festgelegt.
+Die vollständige, gepflegte Paketliste steht in [BUILD.md](BUILD.md), Abschnitt 6.
+Der unterstützte Linux-Build läuft lokal. Die Skripte direkt unter
+`scripts/recomp/linux/`, etwa `build.sh` und `vk_sync.sh`, orchestrieren per SSH
+unsere privaten Testläufe und werden von Linux-Nutzern nicht benötigt. Die
+Linux-Buildskripte unter `scripts/recomp/linux/host/` laufen direkt vom
+Repo-Hauptverzeichnis aus.
 
 Installiere auf dem Linux-Rechner die Entwicklungsdateien für Qt6 Widgets, SDL3,
 Vulkan-Header und -Loader, shaderc, Vulkan Memory Allocator und FFmpeg.
@@ -174,11 +176,23 @@ Build verwendet Systempakete über pkg-config; alte include-vk- oder deps/includ
 Verzeichnisse werden nicht automatisch bevorzugt. Es werden keine zusätzlichen
 Qt-/SDL-/Vulkan-/FFmpeg-Bibliotheken ins Repository aufgenommen.
 
-Nach der Quellübertragung prüft `scripts/recomp/linux/check_deps.sh --qt`
-die Voraussetzungen. `scripts/recomp/linux/vk_build.sh --qt` baut die Qt-Hülle
-im Prozess der Laufzeit; `scripts/recomp/linux/vk_qt.sh` startet sie. Diese Variante
-unterstützt natives Wayland und X11. Die getrennte X11-Hülle bleibt mit
-BDSP_QT_PROCESS=1 verfügbar. Konkrete Sitzungs-, Benutzer- und Hostdaten bleiben lokal.
+Installiere zusätzlich die Python-Abhängigkeiten `lz4`, `capstone` und `unicorn`.
+Die installierten Pakete prüfst du ohne Kopieren, Download oder Installation mit
+`bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`
+(ohne `linux_require_qt`, wenn du die Qt-Hülle nicht baust).
+Extrahiere einen selbst rechtmäßig erstellten Spieledump mit dem Befehl aus
+Abschnitt 4.1; benötigt werden `work/exefs/` und `work/romfs/`. Schlüssel und
+Spieldaten werden von den Build-Befehlen nicht übertragen.
+
+Erzeuge und übersetze die Gastmodule mit
+`bash scripts/recomp/linux/host/build_all.sh`. Baue Vulkan-Laufzeit und Qt-Hülle
+im selben Prozess mit `bash scripts/recomp/linux/host/vk_build.sh --qt`; das
+Ergebnis liegt unter `work/recomp/bdsp_boot_vk_qt`. Extrahierte Icon-Varianten
+werden während des Builds deterministisch in Linux-Assets unter
+`work/recomp/icons/` umgewandelt. Starten lässt sich die App lokal mit
+`bash scripts/recomp/linux/host/vk_qt.sh`. Diese Variante unterstützt natives
+Wayland und X11. Die getrennte X11-Hülle bleibt mit `BDSP_QT_PROCESS=1` verfügbar.
+Konkrete Sitzungs-, Benutzer- und Hostdaten bleiben lokal.
 
 Die frühere Variante mit kopierten Headern wurde gebaut und kurz gestartet.
 Ein neuer vollständiger Paket-Build muss nach Installation der noch fehlenden

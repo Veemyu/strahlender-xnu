@@ -217,31 +217,39 @@ Debian lists [SDL3](https://packages.debian.org/forky/libsdl3-dev) and
 The Arch official package search does not list VMA; its AUR recipe is not an
 official Arch binary package and is never installed by these scripts.
 
-### 6.2 Build and run
+### 6.2 Build and run locally
 
-All host scripts now live under scripts/recomp/linux/. The legacy RZ_HOST/RZ_DIR
-environment variable names remain compatible; concrete values stay local.
+The supported Linux build is local. Root-level scripts such as
+`scripts/recomp/linux/build.sh` and `vk_sync.sh` are SSH orchestration helpers
+for maintainers' private test host; Linux users do not need them. The Linux-side
+build workers are under `scripts/recomp/linux/host/` and run directly from the
+repository root on Linux.
 
-1. Install the Linux development packages above. Ensure Python generator
-   dependencies lz4, capstone, and unicorn are installed as well.
-2. Copy sources and your own data: scripts/recomp/linux/vk_sync.sh --daten.
-   This transfers no keys or system libraries.
-3. Check installed dependencies: scripts/recomp/linux/check_deps.sh --qt.
-4. Generate/compile guest modules: scripts/recomp/linux/build.sh.
-5. Build the native in-process Qt host: scripts/recomp/linux/vk_build.sh --qt.
-   Result: work/recomp/bdsp_boot_vk_qt on the Linux machine.
-6. Launch with scripts/recomp/linux/vk_qt.sh and the session environment below.
-   This selects the in-process host when available.
+1. Install the Linux development packages above and the Python generator
+   dependencies `lz4`, `capstone`, and `unicorn`.
+2. Check the installed packages (no copying, downloads, or installation):
+   `bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`.
+   Leave out `linux_require_qt` if you do not build the Qt frontend.
+3. Extract your own legally obtained game dump with the command in section 4.1.
+   Inputs must be available as `work/exefs/` and `work/romfs/`;
+   these build commands transfer no keys or game data.
+4. Generate and compile guest modules: `bash scripts/recomp/linux/host/build_all.sh`.
+5. Build Vulkan and the in-process Qt frontend:
+   `bash scripts/recomp/linux/host/vk_build.sh --qt`. Output:
+   `work/recomp/bdsp_boot_vk_qt`. Icon variants are converted from extracted
+   source data into Linux assets under `work/recomp/icons/` during this build.
+6. Launch locally with `bash scripts/recomp/linux/host/vk_qt.sh` and the
+   desktop-session environment below.
 
 For the separate-process X11 host, build with
-scripts/recomp/linux/vk_qt_build.sh and launch using BDSP_QT_PROCESS=1.
+scripts/recomp/linux/host/vk_qt_build.sh and launch using BDSP_QT_PROCESS=1.
 That fallback embeds the SDL X11 window; it needs Xwayland on a Wayland desktop.
 The in-process host creates its own Vulkan surface and supports native Wayland
 or X11 without embedding a foreign window.
 
-For headless renderer checks use scripts/recomp/linux/vk_build.sh, then
-scripts/recomp/linux/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300.
-Fetch captures/logs with scripts/recomp/linux/vk_fetch.sh into work/recomp/linux/.
+For headless renderer checks use `bash scripts/recomp/linux/host/vk_build.sh`,
+then `bash scripts/recomp/linux/host/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300`.
+Captures and logs remain under `work/recomp/`.
 No display is required for headless rendering. Generated code/data remain under work/.
 
 ### 6.3 Run with a window (Wayland)
@@ -250,7 +258,7 @@ A window opens on the desktop of the Linux machine. Pass the session variables o
 with the run. Get the user ID with `id -u` on the Linux machine. Without these variables no window can open.
 
 ```sh
-scripts/recomp/linux/vk_run.sh --tag=win XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
+scripts/recomp/linux/host/vk_run.sh --tag=win XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
   SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
 ```
 
@@ -261,7 +269,7 @@ Settings for window runs only (they have no effect with `--headless`):
 
 - Start size: `--window 1280x720` or `BDSP_WINDOW=1920x1080` (default 1280×720).
 - Frame rate: `BDSP_FPS=30`, `BDSP_FPS=60` or `BDSP_FPS=120`. Pass it after the script name, for example
-  `scripts/recomp/linux/vk_run.sh BDSP_FPS=60 --tag=win ...`.
+  `scripts/recomp/linux/host/vk_run.sh BDSP_FPS=60 --tag=win ...`.
 - MangoHud overlay (fps, frame time, CPU and GPU): `BDSP_MANGOHUD=1`. Needs the `mangohud` package on the
   Linux machine. It is needed only at run time, not for the build. Off by default.
 - Run time: `--timeout N` in seconds (default 120).
@@ -280,7 +288,7 @@ The in-process Qt host supplies menus, keyboard input, pause, window sizes,
 frame-rate choices, and original-icon language selection. For native Wayland:
 
 ```sh
-scripts/recomp/linux/vk_qt.sh XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland
+scripts/recomp/linux/host/vk_qt.sh XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland
 ```
 
 Use QT_QPA_PLATFORM=xcb with a valid DISPLAY/XAUTHORITY for X11.
