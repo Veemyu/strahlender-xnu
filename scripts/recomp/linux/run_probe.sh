@@ -11,7 +11,7 @@ case "$test_name" in
 esac
 [ "${2:-}" = "--detach" ] && RZ_DETACH=1
 rz_require
-rz_ssh "test -f ~/$RZ_DIR/work/exefs/sdk -a -f ~/$RZ_DIR/scripts/recomp/linux/remote/probe.sh" || rz_die "Eingaben/Skripte fehlen auf dem Linux host. Erst sync.sh ausführen."
+rz_ssh "test -f ~/$RZ_DIR/work/exefs/sdk -a -f ~/$RZ_DIR/scripts/recomp/linux/host/probe.sh" || rz_die "Inputs or scripts are missing on the Linux test host. Run sync.sh first."
 case "$test_name" in
   boot|boot-las|bdsp|alle)
     rz_ssh "ls ~/$RZ_DIR/work/recomp/obj4-c/*.o >/dev/null 2>&1" || rz_die "Kein fertiger Build auf dem Linux host (work/recomp/obj4-c). Erst build.sh ausführen." ;;

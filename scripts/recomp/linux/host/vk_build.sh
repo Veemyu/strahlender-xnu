@@ -5,7 +5,7 @@
 source "$(dirname "$0")/common.sh"
 source scripts/recomp/linux/deps.sh
 linux_require_runtime
-[ -d "$W/obj4-c" ] || die "$W/obj4-c is missing (run scripts/recomp/linux/build.sh first)."
+[ -d "$W/obj4-c" ] || die "$W/obj4-c is missing (run scripts/recomp/linux/host/build_all.sh first)."
 export NVN_BACKEND=vulkan OBJ=$W/obj4-c
 BARGS=()
 for a in "$@"; do [ "$a" = --qt ] && export BDSP_QT=1 || BARGS+=("$a"); done

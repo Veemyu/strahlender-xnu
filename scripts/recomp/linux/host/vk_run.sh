@@ -5,8 +5,8 @@
 #   Standard: --headless --timeout 60 (gehört zur Laufzeit; Umgebung BDSP_IMG=work/recomp/img_gfx)
 # Bilder: work/recomp/shots/frame_NNNNN.png (BDSP_SHOT_DIR ändert den Ordner), Shader-Zwischenspeicher: work/recomp/cache/spirv
 source "$(dirname "$0")/common.sh"
-[ -x "$W/bdsp_boot_vk" ] || die "$W/bdsp_boot_vk fehlt (Mac: scripts/recomp/linux/vk_build.sh)."
-[ -d work/romfs ] || die "work/romfs fehlt auf dem Linux host (Mac: scripts/recomp/linux/vk_sync.sh --daten)."
+[ -x "$W/bdsp_boot_vk" ] || die "$W/bdsp_boot_vk is missing (run scripts/recomp/linux/host/vk_build.sh)."
+[ -d work/romfs ] || die "work/romfs is missing (run the extract stage described in docs/BUILD.md first)."
 export BDSP_IMG=${BDSP_IMG:-$W/img_gfx}
 ARGS=()
 for a in "$@"; do

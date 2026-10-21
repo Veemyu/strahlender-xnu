@@ -33,7 +33,7 @@ rz_require() {
 }
 
 # rz_dispatch <bahn> <job> <remote-skript> [argumente...]
-# Startet scripts/recomp/linux/remote/<skript> entkoppelt auf dem Linux host; Ausgabe nach logs/<job>.log, Rückgabewert nach logs/<job>.rc.
+# Starts scripts/recomp/linux/host/<script> detached on the configured Linux test host.
 rz_dispatch() {
   local lane=$1 job=$2; shift 2
   local ok='^[A-Za-z0-9_./=:,+ -]+$'
@@ -42,7 +42,7 @@ rz_dispatch() {
     local cur; cur=$(rz_ssh "cat ~/$RZ_DIR/logs/lane-$lane.job 2>/dev/null")
     rz_die "Die Bahn '$lane' ist noch belegt (Job '${cur:-?}'). Warten (fetch.sh status) oder abbrechen: fetch.sh stop $lane"
   fi
-  rz_ssh "cd ~/$RZ_DIR && rm -f logs/$job.rc && { setsid nohup bash scripts/recomp/linux/remote/job.sh $lane $job $* > /dev/null 2>&1 < /dev/null & }" \
+  rz_ssh "cd ~/$RZ_DIR && rm -f logs/$job.rc && { setsid nohup bash scripts/recomp/linux/host/job.sh $lane $job $* > /dev/null 2>&1 < /dev/null & }" \
     || rz_die "Job konnte auf dem Linux host nicht gestartet werden."
   rz_info "Job '$job' (Bahn $lane) gestartet; Log: ~/$RZ_DIR/logs/$job.log"
 }
@@ -67,7 +67,7 @@ rz_run() {
   rz_require
   rz_dispatch "$lane" "$job" "$@"
   if [ "${RZ_DETACH:-0}" = 1 ]; then
-    rz_info "Nicht auf das Ende gewartet (RZ_DETACH=1). Stand: scripts/recomp/linux/fetch.sh status"
+    rz_info "Not waiting for completion (RZ_DETACH=1). Check with scripts/recomp/linux/fetch.sh status"
     return 0
   fi
   local rc=0
