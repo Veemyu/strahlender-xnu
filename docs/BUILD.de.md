@@ -15,14 +15,25 @@ und ein Grafik-Backend bereitstellt (Metal auf macOS und iPadOS, Vulkan unter Li
 - Alles, was die Skripte erzeugen, landet in `work/`. Dieser Ordner ist von Git ignoriert. Committe ihn nie.
 - Ziele: die macOS-App (am weitesten), die iPadOS-App, Linux mit Vulkan (in Arbeit, Abschnitt 6).
 
-## Schnellstart (macOS, geführt)
+## Schnellstart (geführt)
 
-Für die macOS-App gibt es einen geführten Installer. Doppelklick auf `install.command` im Finder oder `./install.command` im
-Terminal. Er prüft die Werkzeuge (und bietet an, fehlende Homebrew- und Python-Pakete zu installieren, nie mit `sudo`), bittet
-dich, deine `.xci`, optional das Update `.nsp` und deine `prod.keys` in das Fenster zu ziehen, zeigt eine Zusammenfassung und
-führt dann die Stufen `tools`, `extract` und `recomp` von `scripts/build_all.sh` aus (Abschnitt 4). Plane etwa eine Stunde und
-60 GB freien Platz ein. Bricht er ab, starte ihn erneut: fertige Stufen werden übersprungen. Die folgenden Abschnitte
-beschreiben dieselben Schritte von Hand.
+Zwei geführte Installer erledigen alles aus dieser Anleitung für dich. Mit `--dry-run` zeigen sie vorab, was sie tun würden.
+
+- **macOS:** Doppelklick auf `install.command` im Finder oder `./install.command`. Er prüft Xcode, Homebrew (und bietet den
+  offiziellen Homebrew-Installer an, falls es fehlt), die Homebrew-Pakete, Python und eine private Python-Umgebung `work/venv`
+  (Pillow, capstone, unicorn). Danach ziehst du deine `.xci`, optional das Update `.nsp` und deine `prod.keys` in das Fenster,
+  und er führt die Stufen `tools`, `extract` und `recomp` von `scripts/build_all.sh` aus (Abschnitt 4). Etwa eine Stunde und
+  60 GB freier Platz.
+- **Linux:** `./install-linux.sh` starten. Er erkennt `apt`, `dnf` oder `pacman`, listet die fehlenden Entwicklungspakete und
+  installiert sie nach deiner Zustimmung (der Paketmanager fragt per `sudo` nach deinem Administrator-Passwort, das Skript sieht
+  es nie). Der Vulkan Memory Allocator steckt auf Arch nicht in den offiziellen Paketen: Das Skript bittet dich, ihn selbst aus dem
+  AUR zu installieren. Danach richtet es `work/venv` ein, fragt nach deinen Dateien und führt den Bau aus Abschnitt 6.2 aus.
+  Mehrere Stunden; die Linux-Version ist in Arbeit (Abschnitt 6.4).
+
+Beide Skripte sprechen Englisch, Deutsch, Spanisch und Portugiesisch (Systemsprache oder `BDSP_LANG=de|en|es|pt`). Die Texte
+liegen in `scripts/install/lang/<Kürzel>.sh`; für eine neue Sprache `en.sh` kopieren, die Werte übersetzen und das Kürzel in
+`scripts/install/common.sh` ergänzen. Bricht ein Skript ab, starte es erneut: fertige Stufen werden übersprungen. Die folgenden
+Abschnitte beschreiben dieselben Schritte von Hand.
 
 ## 2. Gemeinsame Voraussetzungen
 

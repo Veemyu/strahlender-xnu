@@ -93,7 +93,7 @@ check_hactool() {
   fi
   [ -f "$HACTOOL_DIR/config.mk" ] || cp "$HACTOOL_DIR/config.mk.template" "$HACTOOL_DIR/config.mk"
   log "hactool: baue (make, Log: $HACTOOL_DIR/build.log)"
-  if ! make -C "$HACTOOL_DIR" -j "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" >"$HACTOOL_DIR/build.log" 2>&1; then
+  if ! make -C "$HACTOOL_DIR" -j "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)" >"$HACTOOL_DIR/build.log" 2>&1; then
     tail -n 15 "$HACTOOL_DIR/build.log" >&2
     miss "hactool: make fehlgeschlagen"
     return 1
@@ -137,8 +137,8 @@ stage_tools() {
   local bad=0
   check_python || bad=1
   check_hactool || bad=1
-  check_ffmpeg || bad=1
-  check_xcode || bad=1
+  # ffmpeg and Xcode are needed for the macOS stages only (the Linux build uses its own scripts, docs/BUILD.md section 6)
+  if [ "$(uname -s)" = Darwin ]; then check_ffmpeg || bad=1; check_xcode || bad=1; fi
   [ "$bad" -eq 0 ] || die 4 "Werkzeuge unvollständig (siehe FEHLT oben)"
   log "Stufe tools fertig"
   stage_result tools "ausgeführt"
@@ -146,7 +146,7 @@ stage_tools() {
 
 # ---------- Stufe extract ----------
 abspath() { local d; d="$(cd "$(dirname "$1")" && pwd)" && echo "$d/$(basename "$1")"; }
-file_size() { stat -f %z "$1"; }
+file_size() { wc -c < "$1" | tr -d ' '; }   # (portable: stat -f %z is BSD only)
 free_gb() { df -k "$1" | awk 'NR==2 {print int($4 / 1048576)}'; }
 
 # Alle NCAs eines Ordners klassifizieren: eine TSV-Zeile je NCA (nur unkritische Felder)

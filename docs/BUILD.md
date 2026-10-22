@@ -15,13 +15,25 @@ services and a graphics backend (Metal on macOS, Vulkan on Linux, Metal on iPadO
 - Everything the scripts produce goes to `work/`, which is git-ignored. Never commit `work/`.
 - Targets: macOS app (most complete), iPadOS app, Linux with Vulkan (work in progress, section 6).
 
-## Quick start (macOS, guided)
+## Quick start (guided)
 
-For the macOS app there is a guided installer. Double-click `install.command` in the Finder or run `./install.command` in a
-terminal. It checks the tools (and offers to install missing Homebrew and Python packages, never with `sudo`), asks you to
-drag your `.xci`, optionally the update `.nsp`, and your `prod.keys` into the window, shows a summary, and then runs the
-stages `tools`, `extract` and `recomp` of `scripts/build_all.sh` (section 4). Allow about an hour and 60 GB of free space.
-If it stops, run it again: finished stages are skipped. The sections below describe the same steps by hand.
+Two guided installers do everything in this guide for you. Run `--dry-run` first if you want to see what they would do.
+
+- **macOS:** double-click `install.command` in the Finder or run `./install.command`. It checks Xcode, Homebrew (and offers
+  the official Homebrew installer if it is missing), the Homebrew packages, Python, and a private Python environment
+  `work/venv` (Pillow, capstone, unicorn). Then you drag your `.xci`, optionally the update `.nsp`, and your `prod.keys`
+  into the window, and it runs the stages `tools`, `extract` and `recomp` of `scripts/build_all.sh` (section 4).
+  About an hour and 60 GB of free space.
+- **Linux:** run `./install-linux.sh`. It detects `apt`, `dnf` or `pacman`, lists the missing development packages and installs
+  them after you agree (the package manager asks for your administrator password through `sudo`; the script never sees it).
+  The Vulkan Memory Allocator is not in the official Arch packages: the script asks you to install it from the AUR yourself.
+  It then sets up `work/venv`, asks for your files, and runs the build of section 6.2. Several hours; the Linux port is
+  work in progress (section 6.4).
+
+Both scripts speak English, German, Spanish and Portuguese (system language, or `BDSP_LANG=de|en|es|pt`). The texts are in
+`scripts/install/lang/<code>.sh`; to add a language, copy `en.sh`, translate the values and add the code in
+`scripts/install/common.sh`. If a script stops, run it again: finished stages are skipped. The sections below describe the
+same steps by hand.
 
 ## 2. Common prerequisites
 
@@ -168,7 +180,8 @@ Work in progress. Not playable yet. See section 6.4 for the known limits.
 
 Use a Linux x86-64-v3 (AVX2) machine for the build, with a Vulkan-capable GPU and its driver.
 
-Install development packages on Linux yourself. Scripts check them and do not
+`./install-linux.sh` (see "Quick start") installs the packages below for you after you confirm; by hand, install
+them yourself. The build and check scripts (`deps.sh` and the scripts in `scripts/recomp/linux/local/`) only check and do not
 install packages or download/copy third-party headers. Qt, SDL3, Vulkan, shaderc,
 and FFmpeg use installed system headers/libraries through pkg-config. No copied
 include-vk/ or deps/include/ fallback is used. Runtime-only packages are not enough.
