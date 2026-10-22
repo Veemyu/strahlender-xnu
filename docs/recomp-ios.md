@@ -1,6 +1,6 @@
 # Native recompilation on iPadOS
 
-Updated: 2026-10-20. Native ARM64 static recompilation, UIKit and Metal; no JIT.
+Updated: 2026-10-22. Native ARM64 static recompilation, UIKit and Metal; no JIT.
 The Unity rebuild is deprecated and out of scope.
 
 ## Current state
@@ -8,6 +8,26 @@ The Unity rebuild is deprecated and out of scope.
 The iPad app reaches the intro, title, imported save, and 3D field. The user has
 accepted the startup gate: only the shader-compilation counter appears at the
 upper left. Do not change this start path without agreement.
+
+Xcode 27.1 (iOS 27.1 SDK) builds the iPad app and the iPhone compile target
+(`TARGETED_DEVICE_FAMILY=1`, minimum iOS 17.0). Two findings on 2026-10-22:
+
+- Fixed: shader libraries need `-target air64-apple-ios26.0` (`shader_bin.sh`).
+  Without it Xcode 27 emits AIR v29 for iOS 27.1, which iPadOS 26 does not load,
+  so every draw was skipped (0 draws). The runtime now logs library load errors.
+- Render-worker race: the asynchronous worker runs concurrently with the guest.
+  Without any setting, 4 of 10 starts crashed or stalled. Lockstep
+  (`BDSP_EXEC_SYNC=1`) avoids that but serializes guest and renderer: about 69
+  presentations/s, which was a performance regression. The iOS default is now
+  the asynchronous worker with `BDSP_XW_DRAIN_DESTROY=1` (texture release waits
+  for the worker): 120 presentations/s in 2 of 2 runs. `BDSP_XW_SNAP=1` stays
+  off: it produces empty command lists (0 draws). Details: section 4.5 of the
+  German document.
+
+Mac reference runs before this date used module images without HLE bindings
+(`work/recomp/img`); their crashes were not code regressions. Regenerate images
+with `HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt`. Details: section 4.5 of the
+German document.
 
 PCM16 output through Audio Queue Services and AVAudioSession is implemented.
 The user confirmed clean sound in one targeted 60-second run ending at 60 fps.
@@ -89,10 +109,11 @@ A kernel timed-wait race was fixed: if a waker already completed the wait and
 transferred mutex ownership, its result wins over ETIMEDOUT. Otherwise the SDK
 could lock a mutex it already owned.
 
-A separate early zero-frame stall involving GC thread suspension and IPC remains
-unresolved. Its host-lock explanation is a hypothesis, not a proven cause.
-The earlier suspension experiment was reverted; do not reintroduce it or use
-device repetition loops. Additional diagnostic changes remain uncommitted.
+The early zero-frame stall of 2026-10-19 (GC thread suspension and IPC) occurred
+in 2 of 10 runs without drain and did not occur in the 2 drain runs (too few to
+conclude). Its cause is still open; the host-lock explanation remains a
+hypothesis. The earlier suspension experiment was reverted; do not reintroduce
+it or use device repetition loops. Additional diagnostic changes remain uncommitted.
 
 Remaining manual checks include touch/controller/keyboard hardware behavior,
 audio interruptions/device changes, extended play/battles and the guest memory
