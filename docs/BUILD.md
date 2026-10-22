@@ -15,6 +15,14 @@ services and a graphics backend (Metal on macOS, Vulkan on Linux, Metal on iPadO
 - Everything the scripts produce goes to `work/`, which is git-ignored. Never commit `work/`.
 - Targets: macOS app (most complete), iPadOS app, Linux with Vulkan (work in progress, section 6).
 
+## Quick start (macOS, guided)
+
+For the macOS app there is a guided installer. Double-click `install.command` in the Finder or run `./install.command` in a
+terminal. It checks the tools (and offers to install missing Homebrew and Python packages, never with `sudo`), asks you to
+drag your `.xci`, optionally the update `.nsp`, and your `prod.keys` into the window, shows a summary, and then runs the
+stages `tools`, `extract` and `recomp` of `scripts/build_all.sh` (section 4). Allow about an hour and 60 GB of free space.
+If it stops, run it again: finished stages are skipped. The sections below describe the same steps by hand.
+
 ## 2. Common prerequisites
 
 | Item | Needed for | Check |

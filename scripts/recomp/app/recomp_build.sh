@@ -80,7 +80,8 @@ else
 fi
 
 # ---------- 2 Übersetzen ----------
-H_OBJ="$(printf '%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" | shasum -a 256 | cut -c1-64)"
+H_HOT="$(shasum -a 256 < "$ROOT/scripts/recomp/hot_o2.txt" | cut -c1-16)"   # Liste der mit -O2 gebauten Funktionen
+H_OBJ="$(printf '%s|%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" "$H_HOT" | shasum -a 256 | cut -c1-64)"
 if [ "$FORCE" -eq 0 ] && [ -d "$OBJ" ] && marker_ok recomp-obj "$H_OBJ"; then
   log "2/6 Übersetzen: Marker passt ($(ls "$OBJ"/*.o | wc -l | tr -d ' ') Objekte), übersprungen"
 else

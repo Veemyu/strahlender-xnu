@@ -15,6 +15,15 @@ und ein Grafik-Backend bereitstellt (Metal auf macOS und iPadOS, Vulkan unter Li
 - Alles, was die Skripte erzeugen, landet in `work/`. Dieser Ordner ist von Git ignoriert. Committe ihn nie.
 - Ziele: die macOS-App (am weitesten), die iPadOS-App, Linux mit Vulkan (in Arbeit, Abschnitt 6).
 
+## Schnellstart (macOS, geführt)
+
+Für die macOS-App gibt es einen geführten Installer. Doppelklick auf `install.command` im Finder oder `./install.command` im
+Terminal. Er prüft die Werkzeuge (und bietet an, fehlende Homebrew- und Python-Pakete zu installieren, nie mit `sudo`), bittet
+dich, deine `.xci`, optional das Update `.nsp` und deine `prod.keys` in das Fenster zu ziehen, zeigt eine Zusammenfassung und
+führt dann die Stufen `tools`, `extract` und `recomp` von `scripts/build_all.sh` aus (Abschnitt 4). Plane etwa eine Stunde und
+60 GB freien Platz ein. Bricht er ab, starte ihn erneut: fertige Stufen werden übersprungen. Die folgenden Abschnitte
+beschreiben dieselben Schritte von Hand.
+
 ## 2. Gemeinsame Voraussetzungen
 
 | Was | Wofür | Prüfen mit |
