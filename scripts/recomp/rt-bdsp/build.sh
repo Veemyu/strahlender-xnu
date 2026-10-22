@@ -78,7 +78,7 @@ objs+=(${nvnobjs[@]+"${nvnobjs[@]}"})
 newest=$(ls -t "${objs[@]}" | head -1)
 if [ ! -x "$OUT" ] || [ "$newest" -nt "$OUT" ] || [ -n "$(find "$OBJ" -name '*.o' -newer "$OUT" -print -quit)" ]; then
   clang -o "$OUT" "${objs[@]}" "$OBJ"/*.o $FW
-  echo "gelinkt: $OUT"
+  echo "linked: $OUT"
 else
   echo "up to date: $OUT"
 fi

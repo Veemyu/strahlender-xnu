@@ -94,5 +94,5 @@ if [ "$TARGET" = mac ]; then
 else
   rm -f "$RT/libbdsp_rt.a"
   libtool -static -o "$RT/libbdsp_rt.a" "$RT"/*.o "$RT"/nvn/*.o 2>/dev/null
-  echo "Bibliothek: $RT/libbdsp_rt.a"
+  echo "Library:$RT/libbdsp_rt.a"
 fi

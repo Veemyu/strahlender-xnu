@@ -532,6 +532,6 @@ fi
 
 for s in $SELECTED; do run_stage "$s"; done
 
-log "Zusammenfassung"
+log "Summary"
 printf '%s' "$RESULTS" | while IFS='|' read -r s r; do [ -z "$s" ] || printf '  %-12s %s\n' "$s" "$r"; done
 exit 0

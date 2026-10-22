@@ -125,7 +125,7 @@ fi
 # ---------- 4 Runtime and NVN/Metal ----------
 log "4/6 building runtime and NVN/Metal, linking with libgame into bdsp_app"
 if [ "$DRY" -eq 1 ]; then
-  printf '    [dry-run] Bau: env BDSP_APP=1 OBJ=%q RT=%q NVN_RT=%q NVN_SRC=%q OUT=%q scripts/recomp/rt-bdsp/build.sh\n' "$OBJ" "$RTO" "$NVNRT" "$NVNSRC" "$BIN"
+  printf '    [dry-run] runtime: env BDSP_APP=1 OBJ=%q RT=%q NVN_RT=%q NVN_SRC=%q OUT=%q scripts/recomp/rt-bdsp/build.sh\n' "$OBJ" "$RTO" "$NVNRT" "$NVNSRC" "$BIN"
 else
   mkdir -p "$RTO" "$NVNRT"
   BDSP_APP=1 OBJ="$OBJ" RT="$RTO" NVN_RT="$NVNRT" NVN_SRC="$NVNSRC" OUT="$BIN" "$ROOT/scripts/recomp/rt-bdsp/build.sh" > "$WORK/logs/recomp-runtime.log" 2>&1 \
