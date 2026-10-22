@@ -170,7 +170,7 @@ static void *StatsLoop(void *arg) {
     NSTimeInterval t0 = NSProcessInfo.processInfo.systemUptime;
     for (;;) {
         sleep(5);
-        fprintf(stderr, "[ipad] t=%.0f s Footprint %.0f MiB, frei laut os_proc_available_memory %zu MiB, thermalState %ld, lowPower %d\n",
+        fprintf(stderr, "[ipad] t=%.0f s Footprint %.0f MiB, free per os_proc_available_memory %zu MiB, thermalState %ld, lowPower %d\n",
                 NSProcessInfo.processInfo.systemUptime - t0, FootprintMiB(), os_proc_available_memory() >> 20,
                 (long)NSProcessInfo.processInfo.thermalState, (int)NSProcessInfo.processInfo.lowPowerModeEnabled);
     }

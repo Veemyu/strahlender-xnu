@@ -160,7 +160,7 @@ static void *monitor_loop(void *arg) {
         if (secs > g_timeout) break;
         if ((uint64_t)secs >= last_progress + 10) {
             last_progress = (uint64_t)secs;
-            LOG("[fortschritt] %.0f s, Threads %d, RSS %ld MiB\n", secs, kernel_thread_count(), rss_now_mib());
+            LOG("[progress] %.0f s, Threads %d, RSS %ld MiB\n", secs, kernel_thread_count(), rss_now_mib());
         }
     }
     if (getenv("BDSP_DUMP")) rt_fatal_trace();   // memory dump also at the time limit
