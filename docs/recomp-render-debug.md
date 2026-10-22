@@ -1,7 +1,27 @@
 # Debugging the Metal renderer on macOS
 
 How rendering errors in the native macOS build are found, with the tools that exist for it, and what was found with them.
-Status: 2026-10-21.
+Status: 2026-10-22.
+
+## Finding: no MSAA resolve (Professor Rowan missing)
+
+**Symptom.** In the intro the professor, the Munchlax next to him and the bokeh background did not render: a flat blue
+screen with the text box. Every draw of the models reached the GPU with valid data (vertices, indices, matrices were
+checked), so it looked like a geometry problem.
+
+**Cause.** The scene draws into a 4x multisample G-buffer. Three things in the NVN to Metal layer did not handle that:
+- `NVN Downsample` (the MSAA resolve) went through `copy_texture` to a sampled draw, which bound the multisample texture to a
+  `texture2d` fragment input. Metal drops such draws, so the resolved image never received the models.
+- The pipeline for `clear()` was cached without the sample count, so clears in the multisample pass used a 1-sample pipeline.
+- Depth-only multisample passes got a 1-sample pipeline (the sample count was only taken from colour attachments).
+
+**Fix.** `copy_texture` resolves with a render pass (`MTLStoreActionMultisampleResolve`); `pass_samples()` gives the pass's
+sample count (colour, else depth) to the pipeline, its hash and the `clear()` cache key.
+
+**How it was found.** `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1`, messages grouped by text: 6835 "incorrect type of texture
+(MTLTextureType2DMultisample)" and 4558 "sample count does not match" per run, none after the fix. Before that, hours went
+into per-draw measurements that only ruled things out (culling, depth, stencil, ordering, caches, vertex data). **Run the
+Metal validation first** when something is drawn but not visible.
 
 ## Finding: compute work group size read too late
 
@@ -33,6 +53,7 @@ they were encoded, missed texture updates in the cheap change check, stale shade
 
 ## Method that worked
 
+0. Run `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1` and group the messages by text (`sort | uniq -c`).
 1. Reproduce deterministically: one instance, scripted input, a fixed save, no keys pressed in the window.
 2. Measure at the draw level instead of comparing screenshots: the geometry check below shows which vertex shader
    produces which broken vertices; per-program logs of the compute dispatches showed the bad work group size.
@@ -47,6 +68,7 @@ they were encoded, missed texture updates in the cheap change check, stale shade
 | `BDSP_SKIP_VS=<vs hex>[:<count>][,...]` | Hide the draws of a vertex shader (and index/vertex count) to find out what a draw paints. |
 | `BDSP_SAVE_CS_DIR=<absolute dir>` | Write the translated MSL of every compute program. |
 | `BDSP_DEBUG_FRAME=<f>` | Existing: detailed draw log of one frame; also accepted as `BDSP_GEOM_FROM`. |
+| `BDSP_PASS_DIR=<absolute dir>` | With `BDSP_DEBUG_FRAME`: write the colour target of every pass as `pass_NNN.png` there (the app's working directory has no `build/`). Multisample targets are not readable this way. |
 
 Hang diagnostics (runtime, not rendering). None of these does anything in a normal session:
 

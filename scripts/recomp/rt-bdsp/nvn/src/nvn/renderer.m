@@ -173,20 +173,22 @@ static bool draw_item_cursor;           // a fragment texture is the Items page'
 #define RSCALE_BUFFER_INDEX 18
 
 static int debug_pass_no;
+static id<MTLTexture> pass_color0;  // first colour attachment of the open pass (st.rt already names the next pass when end_pass runs)
 static void end_pass(void) {
     if (enc) {
         [enc endEncoding];
         enc = nil;
-        if (g_debug_frame && st.rt.ncolor && st.rt.color[0] && st.rt.color[0]->backend) {
-            id<MTLTexture> t = renderer_texture(st.rt.color[0], nil, true);
+        if (g_debug_frame && pass_color0) {
+            id<MTLTexture> t = pass_color0;
             id<MTLCommandBuffer> c = cmdbuf;
             cmdbuf = nil;
             [c commit];
             [c waitUntilCompleted];
-            char path[256];
-            snprintf(path, sizeof path, "build/pass_%03d.png", debug_pass_no);
+            char path[512];
+            const char *dir = getenv("BDSP_PASS_DIR") ? getenv("BDSP_PASS_DIR") : "build";  // the app's working directory has no build/
+            snprintf(path, sizeof path, "%s/pass_%03d.png", dir, debug_pass_no);
             renderer_save_texture(t, path);
-            snprintf(path, sizeof path, "build/pass_%03d_a.png", debug_pass_no++);
+            snprintf(path, sizeof path, "%s/pass_%03d_a.png", dir, debug_pass_no++);
             renderer_save_texture_alpha(t, path);
         }
     }
@@ -439,11 +441,13 @@ static void begin_pass(void) {
     st.rt_dirty = false;
     MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
     int w = 0, h = 0;
+    pass_color0 = nil;
     for (int i = 0; i < st.rt.ncolor; i++) {
         NvnTexture *t = st.rt.color[i];
         if (!t) continue;
         renderer_mark_gpu_owned(t);
         id<MTLTexture> tex = view_texture(t, &st.rt.cview[i], st.rt.has_cview[i], true, nil);
+        if (!pass_color0) pass_color0 = tex;
         rp.colorAttachments[i].texture = tex;
         rp.colorAttachments[i].loadAction = MTLLoadActionLoad;
         // reshaped output: areas outside the game's 16:9 drawing (interiors, fades) start black each frame
@@ -550,6 +554,13 @@ static id<MTLLibrary> clear_lib(int index) {
     return libs[index];
 }
 
+// Sample count of the current pass (pipelines must match it): the colour attachments', else the depth attachment's.
+static uint32_t pass_samples(void) {
+    for (int i = 0; i < st.rt.ncolor; i++)
+        if (st.rt.color[i] && st.rt.color[i]->samples > 1) return st.rt.color[i]->samples;
+    return st.rt.depth && st.rt.depth->samples > 1 ? st.rt.depth->samples : 1;
+}
+
 static void attachment_formats(MTLRenderPipelineDescriptor *pd) {
     for (int i = 0; i < st.rt.ncolor; i++)
         if (st.rt.color[i]) pd.colorAttachments[i].pixelFormat = view_texture(st.rt.color[i], &st.rt.cview[i], st.rt.has_cview[i], true, nil).pixelFormat;
@@ -558,8 +569,7 @@ static void attachment_formats(MTLRenderPipelineDescriptor *pd) {
         if (renderer_format_is_depth(st.rt.depth->format) && st.rt.depth->format != 0x31) pd.depthAttachmentPixelFormat = pf;
         if (renderer_format_has_stencil(st.rt.depth->format)) pd.stencilAttachmentPixelFormat = pf;
     }
-    for (int i = 0; i < st.rt.ncolor; i++)
-        if (st.rt.color[i] && st.rt.color[i]->samples > 1) pd.rasterSampleCount = st.rt.color[i]->samples;
+    pd.rasterSampleCount = pass_samples();
 }
 
 static void clear(int index, int kind, const void *color, uint32_t mask, bool depth, float dval, bool stencil,
@@ -587,9 +597,10 @@ static void clear(int index, int kind, const void *color, uint32_t mask, bool de
         pd.colorAttachments[index].writeMask = m;
     }
     NSError *err;
-    NSString *key = [NSString stringWithFormat:@"clear %d %d %u %d %d %lu %lu %lu", index, kind, mask, depth, stencil,
+    NSString *key = [NSString stringWithFormat:@"clear %d %d %u %d %d %lu %lu %lu %lu", index, kind, mask, depth, stencil,
                      (unsigned long)pd.colorAttachments[index < 0 ? 0 : index].pixelFormat,
-                     (unsigned long)pd.depthAttachmentPixelFormat, (unsigned long)pd.stencilAttachmentPixelFormat];
+                     (unsigned long)pd.depthAttachmentPixelFormat, (unsigned long)pd.stencilAttachmentPixelFormat,
+                     (unsigned long)pd.rasterSampleCount];  // (the sample count must match the pass: 4x MSAA passes need their own pipelines)
     id<MTLRenderPipelineState> pipe = cache[key];
     if (!pipe) {
         pipe = TIMED_COMPILE([dev newRenderPipelineStateWithDescriptor:pd error:&err]);
@@ -1719,8 +1730,9 @@ static uint64_t pipeline_state_hash(Prog *pr) {
         h = hmix(h, v, sizeof v);
         h = hmix(h, st.blend[i], 8);
     }
-    uint32_t dfmt = st.rt.depth ? st.rt.depth->format : 0;
+    uint32_t dfmt = st.rt.depth ? st.rt.depth->format : 0, dsamples = st.rt.depth ? st.rt.depth->samples : 0;
     h = hmix(h, &dfmt, 4);
+    h = hmix(h, &dsamples, 4);
     h = hmix(h, &st.nattrib, sizeof st.nattrib);
     h = hmix(h, st.attrib, sizeof st.attrib[0] * (size_t)(st.nattrib < 32 ? st.nattrib : 32));
     h = hmix(h, &st.nstream, sizeof st.nstream);
@@ -1773,8 +1785,8 @@ static void rec_from_state(const Prog *pr, uint32_t used_streams, PipeRec *r) {
         if (renderer_format_is_depth(st.rt.depth->format) && st.rt.depth->format != 0x31) r->depth_fmt = pf;
         if (renderer_format_has_stencil(st.rt.depth->format)) r->stencil_fmt = pf;
     }
-    for (int i = 0; i < r->ncolor; i++)
-        if (st.rt.color[i] && st.rt.color[i]->samples > 1) r->samples = st.rt.color[i]->samples;
+    uint32_t ps = pass_samples();
+    r->samples = ps > 1 ? ps : 0;  // (0 for single-sample: the manifest's keys stay valid)
     r->a2c = st.ms[0xC] != 0;
     for (int i = 0; i < 32; i++) {
         if (!(pr->vi->attr_mask & (1u << i))) continue;
@@ -2677,6 +2689,34 @@ static void copy_texture(const TexRefRec *src, const TexRefRec *dst, uint64_t fl
                     (unsigned long)s.pixelFormat, (unsigned long)d.width, (unsigned long)d.height, (unsigned long)d.pixelFormat, f[0], f[4]);
             }
         }
+        return;
+    }
+    if (s.sampleCount > 1 && d.sampleCount == 1 && s.pixelFormat == d.pixelFormat && s.width == d.width && s.height == d.height &&
+        sx0 == 0 && sy0 == 0 && dx0 == 0 && dy0 == 0 && sw == (int)s.width && sh == (int)s.height) {
+        // MSAA resolve (NVN Downsample): neither a blit nor a sampled draw can read a multisample texture as texture2d, the
+        // pass's store action resolves it
+        MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+        if (renderer_format_is_depth(dt->format)) {
+            rp.depthAttachment.texture = s;
+            rp.depthAttachment.loadAction = MTLLoadActionLoad;
+            rp.depthAttachment.storeAction = MTLStoreActionMultisampleResolve;
+            rp.depthAttachment.resolveTexture = d;
+            rp.depthAttachment.depthResolveFilter = MTLMultisampleDepthResolveFilterSample0;
+            if (renderer_format_has_stencil(dt->format)) {
+                rp.stencilAttachment.texture = s;
+                rp.stencilAttachment.loadAction = MTLLoadActionLoad;
+                rp.stencilAttachment.storeAction = MTLStoreActionMultisampleResolve;
+                rp.stencilAttachment.resolveTexture = d;
+            }
+        } else {
+            rp.colorAttachments[0].texture = s;
+            rp.colorAttachments[0].loadAction = MTLLoadActionLoad;
+            rp.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;
+            rp.colorAttachments[0].resolveTexture = d;
+        }
+        id<MTLRenderCommandEncoder> e = [cb() renderCommandEncoderWithDescriptor:rp];
+        [e endEncoding];
+        stat_passes++;
         return;
     }
     if (renderer_format_is_depth(dt->format) || (s.pixelFormat == d.pixelFormat && sw == dw && sh == dh && s.sampleCount == d.sampleCount)) {
