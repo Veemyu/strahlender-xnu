@@ -36,6 +36,7 @@ static uint64_t stat_draws, stat_skipped, stat_passes, stat_dispatches, stat_wai
 static double stat_gpu_s;
 // BDSP_PASS_TIMES (render_debug.inc): GPU time per pass
 static void pt_attach_render(MTLRenderPassDescriptor *rp);
+static void pt_name_encoder(id<MTLRenderCommandEncoder> e);
 static void pt_close_render(void);
 static id<MTLComputeCommandEncoder> pt_compute_encoder(const char *label);
 static void pt_submit(id<MTLCommandBuffer> c);
@@ -52,7 +53,10 @@ static uint64_t op_counts[CMD_COUNT];
 bool g_debug_frame;
 void renderer_save_texture(id<MTLTexture> tex, const char *path);
 void renderer_save_texture_alpha(id<MTLTexture> tex, const char *path);
-static char stats_text[320];
+static char stats_text[1024];
+// (stats) bytes copied into the ring by what they are: 0 other, 1 vertex streams, 2 uniform buffers, 3 indices
+static int ring_site;
+static uint64_t stat_ring_bytes[4], stat_ring_n[4];
 
 // ------------------------------------------------------------------ state
 typedef struct {
@@ -134,6 +138,12 @@ const char *renderer_stats(void) {
              (unsigned long long)stat_flush_n[FL_HAZARD], stat_flush_ticks[FL_HAZARD] / 24e3, (unsigned long long)stat_flush_n[FL_READBACK], stat_flush_ticks[FL_READBACK] / 24e3,
              (unsigned long long)stat_flush_n[FL_BUF2BUF], stat_flush_ticks[FL_BUF2BUF] / 24e3, (unsigned long long)stat_flush_n[FL_OTHER], stat_flush_ticks[FL_OTHER] / 24e3);
     memset(stat_flush_n, 0, sizeof stat_flush_n); memset(stat_flush_ticks, 0, sizeof stat_flush_ticks);
+    {
+        size_t n = strlen(stats_text);
+        snprintf(stats_text + n, sizeof stats_text - n, " | ring MB vertex %.0f/%llu uniform %.0f/%llu index %.0f/%llu other %.0f/%llu", stat_ring_bytes[1] / 1048576.0, (unsigned long long)stat_ring_n[1],
+                 stat_ring_bytes[2] / 1048576.0, (unsigned long long)stat_ring_n[2], stat_ring_bytes[3] / 1048576.0, (unsigned long long)stat_ring_n[3], stat_ring_bytes[0] / 1048576.0, (unsigned long long)stat_ring_n[0]);
+        memset(stat_ring_bytes, 0, sizeof stat_ring_bytes); memset(stat_ring_n, 0, sizeof stat_ring_n);
+    }
     pt_report();
     stat_compiles = 0;
     stat_feedback_copies = 0;
@@ -511,6 +521,7 @@ static void begin_pass(void) {
     if (chunk > 0 && cmdbuf && ++g_passes_in_cb >= chunk) renderer_submit();
     pt_attach_render(rp);
     enc = [cb() renderCommandEncoderWithDescriptor:rp];
+    pt_name_encoder(enc);
     vp_sx = pass_sx; vp_sy = pass_sy; vp_ox = 0; vp_oy = 0;
     stat_passes++;
 }
@@ -694,7 +705,11 @@ static id<MTLBuffer> ring;
 static uint64_t ring_off;
 #define RING_SIZE (64u << 20)
 
-static uint64_t ring_alloc(const void *data, uint64_t size) {
+static uint64_t ring_alloc_skip(const void *data, uint64_t size, uint64_t skip);
+static uint64_t ring_alloc(const void *data, uint64_t size) { return ring_alloc_skip(data, size, 0); }
+// Reserves `size` bytes but copies only [skip, size): the caller reads nothing below `skip`.
+static uint64_t ring_alloc_skip(const void *data, uint64_t size, uint64_t skip) {
+    stat_ring_bytes[ring_site] += size - skip; stat_ring_n[ring_site]++; ring_site = 0;
     if (!ring) ring = [dev newBufferWithLength:RING_SIZE options:MTLResourceStorageModeShared];
     uint64_t aligned = (ring_off + 255) & ~255ull;
     if (aligned + size > RING_SIZE) {
@@ -702,7 +717,7 @@ static uint64_t ring_alloc(const void *data, uint64_t size) {
         ring = [dev newBufferWithLength:(size > RING_SIZE ? size : RING_SIZE) options:MTLResourceStorageModeShared];
         aligned = 0;
     }
-    memcpy((uint8_t *)ring.contents + aligned, data, size);
+    memcpy((uint8_t *)ring.contents + aligned + skip, (const uint8_t *)data + skip, size - skip);
     ring_off = aligned + size;
     return aligned;
 }
@@ -716,13 +731,44 @@ static bool guest_heap_ok(uint64_t addr, uint64_t size) {
     return !off && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
 }
 
-static void bind_guest(id<MTLRenderCommandEncoder> e, bool vertex_stage, uint64_t addr, uint64_t size, int index) {
+// The vertex range [*lo, *hi] (before the stream stride) a draw reads, so only that part of a stream is copied;
+// false if it can't be told. Indices equal to the primitive-restart value are skipped.
+static bool draw_vertex_range(const CmdRec *r, bool indexed, uint64_t *lo, uint64_t *hi) {
+    if (!indexed) {
+        uint64_t first = (uint32_t)r->x[1], count = (uint32_t)r->x[2];
+        if (!count) return false;
+        *lo = first; *hi = first + count - 1;
+        return true;
+    }
+    uint32_t itype = (uint32_t)r->x[1], count = (uint32_t)r->x[2];
+    const void *p = (const void *)(uintptr_t)r->x[3];
+    int64_t base = (int32_t)r->x[4];
+    if (!count || !p) return false;
+    uint32_t mn = UINT32_MAX, mx = 0;
+    // branch-free (vectorizes): a restart value counts as the neutral element of min and of max
+#define SCAN_RANGE(T, RESTART) do { const T *q = p; \
+        for (uint32_t i = 0; i < count; i++) { uint32_t v = q[i]; uint32_t lo_v = v == (RESTART) ? UINT32_MAX : v, hi_v = v == (RESTART) ? 0 : v; \
+            mn = lo_v < mn ? lo_v : mn; mx = hi_v > mx ? hi_v : mx; } } while (0)
+    if (itype == 0) SCAN_RANGE(uint8_t, 0xFF);
+    else if (itype == 1) SCAN_RANGE(uint16_t, 0xFFFF);
+    else SCAN_RANGE(uint32_t, 0xFFFFFFFFu);
+#undef SCAN_RANGE
+    if (mn > mx) return false;
+    int64_t l = (int64_t)mn + base, h = (int64_t)mx + base;
+    if (l < 0) l = 0;
+    if (h < l) return false;
+    *lo = (uint64_t)l; *hi = (uint64_t)h;
+    return true;
+}
+
+static void bind_guest(id<MTLRenderCommandEncoder> e, bool vertex_stage, uint64_t addr, uint64_t size, int index, uint64_t skip) {
     if (guest_heap_ok(addr, size) && (addr & 3) == 0) {
         if (vertex_stage) [e setVertexBuffer:g_guest_buffer offset:addr - HEAP_BASE atIndex:index];
         else [e setFragmentBuffer:g_guest_buffer offset:addr - HEAP_BASE atIndex:index];
         return;
     }
-    uint64_t off = ring_alloc((void *)(uintptr_t)addr, size);
+    ring_site = 1;
+    uint64_t off = ring_alloc_skip((void *)(uintptr_t)addr, size, skip < size ? skip : 0);
     if (vertex_stage) [e setVertexBuffer:ring offset:off atIndex:index];
     else [e setFragmentBuffer:ring offset:off atIndex:index];
 }
@@ -1434,6 +1480,7 @@ static void bind_cbufs(int stage, ShaderInfo *si) {
         if ((si->cbuf_dynamic & (1u << k)) && r.size) size = r.size > 0x10000 ? 0x10000 : r.size;  // indexed: whole buffer
         if (size > r.size && r.size) size = r.size;
         if (size < 16) size = 16;
+        ring_site = 2;
         uint64_t off = ring_alloc((void *)(uintptr_t)r.addr, size);  // snapshot, as later CPU writes must not leak in
         if (ENV("BDSP_LOG_UBUF")) {  // (debug) per frame once per guest address: time-like values show up as a steady rise
             extern uint64_t renderer_present_count(void);
@@ -1986,6 +2033,17 @@ static void startup_gate(void) {
 }
 
 // True if one of the vertex streams in `used` covers a storage range that a compute dispatch may still write.
+static bool getenv_flag_hz_flush(void) {
+    static int v = -1;
+    if (v < 0) v = getenv("BDSP_HZ_FLUSH") != NULL;
+    return v;
+}
+// True if [addr, addr+size) overlaps a storage range a compute dispatch not yet known to be finished uses.
+static bool range_pending_compute(uint64_t addr, uint64_t size) {
+    for (int i = 0; i < hz_n; i++)
+        if (addr < hz_ranges[i].addr + hz_ranges[i].size && addr + size > hz_ranges[i].addr) return true;
+    return false;
+}
 // Mask of the used vertex streams that overlap a range a pending compute dispatch writes.
 static uint32_t streams_pending_compute(uint32_t used) {
     uint32_t m = 0;
@@ -2339,12 +2397,26 @@ static void draw(CmdRec *r, bool indexed) {
         if (draw_heart) { extern void texpatch_heart_tint(int kind, float tint[8]); texpatch_heart_tint(draw_heart, tint); }
         [enc setFragmentBytes:tint length:sizeof tint atIndex:19];
     }
+    // A vertex-rate stream is copied only as far as the draw's indices reach (static meshes sit in large buffers: copying
+    // whole streams was ~5.6 GB/s of memcpy in the render worker). BDSP_FULL_VB=1: copy whole streams.
+    static int full_vb = -1;
+    if (full_vb < 0) full_vb = getenv("BDSP_FULL_VB") != NULL;
+    uint64_t vlo = 0, vhi = 0;
+    bool have_range = !full_vb && draw_vertex_range(r, indexed, &vlo, &vhi);
     for (int s = 0; s < 12; s++) {
         if (!(used_streams & (1u << s))) continue;
         Range v = st.vbuf[s];
+        uint64_t size = v.size ? v.size : 16, skip = 0;
+        uint32_t stride = s < st.nstream ? st.stream[s][0] : 0, div = s < st.nstream ? st.stream[s][1] : 0;
+        if (have_range && stride && !div) {
+            uint64_t need = (vhi + 1) * stride;
+            if (need < size) size = need;
+            skip = vlo * stride;
+            if (skip > size) skip = 0;
+        }
         if (v.addr && (gpu_streams & (1u << s)) && v.addr >= HEAP_BASE && v.addr + (v.size ? v.size : 16) <= HEAP_BASE + HEAP_MAX && !(v.addr & 3))
             [enc setVertexBuffer:g_guest_buffer offset:v.addr - HEAP_BASE atIndex:18 + s];
-        else if (v.addr) bind_guest(enc, true, v.addr, v.size ? v.size : 16, 18 + s);
+        else if (v.addr) bind_guest(enc, true, v.addr, size, 18 + s, skip);
         else { static const float zero[4]; [enc setVertexBytes:zero length:16 atIndex:18 + s]; }
     }
     if (used_streams & (1u << 31)) { static const float zero[4] = {0, 0, 0, 1}; [enc setVertexBytes:zero length:16 atIndex:30]; }
@@ -2408,6 +2480,7 @@ static void draw(CmdRec *r, bool indexed) {
             if (guest_heap_ok(iaddr, (uint64_t)count * isz) && (iaddr % isz) == 0) {
                 ib = g_guest_buffer; ioff = iaddr - HEAP_BASE;
             } else {
+                ring_site = 3;
                 ioff = ring_alloc((void *)(uintptr_t)iaddr, (uint64_t)count * isz); ib = ring;
             }
             [enc drawIndexedPrimitives:pt indexCount:count indexType:it indexBuffer:ib indexBufferOffset:ioff
@@ -3011,7 +3084,10 @@ static void exec_list(uint64_t handle, int depth) {
         case CMD_COPY_BUFFER_TO_TEXTURE: copy_buffer_to_texture(r->x[0], x); break;
         case CMD_COPY_TEXTURE_TO_BUFFER: copy_texture_to_buffer(x, r->x[3]); break;
         case CMD_COPY_BUFFER_TO_BUFFER:
-            flush_why(FL_BUF2BUF);
+            // The copy runs on the CPU, so the GPU must be done with what it touches: only a range a dispatch reads or writes
+            // (hz_ranges) is. The game does this many times a frame (walking along the water: ~25), each flush stalled
+            // the worker. BDSP_HZ_FLUSH=1: flush every time as before.
+            if (getenv_flag_hz_flush() || range_pending_compute(r->x[0], r->x[2]) || range_pending_compute(r->x[1], r->x[2])) flush_why(FL_BUF2BUF);
             memmove((void *)(uintptr_t)r->x[1], (void *)(uintptr_t)r->x[0], r->x[2]);
             break;
         default: break;

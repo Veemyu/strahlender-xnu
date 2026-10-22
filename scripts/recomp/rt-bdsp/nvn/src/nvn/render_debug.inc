@@ -138,12 +138,22 @@ static void debug_save_compute_msl(uint64_t code_addr, const char *msl) {
 #define PT_MAX 128
 typedef struct { id<MTLCounterSampleBuffer> buf; int n; struct { char label[72]; uint32_t d0, draws; } e[PT_MAX]; } PtCb;
 static int pt_on = -1, pt_open = -1;
-static PtCb *pt_cur, *pt_pool[8];
+static PtCb *pt_cur, *pt_pool[64];
 static int pt_npool;
 static pthread_mutex_t pt_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct { char label[72]; uint64_t n, draws, ns; } pt_agg[64];
 static int pt_nagg;
 static uint64_t pt_timed_ns, pt_cb_ns;
+static int pt_dump;  // command buffers still to print (BDSP_PASS_TIMES=2)
+static char pt_last_label[72];
+// Back to the pool (caller holds pt_lock); a full pool releases the sample buffer.
+static void pt_recycle(PtCb *p) {
+    if (pt_npool < 64) { pt_pool[pt_npool++] = p; return; }
+    p->buf = nil;
+    free(p);
+}
+// Name the encoder after its target so Instruments / Xcode captures show which pass is which.
+static void pt_name_encoder(id<MTLRenderCommandEncoder> e) { if (pt_on > 0) e.label = @(pt_last_label); }
 
 static bool pt_enabled(void) {
     if (pt_on < 0) pt_on = getenv("BDSP_PASS_TIMES") != NULL && [dev supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary];
@@ -189,6 +199,7 @@ static void pt_attach_render(MTLRenderPassDescriptor *rp) {
     id<MTLTexture> t = c ?: dt;
     char label[72] = "no target";
     if (t) snprintf(label, sizeof label, "%lux%lu s%lu pf%lu c%d%s", (unsigned long)t.width, (unsigned long)t.height, (unsigned long)t.sampleCount, (unsigned long)t.pixelFormat, nc, dt ? " +depth" : "");
+    snprintf(pt_last_label, sizeof pt_last_label, "%s", label);
     int s = pt_start(label);
     if (s < 0) return;
     MTLRenderPassSampleBufferAttachmentDescriptor *a = rp.sampleBufferAttachments[0];
@@ -227,6 +238,9 @@ static void pt_resolve(PtCb *p, id<MTLCommandBuffer> done) {
     for (int i = 0; data && i < p->n; i++) {
         uint64_t a = ts[2 * i], b = ts[2 * i + 1];
         if (!a || b <= a) continue;
+        if (pt_dump > 0)  // BDSP_PASS_TIMES=2: timeline of the first command buffers after a report (us from the first sample)
+            LOG("[pass-tl] cb%d %-40s start %7.0f dur %7.0f gap %6.0f draws %u\n", pt_dump, p->e[i].label, (a - lo) * sc * 1e6, (b - a) * sc * 1e6,
+                prev_end && a > prev_end ? (a - prev_end) * sc * 1e6 : 0.0, p->e[i].draws);
         // exclusive time: the part of the pass after the previous one finished (passes overlap on the GPU)
         uint64_t from = a > prev_end ? a : prev_end;
         if (b <= from) continue;
@@ -240,8 +254,9 @@ static void pt_resolve(PtCb *p, id<MTLCommandBuffer> done) {
         pt_timed_ns += ns;
     }
     pt_cb_ns += (uint64_t)((done.GPUEndTime - done.GPUStartTime) * 1e9);
+    if (pt_dump > 0) pt_dump--;
     p->n = 0;
-    if (pt_npool < 8) pt_pool[pt_npool++] = p;
+    pt_recycle(p);
     pthread_mutex_unlock(&pt_lock);
 }
 
@@ -250,7 +265,7 @@ static void pt_submit(id<MTLCommandBuffer> c) {
     PtCb *p = pt_cur;
     pt_cur = NULL;
     pt_open = -1;
-    if (!p || !p->n) { if (p) { pthread_mutex_lock(&pt_lock); if (pt_npool < 8) pt_pool[pt_npool++] = p; pthread_mutex_unlock(&pt_lock); } return; }
+    if (!p || !p->n) { if (p) { pthread_mutex_lock(&pt_lock); pt_recycle(p); pthread_mutex_unlock(&pt_lock); } return; }
     [c addCompletedHandler:^(id<MTLCommandBuffer> done) { pt_resolve(p, done); }];
 }
 
@@ -272,6 +287,7 @@ static void pt_report(void) {
     }
     memset(pt_agg, 0, sizeof pt_agg);
     pt_nagg = 0;
+    if (!strcmp(getenv("BDSP_PASS_TIMES"), "2")) pt_dump = 7;
     pt_timed_ns = pt_cb_ns = 0;
     pthread_mutex_unlock(&pt_lock);
 }

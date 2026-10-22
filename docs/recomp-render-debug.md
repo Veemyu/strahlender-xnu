@@ -71,13 +71,29 @@ they were encoded, missed texture updates in the cheap change check, stale shade
 | `BDSP_DEBUG_FRAME=<f>` | Existing: detailed draw log of one frame; also accepted as `BDSP_GEOM_FROM`. |
 | `BDSP_PASS_DIR=<absolute dir>` | With `BDSP_DEBUG_FRAME`: write the colour target of every pass as `pass_NNN.png` there (the app's working directory has no `build/`). Multisample targets are not readable this way. |
 
+## Finding: render worker was the bottleneck, not the GPU
+
+On the M1 Pro (Route 222 and the beach at Sonnewik, 120 fps target) BDSP used only ~25 % fragment, ~9 % vertex and ~5 % compute
+time in a Metal System Trace; the render worker (`xw_main`) was 96-100 % busy. Time Profiler on it showed:
+- **Whole vertex streams copied per draw** (`bind_guest` → `ring_alloc`): 11 GB per 2 s, two thirds of the worker. Now only
+  the range the draw's indices reach is copied (`draw_vertex_range`, `BDSP_FULL_VB=1` copies whole streams): ~3 GB per 2 s.
+- **A full GPU flush per buffer-to-buffer copy** (`CMD_COPY_BUFFER_TO_BUFFER`): walking along the water did ~25 per frame
+  (3000 flushes per 2 s, 1.5 s of waiting) and fell to ~35 fps. Now it flushes only when the range overlaps what a compute
+  dispatch uses (`range_pending_compute`); ~74 fps.
+- The compute-hazard flush (see above) stalled ~4 ms per frame.
+
+Route 222: ~65 → ~95 fps; beach standing ~85, walking ~35 → ~74. Beware when measuring: Metal validation and Instruments
+traces slow the game to 20-30 fps; measure without them.
+
 Performance counters:
 
 | Variable | Effect |
 |---|---|
 | (always, in the `[metal]` stats line) | `flush by hazard/readback/buf2buf/other n/ms`: full GPU flushes by cause and the time the CPU waited. |
 | `BDSP_PASS_TIMES=1` | `[pass]` lines with each stats line: GPU time per pass target (stage-boundary timestamps; a pass is charged only the time after the previous one ended). |
-| `BDSP_XW_LOG=1` | Render worker: time per command list, queue length, how long the guest waits. |
+| `BDSP_XW_LOG=1` | Render worker: time per command list, queue length, how long the guest waits, share of time the worker is busy. |
+| (always, in the `[metal]` stats line) | `ring MB vertex/uniform/index/other MB/calls`: bytes copied into the ring buffer per kind. |
+| `BDSP_HZ_FLUSH=1` | Old behaviour: flush before a draw that reads compute output and before every buffer copy. |
 
 Hang diagnostics (runtime, not rendering). None of these does anything in a normal session:
 

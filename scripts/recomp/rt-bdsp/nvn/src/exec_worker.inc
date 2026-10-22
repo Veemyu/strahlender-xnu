@@ -28,7 +28,7 @@ static int xw_log;
 static uint64_t xw_ts[XW_CAP];
 static uint64_t xw_now_ns(void) { return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
 static void xw_cond_wait(const char *what);
-static struct { uint64_t t0, njobs, npres, qmax, lat_max, list_max, pres_max, guest_wait_max, guest_wait_sum, nwait; } xw_st;
+static struct { uint64_t t0, njobs, npres, qmax, lat_max, list_max, pres_max, guest_wait_max, guest_wait_sum, nwait, busy; } xw_st;
 
 bool renderer_on_worker(void) { return xw_is_worker; }
 
@@ -79,11 +79,12 @@ static void *xw_main(void *arg) {
             if (lat > xw_st.lat_max) xw_st.lat_max = lat;
             if (blk && isp) { xw_st.npres++; if (dur > xw_st.pres_max) xw_st.pres_max = dur; }
             else if (!blk && dur > xw_st.list_max) xw_st.list_max = dur;
+            xw_st.busy += dur;
             if (dur > 12000000ull) printf("[xw-t] t=%.3f %s dauert %.2f ms (Latenz %.2f ms, Warteschlange %llu)\n", t_end / 1e9, blk ? (isp ? "Präsentation" : "Zustandsjob") : "Befehlsliste", dur / 1e6, lat / 1e6, (unsigned long long)qlen);
             if (t_end - xw_st.t0 >= 2000000000ull) {
-                printf("[xw-t] t=%.3f Jobs %llu, Präsentationen %llu, Warteschlange max %llu, Latenz max %.2f ms, Liste max %.2f ms, Präsentation max %.2f ms, Gast-Wartezeit max %.2f ms Mittel %.2f ms\n", t_end / 1e9,
+                printf("[xw-t] t=%.3f Jobs %llu, Präsentationen %llu, Warteschlange max %llu, Latenz max %.2f ms, Liste max %.2f ms, Präsentation max %.2f ms, Gast-Wartezeit max %.2f ms Mittel %.2f ms, Worker beschäftigt %.0f %%\n", t_end / 1e9,
                        (unsigned long long)xw_st.njobs, (unsigned long long)xw_st.npres, (unsigned long long)xw_st.qmax, xw_st.lat_max / 1e6, xw_st.list_max / 1e6, xw_st.pres_max / 1e6,
-                       xw_st.guest_wait_max / 1e6, xw_st.nwait ? xw_st.guest_wait_sum / 1e6 / xw_st.nwait : 0.0);
+                       xw_st.guest_wait_max / 1e6, xw_st.nwait ? xw_st.guest_wait_sum / 1e6 / xw_st.nwait : 0.0, 100.0 * xw_st.busy / (double)(t_end - xw_st.t0));
                 memset(&xw_st, 0, sizeof xw_st);
             }
         }
