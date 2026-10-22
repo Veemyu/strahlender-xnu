@@ -11,6 +11,8 @@ static void exec_list(uint64_t handle, int depth);
 static pthread_mutex_t xw_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t xw_cond = PTHREAD_COND_INITIALIZER;
 static uint64_t xw_handles[XW_CAP], xw_tail, xw_next, xw_done;   // eingereiht / übernommen / fertig
+uint64_t renderer_last_submit_seq(void);
+static uint64_t xw_job_seq[XW_CAP];   // per job: sequence number of the newest command buffer committed when it finished
 static void *xw_blocks[XW_CAP];   // != NULL: Präsentations-Job (retained Block) statt Befehlsliste
 static uint8_t xw_isp[XW_CAP];   // Block ist eine Präsentation (zählt für die Bild-Vorlaufgrenze)
 static uint64_t xw_chk[XW_CAP];   // Prüfsumme der Datensätze beim Einreihen (nur BDSP_XW_CHECK)
@@ -45,6 +47,7 @@ static void *xw_main(void *arg) {
         int isp = xw_isp[xw_next % XW_CAP];
         uint64_t enq_ts = xw_ts[xw_next % XW_CAP], t_start = xw_log ? xw_now_ns() : 0;
         uint64_t qlen = xw_tail - xw_next;
+        uint64_t jidx = xw_next;
         xw_next++;
         pthread_mutex_unlock(&xw_lock);
         @autoreleasepool {
@@ -66,7 +69,9 @@ static void *xw_main(void *arg) {
                 renderer_submit();
             }
         }
+        uint64_t seq_now = renderer_last_submit_seq();   // the GPU work this job (and every earlier one) ended up in
         pthread_mutex_lock(&xw_lock);
+        xw_job_seq[jidx % XW_CAP] = seq_now;
         if (blk && isp) xw_pres_done++;
         xw_done++;
         pthread_cond_broadcast(&xw_cond);

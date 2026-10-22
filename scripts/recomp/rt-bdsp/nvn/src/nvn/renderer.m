@@ -339,9 +339,22 @@ uint64_t renderer_fence_seq(void) {
     return q;
 }
 
+uint64_t renderer_last_submit_seq(void) {
+    pthread_mutex_lock(&cb_lock);
+    uint64_t q = submit_seq;
+    pthread_mutex_unlock(&cb_lock);
+    return q;
+}
+
 // Wait until submission `seq` has completed (0 = nothing to wait for).
 void renderer_wait_seq(uint64_t seq) {
-    if (seq & XW_TAG) { xw_wait_job(seq & ~XW_TAG); seq = UINT64_MAX; }   // Worker-Token: bis zu diesem Job warten, dann den letzten Commit
+    if (seq & XW_TAG) {  // worker token: wait for that job, then for the command buffer it ended in (not for later frames' work)
+        uint64_t n = seq & ~XW_TAG;
+        xw_wait_job(n);
+        static int old_wait = -1;
+        if (old_wait < 0) old_wait = getenv("BDSP_FENCE_LAST") != NULL;
+        seq = old_wait || !n ? UINT64_MAX : xw_job_seq[(n - 1) % XW_CAP];
+    }
     if (!seq) return;
     if (ENV("BDSP_LOG_FENCES")) {  // (debug) how far behind the newest submission the waited fence is
         extern uint64_t renderer_present_count(void);
