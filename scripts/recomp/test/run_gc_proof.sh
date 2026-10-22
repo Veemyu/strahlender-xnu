@@ -1,5 +1,5 @@
 #!/bin/bash
-# GC-Beweis aus Abschnitt 2 (docs/recomp-spike-2.md): rekompilierter Gastcode, Thread asynchron anhalten, Registerzustand prüfen.
+# GC-Beweis (docs/architecture.md, Abschnitt Threads und GC): rekompilierter Gastcode, Thread asynchron anhalten, Registerzustand prüfen.
 # Alles unter work/recomp/spike2/gc.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

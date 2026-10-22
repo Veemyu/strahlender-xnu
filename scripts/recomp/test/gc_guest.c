@@ -1,4 +1,4 @@
-// Synthetisches Gastprogramm für den GC-Test (docs/recomp-spike-2.md, Abschnitt 2). Kein Spielcode.
+// Synthetisches Gastprogramm für den GC-Test (docs/architecture.md, Abschnitt Threads und GC). Kein Spielcode.
 // Ein "Zeiger" wird zeitweise nur noch in einem Register gehalten: er wird aus dem Slot genommen, der Slot geleert,
 // und erst nach einer längeren Rechnung ohne Aufruf zurückgelegt. Ein Stop-the-World-GC, der in diesem Fenster anhält,
 // findet das Objekt nur, wenn er den Registerzustand des angehaltenen Threads mit auswertet.

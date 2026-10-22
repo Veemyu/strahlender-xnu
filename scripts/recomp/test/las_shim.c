@@ -1,5 +1,5 @@
 // Mini-Kernel-Ersatz für die LASRecomp-IPC-/Dienstschicht (ipc.c, services/*.c), nur für den Boot-Probelauf
-// (docs/recomp-spike-2.md, Schritt 5). Eigener Code: Handle-Tabelle und Ereignisse ohne Threads. Die Dienstquellen
+// (docs/architecture.md). Eigener Code: Handle-Tabelle und Ereignisse ohne Threads. Die Dienstquellen
 // des Klons werden von run_boot_probe.sh nur übersetzt und gelinkt, nicht kopiert.
 #include "kernel.h"
 #include <stdlib.h>

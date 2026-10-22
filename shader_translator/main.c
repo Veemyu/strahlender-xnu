@@ -119,7 +119,8 @@ static const char *comp_str(unsigned m, char *buf) {
 }
 
 // XNU: texture / sampler handle tables of the driver's constant buffer 2 as observed in the Unity NVN shaders of the
-// game (texture words from 0x568, sampler words from 0x168, 8 bytes per entry). An assumption, see docs/shader-translator.md.
+// game (the translator's texture words start at 0x568, its sampler words at 0x168, 8 bytes per entry; the runtime binds the two
+// tables crosswise). An assumption, see docs/shaders.md.
 #define HANDLE_CBUF 2
 #define TEXTURE_TABLE_BASE 0x568
 #define SAMPLER_TABLE_BASE 0x168

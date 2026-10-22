@@ -14,7 +14,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# Bedeutung der unbekannten Opcode-Gruppen (obere 12 Bit), soweit bestimmt; Quelle siehe docs/shader-translator.md
+# Bedeutung der unbekannten Opcode-Gruppen (obere 12 Bit), soweit bestimmt; Quelle siehe docs/shaders.md
 KNOWN_NAMES = {
     "op7e8": "HSETP2, Konstantenpuffer-Form (seit Teil 2 implementiert; Name nur für ältere Survey-Läufe)",
     "op7e0": "HSETP2, Immediate-Form (seit Teil 2 implementiert; Name nur für ältere Survey-Läufe)",

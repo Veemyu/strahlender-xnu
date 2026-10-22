@@ -132,7 +132,7 @@ differences belong to the NVN/shader layer, not the shell.
 An October 19 cold build under heavy load took about 27.5 minutes; unchanged
 inputs took 0.4 seconds, runtime-only changes about 13–50 seconds. These are
 historical measurements, not guarantees. Complete older benchmark tables and
-investigation notes are preserved in [recomp-macapp.de.md](recomp-macapp.de.md).
+investigation notes (the former German report) are in the git history.
 
 ## Historical implementation report (2026-10-19)
 
@@ -225,8 +225,8 @@ used four compiler jobs:
 
 | Stage | Measured time | Historical size or note |
 |---|---:|---|
-| Generator, four modules | 7.2 min (main 357 s, sdk 46 s, subsdk0 26 s); up to 2.6 GB RSS | 2,495 C files, 995 MB; byte-identical to prior C (`diff -rq`), hence deterministic in this comparison. CPU total was only about 1.5 min, with the rest spent waiting under load. An earlier unloaded figure was about 75 s ([gate 1](recomp-gate1.md)). |
-| Compile | 19.8 min / 1,186 s | 2,430 `-O1` files, 65 `-O0`; objects 303 MB. Largest file took 95 s and 1.7 GB RSS at `-O1`; prior unloaded run was 11.7 min ([gate 1](recomp-gate1.md)). |
+| Generator, four modules | 7.2 min (main 357 s, sdk 46 s, subsdk0 26 s); up to 2.6 GB RSS | 2,495 C files, 995 MB; byte-identical to prior C (`diff -rq`), hence deterministic in this comparison. CPU total was only about 1.5 min, with the rest spent waiting under load. An earlier unloaded figure was about 75 s ([architecture](architecture.md)). |
+| Compile | 19.8 min / 1,186 s | 2,430 `-O1` files, 65 `-O0`; objects 303 MB. Largest file took 95 s and 1.7 GB RSS at `-O1`; prior unloaded run was 11.7 min ([architecture](architecture.md)). |
 | Module images | 1 s | 104 MB |
 | Runtime, NVN/Metal, link | 7 s | `bdsp_app`: 225 MB |
 | App, libraries, signing | 10 s | 361–363 MB total (MacOS 223, Resources 104, Frameworks 35) |
@@ -239,7 +239,7 @@ a machine with 14 GB free: it was deliberately overridden with
 `--min-free-gb 10`, while the default check exited 8. The cold build used the
 stage logic in a separate work directory with `--no-install-data`; its app
 started for 70 seconds without crashing. The historical target of under 30
-minutes from [recomp-spike-2.md](recomp-spike-2.md) was met under load.
+minutes from [architecture.md](architecture.md) was met under load.
 
 Test hooks were opt-in environment variables, and the default test remained a
 headless run (`--headless --screenshot-after N`, images in `BDSP_SHOT_DIR`).
@@ -251,7 +251,7 @@ external keyboard shortcuts could not be sent because Accessibility access was
 not allowed. `BDSP_PAUSE_SELFTEST="start:duration"` scheduled pause,
 `BDSP_MENU_DUMP=1` logged menu structure, and `BDSP_LOG_STDOUT=1` /
 `BDSP_NO_ALERT=1` selected console logging / suppressed alerts. The older
-`--input-script` from [recomp-gate2.md](recomp-gate2.md) remained available and
+`--input-script` from the early graphics bring-up remained available and
 set buttons directly at Npad level. Scripted tests used isolated save paths.
 
 Observed test results under load 25–50:

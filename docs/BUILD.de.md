@@ -193,7 +193,7 @@ Installiere zusätzlich das Paket `time` (liefert `/usr/bin/time`) und die Pytho
 Die installierten Pakete prüfst du ohne Kopieren, Download oder Installation mit
 `bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`
 (ohne `linux_require_qt`, wenn du die Qt-Hülle nicht baust).
-Stelle die Eingaben `work/exefs/`, `work/romfs/` und `work/recomp/icons/source/` bereit. Extrahiere dazu einen selbst rechtmäßig erstellten Spieledump auf diesem Rechner mit dem Befehl aus Abschnitt 4.1 (Details: `docs/extraktion.md`; die Stufe `extract` schreibt auch die Icon-Quelle), oder kopiere vorhandene Ordner im selben Aufbau hierher. Die Linux-Build-Skripte lesen keine Schlüssel und keine `.xci`.
+Stelle die Eingaben `work/exefs/`, `work/romfs/` und `work/recomp/icons/source/` bereit. Extrahiere dazu einen selbst rechtmäßig erstellten Spieledump auf diesem Rechner mit dem Befehl aus Abschnitt 4.1 (die Stufe `extract` schreibt auch die Icon-Quelle), oder kopiere vorhandene Ordner im selben Aufbau hierher. Die Linux-Build-Skripte lesen keine Schlüssel und keine `.xci`.
 Optional vergleicht `scripts/recomp/linux/local/setup.sh` die Eingaben mit `work/exefs.sha256`, wenn diese Datei existiert; sonst gibt das Skript nur einen Hinweis. Die Datei erzeugst du im Repo-Hauptverzeichnis mit `sha256sum work/exefs/rtld work/exefs/main work/exefs/sdk work/exefs/subsdk0 > work/exefs.sha256`.
 
 Erzeuge und übersetze die Gastmodule mit
@@ -210,7 +210,7 @@ Konkrete Sitzungs-IDs und Authentifizierungspfade committe nie.
 Die frühere Variante mit kopierten Headern wurde gebaut und kurz gestartet.
 Ein neuer vollständiger Paket-Build muss nach Installation der noch fehlenden
 Devel-Pakete geprüft werden. Linux-Ton und längere Spiel-/Darstellungstests bleiben offen.
-Historische Messungen: [recomp-linux.de.md](recomp-linux.de.md).
+Messungen und Vulkan-Stand: [recomp-linux.md](recomp-linux.md) (englisch).
 
 ## 7. Überblick über die Bau-Stufen
 
@@ -274,6 +274,13 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 
 ## 9. Weitere Dokumentation
 
+- `docs/architecture.md`: wie die Rekompilation arbeitet.
+- `docs/development.md`: Arbeitsregeln, Befehle, Tests, was in `work/` liegt.
 - `docs/recomp-macapp.md`: macOS-App, Datenpfade, Spielstand-Import, Messwerte.
-- `docs/recomp-ios.md`: Schritte für die iPadOS-App.
-- `docs/recomp-vulkan.md`: Vulkan-Pfad und Stand.
+- `docs/recomp-ios.md`: Schritte für die iPadOS-App, Speichermodell und Entitlements.
+- `docs/recomp-linux.md`: Linux-Bau und Vulkan-Backend.
+- `docs/rendering.md`: Metal-Renderer: Fehlersuche, Leistung, Bildrate, Wasser.
+- `docs/shaders.md`: Shader-Übersetzer und Harness.
+- `docs/saves.md`: Save-Format, Prüfskript, Ablageorte.
+
+(Die Dokumente außer `README` und `BUILD` gibt es nur auf Englisch.)

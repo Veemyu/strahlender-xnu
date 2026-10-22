@@ -8,8 +8,9 @@ Das Repository enthält **keine Spieldaten**, keine Schlüssel, keine Speicherst
 
 ## Bauen und Dokumentation
 
+- Schnellstart: `./install.command` (macOS, Doppelklick im Finder) oder `./install-linux.sh` (Linux) prüft die Werkzeuge, fragt nach deinen Spieldateien und baut.
 - Bauanleitung: [docs/BUILD.de.md](docs/BUILD.de.md) (englische Fassung: [docs/BUILD.md](docs/BUILD.md))
-- Weitere Dokumente liegen im Ordner [docs/](docs/), zum Beispiel `docs/recomp-macapp.md`, `docs/recomp-ios.md`, `docs/recomp-vulkan.md` und `docs/changelog.md`.
+- Weitere Dokumente liegen im Ordner [docs/](docs/) (nur Englisch): Einstieg in [docs/README.md](docs/README.md), zum Beispiel `docs/architecture.md`, `docs/recomp-macapp.md`, `docs/recomp-linux.md` und `docs/changelog.md`.
 
 Der Unity-Nachbau ist eingestellt und liegt vollständig auf dem Branch `unity` (`unity/DEPRECATED.md` dort). `main` enthält ihn nicht mehr.
 

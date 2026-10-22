@@ -1,4 +1,4 @@
-// Testharness für den Exception-Spike (docs/recomp-spike-2.md): Host-Laufzeit für rekompilierten Gastcode.
+// Testharness für den Exception-Spike (docs/architecture.md): Host-Laufzeit für rekompilierten Gastcode.
 // Eigener Code. Gast = Host-Adressen wie in LASRecomp; es wird nur das SDK-Modul des Spiels (rekompiliert, aus
 // dem lokalen Dump) und ein synthetisches Testmodul geladen. Es gibt kein Spiel, keine Grafik, keine Dienste.
 #define _GNU_SOURCE

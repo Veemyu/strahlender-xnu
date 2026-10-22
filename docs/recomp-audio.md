@@ -52,7 +52,7 @@ before host playback was implemented. It observed negotiated PCM16, 48 kHz,
 stereo, 4,096-byte buffers, offset zero: 1,024 frames or 21.333 ms.
 One stream initially contained silence. Another had 214,918 nonzero samples
 out of 1,048,576 by buffer 512, peak magnitude 2,666/32,768.
-The local inventory document, `docs/daten-inventar.md`, labels 0xFFFF as
+The local data inventory (an analysis note outside the repository) labels 0xFFFF as
 Wwise Vorbis. In the original check, `ffprobe` recognized the inspected WEM
 container data but did not name a decoder; the format tag alone does not show
 that the file can be decoded successfully.
@@ -162,5 +162,4 @@ substantially larger project and was not established as a prerequisite. The
 original Linux direction was SDL3 behind this PCM interface, avoiding a direct
 PulseAudio/PipeWire client if SDL can open the device.
 
-The original detailed German report is preserved in
-[recomp-audio.de.md](recomp-audio.de.md).
+The original detailed German report is in the git history.

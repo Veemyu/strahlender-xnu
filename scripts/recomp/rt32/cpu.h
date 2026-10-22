@@ -1,5 +1,5 @@
 // Speichermodell B (32-Bit-Gastadressen): Zugriffe als *(T*)(g_base + (uint32_t)ea).
-// Eigener Code für den Spike (docs/recomp-spike-2.md, Schritt 3). Wird mit -DREBASE32 und vor scripts/recomp/rt im
+// Eigener Code für den Spike (docs/architecture.md, Speichermodell). Wird mit -DREBASE32 und vor scripts/recomp/rt im
 // Include-Pfad benutzt (-I scripts/recomp/rt32 -I scripts/recomp/rt -I <las>/runtime) und überschreibt die Speicher-
 // Makros der Original-cpu.h. Der Generator bleibt unverändert; FP/SIMD muss im C-Modus (--simd c) erzeugt werden,
 // weil der Inline-asm-Modus Gastadressen direkt als Hostadressen benutzt.

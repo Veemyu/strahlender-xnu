@@ -1,6 +1,6 @@
 # Differential test: generated C (c mode) versus real ARM64 semantics (`ap-recomp-diff`)
 
-Status: 2026-10-19 (measurements from 13:45 to 15:10). Based on `docs/recomp-linux.md` (section 8, limits), `docs/recomp-spike-2.md`, `docs/recomp-machbarkeit.md` (section 1.1, lifter modes), and `research/LASRecomp` (MIT, user-approved; read-only and runtime-imported, nothing modified).
+Status: 2026-10-19 (measurements from 13:45 to 15:10). Based on `docs/recomp-linux.md` (section 3, limits), `docs/architecture.md` (generator and lifter modes), and `research/LASRecomp` (MIT, user-approved; read-only and runtime-imported, nothing modified).
 
 **Labels:** **measured** = generated using scripts under `scripts/recomp/diff/` (figures from reports under `work/recomp/diff/`, local, not in the repository); **derived** = conclusion from measurements; **not tested** = gap (section 9).
 

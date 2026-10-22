@@ -11,7 +11,7 @@ mkdir -p "$RT"
 SRC=scripts/recomp/rt-bdsp
 INC="-I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
 # Grafik-Backend zur Bauzeit: metal (macOS, Standard), vulkan (Linux/Windows: nvn/vulkan/, Ausgabe work/recomp/bdsp_boot_vk, Objekte rt-bdsp-vk; siehe
-# docs/recomp-vulkan.md), none (keine Grafik: der NVN-Treiber des SDK bleibt,
+# docs/recomp-linux.md), none (keine Grafik: der NVN-Treiber des SDK bleibt,
 # Verhalten wie Gate 1; Standard unter Linux bis das Vulkan-Backend steht). Linux: Mach-Ersatz aus scripts/recomp/linux/compat.
 NVN_BACKEND=${NVN_BACKEND:-$([ "$(uname -s)" = Darwin ] && echo metal || echo none)}
 EXTRA=""

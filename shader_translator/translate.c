@@ -2655,7 +2655,7 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
     Str s = {0};
     // XNU: exact arithmetic. Metal's default (fast math, FMA contraction) changes results compared with the original
     // GPU, which rounds every FMUL and FADD separately; the pragmas are accepted by the Metal compiler of macOS 26 also
-    // with language version 2.3 (see docs/shader-translator.md). key->fast_math restores the original behaviour.
+    // with language version 2.3 (see docs/shaders.md). key->fast_math restores the original behaviour.
     if (!(key && key->fast_math)) sp(&s, "#pragma METAL fp math_mode(safe)\n#pragma METAL fp contract(off)\n");
     sp(&s, "#include <metal_stdlib>\nusing namespace metal;\n");
     sp(&s, "static inline uint cbr(constant uint4 *cb, uint off) { return cb[off >> 4][(off >> 2) & 3]; }\n");

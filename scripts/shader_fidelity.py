@@ -14,7 +14,7 @@ Aufruf (aus dem Repo-Wurzelverzeichnis, alle Daten lokal unter work/shaders/):
   python3 scripts/shader_fidelity.py run --all --jobs 4       # alle zulaessigen Paare
   python3 scripts/shader_fidelity.py run --only 1 2 100       # bestimmte Cache-Indizes
 
-Schwellen (begruendet in docs/shader-translator.md): bestanden = max. Abweichung <= 1 Stufe je Kanal (1/255, die
+Schwellen (begruendet in docs/shaders.md): bestanden = max. Abweichung <= 1 Stufe je Kanal (1/255, die
 Rundungsgrenze von rgba8Unorm); "knapp" = <= 3; sonst durchgefallen. Ergebnis: work/shaders/fidelity_report.json,
 Bilder unter work/shaders/out/fidelity/ (nicht im Repo).
 Nur Standardbibliothek (index zusaetzlich UnityPy).

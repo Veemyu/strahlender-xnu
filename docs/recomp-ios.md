@@ -100,6 +100,24 @@ verified. Early field runs reached about 2.1 GiB footprint and thermalState 0.
 These historical figures and the earlier 50–52 fps measurements are not current
 performance guarantees.
 
+## Memory entitlements and address space (research, 2026-10-18; sources are Apple's documentation)
+
+| Question | Finding | Confidence |
+|---|---|---|
+| Extended Virtual Addressing (`com.apple.developer.kernel.extended-virtual-addressing`, iOS/iPadOS 14.0+) | Boolean entitlement for a larger address space, aimed at games that map assets for the GPU. Changes the address space, not the memory limit | documented |
+| EVA with a free team | Apple's "Supported capabilities (iOS)" table lists it only for the paid program and Enterprise | documented |
+| Increased Memory Limit (`com.apple.developer.kernel.increased-memory-limit`, 15.0+) | Allows exceeding the standard limit on supported devices; the real value comes from `os_proc_available_memory()`. Not in the capability table, but it **can be added with a free Personal Team** (builds, signs, runs on the M2 iPad Pro) | observed |
+| Memory limit measured on the M2 iPad Pro (8 GB) | **5,120 MiB** without the entitlement, **8,192 MiB** with it (`os_proc_available_memory() + phys_footprint`) | measured |
+| Increased Debugging Memory Limit | development builds only; paid program only | documented |
+| A fixed multi-GB region at a fixed address (like 12.5 GiB at `0x70_0000_0000`) | Not reliable: the public XNU limit for arm64 outside macOS is far lower, an ordinary iOS process has roughly 7.4 GiB of usable address space, and one report says `mmap` fails without an entitlement | one report, unverified on current iPadOS |
+| Address-space size with EVA | not specified by Apple | unverified |
+
+Consequences: the macOS model (guest address = host address, fixed window) is unsuitable for iPadOS, hence model B above (32-bit
+offsets, everything below 4 GiB, host thread stacks of a few MiB instead of 256 MiB). Plan the runtime budget with
+`os_proc_available_memory()` and measure on the device, because that is the only reliable figure. A free team signs the app for 7
+days. Sources: the Apple documentation pages for the two entitlements, the capability table at
+`developer.apple.com/help/account/reference/supported-capabilities-ios/`, and `os_proc_available_memory`.
+
 ## Known issues and regression evidence
 
 The empty released-audio-buffer response must write tag zero; stale tags caused
@@ -120,8 +138,8 @@ audio interruptions/device changes, extended play/battles and the guest memory
 limit, and shader/rendering differences such as water. Do not infer a successful
 alternate-icon switch from merely seeing the default icon.
 
-Full historical measurements, address tables, and investigation notes are
-preserved in [recomp-ios.de.md](recomp-ios.de.md). Historical statements about
+Full historical measurements, address tables, and investigation notes (the former
+German report) are in the git history. Historical statements about
 silent output or an old installed build describe that earlier state.
 
 ## Historical findings (research snapshot, 2026-10-19)
@@ -132,9 +150,8 @@ current performance guarantees. The log marked a result *measured* when it had
 a run log under `work/builds/` or images under `work/visual/ipad-recomp/`, and
 *suspected* when it was an inference without a test. The work was stopped at the
 user's request at 17:30 on 2026-10-19. Its references were
-`docs/architektur-entscheidung.md` (decision 3), `docs/recomp-spike-2.md` (memory
-model B), `docs/recomp-gate2.md`, `docs/ipad-messung-1.md`, and
-`docs/ios-speicher-entitlements.md`. The tested device was a 12.9-inch, 6th
+`docs/architecture.md` (memory model B) and the memory entitlements research
+(now a section of this document). The tested device was a 12.9-inch, 6th
 generation M2 iPad Pro (8 GB, iPadOS 26.4.2), signed with a free team and the
 increased-memory-limit entitlement, verified by `codesign -d --entitlements`;
 the Mac was an M1 Pro with 16 GB. The repository contained names, numbers, and

@@ -1,4 +1,4 @@
-// Synthetisches Gast-Testprogramm für den Exception-Spike (docs/recomp-spike-2.md). Kein Spielcode.
+// Synthetisches Gast-Testprogramm für den Exception-Spike (docs/architecture.md). Kein Spielcode.
 // Übersetzung: clang --target=aarch64-linux-gnu -O1 -fexceptions -fno-rtti -c eh_guest.cpp
 // Die C++-Laufzeit (__cxa_*, __gxx_personality_v0, _Unwind_*) kommt aus dem echten SDK-Modul des Spiels
 // (rekompiliert); hier wird nur aufgerufen.

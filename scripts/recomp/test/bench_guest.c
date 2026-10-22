@@ -1,4 +1,4 @@
-// Mikro-Benchmarks für den Leistungsvergleich "rekompiliert gegen nativ" (docs/recomp-spike-2.md, Abschnitt 6).
+// Mikro-Benchmarks für den Leistungsvergleich "rekompiliert gegen nativ" (docs/architecture.md).
 // Eigener Code, kein Spielcode. Dieselbe Quelle wird (1) für aarch64-linux übersetzt und rekompiliert, (2) nativ auf
 // dem Mac übersetzt (bench_prove.c bindet sie mit umbenannten Symbolen ein).
 typedef unsigned long u64;

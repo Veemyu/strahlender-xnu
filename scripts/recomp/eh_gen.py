@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generator-Erweiterung für C++-Exceptions und setjmp/longjmp (Phase-2-Spike, docs/recomp-spike-2.md).
+"""Generator-Erweiterung für C++-Exceptions und setjmp/longjmp (Phase-2-Spike, docs/architecture.md).
 
 Eigener Code. Der Generator aus scripts/recomp/upstream/generator (MIT, unverändert vendort)
 wird nicht verändert, sondern hier zur Laufzeit erweitert:

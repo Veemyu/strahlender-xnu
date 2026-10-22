@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Messskript für die Machbarkeitsstudie zur statischen Rekompilation (docs/recomp-machbarkeit.md).
+"""Messskript für die Machbarkeitsstudie zur statischen Rekompilation (docs/architecture.md).
 
 Eigener Code. Liest nur lokale Dateien (NSO aus work/exefs, optional ELF) und schreibt Zahlen
 nach work/recomp/*.json. Es entstehen keine Binärdaten, keine Disassembly und kein erzeugtes C

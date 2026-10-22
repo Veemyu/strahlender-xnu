@@ -67,7 +67,7 @@ Part 4 (2026-10-19, instancing and storage buffers):
 
 ### Deliberately unchanged (for now)
 
-Global variables `maxwell_gmem_base/size`, `flip_x`, GLSL branch (TEX.B and `half_compat` are MSL-only; GLSL branch untested), static buffers in `RSC2` (not thread-safe; translation runs in one thread), and `sprintf` without length check. See part 3 task list in `docs/shader-translator.md`.
+Global variables `maxwell_gmem_base/size`, `flip_x`, GLSL branch (TEX.B and `half_compat` are MSL-only; GLSL branch untested), static buffers in `RSC2` (not thread-safe; translation runs in one thread), and `sprintf` without length check. See the open items in `docs/shaders.md`.
 
 ## Our own code in this directory (not third-party)
 

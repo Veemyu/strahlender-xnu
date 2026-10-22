@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wählt echte LSDA-Funktionen aus `main` für den Wurf-Test (docs/recomp-spike-2.md, Abschnitt 1.5).
+"""Wählt echte LSDA-Funktionen aus `main` für den Wurf-Test (docs/architecture.md, Abschnitt Ausnahmen).
 
 Eigener Code. Liest den lokalen Dump (work/exefs/main, relokiertes Bild work/recomp/spike2/main.img von mkimg.py)
 und schreibt nur nach work/recomp/spike2/:

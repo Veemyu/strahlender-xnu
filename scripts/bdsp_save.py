@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validator/Parser für BDSP-SaveData.bin (und Backup.bin, gleiches Format).
 
-Nur Standardbibliothek. Struktur gemäß docs/save-spec-entwurf.md (eigene Ghidra-Analyse).
+Nur Standardbibliothek. Struktur gemäß docs/saves.md (eigene Ghidra-Analyse).
 Aufruf:
     python3 scripts/bdsp_save.py check <datei> [--fields]
     python3 scripts/bdsp_save.py dump-fields

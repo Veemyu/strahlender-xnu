@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Erzeugt Markdown-Tabellen und Kennzahlen fuer docs/shader-inventar.md aus den JSON-Dateien
+"""Erzeugt Markdown-Tabellen und Kennzahlen fuer das Shader-Inventar (Dokument im Git-Verlauf) aus den JSON-Dateien
 (work/shaders/inventory.json, mapping.json, reflect.json).
 
 Aufruf: python3 scripts/shader_report.py [--out work/shaders/tables.md]

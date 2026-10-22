@@ -8,8 +8,9 @@ The repository contains **no game data**, no keys, no save files, and no generat
 
 ## Building and documentation
 
+- Quick start: `./install.command` (macOS, double-click in the Finder) or `./install-linux.sh` (Linux) checks the tools, asks for your game files and builds.
 - Build guide: [docs/BUILD.md](docs/BUILD.md) (German version: [docs/BUILD.de.md](docs/BUILD.de.md))
-- More documents are in [docs/](docs/), for example `docs/recomp-macapp.md`, `docs/recomp-ios.md`, `docs/recomp-vulkan.md` and `docs/changelog.md`.
+- More documents are in [docs/](docs/): start with [docs/README.md](docs/README.md), for example `docs/architecture.md`, `docs/recomp-macapp.md`, `docs/recomp-linux.md` and `docs/changelog.md`.
 
 The Unity reimplementation has been discontinued. It lives entirely on the branch `unity` (see `unity/DEPRECATED.md` there). `main` no longer contains it.
 

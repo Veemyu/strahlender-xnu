@@ -765,7 +765,7 @@ static void ring_reset(void) { ring_off = 0; }
 
 // Bind guest memory [addr, addr+size) as a buffer: zero-copy inside the heap, copied otherwise.
 static bool guest_heap_ok(uint64_t addr, uint64_t size) {
-    static int off = -1;  // Standard: Daten über den Ring kopieren; BDSP_GUEST_BUF=1 nutzt den umhüllten Gastspeicher (siehe docs/recomp-gate2.md: die GPU sah dort alte Seiten)
+    static int off = -1;  // Standard: Daten über den Ring kopieren; BDSP_GUEST_BUF=1 nutzt den umhüllten Gastspeicher (siehe docs/rendering.md: die GPU sah dort alte Seiten)
     if (off < 0) off = getenv("BDSP_GUEST_BUF") == NULL;
     return !off && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
 }

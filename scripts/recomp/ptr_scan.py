@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sucht in den Modulen nach Anzeichen für Zeiger-Tags / 39-Bit-Annahmen (Speichermodell B, docs/recomp-spike-2.md).
+"""Sucht in den Modulen nach Anzeichen für Zeiger-Tags / 39-Bit-Annahmen (Speichermodell B, docs/architecture.md).
 
 Eigener Code. Liest nur den lokalen Dump (work/exefs) und schreibt nach work/recomp/spike2/ptr_scan.json; ausgegeben
 werden nur Zähler. Heuristik über 64-Bit-Befehle (nur Zählung, keine Aussage über Semantik):

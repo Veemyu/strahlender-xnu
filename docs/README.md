@@ -1,46 +1,47 @@
 # Documentation index
 
-Documentation defaults to English. German text is allowed only in files ending
-in `.de.md`. German source documents are retained under that suffix while their
-standard `.md` counterparts are translated in full.
+Documentation is English; German exists only for the root README, this index and the build guide
+([README.de.md](README.de.md), [BUILD.de.md](BUILD.de.md)).
 
-## Active native recompilation
+## Goal
 
-| Topic | Guide |
+This repository and your own copy of Pokémon Brilliant Diamond (an XCI, optionally the update NSP, and your `prod.keys`) must be
+enough to build the app for macOS, iPadOS and (in progress) Linux. The repository contains only original code, scripts and
+documentation: no game data, keys, saves or generated code. Everything derived from the game is produced locally under `work/`, and
+a built app is for personal use only. The game's own code runs, so logic, UI and saves behave like the original.
+
+## Start here
+
+| Topic | Document |
 |---|---|
-| Build prerequisites, local configuration, platforms | [BUILD.md](BUILD.md) |
-| macOS application, controls, saves, diagnostics | [recomp-macapp.md](recomp-macapp.md) |
-| iPadOS build, deployment, memory, known issues | [recomp-ios.md](recomp-ios.md) |
-| Audio output, threading, evidence, remaining checks | [recomp-audio.md](recomp-audio.md) |
-| Original icon extraction, language variants, deterministic styling | [recomp-icons.md](recomp-icons.md) |
-| Debugging the Metal renderer: findings, tools, method | [recomp-render-debug.md](recomp-render-debug.md) |
+| Build and install (guided installers, stages, options, troubleshooting) | [BUILD.md](BUILD.md) |
+| How the recompilation works (generator, exceptions, memory model, runtime, graphics) | [architecture.md](architecture.md) |
+| Working rules, commands, tests, saves for testing, what lives in `work/` | [development.md](development.md) |
 
-German versions use the corresponding `.de.md` suffix, including
-[BUILD.de.md](BUILD.de.md).
+## Platforms and features
 
-## Historical references
+| Topic | Document |
+|---|---|
+| macOS app: controls, saves, diagnostics, measurements | [recomp-macapp.md](recomp-macapp.md) |
+| iPadOS: build, deployment, memory model and entitlements, known issues | [recomp-ios.md](recomp-ios.md) |
+| Linux: build host and Vulkan backend (work in progress) | [recomp-linux.md](recomp-linux.md) |
+| Audio output | [recomp-audio.md](recomp-audio.md) |
+| App icons | [recomp-icons.md](recomp-icons.md) |
 
-Architecture: architektur-entscheidung.md and kernziel.md.
-Recompilation progression: recomp-machbarkeit.md → recomp-spike-2.md →
-recomp-gate1.md → recomp-gate2.md. Additional evidence: recomp-qa.md,
-recomp-vulkan.md, recomp-linux.md, recomp-diff.md, recomp-referenzen.md.
+## Rendering, shaders, saves, testing
 
-Rendering investigations: shader-translator.md, shader-inventar.md,
-shader-harness.md, shader-globals.md, wasser.md, video-umwandlung.md,
-render-treue.md.
+| Topic | Document |
+|---|---|
+| Metal renderer: fidelity, debugging method, performance, frame rate, water | [rendering.md](rendering.md) |
+| Shader translator and offscreen harness | [shaders.md](shaders.md) |
+| Save format, validator, where saves live | [saves.md](saves.md) |
+| QA harness and scenarios | [recomp-qa.md](recomp-qa.md) |
+| Bit-exactness test of the generated C against ARM64 | [recomp-diff.md](recomp-diff.md) |
+| Changes over time | [changelog.md](changelog.md) |
 
-Data and saves: extraktion.md, daten-inventar.md, save-format.md,
-save-validator.md, save-kompatibilitaet.md, spielcode-inventar.md.
-Historical filenames remain stable so existing links continue to work.
+## Removed material
 
-The Unity rebuild is deprecated and must not be modified for native work.
-Its documents (feasibility and build reports, UI, scene and visual-review
-notes, the night reports, the old build guide and pipeline description) were
-removed from `main`; they remain in the git history and on the branch `unity`.
-The remaining specifications of the original game behavior (battle, Pokémon
-parameters, event scripts, localization, saves) are research references only.
-They name Unity-era scripts (`battle_oracle*`, `evscript_stats`,
-`data_inventory`, `il2cpp_lookup`, `assetripper_export`, the `visual_*` and
-`ui_*` tools, and others) and `work/` folders that no longer exist on `main`;
-the scripts are in the git history and on the branch `unity`.
-The former German index is preserved in [README.de.md](README.de.md).
+The Unity rebuild is deprecated and lives on the branch `unity`. Its documents, the early feasibility, spike and gate reports of the
+recompilation (condensed into [architecture.md](architecture.md)), and the specifications for reimplementing game logic (battle,
+Pokémon parameters, event scripts, master data, localization, input) were removed from `main`; they stay in the git history and on
+that branch. Code comments and a few notes may still mention scripts or `work/` folders from that time.

@@ -1,5 +1,5 @@
-// Online-, Peripherie- und Plattformdienste der BDSP-Laufzeit: Fehlerstubs. Nach dem Plan aus docs/recomp-machbarkeit.md
-// Abschnitt 3: Netz/Online (nifm, bsd, ssl, friend, ldn, bcat, nim, …) und alles, was der Mac-Lauf nicht braucht, meldet
+// Online-, Peripherie- und Plattformdienste der BDSP-Laufzeit: Fehlerstubs. Nach dem Plan aus docs/architecture.md
+// (Abschnitt Laufzeit): Netz/Online (nifm, bsd, ssl, friend, ldn, bcat, nim, …) und alles, was der Mac-Lauf nicht braucht, meldet
 // einen Fehler, der Rest (prepo, ldr:ro) wird mit „Erfolg, keine Daten“ beantwortet. Eigener Code.
 #include "bdsp.h"
 

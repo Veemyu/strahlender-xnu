@@ -1,5 +1,5 @@
 #!/bin/bash
-# Baut und führt den Exception-Test aus (docs/recomp-spike-2.md, Abschnitt 1). Alles unter work/recomp/.
+# Baut und führt den Exception-Test aus (docs/architecture.md, Abschnitt Ausnahmen). Alles unter work/recomp/.
 # Voraussetzung: work/exefs (eigener Dump), scripts/recomp/upstream (vendort), tools/pydeps (capstone, unicorn, lz4).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

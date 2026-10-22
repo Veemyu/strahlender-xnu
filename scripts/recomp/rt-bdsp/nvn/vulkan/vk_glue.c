@@ -10,7 +10,7 @@
 #include "platform.h"
 
 // Keine Schreibverfolgung der Gast-Seiten: Der Vertex-Zwischenspeicher bleibt aus, Texturen werden bei jeder Verwendung neu geprüft
-// (textures.c: Hash-Vergleich). Eine Verfolgung über mprotect/userfaultfd wäre die spätere Optimierung (docs/recomp-vulkan.md).
+// (textures.c: Hash-Vergleich). Eine Verfolgung über mprotect/userfaultfd wäre die spätere Optimierung (docs/recomp-linux.md).
 int plat_written_pages(uint64_t addr, uint64_t size, uint64_t *pages, int max, uint64_t *page) {
     (void)addr; (void)size; (void)pages; (void)max; (void)page;
     return -1;

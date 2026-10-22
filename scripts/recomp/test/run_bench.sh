@@ -1,5 +1,5 @@
 #!/bin/bash
-# Leistungsvergleich rekompiliert gegen nativ (docs/recomp-spike-2.md, Abschnitt 6). Alles unter work/recomp/spike2/bench.
+# Leistungsvergleich rekompiliert gegen nativ (docs/architecture.md). Alles unter work/recomp/spike2/bench.
 # Aufruf: run_bench.sh [-O1|-O2]   (Optimierungsstufe für das erzeugte C, Standard -O1 wie im Gesamtbau)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

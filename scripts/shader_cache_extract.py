@@ -9,7 +9,7 @@ Ausgabe: <out>/<index>_<stage>.spv (stage: vert, frag, comp, ...) und <out>/inde
 (Index, Stufe, Groesse je Modul). Der Cache wird nur gelesen.
 Standard: --cache Ryujinx/games/0100000011d90000/cache/shader, --out work/shaders/spirv.
 Mit --index/--smallest/--limit werden nur passende Programme geschrieben.
-Layout laut oeffentlichem Ryujinx-Quellcode, selbst nachgebaut (siehe docs/shader-audio-machbarkeit.md).
+Layout laut oeffentlichem Ryujinx-Quellcode, selbst nachgebaut (siehe docs/shaders.md).
 Brotli-Eintraege brauchen das Paket `brotli`; Deflate/unkomprimiert gehen mit der Standardbibliothek.
 """
 import argparse

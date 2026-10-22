@@ -13,7 +13,7 @@ class RepoCheckTests(unittest.TestCase):
             self.assertTrue(name.lower().endswith(repo_check.FORBIDDEN_SUFFIXES), name)
 
     def test_erlaubte_dateien(self):
-        for name in ("scripts/build_all.sh", "docs/kernziel.md", "unity/Assets/Scripts/Core/GameDataPaths.cs"):
+        for name in ("scripts/build_all.sh", "docs/architecture.md", "unity/Assets/Scripts/Core/GameDataPaths.cs"):
             self.assertFalse(name.lower().endswith(repo_check.FORBIDDEN_SUFFIXES), name)
             self.assertFalse(any(p in name for p in repo_check.FORBIDDEN_PARTS), name)
 

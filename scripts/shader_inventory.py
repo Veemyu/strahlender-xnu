@@ -20,7 +20,7 @@ BUNDLES = [
     "work/romfs/Data/StreamingAssets/AssetAssistant/Dpr/shaders",
     "work/romfs/Data/StreamingAssets/AssetAssistant/Effects/fxparticle",
 ]
-# Zusaetzliche Shader-Quelle ausserhalb der beiden Bundles (9 Shader, siehe docs/shader-inventar.md)
+# Zusaetzliche Shader-Quelle ausserhalb der beiden Bundles (9 Shader; das Inventar-Dokument liegt im Git-Verlauf)
 EXTRA_SOURCES = [
     "work/romfs/Data/resources.assets",
     "work/romfs/Data/StreamingAssets/AssetAssistant/Dpr/tmpshader",

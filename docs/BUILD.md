@@ -243,7 +243,7 @@ The Linux build runs directly on the Linux machine, from the repository root; it
    `bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`.
    Leave out `linux_require_qt` if you do not build the Qt frontend.
 3. Provide the inputs `work/exefs/`, `work/romfs/`, and `work/recomp/icons/source/`. Extract your own legally
-   obtained game dump on this machine with the command in section 4.1 (details in `docs/extraktion.md`; the
+   obtained game dump on this machine with the command in section 4.1 (the
    extract stage also writes the icon source), or copy existing folders into the same layout. The Linux build
    scripts do not read keys or the `.xci`.
    Optional: `scripts/recomp/linux/local/setup.sh` compares the inputs with `work/exefs.sha256` if that file
@@ -326,7 +326,7 @@ Never commit concrete session IDs or authentication paths.
 - No sound. Input state is not reported. Compute workloads are not supported.
 - Windows is not supported. X11 and full screen (F11) are not tested.
 
-Details: `docs/recomp-vulkan.md`.
+Details: `docs/recomp-linux.md`.
 
 ## 7. Build stages overview
 
@@ -388,6 +388,11 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 
 ## 9. More documentation
 
+- `docs/architecture.md`: how the recompilation works.
+- `docs/development.md`: working rules, commands, tests, what lives in `work/`.
 - `docs/recomp-macapp.md`: macOS app, data locations, save import, measurements.
-- `docs/recomp-ios.md`: iPadOS build steps.
-- `docs/recomp-vulkan.md`: Vulkan path and its status.
+- `docs/recomp-ios.md`: iPadOS build steps, memory model and entitlements.
+- `docs/recomp-linux.md`: Linux build host and Vulkan backend.
+- `docs/rendering.md`: Metal renderer debugging, performance, frame rate, water.
+- `docs/shaders.md`: shader translator and harness.
+- `docs/saves.md`: save format, validator, locations.

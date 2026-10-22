@@ -149,4 +149,4 @@ iPad launch loops are used. Device appearance and actual alternate-icon switchin
 remain separate manual checks.
 
 Logs: work/builds/icons-*.log and work/recomp/icons/.
-The earlier German report is historical: [recomp-icons.de.md](recomp-icons.de.md).
+The earlier German report is historical and lives in the git history.
