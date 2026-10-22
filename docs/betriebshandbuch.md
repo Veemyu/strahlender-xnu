@@ -15,7 +15,7 @@ Status: 2026-10-19 17:20. Complements `docs/arbeitsstand-2026-10-19.md` (technic
 | Models | Use small models (`claude-haiku-5.5` or `gpt-6-luna`) for runs, measurements, inspection, docs; Sonnet for debugging and central code. At most two large agents at once. Agents never commit. |
 | Space | Keep at least 15 GB free on Mac (last observed about 36 GB). Stop and report if less. |
 | Strategy | Unity rebuild is deprecated (decision 4, `unity/DEPRECATED.md`): no further work, reference only. There is one track: recompilation. Do not develop three things in parallel. |
-| Ryzen | Only via `ssh <RZ_HOST>` (host is in `work/local.env` as `RZ_HOST`, not in repo), only under `~/xnu-recomp` (and read Ryujinx screenshots), no sudo, no internet. Send keypresses only to Ryujinx (`ryzen_keys.py`, verify focus); movement and menu keys only after user approval. |
+| Linux machine | No longer connected to this workflow. Linux builds run only locally on a Linux machine, from the repository root (`scripts/recomp/linux/local/`). |
 
 ## 2. Command Cheat Sheet (Checked Against Script Headers)
 
@@ -30,10 +30,8 @@ macOS tools are BSD variants (`ls --time-style` and GNU options are unavailable)
 | Install save into runtime | `scripts/recomp/rt-bdsp/install_save.sh` (source `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`, destination `work/recomp/save`) |
 | Build/start iPad | `scripts/recomp/ios/deploy_ios.sh build|install|run [SEC]|data|save|shots|files`; runtime environment via `RUN_ENV='{"BDSP_TIMEOUT":"40","BDSP_BT":"1","BDSP_WAIT":"1"}'`; logs `work/builds/ipad-recomp-<time>.log` (`docs/recomp-ios.md`, section 6) |
 | iPad save | `scripts/ios_push_save.sh [--source FILE] [--reimport] [--dry-run]` |
-| Ryujinx save | `scripts/ryujinx_sync_save.sh status|push|pull|restore <tar>` (finds profile directory via `ExtraData0`) |
-| Ryujinx reference images | `scripts/ryujinx_fetch_shots.sh`, `scripts/ryujinx_record.sh`, key driver `ryzen_keys.py` (on Ryzen) |
-| Ryzen farm | `scripts/recomp/linux/sync.sh`, `build.sh [--neu|--detach|--jobs=N]`, `run_probe.sh`, `vk_*.sh`; logs `~/xnu-recomp/logs/` |
-| Image comparison | `scripts/visual_auto.sh run|compare|accept [--ref ryujinx|recomp|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
+| Ryujinx reference images | `python3 scripts/visual_ref.py import --raw work/visual/ref/ryujinx/raw --dest work/visual/ref/ryujinx`, after F8 images are copied by hand into `raw/` (`docs/visuelle-pruefung.md`, section 8) |
+| Image comparison | `scripts/visual_auto.sh run\|compare\|accept\|ref [--ref ryujinx\|recomp\|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
 | QA scenarios | `scripts/recomp/qa/qa_run.sh <scenario>|--list|--report <directory>` (lock file, save copy from `work/recomp/qa/save_base`) |
 | Unity (deprecated, only if ever needed again) | `scripts/unity_safe.sh open|restart|status|test|watch` is only on branch `unity` (absent on `main`; `visual_auto.sh` needs it to start Editor); never test in Play mode (hangs), run `editor_stop` first |
 
@@ -49,12 +47,10 @@ Known runtime helper variables: `BDSP_TIMEOUT`, `BDSP_BT` (backtrace), `BDSP_WAI
 |---|---|
 | Mac Ryujinx folder | `Ryujinx/bis/user/save/0000000000000006/{0,1}` |
 | Mac recompilation | `work/recomp/save/save_1` (via `install_save.sh`) |
-| Ryzen recompilation | `~/xnu-recomp/work/recomp/save/save_1` |
-| Ryujinx on Ryzen | profile directory `…0e/{0,1}` (backup as tar in `~/xnu-recomp/backup/`) |
 | iPad | `Documents/SaveData.bin` (drop-in; imported on next “Continue” to `Documents/Saves/save_1`, backup under `work/ipad-save-backup/`) |
 | Unity Editor (deprecated) | `~/Library/Application Support/DefaultCompany/xnu/Saves/Saves/main` |
 
-- **A previous pitfall:** Ryujinx creates a separate directory for each profile. If save was in `…04` but active profile read `…0e`, the game showed “Select the language.” Script path via `ExtraData0` (user ID in bytes 8–23, each 8-byte half byte-reversed) selects the correct directory.
+- **A previous pitfall:** Ryujinx creates a separate directory for each profile. If save was in `…04` but active profile read `…0e`, the game showed “Select the language.” Choose the profile folder by hand. The user ID is in `ExtraData0` (bytes 8–23, each 8-byte half byte-reversed).
 - With a save, game skips language selection: title after about 22 s, “Continue,” city after about 91 s.
 
 ## 4. Agent Status, Open Work, Todos (Session Data, Not in Repository)
@@ -78,7 +74,7 @@ Known runtime helper variables: `BDSP_TIMEOUT`, `BDSP_BT` (backtrace), `BDSP_WAI
 - **32-bit model (`rebase32`) on device:** reported working in `recomp-ios.md`, but with only 1.98 GiB rather than 3.14 GiB guest memory; long sessions and battles unmeasured.
 - **Image comparison:** camera offset 28 px (probably timing), cell mapping (58,729) from one image, mapping Ryujinx game clock to time of day assumed.
 - **ARM64 floating-point FPSR/QC flags** are not modeled (`recomp-diff.md`).
-- **Vulkan/Linux:** run with video and save not repeated; Mac fixes (vertex/index ring buffer, crop 1280×720 inside 1920×1080) not ported everywhere. Shared include lines in `nvn_glue.c` were moved out of `__APPLE__` block (Ryzen build had failed before).
+- **Vulkan/Linux:** run with video and save not repeated; Mac fixes (vertex/index ring buffer, crop 1280×720 inside 1920×1080) not ported everywhere. Shared include lines in `nvn_glue.c` were moved out of `__APPLE__` block (the Linux machine's build had failed before).
 - **Water cause** is a hypothesis; target region values: RGB mean ≈ 87/127/210, standard deviation ≈ 26/17/25, ≈ 0.3% very bright pixels (`docs/wasser.md`).
 - **Legal status** of public distribution is unresolved. opendpr prohibits generative AI: reference only, no code reused. LASRecomp is MIT (notices in `shader_translator/NOTICE.md`).
 - Free-team iPad app signature expires after 7 days; only three apps with free profile allowed (measurement probe was therefore removed).
@@ -87,7 +83,7 @@ Known runtime helper variables: `BDSP_TIMEOUT`, `BDSP_BT` (backtrace), `BDSP_WAI
 
 1. 2026-10-18: setup, extraction (title `0100000011d90000`, update `…800`, Master Key Rev 0xC), Ghidra (166,095 functions), Il2CppDumper, save spec; chose path D (Unity 6.3).
 2. Unity rebuild with emulation oracle (763 tests passing), shader translator, macOS and iPad player builds.
-3. 2026-10-19: recompilation spike, Gate 1 (boot through NVN), Gate 2 (Metal renders, video, input, city at 45 fps), Vulkan, bit-exact differential test, Ryzen farm, image check against Ryujinx.
+3. 2026-10-19: recompilation spike, Gate 1 (boot through NVN), Gate 2 (Metal renders, video, input, city at 45 fps), Vulkan, bit-exact differential test, Linux machine (temporarily a build/test helper), image check against Ryujinx.
 4. User observations on iPad: “looks great”; water wrong; startup took 2–3 attempts; crash if intro is not immediately skipped with A. Intro video plays through VP8 software decoder (FFmpeg, `movie::` HLE).
 5. Decision 4 (16:57): Unity deprecated. Since then two agents are working (QA/water, iPad).
 
@@ -96,7 +92,7 @@ Known runtime helper variables: `BDSP_TIMEOUT`, `BDSP_BT` (backtrace), `BDSP_WAI
 1. `git status`, `git log -3`, `git log origin/main -1`: is everything pushed?
 2. Read `docs/README.md` and `docs/arbeitsstand-2026-10-19.md`, then this manual.
 3. Get reports from `ap-recomp-qa` and `ap-recomp-ios` (agent list); if missing, inspect files in section 4.
-4. Check whether an iPad run or Ryzen process is still active (`ps`; stop only own PIDs).
+4. Check whether an iPad run is still active (`ps`; stop only own PIDs).
 5. Run tests, `repo_check.py`, add specific files, commit, push.
 6. Then follow section 8 of project status (water, interior, iPad startup, QA scenarios, touch/controller, Vulkan run, `recomp-ios` stage).
 

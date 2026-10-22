@@ -57,9 +57,10 @@ not transferred to Linux. The user provides their own keys; they are not part of
 the repository.
 
 Mac make_app.sh and deploy_ios.sh build automatically regenerate native icons.
-vk_sync.sh transfers only the generated source manifest/images to the Linux
-host, where Vulkan/Qt builds generate Linux assets. No manual staging directory
-is required. BDSP_ICON_SOURCE can override the validated source directory.
+There is no longer a transfer step to the Linux machine. The Vulkan/Qt builds
+there read the validated source manifest and images from `work/recomp/icons/source`
+in the working copy (`BDSP_ICON_SOURCE` can override this path) and generate Linux
+assets. The user provides these files on that machine.
 
 Outputs outside work/ are rejected. Icons and processing scripts participate in
 the Mac packaging fingerprint, independently of guest generation/object markers.

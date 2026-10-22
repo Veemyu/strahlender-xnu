@@ -72,7 +72,7 @@ Scan of all meshes in loaded map and models (`EffectsRunner.MeshScan`, zone 54: 
 
 ## 7. Comparison with Ryujinx image (`ref_01_feld_weiter`, zone 24, hour 12.4)
 
-Fetched reference (`scripts/ryujinx_fetch_shots.sh fetch`, 2 new images), comparison `visual_compare.py ref compare`:
+Fetched reference (with a since-removed fetch script, 2 new images), comparison `visual_compare.py ref compare`:
 
 | Metric | Before tier fix | After tier fix |
 |---|---|---|

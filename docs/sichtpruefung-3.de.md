@@ -70,7 +70,7 @@ Scan über alle Netze der geladenen Karte und Modelle (`EffectsRunner.MeshScan`,
 
 ## 7. Vergleich mit dem Ryujinx-Bild (`ref_01_feld_weiter`, Zone 24, Stunde 12,4)
 
-Referenz geholt (`scripts/ryujinx_fetch_shots.sh fetch`, 2 neue Bilder), Vergleich `visual_compare.py ref compare`:
+Referenz geholt (per inzwischen entferntem Abrufskript, 2 neue Bilder), Vergleich `visual_compare.py ref compare`:
 
 | Maß | vor dem Tier-Fix | nach dem Tier-Fix |
 |---|---|---|

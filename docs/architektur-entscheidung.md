@@ -48,7 +48,7 @@ Reconstructed code from decompilation may raise copyright issues if distributed.
 3. Should the vertical slice (Option D) use a newer Unity LTS, and what are the licensing/Unity account arrangements?
 4. How much manual reconstruction of game logic is acceptable, and where should it begin (save-related classes, battle, field)?
 5. Wwise: custom playback from converted WEMs or Wwise SDK runtime?
-6. What is the role of Ryzen and M2 mini (batch analysis only)?
+6. What is the role of the Linux machine and M2 mini (batch analysis only)?
 
 ## User Decision (2026-10-18)
 - **Direction D:** vertical slice in a newer Unity LTS, then choose A, B, or C.
@@ -87,6 +87,6 @@ Basis: `docs/recomp-gate2.md`, `docs/recomp-diff.md`, `docs/recomp-spike-2.md` (
 - **User's words:** “so completely deprecate the Unity rebuild! don't waste any more work on it!”
 - **Effect:** Unity rebuild (`unity/`, stubs, UI windows, field/battle/event recreation, Unity shader wrappers) will **no longer be developed**. Removed from `main`, retained on branch `unity` (origin). No new tasks or fixes there, except when a tool is directly needed for recompilation. Code remains in repository as reference (oracle fixtures, specs `docs/kampf-spezifikation-*.md`, `docs/pokepara-spezifikation.md`, `docs/evscript-spezifikation.md`), but is no longer built or tested.
 - **Main path and sole development track:** recompilation (`scripts/recomp/`, macOS `BDSP.app`, iPadOS `dev.local.xnubdsp`, Linux/Vulkan). Build with `scripts/build_all.sh`, stage `recomp`.
-- **Shared tools still used:** extraction (`tools`, `extract`, `il2cpp`), Maxwell→MSL/GLSL translator (`shader_translator/`), video conversion, ASTC transcode, save tools (`scripts/bdsp_save.py`, `ryujinx_sync_save.sh`, `ios_push_save.sh`), image checks (`visual_*`, Ryujinx references), Ryzen farm (`scripts/recomp/linux/`).
+- **Shared tools still used:** extraction (`tools`, `extract`, `il2cpp`), Maxwell→MSL/GLSL translator (`shader_translator/`), video conversion, ASTC transcode, save tools (`scripts/bdsp_save.py`, `ios_push_save.sh`), image checks (`visual_*`, Ryujinx references), Linux build scripts (`scripts/recomp/linux/`).
 - **Retired (do not delete):** build stage `shaders` (Unity wrappers), Unity portions of `assets`, `stubs`, `unity-build`, `scripts/unity_safe.sh`, `shader_wrap*.py`, `stub_gen.py`, `material_*.py`, and Unity `ap-*` todos. Details: `unity/DEPRECATED.md`.
 - Reversible only by the user.

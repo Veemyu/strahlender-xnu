@@ -2,6 +2,14 @@
 
 Chronologisch, neueste Einträge oben. Jeder Schritt mit Datum, Ziel und Dateien.
 
+## 2026-10-22
+
+- **Fernbau-Hilfen für Linux entfernt:** die SSH-/rsync-Skripte des früheren Linux-Build-Rechners sind weg (`scripts/recomp/linux/build.sh`, `lib.sh`, `sync.sh`, `fetch.sh`, `run_probe.sh`, `check_deps.sh`, `vk_sync.sh`, `vk_fetch.sh`, die fernen `vk_*.sh`-Hüllen und `host/job.sh`). Linux-Builds laufen jetzt nur lokal, vom Repo-Wurzelverzeichnis aus.
+- **Ryujinx- und Tasten-Skripte entfernt:** `scripts/ryujinx_sync_save.sh`, `scripts/ryujinx_fetch_shots.sh`, `scripts/ryujinx_record.sh`, `scripts/ryzen_keys.py` und sein Test `scripts/tests/test_ryzen_keys.py`. Referenz-Screenshots werden jetzt von Hand nach `work/visual/ref/ryujinx/raw/` kopiert und mit `scripts/visual_ref.py import` übernommen.
+- **Lokaler Linux-Bau:** `scripts/recomp/linux/host/` heißt jetzt `scripts/recomp/linux/local/`; `scripts/recomp/diff/run_ryzen.sh` heißt `run_linux.sh`. `setup.sh` behandelt das Manifest `work/exefs.sha256` als optional; es entsteht aus dem Repo-Wurzelverzeichnis mit `sha256sum work/exefs/rtld work/exefs/main work/exefs/sdk work/exefs/subsdk0 > work/exefs.sha256`.
+- **Bildprüfung:** die Option `--fetch` von `scripts/visual_auto.sh ref` ist entfernt; der Block `ryzen` in `scripts/visual/ref_map.json` ist entfernt (Ansichten und Masken bleiben).
+- **Doku und Bezeichnungen:** `docs/BUILD.md`, die Linux-, Vulkan- und Diff-Dokumente beschreiben den lokalen Bau; die frühere Maschinenbezeichnung „Ryzen“ in Code-Kommentaren ist jetzt „Linux“.
+
 ## 2026-10-19
 
 - **Patch-Struktur abgebaut:** Die NVN-Schicht liegt jetzt als volle Quelle im Repo: `scripts/recomp/rt-bdsp/nvn/src/` (Metal) und `nvn/vulkan/src/` (Vulkan-Abweichungen). `prepare.sh` und `prepare_vk.sh` kopieren nur noch, sie wenden keine Patches mehr an. Entfernt: `las-nvn.patch`, `fixes.patch`, `dbgthread.patch`, `debug.patch`, `prof.patch`, `exec_worker.patch`, `las-vk.patch` und die Shim-Kopien (Inhalte stehen in `src/`). Der Übersetzer bleibt in `shader_translator/` (einzige Quelle).

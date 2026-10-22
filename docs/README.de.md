@@ -28,7 +28,7 @@ Sprachvarianten, gespeicherte Auswahl und deterministische Apple-Gestaltung.
 `extraktion.md`, `daten-inventar.md`, `bundle-katalog.md`, `masterdata.md`, `save-format.md`, `save-spec-entwurf.md`, `save-validator.md`, `save-kompatibilitaet.md`, `spielcode-inventar.md`, `cpp2il-bewertung.md`, `ios-speicher-entitlements.md`, `ipad-messung-1.md`, `ipad-durchstich-1.md`.
 
 ## Bildprüfung
-`visuelle-pruefung.md` (Ryujinx-Referenz, Tasten-Spieler, Szenarien), `sichtpruefung-1…3.md` (Unity-Zeit).
+`visuelle-pruefung.md` (Ryujinx-Referenz, Szenarien), `sichtpruefung-1…3.md` (Unity-Zeit).
 
 ## Spezifikationen des Originalverhaltens (aus dem Unity-Zweig, weiter als Referenz nutzbar)
 Kampf: `kampf-spezifikation-1…7.md`, `kampf-handler-liste.md`. Pokémon: `pokepara-spezifikation.md`. Events: `evscript-spezifikation.md`, `spielkern-1…2.md`. UI/Text: `ui-spezifikation-1…3.md`, `lokalisierung.md`. Eingabe: `eingabe.md`.

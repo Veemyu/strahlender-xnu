@@ -81,4 +81,4 @@ All build; version v5 and the local debug build were linked from this state.
 | `docs/recomp-qa.md` | This document | done (status as described) |
 | `work/recomp/nvn-qa/nvn/renderer.m` (not in repo) | Debug output `BDSP_LOG_WATER` | local only, **no** repo patch (`scripts/recomp/qa/patches/` empty) |
 
-Not in the repository: runs, save copies, screenshots, and binary copies under `work/recomp/qa/` (about 300 MB; `bdsp_v5`, `bdsp_dbg`). No processes remain active, lock file removed, Ryzen not used.
+Not in the repository: runs, save copies, screenshots, and binary copies under `work/recomp/qa/` (about 300 MB; `bdsp_v5`, `bdsp_dbg`). No processes remain active, lock file removed, Linux machine not used.

@@ -15,7 +15,7 @@ Stand: 2026-10-19 17:20. Ergänzt `docs/arbeitsstand-2026-10-19.md` (Technik, Me
 | Modelle | Nicht mit Kanonen auf Spatzen schießen: kleine Aufgaben (Läufe, Messungen, Sichtung, Doku) an `claude-haiku-5.5` oder `gpt-6-luna`; Fehlersuche und zentraler Code an Sonnet. Höchstens zwei große Agenten gleichzeitig. Agenten committen nie. |
 | Platz | Mac: mindestens 15 GB frei halten (zuletzt ca. 36 GB). Bei weniger stoppen und melden. |
 | Strategie | Unity-Rebuild ist deprecated (Entscheidung 4, `unity/DEPRECATED.md`): keine weitere Arbeit, nur Referenz. Es gibt einen Strang, die Rekompilation. Nicht drei Dinge parallel entwickeln. |
-| Ryzen | Nur über `ssh <RZ_HOST>` (Host steht in `work/local.env` als `RZ_HOST`, nicht im Repo), nur unter `~/xnu-recomp` (und Ryujinx-Screenshots lesen), kein sudo, kein Internet. Tasten nur an Ryujinx senden (`ryzen_keys.py`, Fokusprüfung); Bewegungs- und Menütasten erst nach Freigabe des Nutzers. |
+| Linux-Rechner | Nicht mehr an diesen Arbeitsablauf angebunden. Linux-Builds laufen nur lokal auf einem Linux-Rechner, vom Repo-Wurzelverzeichnis aus (`scripts/recomp/linux/local/`). |
 
 ## 2. Befehls-Spickzettel (aus den Kopfzeilen der Skripte, Stand geprüft)
 
@@ -30,10 +30,8 @@ macOS-Werkzeuge sind BSD-Varianten (`ls --time-style` und GNU-Optionen fehlen). 
 | Spielstand in die Laufzeit | `scripts/recomp/rt-bdsp/install_save.sh` (Quelle `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`, Ziel `work/recomp/save`) |
 | iPad bauen/starten | `scripts/recomp/ios/deploy_ios.sh build|install|run [Sek]|data|save|shots|files`; Lauf-Umgebung per `RUN_ENV='{"BDSP_TIMEOUT":"40","BDSP_BT":"1","BDSP_WAIT":"1"}'`; Logs `work/builds/ipad-recomp-<Zeit>.log` (`docs/recomp-ios.md` Abschnitt 6) |
 | iPad-Spielstand | `scripts/ios_push_save.sh [--source DATEI] [--reimport] [--dry-run]` |
-| Ryujinx-Spielstand | `scripts/ryujinx_sync_save.sh status|push|pull|restore <tar>` (findet den Profilordner über `ExtraData0`) |
-| Ryujinx-Referenzbilder | `scripts/ryujinx_fetch_shots.sh`, `scripts/ryujinx_record.sh`, Tastenspieler `ryzen_keys.py` (auf dem Ryzen) |
-| Ryzen-Farm | `scripts/recomp/linux/sync.sh`, `build.sh [--neu|--detach|--jobs=N]`, `run_probe.sh`, `vk_*.sh`, Logs `~/xnu-recomp/logs/` |
-| Bildvergleich | `scripts/visual_auto.sh run|compare|accept [--ref ryujinx|recomp|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
+| Ryujinx-Referenzbilder | `python3 scripts/visual_ref.py import --raw work/visual/ref/ryujinx/raw --dest work/visual/ref/ryujinx`, nachdem F8-Bilder von Hand nach `raw/` kopiert wurden (`docs/visuelle-pruefung.md`, Abschnitt 8) |
+| Bildvergleich | `scripts/visual_auto.sh run\|compare\|accept\|ref [--ref ryujinx\|recomp\|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
 | QA-Szenarien | `scripts/recomp/qa/qa_run.sh <szenario>|--list|--report <ordner>` (Sperrdatei, Spielstand-Kopie aus `work/recomp/qa/save_base`) |
 | Unity (deprecated, nur falls je wieder nötig) | `scripts/unity_safe.sh open|restart|status|test|watch` liegt nur auf Branch `unity` (auf `main` fehlt es; `visual_auto.sh` braucht es für den Editor-Start); Tests nie im Play-Modus (hängt), vorher `editor_stop` |
 
@@ -49,12 +47,10 @@ Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `
 |---|---|
 | Mac Ryujinx-Ordner | `Ryujinx/bis/user/save/0000000000000006/{0,1}` |
 | Rekompilation Mac | `work/recomp/save/save_1` (über `install_save.sh`) |
-| Rekompilation Ryzen | `~/xnu-recomp/work/recomp/save/save_1` |
-| Ryujinx auf dem Ryzen | Profilordner `…0e/{0,1}` (Sicherung als tar in `~/xnu-recomp/backup/`) |
 | iPad | `Documents/SaveData.bin` (Ablage; wird beim nächsten „Weiter“ nach `Documents/Saves/save_1` importiert, Sicherung unter `work/ipad-save-backup/`) |
 | Unity-Editor (deprecated) | `~/Library/Application Support/DefaultCompany/xnu/Saves/Saves/main` |
 
-- **Falle, die schon einmal zuschlug:** Ryujinx legt je Profil einen eigenen Ordner an. Lag der Spielstand im Ordner `…04`, das aktive Profil las aber `…0e`, erschien „Select the language“. Der Skript-Weg über `ExtraData0` (Benutzer-ID in Bytes 8–23, jede 8-Byte-Hälfte byteweise umgedreht) wählt den richtigen Ordner.
+- **Falle, die schon einmal zuschlug:** Ryujinx legt je Profil einen eigenen Ordner an. Lag der Spielstand im Ordner `…04`, das aktive Profil las aber `…0e`, erschien „Select the language“. Den Profilordner wählt man jetzt von Hand. Die Benutzer-ID steht in `ExtraData0` (Bytes 8–23, jede 8-Byte-Hälfte byteweise umgedreht).
 - Mit Spielstand überspringt das Spiel die Sprachauswahl: Titel nach ca. 22 s, „Weiter“, Stadt nach ca. 91 s.
 
 ## 4. Stand der Agenten, offene Arbeit, Todos (Session-Daten, nicht im Repo)
@@ -78,7 +74,7 @@ Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `
 - **32-Bit-Modell (`rebase32`) auf dem Gerät:** läuft laut `recomp-ios.md`, aber nur 1,98 GiB statt 3,14 GiB Gastspeicher; Langzeit und Kämpfe ungemessen.
 - **Bildvergleich:** Kameraversatz 28 px (vermutlich Timing), Zellenzuordnung (58,729) aus einem Bild, Zuordnung der Spieluhr zur Tageszeit in Ryujinx angenommen.
 - **FPSR/QC-Flags** der ARM64-Gleitkomma-Einheit sind nicht modelliert (`recomp-diff.md`).
-- **Vulkan/Linux:** Lauf mit Film und Spielstand nicht wiederholt; die Mac-Fixes (Ringpuffer für Vertex-/Indexdaten, Crop 1280×720 in 1920×1080) sind nicht überall übertragen. Gemeinsame Include-Zeilen in `nvn_glue.c` wurden aus dem `__APPLE__`-Block gezogen (Ryzen-Bau scheiterte vorher).
+- **Vulkan/Linux:** Lauf mit Film und Spielstand nicht wiederholt; die Mac-Fixes (Ringpuffer für Vertex-/Indexdaten, Crop 1280×720 in 1920×1080) sind nicht überall übertragen. Gemeinsame Include-Zeilen in `nvn_glue.c` wurden aus dem `__APPLE__`-Block gezogen (Bau auf dem Linux-Rechner scheiterte vorher).
 - **Wasser-Ursache** ist eine Hypothese; Zielwerte der Region: Mittel RGB ≈ 87/127/210, Streuung ≈ 26/17/25, ≈ 0,3 % sehr helle Pixel (`docs/wasser.md`).
 - **Rechtslage** für eine öffentliche Weitergabe ist offen. opendpr verbietet generative KI: nur Referenz, kein Code übernommen. LASRecomp ist MIT (Hinweise in `shader_translator/NOTICE.md`).
 - Free-Team-Signatur der iPad-App läuft nach 7 Tagen ab; nur drei Apps mit kostenlosem Profil erlaubt (Messsonde wurde deshalb entfernt).
@@ -87,7 +83,7 @@ Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `
 
 1. 2026-10-18: Setup, Extraktion (Titel `0100000011d90000`, Update `…800`, Master-Key-Rev 0xC), Ghidra (166.095 Funktionen), Il2CppDumper, Save-Spec, Weg D (Unity 6.3) beschlossen.
 2. Unity-Rebuild mit Emulations-Orakel (763 Tests grün), Shader-Übersetzer, Player-Builds für macOS und iPad.
-3. 2026-10-19: Rekompilations-Spike, Gate 1 (Boot bis NVN), Gate 2 (Metal zeichnet, Film, Eingabe, Stadt mit 45 Bildern/s), Vulkan, bitgenauer Differenztest, Ryzen-Farm, Bildprüfung gegen Ryujinx.
+3. 2026-10-19: Rekompilations-Spike, Gate 1 (Boot bis NVN), Gate 2 (Metal zeichnet, Film, Eingabe, Stadt mit 45 Bildern/s), Vulkan, bitgenauer Differenztest, Linux-Rechner (zeitweise Build-/Testhilfe), Bildprüfung gegen Ryujinx.
 4. Nutzerbeobachtungen auf dem iPad: „sieht super aus“; Wasser falsch; Start brauchte 2–3 Versuche; Absturz, wenn das Intro nicht sofort mit A übersprungen wird. Das Intro-Video läuft per VP8-Software-Decoder (FFmpeg, `movie::`-HLE).
 5. Entscheidung 4 (16:57): Unity deprecated. Seitdem arbeiten zwei Agenten (QA/Wasser, iPad).
 
@@ -96,7 +92,7 @@ Bekannte Laufzeit-Hilfsvariablen: `BDSP_TIMEOUT`, `BDSP_BT` (Rückverfolgung), `
 1. `git status`, `git log -3`, `git log origin/main -1`: ist alles gepusht?
 2. `docs/README.md` und `docs/arbeitsstand-2026-10-19.md` lesen, dann dieses Handbuch.
 3. Berichte von `ap-recomp-qa` und `ap-recomp-ios` abholen (Agentenliste); bei fehlenden Berichten die Dateien in Abschnitt 4 prüfen.
-4. Prüfen, ob noch ein iPad-Lauf oder ein Ryzen-Prozess läuft (`ps`, nur eigene PIDs beenden).
+4. Prüfen, ob noch ein iPad-Lauf läuft (`ps`, nur eigene PIDs beenden).
 5. Tests, `repo_check.py`, gezieltes `git add`, Commit, Push.
 6. Danach Abschnitt 8 des Arbeitsstands abarbeiten (Wasser, Innenraum, iPad-Start, QA-Szenarien, Touch/Controller, Vulkan-Lauf, Stufe `recomp-ios`).
 

@@ -48,13 +48,10 @@ Create `work/local.env`. The file is git-ignored. Do not put these values anywhe
 
 ```sh
 TEAM_ID=<TEAM_ID>
-RZ_HOST=<RZ_HOST>
 ```
 
 - `TEAM_ID`: your Apple developer team ID. Used only for the iPadOS build (`deploy_ios.sh`). It is passed
   to `xcodebuild` on the command line and is not written to the project.
-- `RZ_HOST`: the ssh alias of your Linux build host. Used only by the Linux/Vulkan scripts (section 6).
-  Use an alias from `~/.ssh/config`, not an IP address.
 
 Write the file in shell syntax: no spaces around `=`.
 
@@ -161,10 +158,7 @@ Work in progress. Not playable yet. See section 6.4 for the known limits.
 
 ### 6.1 Requirements
 
-Use a Linux x86-64-v3 (AVX2) build host with a Vulkan-capable GPU and its driver.
-The Mac needs SSH and rsync, not Linux library headers copied from Homebrew.
-RZ_HOST in ignored work/local.env selects the host; never put a concrete alias,
-IP address, or username in versioned configuration.
+Use a Linux x86-64-v3 (AVX2) machine for the build, with a Vulkan-capable GPU and its driver.
 
 Install development packages on Linux yourself. Scripts check them and do not
 install packages or download/copy third-party headers. Qt, SDL3, Vulkan, shaderc,
@@ -181,18 +175,19 @@ include-vk/ or deps/include/ fallback is used. Runtime-only packages are not eno
 | Vulkan Memory Allocator headers | libvulkan-memory-allocator-dev | VulkanMemoryAllocator-devel | vulkan-memory-allocator (AUR, not official) |
 | FFmpeg development | libavcodec-dev, libavformat-dev, libavutil-dev | libavcodec-free-devel, libavformat-free-devel, libavutil-free-devel | ffmpeg |
 | Icon conversion | python3-pil | python3-pillow | python-pillow |
+| GNU time (`/usr/bin/time`) | time | time | time |
 
 These are user-run commands; use your normal administrator workflow:
 
 ```sh
 # Fedora
-dnf install clang gcc-c++ cmake pkgconf-pkg-config qt6-qtbase-devel vulkan-headers vulkan-loader-devel SDL3-devel libshaderc-devel VulkanMemoryAllocator-devel libavcodec-free-devel libavformat-free-devel libavutil-free-devel python3-pillow
+dnf install clang gcc-c++ cmake pkgconf-pkg-config qt6-qtbase-devel vulkan-headers vulkan-loader-devel SDL3-devel libshaderc-devel VulkanMemoryAllocator-devel libavcodec-free-devel libavformat-free-devel libavutil-free-devel python3-pillow time
 
 # Debian / sufficiently recent Ubuntu
-apt install clang build-essential cmake pkg-config qt6-base-dev libvulkan-dev libsdl3-dev libshaderc-dev libvulkan-memory-allocator-dev libavcodec-dev libavformat-dev libavutil-dev python3-pil
+apt install clang build-essential cmake pkg-config qt6-base-dev libvulkan-dev libsdl3-dev libshaderc-dev libvulkan-memory-allocator-dev libavcodec-dev libavformat-dev libavutil-dev python3-pil time
 
 # Arch official packages; VMA must be installed separately after reviewing its AUR package
-pacman -S --needed clang base-devel cmake pkgconf qt6-base vulkan-headers vulkan-icd-loader sdl3 shaderc ffmpeg python-pillow
+pacman -S --needed clang base-devel cmake pkgconf qt6-base vulkan-headers vulkan-icd-loader sdl3 shaderc ffmpeg python-pillow time
 ```
 
 SDL3/VMA availability depends on the Debian/Ubuntu release. Do not replace missing
@@ -219,37 +214,40 @@ official Arch binary package and is never installed by these scripts.
 
 ### 6.2 Build and run locally
 
-The supported Linux build is local. Root-level scripts such as
-`scripts/recomp/linux/build.sh` and `vk_sync.sh` are SSH orchestration helpers
-for maintainers' private test host; Linux users do not need them. The Linux-side
-build workers are under `scripts/recomp/linux/host/` and run directly from the
-repository root on Linux.
+The Linux build runs directly on the Linux machine, from the repository root; its scripts are in `scripts/recomp/linux/local/` (the dependency checks are in `scripts/recomp/linux/deps.sh`).
 
 1. Install the Linux development packages above and the Python generator
    dependencies `lz4`, `capstone`, and `unicorn`.
 2. Check the installed packages (no copying, downloads, or installation):
    `bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`.
    Leave out `linux_require_qt` if you do not build the Qt frontend.
-3. Extract your own legally obtained game dump with the command in section 4.1.
-   Inputs must be available as `work/exefs/` and `work/romfs/`;
-   these build commands transfer no keys or game data.
-4. Generate and compile guest modules: `bash scripts/recomp/linux/host/build_all.sh`.
+3. Provide the inputs `work/exefs/`, `work/romfs/`, and `work/recomp/icons/source/`. Extract your own legally
+   obtained game dump on this machine with the command in section 4.1 (details in `docs/extraktion.md`; the
+   extract stage also writes the icon source), or copy existing folders into the same layout. The Linux build
+   scripts do not read keys or the `.xci`.
+   Optional: `scripts/recomp/linux/local/setup.sh` compares the inputs with `work/exefs.sha256` if that file
+   exists; without it, the script only prints a note. Create the manifest from the repository root with
+   `sha256sum work/exefs/rtld work/exefs/main work/exefs/sdk work/exefs/subsdk0 > work/exefs.sha256`.
+4. Generate and compile guest modules: `bash scripts/recomp/linux/local/build_all.sh`.
 5. Build Vulkan and the in-process Qt frontend:
-   `bash scripts/recomp/linux/host/vk_build.sh --qt`. Output:
+   `bash scripts/recomp/linux/local/vk_build.sh --qt`. Output:
    `work/recomp/bdsp_boot_vk_qt`. Icon variants are converted from extracted
    source data into Linux assets under `work/recomp/icons/` during this build.
-6. Launch locally with `bash scripts/recomp/linux/host/vk_qt.sh` and the
+6. Launch locally with `bash scripts/recomp/linux/local/vk_qt.sh` and the
    desktop-session environment below.
 
 For the separate-process X11 host, build with
-scripts/recomp/linux/host/vk_qt_build.sh and launch using BDSP_QT_PROCESS=1.
+scripts/recomp/linux/local/vk_qt_build.sh and launch using BDSP_QT_PROCESS=1.
 That fallback embeds the SDL X11 window; it needs Xwayland on a Wayland desktop.
 The in-process host creates its own Vulkan surface and supports native Wayland
 or X11 without embedding a foreign window.
 
-For headless renderer checks use `bash scripts/recomp/linux/host/vk_build.sh`,
-then `bash scripts/recomp/linux/host/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300`.
-Captures and logs remain under `work/recomp/`.
+For headless renderer checks use `bash scripts/recomp/linux/local/vk_build.sh`,
+then `bash scripts/recomp/linux/local/vk_run.sh --headless --timeout 40 --screenshot-after 300`.
+Captures are written to `work/recomp/shots/`; the run prints its log to the terminal. The runtime reads its
+module images from `work/recomp/img_gfx` (`BDSP_IMG` changes the folder; `vk_qt.sh` uses the same folder). Create them
+once, with the inputs in place: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh`.
+The `HLE_LIST` binding matches the macOS app build (`scripts/recomp/app/recomp_build.sh`).
 No display is required for headless rendering. Generated code/data remain under work/.
 
 ### 6.3 Run with a window (Wayland)
@@ -258,7 +256,7 @@ A window opens on the desktop of the Linux machine. Pass the session variables o
 with the run. Get the user ID with `id -u` on the Linux machine. Without these variables no window can open.
 
 ```sh
-scripts/recomp/linux/host/vk_run.sh --tag=win XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
+scripts/recomp/linux/local/vk_run.sh XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 \
   SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
 ```
 
@@ -269,7 +267,7 @@ Settings for window runs only (they have no effect with `--headless`):
 
 - Start size: `--window 1280x720` or `BDSP_WINDOW=1920x1080` (default 1280×720).
 - Frame rate: `BDSP_FPS=30`, `BDSP_FPS=60` or `BDSP_FPS=120`. Pass it after the script name, for example
-  `scripts/recomp/linux/host/vk_run.sh BDSP_FPS=60 --tag=win ...`.
+  `scripts/recomp/linux/local/vk_run.sh BDSP_FPS=60 ...`.
 - MangoHud overlay (fps, frame time, CPU and GPU): `BDSP_MANGOHUD=1`. Needs the `mangohud` package on the
   Linux machine. It is needed only at run time, not for the build. Off by default.
 - Run time: `--timeout N` in seconds (default 120).
@@ -288,11 +286,11 @@ The in-process Qt host supplies menus, keyboard input, pause, window sizes,
 frame-rate choices, and original-icon language selection. For native Wayland:
 
 ```sh
-scripts/recomp/linux/host/vk_qt.sh XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland
+scripts/recomp/linux/local/vk_qt.sh XDG_RUNTIME_DIR=/run/user/<UID> WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland
 ```
 
 Use QT_QPA_PLATFORM=xcb with a valid DISPLAY/XAUTHORITY for X11.
-Never commit concrete session IDs, authentication paths, or host aliases.
+Never commit concrete session IDs or authentication paths.
 
 ### 6.4 Known limitations
 
@@ -302,7 +300,7 @@ Never commit concrete session IDs, authentication paths, or host aliases.
   (“texture outside the guest window”) and skips the upload (guard in `textures.c`). Effect on the picture not verified. Open.
 - **Rare hangs on the loading screen:** open. Cause not known.
 - FFmpeg headers/libraries now come from matching installed development packages.
-  A new package-only full build must still be verified after the host prerequisites are installed.
+  A new package-only full build must still be verified after the prerequisites are installed.
 - **Frame rate:** `BDSP_FPS` caps the frame rate (30, 60, 120). Measured in a window only; not verified across sessions.
 - No sound. Input state is not reported. Compute workloads are not supported.
 - Windows is not supported. X11 and full screen (F11) are not tested.
@@ -361,8 +359,6 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 | `work/exefs/main fehlt` (“work/exefs/main is missing”; exit 10) | Run stage `extract` first. |
 | Not enough disk space (exit 8) | Free space or lower the requirement with `--min-free-gb N`. The macOS build needs tens of GB. |
 | Compile fails (exit 4), memory error | Use `--recomp-jobs 2`. Check `work/logs/recomp-compile.log`. |
-| `RZ_HOST fehlt` (“RZ_HOST is missing”) | Add `RZ_HOST=<RZ_HOST>` to `work/local.env`, or export it. |
-| `… ist über den ssh-Alias … nicht erreichbar` (“… is not reachable via the SSH alias …”) | Test with `ssh <RZ_HOST> true`. The host must be on, and key authentication must work. |
 | `Kein verbundenes, entsperrtes iPad gefunden.` (“No connected, unlocked iPad found.”) | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
 | Build fails in `xcodebuild` (signing) | Read `work/builds/ios-recomp-xcodebuild.log`. Set `TEAM_ID` and sign in with your account in Xcode. |
 | macOS app blocked on first start | Right-click the app, then Open. |

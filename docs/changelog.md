@@ -2,6 +2,14 @@
 
 Chronological, newest entries first. Each item records the date, goal, and files.
 
+## 2026-10-22
+
+- **Remote Linux host removed:** the SSH/rsync wrappers for the former Linux build machine are gone (`scripts/recomp/linux/build.sh`, `lib.sh`, `sync.sh`, `fetch.sh`, `run_probe.sh`, `check_deps.sh`, `vk_sync.sh`, `vk_fetch.sh`, the remote `vk_*.sh` wrappers, and `host/job.sh`). Linux builds now run only locally, from the repository root.
+- **Ryujinx and key-player scripts removed:** `scripts/ryujinx_sync_save.sh`, `scripts/ryujinx_fetch_shots.sh`, `scripts/ryujinx_record.sh`, `scripts/ryzen_keys.py`, and its test `scripts/tests/test_ryzen_keys.py`. Reference screenshots are now copied by hand into `work/visual/ref/ryujinx/raw/` and imported with `scripts/visual_ref.py import`.
+- **Local Linux build:** `scripts/recomp/linux/host/` renamed to `scripts/recomp/linux/local/`; `scripts/recomp/diff/run_ryzen.sh` renamed to `run_linux.sh`. `setup.sh` treats the manifest `work/exefs.sha256` as optional; create it from the repository root with `sha256sum work/exefs/rtld work/exefs/main work/exefs/sdk work/exefs/subsdk0 > work/exefs.sha256`.
+- **Visual check:** the `--fetch` option of `scripts/visual_auto.sh ref` is removed; the `ryzen` block in `scripts/visual/ref_map.json` is removed (views and masks stay).
+- **Docs and labels:** `docs/BUILD.md`, the Linux, Vulkan, and diff docs describe the local build; the former machine label "Ryzen" in code comments is now "Linux".
+
 ## 2026-10-19
 
 - **Patch structure removed:** The NVN layer is now present in the repository as complete source: `scripts/recomp/rt-bdsp/nvn/src/` (Metal) and `nvn/vulkan/src/` (Vulkan differences). `prepare.sh` and `prepare_vk.sh` now only copy files; they no longer apply patches. Removed: `las-nvn.patch`, `fixes.patch`, `dbgthread.patch`, `debug.patch`, `prof.patch`, `exec_worker.patch`, `las-vk.patch`, and shim copies (contents are in `src/`). The translator remains in `shader_translator/` (single source).

@@ -43,19 +43,19 @@ Weitere Familien: **Fused Multiply-Add** zusammen nur 3.009 Wörter (`fmadd` 1.6
 
 ## 2. Testaufbau (`scripts/recomp/diff/`)
 
-**Eingaben** (`cases.c`, splitmix64, fester Startwert je Test, auf Mac und Ryzen identisch; keine Spielbytes): je Register nach Typ (F16/F32/F64, I8..I64, Bits) – 22 % Spezialwerte (±0, ±Inf, qNaN/sNaN mit Nutzlasten, größte/kleinste Denormale, kleinste/größte Normale, 2^24, 2^31, 2^63, 2^64 …), 18 % reine Zufallsbits, 22 % mittlere Exponenten, 10 % Nachbarn (±3 ulp) der Spezialwerte, 10 % kleine exakte Zahlen (Rundungsgrenzen), 9 % Denormale/kleinste Normale, 5 % Überlaufnähe, 4 % Exponenten um 1; Operanden mit 14 % Wahrscheinlichkeit gleich/negiert/±1 ulp des Vorgängers (Auslöschung, Gleichheit), bei FMA in 8 % `c = -(a*b)`. FPCR wie oben, NZCV zufällig, GPR-Quellen aus Ganzzahl-/Float-Spezialwerten.
+**Eingaben** (`cases.c`, splitmix64, fester Startwert je Test, auf Mac und Linux-Rechner identisch; keine Spielbytes): je Register nach Typ (F16/F32/F64, I8..I64, Bits) – 22 % Spezialwerte (±0, ±Inf, qNaN/sNaN mit Nutzlasten, größte/kleinste Denormale, kleinste/größte Normale, 2^24, 2^31, 2^63, 2^64 …), 18 % reine Zufallsbits, 22 % mittlere Exponenten, 10 % Nachbarn (±3 ulp) der Spezialwerte, 10 % kleine exakte Zahlen (Rundungsgrenzen), 9 % Denormale/kleinste Normale, 5 % Überlaufnähe, 4 % Exponenten um 1; Operanden mit 14 % Wahrscheinlichkeit gleich/negiert/±1 ulp des Vorgängers (Auslöschung, Gleichheit), bei FMA in 8 % `c = -(a*b)`. FPCR wie oben, NZCV zufällig, GPR-Quellen aus Ganzzahl-/Float-Spezialwerten.
 
 **Referenzen** (`tmpl.S`, eine Schleife, dieselben Maschinencode-Bytes überall):
 - **Unicorn 2.1.4, Cortex-A57-Modell** (der Kern der Switch), je Test ein `emu_start` über alle Fälle.
 - **Apple M1 Pro nativ** (`native.c`: JIT-Seite, `MAP_JIT`; die echten Befehle, im `asm`-Modus des Lifters bitgenau per Konstruktion).
-- Ergebnis: **M1 und Unicorn-A57 stimmen in allen 9.134 Tests × 10.240 Fällen exakt überein, auch in FPSR** (0 Abweichungen). Damit ist Unicorn als Referenz auf dem Ryzen belegt (stichprobenhafte Prüfung gegen echte ARM-Semantik ersetzt durch die Vollprüfung gegen den M1); Unterschiede M1 ↔ Cortex-A57 in NaN-Behandlung, FPCR-Verhalten, Rundung oder FPSR traten **nicht** auf (nur FPSR-Details wie IDC bei FZ könnten abweichen, kamen aber in den Fällen nicht vor).
+- Ergebnis: **M1 und Unicorn-A57 stimmen in allen 9.134 Tests × 10.240 Fällen exakt überein, auch in FPSR** (0 Abweichungen). Damit ist Unicorn als Referenz auf dem Linux-Rechner belegt (stichprobenhafte Prüfung gegen echte ARM-Semantik ersetzt durch die Vollprüfung gegen den M1); Unterschiede M1 ↔ Cortex-A57 in NaN-Behandlung, FPCR-Verhalten, Rundung oder FPSR traten **nicht** auf (nur FPSR-Details wie IDC bei FZ könnten abweichen, kamen aber in den Fällen nicht vor).
 
 **Testobjekt:** der `c`-Modus-Output des Lifters (`Lifter(base, 'c').lift(...)`, danach `simd_c.py`/`simd.h`/`simd_fp.h`), eine Gastfunktion `void t_<id>(Cpu *)` je Test (1 bis 4 Befehle), in `ctest.c` mit einer frischen `Cpu` je Fall ausgeführt (V8..V31 = 0 wie in der Referenz). Speicherbefehle laufen gegen einen 192-Byte-Puffer (Gastadresse = Hostadresse).
 
 **Testliste** (`mktests.py`): der gesamte FP-/SIMD-Kodierungsraum (Bits 27:25 = 111, plus Laden/Speichern mit V = 1) wird mit Capstone durchlaufen, je Form 3 bis 6 Vertreter (die 576 Spielformen mit mehr Vertretern bei Konstanten/Lane-Index) → **9.134 Tests: 6.016 Datenverarbeitung, 2.270 Speicher, 800 Zufallsketten (2 bis 4 abhängige FP-Befehle), 48 Sonderfälle** (FMUL+FADD/FSUB-Folgen als Fusionsprüfung, `fcmp #0.0`, `fccmpe`, `xzr`-Formen, CRC32). 306 verschiedene Mnemonics. **Abdeckung des Spiels:** 566 von 576 Datenverarbeitungsformen im Raster gefunden, die 10 übrigen (`fcmp #0.0`, `xzr`-Quellen) als Sonderfälle ergänzt; von den 254 Speicherformen sind 174 abgedeckt, 80 fehlen (Formen mit `sp` als Basis und Registeroffset `[xN, xN]`; reine Adressrechnung der Ganzzahlseite, **nicht geprüft**).
 - **Nicht im c-Modus unterstützt:** 1.632 Befehlsformen (ARMv8.1+ `sqrdmlah`, Dot-Product, `fcmla`, FP16-Arithmetik, `fmlal`, `frint32/64`, …), **Spielvorkommen 0**.
 
-**Compilervarianten (Ryzen, clang 22.1.8):** `-O1 -march=x86-64-v3` mit Standardvertrag (clang: `-ffp-contract=on`) und mit `-ffp-contract=off`; `-O2` ebenso; `-O1` für das x86-64-Grundprofil (ohne FMA-Hardware; `fma` über libm) mit `off`. Dazu auf dem Mac (arm64, clang 23): `-O1 -ffp-contract=off`, `-O2`.
+**Compilervarianten (Linux-Rechner, clang 22.1.8):** `-O1 -march=x86-64-v3` mit Standardvertrag (clang: `-ffp-contract=on`) und mit `-ffp-contract=off`; `-O2` ebenso; `-O1` für das x86-64-Grundprofil (ohne FMA-Hardware; `fma` über libm) mit `off`. Dazu auf dem Mac (arm64, clang 23): `-O1 -ffp-contract=off`, `-O2`.
 
 ## 3. Ergebnis der Hauptläufe (gemessen)
 
@@ -96,13 +96,13 @@ FPSR: der c-Modus liefert immer 0; die Referenz setzt in 18.725.436 Fällen Samm
 
 ## 4. Erschöpfender Einzelbefehlstest (gemessen)
 
-`exh.c` (`exh_gen.py` erzeugt die Befehlsliste, `exh_run.sh` fährt sie, `exh_cmp.py` vergleicht): 44 Einzelbefehle (`fsqrt`, `frecpe`, `frsqrte`, `frecpx`, `fcvt{zs,zu,ns,as,ps,mu}` nach 32/64 Bit, fest­kommaartig `#8`, `fcvt` S↔D↔H, `frint{n,a,x,i,z,m,p}`, `fabs`, `fneg`, `scvtf`/`ucvtf` aus 32/64 Bit mit und ohne Festkomma, jeweils S und D) werden über **alle 2^32 Eingaben** (32-Bit-Formate vollständig; 64-Bit-Formate: obere 32 Bit vollständig, untere aus einem Mischer) ausgeführt und zu einem Hash zusammengefasst: **nativ auf dem M1** (Inline-asm, echte Befehle, Referenz) gegen **erzeugtes C** auf dem Ryzen (`-O1 -march=x86-64-v3 -ffp-contract=off`). FPCR = 0 vollständig (je 4,29 Mrd. Eingaben), dazu RP, RM, RZ, FZ, DN, FZ+DN+RZ mit jedem 16. Wert. **Ergebnis: 308 Läufe (44 Befehle × 7 FPCR-Werte), 259.845.521.408 Fälle, 0 abweichende Läufe.** (Ein erster Lauf zeigte 13 Abweichungen bei Float→Ganzzahl-Befehlen; Ursache war der Prüfstand, nicht das Rekompilat: der Inline-asm-Block ließ D0 unbelegt, das C hatte V0 = 0 – nach `fmov d0, xzr` vor dem Befehl 0 Abweichungen.) Laufzeit: M1 ≈ 12 s je Befehl und 4,29 Mrd. Fälle, Ryzen (erzeugtes C, 4 Prozesse) etwa 13 Minuten für alles.
+`exh.c` (`exh_gen.py` erzeugt die Befehlsliste, `exh_run.sh` fährt sie, `exh_cmp.py` vergleicht): 44 Einzelbefehle (`fsqrt`, `frecpe`, `frsqrte`, `frecpx`, `fcvt{zs,zu,ns,as,ps,mu}` nach 32/64 Bit, fest­kommaartig `#8`, `fcvt` S↔D↔H, `frint{n,a,x,i,z,m,p}`, `fabs`, `fneg`, `scvtf`/`ucvtf` aus 32/64 Bit mit und ohne Festkomma, jeweils S und D) werden über **alle 2^32 Eingaben** (32-Bit-Formate vollständig; 64-Bit-Formate: obere 32 Bit vollständig, untere aus einem Mischer) ausgeführt und zu einem Hash zusammengefasst: **nativ auf dem M1** (Inline-asm, echte Befehle, Referenz) gegen **erzeugtes C** auf dem Linux-Rechner (`-O1 -march=x86-64-v3 -ffp-contract=off`). FPCR = 0 vollständig (je 4,29 Mrd. Eingaben), dazu RP, RM, RZ, FZ, DN, FZ+DN+RZ mit jedem 16. Wert. **Ergebnis: 308 Läufe (44 Befehle × 7 FPCR-Werte), 259.845.521.408 Fälle, 0 abweichende Läufe.** (Ein erster Lauf zeigte 13 Abweichungen bei Float→Ganzzahl-Befehlen; Ursache war der Prüfstand, nicht das Rekompilat: der Inline-asm-Block ließ D0 unbelegt, das C hatte V0 = 0 – nach `fmov d0, xzr` vor dem Befehl 0 Abweichungen.) Laufzeit: M1 ≈ 12 s je Befehl und 4,29 Mrd. Fälle, Linux-Rechner (erzeugtes C, 4 Prozesse) etwa 13 Minuten für alles.
 
 ## 5. Störversuche und Negativkontrollen (gemessen)
 
 ### 5.1 Der Test erkennt Fehler
 
-Negativkontrolle (Ryzen): Laufzeit **ohne** `#pragma STDC FENV_ACCESS ON` (Kopie unter `work/`, Original unberührt) und `-ffp-contract=fast`: **45 von 9.134 Tests weichen ab** (51.901 Fälle), alle **nur bei FPCR-Rundungsmodus ≠ RN** und nur in `fnmul` (6), `ucvtf` (12) und Zufallsketten, die `fnmul` enthalten (27). Mit RN/FZ/DN allein: 0. Der Compiler faltet im langsamen Pfad vermutlich `-(a*b)` bzw. die Ganzzahlumwandlung ohne Rücksicht auf den eingestellten Rundungsmodus (Ursache nicht weiter untersucht). Mit dem unveränderten Original (Pragma vorhanden) lässt sich `-ffp-contract=fast` und `-ffast-math` **gar nicht übersetzen** (`'#pragma STDC FENV_ACCESS ON' is illegal when precise is disabled`): ein eingebauter Schutz. **Kein x86-Fusionseffekt im Schnellpfad:** die Folgen `fmul`+`fadd` usw. werden auch mit `fast` nicht verschmolzen, weil jede Operation ihr Ergebnis auf NaN prüft (`FBAD`) und das Zwischenergebnis in `Cpu` ablegt.
+Negativkontrolle (Linux-Rechner): Laufzeit **ohne** `#pragma STDC FENV_ACCESS ON` (Kopie unter `work/`, Original unberührt) und `-ffp-contract=fast`: **45 von 9.134 Tests weichen ab** (51.901 Fälle), alle **nur bei FPCR-Rundungsmodus ≠ RN** und nur in `fnmul` (6), `ucvtf` (12) und Zufallsketten, die `fnmul` enthalten (27). Mit RN/FZ/DN allein: 0. Der Compiler faltet im langsamen Pfad vermutlich `-(a*b)` bzw. die Ganzzahlumwandlung ohne Rücksicht auf den eingestellten Rundungsmodus (Ursache nicht weiter untersucht). Mit dem unveränderten Original (Pragma vorhanden) lässt sich `-ffp-contract=fast` und `-ffast-math` **gar nicht übersetzen** (`'#pragma STDC FENV_ACCESS ON' is illegal when precise is disabled`): ein eingebauter Schutz. **Kein x86-Fusionseffekt im Schnellpfad:** die Folgen `fmul`+`fadd` usw. werden auch mit `fast` nicht verschmolzen, weil jede Operation ihr Ergebnis auf NaN prüft (`FBAD`) und das Zwischenergebnis in `Cpu` ablegt.
 
 ### 5.2 Host-MXCSR (Fund 1)
 
@@ -138,7 +138,7 @@ Das Rekompilat rechnet im Schnellpfad (FPCR = 0) mit der Host-FPU und setzt „R
 
 `c`-Modus auf einem arm64-Host mit clang 23 und `-O2`: `sqdmulh v0.4h, …` (3 Tests, 25.706 Fälle, immer RN/ohne Sonderwerte) liefert falsche Lanes; `-O2 -ffp-contract=off` ändert nichts, **`-O2 -fno-vectorize -fno-slp-vectorize` behebt es** → Autovektorisierer (die Lane-Funktion rechnet über `__int128`). Auf x86 (clang 22, -O1/-O2) und mit `-O1` auf arm64: 0 Abweichungen. Das Spiel nutzt `sqdmulh` nur als `.4s`/skalar (39 Wörter), die dort 0 Abweichungen zeigen. Folge: der Test gehört in die Build-Pipeline **je Compilerversion**.
 
-## 7. Kosten der exakten Varianten (gemessen, Ryzen 5 7500F, ns je erzeugter Gastfunktion)
+## 7. Kosten der exakten Varianten (gemessen, x86-64-CPU mit 6 Kernen/12 Threads, ns je erzeugter Gastfunktion)
 
 `perf_c.py` (`bench_c` in `ctest.c`, 5 Mio. Aufrufe, beste von 3, Rechner nebenbei durch `ap-recomp-vulkan` belastet; Aufruf der Funktion über Zeiger eingeschlossen). FPCR = 0 (Schnellpfad) gegen FZ/RZ (langsamer Pfad):
 
@@ -167,7 +167,7 @@ Das Rekompilat rechnet im Schnellpfad (FPCR = 0) mit der Host-FPU und setzt „R
 
 **Laufzeit:** `rt_fp_guest_mode()` (`scripts/recomp/c_exact/fp_env.h`) am Anfang jedes Gast-Threads und nach Aufrufen in Fremdcode; Gast-FPCR nur in `Cpu` (wie bisher). `-march=x86-64-v3` (FMA!) statt Grundprofil.
 
-**Regressionstest:** `scripts/recomp/diff/run_ryzen.sh base` (70 s für 93 Mio. Fälle × 5 Varianten auf 4 Kernen) bei jeder Änderung an Lifter, `simd*.h` oder Compilerversion; Erwartung 0 Abweichungen. `mktests.py --ncases 61440` für die große Variante (6 Minuten). Mit dem M1 als zweite Referenz (`difftest.py --src m1,uc,c:...`).
+**Regressionstest:** `scripts/recomp/diff/run_linux.sh base` (70 s für 93 Mio. Fälle × 5 Varianten auf 4 Kernen) bei jeder Änderung an Lifter, `simd*.h` oder Compilerversion; Erwartung 0 Abweichungen. `mktests.py --ncases 61440` für die große Variante (6 Minuten). Mit dem M1 als zweite Referenz (`difftest.py --src m1,uc,c:...`).
 
 ## 9. Grenzen und Restliste
 
@@ -192,7 +192,7 @@ Das Rekompilat rechnet im Schnellpfad (FPCR = 0) mit der Host-FPU und setzt „R
 | `scripts/recomp/diff/mktests.py` | Testliste (`tests.json`) und erzeugtes C (`lifted.c`) |
 | `scripts/recomp/diff/cases.c`, `difftest.h`, `tmpl.S`, `native.c`, `ctest.c`, `common.py` | Eingaben, Referenzschleife, M1-Lauf, C-Harness |
 | `scripts/recomp/diff/difftest.py`, `report.py` | Treiber (Unicorn/M1/c gegeneinander), Auswertung |
-| `scripts/recomp/diff/build_c.sh`, `run_ryzen.sh` | Bibliotheken bauen; Variantenläufe auf dem Ryzen (`base`, `neg`) |
+| `scripts/recomp/diff/build_c.sh`, `run_linux.sh` | Bibliotheken bauen; Variantenläufe auf dem Linux-Rechner (`base`, `neg`) |
 | `scripts/recomp/diff/exh.c`, `exh_gen.py`, `exh_run.sh`, `exh_cmp.py` | erschöpfender Einzelbefehlstest |
 | `scripts/recomp/diff/bench_fp.c`, `bench_fp.sh`, `bench_fp_uc.py` | Float-Benchmark-Beweis |
 | `scripts/recomp/diff/perf_c.py` | Kostenmessung |
@@ -203,7 +203,8 @@ python3 scripts/recomp/diff/hist.py                       # Mac, 3 min
 python3 scripts/recomp/diff/mktests.py                    # Mac, 40 s
 bash scripts/recomp/diff/build_c.sh base && bash scripts/recomp/diff/build_c.sh c mac_o1 -O1 -ffp-contract=off
 python3 scripts/recomp/diff/difftest.py --src m1,uc,c:mac_o1=work/recomp/diff/lib_mac_o1.so --jobs 2 --out work/recomp/diff/rep_mac.json
-# Ryzen: rsync scripts/recomp/diff, c_exact und work/recomp/diff/{tests.json,lifted.c} nach ~/xnu-recomp, dann
-ssh <RZ_HOST> 'cd ~/xnu-recomp && bash scripts/recomp/diff/run_ryzen.sh base'     # Varianten; `neg`: Negativkontrolle
-bash scripts/recomp/diff/exh_run.sh m1                                        # Mac; Ryzen: exh_run.sh c "-O1 -march=x86-64-v3 -ffp-contract=off" 4
+bash scripts/recomp/diff/exh_run.sh m1                                        # Mac, native Referenz
+# Linux-Rechner (Repo-Wurzel; braucht work/recomp/diff/tests.json und lifted.c aus mktests.py im Arbeitsverzeichnis):
+bash scripts/recomp/diff/run_linux.sh base                                    # Varianten; `neg`: Negativkontrolle
+bash scripts/recomp/diff/exh_run.sh c "-O1 -march=x86-64-v3 -ffp-contract=off" 4
 ```

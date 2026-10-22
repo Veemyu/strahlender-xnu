@@ -50,13 +50,10 @@ im Repository ein.
 
 ```sh
 TEAM_ID=<TEAM_ID>
-RZ_HOST=<RZ_HOST>
 ```
 
 - `TEAM_ID`: deine Apple-Developer-Team-ID. Nur für den iPadOS-Bau (`deploy_ios.sh`). Sie wird per
   Kommandozeile an `xcodebuild` übergeben und nicht ins Projekt geschrieben.
-- `RZ_HOST`: der ssh-Alias deines Linux-Build-Rechners. Nur für die Linux-/Vulkan-Skripte (Abschnitt 6).
-  Verwende einen Alias aus `~/.ssh/config`, keine IP-Adresse.
 
 Schreibe die Datei in Shell-Syntax: keine Leerzeichen um das `=`.
 
@@ -158,11 +155,7 @@ Das Skript übergibt `TEAM_ID` und `-allowProvisioningUpdates` an `xcodebuild`. 
 ## 6. Linux mit Vulkan und Qt6
 
 Die vollständige, gepflegte Paketliste steht in [BUILD.md](BUILD.md), Abschnitt 6.
-Der unterstützte Linux-Build läuft lokal. Die Skripte direkt unter
-`scripts/recomp/linux/`, etwa `build.sh` und `vk_sync.sh`, orchestrieren per SSH
-unsere privaten Testläufe und werden von Linux-Nutzern nicht benötigt. Die
-Linux-Buildskripte unter `scripts/recomp/linux/host/` laufen direkt vom
-Repo-Hauptverzeichnis aus.
+Der Linux-Build läuft direkt auf dem Linux-Rechner, vom Repo-Hauptverzeichnis aus; seine Skripte liegen unter `scripts/recomp/linux/local/` (die Abhängigkeitsprüfung unter `scripts/recomp/linux/deps.sh`).
 
 Installiere auf dem Linux-Rechner die Entwicklungsdateien für Qt6 Widgets, SDL3,
 Vulkan-Header und -Loader, shaderc, Vulkan Memory Allocator und FFmpeg.
@@ -176,23 +169,23 @@ Build verwendet Systempakete über pkg-config; alte include-vk- oder deps/includ
 Verzeichnisse werden nicht automatisch bevorzugt. Es werden keine zusätzlichen
 Qt-/SDL-/Vulkan-/FFmpeg-Bibliotheken ins Repository aufgenommen.
 
-Installiere zusätzlich die Python-Abhängigkeiten `lz4`, `capstone` und `unicorn`.
+Installiere zusätzlich das Paket `time` (liefert `/usr/bin/time`) und die Python-Abhängigkeiten `lz4`, `capstone` und `unicorn`.
 Die installierten Pakete prüfst du ohne Kopieren, Download oder Installation mit
 `bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`
 (ohne `linux_require_qt`, wenn du die Qt-Hülle nicht baust).
-Extrahiere einen selbst rechtmäßig erstellten Spieledump mit dem Befehl aus
-Abschnitt 4.1; benötigt werden `work/exefs/` und `work/romfs/`. Schlüssel und
-Spieldaten werden von den Build-Befehlen nicht übertragen.
+Stelle die Eingaben `work/exefs/`, `work/romfs/` und `work/recomp/icons/source/` bereit. Extrahiere dazu einen selbst rechtmäßig erstellten Spieledump auf diesem Rechner mit dem Befehl aus Abschnitt 4.1 (Details: `docs/extraktion.md`; die Stufe `extract` schreibt auch die Icon-Quelle), oder kopiere vorhandene Ordner im selben Aufbau hierher. Die Linux-Build-Skripte lesen keine Schlüssel und keine `.xci`.
+Optional vergleicht `scripts/recomp/linux/local/setup.sh` die Eingaben mit `work/exefs.sha256`, wenn diese Datei existiert; sonst gibt das Skript nur einen Hinweis. Die Datei erzeugst du im Repo-Hauptverzeichnis mit `sha256sum work/exefs/rtld work/exefs/main work/exefs/sdk work/exefs/subsdk0 > work/exefs.sha256`.
 
 Erzeuge und übersetze die Gastmodule mit
-`bash scripts/recomp/linux/host/build_all.sh`. Baue Vulkan-Laufzeit und Qt-Hülle
-im selben Prozess mit `bash scripts/recomp/linux/host/vk_build.sh --qt`; das
+`bash scripts/recomp/linux/local/build_all.sh`. Baue Vulkan-Laufzeit und Qt-Hülle
+im selben Prozess mit `bash scripts/recomp/linux/local/vk_build.sh --qt`; das
 Ergebnis liegt unter `work/recomp/bdsp_boot_vk_qt`. Extrahierte Icon-Varianten
 werden während des Builds deterministisch in Linux-Assets unter
 `work/recomp/icons/` umgewandelt. Starten lässt sich die App lokal mit
-`bash scripts/recomp/linux/host/vk_qt.sh`. Diese Variante unterstützt natives
+`bash scripts/recomp/linux/local/vk_qt.sh`. Diese Variante unterstützt natives
 Wayland und X11. Die getrennte X11-Hülle bleibt mit `BDSP_QT_PROCESS=1` verfügbar.
-Konkrete Sitzungs-, Benutzer- und Hostdaten bleiben lokal.
+Modulbilder für `vk_qt.sh` und `vk_run.sh` liegen unter `work/recomp/img_gfx`. Einmal erzeugen: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh` (wie bei der macOS-App, `scripts/recomp/app/recomp_build.sh`).
+Konkrete Sitzungs-IDs und Authentifizierungspfade committe nie.
 
 Die frühere Variante mit kopierten Headern wurde gebaut und kurz gestartet.
 Ein neuer vollständiger Paket-Build muss nach Installation der noch fehlenden
@@ -253,8 +246,6 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 | `work/exefs/main fehlt` (Exit 10) | Stufe `extract` zuerst ausführen. |
 | Zu wenig Platz (Exit 8) | Platz freimachen oder mit `--min-free-gb N` die Anforderung senken. Der macOS-Bau braucht mehrere zehn GB. |
 | Übersetzen schlägt fehl (Exit 4), Speicherfehler | `--recomp-jobs 2` verwenden. Log: `work/logs/recomp-compile.log`. |
-| `RZ_HOST fehlt` | `RZ_HOST=<RZ_HOST>` in `work/local.env` eintragen oder exportieren. |
-| `… ssh-Alias … nicht erreichbar` | Mit `ssh <RZ_HOST> true` prüfen. Der Rechner muss laufen, Schlüssel-Authentifizierung muss funktionieren. |
 | `Kein verbundenes, entsperrtes iPad gefunden.` | iPad verbinden, entsperren und dem Mac vertrauen. Prüfen mit `xcrun devicectl list devices`. |
 | `xcodebuild` bricht ab (Signierung) | Log `work/builds/ios-recomp-xcodebuild.log` lesen. `TEAM_ID` setzen und in Xcode mit deinem Konto signieren. |
 | macOS-App wird beim ersten Start blockiert | Rechtsklick auf die App, dann Öffnen. |

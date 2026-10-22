@@ -45,9 +45,10 @@ die Ziel-Titel-ID über `--title-id` anzugeben. Hactool-Ausgaben mit möglichen
 Schlüsselwerten werden nicht protokolliert. Schlüssel werden nicht auf den Linux-Rechner übertragen.
 
 Die Mac-Verpackung und `deploy_ios.sh build` erzeugen die jeweiligen Formate
-automatisch. `vk_sync.sh` überträgt die lokalen Originalvarianten gezielt nach
-`work/recomp/icons/source` auf dem entfernten Rechner; dort werden die Linux-PNGs
-beim Vulkan-/Qt-Build erzeugt. Voraussetzung ist Pillow im verwendeten Python:
+automatisch. Eine Übertragung zum Linux-Rechner gibt es nicht mehr: Die Vulkan-/Qt-Builds
+dort lesen die Quellen aus `work/recomp/icons/source` im Arbeitsverzeichnis (oder aus
+`BDSP_ICON_SOURCE`) und erzeugen die Linux-PNGs; diese Dateien stellt der Nutzer dort bereit.
+Voraussetzung ist Pillow im verwendeten Python:
 bei Fehlen gibt es eine Fehlermeldung, keine automatische Installation.
 
 `BDSP_ICON_SOURCE` kann einen anderen lokalen Quellordner mit `icons.json`
@@ -93,7 +94,7 @@ erneut signiert und mit `codesign --verify --deep --strict` geprüft.
 Der Shader-Startpfad bleibt unverändert.
 
 **Linux:** Die PNG-Größen 16, 32, 48, 64, 128, 256 und 512 entstehen auf dem
-entfernten Rechner unter `work/recomp/icons/linux`. Beide Qt-Hüllen erhalten ein
+Linux-Rechner unter `work/recomp/icons/linux`. Beide Qt-Hüllen erhalten ein
 Menü **App-Symbol / App icon** und dieselbe über QSettings gespeicherte Auswahl.
 Das laufende Fenster verwendet die gewählte Variante. Der erzeugte
 `dev.local.xnubdsp.desktop`-Starter hat das englische Standardicon und liegt

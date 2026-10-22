@@ -24,9 +24,9 @@ Es gibt heute **einen** Entwicklungsstrang: die Rekompilation.
 
 **Prinzip:** Der originale ARM64-Code des Spiels (NSO `main`, `sdk`, `subsdk0`, `rtld`) wird statisch nach C übersetzt (Lifter aus LASRecomp, MIT). Eigene Laufzeit `scripts/recomp/rt-bdsp/` ersetzt das Switch-Betriebssystem: Kernel-SVCs, IPC-Dienste (HIPC/CMIF), RomFS aus dem Dump, Speicherstand, NVN-Grafik über Metal (macOS/iPadOS) bzw. Vulkan (Linux), Film über FFmpeg. Logik, UI, Events, Kampf und KI sind damit 1:1 das Original.
 
-### 3.1 Gemessen (Quellen: `recomp-gate1.md`, `-gate2.md`, `-spike-2.md`, `-diff.md`, `-ryzen.md`, `-macapp.md`)
+### 3.1 Gemessen (Quellen: `recomp-gate1.md`, `-gate2.md`, `-spike-2.md`, `-diff.md`, `-linux.md`, `-macapp.md`)
 - **Umfang:** 270.299 Funktionen, 985,6 MB (c) bzw. 1.037 MB (asm) C, 14,1 Mio. Befehlswörter. Nur 58 Wörter (LDXP/STXP-Familie) waren anfangs nicht abgedeckt, jetzt 116 erzeugt.
-- **Bauzeit:** Generator 51–74 s; Übersetzen auf dem Mac 937 s (3 Jobs), Kaltbau der Stufe `recomp` ca. 27,5 min inklusive allem; Ryzen 310–388 s (10–12 Jobs, `-O0` ab 300 KB Einzelfunktion). Inkrementell: Sekunden bis 1 min (feste 32-KiB-Chunk-Fenster).
+- **Bauzeit:** Generator 51–74 s; Übersetzen auf dem Mac 937 s (3 Jobs), Kaltbau der Stufe `recomp` ca. 27,5 min inklusive allem; Linux-Rechner 310–388 s (10–12 Jobs, `-O0` ab 300 KB Einzelfunktion). Inkrementell: Sekunden bis 1 min (feste 32-KiB-Chunk-Fenster).
 - **Exceptions (Ausschlusskriterium):** Der echte libunwind des SDKs läuft rekompiliert; 100 von 180 echten LSDA-Funktionen im Test ohne Abweichung beim Landing-Pad, 55 stürzten in der synthetischen Umgebung ab (nicht im Spiel).
 - **GC:** Thread-Anhalten über Mach `thread_suspend`/`thread_get_state` (SVC 0x32/0x33), ca. 8 µs je Thread.
 - **Bitgenauigkeit (`recomp-diff.md`):** x86-`c`-Modus gegen ARM64: 0 Abweichungen (93,5 Mio. Fälle je Variante, 44 Befehle erschöpfend über 2^32 Eingaben). Pflicht: `rt_fp_guest_mode()` im Gast-Thread (sonst weichen FTZ/DAZ-Fälle ab), Flags `-O1 -ffp-contract=off -fno-fast-math`.
@@ -44,7 +44,7 @@ Es gibt heute **einen** Entwicklungsstrang: die Rekompilation.
 | `scripts/recomp/rt`, `rt32/` | Header-Erweiterungen der LAS-Laufzeit (Exceptions, 32-Bit-Rebasing) |
 | `scripts/recomp/app/` | `BDSP.app`-Hülle (Info.plist, Menü, Import, Eingabe) |
 | `scripts/recomp/ios/` | iPad-Bau (rebase32, FFmpeg-iOS, Xcode, Deploy), in Arbeit |
-| `scripts/recomp/linux/` | Ryzen-Farm (`sync.sh`, `build.sh`, `run_probe.sh`, `vk_*.sh`) |
+| `scripts/recomp/linux/` | Linux-Bau: die früheren Fernhilfsskripte sind entfernt; lokale Hilfsskripte liegen in `scripts/recomp/linux/local/` |
 | `scripts/recomp/qa/` | Testharness (`qa_run.sh`, Szenarien), in Arbeit |
 | `scripts/recomp/diff/`, `c_exact/` | Differenzialtest c-Modus gegen ARM64, FP-Umgebung |
 
@@ -61,8 +61,8 @@ Es gibt heute **einen** Entwicklungsstrang: die Rekompilation.
 - **Extraktion:** hactool-Bau, XCI/NSP → `work/exefs`, `work/romfs` (`scripts/build_all.sh` Stufen `tools`, `extract`); Il2CppDumper → `work/il2cpp`; Ghidra-Projekt `work/ghidra/bdsp` (166.095 Funktionen).
 - **Shader:** Maxwell→MSL/GLSL-Übersetzer `shader_translator/` (LASRecomp-MIT-Basis, `NOTICE.md`, 4.276/4.276 Blobs erkannt, 0 Fehler bei 5.959 Programmen, Treue gemessen).
 - **Umwandlungen:** VP8→H.265 (`video_convert.sh`, CRF 18, +41 % Größe), BC→ASTC (`texture_transcode.py`, 6×6: Median 46,2 dB PSNR), Bundle-Zielplattform Switch→Player (`bundle_retarget.py`).
-- **Saves:** `bdsp_save.py` (prüfen, Hash fixen), `ryujinx_sync_save.sh` (Mac ↔ Ryujinx auf dem Ryzen, findet Profilordner über `ExtraData0`), `ios_push_save.sh` (iPad), `install_save.sh` (Rekompilation). **Standard-Testspielstand:** Stadt (Zone 24), 69:08:16 Spielzeit, SaveData sha256 `0396a4a62735…`.
-- **Bildprüfung:** `visual_compare.py`, `visual_ref.py`, `visual_scenarios.py`, `visual_auto.sh`; Referenzen aus Ryujinx (F8, Ryzen) per `ryujinx_fetch_shots.sh`; Tasten-Spieler `ryzen_keys.py` (uinput, nur bei Fokus auf Ryujinx). Phase B (Unity-Aufnahme) ist stillgelegt.
+- **Saves:** `bdsp_save.py` (prüfen, Hash fixen), `ios_push_save.sh` (iPad), `install_save.sh` (Rekompilation); der Abgleich Mac ↔ Ryujinx ist entfernt. **Standard-Testspielstand:** Stadt (Zone 24), 69:08:16 Spielzeit, SaveData sha256 `0396a4a62735…`.
+- **Bildprüfung:** `visual_compare.py`, `visual_ref.py`, `visual_scenarios.py`, `visual_auto.sh`; Referenzen aus Ryujinx (F8, Linux-Rechner) wurden per Abrufskript geholt und über einen Tasten-Spieler ausgelöst; beide sind entfernt, Referenzen werden jetzt von Hand kopiert und mit `visual_ref.py import` übernommen. Phase B (Unity-Aufnahme) ist stillgelegt.
 - **Analyse-Material (Unity-Zeit, weiter als Referenz nützlich):** Orakel `battle_oracle*.py`, `pokepara_oracle.py` (Unicorn führt echte ARM64-Funktionen aus), Spezifikationen `kampf-spezifikation-1…7`, `pokepara-spezifikation`, `evscript-spezifikation`, `masterdata`, `bundle-katalog`, `ui-spezifikation-1…3`.
 
 ## 5. Unity-Rebuild (deprecated, eingefroren)
@@ -72,7 +72,7 @@ Stand beim Stilllegen: 763 EditMode-Tests grün; Kampf (Handler, Ablauf, KI voll
 | Gerät | Rolle |
 |---|---|
 | MacBook Pro M1 Pro, 16 GB | Hauptrechner; Generator, Mac-App, iOS-Build (Xcode 26.0.1 über `DEVELOPER_DIR`), ca. 36 GB Platz |
-| Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora (`ssh <RZ_HOST>`) | Build-/Testfarm, Vulkan-Lauf, Ryujinx 1.2.78 für Referenzbilder; nur unter `~/xnu-recomp` (+ Ryujinx-Screenshots) |
+| Linux-Rechner (Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora) | zeitweise Build-/Testhilfe, Vulkan-Lauf, Ryujinx 1.2.78 für Referenzbilder; nicht mehr an diesen Arbeitsablauf angebunden |
 | iPad Pro 12.9" (M2), iPadOS 26 | Zielgerät; Increased Memory Limit: 8 GiB statt 5 GiB (kostenloses Team, Signatur 7 Tage) |
 
 Lokal und nie im Repo: `work/`, `tools/`, `research/`, `nsp/`, `Ryujinx/`, `Ryujinx_July23/`, `unity/Assets/XnuStubs|XnuGenerated`, `cache/`.

@@ -81,4 +81,4 @@ Alle bauen (Fassung v5 und die lokale Debug-Fassung wurden aus diesem Stand geli
 | `docs/recomp-qa.md` | dieses Dokument | fertig (Stand wie beschrieben) |
 | `work/recomp/nvn-qa/nvn/renderer.m` (nicht im Repo) | Debug-Ausgabe `BDSP_LOG_WATER` | nur lokal, **kein** Patch im Repo (`scripts/recomp/qa/patches/` leer) |
 
-Nicht im Repo: Läufe, Spielstandkopien, Screenshots, Binärkopien unter `work/recomp/qa/` (ca. 300 MB; `bdsp_v5`, `bdsp_dbg`). Keine Prozesse mehr aktiv, Sperrdatei entfernt, Ryzen nicht benutzt.
+Nicht im Repo: Läufe, Spielstandkopien, Screenshots, Binärkopien unter `work/recomp/qa/` (ca. 300 MB; `bdsp_v5`, `bdsp_dbg`). Keine Prozesse mehr aktiv, Sperrdatei entfernt, Linux-Rechner nicht benutzt.

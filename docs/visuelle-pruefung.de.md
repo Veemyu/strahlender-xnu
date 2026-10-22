@@ -6,9 +6,9 @@ Stand: 2026-10-19, 14:40. Ziel: Bilder der Unity-Szenen entstehen und werden **a
 scripts/visual_auto.sh run            # Aufnahme -> Vergleich mit der Baseline -> Bericht + Kontaktbögen
 ```
 
-Bilder, Berichte und Referenzen liegen nur unter `work/` (gitignoriert); im Repo stehen Skripte, Szenarioliste, Routen und diese Beschreibung. Kein Ton: nichts spielt etwas ab (Tests und Skripte nur mit synthetischen Bildern).
+Bilder, Berichte und Referenzen liegen nur unter `work/` (gitignoriert); im Repo stehen Skripte, Szenarioliste und diese Beschreibung. Kein Ton: nichts spielt etwas ab (Tests und Skripte nur mit synthetischen Bildern).
 
-**Stand der Lieferung (ehrlich, 15:30):** Vergleich, Anomalie-Detektor, Berichte, Kontaktbögen, Szenarioliste, Orchestrierung, Referenzimport (Ryujinx und Rekompilation) und Tasten-Spieler sind fertig und getestet (Python-Tests, Trockenläufe, echter F8-Test auf dem Ryzen). Der **Aufnahmecode im Unity-Editor** (`Xnu.Visual.Capture`) läuft im **Labor-Editor** (`work/unity-shader-lab`, Kopie unter `Assets/XnuSrc/Visual/Editor/`): `XNU_UNITY_PROJECT=$PWD/work/unity-shader-lab scripts/visual_auto.sh run …` nahm 11 Feldszenarien in 30 s auf (Zonen 24, 27, 422, 425, 54, 367, 167, 168), verglich und schrieb Berichte und Referenzvergleiche. Die Quelle bleibt `work/visual/phaseB/`; in `unity/Assets` kommt sie erst nach Freigabe (Abschnitt 7). Bis dahin endet `visual_auto.sh run` im Haupteditor mit Exit-Code 4.
+**Stand der Lieferung (ehrlich, 15:30):** Vergleich, Anomalie-Detektor, Berichte, Kontaktbögen, Szenarioliste, Orchestrierung, Referenzimport (Ryujinx und Rekompilation) sind fertig und getestet (Python-Tests, Trockenläufe, echter F8-Test auf dem Linux-Rechner). Der **Aufnahmecode im Unity-Editor** (`Xnu.Visual.Capture`) läuft im **Labor-Editor** (`work/unity-shader-lab`, Kopie unter `Assets/XnuSrc/Visual/Editor/`): `XNU_UNITY_PROJECT=$PWD/work/unity-shader-lab scripts/visual_auto.sh run …` nahm 11 Feldszenarien in 30 s auf (Zonen 24, 27, 422, 425, 54, 367, 167, 168), verglich und schrieb Berichte und Referenzvergleiche. Die Quelle bleibt `work/visual/phaseB/`; in `unity/Assets` kommt sie erst nach Freigabe (Abschnitt 7). Bis dahin endet `visual_auto.sh run` im Haupteditor mit Exit-Code 4.
 
 ## 1. Befehle
 
@@ -18,11 +18,10 @@ Bilder, Berichte und Referenzen liegen nur unter `work/` (gitignoriert); im Repo
 | `scripts/visual_auto.sh compare [--run LAUF\|latest] [--ref [ryujinx\|recomp\|both]]` | nur Vergleich eines vorhandenen Laufs; `--ref` ergänzt den Referenzvergleich (Ryujinx-F8-Bilder, Rekompilation, beide) |
 | `scripts/visual_auto.sh accept [LAUF]` | Lauf als **neue Baseline** übernehmen (`work/visual/auto/baseline/`, alte nach `baseline.alt/`). **Erst nach Sichtung** der Kontaktbögen durch den Hauptagenten/Nutzer |
 | `scripts/visual_auto.sh watch [--interval MIN] [--once]` | alle N Minuten (Standard 10) laufen, wenn sich `unity/Assets/Scripts/{Field,Render}` oder `scripts/shader_*` geändert haben |
-| `scripts/visual_auto.sh ref [--fetch] [--run LAUF] [--ref ryujinx\|recomp\|both]` | Referenzen holen (`--fetch`, Ryujinx) und gegen den Lauf vergleichen (Abschnitt 8); Labor-Editor: `XNU_UNITY_PROJECT=$PWD/work/unity-shader-lab` vor `run` |
+| `scripts/visual_auto.sh ref [--run LAUF\|latest] [--ref ryujinx\|recomp\|both]` | Ryujinx-Referenzen (von Hand importiert, Abschnitt 8) gegen den Lauf vergleichen; Import vorher mit `visual_ref.py import` (Abschnitt 8.1); Labor-Editor: `XNU_UNITY_PROJECT=$PWD/work/unity-shader-lab` vor `run` |
 | `scripts/visual_auto.sh scenarios \| test \| status` | Szenarioliste prüfen, Python-Tests, Zustand |
 | `python3 scripts/visual_compare.py analyze BILD… [--kind field\|room\|ui]` | nur Anomalie-Detektor für einzelne Bilder |
-| `scripts/ryujinx_fetch_shots.sh [fetch\|status\|cache\|reset]` | F8-Screenshots vom Ryzen holen (Abschnitt 8) |
-| `scripts/ryujinx_record.sh ROUTE [--dry-run]` | Tastenfolge in Ryujinx abspielen und Bilder holen (Abschnitt 9) |
+| `python3 scripts/visual_ref.py import --raw work/visual/ref/ryujinx/raw --dest work/visual/ref/ryujinx` | F8-Screenshots importieren, die von Hand nach `raw/` kopiert wurden (Abschnitt 8.1) |
 
 Aufnahmearten: **editor** (Standard: Feldszenarien über `Xnu.Visual.Capture` in `FieldTest2`, danach die Folgen der Szene `Game` im Editor-Spielmodus), **player** (macOS-Build `work/builds/macos/xnu.app`, nur Spielszene-Folgen), **ipad** (`devicectl`, nur Spielszene-Folgen; bisher nicht ausgeführt). Der Editor wird über `scripts/unity_safe.sh` (Status/Öffnen) und `unity command … eval` gesteuert; `visual_auto.sh` startet ihn nur, wenn er aus ist.
 
@@ -35,10 +34,8 @@ Aufnahmearten: **editor** (Standard: Feldszenarien über `Xnu.Visual.Capture` in
 | `scripts/visual_compare.py` | Vergleich, Anomalie-Detektor, Bericht, Kontaktbögen, `accept`, Modus `ref` |
 | `scripts/visual_ref.py` | Ryujinx-Referenz: Import/Normalisierung, Vergleich mit Heatmap, Shader-Cache-Zahlen |
 | `scripts/visual_auto.sh` | Orchestrierung |
-| `scripts/visual/ref_map.json` | Referenzansichten, Zuordnung zu Szenarien, Masken, Ryzen-Pfade |
-| `scripts/visual/routes/*.keys` | Tastenfolgen für Ryujinx |
-| `scripts/ryzen_keys.py`, `scripts/ryujinx_fetch_shots.sh`, `scripts/ryujinx_record.sh` | Tasten-Spieler (läuft auf dem Ryzen), Abholen, Aufnahme-Treiber |
-| `scripts/tests/test_visual_*.py`, `test_ryzen_keys.py` | 49 Tests mit synthetischen Bildern (`scripts/visual_auto.sh test`) |
+| `scripts/visual/ref_map.json` | Referenzansichten, Zuordnung zu Szenarien, Masken |
+| `scripts/tests/test_visual_*.py` | 37 Tests mit synthetischen Bildern (`scripts/visual_auto.sh test`) |
 | `work/visual/phaseB/Capture.cs`, `Xnu.Visual.Editor.asmdef` | Aufnahmecode für den Editor (noch nicht in `unity/`) |
 
 Ordner eines Laufs: `shots/<name>.png`, `capture.json` (Aufnahme, `requested` = erwartete Namen), `report.md/json`, `diff/<name>.png` (Differenz ×4), `contact/uebersicht_NN.png`, `contact/vergleich_NN.png`, bei `--ref` zusätzlich `ref_report.md`, `ref/*_heatmap.png`, `contact/ref_NN.png`.
@@ -114,7 +111,7 @@ SaveData sha256 `0396a4a62735…`, Backup.bin `7a324b865ea9…`, Spielzeit 69:08
 
 Der neue Stand steht also in **Zone 24, Zelle (57, 729)**; `TownMapLocation` zeigt auf die Zone des vorherigen Aufenthalts (416) und wird in Städten nicht nachgeführt. Belege: (a) die Zelle (57, 729) liegt im Gebiet der Zone 24 (Locatoren 37–63 / 714–755), sieben Zellen unter dem Pokécenter-Locator (58, 723) – genau das zeigt der Ryujinx-Screenshot (Pokécenter oben im Bild, Spieler darunter, Hafenkran links); (b) in den beiden älteren Ständen stimmt die PLAYER_DATA-Zelle mit der Zone-Locator-Nähe überein (789/357 ≈ Locator 2 (789, 357) der Zone 416). Die Blickrichtung steht nicht im gefundenen Block (**[A]** Annahme „oben“). **Folge für den Spielkern (nicht von mir geändert):** `SavedPosition.Read` in `Game/Runtime/SaveSlotService.cs` verwirft die Position, wenn `TownMapLocation`-Zone ≠ `zoneID`; der Treiber startet dann am Locator 0 der Zone (58, 723) statt in (57, 729). Besser: Zelle aus PLAYER_DATA 0x79BF4/0x79BF8 lesen (gültig, wenn x/y in der Zone liegen), `TownMapLocation` nur als Rückfall.
 
-Auf diesen Stand umgestellt: Szenarien `field_z24_h12|h18`, `field_z27_h12`, `game_feld_z24`, `game_innen_z27`; Eingabefolge `durchlauf` (Tür bei Locator (58, 723), Innenraum Zone 27); Referenzansichten `ref_01_feld_weiter` (Unity: `game_feld_z24`, `field_z24_h12`) und `ref_03_innen_eintritt` (`game_innen_z27`, `field_z27_h12`); Routen `boot_weiter`, `tuer_innenraum` (eine Zelle rechts, sieben nach oben). Baselines gab es noch nicht (nichts zu verwerfen).
+Auf diesen Stand umgestellt: Szenarien `field_z24_h12|h18`, `field_z27_h12`, `game_feld_z24`, `game_innen_z27`; Eingabefolge `durchlauf` (Tür bei Locator (58, 723), Innenraum Zone 27); Referenzansichten `ref_01_feld_weiter` (Unity: `game_feld_z24`, `field_z24_h12`) und `ref_03_innen_eintritt` (`game_innen_z27`, `field_z27_h12`). Baselines gab es noch nicht (nichts zu verwerfen).
 
 ## 7. Übernahme des Aufnahmecodes (Phase B)
 
@@ -130,32 +127,38 @@ Funktionsweise von `Xnu.Visual.Capture.CaptureAll(scenariosPath, outDir)`: liest
 
 ## 8. Ryujinx-Referenz
 
-Ryujinx 1.2.78 (Vulkan, `res_scale` 1, `Fixed16x9`) auf dem Ryzen liefert Referenzbilder des Originalspiels. Screenshot-Taste **F8**, Ausgabe `~/.config/Ryujinx/screenshots/` auf dem Ryzen (Dateiname `Pokémon Brilliant Diamond_<Datum>_<hh-mm-ss>.png`, 1280×720).
+Ryujinx 1.2.78 (Vulkan, `res_scale` 1, `Fixed16x9`) lieferte in der Sitzung vom 2026-10-19 die Referenzbilder des Originalspiels (Linux-Rechner). Screenshot-Taste **F8**; unter Linux liegt die Ausgabe in `~/.config/Ryujinx/screenshots/` (Dateiname `Pokémon Brilliant Diamond_<Datum>_<hh-mm-ss>.png`, 1280×720). Kein Skript holt die Bilder mehr: sie werden von Hand kopiert und importiert (Abschnitt 8.1).
 
-### 8.1 Abholen und Zuordnen
+### 8.1 Manueller Import und Zuordnung
 
-`scripts/ryujinx_fetch_shots.sh fetch [--since "2026-10-19 14:40"]` holt nur **neue** Dateien (`rsync -rt --ignore-existing`, Dateizeit bleibt) nach `work/visual/ref/ryujinx/raw/`, ordnet sie den Ansichten aus `scripts/visual/ref_map.json` zu und schreibt normalisierte 1280×720-Bilder nach `views/<Ansicht>.png` (schwarze Ränder weg, mittig auf 16:9, skaliert) und `assignments.json` (Datei, Zeit, **Spielstunde**). Idempotent. Fehlerfälle: Ryzen aus → Exit 2 mit Hinweis, Screenshot-Ordner fehlt noch → Exit 3. `status` zeigt den Stand, `cache` die Shader-Cache-Zahlen, `reset` archiviert die Zuordnung (nichts wird gelöscht). `--since` blendet ältere Testbilder aus.
+Die F8-Screenshots nach `work/visual/ref/ryujinx/raw/` kopieren (Ordner anlegen, falls er fehlt), dann importieren:
+
+```
+python3 scripts/visual_ref.py import --raw work/visual/ref/ryujinx/raw --dest work/visual/ref/ryujinx [--since "2026-10-19 14:40"] [--offset SEK]
+```
+
+Der Import ordnet die Dateien den Ansichten aus `scripts/visual/ref_map.json` zu, schreibt normalisierte 1280×720-Bilder nach `views/<Ansicht>.png` (schwarze Ränder weg, mittig auf 16:9, skaliert) und `assignments.json` (Datei, Zeit, **Spielstunde**). Idempotent: bekannte Dateien werden nicht erneut zugeordnet. `--since` überspringt ältere Dateien (Ortszeit, Format wie im Beispiel); `--offset` setzt den `system_time_offset` von Ryujinx in Sekunden (Standard 0, siehe 8.2). Ansichten sind 1280×720-Bilder mit dem Namen der Ansicht; Dateien mit Namen `free_<Name>` bleiben nur zum Ansehen. `mask` in `ref_map.json` nennt ausgeschlossene Rechtecke `[x0,y0,x1,y1]` als Bruchteile der Bildgröße (HUD- und Debugtext der Unity-Szene, links oben).
 
 Zuordnung: der Reihe nach (Dateizeit) auf die freien Ansichten, **oder** per Umbenennen: eine Datei, deren Name mit dem Ansichtsnamen beginnt (`ref_03_innen_eintritt….png`), belegt genau diese Ansicht; Dateien mit Präfix `free_` bleiben freie Bilder.
 
 ### 8.2 Anleitung für den Nutzer (die zwei exakt reproduzierbaren Zustände)
 
-Reproduzierbar ist der Moment nach „Weiter“ am gespeicherten Ort (Standard-Testspielstand: Zone 24 Mio-Stadt/Fleetburg, Zelle 57/729, Abschnitt 6.1) und die Route Tür → Innenraum des Pokécenters (Zone 27). Vorher `scripts/ryujinx_sync_save.sh status` (Hash des Standes `0396a4a62735` muss auf Mac und Ryzen stehen).
+Reproduzierbar ist der Moment nach „Weiter“ am gespeicherten Ort (Standard-Testspielstand: Zone 24 Mio-Stadt/Fleetburg, Zelle 57/729, Abschnitt 6.1) und die Route Tür → Innenraum des Pokécenters (Zone 27). Vorher prüfen, ob der Spielstand der Testspielstand ist: der SHA-256 von `SaveData.bin` muss mit `0396a4a62735` beginnen (Abschnitt 6.1). Die Tasten stehen in Abschnitt 9.
 
 1. Ryujinx starten, Spiel bis zum **Titelbild** („Weiter“). Fenster im Vordergrund lassen.
 2. **Weiter** wählen (A = Taste `Z`), warten bis das Feld steht. **Nichts bewegen. F8** → `ref_01_feld_weiter`.
 3. Hauptmenü öffnen (Switch-X = Taste `C`), **F8** → `ref_02_menue`; Menü mit B (`X`) schließen.
 4. Geradeaus nach oben in die Tür des Pokécenters laufen (Pfeil hoch halten), nach dem Laden **F8** direkt nach dem Eintreten, nichts weiter drücken → `ref_03_innen_eintritt`.
 5. Optional: am Tresen A drücken, erstes Textfenster der Schwester, **F8** → `ref_04_text_schwester`.
-6. `scripts/ryujinx_fetch_shots.sh fetch --since "<Uhrzeit vor Schritt 1>"` auf dem Mac.
+6. Die neuen F8-Bilder nach `work/visual/ref/ryujinx/raw/` kopieren und mit `--since "<Uhrzeit vor Schritt 1>"` importieren (Abschnitt 8.1).
 
-**Uhrzeit:** muss nicht notiert werden. Der Vergleich nimmt die Dateizeit des Screenshots und rechnet die Spielstunde: `((Epoche + system_time_offset) mod 86400) / 3600` in UTC (Config: `system_time_offset` −1388 s, `system_time_zone` UTC). Beispiel: Screenshot um 14:32 Ortszeit (12:32 UTC) → Spielstunde 12,2. Das ist eine **Annahme [A]** (Host-Uhr + Offset, Zeitzone UTC); im Zweifel `game_hour` in `assignments.json` von Hand überschreiben. `visual_auto.sh run` rendert die Unity-Szenarien der Referenzansichten mit genau dieser Stunde (`export-field --ref-hours`; für den Editor-Weg `XNU_ENV_HOUR`). Weicht das Bild trotzdem in der Helligkeit ab, gleicht der Vergleich per Histogramm an.
+**Uhrzeit:** muss nicht notiert werden. Der Vergleich nimmt die Dateizeit des Screenshots und rechnet die Spielstunde: `((Epoche + system_time_offset) mod 86400) / 3600` in UTC (Config: `system_time_offset` −1388 s, `system_time_zone` UTC; beim Import den Offset mit `--offset` angeben). Beispiel: Screenshot um 14:32 Ortszeit (12:32 UTC) → Spielstunde 12,2. Das ist eine **Annahme [A]** (Host-Uhr + Offset, Zeitzone UTC); im Zweifel `game_hour` in `assignments.json` von Hand überschreiben. `visual_auto.sh run` rendert die Unity-Szenarien der Referenzansichten mit genau dieser Stunde (`export-field --ref-hours`; für den Editor-Weg `XNU_ENV_HOUR`). Weicht das Bild trotzdem in der Helligkeit ab, gleicht der Vergleich per Histogramm an.
 
-**Stand der Referenzen (14:47):** das erste echte Referenzbild liegt vor, `Pokémon Brilliant Diamond_2026-10-19_14-47-54.png` (Spielstunde ≈ 12,4 nach Formel): Stadtplatz in Mio-Stadt/Fleetburg, blaues Dach links, Pokécenter oben, rote Spielerfigur (farbig, bei uns noch weiß), Nachbar-NPC rechts, Tannen, Hafenkran. Es ist als `ref_01_feld_weiter` zugeordnet (`fetch --since "2026-10-19 14:45"`); die früheren Bilder (14:19–14:35) zeigten die Sprachauswahl und sind mit `--since` ausgeblendet. Ob dieses Bild exakt „Weiter, nichts bewegt“ war, ist nicht belegt (Spieler steht in der Mitte des Platzes).
+**Stand der Referenzen (14:47):** das erste echte Referenzbild liegt vor, `Pokémon Brilliant Diamond_2026-10-19_14-47-54.png` (Spielstunde ≈ 12,4 nach Formel): Stadtplatz in Mio-Stadt/Fleetburg, blaues Dach links, Pokécenter oben, rote Spielerfigur (farbig, bei uns noch weiß), Nachbar-NPC rechts, Tannen, Hafenkran. Es ist als `ref_01_feld_weiter` zugeordnet (Import mit `--since "2026-10-19 14:45"`); die früheren Bilder (14:19–14:35) zeigten die Sprachauswahl und sind mit `--since` ausgeblendet. Ob dieses Bild exakt „Weiter, nichts bewegt“ war, ist nicht belegt (Spieler steht in der Mitte des Platzes).
 
 ### 8.3 Referenzvergleich
 
-`python3 scripts/visual_compare.py ref compare --run work/visual/auto/<lauf>` (auch `visual_auto.sh ref`, `run --ref`). Je Ansicht (Unity-Bild laut `ref_map.json`, z. B. `game_feld_z24` oder `field_z24_h12`):
+`scripts/visual_auto.sh ref [--run LAUF|latest]` (oder `python3 scripts/visual_compare.py ref compare --run work/visual/auto/<lauf>`; auch `run --ref`). Je Ansicht (Unity-Bild laut `ref_map.json`, z. B. `game_feld_z24` oder `field_z24_h12`):
 
 * beide auf 1280×720, HUD-/Debugbereich per **Maske** ausgeschlossen (`mask`, Bruchteile der Bildgröße; Spielszene: links oben),
 * Bildversatz per Kreuzkorrelation ausgeglichen (±48 px),
@@ -167,7 +170,7 @@ Schwellen (`ref_map.json`, `gates`) binden nur mit `--gate` (Exit 1); Unity und 
 
 ### 8.4 Shader-Cache-Vergleich (nur Zahlen)
 
-`scripts/ryujinx_fetch_shots.sh cache` liest auf dem Ryzen (`games/0100000011d90000/cache/shader`) nur Dateigröße, Kopfzähler und einen Hash-Anfang der `.toc`-Dateien (Format: 32 Byte Kopf, 16 Byte je Eintrag) und stellt sie neben unsere genutzten Varianten (`work/materials_all/used_final.json`):
+`python3 scripts/visual_ref.py cache --entries NAME=GRÖSSE:ANZAHL …` stellt nur Zahlen neben unsere genutzten Varianten (`work/materials_all/used_final.json`). `GRÖSSE` ist die Dateigröße der `.toc`-Datei, `ANZAHL` die Eintragszahl aus ihrem Kopf (Format: 32 Byte Kopf, 16 Byte je Eintrag). Die Werte stammen vom 2026-10-19 und wurden mit einem inzwischen entfernten Abrufskript aus `games/0100000011d90000/cache/shader` auf dem Linux-Rechner gelesen:
 
 | Cache | `.toc` | Einträge |
 |---|---|---|
@@ -176,24 +179,22 @@ Schwellen (`ref_map.json`, `gates`) binden nur mit `--gate` (Exit 1); Unity und 
 | `vulkan_nvidia` (Host-Programme) | 45.376 Byte | **2.834** |
 | unsere genutzten Varianten (`used_final.json`) | – | **120** (119 übersetzbar) |
 
+Befehl mit diesen Werten: `python3 scripts/visual_ref.py cache --entries guest=19584:1222 shared=22704:1417 vulkan_nvidia=45376:2834`.
+
 Verhältnisse 10,2 (guest) bzw. 23,6 (Host) je genutzter Variante; sie sind **nicht 1:1 vergleichbar**: der Cache zählt Programme je Stufenkombination und Pipeline-/Spezialisierungszustand, wir zählen Shader × Schlüsselwortvariante. Brauchbar ist die Größenordnung (ein Shader-Variantenraum von ~120 gegenüber ~1.200 Gast-Programmen: wir decken die Materialvarianten ab, nicht die Zustandsvarianten) und die Veränderung über die Zeit (der Cache wächst während des Spielens; ca. 3.500 im Vollausbau laut Nutzer).
 
 ### 8.5 Rekompilation als zweite Referenzquelle (Phase C, `--ref recomp`)
 
-Die rekompilierte Original-Engine (Mac-Metal-Runtime, Ryzen-Vulkan) ist die zweite Referenz neben Ryujinx: sie rechnet den Originalcode ohne Emulator. Quellen: `work/recomp/shots/*.png` (Mac) und `work/visual/recomp/*.png` (Ryzen). `python3 scripts/visual_ref.py import --source recomp` ordnet **nur per Name** zu (Ansichtsname als Präfix, `aliases` in `ref_map.json`, Präfix `free_`; die vielen `frame_NNNNN.png` werden übergangen, `--all-free` führt sie als `free_…`) und schreibt normalisierte Bilder nach `work/visual/ref/recomp/views/`; geänderte Dateien werden erneut importiert. Aliase: `gate2_titel*` → `ref_00_titel`, `gate2_sprachauswahl*` → `ref_00b_sprachauswahl`. Wer ein Rekompilationsbild für eine Ansicht liefert, nennt es `ref_01_feld_weiter_metal.png` (oder trägt einen Alias ein).
+Die rekompilierte Original-Engine (Mac-Metal-Runtime, Linux-Vulkan) ist die zweite Referenz neben Ryujinx: sie rechnet den Originalcode ohne Emulator. Quellen: `work/recomp/shots/*.png` (Mac) und `work/visual/recomp/*.png` (Linux-Rechner). `python3 scripts/visual_ref.py import --source recomp` ordnet **nur per Name** zu (Ansichtsname als Präfix, `aliases` in `ref_map.json`, Präfix `free_`; die vielen `frame_NNNNN.png` werden übergangen, `--all-free` führt sie als `free_…`) und schreibt normalisierte Bilder nach `work/visual/ref/recomp/views/`; geänderte Dateien werden erneut importiert. Aliase: `gate2_titel*` → `ref_00_titel`, `gate2_sprachauswahl*` → `ref_00b_sprachauswahl`. Wer ein Rekompilationsbild für eine Ansicht liefert, nennt es `ref_01_feld_weiter_metal.png` (oder trägt einen Alias ein).
 
 * **Unity gegen Rekompilation:** `visual_compare.py ref compare --run LAUF --source recomp` (auch `visual_auto.sh run --ref recomp`, `--ref both` für beide Quellen); Bericht `LAUF/recomp/ref_report.md`, Kontaktbögen `LAUF/recomp/contact/`.
 * **Rekompilation gegen Ryujinx:** `visual_ref.py refs` (Standard `--a recomp --b ryujinx`): gleiche Ansichten beider Quellen, Ryujinx ist die Referenz. Bericht `work/visual/ref/recomp_vs_ryujinx/ref_report.md`. Damit lassen sich Fehler der Rekompilation von Emulator-Eigenheiten trennen.
 * Erster Wert: Sprachauswahl (`ref_00b_sprachauswahl`, Rekompilation Metal 1920×1080 auf 1280×720 skaliert gegen Ryujinx 1280×720): **SSIM 0,999, mittlere Abweichung 0,1** – die Rekompilation gibt diesen Bildschirm praktisch pixelgleich wieder.
 * Das Titelbild der Rekompilation (`gate2_titel_metal.png`) hat einen **dunkelgrünen Hintergrund** (Mittel 33/88/37) und rote Beschriftung „Drücke den A-Knopf“. Ein Ryujinx-Titelbild zum Gegenprüfen fehlt noch: bitte im Spiel zum Titel zurückgehen und F8 drücken (Name `ref_00_titel….png`), dann sagt `refs`, ob Farbe und Beschriftung stimmen.
 
-## 9. Tasten-Spieler für Ryujinx (`scripts/ryzen_keys.py`)
+## 9. Steuerung in Ryujinx
 
-Läuft **auf dem Ryzen** (KDE Plasma Wayland + Xwayland; `/dev/uinput` per ACL für den Benutzer, python-evdev vorhanden), Ablage `~/xnu-recomp/tools/ryzen_keys.py`, Routen `~/xnu-recomp/routes/`, Logs `~/xnu-recomp/logs/ryzen_keys-*.log`. Nichts außerhalb `~/xnu-recomp` wird geschrieben; Ryujinx und das Spiel startet der Nutzer (der Spieler startet **nichts**).
-
-Es legt per `evdev.UInput` die virtuelle Tastatur **`xnu-virtual-keyboard`** an, wartet 0,7 s, bis der Compositor sie kennt, und spielt eine `.keys`-Datei ab.
-
-### 9.1 Tastenbelegung (aus `~/.config/Ryujinx/Config.json`, `input_config[0]` WindowKeyboard, Pro Controller, Player1; nicht geraten)
+Tastenbelegung aus der Ryujinx-Konfiguration (`input_config[0]`, WindowKeyboard, Pro Controller, Player1; nicht geraten):
 
 | Switch | Taste | | Switch | Taste |
 |---|---|---|---|---|
@@ -204,39 +205,7 @@ Es legt per `evdev.UInput` die virtuelle Tastatur **`xnu-virtual-keyboard`** an,
 | L / ZL | `E` / `Q` | | Plus | `Plus` |
 | R / ZR | `U` / `O` | | Hotkeys | F8 Screenshot, F5 Pause, F4 UI, F2 Stumm, F1 VSync |
 
-`ryzen_keys.py --list` zeigt die Belegung samt evdev-Code. Das Layout des Ryzen ist `us`: `Plus` wird als `KEY_EQUAL`, `Minus` als `KEY_MINUS` gesendet (**[A]**, nicht im Spiel erprobt; bei Abweichung `map PLUS KEY_KPPLUS` in der Route). In BDSP öffnet **X** (Taste `C`) das Hauptmenü, **A** bestätigt, **B** bricht ab.
-
-### 9.2 Befehle einer `.keys`-Datei
-
-`key NAME [ms]`, `hold NAME ms`, `down/up NAME`, `combo A+B [ms]`, `type TEXT`, `wait MS`, `shot [timeout]` (F8, dann auf die **neue Datei im Screenshot-Ordner warten** statt blind zu warten), `shot_as ANSICHT [timeout]`, `wait_shot`, `require_focus`, `repeat N … end`, `map NAME KEY_XXX`, `note TEXT`; Namen = Switch-Knöpfe, `KEY_…` oder Ryujinx-Tastennamen. Optionen: `--dry-run`, `--focus`, `--time-limit`, `--speed`, `--hold-ms`, `--check`, `--list`. Letzte Ausgabezeile `RESULT {json}` mit den neuen Screenshots.
-
-### 9.3 Sicherheit (Eingaben dürfen nie in Fenster des Nutzers geraten)
-
-* **Vor jeder einzelnen Taste** wird das aktive Fenster geprüft: `xprop -root _NET_ACTIVE_WINDOW` des Xwayland-Servers (Umgebung `DISPLAY`/`XAUTHORITY` aus dem Ryujinx-Prozess), dann Titel (`_NET_WM_NAME` beginnt mit „Ryujinx“) **und** `WM_CLASS` „Ryujinx“. KWin meldet für Wayland-native Fenster (Konsole, Browser) kein X11-Fenster als aktiv; das zählt als „kein Fokus“. Nur bei „ok“ wird gesendet, sonst **Abbruch (Exit 5)**, alle gedrückten Tasten werden losgelassen.
-* Datei `~/xnu-recomp/STOP` anlegen bricht jederzeit ab (Exit 3; vom Mac: `scripts/ryujinx_record.sh --stop`), Zeitlimit (Standard 300 s, Exit 4), nur eine Instanz (Exit 8), `--dry-run` sendet nichts (kein uinput).
-* `--focus` versucht `wmctrl -i -a` (unter Wayland für Xwayland-Fenster oft möglich, sonst Fokus von Hand).
-* Getestet (Python-Tests mit simuliertem Fokus): fremdes Fenster → keine Taste, Wayland-Fenster → kein Fokus, Fokusverlust mitten in der Folge → Taste losgelassen und Abbruch, STOP, Zeitlimit, Trockenlauf.
-
-### 9.4 Routen (`scripts/visual/routes/`) und Aufnahme-Treiber
-
-| Route | Inhalt | Status |
-|---|---|---|
-| `f8_only` | nur Fokus prüfen und F8 | **echt ausgeführt** (2×, harmlos): Taste kam an, neues Bild nach 0,36 s |
-| `boot_weiter` | Titelbild → A → Weiter (A) → 12 s Laden → F8 `ref_01_feld_weiter` → X Menü → F8 `ref_02_menue` → B | nur **Trockenlauf** |
-| `tuer_innenraum` | F8 vor der Tür → Pfeil hoch 1,6 s → 4,5 s Laden → F8 `ref_03_innen_eintritt` | nur **Trockenlauf** |
-
-`scripts/ryujinx_record.sh ROUTE [--dry-run] [--focus] [--no-compare]` (Mac): zeigt den Spielstand-Abgleich (`ryujinx_sync_save.sh status`, nur lesen), kopiert `ryzen_keys.py` und die Route auf den Ryzen, prüft den Fokus (sonst Exit 5, keine Taste gesendet), spielt ab, holt die neuen Bilder nach `work/visual/ref/ryujinx/<route>/` und `raw/<Ansicht>__<Original>.png`, ordnet zu und ruft den Referenzvergleich gegen den letzten Unity-Lauf.
-
-**Zeiten sind Annahmen [A]** (12 s Laden, 1,6 s Laufzeit zur Tür, 4,5 s Überblendung). Beobachtet ist nur: uinput-Start 0,7 s, F8 → Datei 0,36 s. Kalibrierung: erste echte Läufe, danach Zeitstempel der Screenshots und der `wait`-Zeilen vergleichen (Log `~/xnu-recomp/logs/`), Zeiten in den `.keys` anpassen. Statt blind zu warten synchronisiert `shot` auf die neue Datei; für das Laden gibt es keinen Marker (kein Zugriff auf Spielzustand), deshalb Wartezeiten.
-
-### 9.5 Freigabe vor Bewegungs- und Menütasten
-
-**Es wurden NUR F8-Tasten wirklich gesendet** (zwei Läufe `f8_only`, bei geprüft aktivem Ryujinx-Fenster). Bewegungs- und Menütasten (`boot_weiter`, `tuer_innenraum`) sind nur im Trockenlauf geprüft. Vor dem ersten echten Lauf braucht es die Zustimmung des Nutzers (Hauptagent fragt): das Spiel muss am Titelbild stehen (Stand 14:47: das Spiel läuft bereits in der Stadt; dann zuerst im Spiel zum Titel zurückgehen oder die Route erst ab dem Feld verwenden, sonst würde A im Spiel etwas bestätigen), das Ryujinx-Fenster angeklickt sein. Befehl danach:
-
-```
-scripts/ryujinx_record.sh boot_weiter            # Titel -> Feld -> Menü, 2 Referenzbilder
-scripts/ryujinx_record.sh tuer_innenraum         # Tür -> Innenraum, 1 Referenzbild
-```
+In BDSP öffnet **X** (Taste `C`) das Hauptmenü, **A** bestätigt, **B** bricht ab.
 
 ## 10. Bekannte Grenzen und nächste Schritte
 

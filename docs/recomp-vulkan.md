@@ -1,8 +1,7 @@
 # Native Linux Vulkan backend
 
 Current build instructions and verified development-package names:
-[BUILD.md](BUILD.md), section 6. Host orchestration is documented in
-[recomp-linux.md](recomp-linux.md).
+[BUILD.md](BUILD.md), section 6.
 
 The native runtime uses Vulkan, SDL3, shaderc, VMA, and optional FFmpeg movie
 decoding. Qt6 can own the Vulkan surface in the runtime process, supporting
@@ -11,7 +10,7 @@ Linux audio, full rendering parity, and extended gameplay are not complete.
 
 ## Build dependencies, not vendored libraries
 
-Install development packages on the Linux host. Runtime-only packages do not
+Install development packages on the Linux machine. Runtime-only packages do not
 supply the compiler headers or pkg-config metadata. The current path obtains
 flags through pkg-config and uses the distribution's Vulkan loader, SDL3,
 shaderc, Qt6, and matching FFmpeg development files. VMA headers are installed
@@ -25,15 +24,13 @@ icons, keys, and game data stay outside Git under ignored work/.
 ## Commands
 
 The supported user workflow runs locally on Linux: use
-`scripts/recomp/linux/host/build_all.sh` for guest modules,
-`scripts/recomp/linux/host/vk_build.sh --qt` for the runtime/frontend, and
-`scripts/recomp/linux/host/vk_qt.sh` to launch. The root-level scripts
-`scripts/recomp/linux/*.sh` provide SSH orchestration for maintainers' private
-test host only. See BUILD.md for package and session requirements.
+`scripts/recomp/linux/local/build_all.sh` for guest modules,
+`scripts/recomp/linux/local/vk_build.sh --qt` for the runtime/frontend, and
+`scripts/recomp/linux/local/vk_qt.sh` to launch. See BUILD.md for package and session requirements.
 
 Both Qt hosts were built and briefly launched before the system-package cleanup.
 The user confirmed visible Linux icons. Source identity and Qt syntax were
-checked remotely. The new package-only path deliberately fails when development
+checked on the Linux machine. The new package-only path deliberately fails when development
 packages are missing; its full native build must be repeated after installation.
 Unit tests verify preflight success/failure and no automatic replacement downloads.
 
@@ -47,20 +44,20 @@ The measurements below describe earlier builds and investigations. Their copied-
 
 ### Recompilation: Linux Vulkan path (later Windows target) (`ap-recomp` Vulkan)
 
-Status: 2026-10-19, interim after phase 3 (updated after each phase). Based on `docs/recomp-gate2.md` (NVN/Metal layer, backend abstraction), `docs/recomp-linux.md` (Ryzen Linux machine, SSH alias from `RZ_HOST`), `docs/shader-translator.md`, and `research/LASRecomp/docs/linux.md`. Task: render recompiled BDSP on Linux x86-64 with Vulkan (no audio), window via SDL3, and offscreen PNG output for tests.
+Status: 2026-10-19, interim after phase 3 (updated after each phase). Based on `docs/recomp-gate2.md` (NVN/Metal layer, backend abstraction), `docs/recomp-linux.md` (Linux machine, earlier measurements), `docs/shader-translator.md`, and `research/LASRecomp/docs/linux.md`. Task: render recompiled BDSP on Linux x86-64 with Vulkan (no audio), window via SDL3, and offscreen PNG output for tests.
 
-**Labels:** **measured** = measured using scripts under `scripts/recomp/linux/vk_*.sh` on Ryzen (Ryzen 5 7500F, RTX 2080 Ti, Vulkan 1.4.329 driver, Fedora 44) or on Mac; raw logs under `<REMOTE_DIR>/logs/vk-*.log` (fetched via `vk_fetch.sh logs` to `work/recomp/linux/logs/`). *Suspected* = inference without a test. No game binaries, generated code, shaders, cache, or images are in the repository (all under `work/` or `<REMOTE_DIR>/work/`).
+**Labels:** **measured** = measured with the Linux `vk_*.sh` scripts (now under `scripts/recomp/linux/local/`) on the Linux machine (Ryzen 5 7500F, RTX 2080 Ti, Vulkan 1.4.329 driver, Fedora 44) or on Mac; raw logs (`vk-*.log`) are not in the repository. *Suspected* = inference without a test. No game binaries, generated code, shaders, cache, or images are in the repository (all under `work/`).
 
 ## Summary
 
 | | |
 |---|---|
-| **Vulkan path** | **Runs** on Ryzen: guest boots through `nnMain`, NVN initialization, RomFS game data, shaders, and draw calls. **Device: NVIDIA GeForce RTX 2080 Ti** (Vulkan 1.4.329), detected and used. No crashes in any run (up to 40 s offscreen, 22 s in Wayland window). |
+| **Vulkan path** | **Runs** on the Linux machine: guest boots through `nnMain`, NVN initialization, RomFS game data, shaders, and draw calls. **Device: NVIDIA GeForce RTX 2080 Ti** (Vulkan 1.4.329), detected and used. No crashes in any run (up to 40 s offscreen, 22 s in Wayland window). |
 | **Image** | **Recognizable, complete image**: guest renders the **language selection** screen (first launch: English, Español, Français, Deutsch, Italiano, にほんご, 日本語, 한국어, 简体中文, 繁體中文 over a crystal background, with “Select the language you would like to play in.” below), with **7 draw calls per frame**, 59.8 fps, about 0.1 ms GPU time per frame (measured with `BDSP_VK_PROF=1`). It appears in the upper-left 1280×720 area of the 1920×1080 target (rest is black; see requested changes). Metal path produces a black image at the same revision (see “Comparison with Metal”). |
 | Shaders | Our translator (`shader_translator/`, `--glsl`) translates **4,276/4,276** unique game programs (3,593 fragment, 683 vertex); `glslc --target-env=vulkan1.3` compiles **4,276/4,276** (Mac, 95 s with 8 threads; measured). Runtime compiles 3,025 programs (keyed pairs) to SPIR-V in about 3 s; **1,206** unique SPIR-V modules, 115 MB. Cold (empty cache) and warm (populated) differ little (first draw calls at 3.6 s cold, 3.3 s warm). |
 | Determinism | Two runs with an empty cache produce the **same 1,206 filenames and identical contents** (combined file checksum identical). Key = FNV-1a hash over stage and GLSL source; source is produced solely from Maxwell program data in our dump and the `ShaderKey`. **Ryujinx cache is not used.** |
-| Build | `NVN_BACKEND=vulkan scripts/recomp/rt-bdsp/build.sh` (on Ryzen: `scripts/recomp/linux/vk_build.sh`): Vulkan portion builds in **5 s** (15 files, `clang -O2`), linked size 353 MB. On Mac, `VK_SYNTAX=1 …/nvn/vulkan/build_vk.sh` checks syntax using Homebrew headers (all 12 sources pass). |
-| Offscreen | `--headless` renders to a custom-sized image (1920×1080, B8G8R8A8), **without a window or display connection** (works over SSH); `--screenshot-after N` writes `work/recomp/shots/frame_NNNNN.png` (1920×1080). |
+| Build | `NVN_BACKEND=vulkan scripts/recomp/rt-bdsp/build.sh` (on the Linux machine: `scripts/recomp/linux/local/vk_build.sh`): Vulkan portion builds in **5 s** (15 files, `clang -O2`), linked size 353 MB. On Mac, `VK_SYNTAX=1 …/nvn/vulkan/build_vk.sh` checks syntax using Homebrew headers (all 12 sources pass). |
+| Offscreen | `--headless` renders to a custom-sized image (1920×1080, B8G8R8A8), **without a window or display connection** (needs no desktop session); `--screenshot-after N` writes `work/recomp/shots/frame_NNNNN.png` (1920×1080). |
 | Window | SDL3 + Wayland: 22 s in 1280×720 window (swapchain 2176×1224 due to desktop scaling), 1,060 frames, 59.8 fps, no focus stealing (`BDSP_NO_USER_INPUT=1`). |
 | Unresolved | no guest-page write tracking (vertex cache disabled, textures rechecked); compute skinning/particles/MRT not reached (0 dispatches); pipeline cache not saved at exit; Windows not attempted. |
 | **Finding (also applies to Metal)** | **The bindless texture and sampler tables were swapped:** for two-word handles, **textures** are in the table starting at `0x168`, and **samplers** in the table starting at `0x568` (not vice versa; Unity binds a texture and sampler for a unit at the same index). Programs where the compiler assigned different texture and sampler indices bound the wrong textures. This affects **847 of 3,592** unique fragment programs with bindless textures (**23.6%**, measured on blobs using `maxwell2msl --info`); the remaining 2,745 have matching indices, where the old assumption had no effect. It was visible in TextMeshPro text (font atlas bound as the “face texture,” producing broken narrow glyphs); after correction, text is **pixel-identical** to an independent second mapping (reverse mapping within texture count). Metal's `renderer.m` (`shader_handle`, `las-nvn.patch`) makes the same old assumption as the Vulkan path; it needs the same swap (change request 1). |
@@ -78,7 +75,7 @@ Status: 2026-10-19, interim after phase 3 (updated after each phase). Based on `
 
 The shared `rt-bdsp/build.sh` was changed minimally after rereading it: the `vulkan)` branch calls `build_vk.sh`, sets `RT=…-vk`, `OUT=…_vk`, and libraries `-l:libvulkan.so.1 -l:libSDL3.so.0 -l:libshaderc_shared.so.1 -lstdc++`. One sentence was also added to `rt-bdsp/NOTICE.md`.
 
-Historical private-test scripts under `scripts/recomp/linux/` (prefix `vk_`) transfer selected files over SSH and dispatch detached jobs. The former Linux-side worker scripts now live under `scripts/recomp/linux/host/`; they can also be run directly for local builds. The obsolete `vk_sync_deps.sh` header-copy step is not part of the current package-based workflow.
+The former private-test scripts (file transfer and detached jobs) were removed. The Linux scripts (prefix `vk_`) now live under `scripts/recomp/linux/local/` and run locally. The obsolete header-copy step is not part of the current package-based workflow.
 
 ### Changes to the clone sources (`las-vk.patch`)
 
@@ -92,11 +89,11 @@ Unchanged: `textures.c`, `vk.h`, `vma.cpp`, `shaders.h`. Patch applies cleanly t
 
 ## Phase 1: headers and libraries without sudo (measured)
 
-Ryzen has runtime libraries but no development packages and no internet. Present and linked by **full path** (no `-dev` symlinks): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0` (3.4.16), `/usr/lib64/libshaderc_shared.so.1` (package `libshaderc-2026.1`). **Correction to the assumption that “shaderc is missing”:** runtime library is present as a dependency of other packages; only the header is missing. This removes the planned workaround of precompiling with `glslc` on Mac: the clone compiles GLSL at runtime as intended, with the cache making it deterministic and inexpensive.
+The Linux machine has runtime libraries but no development packages and no internet. Present and linked by **full path** (no `-dev` symlinks): `/usr/lib64/libvulkan.so.1`, `/usr/lib64/libSDL3.so.0` (3.4.16), `/usr/lib64/libshaderc_shared.so.1` (package `libshaderc-2026.1`). **Correction to the assumption that “shaderc is missing”:** runtime library is present as a dependency of other packages; only the header is missing. This removes the planned workaround of precompiling with `glslc` on Mac: the clone compiles GLSL at runtime as intended, with the cache making it deterministic and inexpensive.
 
-`vk_sync_deps.sh` copies **headers only** to `<REMOTE_DIR>/include-vk/` (27 MB): `vulkan/`, `vk_video/` (Homebrew `vulkan-headers` 1.4.363), `SDL3/` (Homebrew `sdl3` 3.4.18), `shaderc/` (Homebrew `shaderc` 2026.4; only C API used), and `vk_mem_alloc.h` (VMA, MIT, downloaded from GitHub to `work/recomp/deps-vk/` because no Homebrew formula was available). VMA license is alongside it (`LICENSE-VMA.txt`).
+The former header-copy step copied **headers only** to `include-vk/` on the Linux machine (27 MB): `vulkan/`, `vk_video/` (Homebrew `vulkan-headers` 1.4.363), `SDL3/` (Homebrew `sdl3` 3.4.18), `shaderc/` (Homebrew `shaderc` 2026.4; only C API used), and `vk_mem_alloc.h` (VMA, MIT, downloaded from GitHub to `work/recomp/deps-vk/` because no Homebrew formula was available). VMA license is alongside it (`LICENSE-VMA.txt`).
 
-The transferred inputs were checked on Ryzen against Mac's SHA-256 list, all four **OK** (short hashes are first 16 hex digits):
+The copied inputs were checked on the Linux machine against Mac's SHA-256 list, all four **OK** (short hashes are first 16 hex digits):
 
 | File | Size (bytes) | SHA-256 (short) |
 |---|---:|---|
@@ -105,7 +102,7 @@ The transferred inputs were checked on Ryzen against Mac's SHA-256 list, all fou
 | `sdk` | 5,755,393 | `1c9f198a91c0bcfe` |
 | `subsdk0` | 3,409,290 | `67a38fcf89cd13e0` |
 
-Not transferred: `main.npdm`, keys, NCA/XCI/NSP, RomFS, saves, LASRecomp `third_party`. Total required on Ryzen: about 4 GB (1 GB generated C each for `c` and `asm`, 0.8 GB objects per mode, 0.35 GB library).
+Not copied: `main.npdm`, keys, NCA/XCI/NSP, RomFS, saves, LASRecomp `third_party`. Total required on the Linux machine: about 4 GB (1 GB generated C each for `c` and `asm`, 0.8 GB objects per mode, 0.35 GB library).
 
 Optional user package list (only if using system packages instead of `include-vk/`; Fedora names, unverified; no sudo was run):
 
@@ -118,19 +115,19 @@ Then set `VK_INC=/usr/include` (or remove `include-vk/`); `build.sh` stays the s
 
 ## Phase 2: backend integrated (measured)
 
-Findings on the first Ryzen build (all fixed without touching shared files): `g_debug_frame` was defined by both `nvn_glue.c` and `exec.c` → compile `nvn_glue.c` for Vulkan with `-Dg_debug_frame=bdsp_glue_debug_frame`; `kernel_heap_size` already exists in `kernel.c` (Vulkan implementation uses it); `g_blocked_ns` (time spent in wait calls, used for clone frame pacing) was missing → added `vk_glue.c`; disable frame pacing (`BDSP_PACE=0`), since game pacing uses the Vsync event from `services_gfx.c`. Shims supply missing headers/symbols (`plat_written_pages`, C `menu_render`, `UPSCALE_FSR1`). Otherwise, `exec.c` (3,790 lines) compiled without logic changes.
+Findings on the first build on the Linux machine (all fixed without touching shared files): `g_debug_frame` was defined by both `nvn_glue.c` and `exec.c` → compile `nvn_glue.c` for Vulkan with `-Dg_debug_frame=bdsp_glue_debug_frame`; `kernel_heap_size` already exists in `kernel.c` (Vulkan implementation uses it); `g_blocked_ns` (time spent in wait calls, used for clone frame pacing) was missing → added `vk_glue.c`; disable frame pacing (`BDSP_PACE=0`), since game pacing uses the Vsync event from `services_gfx.c`. Shims supply missing headers/symbols (`plat_written_pages`, C `menu_render`, `UPSCALE_FSR1`). Otherwise, `exec.c` (3,790 lines) compiled without logic changes.
 
-## Phase 3: run on Ryzen (measured)
+## Phase 3: local run on the Linux machine (measured)
 
-Requires RomFS and `main.npdm` from the user's **own** dump under `<REMOTE_DIR>/work/` (`vk_sync.sh --daten`, 4.7 GB in 44 s; never in the repository). Earlier farm runs intentionally stopped before RomFS; it is needed for draw calls.
+Requires RomFS and `main.npdm` from the user's **own** dump in `work/romfs/` and `work/exefs/` on the Linux machine (RomFS about 4.7 GB; never in the repository; see BUILD.md, section 6.2). Earlier runs intentionally stopped before RomFS; it is needed for draw calls.
 
-Run (`vk_run.sh --tag=t1 --headless --timeout 40`): `[vk] gpu 0: NVIDIA GeForce RTX 2080 Ti (api 1.4.329)` → device, 1920×1080 swapchain/offscreen → `nvnBootstrapLoader`, device, window with 3 textures → 3,025 programs in ~3 s → from t=4 s, 7 draw calls per frame, 240 frames/2 s. Duration 40 s, RSS 2.4 GB (offscreen, including 650 MiB via MapPhysicalMemory, Vulkan memory, and shader cache), 0 NVN functions without host implementation.
+Run (`scripts/recomp/linux/local/vk_run.sh --headless --timeout 40`): `[vk] gpu 0: NVIDIA GeForce RTX 2080 Ti (api 1.4.329)` → device, 1920×1080 swapchain/offscreen → `nvnBootstrapLoader`, device, window with 3 textures → 3,025 programs in ~3 s → from t=4 s, 7 draw calls per frame, 240 frames/2 s. Duration 40 s, RSS 2.4 GB (offscreen, including 650 MiB via MapPhysicalMemory, Vulkan memory, and shader cache), 0 NVN functions without host implementation.
 
 Same 7 draw calls as Metal path (full-screen quad, meshes with 1,086/48/96/54/6 indices from 2048×2048 ASTC atlas, then text mesh with 384 indices sampling 1024×1024 R8 font atlas).
 
 ## Comparison with Metal and finding about shared runtime
 
-Mac Metal path (copy of `work/recomp/bdsp_boot` from 14:01, same images `img_gfx`, `--headless --screenshot-after 300`) produces **all-black** frames 300, 600, 900, 1,200 (mean 0). Vulkan shows language selection in the **same game state** (same counts: 7 draw calls per frame). Pixel difference **cannot** be calculated because Metal has no image. Once Metal produces an image, compare both outputs with `scripts/visual_compare.py` (already present, from another agent); Vulkan images are fetched by `vk_fetch.sh shots` to `work/recomp/linux/shots/`.
+Mac Metal path (copy of `work/recomp/bdsp_boot` from 14:01, same images `img_gfx`, `--headless --screenshot-after 300`) produces **all-black** frames 300, 600, 900, 1,200 (mean 0). Vulkan shows language selection in the **same game state** (same counts: 7 draw calls per frame). Pixel difference **cannot** be calculated because Metal has no image. Once Metal produces an image, compare both outputs with `scripts/visual_compare.py` (already present, from another agent); Vulkan images are in `work/recomp/shots/`.
 
 **Important finding in investigation of black Metal image (measured):** both paths see the **same inputs** in frame 300: same program addresses (`vs=72c0fcbd00 fs=72c0fcc000` …), same constant-buffer addresses (`f0(72beb71600,16)`, `f0(72beb71d00,112)`, `v1(72beb71700,480)`), same values (fragment constant buffer 3: `[1 1 1 1]` for full-screen quad, `[0 0 0 0]` for atlas meshes, time vector `[0.26 5.1 10.3 15.4]` for text; Vulkan log with `BDSP_DEBUG_FRAME=300`, Metal log with `BDSP_DEBUG_FRAME=300 BDSP_DEBUG_DATA=1`), and same 7 draw calls with same textures (1280×720 `0x3f`, 2048×2048 ASTC `0x7d`, 1024×1024 R8, 4×4 `0x25`). Thus atlas-mesh color factor `[0 0 0 0]` is **not** the cause (Vulkan renders those meshes visibly; these factors apparently are not what the shader reads). **Game flow is therefore fine and failure is in Metal execution** (`renderer.m`/`metal.m`: render target/blend/presentation), not guest logic, timing, or constant buffers. Swapping the texture/sampler table in `renderer.m` alone (copy under `work/recomp/nvn-src-mtest`, 40 s Metal run) does not change the image (values ≤2/255). Next step for Metal: dump frame 300's passes individually (`BDSP_DEBUG_FRAMES`) and compare with Vulkan passes (`vk` can do this with `build/pass_*.png`; create `build/` first).
 
@@ -138,7 +135,7 @@ Mac Metal path (copy of `work/recomp/bdsp_boot` from 14:01, same images `img_gfx
 
 Build: `nvn_glue.c` (new Gate 2 input layer) includes `SDL3/SDL.h`, `stdatomic.h`, `string.h` only under `__APPLE__`; Linux then lacked all `SDL_SCANCODE_*` and `atomic_fetch_*` (20 errors, **not** a header issue: `include-vk/SDL3/SDL_scancode.h` was present). Workaround in Vulkan build: `build_vk.sh` compiles `nvn_glue.c` with `-include SDL3/SDL.h -include stdatomic.h -include string.h -include strings.h`. Change requested in `nvn_glue.c`: move those four includes out of the `#ifdef __APPLE__` block (only `mach-o/*` belongs there), eliminating workaround.
 
-Run `vk_run.sh --tag=save3 --headless --timeout 60 --screenshot-after 4 --save work/recomp/save` (save SHA-256 `0396a4a62735` on Ryzen, `user_id.hex` present):
+Run `scripts/recomp/linux/local/vk_run.sh --headless --timeout 60 --screenshot-after 4 --save work/recomp/save` (save SHA-256 `0396a4a62735` on the Linux machine, `user_id.hex` present):
 
 - `[acc] user ID from work/recomp/save/user_id.hex`, `[fs-save] cmd 7 …/main2`, commands 7 and 8 on `…/SaveData.bin`: **save opens and is read**.
 - Language screen no longer appears (until crash around frame 120, Vulkan renders only black; first draw calls normally occur after ~3 s of shader compilation).
@@ -173,19 +170,16 @@ Images: `work/visual/recomp/vk_save/` (30 PNGs, all black except frame 120, mean
 
 The clone's Vulkan component builds for Windows (MSYS2 `clang64`: `mingw-w64-clang-x86_64-{clang,SDL3,vulkan-headers,vulkan-loader,vulkan-memory-allocator,shaderc}`; Visual Studio with `clang-cl` is awkward because runtime uses GNU inline assembly and `__attribute__`). Runtime remains to be ported: **Mach replacements → Win32**: `mach_absolute_time` → `QueryPerformanceCounter`; `thread_suspend/resume/get_state` (Boehm GC suspension) → `SuspendThread`/`GetThreadContext`; `mach_vm_allocate` at fixed addresses (`0x7000000000`, 12.5 GB window) → `VirtualAlloc(MEM_RESERVE)` at requested address (Windows supports up to 128 TB); `mach_vm_region`/`task_info` → `VirtualQuery`/`GetProcessMemoryInfo`; signals → structured exceptions; ELF/Mach-O sections for `HLE_FUNC` (`__start_hle_impls`) → PE sections with `.hle$a`/`.hle$z` markers. Reference: `research/LASRecomp/runtime/platform/windows.c`. Estimated effort: *suspected* 3–5 days after platform layer in request 4.
 
-## Reproduction (historical workflow)
+## Reproduction (local)
 
-The commands in this historical section are for our private SSH test host, not
-for a user's local Linux installation. The former remote workers are now in
-`scripts/recomp/linux/host/`.
+Run from the repository root on the Linux machine, with `work/exefs/` and `work/romfs/` in place (BUILD.md, section 6.2):
 
 ```sh
-scripts/recomp/linux/vk_sync.sh --daten           # working tree + img_gfx (+ RomFS/NPDM from own dump)
-scripts/recomp/linux/host/vk_build.sh             # NVN_BACKEND=vulkan on Linux → work/recomp/bdsp_boot_vk
-scripts/recomp/linux/host/vk_run.sh --tag=t1 --headless --timeout 40 --screenshot-after 300
-scripts/recomp/linux/vk_fetch.sh alles            # images and logs to work/recomp/linux/{shots,logs}
+scripts/recomp/linux/local/build_all.sh           # guest modules (needed before vk_build.sh)
+scripts/recomp/linux/local/vk_build.sh            # NVN_BACKEND=vulkan → work/recomp/bdsp_boot_vk
+scripts/recomp/linux/local/vk_run.sh --headless --timeout 40 --screenshot-after 300
 # Window (brief, no focus stealing; desktop Wayland session):
-scripts/recomp/linux/host/vk_run.sh --tag=win XDG_RUNTIME_DIR=<SESSION_RUNTIME_DIR> WAYLAND_DISPLAY=wayland-0 SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
+scripts/recomp/linux/local/vk_run.sh XDG_RUNTIME_DIR=<SESSION_RUNTIME_DIR> WAYLAND_DISPLAY=wayland-0 SDL_VIDEODRIVER=wayland BDSP_NO_USER_INPUT=1 --window 1280x720 --timeout 22
 # Mac syntax check with Homebrew headers:
 VK_SYNTAX=1 scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh
 ```
@@ -197,4 +191,4 @@ Clone diagnostic environment switches: `BDSP_VK_PROF=1` (CPU/GPU time per catego
 - `BDSP_FPS=30|60|120` sets pacing (Vsync event in `services_gfx.c`, limiter `frame_pace` in `nvn_glue.c`); measured in window: 30.0 / 60.0 / 120.0 fps. At runtime: F5 = 30, F6 = 60, F7 = 120.
 - Window size: `BDSP_WINDOW=WxH` at launch; while running F1–F4 = 960×540, 1280×720, 1920×1080, 2560×1440 (like Cmd+1 through Cmd+4 on Mac), F11 = fullscreen. Vulkan path only (`nvn/vulkan/src/nvn/vulkan/device.c`, `ui_run`); Mac path unchanged.
 - `BDSP_MANGOHUD=1` enables MangoHud overlay (off by default). Dependency: `mangohud` package (Fedora, implicit Vulkan layer), runtime only, not needed to build. `MANGOHUD_CONFIG` overrides defaults (fps, frametime, CPU/GPU).
-- **Qt shell with menu bar** (`scripts/recomp/rt-bdsp/app/linux/`, Linux only): C++/Qt6 Widgets program `bdsp_qt_host.cpp`, menus and text based on `app_ui.m`, translations under `lproj/*.lproj/Localizable.strings` (de, en, en_US, en_GB; selected by `LC_ALL`/`LC_MESSAGES`/`LANG`, falls back to en). Vulkan canvas runs as child window with `BDSP_EMBED=1` and `SDL_VIDEODRIVER=x11` (Xwayland under Wayland). **Qt6 build dependency:** `build_qt.sh` (CMake) checks Qt6 Widgets and, if absent, prints the distribution-specific install command from `deps.txt` (apt, dnf, pacman; package-name versions are documented there; nothing is installed). On Ryzen: `scripts/recomp/linux/vk_qt_build.sh`; launch: `vk_qt.sh`. Program resides in `work/recomp/qt-host/`; `bdsp_l10n.py` remains only as reference for testing `lproj` files (`scripts/tests/test_bdsp_l10n.py`).
+- **Qt shell with menu bar** (`scripts/recomp/rt-bdsp/app/linux/`, Linux only): C++/Qt6 Widgets program `bdsp_qt_host.cpp`, menus and text based on `app_ui.m`, translations under `lproj/*.lproj/Localizable.strings` (de, en, en_US, en_GB; selected by `LC_ALL`/`LC_MESSAGES`/`LANG`, falls back to en). Vulkan canvas runs as child window with `BDSP_EMBED=1` and `SDL_VIDEODRIVER=x11` (Xwayland under Wayland). **Qt6 build dependency:** `build_qt.sh` (CMake) checks Qt6 Widgets and, if absent, prints the distribution-specific install command from `deps.txt` (apt, dnf, pacman; package-name versions are documented there; nothing is installed). On the Linux machine: `scripts/recomp/linux/local/vk_qt_build.sh`; launch: `scripts/recomp/linux/local/vk_qt.sh`. Program resides in `work/recomp/qt-host/`; `bdsp_l10n.py` remains only as reference for testing `lproj` files (`scripts/tests/test_bdsp_l10n.py`).

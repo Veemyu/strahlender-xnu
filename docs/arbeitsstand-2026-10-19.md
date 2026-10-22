@@ -26,7 +26,7 @@ There is now **one** development track: recompilation.
 
 ### 3.1 Measurements (Sources: `recomp-gate1.md`, `-gate2.md`, `-spike-2.md`, `-diff.md`, `-linux.md`, `-macapp.md`)
 - **Scale:** 270,299 functions; 985.6 MB (C) or 1,037 MB (assembly) of C; 14.1 million instruction words. Initially only 58 words (LDXP/STXP family) were unsupported; 116 are now generated.
-- **Build time:** generator 51–74 s; compile on Mac 937 s (3 jobs); cold `recomp` stage about 27.5 min including everything; Ryzen 310–388 s (10–12 jobs, `-O0` for individual functions over 300 KB). Incremental: seconds to 1 min (fixed 32-KiB chunk windows).
+- **Build time:** generator 51–74 s; compile on Mac 937 s (3 jobs); cold `recomp` stage about 27.5 min including everything; Linux machine 310–388 s (10–12 jobs, `-O0` for individual functions over 300 KB). Incremental: seconds to 1 min (fixed 32-KiB chunk windows).
 - **Exceptions (gate criterion):** SDK's real libunwind works when recompiled; 100 of 180 real LSDA functions in test show no landing-pad mismatch, 55 crashed in the synthetic environment (not in game).
 - **GC:** suspend threads via Mach `thread_suspend`/`thread_get_state` (SVC 0x32/0x33), about 8 µs per thread.
 - **Bit-exactness (`recomp-diff.md`):** x86 C mode vs ARM64: 0 mismatches (93.5 million cases per variant, 44 instructions exhaustively over 2^32 inputs). Required: `rt_fp_guest_mode()` in guest thread (otherwise FTZ/DAZ cases differ), flags `-O1 -ffp-contract=off -fno-fast-math`.
@@ -44,7 +44,7 @@ There is now **one** development track: recompilation.
 | `scripts/recomp/rt`, `rt32/` | LAS runtime header extensions (exceptions, 32-bit rebasing) |
 | `scripts/recomp/app/` | `BDSP.app` wrapper (Info.plist, menu, import, input) |
 | `scripts/recomp/ios/` | iPad build (rebase32, FFmpeg for iOS, Xcode, deploy), in progress |
-| `scripts/recomp/linux/` | Linux build host (`sync.sh`, `build.sh`, `run_probe.sh`, `vk_*.sh`) |
+| `scripts/recomp/linux/` | Linux builds: the former remote helpers were removed; local helpers are in `scripts/recomp/linux/local/` |
 | `scripts/recomp/qa/` | test harness (`qa_run.sh`, scenarios), in progress |
 | `scripts/recomp/diff/`, `c_exact/` | differential test of C mode vs ARM64, FP environment |
 
@@ -61,8 +61,8 @@ There is now **one** development track: recompilation.
 - **Extraction:** build hactool, XCI/NSP → `work/exefs`, `work/romfs` (`scripts/build_all.sh` stages `tools`, `extract`); Il2CppDumper → `work/il2cpp`; Ghidra project `work/ghidra/bdsp` (166,095 functions).
 - **Shaders:** Maxwell→MSL/GLSL translator `shader_translator/` (LASRecomp MIT base, `NOTICE.md`, 4,276/4,276 blobs recognized, 0 failures across 5,959 programs, fidelity measured).
 - **Conversions:** VP8→H.265 (`video_convert.sh`, CRF 18, +41% size), BC→ASTC (`texture_transcode.py`, 6×6: median 46.2 dB PSNR), Switch→player bundle platform (`bundle_retarget.py`).
-- **Saves:** `bdsp_save.py` (validate, fix hash), `ryujinx_sync_save.sh` (Mac ↔ Ryujinx on Ryzen, finds profile directory via `ExtraData0`), `ios_push_save.sh` (iPad), `install_save.sh` (recompilation). **Standard test save:** city (Zone 24), 69:08:16 play time, SaveData SHA-256 `0396a4a62735…`.
-- **Image checks:** `visual_compare.py`, `visual_ref.py`, `visual_scenarios.py`, `visual_auto.sh`; Ryujinx references (F8, Ryzen) via `ryujinx_fetch_shots.sh`; key player `ryzen_keys.py` (uinput, only when Ryujinx focused). Phase B (Unity capture) is discontinued.
+- **Saves:** `bdsp_save.py` (validate, fix hash), `ios_push_save.sh` (iPad), `install_save.sh` (recompilation); the Mac ↔ Ryujinx save sync was removed. **Standard test save:** city (Zone 24), 69:08:16 play time, SaveData SHA-256 `0396a4a62735…`.
+- **Image checks:** `visual_compare.py`, `visual_ref.py`, `visual_scenarios.py`, `visual_auto.sh`; Ryujinx references (F8, Linux machine) were fetched by a script and triggered with a key player at the time; both have since been removed, so references are now copied and imported by hand (`visual_ref.py import`). Phase B (Unity capture) is discontinued.
 - **Analysis assets (Unity-era, still useful as reference):** oracles `battle_oracle*.py`, `pokepara_oracle.py` (Unicorn runs real ARM64 functions), specifications `kampf-spezifikation-1…7`, `pokepara-spezifikation`, `evscript-spezifikation`, `masterdata`, `bundle-katalog`, `ui-spezifikation-1…3`.
 
 ## 5. Unity Rebuild (Deprecated, Frozen)
@@ -72,7 +72,7 @@ At retirement: 763 EditMode tests passing; battle (handlers, flow, AI complete),
 | Device | Role |
 |---|---|
 | MacBook Pro M1 Pro, 16 GB | Main computer; generator, Mac app, iOS build (Xcode 26.0.1 via `DEVELOPER_DIR`), about 36 GB free |
-| Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora (`ssh <RZ_HOST>`) | Build/test farm, Vulkan run, Ryujinx 1.2.78 for reference images; only under `~/xnu-recomp` (+ Ryujinx screenshots) |
+| Linux machine (Ryzen 5 7500F, 30 GB, RTX 2080 Ti, Fedora) | Temporary build/test helper, Vulkan run, Ryujinx 1.2.78 for reference images; no longer connected to this workflow |
 | iPad Pro 12.9-inch (M2), iPadOS 26 | Target device; Increased Memory Limit: 8 GiB instead of 5 GiB (free team, 7-day signature) |
 
 Local and never in repository: `work/`, `tools/`, `research/`, `nsp/`, `Ryujinx/`, `Ryujinx_July23/`, `unity/Assets/XnuStubs|XnuGenerated`, `cache/`.
