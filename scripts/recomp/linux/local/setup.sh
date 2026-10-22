@@ -3,12 +3,14 @@
 # Compare the checksums of the inputs against work/exefs.sha256 (if present). Reports missing packages as an install list.
 source "$(dirname "$0")/common.sh"
 missing=()
-for t in clang gcc make cmake ninja rsync python3 git; do command -v "$t" >/dev/null || missing+=("$t"); done
+for t in clang python3; do command -v "$t" >/dev/null || missing+=("$t"); done
+command -v cmake >/dev/null || echo "NOTE: cmake is missing (needed only for the Qt frontend, vk_qt_build.sh)."
+command -v rsync >/dev/null || echo "NOTE: rsync is missing (needed only for incr_test.sh)."
 command -v ld.lld >/dev/null || echo "NOTE: ld.lld is missing (package 'lld'): linking with ld.bfd, slower; the LAS Makefile uses -fuse-ld=lld."
 command -v ccache >/dev/null || echo "NOTE: ccache is missing (optional)."
 [ -x /usr/bin/time ] || missing+=("time")
 echo "== Tools"
-{ uname -srm; clang --version | head -1; gcc --version | head -1; make --version | head -1; python3 --version; nproc; free -g | sed -n 2p; df -h "$R" | tail -1; } 2>&1
+{ uname -srm; clang --version | head -1; python3 --version; nproc; free -g | sed -n 2p; df -h "$R" | tail -1; } 2>&1
 echo "AArch64 target of clang: $(clang --target=aarch64-linux-gnu -x c -c /dev/null -o /dev/null 2>&1 && echo ok)"
 echo "x86-64-v3 (AVX2/FMA): $(grep -o -w -E 'avx2|fma|bmi2' /proc/cpuinfo | sort -u | tr '\n' ' ')"
 echo "== Python packages"
