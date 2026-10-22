@@ -281,7 +281,7 @@ class Build(unittest.TestCase):
         self.assertIn("float4 pos : SV_POSITION;", text)
         self.assertIn("float4 v0 : TEXCOORD0;", text)
         self.assertIn("nointerpolation float4 v2 : TEXCOORD2;", text)
-        self.assertNotIn("v5 : TEXCOORD5", text)          # vom Vertex-Shader nicht geschrieben
+        self.assertNotIn("v5 : TEXCOORD5", text)          # not written by the vertex shader
         self.assertIn("float4 c0 : SV_Target0;", text)
         self.assertIn("float depth : SV_Depth;", text)
         self.assertIn("r.depth = o.depth;", text)

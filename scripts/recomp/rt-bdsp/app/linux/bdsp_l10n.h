@@ -1,6 +1,6 @@
-// Menütexte der Linux-Qt-Hülle aus Localizable.strings (Format und Schlüssel wie scripts/recomp/app/lproj der Mac-App).
-// Portierung von bdsp_l10n.py (dort die Beschreibung der Regeln, die Tests scripts/tests/test_bdsp_l10n.py prüfen dieselben lproj-Dateien):
-// Ort aus LC_ALL, LC_MESSAGES, LANG; Kette Ort, Sprache, en; en_UK = en_GB; Schlüssel ohne Eintrag bleiben stehen.
+// Menu texts of the Linux Qt host from Localizable.strings (format and keys as in scripts/recomp/app/lproj of the Mac app).
+// Port of bdsp_l10n.py (the rules are described there; the tests in scripts/tests/test_bdsp_l10n.py check the same lproj files):
+// locale from LC_ALL, LC_MESSAGES, LANG; chain locale, language, en (so pt_BR -> pt, es_419 -> es); en_UK = en_GB; keys without an entry stay as they are.
 #pragma once
 #include <QDir>
 #include <QFile>
@@ -38,7 +38,7 @@ inline QHash<QString, QString> parseStrings(QString text) {
     return table;
 }
 
-// LC_ALL, LC_MESSAGES, LANG (erste gesetzte, nicht C/POSIX), ohne .UTF-8 / @Variante
+// LC_ALL, LC_MESSAGES, LANG (first one set, not C/POSIX), without .UTF-8 / @variant
 inline QString systemLocale() {
     for (const char *var : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
         QString v = qEnvironmentVariable(var);
@@ -65,7 +65,7 @@ class Translator {
 public:
     Translator(const QString &locale, const QString &lprojDir) : locale_(locale) {
         const QStringList chain = localeChain(locale);
-        for (int i = chain.size() - 1; i >= 0; i--) {  // en zuerst, spezifischere Orte überschreiben
+        for (int i = chain.size() - 1; i >= 0; i--) {  // en first, more specific locales override
             QFile f(QDir(lprojDir).filePath(chain[i] + QStringLiteral(".lproj/Localizable.strings")));
             if (f.open(QIODevice::ReadOnly)) {
                 const QHash<QString, QString> h = parseStrings(QString::fromUtf8(f.readAll()));

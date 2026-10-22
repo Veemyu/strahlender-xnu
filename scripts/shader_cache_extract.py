@@ -109,7 +109,7 @@ def main():
             print(f"{e['index']:5d} {e['stage']:5s} {e['bytes']:7d} B")
     else:
         (out / "index.json").write_text(json.dumps(index, indent=1))
-        print(f"{len(progs)} Programme, {len(index)} Module nach {out}")
+        print(f"{len(progs)} programs, {len(index)} modules to {out}")
 
 
 if __name__ == "__main__":

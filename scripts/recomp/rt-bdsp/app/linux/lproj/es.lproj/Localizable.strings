@@ -1,0 +1,24 @@
+/* Spanish menu texts of the Linux Qt host (also used for es_419, es_MX, … via the language fallback). The keys are the English texts. */
+"File" = "Archivo";
+"View" = "Vista";
+"Window" = "Ventana";
+"Help" = "Ayuda";
+"Open Save Folder" = "Abrir carpeta de partidas";
+"Import Save …" = "Importar partida …";
+"Pause" = "Pausa";
+"Restart" = "Reiniciar";
+"Reset Game …" = "Restablecer juego …";
+"Quit BDSP" = "Salir de BDSP";
+"Full Screen" = "Pantalla completa";
+"Frame Rate" = "Tasa de fotogramas";
+"Window Size %d × %d" = "Tamaño de ventana %d × %d";
+"Debug" = "Depuración";
+"Show MangoHud" = "Mostrar MangoHud";
+"Minimize" = "Minimizar";
+"Key Bindings …" = "Asignación de teclas …";
+"Open Cache Folder (Shaders, Images)" = "Abrir carpeta de caché (shaders, imágenes)";
+"Open Log Folder" = "Abrir carpeta de registros";
+"Key Bindings" = "Asignación de teclas";
+"Reset Game" = "Restablecer juego";
+"KEYS_HELP" = "Teclado: Intro/Espacio = A, Retroceso/J = B, X, Y, flechas y WASD = cruceta, Q/E = L/R, P = Más, O = Menos.\nVentana: F1–F4 tamaño, F5–F7 tasa de fotogramas 30/60/120, F11 pantalla completa (en el menú también Ctrl+1–4, Ctrl+F). Sin sonido.";
+"RESET_CONFIRM" = "La partida se guarda como copia y se borra; el juego se reinicia y empieza de nuevo.";

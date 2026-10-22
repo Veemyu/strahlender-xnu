@@ -72,7 +72,7 @@ def main():
             for ins in md.disasm_lite(chunk, pos):
                 cnt[ins[2]] += 1
                 ww = words[ins[0] >> 2]
-                # Daten-Verarbeitung FP/SIMD (Bits 27:25 = 111) oder FP/SIMD-Laden/Speichern (V=1, Bit 27 = 1, Bit 25 = 0)
+                # FP/SIMD data processing (bits 27:25 = 111) or FP/SIMD load/store (V=1, bit 27 = 1, bit 25 = 0)
                 if (ww >> 25) & 7 == 7 or ((ww >> 26) & 1 and (ww >> 27) & 1 and not (ww >> 25) & 1):
                     shp[shape(ins[2], ins[3])] += 1
                 k += 1

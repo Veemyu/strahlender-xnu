@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase-2-Spike der Rekompilation: .eh_frame / LSDA (C++-Landing-Pads) eines NSO-Moduls auswerten.
+"""Phase 2 spike of the recompilation: evaluate .eh_frame / LSDA (C++ landing pads) of an NSO module.
 
 Own code. Reads only local files (work/exefs, NSO) and writes numbers to work/recomp/spike2/.
 No game bytes, no generated code and no addresses are written to the repo; the output
@@ -222,7 +222,7 @@ def parse_module(img, hdr_off):
 
 
 def landing_pads(fdes):
-    """{Funktionsanfang: sortierte Liste der Landing-Pad-Adressen}."""
+    """{function start: sorted list of the landing pad addresses}."""
     res = {}
     for f in fdes:
         lps = sorted({lp for (_, _, lp, _) in f["sites"] if lp})
@@ -243,7 +243,7 @@ def load_module(name):
 
 
 def classify(img, f):
-    """Aktionsarten der Call-Sites: cleanup, catch(typed), catch(...), exception-spec, noexcept-terminate."""
+    """Action kinds of the call sites: cleanup, catch(typed), catch(...), exception-spec, noexcept-terminate."""
     info = f["lsda_info"]
     kinds = Counter()
     for (_, _, _, act), (s, l, lp, a) in zip(info["sites"], f["sites"]):

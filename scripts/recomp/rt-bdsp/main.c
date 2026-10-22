@@ -29,7 +29,7 @@ uint8_t *g_base;
 // blocked, so null pointers of the guest crash as on the console.
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
     void *p = mmap(NULL, GUEST_HI - GUEST_LO, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (p == MAP_FAILED) { fprintf(stderr, "FATAL: Gastfenster (4 GiB) nicht reservierbar: %s\n", strerror(errno)); _exit(1); }
+    if (p == MAP_FAILED) { fprintf(stderr, "FATAL: guest window (4 GiB) cannot be reserved: %s\n", strerror(errno)); _exit(1); }
     g_base = p;
     mprotect(p, 0x10000, PROT_NONE);
 }
@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
     no_window = 1;
 #endif
     for (int i = 1; i < argc; i++) {   // options (set the environment variables of the NVN layer)
-        if (!strcmp(argv[i], "--screenshot-after") && i + 1 < argc) {   // Bild Nr. N nach work/recomp/shots (BDSP_SHOT_DIR) speichern
+        if (!strcmp(argv[i], "--screenshot-after") && i + 1 < argc) {   // save frame no. N to work/recomp/shots (BDSP_SHOT_DIR)
             setenv("BDSP_SCREENSHOT_EVERY", argv[i + 1], 1);
             setenv("BDSP_SCREENSHOT_FROM", argv[i + 1], 1);
             i++;

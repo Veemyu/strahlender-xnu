@@ -166,7 +166,7 @@ void gen_cases(const Desc *d, Case *out, int n) {
         if (d->flags & DF_FPCR) {
             uint32_t m = rbelow(&r, 100);
             if (m >= 40) c->fpcr = fpcrs[rbelow(&r, 16)];
-            else if (m >= 30) c->fpcr = fpcrs[rbelow(&r, 4) * 4]; // nur RMode
+            else if (m >= 30) c->fpcr = fpcrs[rbelow(&r, 4) * 4]; // RMode only
             if ((d->flags & DF_AHP) && rbelow(&r, 4) == 0) c->fpcr |= 1u << 26;
         }
     }

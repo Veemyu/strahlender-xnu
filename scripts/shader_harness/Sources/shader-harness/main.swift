@@ -39,16 +39,16 @@ func run() throws {
         case "--xcrun-check": xcrun = true
         case "--fast-math": useFastMath = true  // XNU: default is safe math (see Render.swift)
         default:
-            guard specPath == nil, !args[i].hasPrefix("--") else { fail("unbekannte Option \(args[i])\n\(usage)", code: 2) }
+            guard specPath == nil, !args[i].hasPrefix("--") else { fail("unknown option \(args[i])\n\(usage)", code: 2) }
             specPath = args[i]
         }
         i += 1
     }
     guard let sp = specPath else { fail("Spec file missing\n\(usage)", code: 2) }
-    if cmd == "render" && out == nil { fail("render braucht --out <bild.png>", code: 2) }
+    if cmd == "render" && out == nil { fail("render needs --out <image.png>", code: 2) }
 
     let specURL = URL(fileURLWithPath: sp)
-    guard let raw = try? Data(contentsOf: specURL) else { throw HarnessError("Spec \(sp) nicht lesbar") }
+    guard let raw = try? Data(contentsOf: specURL) else { throw HarnessError("Spec \(sp) not readable") }
     let json: Any
     do { json = try JSONSerialization.jsonObject(with: raw) } catch { throw HarnessError("Spec \(sp): not valid JSON (\(error.localizedDescription))") }
     let spec = try parseSpec(json, base: specURL.deletingLastPathComponent())

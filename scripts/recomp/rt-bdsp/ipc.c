@@ -159,7 +159,7 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
     for (int i = 0; i < nb; i++, p += 3) { req.b[i].size = p[0] | ((uint64_t)((p[2] >> 24) & 0xF) << 32); req.b[i].addr = buf_addr(p); }
     req.nb = nb;
     uint32_t *raw = p;
-    uint32_t *aligned = (uint32_t *)((uint8_t *)msg + ((((uint8_t *)raw - (uint8_t *)msg) + 15) & ~(uintptr_t)15));  // 16-Byte-Ausrichtung relativ zum Nachrichtenanfang
+    uint32_t *aligned = (uint32_t *)((uint8_t *)msg + ((((uint8_t *)raw - (uint8_t *)msg) + 15) & ~(uintptr_t)15));  // 16-byte alignment relative to the start of the message
     if (cflags >= 2) {
         uint32_t *cdesc = raw + raw_words;
         int ncd = cflags == 2 ? 1 : (int)cflags - 2;

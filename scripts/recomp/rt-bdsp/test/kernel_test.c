@@ -150,7 +150,7 @@ static void guest_test(Cpu *c) {
 
 int main(void) {
     mach_vm_address_t a = GUEST_LO;
-    if (mach_vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) != KERN_SUCCESS) { printf("Gastfenster nicht frei\n"); return 2; }
+    if (mach_vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) != KERN_SUCCESS) { printf("guest window not free\n"); return 2; }
     kernel_init();
     dispatch_init();
     KThread *t = kernel_create_main_thread(FN_BASE + 64, 0x10000, 44, 0);

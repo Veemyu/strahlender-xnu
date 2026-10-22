@@ -24,7 +24,7 @@ typedef int *thread_state_t;
 #define KERN_SUCCESS 0
 #define KERN_FAILURE 5
 
-// ---- Zeit (mach_time.h)
+// ---- Time (mach_time.h)
 typedef struct { uint32_t numer, denom; } mach_timebase_info_data_t;
 static inline kern_return_t mach_timebase_info(mach_timebase_info_data_t *i) { i->numer = i->denom = 1; return KERN_SUCCESS; }
 static inline uint64_t mach_absolute_time(void) {

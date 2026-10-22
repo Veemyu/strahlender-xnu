@@ -77,8 +77,9 @@ def select_stages(requested=(), from_stage=None, to_stage=None, only=()):
 
 
 # ---------- Hashes and markers ----------
-# NOTE: the tokens "fehlt", "kein-marker", "ohne-prepare", "kein-manifest" and "keine" below are part of the stage
-# hashes. They only look German; changing them would invalidate every existing marker (and force a cold rebuild).
+# NOTE: the placeholder tokens below ("missing", "no-marker", "no-prepare", "no-manifest", "none") are part of the stage
+# hashes, but only in cases where an input is absent. Renaming them from their old German forms changed the hash of the
+# shaders stage once (SHADER_USED unset gave "keine"), so that stage re-runs a single time.
 
 def _sha(data):
     return hashlib.sha256(data).hexdigest()
@@ -86,7 +87,7 @@ def _sha(data):
 
 def hash_file(path):
     if not os.path.isfile(path):
-        return "fehlt"
+        return "missing"
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -106,7 +107,7 @@ def _walk(root):
 def hash_tree_content(root, suffixes=None, skip_dirs=("Library", "Temp", "Logs", "obj", "UserSettings")):
     """Hash over relative paths and contents (for small source folders)."""
     if not os.path.isdir(root):
-        return "fehlt"
+        return "missing"
     h = hashlib.sha256()
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in skip_dirs)
@@ -168,7 +169,7 @@ def clear_marker(work, stage):
 
 def _marker_hash(work, stage):
     m = read_marker(work, stage)
-    return m["hash"] if m else "kein-marker"
+    return m["hash"] if m else "no-marker"
 
 
 def read_env_value(path, key):
@@ -198,7 +199,7 @@ def nvn_source_stamp(rec):
     """Source hash of the NVN layer (nvn/src, translate.c, shader.h, prepare.sh); the only definition is in prepare.sh."""
     script = os.path.join(rec, "rt-bdsp", "nvn", "prepare.sh")
     if not os.path.isfile(script):
-        return "ohne-prepare"
+        return "no-prepare"
     r = subprocess.run(["bash", script, "--print"], capture_output=True, text=True, timeout=120)
     if r.returncode != 0 or not r.stdout.strip():
         raise RuntimeError("prepare.sh --print failed: " + r.stderr.strip())
@@ -210,7 +211,7 @@ def stage_hash(stage, root, work, target="all", env=None):
     env = os.environ if env is None else env
     scripts = os.path.join(root, "scripts")
     core = extract_core(work)
-    parts = {"stage": stage, "extract": core if core else "kein-manifest"}
+    parts = {"stage": stage, "extract": core if core else "no-manifest"}
 
     def files(*names):
         return {n: hash_file(os.path.join(scripts, n)) for n in names}
@@ -240,7 +241,7 @@ def stage_hash(stage, root, work, target="all", env=None):
         tr = os.path.join(root, "shader_translator")
         parts["translator"] = hash_tree_content(tr, (".c", ".h", "makefile"), skip_dirs=("build", "__pycache__"))
         used = env.get("SHADER_USED", "")
-        parts["used"] = hash_file(used) if used else "keine"
+        parts["used"] = hash_file(used) if used else "none"
     digest = _sha(json.dumps(parts, sort_keys=True).encode())
     return digest, parts
 

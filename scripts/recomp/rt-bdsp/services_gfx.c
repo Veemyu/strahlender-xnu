@@ -142,7 +142,7 @@ static int g_nv_fd = 1;
 enum { DEV_UNKNOWN, DEV_NVMAP, DEV_CTRL, DEV_CTRL_GPU, DEV_AS_GPU, DEV_GPU };
 static uint8_t nv_dev[256];
 static uint32_t nv_next_handle = 0x1000;
-static uint64_t nv_next_va = 0x100000000ull;  // GPU-Adressraum: wird fortlaufend vergeben
+static uint64_t nv_next_va = 0x100000000ull;  // GPU address space: handed out consecutively
 static uint32_t nv_map_size[4096];
 
 static void nv_ioctl(int dev, uint32_t cmd, const uint8_t *in, uint32_t isz, uint8_t *out, uint32_t osz) {

@@ -147,7 +147,7 @@ kept in Git; generated code, saves, screenshots, and RomFS stayed outside it.
 ### Original bundle and implementation snapshot
 
 The original report described `BDSP.app` as arm64/Metal, high-resolution and
-ad-hoc signed, with the German menus Spiel / Ansicht / Fenster / Hilfe. Its executable
+ad-hoc signed, with English menus (Game / View / Window / Help) and German, Spanish and Portuguese translations (`scripts/recomp/app/lproj`; the English text is the key, pt-BR uses pt, es-419 uses es). Its executable
 contained the runtime, about 220 MB of translated guest modules, the NVN/Metal
 layer, and the app shell. `Resources/img` held relocated module images from the
 user's dump, with `hle.txt` for HLE slots; `main.npdm` held program metadata.

@@ -274,8 +274,8 @@ static int run_one(char *line, uint64_t wrapper) {
     for (int i = 0; i < n; i++)
         if (rs.ra - 4 >= sites[i][0] && rs.ra - 4 < sites[i][1]) { expect = sites[i][2]; break; }
     int ok = expect ? rs.first_lp == expect : 0;
-    printf("  %-11s %llx: Wurf nach %d Aufrufen, erwartetes Landing-Pad %llx, betreten %llx, Wrapper %ld -> %s\n",
-           kind, f, rs.skipped, expect, (unsigned long long)rs.first_lp, r, ok ? "OK" : "ABWEICHUNG");
+    printf("  %-11s %llx: throw after %d calls, expected landing pad %llx, entered %llx, wrapper %ld -> %s\n",
+           kind, f, rs.skipped, expect, (unsigned long long)rs.first_lp, r, ok ? "OK" : "MISMATCH");
     return ok ? 0 : 2;
 }
 

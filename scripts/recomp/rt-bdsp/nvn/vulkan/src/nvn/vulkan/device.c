@@ -756,7 +756,7 @@ void ui_window_init(void) {
     }
     // the Fullscreen setting applies from the start screen on (not only once the game runs); test windows stay windows
     if (g_settings.fullscreen && !embed && !getenv("BDSP_WINDOW") && !getenv("BDSP_HIDDEN")) SDL_SetWindowFullscreen(window, true);
-    if (getenv("BDSP_MANGOHUD") && atoi(getenv("BDSP_MANGOHUD"))) {  // Linux: MangoHud-Overlay (Vulkan-Layer, Paket mangohud) einblenden; Standard aus
+    if (getenv("BDSP_MANGOHUD") && atoi(getenv("BDSP_MANGOHUD"))) {  // Linux: show the MangoHud overlay (Vulkan layer, package mangohud); off by default
         setenv("MANGOHUD", "1", 1);   // enables the implicit layer; must be set before vkCreateInstance
         if (!getenv("MANGOHUD_CONFIGFILE")) setenv("MANGOHUD_CONFIG", "fps,frametime,frame_timing=1,cpu_stats,gpu_stats,font_size=26,position=top-left", 0);
     }

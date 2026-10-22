@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>de</string>
+	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>BDSP</string>
 	<key>CFBundleIconFile</key>
@@ -14,8 +14,10 @@
 	<string>6.0</string>
 	<key>CFBundleLocalizations</key>
 	<array>
-		<string>de</string>
 		<string>en</string>
+		<string>de</string>
+		<string>es</string>
+		<string>pt</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>BDSP</string>
@@ -31,7 +33,7 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Spielstand (SaveData.bin oder Ordner)</string>
+			<string>Save (SaveData.bin or folder)</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
@@ -54,6 +56,6 @@
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Privat gebaut aus eigenem Dump; nicht zur Weitergabe.</string>
+	<string>Built privately from your own dump; not for distribution.</string>
 </dict>
 </plist>

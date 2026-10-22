@@ -36,7 +36,7 @@ typedef struct {
     uint8_t *tables;           // hash and meta tables (from tables_off in the image)
     uint64_t tables_off, tables_size, data_end;
     uint8_t header[0x50];
-    RFile **sorted;            // nach Datenoffset
+    RFile **sorted;            // by data offset
     int nfiles;
     uint64_t nreads, nbytes;
 } RomImage;

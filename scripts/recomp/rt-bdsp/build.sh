@@ -25,7 +25,7 @@ case "$NVN_BACKEND" in
     FW="-framework AudioToolbox -framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $([ -n "${BDSP_NO_MOVIE:-}" ] || pkg-config --libs libavcodec libavformat libavutil)" ;;
   none) EXTRA="-DBDSP_NVN_NONE"; RT="${RT}-none"; mkdir -p "$RT"
     [ "$(uname -s)" != Darwin ] || FW="-framework AudioToolbox" ;;
-  vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/), Laufzeitbibliotheken per Vollpfad
+  vulkan) RT="${RT}-vk"; OUT="${OUT}_vk"; mkdir -p "$RT"   # Linux/Windows: Vulkan version of the LAS NVN layer (nvn/vulkan/), runtime libraries by full path
     source scripts/recomp/linux/deps.sh
     linux_require_runtime
     RT="$RT" scripts/recomp/rt-bdsp/nvn/vulkan/build_vk.sh "$@"

@@ -1,7 +1,8 @@
 // Menu, keyboard, controller, file drops, pause and restart of the macOS app (see app.h, docs/recomp-macapp.md).
 // The window loop (ui_run in metal.m, SDL3) calls menu_handle_event for every event and menu_apply_window_requests
 // about every 16 ms on the main thread; both are implemented here (the stubs in nvn/nvn_glue.c are weakly bound).
-// Ton: keiner. Netz: keines.
+// Sound: none. Network: none.
+// UI texts: the English text is the key (NSLocalizedString, development language en); German is in lproj/de.lproj.
 #import <AppKit/AppKit.h>
 #import <GameController/GameController.h>
 #include <SDL3/SDL.h>
@@ -11,6 +12,8 @@
 
 #include "app.h"
 #import "../../app/icon_variants.h"
+
+#define L(s) NSLocalizedString(@s, nil)
 
 static void ApplyDockIcon(void) {
     NSDictionary *icons = BDSPReadIcons([NSString stringWithUTF8String:g_app.resources]);
@@ -73,7 +76,7 @@ static void release_all(void) {
     publish();
 }
 
-// ---- Controller (GameController.framework: Xbox, PlayStation, Switch Pro u. a.)
+// ---- Controller (GameController.framework: Xbox, PlayStation, Switch Pro, among others)
 static int32_t axis32(float v) {
     if (v > -0.12f && v < 0.12f) return 0;
     int32_t r = (int32_t)(v * 32767.0f);
@@ -87,7 +90,7 @@ static void pad_poll(void) {
     for (GCController *c in [GCController controllers]) {
         GCExtendedGamepad *g = c.extendedGamepad;
         if (!g) continue;
-        // Nintendo-Anordnung: A liegt rechts (GameController: buttonB), B unten (buttonA), X oben (buttonY), Y links (buttonX)
+        // Nintendo layout: A is on the right (GameController: buttonB), B at the bottom (buttonA), X at the top (buttonY), Y on the left (buttonX)
         if ((nintendo ? g.buttonB : g.buttonA).pressed) b |= 1ull << PB_A;
         if ((nintendo ? g.buttonA : g.buttonB).pressed) b |= 1ull << PB_B;
         if ((nintendo ? g.buttonY : g.buttonX).pressed) b |= 1ull << PB_X;
@@ -115,7 +118,7 @@ static void pad_poll(void) {
     }
 }
 
-// ---- Meldungen
+// ---- Messages
 static void front(void) {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     [NSApp activateIgnoringOtherApps:YES];
@@ -169,14 +172,14 @@ void bdsp_app_restart(void) {
 // ---- Save actions
 static void do_import(NSString *path) {
     char msg[3000];
-    NSInteger ok = ask(@"Spielstand importieren?",
-                       [NSString stringWithFormat:@"%@\n\nDer bisherige Spielstand wird vorher gesichert (backups/). Danach startet das Spiel neu.", path],
-                       @[@"Importieren", @"Abbrechen"]);
+    NSInteger ok = ask(L("Import save?"),
+                       [NSString stringWithFormat:L("%@\n\nThe current save is backed up first (backups/). Then the game restarts."), path],
+                       @[L("Import"), L("Cancel")]);
     if (ok != 1) return;
     int r = bdsp_save_import(path.fileSystemRepresentation, msg, sizeof msg);
-    fprintf(stderr, "[app] Import %s: %s\n", r == 0 ? "ok" : "abgelehnt", msg);
-    if (r != 0) { ask(@"Import abgelehnt", [NSString stringWithUTF8String:msg], @[@"OK"]); return; }
-    ask(@"Spielstand importiert", [NSString stringWithUTF8String:msg], @[@"Neustart"]);
+    fprintf(stderr, "[app] Import %s: %s\n", r == 0 ? "ok" : "rejected", msg);
+    if (r != 0) { ask(L("Import rejected"), [NSString stringWithUTF8String:msg], @[@"OK"]); return; }
+    ask(L("Save imported"), [NSString stringWithUTF8String:msg], @[L("Restart")]);
     bdsp_app_restart();
 }
 
@@ -187,30 +190,30 @@ static void open_folder(const char *dir) {
 }
 
 static const char *const k_default_config =
-    "# BDSP: Konfiguration (Schlüssel = Wert). Umgebungsvariablen BDSP_* haben Vorrang. Änderungen gelten nach einem Neustart.\n"
+    "# BDSP: configuration (key = value). Environment variables BDSP_* take precedence. Changes apply after a restart.\n"
     "# romfs = ~/Library/Application Support/dev.local.xnubdsp/romfs\n"
     "# save = ~/Library/Application Support/dev.local.xnubdsp/save\n"
     "# cache = ~/Library/Caches/dev.local.xnubdsp\n"
     "# logs = ~/Library/Logs/dev.local.xnubdsp\n"
-    "# language = en-US          # Sprache, die das Spiel erfragt (en-US, de, fr, es, it, ja, ko, zh-Hans, zh-Hant)\n"
-    "# window = 1280x720         # Fenstergröße in Punkten\n"
+    "# language = en-US          # language the game asks for (en-US, de, fr, es, it, ja, ko, zh-Hans, zh-Hant)\n"
+    "# window = 1280x720         # window size in points\n"
     "# fullscreen = 0\n"
-    "# pause_on_focus_loss = 0   # 1: Spiel hält an, wenn das Fenster den Fokus verliert\n"
-    "# pad_layout = nintendo     # nintendo (Tastenposition wie bei der Switch) oder xbox (Beschriftung)\n"
-    "# backups = 10              # Zahl der Sicherungen beim Start\n"
-    "# fps = 60                  # Bildrate: 30, 60 oder 120 (Menü Ansicht > Bildrate hat Vorrang)\n";
+    "# pause_on_focus_loss = 0   # 1: the game pauses when the window loses focus\n"
+    "# pad_layout = nintendo     # nintendo (button position as on the Switch) or xbox (labels)\n"
+    "# backups = 10              # number of backups at start\n"
+    "# fps = 60                  # frame rate: 30, 60 or 120 (the menu View > Frame Rate takes precedence)\n";
 
-static const char *const k_keys_help =
-    "Tastatur (Standard von Ryujinx):\n"
-    "  Z = A    X = B    C = X    V = Y\n"
-    "  Return/Leertaste = A    Rücktaste = B (zusätzlich)\n"
-    "  E = L    U = R    Q = ZL    O = ZR\n"
-    "  = oder Tab = +    Minus = −    F = L-Stick drücken    H = R-Stick drücken\n"
-    "  Pfeiltasten = Steuerkreuz\n"
-    "  W A S D = linker Stick    I J K L = rechter Stick\n\n"
-    "Controller (Xbox, PlayStation, Switch Pro): Tastenposition wie bei der Switch (pad_layout = xbox: nach Beschriftung), "
-    "Menü = +, Ansicht/Optionen = −.\n\n"
-    "Fenster: Cmd+F Vollbild, Cmd+1 bis Cmd+4 Fenstergröße, Cmd+P Pause, Cmd+R Neustart. Kein Ton.";
+#define KEYS_HELP_EN \
+    "Keyboard (Ryujinx default):\n" \
+    "  Z = A    X = B    C = X    V = Y\n" \
+    "  Return/Space = A    Backspace = B (additionally)\n" \
+    "  E = L    U = R    Q = ZL    O = ZR\n" \
+    "  = or Tab = +    Minus = −    F = press left stick    H = press right stick\n" \
+    "  Arrow keys = D-pad\n" \
+    "  W A S D = left stick    I J K L = right stick\n\n" \
+    "Controller (Xbox, PlayStation, Switch Pro): button position as on the Switch (pad_layout = xbox: by label), " \
+    "Menu = +, View/Options = −.\n\n" \
+    "Window: Cmd+F full screen, Cmd+1 to Cmd+4 window size, Cmd+P pause, Cmd+R restart. No sound."
 
 @interface BdspMenu : NSObject <NSMenuItemValidation>
 @end
@@ -225,21 +228,21 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     p.canChooseDirectories = YES;
     p.allowsMultipleSelection = NO;
     p.showsHiddenFiles = YES;
-    p.message = @"SaveData.bin oder den Ordner damit wählen (Ryujinx: bis/user/save/<ID>/0; Switch: exportierter Spielstand)";
-    p.prompt = @"Wählen";
+    p.message = L("Choose SaveData.bin or the folder containing it (Ryujinx: bis/user/save/<ID>/0; Switch: exported save)");
+    p.prompt = L("Choose");
     if ([p runModal] == NSModalResponseOK && p.URL) do_import(p.URL.path);
 }
 - (void)resetSave:(id)s {
-    if (ask(@"Spielstand zurücksetzen?", @"Der aktuelle Spielstand wird in den Sicherungsordner verschoben (backups/), danach beginnt das Spiel ohne Spielstand neu.",
-            @[@"Zurücksetzen", @"Abbrechen"]) != 1) return;
+    if (ask(L("Reset save?"), L("The current save is moved to the backup folder (backups/), then the game starts again without a save."),
+            @[L("Reset"), L("Cancel")]) != 1) return;
     char msg[1700];
     int r = bdsp_save_reset(msg, sizeof msg);
     fprintf(stderr, "[app] Reset: %s\n", msg);
-    if (r != 0) { ask(@"Zurücksetzen fehlgeschlagen", [NSString stringWithUTF8String:msg], @[@"OK"]); return; }
+    if (r != 0) { ask(L("Reset failed"), [NSString stringWithUTF8String:msg], @[@"OK"]); return; }
     bdsp_app_restart();
 }
 - (void)restart:(id)s {
-    if (ask(@"Neustart", @"Das Spiel wird beendet und neu gestartet. Nicht gespeicherter Fortschritt geht verloren.", @[@"Neustart", @"Abbrechen"]) == 1) bdsp_app_restart();
+    if (ask(L("Restart"), L("The game is closed and restarted. Unsaved progress is lost."), @[L("Restart"), L("Cancel")]) == 1) bdsp_app_restart();
 }
 - (void)togglePause:(id)s { g_user_paused = !g_user_paused; apply_pause(); if (g_user_paused) release_all(); }
 - (void)toggleFullscreen:(id)s {
@@ -260,7 +263,7 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
 - (void)toggleMetalHud:(id)s {
     NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
     [d setBool:![d boolForKey:@"bdsp_metal_hud"] forKey:@"bdsp_metal_hud"];
-    ask(@"Metal-HUD", NSLocalizedString(@"Wirkt nach einem Neustart von BDSP.", nil), @[@"OK"]);
+    ask(@"Metal HUD", L("Takes effect after restarting BDSP."), @[@"OK"]);
 }
 - (void)openCache:(id)s { open_folder(g_app.cache); }
 - (void)openLogs:(id)s { open_folder(g_app.logs); }
@@ -268,7 +271,7 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     if (access(g_app.config, R_OK) != 0) { FILE *f = fopen(g_app.config, "w"); if (f) { fputs(k_default_config, f); fclose(f); } }
     [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:[NSString stringWithUTF8String:g_app.config]]]];
 }
-- (void)showKeys:(id)s { ask(@"Tastenbelegung", [NSString stringWithUTF8String:k_keys_help], @[@"OK"]); }
+- (void)showKeys:(id)s { ask(L("Key Bindings"), NSLocalizedStringWithDefaultValue(@"KEYS_HELP", nil, NSBundle.mainBundle, @KEYS_HELP_EN, nil), @[@"OK"]); }
 - (void)selectAppIcon:(NSMenuItem *)sender {
     [NSUserDefaults.standardUserDefaults setObject:sender.representedObject forKey:@"bdsp_app_icon"];
     ApplyDockIcon();
@@ -306,21 +309,20 @@ static void install_menu(void) {
     NSMenuItem *ai = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
     NSMenu *am = [[NSMenu alloc] initWithTitle:name];
     ai.submenu = am;
-    item(am, @"Über BDSP", @selector(orderFrontStandardAboutPanel:), @"", 0, NSApp);
-    BOOL germanIcons = [[NSLocale.preferredLanguages.firstObject lowercaseString] hasPrefix:@"de"];
-    NSMenuItem *iconItem = [am addItemWithTitle:germanIcons ? @"App-Symbol" : @"App icon" action:nil keyEquivalent:@""];
+    item(am, L("About BDSP"), @selector(orderFrontStandardAboutPanel:), @"", 0, NSApp);
+    NSMenuItem *iconItem = [am addItemWithTitle:L("App icon") action:nil keyEquivalent:@""];
     NSMenu *iconMenu = [[NSMenu alloc] initWithTitle:iconItem.title];
     iconItem.submenu = iconMenu;
-    NSMenuItem *defaultIcon = item(iconMenu, germanIcons ? @"Standard (Englisch)" : @"Default (English)", @selector(selectAppIcon:), @"", 0, g_target);
+    NSMenuItem *defaultIcon = item(iconMenu, L("Default (English)"), @selector(selectAppIcon:), @"", 0, g_target);
     defaultIcon.representedObject = @"default";
     NSDictionary *icons = BDSPReadIcons([NSString stringWithUTF8String:g_app.resources]);
     NSDictionary *recommended = BDSPRecommendedIcon(icons, NSLocale.preferredLanguages);
     NSDictionary *standardIcon = BDSPFindIcon(icons, @"default");
     if (standardIcon && ![icons[@"default"] hasPrefix:@"en-"])
-        defaultIcon.title = [NSString stringWithFormat:@"%@ (%@)", germanIcons ? @"Standard" : @"Default", standardIcon[@"label"]];
+        defaultIcon.title = [NSString stringWithFormat:@"%@ (%@)", L("Default"), standardIcon[@"label"]];
     for (NSDictionary *variant in icons[@"variants"]) {
         NSString *label = variant[@"label"];
-        if ([variant[@"id"] isEqual:recommended[@"id"]]) label = [label stringByAppendingString:germanIcons ? @" (empfohlen)" : @" (recommended)"];
+        if ([variant[@"id"] isEqual:recommended[@"id"]]) label = [label stringByAppendingString:L(" (recommended)")];
         NSMenuItem *entry = item(iconMenu, label, @selector(selectAppIcon:), @"", 0, g_target);
         entry.representedObject = variant[@"id"];
         entry.image = [[NSImage alloc] initWithContentsOfFile:[[[NSString stringWithUTF8String:g_app.resources] stringByAppendingPathComponent:@"AppIcons"] stringByAppendingPathComponent:variant[@"mac_image"] ?: variant[@"image"]]];
@@ -328,28 +330,28 @@ static void install_menu(void) {
     }
     ApplyDockIcon();
     [am addItem:[NSMenuItem separatorItem]];
-    item(am, @"BDSP ausblenden", @selector(hide:), @"h", NSEventModifierFlagCommand, NSApp);
-    item(am, @"Andere ausblenden", @selector(hideOtherApplications:), @"h", NSEventModifierFlagCommand | NSEventModifierFlagOption, NSApp);
-    item(am, @"Alle einblenden", @selector(unhideAllApplications:), @"", 0, NSApp);
+    item(am, L("Hide BDSP"), @selector(hide:), @"h", NSEventModifierFlagCommand, NSApp);
+    item(am, L("Hide Others"), @selector(hideOtherApplications:), @"h", NSEventModifierFlagCommand | NSEventModifierFlagOption, NSApp);
+    item(am, L("Show All"), @selector(unhideAllApplications:), @"", 0, NSApp);
     [am addItem:[NSMenuItem separatorItem]];
-    item(am, @"BDSP beenden", @selector(terminate:), @"q", NSEventModifierFlagCommand, NSApp);
+    item(am, L("Quit BDSP"), @selector(terminate:), @"q", NSEventModifierFlagCommand, NSApp);
     // Game
     NSMenuItem *gi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
-    NSMenu *gm = [[NSMenu alloc] initWithTitle:@"Spiel"];
+    NSMenu *gm = [[NSMenu alloc] initWithTitle:L("Game")];
     gi.submenu = gm;
-    item(gm, @"Spielstand-Ordner öffnen", @selector(openSave:), @"o", NSEventModifierFlagCommand, g_target);
-    item(gm, @"Spielstand importieren …", @selector(importSave:), @"i", NSEventModifierFlagCommand, g_target);
+    item(gm, L("Open Save Folder"), @selector(openSave:), @"o", NSEventModifierFlagCommand, g_target);
+    item(gm, L("Import Save …"), @selector(importSave:), @"i", NSEventModifierFlagCommand, g_target);
     [gm addItem:[NSMenuItem separatorItem]];
-    item(gm, @"Pause", @selector(togglePause:), @"p", NSEventModifierFlagCommand, g_target);
-    item(gm, @"Neustart", @selector(restart:), @"r", NSEventModifierFlagCommand, g_target);
-    item(gm, @"Spiel zurücksetzen …", @selector(resetSave:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagShift, g_target);
-    // Ansicht
+    item(gm, L("Pause"), @selector(togglePause:), @"p", NSEventModifierFlagCommand, g_target);
+    item(gm, L("Restart"), @selector(restart:), @"r", NSEventModifierFlagCommand, g_target);
+    item(gm, L("Reset Game …"), @selector(resetSave:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagShift, g_target);
+    // View
     NSMenuItem *vi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
-    NSMenu *vm = [[NSMenu alloc] initWithTitle:NSLocalizedString(@"Ansicht", nil)];
+    NSMenu *vm = [[NSMenu alloc] initWithTitle:L("View")];
     vi.submenu = vm;
-    item(vm, NSLocalizedString(@"Vollbild", nil), @selector(toggleFullscreen:), @"f", NSEventModifierFlagCommand, g_target);
-    NSMenuItem *fi = [vm addItemWithTitle:NSLocalizedString(@"Bildrate", nil) action:nil keyEquivalent:@""];
-    NSMenu *fm = [[NSMenu alloc] initWithTitle:NSLocalizedString(@"Bildrate", nil)];
+    item(vm, L("Full Screen"), @selector(toggleFullscreen:), @"f", NSEventModifierFlagCommand, g_target);
+    NSMenuItem *fi = [vm addItemWithTitle:L("Frame Rate") action:nil keyEquivalent:@""];
+    NSMenu *fm = [[NSMenu alloc] initWithTitle:L("Frame Rate")];
     fi.submenu = fm;
     for (NSNumber *f in @[@30, @60, @120]) {
         NSMenuItem *it = item(fm, [NSString stringWithFormat:@"%@ fps", f], @selector(setFps:), @"", 0, g_target);
@@ -360,29 +362,29 @@ static void install_menu(void) {
     [vm addItem:[NSMenuItem separatorItem]];
     static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
     for (int i = 0; i < 4; i++) {
-        NSMenuItem *it = item(vm, [NSString stringWithFormat:NSLocalizedString(@"Fenstergröße %d × %d", nil), sizes[i][0], sizes[i][1]], @selector(windowSize:),
+        NSMenuItem *it = item(vm, [NSString stringWithFormat:L("Window Size %d × %d"), sizes[i][0], sizes[i][1]], @selector(windowSize:),
                               [NSString stringWithFormat:@"%d", i + 1], NSEventModifierFlagCommand, g_target);
         it.tag = (NSInteger)sizes[i][0] << 16 | sizes[i][1];
     }
     [vm addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *di = [vm addItemWithTitle:NSLocalizedString(@"Debug", nil) action:nil keyEquivalent:@""];
-    NSMenu *dm = [[NSMenu alloc] initWithTitle:NSLocalizedString(@"Debug", nil)];
+    NSMenuItem *di = [vm addItemWithTitle:L("Debug") action:nil keyEquivalent:@""];
+    NSMenu *dm = [[NSMenu alloc] initWithTitle:L("Debug")];
     di.submenu = dm;
-    item(dm, NSLocalizedString(@"Metal-HUD anzeigen", nil), @selector(toggleMetalHud:), @"", 0, g_target);
+    item(dm, L("Show Metal HUD"), @selector(toggleMetalHud:), @"", 0, g_target);
     // Window
     NSMenuItem *wi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
-    NSMenu *wm = [[NSMenu alloc] initWithTitle:@"Fenster"];
+    NSMenu *wm = [[NSMenu alloc] initWithTitle:L("Window")];
     wi.submenu = wm;
-    item(wm, @"Im Dock ablegen", @selector(performMiniaturize:), @"m", NSEventModifierFlagCommand, nil);
+    item(wm, L("Minimize"), @selector(performMiniaturize:), @"m", NSEventModifierFlagCommand, nil);
     [NSApp setWindowsMenu:wm];
-    // Hilfe
+    // Help
     NSMenuItem *hi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
-    NSMenu *hm = [[NSMenu alloc] initWithTitle:@"Hilfe"];
+    NSMenu *hm = [[NSMenu alloc] initWithTitle:L("Help")];
     hi.submenu = hm;
-    item(hm, @"Tastenbelegung …", @selector(showKeys:), @"", 0, g_target);
-    item(hm, @"Konfigurationsdatei zeigen", @selector(showConfig:), @"", 0, g_target);
-    item(hm, @"Cache-Ordner öffnen (Shader, Bilder)", @selector(openCache:), @"", 0, g_target);
-    item(hm, @"Log-Ordner öffnen", @selector(openLogs:), @"", 0, g_target);
+    item(hm, L("Key Bindings …"), @selector(showKeys:), @"", 0, g_target);
+    item(hm, L("Show Configuration File"), @selector(showConfig:), @"", 0, g_target);
+    item(hm, L("Open Cache Folder (Shaders, Images)"), @selector(openCache:), @"", 0, g_target);
+    item(hm, L("Open Log Folder"), @selector(openLogs:), @"", 0, g_target);
     [NSApp setMainMenu:bar];
     [NSApp setHelpMenu:hm];
     if (getenv("BDSP_MENU_DUMP")) {   // check of the menu structure without looking at the screen
@@ -391,13 +393,13 @@ static void install_menu(void) {
             for (NSMenuItem *it in top.submenu.itemArray)
                 if (!it.separatorItem) fprintf(stderr, "[menu]   %s [%s%s%s%s]\n", it.title.UTF8String,
                                                (it.keyEquivalentModifierMask & NSEventModifierFlagCommand) ? "Cmd+" : "",
-                                               (it.keyEquivalentModifierMask & NSEventModifierFlagShift) ? "Umschalt+" : "",
-                                               (it.keyEquivalentModifierMask & NSEventModifierFlagOption) ? "Wahl+" : "", it.keyEquivalent.UTF8String);
+                                               (it.keyEquivalentModifierMask & NSEventModifierFlagShift) ? "Shift+" : "",
+                                               (it.keyEquivalentModifierMask & NSEventModifierFlagOption) ? "Option+" : "", it.keyEquivalent.UTF8String);
         }
     }
 }
 
-// ---- Hooks der Fensterschleife (metal.m ui_run)
+// ---- Hooks of the window loop (metal.m ui_run)
 bool menu_handle_event(const SDL_Event *e) {
     switch (e->type) {
     case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP:

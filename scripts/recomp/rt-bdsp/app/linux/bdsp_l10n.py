@@ -1,8 +1,9 @@
-"""Menütexte der Linux-Qt-Hülle aus Localizable.strings (Format und Schlüssel wie scripts/recomp/app/lproj der Mac-App).
+"""Menu texts of the Linux Qt host from Localizable.strings (format and keys as in scripts/recomp/app/lproj of the Mac app).
 
-Die Schlüssel sind die deutschen Texte (Entwicklungssprache wie am Mac, NSLocalizedString). Je Sprache ein Ordner <loc>.lproj/Localizable.strings
-neben dieser Datei: de, en (Standard und Rückfall), en_US, en_GB. Die Auswahl folgt LC_ALL, LC_MESSAGES, LANG; Kette: Ort (z. B. en_GB), Sprache (en),
-dann en; en_UK gilt als en_GB; de_DE ist de. Fehlt ein Schlüssel überall, bleibt der Schlüssel selbst stehen. Kein Qt nötig (testbar).
+The keys are the English texts (development language as on the Mac, NSLocalizedString). One folder <loc>.lproj/Localizable.strings per language
+next to this file: de, es, pt; English (default and fallback) needs no texts of its own. The choice follows LC_ALL, LC_MESSAGES, LANG; chain:
+locale (e.g. pt_BR), language (pt), then en; so pt_BR uses pt, es_MX/es_419 use es, and every English variant (en_US, en_GB, en_AU, …) is
+plain English. If a key is missing everywhere, the key itself is shown. No Qt needed (testable).
 """
 import os
 import re
@@ -23,7 +24,7 @@ def parse_strings(text):
 
 
 def system_locale(env=None):
-    """LC_ALL, LC_MESSAGES, LANG (erste gesetzte, nicht C/POSIX) -> "de_DE", "en_GB", ... ; leer = unbekannt."""
+    """LC_ALL, LC_MESSAGES, LANG (first one set, not C/POSIX) -> "de_DE", "en_GB", ... ; empty = unknown."""
     env = os.environ if env is None else env
     for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
         v = env.get(var, "")
@@ -33,7 +34,7 @@ def system_locale(env=None):
 
 
 def chain(locale):
-    """Suchreihenfolge der Sprachordner, immer mit en am Ende."""
+    """Search order of the language folders, always with en at the end."""
     loc = (locale or "").replace("-", "_")
     parts = loc.split("_")
     lang = parts[0].lower()
@@ -51,7 +52,7 @@ def chain(locale):
 
 
 def load(locale=None, base=LPROJ):
-    """Tabelle mit allen Schlüsseln: spezifisch überschreibt allgemein, en liegt darunter."""
+    """Table with all keys: specific overrides general, en is underneath."""
     table = {}
     for name in reversed(chain(system_locale() if locale is None else locale)):
         path = os.path.join(base, name + ".lproj", "Localizable.strings")

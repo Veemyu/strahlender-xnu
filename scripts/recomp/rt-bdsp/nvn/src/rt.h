@@ -22,7 +22,7 @@ typedef void (*HostFn)(Cpu *c);
 uint64_t hle_register(const char *name, HostFn fn);
 HostFn hle_lookup_impl(const char *name);
 void rt_fatal_trace(void);
-void nvn_fatal(void) __attribute__((noreturn));   // Bericht und Prozessende (nvn_glue.c)
+void nvn_fatal(void) __attribute__((noreturn));   // report and process exit (nvn_glue.c)
 void guest_call(Cpu *c, uint64_t addr);
 void *hle_alloc(uint64_t size);
 void rt_window_icon(void *sdl_window);

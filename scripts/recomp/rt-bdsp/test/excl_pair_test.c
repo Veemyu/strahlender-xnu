@@ -50,7 +50,7 @@ int main(void) {
     CHECK(lo == 0x1111 && hi == 0x2222);
     CHECK(stxp64(c, a, GPTR(a), 7, 8) == 0);
     CHECK(p.lo == 7 && p.hi == 8);
-    CHECK(stxp64(c, a, GPTR(a), 9, 9) == 1);  // Monitor ist verbraucht
+    CHECK(stxp64(c, a, GPTR(a), 9, 9) == 1);  // the monitor is used up
     CHECK(p.lo == 7 && p.hi == 8);
     ldxp64(c, a, GPTR(a), &lo, &hi);
     p.hi = 99;  // foreign write between ldxp and stxp

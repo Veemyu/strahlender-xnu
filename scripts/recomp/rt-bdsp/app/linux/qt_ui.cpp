@@ -294,19 +294,19 @@ private:
 
     void buildMenus() {  // Match the menu structure and localization keys in bdsp_qt_host.cpp / app_ui.m.
         QMenuBar *bar = menuBar();
-        QMenu *m = bar->addMenu(tr_("Datei"));
-        act(m, tr_("Spielstand-Ordner öffnen"), [this] { openSave(); }, "Ctrl+O");
-        act(m, tr_("Spielstand importieren …"), [this] { importSave(); }, "Ctrl+I");
+        QMenu *m = bar->addMenu(tr_("File"));
+        act(m, tr_("Open Save Folder"), [this] { openSave(); }, "Ctrl+O");
+        act(m, tr_("Import Save …"), [this] { importSave(); }, "Ctrl+I");
         m->addSeparator();
         pauseAct_ = act(m, tr_("Pause"), [this] { togglePause(); }, "Ctrl+P", true);
-        act(m, tr_("Neustart"), [this] { restartGame(); }, "Ctrl+R");
-        act(m, tr_("Spiel zurücksetzen …"), [this] { resetSave(); }, "Ctrl+Shift+R");
+        act(m, tr_("Restart"), [this] { restartGame(); }, "Ctrl+R");
+        act(m, tr_("Reset Game …"), [this] { resetSave(); }, "Ctrl+Shift+R");
         m->addSeparator();
-        act(m, tr_("BDSP beenden"), [this] { close(); }, "Ctrl+Q");
+        act(m, tr_("Quit BDSP"), [this] { close(); }, "Ctrl+Q");
 
-        m = viewMenu_ = bar->addMenu(tr_("Ansicht"));
-        fullAct_ = act(m, tr_("Vollbild"), [this] { toggleFullscreen(); }, "Ctrl+F", true);
-        fpsMenu_ = m->addMenu(tr_("Bildrate"));
+        m = viewMenu_ = bar->addMenu(tr_("View"));
+        fullAct_ = act(m, tr_("Full Screen"), [this] { toggleFullscreen(); }, "Ctrl+F", true);
+        fpsMenu_ = m->addMenu(tr_("Frame Rate"));
         QActionGroup *grp = new QActionGroup(this);
         grp->setExclusive(true);
         for (int f : kFps) {
@@ -318,20 +318,20 @@ private:
         for (int i = 0; i < 4; i++) {
             const int w = kSizes[i][0], h = kSizes[i][1];
             const QByteArray key = "Ctrl+" + QByteArray::number(i + 1);
-            act(m, fillSize(tr_("Fenstergröße %d × %d"), w, h), [this, w, h] { setSize(w, h); }, key.constData());
+            act(m, fillSize(tr_("Window Size %d × %d"), w, h), [this, w, h] { setSize(w, h); }, key.constData());
         }
         m->addSeparator();
         debugMenu_ = m->addMenu(tr_("Debug"));
-        hudAct_ = act(debugMenu_, tr_("MangoHud anzeigen"), [this] { writeHudConf(hudAct_->isChecked()); }, nullptr, true);
+        hudAct_ = act(debugMenu_, tr_("Show MangoHud"), [this] { writeHudConf(hudAct_->isChecked()); }, nullptr, true);
         hudAct_->setEnabled(!QStandardPaths::findExecutable(QStringLiteral("mangohud")).isEmpty());
 
-        m = bar->addMenu(tr_("Fenster"));
-        act(m, tr_("Minimieren"), [this] { showMinimized(); }, "Ctrl+M");
+        m = bar->addMenu(tr_("Window"));
+        act(m, tr_("Minimize"), [this] { showMinimized(); }, "Ctrl+M");
 
-        m = bar->addMenu(tr_("Hilfe"));
-        act(m, tr_("Tastenbelegung …"), [this] { QMessageBox::information(this, tr_("Tastenbelegung"), tr_("KEYS_HELP")); });
-        act(m, tr_("Cache-Ordner öffnen (Shader, Bilder)"), [this] { openDir("work/recomp/cache"); });
-        act(m, tr_("Log-Ordner öffnen"), [this] { openDir("work/recomp/logs"); });
+        m = bar->addMenu(tr_("Help"));
+        act(m, tr_("Key Bindings …"), [this] { QMessageBox::information(this, tr_("Key Bindings"), tr_("KEYS_HELP")); });
+        act(m, tr_("Open Cache Folder (Shaders, Images)"), [this] { openDir("work/recomp/cache"); });
+        act(m, tr_("Open Log Folder"), [this] { openDir("work/recomp/logs"); });
     }
 
     // ---------------------------------------------------------------- Actions (same hooks as SDL function keys)
@@ -402,7 +402,7 @@ private:
     }
 
     void importSave() {
-        QString title = tr_("Spielstand importieren …");
+        QString title = tr_("Import Save …");
         title.remove(QStringLiteral(" …"));
         const QString path = QFileDialog::getOpenFileName(this, title, QString(), QStringLiteral("SaveData.bin (SaveData.bin);;*"));
         if (path.isEmpty()) return;
@@ -418,7 +418,7 @@ private:
     }
 
     void resetSave() {
-        if (QMessageBox::question(this, tr_("Spiel zurücksetzen"), tr_("RESET_CONFIRM")) != QMessageBox::Yes) return;
+        if (QMessageBox::question(this, tr_("Reset Game"), tr_("RESET_CONFIRM")) != QMessageBox::Yes) return;
         backupSave(QStringLiteral("reset"));
         for (const QString &n : {QStringLiteral("SaveData.bin"), QStringLiteral("Backup.bin")}) QFile::remove(QDir(saveDir()).filePath(n));
         restartGame();

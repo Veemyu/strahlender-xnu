@@ -42,7 +42,7 @@ def _chunks(data):
         body = data[pos + 8:pos + 8 + n]
         crc_bytes = data[pos + 8 + n:pos + 12 + n]
         if len(body) != n or len(crc_bytes) != 4 or zlib.crc32(typ + body) & 0xFFFFFFFF != struct.unpack(">I", crc_bytes)[0]:
-            raise PngError(f"Chunk {typ!r}: Laenge/CRC fehlerhaft")
+            raise PngError(f"Chunk {typ!r}: length/CRC invalid")
         yield typ, body
         pos += 12 + n
         if typ == b"IEND":
@@ -118,13 +118,13 @@ def decode_png(data):
     if ctype not in CHANNELS or depth not in VALID_DEPTHS[ctype] or comp != 0 or filt != 0 or inter not in (0, 1):
         raise PngError(f"unsupported header {ihdr}")
     if w == 0 or h == 0:
-        raise PngError("leeres Bild")
+        raise PngError("empty image")
     if ctype == 3 and plte is None:
         raise PngError("PLTE missing")
     try:
         raw = zlib.decompress(bytes(idat))
     except zlib.error as e:
-        raise PngError(f"IDAT nicht entpackbar: {e}")
+        raise PngError(f"IDAT cannot be decompressed: {e}")
 
     nch = CHANNELS[ctype]
     bits = nch * depth
@@ -187,7 +187,7 @@ def read_png(path):
 def encode_png(w, h, rgba):
     """RGBA8 -> PNG (filter 0, no extra chunks)."""
     if len(rgba) != w * h * 4:
-        raise ValueError("rgba-Laenge passt nicht zu Breite*Hoehe*4")
+        raise ValueError("rgba length does not match width*height*4")
 
     def chunk(typ, body):
         return struct.pack(">I", len(body)) + typ + body + struct.pack(">I", zlib.crc32(typ + body) & 0xFFFFFFFF)

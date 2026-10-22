@@ -50,7 +50,7 @@ uint64_t g_nvn_mem_base, g_nvn_mem_size;
 uint64_t plat_now_ns(void) { return rt_now_ns(); }
 void nvn_fatal(void) {
     rt_fatal_trace();
-    bdsp_fatal_report("FATAL in der NVN-Schicht", 3);
+    bdsp_fatal_report("FATAL in the NVN layer", 3);
     for (;;) sleep(1);   // the main thread/the supervision creates the report and ends the process
 }
 void plat_sleep_until_ns(uint64_t t) {
@@ -310,7 +310,7 @@ NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_16NpadJoyDualStateEiRKj", npad_ss_du
 NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_16NpadJoyLeftStateEiRKj", npad_ss_left)
 NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_17NpadHandheldStateEiRKj", npad_ss_hand)
 NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_17NpadJoyRightStateEiRKj", npad_ss_right)
-HLE_FUNC("_ZN2nn3hid15GetNpadStyleSetERKj", npad_style) { c->x[0] = *(uint32_t *)G2HC(c->x[0]) == 0 ? 1 : 0; }  // nur Spieler 1, Stil „Pro Controller“
+HLE_FUNC("_ZN2nn3hid15GetNpadStyleSetERKj", npad_style) { c->x[0] = *(uint32_t *)G2HC(c->x[0]) == 0 ? 1 : 0; }  // player 1 only, style "Pro Controller"
 
 // ---- Stubs for hooks of the clone (widescreen, Zelda effects, menu, input, restart within the process)
 void settings_load(void) {}
@@ -356,7 +356,7 @@ static void frame_pace(void) {
             report_ns = now;
         }
     }
-    if (next_ns == 0 || now > next_ns + 4 * period_ns) next_ns = now;  // nach Stillstand (Laden) neu aufsetzen
+    if (next_ns == 0 || now > next_ns + 4 * period_ns) next_ns = now;  // restart after a stall (loading)
     next_ns += period_ns;
     if (now < next_ns) {
         struct timespec ts = {(time_t)((next_ns - now) / 1000000000ull), (long)((next_ns - now) % 1000000000ull)};

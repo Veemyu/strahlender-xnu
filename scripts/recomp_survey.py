@@ -678,7 +678,7 @@ def cmd_gensample(args):
         labels, ext, tables = m.scan(a, end)
         lines = m.emit_function(a, end, labels, tables, {})
         size = sum(len(x) + 1 for x in lines)
-        if args.emit_dir and size >= args.emit_min_bytes:  # Messdateien nach work/recomp (gitignoriert)
+        if args.emit_dir and size >= args.emit_min_bytes:  # measurement files to work/recomp (gitignored)
             emitted.append((lines, set(getattr(m, "_refs", set()))))
         tot_bytes += size
         tot_ins += (end - a) // 4

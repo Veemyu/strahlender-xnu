@@ -51,7 +51,7 @@
 			buildPhases = (
 				A50000000000000000000001 /* Sources */,
 				A50000000000000000000002 /* Resources */,
-				A50000000000000000000003 /* Shader und Pipelines ins Bundle kopieren */,
+				A50000000000000000000003 /* Copy shaders and pipelines into the bundle */,
 			);
 			buildRules = (
 			);
@@ -102,7 +102,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		A50000000000000000000003 /* Shader und Pipelines ins Bundle kopieren */ = {
+		A50000000000000000000003 /* Copy shaders and pipelines into the bundle */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -112,7 +112,7 @@
 			);
 			inputPaths = (
 			);
-			name = "Shader und Pipelines ins Bundle kopieren";
+			name = "Copy shaders and pipelines into the bundle";
 			outputFileListPaths = (
 			);
 			outputPaths = (

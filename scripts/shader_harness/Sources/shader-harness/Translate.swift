@@ -27,10 +27,10 @@ func runProcess(_ exe: String, _ args: [String]) throws -> (status: Int32, out: 
     return (p.terminationStatus, outData, errData)
 }
 
-/// SPIR-V -> MSL 2.3 per spirv-cross; Entry-Point heisst danach `main0`.
+/// SPIR-V -> MSL 2.3 via spirv-cross; the entry point is then named `main0`.
 func translateToMSL(_ stage: StageSource) throws -> String {
     if let m = stage.msl {
-        guard let s = try? String(contentsOf: m, encoding: .utf8) else { throw HarnessError("MSL \(m.path) nicht lesbar") }
+        guard let s = try? String(contentsOf: m, encoding: .utf8) else { throw HarnessError("MSL \(m.path) not readable") }
         return s
     }
     guard let spv = stage.spirv else { throw HarnessError("no shader source") }
@@ -42,7 +42,7 @@ func translateToMSL(_ stage: StageSource) throws -> String {
     args += stage.extraArgs
     let r = try runProcess(exe, args)
     guard r.status == 0 else {
-        throw HarnessError("spirv-cross exit \(r.status) for\(spv.lastPathComponent): \(String(decoding: r.err, as: UTF8.self))")
+        throw HarnessError("spirv-cross exit \(r.status) for \(spv.lastPathComponent): \(String(decoding: r.err, as: UTF8.self))")
     }
     return String(decoding: r.out, as: UTF8.self)
 }
@@ -50,7 +50,7 @@ func translateToMSL(_ stage: StageSource) throws -> String {
 /// Optional offline check with `xcrun metal` (only useful if the Metal toolchain is installed).
 func xcrunMetalCheck(file: URL) -> String {
     guard let r = try? runProcess("/usr/bin/xcrun", ["-sdk", "macosx", "metal", "-std=macos-metal2.3", "-c", file.path, "-o", file.path + ".air"]) else {
-        return "xcrun nicht startbar"
+        return "xcrun cannot be started"
     }
     if r.status == 0 { return "ok" }
     return "not available/failed: " + String(decoding: r.err, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)

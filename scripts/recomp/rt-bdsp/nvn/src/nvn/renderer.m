@@ -1017,7 +1017,7 @@ static id<MTLLibrary> prebuilt_library_hash(uint64_t h, char kind) {
     NSError *err = nil;
     id<MTLLibrary> lib = [dev newLibraryWithURL:[NSURL fileURLWithPath:path] error:&err];
     if (lib) @synchronized(prebuilt_libs) { prebuilt_libs[path] = lib; }
-    else { static int n; if (n++ < 3) LOG("[shader] %s nicht geladen: %s\n", path.lastPathComponent.UTF8String, err.localizedDescription.UTF8String); }
+    else { static int n; if (n++ < 3) LOG("[shader] %s not loaded: %s\n", path.lastPathComponent.UTF8String, err.localizedDescription.UTF8String); }
     return lib;
 }
 
@@ -3181,7 +3181,7 @@ static void xw_measure_report(uint64_t pres) {   // per frame: sum up counters, 
     if (++xw_ms.frames % 240 == 0) {
         static const char *nm[3] = {"Uniform", "Storage", "Vertex"};
         for (int k = 0; k < 3; k++)
-            printf("[xw] %s je Bild: %llu Bindungen (%llu verschieden), gebunden %.1f KiB, verschieden %.1f KiB\n", nm[k],
+            printf("[xw] %s per frame: %llu bindings (%llu distinct), bound %.1f KiB, distinct %.1f KiB\n", nm[k],
                    (unsigned long long)(xw_ms.n[k] / 240), (unsigned long long)(xw_ms.uniq[k] / 240), xw_ms.bytes[k] / 240 / 1024.0, xw_ms.ubytes[k] / 240 / 1024.0);
         memset(xw_ms.n, 0, sizeof xw_ms.n); memset(xw_ms.uniq, 0, sizeof xw_ms.uniq);
         memset(xw_ms.bytes, 0, sizeof xw_ms.bytes); memset(xw_ms.ubytes, 0, sizeof xw_ms.ubytes);

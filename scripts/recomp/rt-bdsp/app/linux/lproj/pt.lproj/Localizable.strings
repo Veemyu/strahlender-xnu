@@ -1,0 +1,24 @@
+/* Portuguese menu texts of the Linux Qt host (also used for pt_BR, pt_PT, … via the language fallback). The keys are the English texts. */
+"File" = "Arquivo";
+"View" = "Visualizar";
+"Window" = "Janela";
+"Help" = "Ajuda";
+"Open Save Folder" = "Abrir pasta de saves";
+"Import Save …" = "Importar save …";
+"Pause" = "Pausa";
+"Restart" = "Reiniciar";
+"Reset Game …" = "Redefinir jogo …";
+"Quit BDSP" = "Sair do BDSP";
+"Full Screen" = "Tela cheia";
+"Frame Rate" = "Taxa de quadros";
+"Window Size %d × %d" = "Tamanho da janela %d × %d";
+"Debug" = "Depuração";
+"Show MangoHud" = "Mostrar MangoHud";
+"Minimize" = "Minimizar";
+"Key Bindings …" = "Mapeamento de teclas …";
+"Open Cache Folder (Shaders, Images)" = "Abrir pasta de cache (shaders, imagens)";
+"Open Log Folder" = "Abrir pasta de logs";
+"Key Bindings" = "Mapeamento de teclas";
+"Reset Game" = "Redefinir jogo";
+"KEYS_HELP" = "Teclado: Enter/Espaço = A, Backspace/J = B, X, Y, setas e WASD = direcional, Q/E = L/R, P = Mais, O = Menos.\nJanela: F1–F4 tamanho, F5–F7 taxa de quadros 30/60/120, F11 tela cheia (no menu também Ctrl+1–4, Ctrl+F). Sem som.";
+"RESET_CONFIRM" = "O save é copiado e apagado; o jogo reinicia e começa do zero.";

@@ -207,7 +207,7 @@ static GuestFn dispatch_slow(Cpu *c) {
             }
             if (hle_slots[i].fn) return hle_slots[i].fn;
             if (hle_slots[i].calls++ < 3)
-                LOG("[hle] nicht umgesetzter Import %s (x0=%llx x1=%llx lr=%llx) -> 0\n", hle_slots[i].name, (unsigned long long)c->x[0],
+                LOG("[hle] unimplemented import %s (x0=%llx x1=%llx lr=%llx) -> 0\n", hle_slots[i].name, (unsigned long long)c->x[0],
                     (unsigned long long)c->x[1], (unsigned long long)c->x[30]);
             return hle_unimplemented;
         }
@@ -292,7 +292,7 @@ void *hle_alloc(uint64_t size) {
     return G2H(a);
 }
 
-// ---- Abbruch und Absturz
+// ---- Abort and crash
 static void print_guest_regs(Cpu *c) {
     LOG("Guest: sp=%llx lr=%llx fp=%llx\n", (unsigned long long)c->sp, (unsigned long long)c->x[30], (unsigned long long)c->x[29]);
     for (int i = 0; i < 28; i += 4)

@@ -40,7 +40,7 @@
 #undef stl32
 #undef stl64
 
-extern uint8_t *g_base;  // Basis des 4-GiB-Gastfensters (vom Host gesetzt)
+extern uint8_t *g_base;  // base of the 4 GiB guest window (set by the host)
 #define G2H(a) ((void *)(g_base + (uint32_t)(a)))
 #undef GPTR
 #define GPTR(a) G2H(a)  // exclusive pairs (rt/cpu.h)

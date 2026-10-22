@@ -38,7 +38,7 @@ extern void audio_output_set_active(int active);
 #else
 static void audio_output_set_active(int active) { (void)active; }
 #endif
-extern void bdsp_set_fps(int fps);   // services_gfx.c: 30, 60 oder 120
+extern void bdsp_set_fps(int fps);   // services_gfx.c: 30, 60 or 120
 extern CAMetalLayer *g_ios_layer;
 extern _Atomic uint64_t g_ext_buttons;
 extern _Atomic int32_t g_ext_stick[4];
@@ -361,7 +361,7 @@ static int KeyBit(UIKeyboardHIDUsage k) {
 
 #pragma mark - App
 
-static GameView *gView;   // Spielansicht der Szene (Controller-Overlay)
+static GameView *gView;   // game view of the scene (controller overlay)
 
 @interface SceneDelegate : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic, strong) UIWindow *window;

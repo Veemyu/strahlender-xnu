@@ -22,7 +22,7 @@ typedef struct EhRec {
 #define EH_SETJMP() _setjmp(eh.jb)
 #define EH_POP() (EH_TOP(c) = eh.prev)
 
-void rt_nle_enter(Cpu *c) __attribute__((noreturn));   // c->pc = Wiedereinstiegspunkt mitten in einer Funktion
+void rt_nle_enter(Cpu *c) __attribute__((noreturn));   // c->pc = re-entry point in the middle of a function
 void rt_nle_fatal(Cpu *c) __attribute__((noreturn));
 
 // ---- Exclusive pairs (LDXP/LDAXP/STXP/STLXP), gate 1: the monitor of the original (cpu.h) remembers only one 64-bit value.

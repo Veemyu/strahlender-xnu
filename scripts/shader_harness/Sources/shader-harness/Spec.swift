@@ -121,7 +121,7 @@ func readPayload(_ o: Obj, base: URL) throws -> Data {
     }
     if let f = try o.string("file") {
         let url = resolve(f, base: base)
-        guard let d = try? Data(contentsOf: url) else { throw HarnessError("\(o.path).file: \(url.path) nicht lesbar") }
+        guard let d = try? Data(contentsOf: url) else { throw HarnessError("\(o.path).file: \(url.path) not readable") }
         found.append(("file", d))
     }
     guard found.count == 1 else { throw HarnessError("\(o.path): exactly one source of floats/ints/uints/bytes/file expected (found:\(found.map { $0.0 }))") }
@@ -337,7 +337,7 @@ func parseState(_ o: Obj?) throws -> StateSpec {
             case "g": mask.insert(.green)
             case "b": mask.insert(.blue)
             case "a": mask.insert(.alpha)
-            default: throw HarnessError("\(o.path).colorMask: nur Zeichen r,g,b,a erlaubt")
+            default: throw HarnessError("\(o.path).colorMask: only the characters r,g,b,a are allowed")
             }
         }
         s.colorMask = mask
@@ -381,7 +381,7 @@ func parseTexture(_ o: Obj, base: URL) throws -> TextureSpec {
 
 func parseSpec(_ json: Any, base: URL) throws -> Spec {
     let root = try Obj(json, path: "spec")
-    guard let v = try root.obj("vertex"), let f = try root.obj("fragment") else { throw HarnessError("spec: 'vertex' und 'fragment' erforderlich") }
+    guard let v = try root.obj("vertex"), let f = try root.obj("fragment") else { throw HarnessError("spec: 'vertex' and 'fragment' required") }
     var s = Spec(vertex: try parseStage(v, base: base), fragment: try parseStage(f, base: base))
     if let sz = try root.ints("size") {
         guard sz.count == 2, sz.allSatisfy({ $0 > 0 && $0 <= 8192 }) else { throw HarnessError("spec.size: [Breite, Hoehe] in 1...8192") }
@@ -407,7 +407,7 @@ func parseSpec(_ json: Any, base: URL) throws -> Spec {
         try o.finish()
     }
     for o in try root.objs("attributes") ?? [] {
-        guard let loc = try o.int("location"), let buf = try o.int("buffer") else { throw HarnessError("\(o.path): 'location' und 'buffer' erforderlich") }
+        guard let loc = try o.int("location"), let buf = try o.int("buffer") else { throw HarnessError("\(o.path): 'location' and 'buffer' required") }
         let (fmt, size) = try pick(o.string("format"), vertexFormats, "\(o.path).format", default: (.float4, 16))
         s.attributes.append(AttributeSpec(location: loc, buffer: buf, offset: try o.int("offset") ?? 0, format: fmt, size: size))
         try o.finish()

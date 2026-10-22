@@ -146,7 +146,7 @@ class DecodeTests(unittest.TestCase):
     def test_errors(self):
         good = sc.encode_png(2, 2, solid(2, 2, (1, 2, 3, 4)))
         with self.assertRaises(sc.PngError):
-            sc.decode_png(b"nicht png")
+            sc.decode_png(b"not png")
         broken = bytearray(good)
         broken[20] ^= 0xFF  # IHDR content -> CRC no longer matches
         with self.assertRaises(sc.PngError):

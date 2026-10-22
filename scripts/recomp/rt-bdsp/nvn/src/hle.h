@@ -13,7 +13,7 @@ typedef struct { const char *name; HostFn fn; } HleImplEntry;
 #ifdef __APPLE__
 #define HLE_SECTION "__DATA,__hle_impls"
 #else
-#define HLE_SECTION "hle_impls"   // ELF (Linux): der Linker liefert __start_hle_impls / __stop_hle_impls
+#define HLE_SECTION "hle_impls"   // ELF (Linux): the linker provides __start_hle_impls / __stop_hle_impls
 #endif
 #define HLE_FUNC(sym, fn)                                                                   \
     static void fn(Cpu *c);                                                                 \

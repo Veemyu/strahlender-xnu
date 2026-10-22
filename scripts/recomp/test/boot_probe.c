@@ -17,7 +17,7 @@
 #include <unistd.h>
 
 #ifdef USE_LAS_IPC
-uint32_t ipc_connect_named_port(const char *name);  // LASRecomp runtime/ipc.c (nur gelinkt)
+uint32_t ipc_connect_named_port(const char *name);  // LASRecomp runtime/ipc.c (linked only)
 int ipc_handle_request(Cpu *c, uint32_t handle);
 #endif
 
@@ -235,7 +235,7 @@ static void ipc_request(Cpu *c) {
             if (ipc_seen < 32) snprintf(ipc_names[ipc_seen++], 32, "%.8s", name);
             if (is_stub(name)) { ipc_reply(msg, 0, session_new(name)); c->x[0] = 0; return; }
             if (nmissing < 16) snprintf(missing[nmissing++], 24, "%.8s", name);
-            ipc_reply(msg, 0x0000EE01, 0);  // MAKERESULT(21, 7): Dienst nicht registriert
+            ipc_reply(msg, 0x0000EE01, 0);  // MAKERESULT(21, 7): service not registered
             c->x[0] = 0;
             return;
         }

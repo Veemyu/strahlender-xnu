@@ -27,10 +27,10 @@ class Report(unittest.TestCase):
         d = Path(self.tmp.name)
         index = {"blobs": [
             entry("a", "vs", "c1", 10),
-            entry("b", "fs", "c2", 5),               # nur bindless
+            entry("b", "fs", "c2", 5),               # bindless only
             entry("c", "fs", "c3", 3),               # bindless + HSETP2
             entry("d", "fs", "c3", 2),               # same code as c, different blob (constants)
-            entry("e", "fs", "c4", 1, ("fxparticle",)),  # nur HSETP2
+            entry("e", "fs", "c4", 1, ("fxparticle",)),  # HSETP2 only
         ]}
         rows = [row("a", True), row("b", False, forms=[("bindless tex", 2)]),
                 row("c", False, unknown=[("op7e8", 1)], forms=[("bindless tex", 1)]),

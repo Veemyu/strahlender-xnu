@@ -36,7 +36,7 @@ EOF
 }
 # Copies RomFS completely (replaces the folder so no orphaned files remain) and the manifest.
 romfs_copy() {
-  echo "Kopiere work/romfs nach Documents/GameData/romfs (dauert) ..."
+  echo "Copying work/romfs to Documents/GameData/romfs (takes a while) ..."
   romfs_manifest
   xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
     --source work/romfs --destination Documents/GameData/romfs --remove-existing-content true 2>&1 | tail -n 5

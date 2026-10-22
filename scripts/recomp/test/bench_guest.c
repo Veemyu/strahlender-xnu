@@ -15,7 +15,7 @@ u64 bench_int(u64 *buf, u64 n) {
     return s;
 }
 
-// Aufrufe und Stack: rekursive Fibonacci-Funktion
+// Calls and stack: recursive Fibonacci function
 u64 fib(u64 n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
 u64 bench_calls(u64 n) { return fib(n); }
 

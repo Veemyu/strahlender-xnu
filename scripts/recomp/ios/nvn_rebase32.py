@@ -74,7 +74,7 @@ reps = [
 ]
 for a, b in reps:
     if a not in s:
-        sys.exit("nvn.h: Regel trifft nicht: " + a)
+        sys.exit("nvn.h: rule does not match: " + a)
     s = s.replace(a, b)
 open(p, "w", encoding="utf-8").write(s)
 
@@ -109,7 +109,7 @@ mreps = [
 for pat, rep in mreps:
     s, n = re.subn(pat, rep, s)
     if n == 0:
-        sys.exit("movie_glue: Regel trifft nicht: " + pat)
+        sys.exit("movie_glue: rule does not match: " + pat)
 open(os.path.join(out, "movie_glue32.c"), "w", encoding="utf-8").write(s)
 rest = [l.strip() for l in s.splitlines() if "(uintptr_t)" in l and "GA(" not in l.replace("#define GA(a) ((uintptr_t)G2H(a))", "")]
 print("movie_glue32.c: remaining (uintptr_t) spots:", len(rest))

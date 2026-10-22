@@ -87,7 +87,7 @@ def link(obj, base, ext):
         if sy["shndx"] == 0:
             if sy["name"] not in ext:
                 raise SystemExit(f"unresolved symbol {sy['name']}")
-            return ext[sy["name"]] - base  # relativ zur Modulbasis
+            return ext[sy["name"]] - base  # relative to the module base
         if sy["shndx"] >= 0xFF00:
             raise SystemExit("Common/ABS symbols not supported")
         s = e.sec[sy["shndx"]]
@@ -201,7 +201,7 @@ def main():
     Path(a.out + ".img").write_bytes(bytes(r["image"]))
     meta = {k: v for k, v in r.items() if k != "image"}
     Path(a.out + ".json").write_text(json.dumps(meta, indent=1))
-    print(f"{a.out}: Bild {len(r['image'])} Byte, text {r['text']}, FDEs {r['fdes']}, Symbole {len(r['syms'])}")
+    print(f"{a.out}: image {len(r['image'])} bytes, text {r['text']}, FDEs {r['fdes']}, symbols {len(r['syms'])}")
 
 
 if __name__ == "__main__":

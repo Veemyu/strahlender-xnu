@@ -99,7 +99,7 @@ static inline int mv_lock(pthread_mutex_t *m, const char *fn) {
     else LOG("[mv] %.1f T%05x %s wartet auf Sperre %p\n", t0, mv_tid(), fn, (void *)m);
     int r = pthread_mutex_lock(m);
     if (mode == 2) mv_note('g', fn, mv_ms() - t0);
-    else LOG("[mv] %.1f T%05x %s Sperre %p erhalten nach %.1f ms\n", mv_ms(), mv_tid(), fn, (void *)m, mv_ms() - t0);
+    else LOG("[mv] %.1f T%05x %s lock %p acquired after %.1f ms\n", mv_ms(), mv_tid(), fn, (void *)m, mv_ms() - t0);
     return r;
 }
 #define pthread_mutex_lock(m) mv_lock((m), __func__)
@@ -227,7 +227,7 @@ static void ok(Cpu *c) { c->x[0] = 0; }
 // ------------------------------------------------------------------ Extractor
 typedef struct {
     AVFormatContext *fmt;
-    int map[16], ntracks;  // angebotene Spur -> Strom (nur Video)
+    int map[16], ntracks;  // offered track -> stream (video only)
     uint64_t selected;     // bit mask of the streams
     AVPacket *pkt;
     bool have_pkt, eof;
@@ -394,7 +394,7 @@ HLE_FUNC("_ZN5movie9Extractor13GetTrackCountEPi", movie_ex_track_count) { ex_get
 HLE_FUNC("_ZN5movie9Extractor21GetTrackConfigurationEiPNS_9MediaDataE", movie_ex_track_config) { ex_get_track_config_l(c); }
 HLE_FUNC("_ZN5movie9Extractor13SetDataSourceEPKc", movie_ex_set_source) { ex_set_data_source_direct_l(c); }
 
-// ------------------------------------------------------------------ Decoder (nur Video, NV12)
+// ------------------------------------------------------------------ Decoder (video only, NV12)
 #define NIN 4
 #define NOUT 6
 #define NPENDING 16
@@ -592,7 +592,7 @@ static void dec_send_input(Cpu *c) {
             if (d->npending < NPENDING) {
                 d->pending[d->npending] = av_frame_clone(d->frame);
                 d->pending_time[d->npending++] = t;
-            } else LOG("[movie] Ausgabewarteschlange voll, Bild verworfen\n");
+            } else LOG("[movie] output queue full, frame dropped\n");
         }
         produced = true;
     }
@@ -668,7 +668,7 @@ static void dec_dtor(Cpu *c) {
     c->x[0] = 0;
 }
 
-static void dec_get_counts(Cpu *c) {  // Slot 14: (int*, int64*) nach Configure
+static void dec_get_counts(Cpu *c) {  // slot 14: (int*, int64*) after Configure
     if (c->x[1]) *(int32_t *)(uintptr_t)c->x[1] = 0;
     if (c->x[2]) *(int64_t *)(uintptr_t)c->x[2] = 0;
     c->x[0] = 0;

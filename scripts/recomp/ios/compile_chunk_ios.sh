@@ -7,7 +7,7 @@ src=$1
 o="$OBJ/$(basename "$(dirname "$src")")_$(basename "$src" .c).o"
 [ "$o" -nt "$src" ] && exit 0
 t0=$(date +%s)
-# -ffp-contract=off und -fno-fast-math: bitgenaue Gleitkomma-Semantik (docs/recomp-diff.md)
+# -ffp-contract=off and -fno-fast-math: bit-exact floating-point semantics (docs/recomp-diff.md)
 clang -target arm64-apple-ios17.0 -isysroot "$sdk" ${OPT:--O1} -fno-strict-aliasing -fvisibility=hidden -fno-fast-math -ffp-contract=off -w \
   -DREBASE32 -DRT32_GEN -I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c "$src" -o "$o.tmp" || { echo "ERROR $src"; rm -f "$o.tmp"; exit 1; }
 mv "$o.tmp" "$o"
