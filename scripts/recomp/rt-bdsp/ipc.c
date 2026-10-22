@@ -1,14 +1,14 @@
-// HIPC/CMIF-Nachrichten und Sitzungen der BDSP-Laufzeit.
-// Eigener Code nach dem Entwurf von LASRecomp runtime/ipc.c (MIT, Copyright (c) 2026 Peiikai, siehe NOTICE.md); Änderungen:
-// Gastadressen über G2H (Variante A/B), Registry als Tabellen statt Linker-Abschnitt, Mitschrift aller (Dienst, Befehl)-
-// Paare mit Zählern für das Ergebnisprotokoll, Fehlerstub für Dienste ohne Umsetzung statt „Erfolg ohne Daten“.
+// HIPC/CMIF messages and sessions of the BDSP runtime.
+// Own code following the design of LASRecomp runtime/ipc.c (MIT, Copyright (c) 2026 Peiikai, see NOTICE.md); changes:
+// guest addresses through G2H (variant A/B), registry as tables instead of a linker section, a record of all (service, command)
+// pairs with counters for the result log, an error stub for services without an implementation instead of "success without data".
 #include "bdsp.h"
 
 extern const ServiceDef g_service_defs_sm[];
 extern const ServiceDef g_service_defs_audio[];
 static const ServiceDef *const registries[] = {g_service_defs_sm, g_service_defs, g_service_defs_fs, g_service_defs_gfx, g_service_defs_audio, g_service_defs_net};
 
-// ---- Mitschrift (Dienst/Objekt, Befehl) -> Anzahl und ob behandelt
+// ---- Record (service/object, command) -> count and whether handled
 typedef struct { char svc[28]; uint32_t cmd; uint64_t n; int unhandled; } Seen;
 static Seen seen[1024];
 static int nseen;
@@ -26,7 +26,7 @@ static int seen_slot(const char *svc, uint32_t cmd) {  // seen_lock gehalten
     return nseen++;
 }
 
-// jede Anfrage an ein Dienstobjekt zählt einmal (ipc_handle_request)
+// every request to a service object counts once (ipc_handle_request)
 void ipc_count(const char *svc, uint32_t cmd) {
     pthread_mutex_lock(&seen_lock);
     int i = seen_slot(svc, cmd);
@@ -34,7 +34,7 @@ void ipc_count(const char *svc, uint32_t cmd) {
     pthread_mutex_unlock(&seen_lock);
 }
 
-// Die Dienste markieren damit Befehle ohne Umsetzung (unhandled = 1); mit 0 ist der Aufruf ohne Wirkung (alte Aufrufstellen)
+// The services use this to mark commands without an implementation (unhandled = 1); with 0 the call has no effect (old call sites)
 void ipc_note(const char *svc, uint32_t cmd, int unhandled) {
     if (!unhandled) return;
     pthread_mutex_lock(&seen_lock);
@@ -42,18 +42,18 @@ void ipc_note(const char *svc, uint32_t cmd, int unhandled) {
     if (i >= 0) seen[i].unhandled = 1;
     pthread_mutex_unlock(&seen_lock);
     static int logged;
-    if (logged++ < 400) LOG("[ipc] %s Befehl %u nicht umgesetzt (Standardantwort)\n", svc, cmd);
+    if (logged++ < 400) LOG("[ipc] %s command %u not implemented (default response)\n", svc, cmd);
 }
 
 void ipc_stats(FILE *f) {
     pthread_mutex_lock(&seen_lock);
-    fprintf(f, "IPC-Anfragen gesamt %llu, verschiedene (Dienst, Befehl): %d\n", (unsigned long long)ipc_total, nseen);
+    fprintf(f, "IPC requests total %llu, distinct (service, command): %d\n", (unsigned long long)ipc_total, nseen);
     int unh = 0;
     for (int i = 0; i < nseen; i++) if (seen[i].unhandled) unh++;
-    fprintf(f, "davon mit Standardantwort (nicht umgesetzt): %d\n", unh);
+    fprintf(f, "of those with default response (not implemented): %d\n", unh);
     for (int i = 0; i < nseen; i++)
-        if (seen[i].unhandled) fprintf(f, "  fehlt: %s Befehl %u (%llux)\n", seen[i].svc, seen[i].cmd, (unsigned long long)seen[i].n);
-    fprintf(f, "Dienste/Befehle (Anzahl):");
+        if (seen[i].unhandled) fprintf(f, "  missing: %s command %u (%llux)\n", seen[i].svc, seen[i].cmd, (unsigned long long)seen[i].n);
+    fprintf(f, "Services/commands (count):");
     for (int i = 0; i < nseen; i++) fprintf(f, " %s:%u(%llu)", seen[i].svc, seen[i].cmd, (unsigned long long)seen[i].n);
     fprintf(f, "\n");
     pthread_mutex_unlock(&seen_lock);
@@ -61,7 +61,7 @@ void ipc_stats(FILE *f) {
 
 static void stub_error_handler(Service *s, IpcReq *req, IpcResp *resp) {
     ipc_note(s->name, req->cmd, 1);
-    resp->result = MAKE_RESULT(0x1FF, 1);  // Fehlerstub (nicht verfügbar)
+    resp->result = MAKE_RESULT(0x1FF, 1);  // error stub (not available)
 }
 
 Service *service_new(const char *name, ServiceHandler h, void *state) {
@@ -76,7 +76,7 @@ Service *service_lookup(const char *name) {
     for (unsigned r = 0; r < sizeof registries / sizeof *registries; r++)
         for (const ServiceDef *d = registries[r]; d->name; d++)
             if (!strcmp(d->name, name)) return service_new(name, d->handler, NULL);
-    LOG("[ipc] kein Dienst '%s' (Fehlerstub)\n", name);
+    LOG("[ipc] no service '%s' (error stub)\n", name);
     return service_new(name, stub_error_handler, NULL);
 }
 
@@ -96,12 +96,12 @@ static void service_release(Service *s) {
 
 uint32_t ipc_connect_named_port(const char *name) {
     if (!strcmp(name, "sm:")) return session_new(service_lookup("sm:"));
-    LOG("[ipc] ConnectToNamedPort('%s') nicht unterstützt\n", name);
+    LOG("[ipc] ConnectToNamedPort('%s') not supported\n", name);
     return 0;
 }
 
 // ------------------------------------------------------------------ sm:
-// Dienste ohne Eintrag (z. B. nicht in der NPDM-Liste) melden wie der echte sm „nicht registriert“.
+// Services without an entry (e.g. not in the NPDM list) report like the real sm "not registered".
 static void sm_handler(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
@@ -129,7 +129,7 @@ static uint64_t buf_addr(const uint32_t *w) {
 
 int ipc_handle_request(Cpu *c, uint32_t handle) {
     KObject *o = handle_get(handle);
-    if (!o || o->type != KOBJ_SESSION) { LOG("[ipc] SendSyncRequest auf ungültigem Handle %x\n", handle); return R_INVALID_HANDLE; }
+    if (!o || o->type != KOBJ_SESSION) { LOG("[ipc] SendSyncRequest on invalid handle %x\n", handle); return R_INVALID_HANDLE; }
     if (trace_ipc < 0) trace_ipc = getenv("BDSP_TRACE_IPC") ? atoi(getenv("BDSP_TRACE_IPC")) : 0;
     __atomic_add_fetch(&ipc_total, 1, __ATOMIC_RELAXED);
     KSession *sess = (KSession *)o;
@@ -195,21 +195,21 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
             for (int i = 0; i < nin && i < 8; i++) req.domain_in_objs[i] = *(uint32_t *)(payload + 16 + dsize + 4 * i);
             payload += 16;
         }
-        if (memcmp(payload, "SFCI", 4)) LOG("[ipc] ungültiges SFCI-Magic bei %s\n", sess->svc->name);
+        if (memcmp(payload, "SFCI", 4)) LOG("[ipc] invalid SFCI magic at %s\n", sess->svc->name);
         req.cmd = *(uint32_t *)(payload + 8);
         req.data = payload + 16;
         req.data_size = raw_words * 4 > 32 ? raw_words * 4 - 32 : 0;
         Service *target = sess->svc;
         if (sess->domain) {
             target = req.domain_obj < 256 ? sess->domain->objs[req.domain_obj] : NULL;
-            if (!target) { LOG("[ipc] Domain-Objekt %u fehlt\n", req.domain_obj); return R_INVALID_HANDLE; }
+            if (!target) { LOG("[ipc] domain object %u missing\n", req.domain_obj); return R_INVALID_HANDLE; }
         }
         if (trace_ipc > 1 || (trace_ipc && strcmp(target->name, "lm:ILogger")))
             LOG("[ipc] t%llu %s cmd %u (data %u, x%d a%d b%d c%d, handles %d/%d)\n", (unsigned long long)(kernel_current_thread() ? kernel_current_thread()->id : 0),
                 target->name, req.cmd, req.data_size, req.nx, req.na, req.nb, req.nc, req.ncopy, req.nmove);
         ipc_count(target->name, req.cmd);
         target->handler(target, &req, &resp);
-        if (trace_ipc && resp.result) LOG("[ipc]   -> %s cmd %u Ergebnis 0x%x\n", target->name, req.cmd, resp.result);
+        if (trace_ipc && resp.result) LOG("[ipc]   -> %s cmd %u result 0x%x\n", target->name, req.cmd, resp.result);
     } else if (req.type == 5 || req.type == 7) {  // Steuerbefehle
         req.cmd = *(uint32_t *)(payload + 8);
         switch (req.cmd) {
@@ -273,5 +273,5 @@ write_response:;
     return 0;
 }
 
-// sm: gehört zur IPC-Schicht und steht deshalb in keiner Dienstetabelle der Dienste-Dateien
+// sm: belongs to the IPC layer and is therefore in no service table of the service files
 const ServiceDef g_service_defs_sm[] = {{"sm:", sm_handler}, {NULL, NULL}};

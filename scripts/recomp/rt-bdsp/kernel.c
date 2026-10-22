@@ -1,7 +1,7 @@
-// Horizon-Kernel-Ersatz der BDSP-Laufzeit: Handles, echte Host-Threads, Synchronisation, Speicherkarte, SVC-Verteiler.
-// Eigener Code auf dem Entwurf von LASRecomp runtime/kernel.c (MIT, Copyright (c) 2026 Peiikai, siehe NOTICE.md):
-// Mutex-/Condvar-/Arbiter-Semantik und die Handle-Tabelle sind dort entlehnt. Neu: Mach-Anhalten (SVC 0x32/0x33 für
-// den Boehm-GC), kleine Host-Stacks, SVC-Zähler je Thread, Messung, kein Neustart-Mechanismus, Gast-Adressen über G2H.
+// Horizon kernel replacement of the BDSP runtime: handles, real host threads, synchronisation, memory map, SVC dispatcher.
+// Own code following the design of LASRecomp runtime/kernel.c (MIT, Copyright (c) 2026 Peiikai, see NOTICE.md):
+// the mutex/condvar/arbiter semantics and the handle table are borrowed from there. New: Mach suspension (SVC 0x32/0x33 for
+// the Boehm GC), small host stacks, per-thread SVC counters, measurement, no restart mechanism, guest addresses through G2H.
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #ifdef __APPLE__
@@ -74,7 +74,7 @@ static KThread *g_syncwaiters;
 KThread *g_waitlist;
 static void wake(KThread *t) { pthread_cond_signal(&t->cond); }
 
-void kernel_signal(KObject *o) {  // Aufrufer hält g_klock
+void kernel_signal(KObject *o) {  // caller holds g_klock
     o->signaled = true;
     for (KThread *t = g_syncwaiters; t; t = t->snext) wake(t);
 }
@@ -108,7 +108,7 @@ static void deadline(struct timespec *ts, int64_t timeout_ns) {
 static pthread_cond_t g_nothread_cond = PTHREAD_COND_INITIALIZER;
 static bool kwait(int64_t timeout_ns, const struct timespec *ts) {
     pthread_cond_t *cv = t_cur ? &t_cur->cond : &g_nothread_cond;
-    if (timeout_ns < 0) {  // in Scheiben, damit der Watchdog den Lauf beenden kann
+    if (timeout_ns < 0) {  // in slices, so the watchdog can end the run
         struct timespec slice;
         deadline(&slice, 200000000);
         pthread_cond_timedwait(cv, &g_klock, &slice);
@@ -122,9 +122,9 @@ typedef struct { uint64_t addr, size; uint32_t type, perm; } Region;
 static Region regions[2048];
 static int nregions;
 static uint64_t heap_size;
-static uint64_t phys_mapped, phys_peak;  // per MapPhysicalMemory abgebildete Bytes (aktuell, Spitze)
-static uint64_t phys_lo, phys_hi;        // Hüllbereich aller MapPhysicalMemory-Abbildungen (für den Metal-Puffer der NVN-Schicht)
-uint64_t g_phys_unmaps;                  // Zahl der UnmapPhysicalMemory-Aufrufe: danach zeigen umhüllte Seiten (Metal) auf verworfene Seiten
+static uint64_t phys_mapped, phys_peak;  // bytes mapped by MapPhysicalMemory (current, peak)
+static uint64_t phys_lo, phys_hi;        // bounding range of all MapPhysicalMemory mappings (for the Metal buffer of the NVN layer)
+uint64_t g_phys_unmaps;                  // number of UnmapPhysicalMemory calls: afterwards wrapped pages (Metal) point at discarded pages
 void kernel_phys_range(uint64_t *lo, uint64_t *hi) { *lo = phys_lo; *hi = phys_hi; }
 static pthread_mutex_t g_rlock = PTHREAD_MUTEX_INITIALIZER;
 uint64_t kernel_heap_size(void) { return heap_size; }
@@ -186,7 +186,7 @@ static void *thread_main(void *arg) {
     t->host_stack_lo = (void *)((uintptr_t)pthread_get_stackaddr_np(pthread_self()) - t->host_stack_size);
     crash_handler_install();
     rt_set_fpcr(0);
-    rt_fp_guest_mode();   // Host-FPU-Umgebung wie im c-Modus vorausgesetzt (docs/recomp-diff.md): RN, kein FTZ/DAZ
+    rt_fp_guest_mode();   // host FPU environment as assumed in c mode (docs/recomp-diff.md): RN, no FTZ/DAZ
     pthread_mutex_lock(&g_klock);
     if (++g_thread_live > g_thread_peak) g_thread_peak = g_thread_live;
     pthread_mutex_unlock(&g_klock);
@@ -214,7 +214,7 @@ static KThread *thread_new(uint64_t entry, uint64_t arg, uint64_t stack_top, int
     t->id = next_thread_id++;
     t->tlr = tls_next;
     tls_next += 0x200;
-    if (tls_next > TLS_BASE + TLS_SIZE) { pthread_mutex_unlock(&g_klock); rt_fatal("TLS-Bereich erschöpft\n"); }
+    if (tls_next > TLS_BASE + TLS_SIZE) { pthread_mutex_unlock(&g_klock); rt_fatal("TLS area exhausted\n"); }
     t->anext = g_threads;
     g_threads = t;
     g_thread_count++;
@@ -302,9 +302,9 @@ static uint32_t block_current(int64_t timeout_ns) {  // g_klock gehalten
     while (t->wait_kind != WAIT_NONE) {
         if (t->cancel) { t->cancel = false; t->wait_kind = WAIT_NONE; t->wait_result = R_CANCELLED; break; }
         if (!kwait(timeout_ns, &ts)) {
-            // Zeitablauf und Weckruf können sich überschneiden (pthread_cond_timedwait meldet ETIMEDOUT auch, wenn der Waker die Sperre davor hatte):
-            // hat der Waker den Wartezustand schon beendet (Mutex-Übergabe!), gilt dessen Ergebnis, sonst hält der Thread den Mutex und der
-            // SDK-Code sperrt ihn nach dem Zeitablauf noch einmal selbst (Selbstverklemmung, auf dem iPad bei ca. jedem zweiten Start im Eröffnungsfilm)
+            // Timeout and wake-up can overlap (pthread_cond_timedwait also reports ETIMEDOUT when the waker held the lock first):
+            // if the waker already ended the wait state (mutex handover!), its result counts; otherwise the thread holds the mutex and the
+            // SDK code locks it again itself after the timeout (self-deadlock, on the iPad at about every second start in the opening movie)
             if (t->wait_kind != WAIT_NONE) { t->wait_kind = WAIT_NONE; t->wait_result = R_TIMEOUT; }
             break;
         }
@@ -332,14 +332,14 @@ static uint32_t svc_arbitrate_unlock(uint64_t addr) {
 static uint32_t svc_wait_process_wide_key(uint64_t mutex, uint64_t key, uint32_t tag, int64_t timeout) {
     pthread_mutex_lock(&g_klock);
     KThread *t = t_cur;
-    // Der Schlüssel muss gesetzt sein, bevor der Mutex frei wird: Signal/Broadcast des SDK lesen ihn ohne Kernelsperre und rufen die SVC nur bei != 0
-    // auf; wer den Mutex als Nächster nimmt, darf sonst ein Signal verlieren (verlorener Weckruf, Unity-Semaphoren)
+    // The key must be set before the mutex is released: the SDK's signal/broadcast read it without the kernel lock and call the SVC only if != 0;
+    // whoever takes the mutex next could otherwise lose a signal (lost wake-up, Unity semaphores)
     __atomic_store_n(u32p(key), 1, __ATOMIC_SEQ_CST);
     mutex_release(mutex);
     t->wait_kind = WAIT_CONDVAR; t->wait_addr = key; t->wait_mutex = mutex; t->wait_tag = tag;
     uint32_t r = block_current(timeout);
     if (r != R_OK) {
-        // Zeitablauf/Abbruch: der Kernel nimmt den Mutex NICHT zurück (der SDK-Code sperrt ihn selbst erneut; sonst Selbstverklemmung).
+        // Timeout/cancel: the kernel does NOT take the mutex back (the SDK code locks it again itself; otherwise self-deadlock).
         bool any = false;
         for (KThread *w = g_waitlist; w; w = w->wnext)
             if (w->wait_kind == WAIT_CONDVAR && w->wait_addr == key) any = true;
@@ -348,7 +348,7 @@ static uint32_t svc_wait_process_wide_key(uint64_t mutex, uint64_t key, uint32_t
     pthread_mutex_unlock(&g_klock);
     return r;
 }
-// Mitschrift der Synchronisations-SVCs (BDSP_TRACE_SYNC=1): letzte Ereignisse je Lauf, Ausgabe im Ergebnisprotokoll
+// Trace of the synchronisation SVCs (BDSP_TRACE_SYNC=1): last events per run, printed in the result log
 static struct { uint64_t tid, a, b, c; uint32_t svc; } sync_ring[4096];
 static uint32_t sync_pos;
 static int sync_trace = -1;
@@ -463,8 +463,8 @@ out:
 }
 
 // ------------------------------------------------------------------ Anhalten fremder Threads (Boehm-GC)
-// SetThreadActivity(handle, paused) -> thread_suspend; GetThreadContext3 liefert den Gast-Registersatz aus Cpu.
-// Der Gast hält seine Register nur in Cpu und auf dem Gast-Stack (Messung im Spike: 100 % der Fenster).
+// SetThreadActivity(handle, paused) -> thread_suspend; GetThreadContext3 returns the guest register set from Cpu.
+// The guest keeps its registers only in Cpu and on the guest stack (spike measurement: 100 % of the windows).
 static uint64_t g_suspends, g_resumes;
 static uint32_t svc_set_thread_activity(uint32_t h, uint32_t activity) {
     KObject *o = handle_get(h);
@@ -472,7 +472,7 @@ static uint32_t svc_set_thread_activity(uint32_t h, uint32_t activity) {
     KThread *t = (KThread *)o;
     if (t == t_cur) return R_INVALID_STATE;
     if (!t->started || t->finished) return R_INVALID_STATE;
-    pthread_mutex_lock(&g_klock);  // das Ziel hält g_klock nie im Anhalten: kein Host-Lock bleibt in der Kernel-Sektion hängen
+    pthread_mutex_lock(&g_klock);  // the target never holds g_klock while being suspended: no host lock stays stuck in the kernel section
     mach_port_t mp = pthread_mach_thread_np(t->host);
     __atomic_fetch_add(activity == 1 ? &g_suspends : &g_resumes, 1, __ATOMIC_RELAXED);
     if (activity == 1 && !t->suspended) { thread_suspend(mp); t->suspended = true; }
@@ -566,7 +566,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     switch (imm) {
     case 0x01: {  // SetHeapSize
         uint64_t size = x[1];
-        if (size > HEAP_MAX) { LOG("[kernel] SetHeapSize %llu MiB > Fenster (%llu MiB)\n", (unsigned long long)(size >> 20), (unsigned long long)(HEAP_MAX >> 20)); x[0] = R_OUT_OF_RESOURCE; break; }
+        if (size > HEAP_MAX) { LOG("[kernel] SetHeapSize %llu MiB > window (%llu MiB)\n", (unsigned long long)(size >> 20), (unsigned long long)(HEAP_MAX >> 20)); x[0] = R_OUT_OF_RESOURCE; break; }
         LOG("[kernel] SetHeapSize %llu MiB (0x%llx)\n", (unsigned long long)(size >> 20), (unsigned long long)size);
         heap_size = size;
         region_remove(HEAP_BASE);
@@ -575,7 +575,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         break;
     }
     case 0x02: case 0x03: x[0] = R_OK; break;
-    case 0x04:  // MapMemory(dst, src, size): src ist währenddessen unzugänglich, Kopieren ist gleichwertig
+    case 0x04:  // MapMemory(dst, src, size): src is inaccessible meanwhile, copying is equivalent
         memcpy(G2H(x[0]), G2H(x[1]), x[2]);
         kernel_region_add(x[0], x[2], 0xB, 3);
         x[0] = R_OK;
@@ -689,7 +689,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         x[1] = h;
         break;
     }
-    case 0x20: x[0] = R_NOT_IMPLEMENTED; if (svc_count[imm] <= 3) LOG("[kernel] SendSyncRequestLight (nicht unterstützt) @%llx\n", (unsigned long long)pc); break;
+    case 0x20: x[0] = R_NOT_IMPLEMENTED; if (svc_count[imm] <= 3) LOG("[kernel] SendSyncRequestLight (not supported) @%llx\n", (unsigned long long)pc); break;
     case 0x21: t_cur->ipc_calls++; x[0] = ipc_handle_request(c, (uint32_t)x[0]); break;
     case 0x22: {  // SendSyncRequestWithUserBuffer(buf, size, handle)
         uint64_t saved = c->tpidrro;
@@ -698,9 +698,9 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         c->tpidrro = saved;
         break;
     }
-    case 0x23:  // SendAsyncRequestWithUserBuffer: keine Gegenstelle mit asynchroner Antwort
+    case 0x23:  // SendAsyncRequestWithUserBuffer: no peer with an asynchronous reply
         x[0] = R_NOT_IMPLEMENTED; x[1] = 0;
-        if (svc_count[imm] <= 3) LOG("[kernel] SendAsyncRequestWithUserBuffer (nicht unterstützt) @%llx\n", (unsigned long long)pc);
+        if (svc_count[imm] <= 3) LOG("[kernel] SendAsyncRequestWithUserBuffer (not supported) @%llx\n", (unsigned long long)pc);
         break;
     case 0x24: x[0] = R_OK; x[1] = 0x81; break;
     case 0x25: {
@@ -736,7 +736,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         case 3: v = getenv("BDSP_ALIAS_SIZE") ? strtoull(getenv("BDSP_ALIAS_SIZE"), NULL, 16) : ALIAS_SIZE; break;
         case 4: v = HEAP_BASE; break;
         case 5: v = HEAP_REPORT; break;
-        case 6: case 21: v = getenv("BDSP_APPMEM") ? strtoull(getenv("BDSP_APPMEM"), NULL, 16) : APP_MEMORY; break;  // Anwendungsspeicher (A: ca. 3,2 GB wie auf der Konsole; B: was in die Alias-Region passt)
+        case 6: case 21: v = getenv("BDSP_APPMEM") ? strtoull(getenv("BDSP_APPMEM"), NULL, 16) : APP_MEMORY; break;  // application memory (A: about 3.2 GB as on the console; B: whatever fits in the alias region)
         case 7: case 22: v = heap_size + 0x4000000; break;
         case 8: case 9: v = 0; break;
         case 11: v = ((uint64_t)arc4random() << 32) | arc4random(); break;
@@ -754,14 +754,14 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         break;
     }
     case 0x2A: case 0x2B: case 0x5F: x[0] = R_OK; break;  // Cache-Wartung: nichts zu tun
-    case 0x2C:  // MapPhysicalMemory(addr, size): die Seiten des Fensters sind frisch (null) und werden erst beim Zugriff belegt
+    case 0x2C:  // MapPhysicalMemory(addr, size): the window's pages are fresh (zero) and only committed on access
         kernel_region_add(x[0], x[1], 0x7, 3);
         if (!phys_lo || x[0] < phys_lo) phys_lo = x[0];
         if (x[0] + x[1] > phys_hi) phys_hi = x[0] + x[1];
         if ((phys_mapped += x[1]) > phys_peak) phys_peak = phys_mapped;
         x[0] = R_OK;
         break;
-    case 0x2D:  // UnmapPhysicalMemory: Seiten verwerfen (nächste Abbildung beginnt wieder mit Nullen)
+    case 0x2D:  // UnmapPhysicalMemory: discard pages (the next mapping starts with zeros again)
         region_remove(x[0]);
         phys_mapped -= x[1] < phys_mapped ? x[1] : phys_mapped;
         g_phys_unmaps++;
@@ -775,7 +775,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x33: x[0] = svc_get_thread_context3(x[0], (uint32_t)x[1]); break;
     case 0x34: x[0] = svc_wait_for_address(x[0], (uint32_t)x[1], (int32_t)x[2], (int64_t)x[3]); break;
     case 0x35: x[0] = svc_signal_to_address(x[0], (uint32_t)x[1], (int32_t)x[2], (int32_t)x[3]); break;
-    case 0x36: break;  // SynchronizePreemptionState: ohne Vorrang-Scheduler nichts zu tun
+    case 0x36: break;  // SynchronizePreemptionState: nothing to do without a preemptive scheduler
     case 0x45: {
         KObject *ev = calloc(1, sizeof *ev);
         ev->type = KOBJ_EVENT;
@@ -785,7 +785,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         break;
     }
     default:
-        rt_fatal("nicht umgesetzte SVC 0x%x (%s) bei %llx (x0=%llx x1=%llx x2=%llx)\n", imm, svc_name(imm), (unsigned long long)pc,
+        rt_fatal("unimplemented SVC 0x%x (%s) at %llx (x0=%llx x1=%llx x2=%llx)\n", imm, svc_name(imm), (unsigned long long)pc,
                  (unsigned long long)x[0], (unsigned long long)x[1], (unsigned long long)x[2]);
     }
 }
@@ -797,7 +797,7 @@ static unsigned resident_stack_kib(KThread *t) {
     uintptr_t lo = (uintptr_t)t->host_stack_lo, hi = lo + t->host_stack_size;
     vm_address_t a = lo;
     uint64_t total = 0;
-    while (a < hi) {  // belegte Seiten des Host-Stacks (Rahmen der rekompilierten Funktionen); vm_region_64 gibt es auch unter iOS
+    while (a < hi) {  // resident pages of the host stack (frames of the recompiled functions); vm_region_64 also exists on iOS
         vm_size_t sz = 0;
         vm_region_extended_info_data_t info;
         mach_msg_type_number_t cnt = VM_REGION_EXTENDED_INFO_COUNT;
@@ -821,55 +821,55 @@ static int hang_dump_on(void) {
 #endif
 
 void kernel_report(FILE *f) {
-    fprintf(f, "Threads angelegt %d (gleichzeitig höchstens %d, aktuell %d), Handles aktuell %d (Spitze %d), SetHeapSize-Heap %llu MiB, per MapPhysicalMemory abgebildet %llu MiB (Spitze %llu MiB)\n",
+    fprintf(f, "Threads created %d (at most %d at once, now %d), handles now %d (peak %d), SetHeapSize heap %llu MiB, mapped by MapPhysicalMemory %llu MiB (peak %llu MiB)\n",
             g_thread_count, g_thread_peak, g_thread_live, handles_used, handles_peak, (unsigned long long)(heap_size >> 20),
             (unsigned long long)(phys_mapped >> 20), (unsigned long long)(phys_peak >> 20));
-    fprintf(f, "SetThreadActivity: %llu Anhalten, %llu Fortsetzen\n", (unsigned long long)g_suspends, (unsigned long long)g_resumes);
-    fprintf(f, "SVC-Zähler:");
+    fprintf(f, "SetThreadActivity: %llu suspends, %llu resumes\n", (unsigned long long)g_suspends, (unsigned long long)g_resumes);
+    fprintf(f, "SVC counters:");
     uint64_t total = 0;
     int distinct = 0;
     for (int i = 0; i < 256; i++)
         if (svc_count[i]) { fprintf(f, " %02x=%llu", i, (unsigned long long)svc_count[i]); total += svc_count[i]; distinct++; }
-    fprintf(f, "\n%d verschiedene SVCs, %llu Aufrufe\n", distinct, (unsigned long long)total);
+    fprintf(f, "\n%d distinct SVCs, %llu calls\n", distinct, (unsigned long long)total);
     pthread_mutex_lock(&g_klock);
     int shown = 0;
     for (KThread *t = g_threads; t && shown < 64; t = t->anext, shown++) {
-        fprintf(f, "  Thread %llu: entry %llx, %s, letzte SVC %02x (%s), %llu SVCs, %llu IPC, Host-Stack %u KiB belegt von %llu KiB, Gast-sp %llx\n",
-                (unsigned long long)t->id, (unsigned long long)t->entry, t->finished ? "beendet" : (t->started ? "läuft" : "nicht gestartet"),
+        fprintf(f, "  Thread %llu: entry %llx, %s, last SVC %02x (%s), %llu SVCs, %llu IPC, host stack %u KiB used of %llu KiB, guest sp %llx\n",
+                (unsigned long long)t->id, (unsigned long long)t->entry, t->finished ? "finished" : (t->started ? "running" : "not started"),
                 (unsigned)t->svc_last, svc_name((unsigned)t->svc_last), (unsigned long long)t->svc_calls, (unsigned long long)t->ipc_calls,
                 resident_stack_kib(t), (unsigned long long)(t->host_stack_size >> 10), (unsigned long long)t->cpu.sp);
-        if (getenv("BDSP_BT") || getenv("BDSP_WAIT")) {   // Wartezustand: Art, Adresse/Schlüssel, Dauer
+        if (getenv("BDSP_BT") || getenv("BDSP_WAIT")) {   // wait state: kind, address/key, duration
             uint64_t now = rt_now_ns();
             const char *k = t->in_sync_wait ? "WaitSynchronization" : t->wait_kind == WAIT_MUTEX ? "Mutex" : t->wait_kind == WAIT_CONDVAR ? "ProcessWideKey" :
-                            t->wait_kind == WAIT_ARBITER ? "Arbiter" : "(läuft/schläft)";
-            fprintf(f, "      wartet: %s addr %llx mutex %llx handle0 %x/%d seit %.1f s, letzter SVC vor %.1f s\n", k, (unsigned long long)t->wait_addr,
+                            t->wait_kind == WAIT_ARBITER ? "Arbiter" : "(running/sleeping)";
+            fprintf(f, "      waiting: %s addr %llx mutex %llx handle0 %x/%d since %.1f s, last SVC %.1f s ago\n", k, (unsigned long long)t->wait_addr,
                     (unsigned long long)t->wait_mutex, t->wait_h0, t->wait_n, t->wait_since ? (now - t->wait_since) / 1e9 : 0.0,
                     t->svc_last_ns ? (now - t->svc_last_ns) / 1e9 : 0.0);
 #ifdef __APPLE__
-            if (hang_dump_on() && t->started && !t->finished) {   // Hänger-Diagnose: steht der Host-Thread (Anhaltezähler > 0), obwohl er laufen sollte?
+            if (hang_dump_on() && t->started && !t->finished) {   // hang diagnosis: is the host thread stopped (suspend count > 0) although it should be running?
                 thread_basic_info_data_t bi;
                 mach_msg_type_number_t cnt = THREAD_BASIC_INFO_COUNT;
                 if (thread_info(pthread_mach_thread_np(t->host), THREAD_BASIC_INFO, (thread_info_t)&bi, &cnt) == KERN_SUCCESS) {
-                    fprintf(f, "      Host-Thread: Anhaltezähler %d, Zustand %d (1 läuft, 2 angehalten, 3 wartet, 4 ununterbrechbar), Auslastung %d/1000, t->suspended %d\n",
+                    fprintf(f, "      host thread: suspend count %d, state %d (1 running, 2 stopped, 3 waiting, 4 uninterruptible), load %d/1000, t->suspended %d\n",
                             (int)bi.suspend_count, (int)bi.run_state, (int)bi.cpu_usage, (int)t->suspended);
-                    if (bi.run_state == TH_STATE_RUNNING && bi.cpu_usage > 500 && t != t_cur) {   // Dauerläufer: Befehlszeiger (Abbildadresse = pc - Verschiebung)
+                    if (bi.run_state == TH_STATE_RUNNING && bi.cpu_usage > 500 && t != t_cur) {   // busy thread: program counter (image address = pc - slide)
                         mach_port_t mp = pthread_mach_thread_np(t->host);
                         arm_thread_state64_t st;
                         mach_msg_type_number_t sc = ARM_THREAD_STATE64_COUNT;
                         thread_suspend(mp);
                         if (thread_get_state(mp, ARM_THREAD_STATE64, (thread_state_t)&st, &sc) == KERN_SUCCESS) {
-                            fprintf(f, "      Host-Thread pc %llx lr %llx fp %llx sp %llx (Verschiebung %llx, Abbildadresse pc %llx lr %llx)\n",
+                            fprintf(f, "      host thread pc %llx lr %llx fp %llx sp %llx (slide %llx, image address pc %llx lr %llx)\n",
                                     (unsigned long long)arm_thread_state64_get_pc(st), (unsigned long long)arm_thread_state64_get_lr(st),
                                     (unsigned long long)arm_thread_state64_get_fp(st), (unsigned long long)arm_thread_state64_get_sp(st),
                                     (unsigned long long)_dyld_get_image_vmaddr_slide(0), (unsigned long long)(arm_thread_state64_get_pc(st) - _dyld_get_image_vmaddr_slide(0)),
                                     (unsigned long long)(arm_thread_state64_get_lr(st) - _dyld_get_image_vmaddr_slide(0)));
-                            fprintf(f, "      Host-Register x0-x5 %llx %llx %llx %llx %llx %llx, x8 %llx x14 %llx x16 %llx x18 %llx\n", (unsigned long long)st.__x[0],
+                            fprintf(f, "      host registers x0-x5 %llx %llx %llx %llx %llx %llx, x8 %llx x14 %llx x16 %llx x18 %llx\n", (unsigned long long)st.__x[0],
                                     (unsigned long long)st.__x[1], (unsigned long long)st.__x[2], (unsigned long long)st.__x[3], (unsigned long long)st.__x[4],
                                     (unsigned long long)st.__x[5], (unsigned long long)st.__x[8], (unsigned long long)st.__x[14], (unsigned long long)st.__x[16],
                                     (unsigned long long)st.__x[18]);
-                            if (st.__x[0] >= 0x10000 && st.__x[0] < 0xFFFFF000ull) {   // Gast-Zeiger x0 (hier die Lifo): Kopf und erste Einträge
+                            if (st.__x[0] >= 0x10000 && st.__x[0] < 0xFFFFF000ull) {   // guest pointer x0 (here the LIFO): head and first entries
                                 const uint32_t *w = G2H32(st.__x[0]);
-                                fprintf(f, "      Gast-Speicher bei x0:");
+                                fprintf(f, "      guest memory at x0:");
                                 for (int k = 0; k < 24; k++) fprintf(f, " %08x", w[k]);
                                 fprintf(f, "\n");
                             }
@@ -879,17 +879,17 @@ void kernel_report(FILE *f) {
                 }
             }
 #endif
-            if (t->wait_kind == WAIT_MUTEX || (t->wait_kind == WAIT_CONDVAR && t->wait_mutex)) {   // Besitzer des Mutex (Verklemmungssuche)
+            if (t->wait_kind == WAIT_MUTEX || (t->wait_kind == WAIT_CONDVAR && t->wait_mutex)) {   // owner of the mutex (deadlock search)
                 uint64_t ma = t->wait_kind == WAIT_MUTEX ? t->wait_addr : t->wait_mutex;
                 uint32_t v = *G2H32(ma), ow = v & ~WAITERS_BIT;
                 KThread *o = NULL;
                 for (KThread *x = g_threads; x; x = x->anext) if (x->handle == ow) o = x;
-                fprintf(f, "      Mutex %llx = %08x: Besitzer Thread %llu (%s, letzte SVC %02x)\n", (unsigned long long)ma, v, o ? (unsigned long long)o->id : 0ull,
-                        !o ? "unbekannt" : o->finished ? "BEENDET" : o->wait_kind == WAIT_MUTEX ? "wartet auf Mutex" : o->wait_kind == WAIT_CONDVAR ? "wartet auf Schlüssel" :
-                        o->in_sync_wait ? "WaitSynchronization" : "läuft/schläft", o ? (unsigned)o->svc_last : 0u);
+                fprintf(f, "      Mutex %llx = %08x: owner thread %llu (%s, last SVC %02x)\n", (unsigned long long)ma, v, o ? (unsigned long long)o->id : 0ull,
+                        !o ? "unknown" : o->finished ? "FINISHED" : o->wait_kind == WAIT_MUTEX ? "waiting for mutex" : o->wait_kind == WAIT_CONDVAR ? "waiting for key" :
+                        o->in_sync_wait ? "WaitSynchronization" : "running/sleeping", o ? (unsigned)o->svc_last : 0u);
             }
         }
-        if (getenv("BDSP_BT") && t->svc_calls > 20) {   // Rücksprungadressen aus der Rahmenkette (x29), nur für Threads mit Betrieb
+        if (getenv("BDSP_BT") && t->svc_calls > 20) {   // return addresses from the frame chain (x29), only for threads with activity
             uint64_t fp = t->cpu.x[29], off = 0;
             const char *s0 = loader_symbol_at(t->cpu.x[30], &off);
             fprintf(f, "      lr %llx %s+%llx\n", (unsigned long long)t->cpu.x[30], s0 ? s0 : "?", (unsigned long long)off);
@@ -904,8 +904,8 @@ void kernel_report(FILE *f) {
         }
     }
     pthread_mutex_unlock(&g_klock);
-    if (sync_trace > 0) {   // letzte 300 Ereignisse (älteste zuerst): 1C = Warten (Mutex, Schlüssel, Zeitgrenze), 1D = Signal (Schlüssel, Anzahl, geweckt)
-        fprintf(f, "Synchronisation, letzte Ereignisse:\n");
+    if (sync_trace > 0) {   // last 300 events (oldest first): 1C = wait (mutex, key, time limit), 1D = signal (key, count, woken)
+        fprintf(f, "Synchronization, last events:\n");
         uint32_t end = sync_pos, lim = (uint32_t)atoi(getenv("BDSP_TRACE_SYNC")), n = end < lim ? end : lim;
         if (n > 4096) n = 4096;
         for (uint32_t k = end - n; k < end; k++) {

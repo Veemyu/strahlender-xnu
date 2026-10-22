@@ -1,17 +1,17 @@
-desc Pokécenter: Tür betreten (Zone 24 -> Innenraum), zur Schwester gehen, Dialog mit A/B, wieder hinaus
-include weiter_stadt
+desc Pokémon Center: enter the door (zone 24 -> interior), walk to the nurse, dialog with A/B, leave again
+include continue_city
 timeout 480
 finish 15
 shots 45
-feld+12 UP 3.0
-feld+17 RIGHT 0.3
-feld+19 UP 5.0
-feld+34 UP 4.0
-feld+40 A 0.3
-feld+45 A 0.3
-feld+50 A 0.3
-feld+55 A 0.3
-feld+60 A 0.3
-feld+65 B 0.3
-feld+70 DOWN 6.0
-feld+85 NONE 0.1
+field+12 UP 3.0
+field+17 RIGHT 0.3
+field+19 UP 5.0
+field+34 UP 4.0
+field+40 A 0.3
+field+45 A 0.3
+field+50 A 0.3
+field+55 A 0.3
+field+60 A 0.3
+field+65 B 0.3
+field+70 DOWN 6.0
+field+85 NONE 0.1

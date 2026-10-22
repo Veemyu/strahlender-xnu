@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Stufe "shaders" der Build-Pipeline (Integration in scripts/build_all.sh: docs/shader-unity-integration.md, Abschnitt 13).
-# Bundle-Shader -> Blobs -> Inventar -> maxwell2msl --lang hlsl -> shader_wrap -> Unity-Projekt-Ausgabe.
-# Nutzt nur Daten aus dem eigenen NSP/XCI (die von build_all.sh extract entpackten Bundles), nie die Ryujinx-Caches.
-# Alles deterministisch: gleiche Eingabe -> gleiche Dateien (Namen aus SHA-1 der Keyword-Menge, sortierte Aufzaehlung).
+# Stage "shaders" of the build pipeline (integration in scripts/build_all.sh: docs/shader-unity-integration.md, section 13).
+# Bundle shaders -> blobs -> inventory -> maxwell2msl --lang hlsl -> shader_wrap -> Unity project output.
+# Uses only data from your own NSP/XCI (the bundles unpacked by build_all.sh extract), never the Ryujinx caches.
+# Everything is deterministic: same input -> same files (names from the SHA-1 of the keyword set, sorted enumeration).
 #
-# Aufruf:
+# Usage:
 #   scripts/shader_build.sh [--romfs DIR] [--out DIR] [--used FILE] [--shader NAME] [--force]
-#   --romfs DIR   entpacktes RomFS (Standard: work/romfs); enthaelt Data/StreamingAssets/AssetAssistant/...
-#   --out DIR     Ausgabe der .shader (Standard: work/build/shaders; fuer das Haupt-Unity-Projekt:
-#                 unity/Assets/GameData/Shaders, gitignoriert)
-#   --used FILE   JSON [{"shader","keywords"}]: nur diese Keyword-Mengen erzeugen (Strippen)
-#   --shader N    nur ein Shader (Test)
-#   --force       Zwischenstufen neu erzeugen
-# Exit-Codes: 0 ok, 2 Aufruf, 3 Eingabe fehlt, 4 Werkzeug/Build, 9 nicht alle Varianten verpackbar (Liste in variants.json)
+#   --romfs DIR   unpacked RomFS (default: work/romfs); contains Data/StreamingAssets/AssetAssistant/...
+#   --out DIR     output of the .shader files (default: work/build/shaders; for the main Unity project:
+#                 unity/Assets/GameData/Shaders, gitignored)
+#   --used FILE   JSON [{"shader","keywords"}]: generate only these keyword sets (stripping)
+#   --shader N    only one shader (test)
+#   --force       regenerate the intermediate stages
+# Exit codes: 0 ok, 2 usage, 3 input missing, 4 tool/build, 9 not all variants wrappable (list in variants.json)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,7 +22,7 @@ PYDEPS="${PYDEPS:-$ROOT/tools/pydeps}"
 SH="$ROOT/work/shaders"
 
 log() { echo "[$(date +%H:%M:%S)] shaders: $*"; }
-die() { local code="$1"; shift; echo "FEHLER: $*" >&2; exit "$code"; }
+die() { local code="$1"; shift; echo "ERROR: $*" >&2; exit "$code"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -32,46 +32,46 @@ while [ $# -gt 0 ]; do
     --shader) ONLY="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) die 2 "Unbekannte Option: $1" ;;
+    *) die 2 "Unknown option: $1" ;;
   esac
 done
 
 BUNDLE_DIR="$ROMFS/Data/StreamingAssets/AssetAssistant"
-[ "$ROMFS" = "$ROOT/work/romfs" ] || die 2 "--romfs: die Hilfsskripte lesen fest work/romfs (Ausgabe von build_all.sh extract); Ordner dorthin verlinken"
-[ -f "$BUNDLE_DIR/Dpr/shaders" ] || die 3 "Shader-Bundle fehlt: $BUNDLE_DIR/Dpr/shaders (erst: scripts/build_all.sh extract ...)"
-[ -f "$BUNDLE_DIR/Effects/fxparticle" ] || die 3 "Shader-Bundle fehlt: $BUNDLE_DIR/Effects/fxparticle"
-[ -d "$PYDEPS" ] || die 4 "Python-Abhaengigkeiten fehlen ($PYDEPS: UnityPy, lz4); scripts/build_all.sh tools"
+[ "$ROMFS" = "$ROOT/work/romfs" ] || die 2 "--romfs: the helper scripts read work/romfs hard-coded (output of build_all.sh extract); link the folder there"
+[ -f "$BUNDLE_DIR/Dpr/shaders" ] || die 3 "Shader bundle missing: $BUNDLE_DIR/Dpr/shaders (first: scripts/build_all.sh extract ...)"
+[ -f "$BUNDLE_DIR/Effects/fxparticle" ] || die 3 "Shader bundle missing: $BUNDLE_DIR/Effects/fxparticle"
+[ -d "$PYDEPS" ] || die 4 "Python dependencies missing ($PYDEPS: UnityPy, lz4); scripts/build_all.sh tools"
 mkdir -p "$SH"
 
-# 1. Uebersetzer
+# 1. Translator
 if [ "$FORCE" = 1 ] || [ ! -x "$ROOT/shader_translator/build/maxwell2msl" ]; then
-  log "baue maxwell2msl"
-  make -C "$ROOT/shader_translator" >/dev/null || die 4 "make in shader_translator fehlgeschlagen"
+  log "building maxwell2msl"
+  make -C "$ROOT/shader_translator" >/dev/null || die 4 "make in shader_translator failed"
 fi
 
 cd "$ROOT"
-# 2. Blobs (eindeutige Maxwell-Programme)  3. Inventar (Properties, Zustand, Layouts)  4. Programm -> Blob-Hash
+# 2. Blobs (unique Maxwell programs)  3. Inventory (properties, state, layouts)  4. Program -> blob hash
 if [ "$FORCE" = 1 ] || [ ! -f "$SH/blobs/index.json" ]; then
-  log "extrahiere Blobs"
+  log "extracting blobs"
   PYTHONPATH="$PYDEPS" python3 scripts/shader_extract_blobs.py --out work/shaders/blobs --extra >/dev/null
 fi
 if [ "$FORCE" = 1 ] || [ ! -f "$SH/inventory.json" ]; then
-  log "erzeuge Inventar"
+  log "generating inventory"
   PYTHONPATH="$PYDEPS" python3 scripts/shader_inventory.py --out work/shaders/inventory.json >/dev/null
 fi
 if [ "$FORCE" = 1 ] || [ ! -f "$SH/prog_blob.json" ]; then
-  log "ordne Programme den Blobs zu"
+  log "mapping programs to blobs"
   PYTHONPATH="$PYDEPS" python3 scripts/shader_fidelity.py index >/dev/null
 fi
 
-# 5. Wrapper: je Shader/Pass/Keyword-Menge eine .shader (Ausgabe gitignoriert)
+# 5. Wrapper: one .shader per shader/pass/keyword set (output gitignored)
 ARGS=(--out "$OUT")
 [ -n "$USED" ] && ARGS+=(--used "$USED")
 [ -n "$ONLY" ] && ARGS+=(--shader "$ONLY")
-log "verpacke Varianten nach $OUT"
+log "wrapping variants to $OUT"
 set +e
 python3 scripts/shader_wrap_all.py "${ARGS[@]}"
 RC=$?
 set -e
-[ "$RC" = 0 ] || { log "nicht alle Varianten verpackbar (variants.json)"; exit 9; }
-log "fertig"
+[ "$RC" = 0 ] || { log "not all variants wrappable (variants.json)"; exit 9; }
+log "done"

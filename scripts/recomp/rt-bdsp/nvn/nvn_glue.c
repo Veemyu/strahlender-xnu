@@ -175,7 +175,7 @@ HLE_FUNC("_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_E
 
 // ---- Zähler für das Ergebnisprotokoll
 uint64_t renderer_present_count(void);
-void nvn_report(FILE *f) { fprintf(f, "NVN: %llu Bilder präsentiert, Metal-Puffer %llu MiB\n", (unsigned long long)renderer_present_count(), (unsigned long long)(g_nvn_mem_size >> 20)); }
+void nvn_report(FILE *f) { fprintf(f, "NVN: %llu frames presented, Metal buffer %llu MiB\n", (unsigned long long)renderer_present_count(), (unsigned long long)(g_nvn_mem_size >> 20)); }
 
 // ---- Ausgabegröße: das 1920x1080-Bild des Spiels wird eingepasst, ohne Skalierung des Rendering
 void output_scale(double dw, double dh, bool reshape_allowed, double now, double gpu_ms, OutScale *o) {
@@ -291,7 +291,7 @@ static void npad_fill(uint8_t *s) {
     for (int i = 0; i < 4; i++) *(int32_t *)(s + 16 + 4 * i) = g_ext_stick[i];
     *(uint32_t *)(s + 32) = 1;
     static uint64_t last;
-    if (b != last && getenv("BDSP_TRACE_INPUT")) LOG("[input] Tasten %#llx\n", (unsigned long long)b);
+    if (b != last && getenv("BDSP_TRACE_INPUT")) LOG("[input] Buttons %#llx\n", (unsigned long long)b);
     last = b;
 }
 #define NPAD_STATE(sym, fn) HLE_FUNC(sym, fn) { if (*(uint32_t *)G2HC(c->x[1]) == 0) npad_fill((uint8_t *)G2H(c->x[0])); }

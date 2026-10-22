@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Numerischer Treue-Test: Maxwell->MSL-Uebersetzung (maxwell2msl) gegen die Ryujinx-Referenz (SPIR-V -> MSL).
+"""Numerical fidelity test: Maxwell->MSL translation (maxwell2msl) against the Ryujinx reference (SPIR-V -> MSL).
 
-Fuer Programmpaare (Vertex + Fragment), die in BEIDEN Quellen vorkommen (Bundle-Blob und Ryujinx-SPIR-V, Zuordnung
-ueber work/shaders/mapping.json), werden aus der Schnittstelle des Referenz-Shaders deterministische Eingaben
-erzeugt (Vertexattribute, Konstantenpuffer, synthetische Texturen). Das Harness (scripts/shader_harness) rendert
-(a) die Referenz und (b) unsere Uebersetzung mit identischem Zustand; scripts/shader_compare.py vergleicht die Bilder.
-Bei Abweichungen werden zwei Mischvarianten gerendert (Referenz-VS + unser FS, unser VS + Referenz-FS), die den
-Fehler auf eine Stufe eingrenzen.
+For program pairs (vertex + fragment) that occur in BOTH sources (bundle blob and Ryujinx SPIR-V, matched
+through work/shaders/mapping.json), deterministic inputs are generated from the interface of the reference shader
+(vertex attributes, constant buffers, synthetic textures). The harness (scripts/shader_harness) renders
+(a) the reference and (b) our translation with identical state; scripts/shader_compare.py compares the images.
+On deviations two mixed variants are rendered (reference VS + our FS, our VS + reference FS), which narrow the
+error down to one stage.
 
-Aufruf (aus dem Repo-Wurzelverzeichnis, alle Daten lokal unter work/shaders/):
-  python3 scripts/shader_fidelity.py index                    # Programm -> Blob-Hash (braucht UnityPy, einmalig)
-  python3 scripts/shader_fidelity.py run --count 120          # Stichprobe (je Shader abwechselnd)
-  python3 scripts/shader_fidelity.py run --all --jobs 4       # alle zulaessigen Paare
-  python3 scripts/shader_fidelity.py run --only 1 2 100       # bestimmte Cache-Indizes
+Usage (from the repo root, all data local under work/shaders/):
+  python3 scripts/shader_fidelity.py index                    # program -> blob hash (needs UnityPy, once)
+  python3 scripts/shader_fidelity.py run --count 120          # sample (alternating per shader)
+  python3 scripts/shader_fidelity.py run --all --jobs 4       # all admissible pairs
+  python3 scripts/shader_fidelity.py run --only 1 2 100       # specific cache indices
 
-Schwellen (begruendet in docs/shaders.md): bestanden = max. Abweichung <= 1 Stufe je Kanal (1/255, die
-Rundungsgrenze von rgba8Unorm); "knapp" = <= 3; sonst durchgefallen. Ergebnis: work/shaders/fidelity_report.json,
-Bilder unter work/shaders/out/fidelity/ (nicht im Repo).
-Nur Standardbibliothek (index zusaetzlich UnityPy).
+Thresholds (justified in docs/shaders.md): passed = max. deviation <= 1 step per channel (1/255, the
+rounding limit of rgba8Unorm); "marginal" = <= 3; otherwise failed. Result: work/shaders/fidelity_report.json,
+images under work/shaders/out/fidelity/ (not in the repo).
+Standard library only (index additionally UnityPy).
 """
 import argparse
 import json
@@ -39,24 +39,24 @@ TRANSLATOR = ROOT / "shader_translator" / "build" / "maxwell2msl"
 HARNESS = WORK / "build" / "release" / "shader-harness"
 
 IMAGE_SIZE = 128
-VERTEX_BUFFER_SLOT = 30      # wie in den Harness-Beispielen: ausserhalb der Cbuf-Slots
-CBUF_BYTES = 65536           # die Ryujinx-Module deklarieren float4[4096]
-GRID = 12                    # Gitter 12x12 Zellen
+VERTEX_BUFFER_SLOT = 30      # as in the harness examples: outside the cbuf slots
+CBUF_BYTES = 65536           # the Ryujinx modules declare float4[4096]
+GRID = 12                    # grid of 12x12 cells
 CLEAR = (0.25, 0.5, 0.75, 0.5)
-PASS_DIFF = 1                # 1/255 je Kanal
+PASS_DIFF = 1                # 1/255 per channel
 NEAR_DIFF = 3
-MIN_COVERAGE = 0.02          # Anteil Pixel, die von der Clear-Farbe abweichen, damit das Bild aussagekraeftig ist
+MIN_COVERAGE = 0.02          # share of pixels that differ from the clear color for the image to be meaningful
 PROFILES = ("identity", "dense", "hash", "signed", "small", "half", "identity@1", "identity@2", "identity@3", "dense@1", "dense@2",
             "dense@3", "identity%1", "identity%2", "identity%3", "identity%4", "identity%5", "identity%6", "dense%1", "dense%2",
             "dense%3", "dense%4", "hash#1", "signed#1", "small#1", "hash#2", "signed#2", "small#2", "hash#3", "signed#3",
             "hash#4", "signed#4", "hash#5", "signed#5", "identity%7", "identity%8", "identity%9", "identity%10", "dense%5",
             "dense%6", "dense%7", "dense%8")
-TEXTURE_TABLE_BASE = 0x568   # siehe maxwell2msl --info (Annahme: Handle-Tabelle in cbuf 2)
+TEXTURE_TABLE_BASE = 0x568   # see maxwell2msl --info (assumption: handle table in cbuf 2)
 
 
-# --------------------------------------------------------------------------- Referenz-MSL lesen
+# --------------------------------------------------------------------------- Reading the reference MSL
 def split_params(sig):
-    """Teilt die Parameterliste einer MSL-Funktion an Kommas ausserhalb von <...>."""
+    """Splits the parameter list of an MSL function at commas outside <...>."""
     out, depth, cur = [], 0, []
     for ch in sig:
         if ch == "<":
@@ -77,10 +77,10 @@ TEX_NAME_RE = re.compile(r"_tex_cb(\d+)_([0-9A-Fa-f]+)$")
 
 
 def tex_key_from_name(name):
-    """Ryujinx-Name einer bindlosen Textur -> (Texturwort-Offset, Samplerwort-Offset) in Bytes, oder None.
+    """Ryujinx name of a bindless texture -> (texture word offset, sampler word offset) in bytes, or None.
 
-    Beispiel: fp_tex_cb196610_1056805A -> (0x568, 0x168). Die obere Haelfte des Hexwerts traegt den Wortindex des
-    Texturworts (0x10568 -> 0x568), die unteren 12 Bit den Wortindex des Samplerworts (0x5A * 4 = 0x168)."""
+    Example: fp_tex_cb196610_1056805A -> (0x568, 0x168). The upper half of the hex value carries the word index of the
+    texture word (0x10568 -> 0x568), the lower 12 bits the word index of the sampler word (0x5A * 4 = 0x168)."""
     m = TEX_NAME_RE.search(name)
     if not m:
         return None
@@ -89,13 +89,13 @@ def tex_key_from_name(name):
 
 
 def parse_ref_msl(text):
-    """Liest die Schnittstelle des Einstiegspunkts main0 aus dem spirv-cross-MSL.
+    """Reads the interface of the entry point main0 from the spirv-cross MSL.
 
-    Liefert {'stage', 'attrs': [(loc, typ)], 'buffers': [(name, slot, kind, index)], 'textures': [...], 'unsupported': [...]}.
-    kind eines Puffers: 'cbuf' (name vp_c<k>/fp_c<k>), 'support' (support_buffer) oder 'other'."""
+    Returns {'stage', 'attrs': [(loc, type)], 'buffers': [(name, slot, kind, index)], 'textures': [...], 'unsupported': [...]}.
+    kind of a buffer: 'cbuf' (name vp_c<k>/fp_c<k>), 'support' (support_buffer) or 'other'."""
     m = re.search(r"^(vertex|fragment)\s+[\w:<>]+\s+main0\((.*?)\)\s*$", text, re.M)
     if not m:
-        raise ValueError("main0 nicht gefunden")
+        raise ValueError("main0 not found")
     res = {"stage": m.group(1), "attrs": [], "buffers": [], "textures": [], "unsupported": []}
     samplers = {}
     textures = []
@@ -133,7 +133,7 @@ def parse_ref_msl(text):
     return res
 
 
-# --------------------------------------------------------------------------- deterministische Eingaben
+# --------------------------------------------------------------------------- deterministic inputs
 def _mix(i, seed):
     x = (i * 0x9E3779B1 + seed * 0x85EBCA6B + 0x165667B1) & 0xFFFFFFFF
     x ^= x >> 15
@@ -149,21 +149,21 @@ def hash01(i, seed):
 
 
 def parse_profile(profile):
-    """'name', 'name@shift' (Matrixraster um shift vec4 verschoben), 'name%n' (Verschiebung je Cbuf aus einem Hash),
-    'name#seed' oder Kombinationen -> (name, shift, seed, per_cbuf_variant)."""
+    """'name', 'name@shift' (matrix grid shifted by shift vec4), 'name%n' (shift per cbuf from a hash),
+    'name#seed' or combinations -> (name, shift, seed, per_cbuf_variant)."""
     m = re.match(r"^([a-z]+)(?:@(\d+))?(?:%(\d+))?(?:#(\d+))?$", profile)
     if not m:
-        raise ValueError(f"unbekanntes Profil {profile}")
+        raise ValueError(f"unknown profile {profile}")
     return m.group(1), int(m.group(2) or 0), int(m.group(4) or 0), int(m.group(3) or 0)
 
 
 def cbuf_bytes(profile, size=CBUF_BYTES, seed=1, k=0):
-    """Konstantenpuffer-Inhalt (little-endian float32). Profile:
-    identity: je vier aufeinanderfolgende vec4 eine Einheitsmatrix (Matrizen werden zur Identitaet),
-    dense: 0.25 plus 0.5 auf der Diagonalen, hash: Zufall in [0.1, 1], signed: Zufall in [-0.5, 0.5],
-    small: Zufall in [0.02, 0.2], half: 0.5 (w = 1).
-    '@s' verschiebt das Matrixraster um s vec4 (Matrizen, die nicht auf 64 Byte beginnen), '%n' verschiebt es je
-    Cbuf-Index k verschieden, '#s' aendert den Zufall."""
+    """Constant buffer contents (little-endian float32). Profiles:
+    identity: every four consecutive vec4 form an identity matrix (matrices become the identity),
+    dense: 0.25 plus 0.5 on the diagonal, hash: random in [0.1, 1], signed: random in [-0.5, 0.5],
+    small: random in [0.02, 0.2], half: 0.5 (w = 1).
+    '@s' shifts the matrix grid by s vec4 (matrices that do not start on 64 bytes), '%n' shifts it differently per
+    cbuf index k, '#s' changes the randomness."""
     name, shift, extra, variant = parse_profile(profile)
     if variant:
         shift = _mix(k + 1, variant) % 4
@@ -186,14 +186,14 @@ def cbuf_bytes(profile, size=CBUF_BYTES, seed=1, k=0):
         elif name == "signed":
             v = hash01(i, seed + 7) - 0.5
         else:
-            raise ValueError(f"unbekanntes Profil {profile}")
+            raise ValueError(f"unknown profile {profile}")
         vals.append(v)
     return struct.pack(f"<{n}f", *vals)
 
 
 def mesh(locations, grid=GRID):
-    """Gitter aus grid x grid Zellen. Attribut mit der kleinsten Location = Position, alle anderen Verlaeufe in [0, 1].
-    Liefert (vertexbytes, stride, indices)."""
+    """Grid of grid x grid cells. Attribute with the smallest location = position, all others gradients in [0, 1].
+    Returns (vertex bytes, stride, indices)."""
     locs = sorted(locations)
     verts = []
     for gy in range(grid + 1):
@@ -215,8 +215,8 @@ def mesh(locations, grid=GRID):
 
 
 def texture_spec(key):
-    """Synthetische Textur zu einem (Texturwort, Samplerwort)-Schluessel: Schachbrett (mit wechselndem Alpha) oder
-    Verlauf, Farben aus dem Hash. Das Alpha variiert, weil viele Shader (Schrift, Masken) nur den Alphakanal lesen."""
+    """Synthetic texture for a (texture word, sampler word) key: checkerboard (with alternating alpha) or
+    gradient, colors from the hash. The alpha varies because many shaders (text, masks) read only the alpha channel."""
     tex_off = key[0] if key else 0
     n = (tex_off - TEXTURE_TABLE_BASE) // 8 if tex_off >= TEXTURE_TABLE_BASE else tex_off
     h = [hash01(n, s) for s in range(8)]
@@ -228,16 +228,16 @@ def texture_spec(key):
             "colorB": [0.45 * h[3], 0.45 * h[4], 0.45 * h[5], a_lo]}
 
 
-# --------------------------------------------------------------------------- Auswahl der Paare
+# --------------------------------------------------------------------------- Choosing the pairs
 def pick_pairs(mapping, prog_blob, have_spv, have_blob, count=None, seed=0):
-    """Paare (Cache-Eintrag, Vertex-Blob, Fragment-Blob), die in beiden Quellen vorkommen.
+    """Pairs (cache entry, vertex blob, fragment blob) that occur in both sources.
 
-    Je Cache-Eintrag das erste Kandidatenpaar mit gleicher Keyword-Menge. Ohne count alle; mit count abwechselnd
-    ueber die Shader (deterministisch gemischt), damit nicht ein Shader mit tausenden Varianten die Stichprobe fuellt."""
+    Per cache entry the first candidate pair with the same keyword set. Without count all; with count alternating
+    across the shaders (deterministically shuffled), so one shader with thousands of variants does not fill the sample."""
     out = []
     seen = set()
     for e in mapping["cacheEntries"]:
-        if e.get("status") != "voll":
+        if e.get("status") != "full":
             continue
         idx = e["index"]
         if not (have_spv(idx, "vert") and have_spv(idx, "frag")):
@@ -272,7 +272,7 @@ def pick_pairs(mapping, prog_blob, have_spv, have_blob, count=None, seed=0):
     return sorted(picked, key=lambda p: p["index"])
 
 
-# --------------------------------------------------------------------------- Werkzeuge aufrufen
+# --------------------------------------------------------------------------- Calling the tools
 def run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
 
@@ -284,11 +284,11 @@ def find_spirv_cross():
     for d in os.environ.get("PATH", "").split(":"):
         if os.access(f"{d}/spirv-cross", os.X_OK):
             return f"{d}/spirv-cross"
-    raise SystemExit("spirv-cross nicht gefunden (SPIRV_CROSS=<Pfad>)")
+    raise SystemExit("spirv-cross not found (SPIRV_CROSS=<path>)")
 
 
 def cbuf_file(stage_short, k, profile):
-    """Dateiname des Cbuf-Inhalts. Cbuf 1 (Compiler-Konstanten) kommt aus dem Blob und gilt fuer alle Profile."""
+    """File name of the cbuf contents. Cbuf 1 (compiler constants) comes from the blob and applies to all profiles."""
     return f"cb_{stage_short}_1.bin" if k == 1 else f"cb_{stage_short}_{k}_{profile}.bin"
 
 
@@ -300,7 +300,7 @@ def translate_ours(blob_path, stage, out_msl, out_info, vs_out_mask=None, cbuf1=
         cmd += ["--vs-out-mask", f"{vs_out_mask:x}"]
     r = run(cmd)
     if r.returncode != 0:
-        return None, r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "Uebersetzung fehlgeschlagen"
+        return None, r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "translation failed"
     return json.loads(Path(out_info).read_text()), None
 
 
@@ -312,10 +312,10 @@ def ref_msl(spv_path, out_msl):
     return r.stdout, None
 
 
-# --------------------------------------------------------------------------- Spec und Rendern
+# --------------------------------------------------------------------------- Spec and rendering
 def side_resources(kind, stage, info, ref):
-    """Bindings einer Seite ('ours' aus dem Resource-Map-JSON, 'ref' aus dem Referenz-MSL).
-    Liefert {'cbufs': {slot: cbuf_index}, 'textures': [{'slot', 'sampler_slot', 'key'}], 'support_slot': int|None}."""
+    """Bindings of one side ('ours' from the resource map JSON, 'ref' from the reference MSL).
+    Returns {'cbufs': {slot: cbuf_index}, 'textures': [{'slot', 'sampler_slot', 'key'}], 'support_slot': int|None}."""
     if kind == "ours":
         cbufs = {c["metalBuffer"]: c["index"] for c in info["constantBuffers"]}
         tex = []
@@ -330,7 +330,7 @@ def side_resources(kind, stage, info, ref):
 
 
 def make_spec(d, vs_src, fs_src, vs_res, fs_res, locs, profile):
-    """Spec-Dict fuer das Harness. d: Arbeitsordner des Paars (Dateien relativ zu ihm)."""
+    """Spec dict for the harness. d: work folder of the pair (files relative to it)."""
     spec = {
         "size": [IMAGE_SIZE, IMAGE_SIZE], "clearColor": list(CLEAR),
         "vertex": {"msl": vs_src}, "fragment": {"msl": fs_src},
@@ -376,12 +376,12 @@ def image_stats(img):
 
 
 def classify(metrics):
-    """bestanden / knapp / durchgefallen nach der groessten Abweichung je Kanal."""
+    """passed / marginal / failed by the largest deviation per channel."""
     if metrics["max_abs_diff"] <= PASS_DIFF:
-        return "bestanden"
+        return "passed"
     if metrics["max_abs_diff"] <= NEAR_DIFF:
-        return "knapp"
-    return "durchgefallen"
+        return "marginal"
+    return "failed"
 
 
 def jsonable(m):
@@ -393,51 +393,51 @@ def attr_locations(ref_vs, info_vs):
 
 
 def cleanup_pair_dir(d, keep_profile):
-    """Loescht die Cbuf-Dateien der nicht gewaehlten Profile (je Paar bis zu mehrere MB)."""
+    """Deletes the cbuf files of the profiles not chosen (up to several MB per pair)."""
     for f in Path(d).glob("cb_*_*.bin"):
         if not f.name.endswith(f"_{keep_profile}.bin") and f.name not in ("cb_vs_1.bin", "cb_fs_1.bin"):
             f.unlink()
 
 
 def run_pair(pair, outdir, imgdir):
-    """Fuehrt ein Paar aus und raeumt danach auf."""
+    """Runs one pair and cleans up afterwards."""
     res = _run_pair(pair, outdir, imgdir)
     cleanup_pair_dir(Path(outdir) / str(pair["index"]), res.get("profile", "-"))
     return res
 
 
 def _run_pair(pair, outdir, imgdir):
-    """Fuehrt ein Paar komplett aus. Liefert ein Ergebnis-Dict (immer mit 'status')."""
+    """Runs one pair completely. Returns a result dict (always with 'status')."""
     idx = pair["index"]
     d = Path(outdir) / str(idx)
     d.mkdir(parents=True, exist_ok=True)
     res = {"index": idx, "shader": pair["shader"], "vs": pair["vs"], "fs": pair["fs"]}
     blobs = WORK / "blobs"
     spv = WORK / "spirv"
-    # Referenz
+    # Reference
     ref = {}
     for st, name in (("vs", "vert"), ("fs", "frag")):
         text, err = ref_msl(spv / f"{idx}_{name}.spv", d / f"ref_{st}.metal")
         if err:
-            return {**res, "status": "ref_fehler", "detail": err}
+            return {**res, "status": "ref_error", "detail": err}
         try:
             ref[st] = parse_ref_msl(text)
         except ValueError as e:
-            return {**res, "status": "ref_fehler", "detail": str(e)}
+            return {**res, "status": "ref_error", "detail": str(e)}
     unsup = ref["vs"]["unsupported"] + ref["fs"]["unsupported"]
     if unsup:
-        return {**res, "status": "nicht_unterstuetzt", "detail": "; ".join(sorted(set(unsup)))}
-    # Uebersetzung
+        return {**res, "status": "unsupported", "detail": "; ".join(sorted(set(unsup)))}
+    # Translation
     info = {}
     info["vs"], err = translate_ours(blobs / f"{pair['vs']}.bin", "vs", d / "ours_vs.metal", d / "ours_vs.json", cbuf1=d / "cb_vs_1.bin")
     if err:
-        return {**res, "status": "uebersetzung_fehlt", "detail": "vs: " + err}
+        return {**res, "status": "translation_failed", "detail": "vs: " + err}
     mask = int(info["vs"]["outMask"], 16)
     info["fs"], err = translate_ours(blobs / f"{pair['fs']}.bin", "fs", d / "ours_fs.metal", d / "ours_fs.json", mask, cbuf1=d / "cb_fs_1.bin")
     if err:
-        return {**res, "status": "uebersetzung_fehlt", "detail": "fs: " + err}
+        return {**res, "status": "translation_failed", "detail": "fs: " + err}
     if info["vs"].get("usesGlobalMemory") or info["fs"].get("usesGlobalMemory"):
-        return {**res, "status": "nicht_unterstuetzt", "detail": "globaler Speicher"}
+        return {**res, "status": "unsupported", "detail": "global memory"}
     locs = attr_locations(ref["vs"], info["vs"])
     vb, _stride, indices = mesh(locs)
     (d / "vertices.bin").write_bytes(vb)
@@ -448,7 +448,7 @@ def _run_pair(pair, outdir, imgdir):
     imgdir = Path(imgdir)
     imgdir.mkdir(parents=True, exist_ok=True)
 
-    def prepare(profile):  # Konstantenpuffer-Dateien des Profils (je Stufe und Cbuf, von beiden Seiten gemeinsam genutzt)
+    def prepare(profile):  # constant buffer files of the profile (per stage and cbuf, shared by both sides)
         for (_kind, st), r in sides.items():
             for k in set(r["cbufs"].values()):
                 f = d / cbuf_file(st, k, profile)
@@ -465,12 +465,12 @@ def _run_pair(pair, outdir, imgdir):
             return None, err
         return sc.read_png(png), None
 
-    # Referenz rendern; das erste Eingabeprofil mit aussagekraeftigem Bild gewinnt, sonst das mit der groessten Abdeckung
+    # Render the reference; the first input profile with a meaningful image wins, otherwise the one with the largest coverage
     best = None
     for profile in PROFILES:
         img, err = variant("ref", "ref", "ref", profile)
         if err:
-            return {**res, "status": "ref_render_fehler", "detail": err}
+            return {**res, "status": "ref_render_error", "detail": err}
         stats = image_stats(img)
         good = stats["coverage"] >= MIN_COVERAGE and stats["distinctColors"] >= 2
         if best is None or (good, stats["coverage"]) > (best[0], best[1]["coverage"]):
@@ -482,34 +482,34 @@ def _run_pair(pair, outdir, imgdir):
     res.update({"profile": profile, "coverage": round(stats["coverage"], 4), "distinctColors": stats["distinctColors"],
                 "textures": len(sides[("ref", "fs")]["textures"]) + len(sides[("ref", "vs")]["textures"])})
     if not ok:
-        return {**res, "status": "nicht_aussagekraeftig",
-                "detail": "Referenzbild einfarbig" if stats["coverage"] >= MIN_COVERAGE else "Referenzbild fast leer (alles verworfen/ausserhalb)"}
+        return {**res, "status": "not_meaningful",
+                "detail": "reference image single-colored" if stats["coverage"] >= MIN_COVERAGE else "reference image almost empty (everything discarded/outside)"}
     ref_img = sc.read_png(imgdir / f"{idx}_ref.png")
 
     ours_img, err = variant("ours", "ours", "ours", profile)
     if err:
-        return {**res, "status": "ours_render_fehler", "detail": err}
+        return {**res, "status": "ours_render_error", "detail": err}
     m = sc.compare(ref_img, ours_img)
     res.update({"maxDiff": m["max_abs_diff"], "meanDiff": round(m["mean_abs_diff"], 5), "pixelsOver1": sc.compare(ref_img, ours_img, 1)["pixels_over"],
                 "psnr": None if math.isinf(m["psnr"]) else round(m["psnr"], 2)})
     res["status"] = classify(m)
-    if res["status"] != "bestanden":
+    if res["status"] != "passed":
         w, h, px = sc.diff_image(ref_img, ours_img, gain=8)
         sc.write_png(imgdir / f"{idx}_diff.png", w, h, px)
-        # Ryujinx rundet zwischen zwei Halbpraezisions-Befehlen nicht auf fp16 (es entfernt das Pack/Unpack-Paar), die
-        # Hardware schon. Die Variante --half-compat bildet das Ryujinx-Verhalten nach und trennt diese Abweichung ab.
+        # Ryujinx does not round to fp16 between two half-precision instructions (it removes the pack/unpack pair), the
+        # hardware does. The --half-compat variant reproduces the Ryujinx behavior and separates this deviation.
         for st in ("vs", "fs"):
             _i, err = translate_ours(blobs / f"{pair[st]}.bin", st, d / f"oursc_{st}.metal", d / f"oursc_{st}.json",
                                      mask if st == "fs" else None, extra=("--half-compat",))
             if err:
-                res["compat"] = {"fehler": err}
+                res["compat"] = {"error": err}
                 break
             sides[("oursc", st)] = sides[("ours", st)]
             src[("oursc", st)] = f"oursc_{st}.metal"
         if "compat" not in res:
             cimg, err = variant("oursc", "oursc", "oursc", profile)
             if err:
-                res["compat"] = {"fehler": err}
+                res["compat"] = {"error": err}
             else:
                 cm = sc.compare(ref_img, cimg)
                 res["compat"] = {"maxDiff": cm["max_abs_diff"], "pixelsOver1": sc.compare(ref_img, cimg, 1)["pixels_over"],
@@ -518,19 +518,19 @@ def _run_pair(pair, outdir, imgdir):
         for name, vk, fk in (("refvs_oursfs", "ref", "ours"), ("oursvs_reffs", "ours", "ref")):
             img, err = variant(name, vk, fk, profile)
             if err:
-                mixed[name] = {"fehler": err}
+                mixed[name] = {"error": err}
             else:
                 mm = sc.compare(ref_img, img)
                 mixed[name] = {"maxDiff": mm["max_abs_diff"], "status": classify(mm)}
         res["mixed"] = mixed
         a, b = mixed["refvs_oursfs"].get("status"), mixed["oursvs_reffs"].get("status")
-        res["stufe"] = ("fragment" if a != "bestanden" and b == "bestanden" else
-                        "vertex" if b != "bestanden" and a == "bestanden" else
-                        "beide" if a != "bestanden" and b != "bestanden" else "zusammenspiel")
+        res["stage"] = ("fragment" if a != "passed" and b == "passed" else
+                        "vertex" if b != "passed" and a == "passed" else
+                        "both" if a != "passed" and b != "passed" else "interplay")
     return res
 
 
-# --------------------------------------------------------------------------- Kommandos
+# --------------------------------------------------------------------------- Commands
 def cmd_index(args):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import shader_extract_blobs as eb
@@ -545,14 +545,14 @@ def cmd_index(args):
             out.append(None)
     dst = WORK / "prog_blob.json"
     dst.write_text(json.dumps(out))
-    print(f"{len(out)} Programme, {sum(1 for h in out if h)} mit Blob -> {dst}")
+    print(f"{len(out)} programs, {sum(1 for h in out if h)} with blob -> {dst}")
 
 
 def load_pairs(args):
     mapping = json.loads((WORK / "mapping.json").read_text())
     pb_path = WORK / "prog_blob.json"
     if not pb_path.exists():
-        raise SystemExit(f"{pb_path} fehlt: erst `python3 scripts/shader_fidelity.py index` (braucht PYTHONPATH=tools/pydeps)")
+        raise SystemExit(f"{pb_path} missing: first run `python3 scripts/shader_fidelity.py index` (needs PYTHONPATH=tools/pydeps)")
     prog_blob = json.loads(pb_path.read_text())
     have_spv = lambda i, st: (WORK / "spirv" / f"{i}_{st}.spv").exists()  # noqa: E731
     have_blob = lambda h: (WORK / "blobs" / f"{h}.bin").exists()  # noqa: E731
@@ -565,22 +565,22 @@ def load_pairs(args):
 def summarize(results):
     from collections import Counter
     c = Counter(r["status"] for r in results)
-    valid = [r for r in results if r["status"] in ("bestanden", "knapp", "durchgefallen")]
-    # mit nachgebildetem Ryujinx-Verhalten bei Halbpraezision: bestanden, wenn exakt oder in der Kompatibilitaetsvariante
-    compat_ok = sum(1 for r in valid if r["status"] == "bestanden" or r.get("compat", {}).get("status") == "bestanden")
+    valid = [r for r in results if r["status"] in ("passed", "marginal", "failed")]
+    # with reproduced Ryujinx behavior for half precision: passed if exact or in the compatibility variant
+    compat_ok = sum(1 for r in valid if r["status"] == "passed" or r.get("compat", {}).get("status") == "passed")
     return {"pairs": len(results), "byStatus": dict(c), "valid": len(valid),
-            "passRate": round(c["bestanden"] / len(valid), 4) if valid else None,
-            "withinNear": round((c["bestanden"] + c["knapp"]) / len(valid), 4) if valid else None,
-            "passedOnlyWithHalfCompat": compat_ok - c["bestanden"],
+            "passRate": round(c["passed"] / len(valid), 4) if valid else None,
+            "withinNear": round((c["passed"] + c["marginal"]) / len(valid), 4) if valid else None,
+            "passedOnlyWithHalfCompat": compat_ok - c["passed"],
             "passRateHalfCompat": round(compat_ok / len(valid), 4) if valid else None}
 
 
 def cmd_run(args):
     for p, what in ((TRANSLATOR, "make -C shader_translator"), (HARNESS, "swift build -c release --package-path scripts/shader_harness --scratch-path work/shaders/build")):
         if not p.exists():
-            raise SystemExit(f"{p} fehlt: {what}")
+            raise SystemExit(f"{p} missing: {what}")
     pairs = load_pairs(args)
-    print(f"{len(pairs)} Paare", file=sys.stderr)
+    print(f"{len(pairs)} pairs", file=sys.stderr)
     outdir = WORK / "fidelity"
     imgdir = WORK / "out" / "fidelity"
     results = []
@@ -588,30 +588,30 @@ def cmd_run(args):
     def one(p):
         try:
             return run_pair(p, outdir, imgdir)
-        except Exception as e:  # ein defektes Paar darf den Lauf nicht beenden
-            return {"index": p["index"], "shader": p["shader"], "status": "skriptfehler", "detail": repr(e)[:200]}
+        except Exception as e:  # one broken pair must not end the run
+            return {"index": p["index"], "shader": p["shader"], "status": "script_error", "detail": repr(e)[:200]}
 
     with ThreadPoolExecutor(max_workers=args.jobs) as ex:
         for i, r in enumerate(ex.map(one, pairs), 1):
             results.append(r)
-            extra = f" max={r['maxDiff']}" if "maxDiff" in r else (f" {r.get('detail', '')[:60]}" if r["status"] != "bestanden" else "")
+            extra = f" max={r['maxDiff']}" if "maxDiff" in r else (f" {r.get('detail', '')[:60]}" if r["status"] != "passed" else "")
             print(f"[{i}/{len(pairs)}] {r['index']:5d} {r['shader'][:38]:38s} {r['status']}{extra}", flush=True)
     summary = summarize(results)
     report = Path(args.report)
     report.write_text(json.dumps({"summary": summary, "results": results}, indent=1))
     print(json.dumps(summary, ensure_ascii=False))
-    print(f"Bericht: {report}")
+    print(f"Report: {report}")
     return 0
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("index", help="Programm-ID -> Blob-Hash (work/shaders/prog_blob.json)").set_defaults(fn=cmd_index)
-    r = sub.add_parser("run", help="Paare rendern und vergleichen")
-    r.add_argument("--count", type=int, default=120, help="Stichprobengroesse (Standard 120)")
-    r.add_argument("--all", action="store_true", help="alle zulaessigen Paare")
-    r.add_argument("--only", type=int, nargs="*", help="nur diese Cache-Indizes")
+    sub.add_parser("index", help="program ID -> blob hash (work/shaders/prog_blob.json)").set_defaults(fn=cmd_index)
+    r = sub.add_parser("run", help="render and compare pairs")
+    r.add_argument("--count", type=int, default=120, help="sample size (default 120)")
+    r.add_argument("--all", action="store_true", help="all admissible pairs")
+    r.add_argument("--only", type=int, nargs="*", help="only these cache indices")
     r.add_argument("--seed", type=int, default=0)
     r.add_argument("--jobs", type=int, default=3)
     r.add_argument("--report", default=str(WORK / "fidelity_report.json"))

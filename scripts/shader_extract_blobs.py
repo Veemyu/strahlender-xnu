@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Exportiert alle eindeutigen Maxwell-Blobs der Switch-Shaderprogramme nach work/shaders/blobs/.
+"""Exports all unique Maxwell blobs of the Switch shader programs to work/shaders/blobs/.
 
-Eingabe: die Unity-Bundles mit den Switch-Shadern (Plattform 19), Standard Dpr/shaders und Effects/fxparticle
-(mit --extra zusaetzlich resources.assets und tmpshader). Je Programm wird der Maxwell-Blob (ab dem NVN-Kopf
-0x12345678 bis zum Ende des Programms; die Container-Felder Datenoffset/-groesse umfassen den Code nicht immer, der
-Uebersetzer findet das Codeende selbst) ausgeschnitten, per SHA-1 dedupliziert und als <hash>.bin abgelegt, dazu
-index.json (Hash, Stufe, Groesse, Programme/Shader je Hash, Quellbundle, codeHash = Hash nur ueber SPH + Code).
+Input: the Unity bundles with the Switch shaders (platform 19), default Dpr/shaders and Effects/fxparticle
+(with --extra additionally resources.assets and tmpshader). For each program the Maxwell blob (from the NVN header
+0x12345678 to the end of the program; the container fields data offset/size do not always cover the code, the
+translator finds the end of the code itself) is cut out, deduplicated by SHA-1 and stored as <hash>.bin, plus
+index.json (hash, stage, size, programs/shaders per hash, source bundle, codeHash = hash over SPH + code only).
 
-Aufruf (aus dem Repo-Root):
+Usage (from the repo root):
     PYTHONPATH=tools/pydeps python3 scripts/shader_extract_blobs.py [--out work/shaders/blobs] [--extra]
 
-Die Ausgabe enthaelt Spieldaten und gehoert nur unter work/ (gitignored), nie ins Repo.
-Die Parser-Funktionen (parse_program, blob_hash) brauchen nur die Standardbibliothek; UnityPy und lz4 werden erst
-beim Lesen der Bundles importiert.
+The output contains game data and belongs only under work/ (gitignored), never in the repo.
+The parser functions (parse_program, blob_hash) need only the standard library; UnityPy and lz4 are imported only
+when reading the bundles.
 """
 import argparse
 import hashlib
@@ -42,15 +42,15 @@ def u32(d, o):
 
 
 def parse_program(d):
-    """Zerlegt ein Unity-Shaderprogramm (Switch). Liefert dict mit stage ('vs'/'fs'/None), keywords, blob (bytes)."""
+    """Parses a Unity shader program (Switch). Returns a dict with stage ('vs'/'fs'/None), keywords, blob (bytes)."""
     if u32(d, 0) != PROGRAM_MAGIC:
-        raise ValueError("Magic 0x0C07513C fehlt")
+        raise ValueError("magic 0x0C07513C missing")
     nkw = u32(d, 0x18)
     pos = 0x1C
     lists = []
-    for _ in range(2):  # globale, dann lokale Keywords: [Anzahl]{[Laenge][Text\0, auf 4 aufgerundet]}
+    for _ in range(2):  # global, then local keywords: [count]{[length][text\0, rounded up to 4]}
         if nkw > 4096:
-            raise ValueError("unplausible Keyword-Anzahl")
+            raise ValueError("implausible keyword count")
         kws = []
         for _ in range(nkw):
             ln = u32(d, pos)
@@ -64,10 +64,10 @@ def parse_program(d):
             pos += 4
     hdr = pos
     if u32(d, hdr + 0x14) != CONTROL_MAGIC:
-        raise ValueError("Control-Magic 0x98761234 fehlt")
+        raise ValueError("control magic 0x98761234 missing")
     m = d.find(BLOB_MAGIC, hdr + 0x18)
     if m < 0:
-        raise ValueError("Maxwell-Blob (0x12345678) nicht gefunden")
+        raise ValueError("Maxwell blob (0x12345678) not found")
     return {"stage": STAGE_NAMES.get(u32(d, hdr + 4)), "keywords": lists[0] + lists[1], "blob": bytes(d[m:]),
             "version": u32(d, 4)}
 
@@ -77,9 +77,9 @@ def blob_hash(blob):
 
 
 def code_end(blob):
-    """Ende des Maxwell-Codes im Blob (NVN-Kopf 0x30 + SPH 0x50, danach Vierergruppen). Gleiche Regel wie der
-    Uebersetzer: der Code endet vor dem unbedingten Sprung auf sich selbst (Padding nach EXIT) bzw. vor dem ersten
-    Nullwort; danach folgen Compiler-Konstanten und andere Daten."""
+    """End of the Maxwell code in the blob (NVN header 0x30 + SPH 0x50, then groups of four). Same rule as the
+    translator: the code ends before the unconditional jump to itself (padding after EXIT) or before the first
+    zero word; compiler constants and other data follow."""
     base = 0x80
     n = min((len(blob) - base) // 8, 65536)
     end = 0
@@ -106,7 +106,7 @@ def code_hash(blob):
 
 
 def collect(programs, out_dir):
-    """programs: Iterable von (bundle, shader, pass-Name, stage-Schluessel, keywords, bytes). Schreibt Blobs, liefert Index."""
+    """programs: iterable of (bundle, shader, pass name, stage key, keywords, bytes). Writes blobs, returns the index."""
     out_dir.mkdir(parents=True, exist_ok=True)
     entries = {}
     total = 0
@@ -119,7 +119,7 @@ def collect(programs, out_dir):
             parse_fail.append({"bundle": bundle, "shader": shader, "error": str(e)})
             continue
         if p["stage"] is None:
-            parse_fail.append({"bundle": bundle, "shader": shader, "error": "unbekannte Stufe"})
+            parse_fail.append({"bundle": bundle, "shader": shader, "error": "unknown stage"})
             continue
         h = blob_hash(p["blob"])
         e = entries.get(h)
@@ -144,10 +144,10 @@ def collect(programs, out_dir):
 
 
 def iter_bundle_programs(paths):
-    import lz4.block  # noqa: F401  (von shader_inventory benoetigt)
+    import lz4.block  # noqa: F401  (needed by shader_inventory)
     import UnityPy
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import shader_inventory as si  # nur lesend: Blob-Klasse fuer die Segmente
+    import shader_inventory as si  # read only: blob class for the segments
 
     for bpath in paths:
         bundle = Path(bpath).name
@@ -168,11 +168,11 @@ def iter_bundle_programs(paths):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default="work/shaders/blobs", help="Zielordner (unter work/)")
-    ap.add_argument("--extra", action="store_true", help="auch resources.assets und tmpshader lesen")
+    ap.add_argument("--extra", action="store_true", help="also read resources.assets and tmpshader")
     args = ap.parse_args()
     out = Path(args.out)
     if "work" not in out.parts:
-        sys.exit("Abbruch: Die Blobs sind Spieldaten und duerfen nur unter work/ liegen.")
+        sys.exit("Abort: the blobs are game data and may only be placed under work/.")
     paths = BUNDLES + (EXTRA if args.extra else [])
     summary = collect(iter_bundle_programs(paths), out)
     print(json.dumps(summary, indent=1))

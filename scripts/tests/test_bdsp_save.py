@@ -1,4 +1,4 @@
-"""Tests für scripts/bdsp_save.py – ausschließlich synthetische Daten."""
+"""Tests for scripts/bdsp_save.py: synthetic data only."""
 import contextlib
 import hashlib
 import io
@@ -13,7 +13,7 @@ import bdsp_save as bs  # noqa: E402
 
 
 def make_save(version=0x34, size=None, valid_hash=True):
-    """Erzeugt einen synthetischen Save: Muster-Füllbytes, Version, MD5 laut Spec."""
+    """Creates a synthetic save: pattern filler bytes, version, MD5 per spec."""
     n = bs.expected_size(version) if size is None else size
     buf = bytearray((i * 31 + 7) & 0xFF for i in range(n))
     struct.pack_into("<i", buf, 0, version)
@@ -83,7 +83,7 @@ class TestHeaderAndHash(unittest.TestCase):
         self.assertFalse(bs.verify_hash(bytes(data)))
 
     def test_wrong_size_too_long_hash_covers_n_only(self):
-        # Spiel hasht nur N Byte; Anhang ändert den Hash nicht, die Größe ist aber falsch
+        # the game hashes only N bytes; an appendix does not change the hash, but the size is wrong
         data = make_save() + b"\x00" * 8
         self.assertTrue(bs.verify_hash(data))
         r = bs.check(data)
@@ -114,7 +114,7 @@ class TestHeaderAndHash(unittest.TestCase):
             bs.verify_hash(bytes(data))
         r = bs.check(bytes(data))
         self.assertIsNone(r["hash_valid"])
-        self.assertTrue(any("unbekannte Version" in p for p in r["problems"]))
+        self.assertTrue(any("unknown version" in p for p in r["problems"]))
 
     def test_old_version_not_checked(self):
         data = struct.pack("<i", 0x20) + bytes(100)
@@ -129,7 +129,7 @@ class TestHeaderAndHash(unittest.TestCase):
 
 class TestFixHashAndCli(unittest.TestCase):
     def setUp(self):
-        # Temp-Ordner im Testverzeichnis statt im System-Temp
+        # temp folder in the test directory instead of the system temp
         self._td = tempfile.TemporaryDirectory(dir=os.path.dirname(os.path.abspath(__file__)))
         self.dir = self._td.name
 
@@ -174,21 +174,21 @@ class TestFixHashAndCli(unittest.TestCase):
         p = self._write("ok.bin", make_save())
         code, out = self._run("check", p)
         self.assertEqual(code, 0)
-        self.assertIn("Hash gültig: ja", out)
+        self.assertIn("Hash valid: yes", out)
         self.assertNotIn("saveDataHash", out)
 
     def test_cli_check_invalid_with_fields(self):
         p = self._write("bad.bin", make_save(valid_hash=False))
         code, out = self._run("check", p, "--fields")
         self.assertEqual(code, 1)
-        self.assertIn("Hash gültig: nein", out)
+        self.assertIn("Hash valid: no", out)
         self.assertIn("saveDataHash", out)
 
     def test_cli_check_truncated(self):
         p = self._write("short.bin", make_save()[:5000])
         code, out = self._run("check", p)
         self.assertNotEqual(code, 0)
-        self.assertIn("Hash gültig: nicht prüfbar", out)
+        self.assertIn("Hash valid: not checkable", out)
 
     def test_cli_dump_fields(self):
         code, out = self._run("dump-fields")

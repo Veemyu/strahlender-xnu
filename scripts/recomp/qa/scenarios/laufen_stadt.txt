@@ -1,8 +1,0 @@
-desc Stadt Fleetburg: Pfeiltasten in alle Richtungen (Gehen, B = Laufen), Kamerafahrt, Ortsnamenfenster
-include weiter_stadt
-timeout 420
-finish 15
-shots 90
-cycle feld+12 22 2.0 UP,RIGHT,DOWN,LEFT
-cycle feld+36 20 1.5 UP+B,LEFT+B,DOWN+B,RIGHT+B
-feld+58 NONE 0.1

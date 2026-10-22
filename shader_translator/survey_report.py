@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fasst eine `maxwell2msl --survey --batch`-Ausgabe (JSON-Zeilen) zu einem Abdeckungs-Histogramm zusammen.
+"""Summarizes a `maxwell2msl --survey --batch` output (JSON lines) into a coverage histogram.
 
-Eingabe: index.json von scripts/shader_extract_blobs.py und die Survey-Datei. Ausgabe: Text (stdout) und optional JSON.
-Gezaehlt wird dreifach: eindeutige Blobs (Datei je Hash), eindeutige Codes (SPH + Code, ohne Konstanten/Reflexion) und
-Programme (Blobs gewichtet mit der Zahl der Bundle-Programme, die sie verwenden).
+Input: index.json from scripts/shader_extract_blobs.py and the survey file. Output: text (stdout) and optionally JSON.
+Counted three ways: unique blobs (one file per hash), unique codes (SPH + code, without constants/reflection) and
+programs (blobs weighted by the number of bundle programs that use them).
 
     python3 shader_translator/survey_report.py work/shaders/blobs/index.json work/shaders/blobs/survey.jsonl \
         [--json work/shaders/blobs/report.json] [--wall-seconds 1.3] [--bundle shaders --bundle fxparticle]
@@ -14,10 +14,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# Bedeutung der unbekannten Opcode-Gruppen (obere 12 Bit), soweit bestimmt; Quelle siehe docs/shaders.md
+# Meaning of the unknown opcode groups (upper 12 bits), as far as determined; source see docs/shaders.md
 KNOWN_NAMES = {
-    "op7e8": "HSETP2, Konstantenpuffer-Form (seit Teil 2 implementiert; Name nur für ältere Survey-Läufe)",
-    "op7e0": "HSETP2, Immediate-Form (seit Teil 2 implementiert; Name nur für ältere Survey-Läufe)",
+    "op7e8": "HSETP2, constant buffer form (implemented since part 2; name only for older survey runs)",
+    "op7e0": "HSETP2, immediate form (implemented since part 2; name only for older survey runs)",
 }
 
 
@@ -86,7 +86,7 @@ def summarize(shaders):
                         "programs": m["programs"], "occurrences": m["occurrences"], "vs": m["vs"], "fs": m["fs"],
                         "blockedOnlyByThis": m["onlyThis"]})
     ranking.sort(key=lambda r: (-r["blobs"], r["name"]))
-    # Greedy: welche Reihenfolge der Umsetzung macht am schnellsten die meisten Shader uebersetzbar
+    # Greedy: which implementation order makes the most shaders translatable the fastest
     pending = [s for s in shaders if not s["ok"]]
     done = set()
     total = len(shaders)
@@ -120,29 +120,29 @@ def summarize(shaders):
 
 def render(rep, bundles, wall):
     L = []
-    L.append("Abdeckung" + (f" (Bundles: {', '.join(bundles)})" if bundles else ""))
-    L.append(f"{'Stufe':6}{'Blobs':>8}{'ok':>8}{'Anteil':>10}   {'Codes':>6}{'ok':>7}{'Anteil':>10}   {'Programme':>9}{'ok':>7}{'Anteil':>10}")
+    L.append("Coverage" + (f" (bundles: {', '.join(bundles)})" if bundles else ""))
+    L.append(f"{'Stage':6}{'Blobs':>8}{'ok':>8}{'Share':>10}   {'Codes':>6}{'ok':>7}{'Share':>10}   {'Programs':>9}{'ok':>7}{'Share':>10}")
     for st in ("all", "vs", "fs"):
         c = rep["coverage"][st]
         L.append(f"{st:6}{c['blobs']:>8}{c['blobsOk']:>8}{pct(c['blobsOk'], c['blobs']):>10}   {c['codes']:>6}{c['codesOk']:>7}"
                  f"{pct(c['codesOk'], c['codes']):>10}   {c['programs']:>9}{c['programsOk']:>7}{pct(c['programsOk'], c['programs']):>10}")
     L.append("")
-    L.append("Fehlende Befehle/Formen (je Blob gezaehlt):")
-    L.append(f"{'Art':8}{'Name':34}{'Blobs':>7}{'Codes':>7}{'Progr.':>8}{'Vorkomm.':>9}{'nur dies':>9}{'VS':>6}{'FS':>6}  Bedeutung")
+    L.append("Missing instructions/forms (counted per blob):")
+    L.append(f"{'Kind':8}{'Name':34}{'Blobs':>7}{'Codes':>7}{'Progr.':>8}{'Occur.':>9}{'only this':>9}{'VS':>6}{'FS':>6}  Meaning")
     for r in rep["missing"]:
         L.append(f"{r['kind']:8}{r['name'][:33]:34}{r['blobs']:>7}{r['codes']:>7}{r['programs']:>8}{r['occurrences']:>9}"
                  f"{r['blockedOnlyByThis']:>9}{r['vs']:>6}{r['fs']:>6}  {r['meaning']}")
     L.append("")
-    L.append("Reihenfolge nach Nutzen (greedy, kumulativ):")
+    L.append("Order by benefit (greedy, cumulative):")
     for g in rep["greedyOrder"]:
-        L.append(f"  +{g['newlyTranslatableBlobs']:>5} Blobs durch {g['implement']:36} -> {g['cumulativeBlobs']} ({100 * g['cumulativeShare']:.1f} % Blobs, "
-                 f"{100 * g['cumulativeProgramShare']:.1f} % Programme)")
+        L.append(f"  +{g['newlyTranslatableBlobs']:>5} blobs through {g['implement']:36} -> {g['cumulativeBlobs']} ({100 * g['cumulativeShare']:.1f} % blobs, "
+                 f"{100 * g['cumulativeProgramShare']:.1f} % programs)")
     if rep["stillBlockedAfterGreedy"]:
-        L.append(f"  noch blockiert: {rep['stillBlockedAfterGreedy']}")
+        L.append(f"  still blocked: {rep['stillBlockedAfterGreedy']}")
     t = rep["timing"]
     L.append("")
-    L.append(f"Laufzeit: {t['shaders']} Shader, {t['instructionsTotal']} Instruktionen; Summe {t['sumSeconds']} s, Mittel {t['meanUs']} us, "
-             f"Median {t['medianUs']} us, P95 {t['p95Us']} us, Max {t['maxUs']} us" + (f"; Wandzeit des Laufs {wall} s" if wall else ""))
+    L.append(f"Run time: {t['shaders']} shaders, {t['instructionsTotal']} instructions; sum {t['sumSeconds']} s, mean {t['meanUs']} us, "
+             f"median {t['medianUs']} us, P95 {t['p95Us']} us, max {t['maxUs']} us" + (f"; wall time of the run {wall} s" if wall else ""))
     return "\n".join(L)
 
 
@@ -152,11 +152,11 @@ def main():
     ap.add_argument("survey")
     ap.add_argument("--json")
     ap.add_argument("--wall-seconds", type=float)
-    ap.add_argument("--bundle", action="append", help="nur Blobs, die in diesem Bundle vorkommen (mehrfach moeglich)")
+    ap.add_argument("--bundle", action="append", help="only blobs that occur in this bundle (repeatable)")
     a = ap.parse_args()
     shaders = load(a.index, a.survey, a.bundle)
     if not shaders:
-        sys.exit("keine Shader gefunden")
+        sys.exit("no shaders found")
     rep = summarize(shaders)
     print(render(rep, a.bundle, a.wall_seconds))
     if a.json:

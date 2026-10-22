@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Liest die Shader-Objekte der Switch-Bundles (UnityFS, Unity 2019.4) per UnityPy-TypeTree
-und schreibt ein strukturiertes Inventar (nur Namen, Zahlen, Render-States, Parameter-Layouts;
-keine Binaerdaten).
+"""Reads the shader objects of the Switch bundles (UnityFS, Unity 2019.4) via the UnityPy type tree
+and writes a structured inventory (only names, numbers, render states, parameter layouts;
+no binary data).
 
-Aufruf (aus dem Repo-Root):
+Usage (from the repo root):
     PYTHONPATH=tools/pydeps python3 scripts/shader_inventory.py [--out work/shaders/inventory.json]
 """
 import argparse
@@ -20,7 +20,7 @@ BUNDLES = [
     "work/romfs/Data/StreamingAssets/AssetAssistant/Dpr/shaders",
     "work/romfs/Data/StreamingAssets/AssetAssistant/Effects/fxparticle",
 ]
-# Zusaetzliche Shader-Quelle ausserhalb der beiden Bundles (9 Shader; das Inventar-Dokument liegt im Git-Verlauf)
+# Additional shader source outside the two bundles (9 shaders; the inventory document is in the git history)
 EXTRA_SOURCES = [
     "work/romfs/Data/resources.assets",
     "work/romfs/Data/StreamingAssets/AssetAssistant/Dpr/tmpshader",
@@ -49,7 +49,7 @@ PLATFORM = {18: "Vulkan", 19: "Switch"}
 
 
 def fval(v):
-    """Wert einer ShaderLab-Zahl: (Zahl, Name der Material-Eigenschaft oder None)."""
+    """Value of a ShaderLab number: (number, name of the material property or None)."""
     name = v.get("name")
     return v.get("val"), (None if name in (None, "", "<noninit>") else name)
 
@@ -125,7 +125,7 @@ def decode_props(parsed):
 
 
 class Blob:
-    """Dekomprimierte Segmente des Programm-Blobs eines Shaders fuer eine Plattform."""
+    """Decompressed segments of the program blob of a shader for a platform."""
 
     def __init__(self, tt, plat_index=0):
         raw = bytes(tt["compressedBlob"])
@@ -143,7 +143,7 @@ class Blob:
 
 
 def struct_info(s, names_by_idx):
-    """Struktur-Feld eines Konstantenpuffers (Instancing: Array von Strukturen, z. B. unity_Builtins0Array)."""
+    """Struct field of a constant buffer (instancing: array of structs, e.g. unity_Builtins0Array)."""
     def members(ms, kind):
         return [{"name": names_by_idx.get(m["m_NameIndex"], f"#{m['m_NameIndex']}"), "offset": m["m_Index"],
                  "arraySize": m["m_ArraySize"], "kind": kind,
@@ -214,7 +214,7 @@ def inventory_shader(obj, bundle):
                 stages[key[4:].lower()] = stage_info(ps[key], names, blob)
             state = decode_state(ps["m_State"])
             ptags = tags_of(ps["m_Tags"])
-            # Pass-Tags stehen in m_State.m_Tags (m_Tags der Pass ist leer); fuer die Beleuchtung zaehlt LightMode.
+            # Pass tags are in m_State.m_Tags (the pass's m_Tags is empty); LightMode counts for lighting.
             if "LIGHTMODE" in state["tags"]:
                 ptags["LIGHTMODE"] = state["tags"]["LIGHTMODE"]
             pd = {"type": PASS_TYPE.get(ps["m_Type"], ps["m_Type"]), "name": ps["m_Name"], "useName": ps["m_UseName"],

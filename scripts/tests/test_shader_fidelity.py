@@ -1,4 +1,4 @@
-"""Tests für scripts/shader_fidelity.py – ausschließlich synthetische Eingaben (kein Spielinhalt, kein Metal, kein spirv-cross)."""
+"""Tests for scripts/shader_fidelity.py: synthetic inputs only (no game content, no Metal, no spirv-cross)."""
 import contextlib
 import io
 import json
@@ -136,15 +136,15 @@ class Inputs(unittest.TestCase):
 
 class Pairs(unittest.TestCase):
     MAPPING = {"cacheEntries": [
-        {"index": 1, "status": "voll", "candidates": [{"shader": "A", "pairs": [[10, 11]]}]},
-        {"index": 2, "status": "voll", "candidates": [{"shader": "A", "pairs": [[10, 11]]}]},   # same blob pair as 1
-        {"index": 3, "status": "voll", "candidates": [{"shader": "A", "pairs": [[12, 13]]}]},
-        {"index": 4, "status": "voll", "candidates": [{"shader": "B", "pairs": [[14, 15]]}]},
-        {"index": 5, "status": "keine", "candidates": [{"shader": "B", "pairs": [[14, 15]]}]},
-        {"index": 6, "status": "voll", "candidates": [{"shader": "C", "pairs": []}, ]},
-        {"index": 7, "status": "voll", "candidates": [{"shader": "D", "pairs": [[16, 17]]}]},    # blob missing
-        {"index": 8, "status": "voll", "candidates": [{"shader": "E", "pairs": [[18, 19]]}]},    # no SPIR-V
-        {"index": 9, "status": "voll", "candidates": [{"shader": "B", "pairs": [[20, 21]]}]},
+        {"index": 1, "status": "full", "candidates": [{"shader": "A", "pairs": [[10, 11]]}]},
+        {"index": 2, "status": "full", "candidates": [{"shader": "A", "pairs": [[10, 11]]}]},   # same blob pair as 1
+        {"index": 3, "status": "full", "candidates": [{"shader": "A", "pairs": [[12, 13]]}]},
+        {"index": 4, "status": "full", "candidates": [{"shader": "B", "pairs": [[14, 15]]}]},
+        {"index": 5, "status": "none", "candidates": [{"shader": "B", "pairs": [[14, 15]]}]},
+        {"index": 6, "status": "full", "candidates": [{"shader": "C", "pairs": []}, ]},
+        {"index": 7, "status": "full", "candidates": [{"shader": "D", "pairs": [[16, 17]]}]},    # blob missing
+        {"index": 8, "status": "full", "candidates": [{"shader": "E", "pairs": [[18, 19]]}]},    # no SPIR-V
+        {"index": 9, "status": "full", "candidates": [{"shader": "B", "pairs": [[20, 21]]}]},
     ]}
     BLOB = ["h%d" % i for i in range(30)]
 
@@ -215,11 +215,11 @@ class Spec(unittest.TestCase):
 
 class Metrics(unittest.TestCase):
     def test_classify(self):
-        self.assertEqual(sf.classify({"max_abs_diff": 0}), "bestanden")
-        self.assertEqual(sf.classify({"max_abs_diff": 1}), "bestanden")
-        self.assertEqual(sf.classify({"max_abs_diff": 2}), "knapp")
-        self.assertEqual(sf.classify({"max_abs_diff": 3}), "knapp")
-        self.assertEqual(sf.classify({"max_abs_diff": 4}), "durchgefallen")
+        self.assertEqual(sf.classify({"max_abs_diff": 0}), "passed")
+        self.assertEqual(sf.classify({"max_abs_diff": 1}), "passed")
+        self.assertEqual(sf.classify({"max_abs_diff": 2}), "marginal")
+        self.assertEqual(sf.classify({"max_abs_diff": 3}), "marginal")
+        self.assertEqual(sf.classify({"max_abs_diff": 4}), "failed")
 
     def test_image_stats(self):
         clear = bytes(min(255, max(0, round(c * 255))) for c in sf.CLEAR)
@@ -233,10 +233,10 @@ class Metrics(unittest.TestCase):
         self.assertEqual(st["distinctColors"], 2)
 
     def test_summarize(self):
-        results = [{"status": "bestanden"}, {"status": "bestanden"},
-                   {"status": "durchgefallen", "compat": {"status": "bestanden"}},
-                   {"status": "durchgefallen", "compat": {"status": "durchgefallen"}},
-                   {"status": "knapp"}, {"status": "nicht_aussagekraeftig"}, {"status": "nicht_unterstuetzt"}]
+        results = [{"status": "passed"}, {"status": "passed"},
+                   {"status": "failed", "compat": {"status": "passed"}},
+                   {"status": "failed", "compat": {"status": "failed"}},
+                   {"status": "marginal"}, {"status": "not_meaningful"}, {"status": "unsupported"}]
         s = sf.summarize(results)
         self.assertEqual(s["pairs"], 7)
         self.assertEqual(s["valid"], 5)

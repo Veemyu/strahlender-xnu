@@ -1,4 +1,4 @@
-desc Ohne Spielstand: Sprachauswahl (Referenzbild ref_00b)
+desc Without save: language selection (reference image ref_00b)
 save none
 timeout 300
 finish 8

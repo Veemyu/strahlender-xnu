@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Exportiert SPIR-V-Module aus dem Ryujinx-Host-Shader-Cache (vulkan_apple.toc/.data).
+"""Exports SPIR-V modules from the Ryujinx host shader cache (vulkan_apple.toc/.data).
 
-Aufruf:
+Usage:
   python3 scripts/shader_cache_extract.py [--cache DIR] [--out DIR] [--index N ...]
                                           [--smallest N] [--limit N] [--list]
 
-Ausgabe: <out>/<index>_<stage>.spv (stage: vert, frag, comp, ...) und <out>/index.json
-(Index, Stufe, Groesse je Modul). Der Cache wird nur gelesen.
-Standard: --cache Ryujinx/games/0100000011d90000/cache/shader, --out work/shaders/spirv.
-Mit --index/--smallest/--limit werden nur passende Programme geschrieben.
-Layout laut oeffentlichem Ryujinx-Quellcode, selbst nachgebaut (siehe docs/shaders.md).
-Brotli-Eintraege brauchen das Paket `brotli`; Deflate/unkomprimiert gehen mit der Standardbibliothek.
+Output: <out>/<index>_<stage>.spv (stage: vert, frag, comp, ...) and <out>/index.json
+(index, stage, size per module). The cache is only read.
+Default: --cache Ryujinx/games/0100000011d90000/cache/shader, --out work/shaders/spirv.
+With --index/--smallest/--limit only matching programs are written.
+Layout per the public Ryujinx source code, re-implemented independently (see docs/shaders.md).
+Brotli entries need the package `brotli`; deflate/uncompressed work with the standard library.
 """
 import argparse
 import json
@@ -35,7 +35,7 @@ def decompress(buf, pos, expected):
     if algo == 1:
         return zlib.decompressobj(-15).decompress(body, expected)
     if algo == 2:
-        import brotli  # nur bei Bedarf
+        import brotli  # only when needed
         out = brotli.Decompressor().process(bytes(body[: max(expected * 2, 65536)]))
         return out[:expected]
     raise ValueError(f"unbekannter Kompressionsalgorithmus {algo}")
@@ -57,10 +57,10 @@ def parse_blob(blob):
 
 
 def iter_programs(cache):
-    """Liefert (index, [(stage, code)]) je Cache-Eintrag; defekte Eintraege werden uebersprungen."""
+    """Yields (index, [(stage, code)]) per cache entry; damaged entries are skipped."""
     toc = (cache / "vulkan_apple.toc").read_bytes()
     if toc[:4] != b"TOCH":
-        raise SystemExit(f"{cache}/vulkan_apple.toc: Magic {toc[:4]!r}, erwartet b'TOCH'")
+        raise SystemExit(f"{cache}/vulkan_apple.toc: magic {toc[:4]!r}, expected b'TOCH'")
     data = (cache / "vulkan_apple.data").read_bytes()
     n = (len(toc) - 32) // 16
     for i in range(n):
@@ -68,17 +68,17 @@ def iter_programs(cache):
         try:
             yield i, parse_blob(decompress(data, off, unc))
         except Exception as e:  # defekter Eintrag
-            print(f"Eintrag {i}: uebersprungen ({e})", file=sys.stderr)
+            print(f"Entry {i}: skipped ({e})", file=sys.stderr)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cache", default=DEFAULT_CACHE)
     ap.add_argument("--out", default=DEFAULT_OUT)
-    ap.add_argument("--index", type=int, nargs="*", help="nur diese Programmindizes")
-    ap.add_argument("--smallest", type=int, help="nur die N Vertex+Fragment-Programme mit der kleinsten Summengroesse")
-    ap.add_argument("--limit", type=int, help="nur die ersten N Programme")
-    ap.add_argument("--list", action="store_true", help="nur auflisten, nichts schreiben")
+    ap.add_argument("--index", type=int, nargs="*", help="only these program indices")
+    ap.add_argument("--smallest", type=int, help="only the N vertex+fragment programs with the smallest total size")
+    ap.add_argument("--limit", type=int, help="only the first N programs")
+    ap.add_argument("--list", action="store_true", help="only list, write nothing")
     a = ap.parse_args()
 
     progs = []

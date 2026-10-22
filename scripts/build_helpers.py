@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Hilfslogik für scripts/build_all.sh (reine Funktionen, nur Standardbibliothek).
+"""Helper logic for scripts/build_all.sh (pure functions, standard library only).
 
-Gibt nie Schlüsselmaterial in Logs aus. Der Titlekey geht ausschließlich auf stdout des
-Unterbefehls `titlekey` und wird vom Aufrufer in einer Shell-Variable gehalten.
+Never prints key material into logs. The titlekey goes only to stdout of the
+`titlekey` subcommand and is kept by the caller in a shell variable.
 
-Unterbefehle (Aufruf: build_helpers.py <befehl> ...):
-  nca-info --path P          liest `hactool -i` von stdin, gibt eine TSV-Zeile mit Sicherem aus
-  pick --tsv F --type T [--title-id X]   wählt die größte passende NCA, gibt den Pfad aus
-  titlekey --rights-id R --tik-dir D [--title-keys F]   gibt den Titlekey (Hex) aus
-  cnmt-version DIR           Titelversion aus der .cnmt unter DIR (Dezimal)
-  nacp-version DIR           Anzeigeversion aus control.nacp unter DIR
-  write-manifest ...         schreibt <work>/manifest.json
-  check-manifest ...         Exit 0, wenn manifest.json zum Arbeitsordner passt
+Subcommands (usage: build_helpers.py <command> ...):
+  nca-info --path P          reads `hactool -i` from stdin, prints a TSV line with the safe fields
+  pick --tsv F --type T [--title-id X]   picks the largest matching NCA, prints the path
+  titlekey --rights-id R --tik-dir D [--title-keys F]   prints the titlekey (hex)
+  cnmt-version DIR           title version from the .cnmt under DIR (decimal)
+  nacp-version DIR           display version from control.nacp under DIR
+  write-manifest ...         writes <work>/manifest.json
+  check-manifest ...         exit 0 if manifest.json matches the work folder
 """
 import argparse
 import hashlib
@@ -22,11 +22,11 @@ import struct
 import sys
 import time
 
-# Exit-Codes (müssen zu build_all.sh passen)
+# Exit codes (must match build_all.sh)
 EX_KEYS = 6
 EX_NOTFOUND = 7
 
-# Ticket-Signaturtypen: Typ -> (Signaturlänge, Padding)
+# Ticket signature types: type -> (signature length, padding)
 TIK_SIG_SIZES = {
     0x010000: (0x200, 0x3C), 0x010001: (0x100, 0x3C), 0x010002: (0x3C, 0x40),
     0x010003: (0x200, 0x3C), 0x010004: (0x100, 0x3C), 0x010005: (0x3C, 0x40),
@@ -40,28 +40,28 @@ class TikError(Exception):
 
 
 def parse_tik(data):
-    """Liest ein Ticket und gibt Rights-ID, Titlekey-Typ und (bei Common-Tickets) den Titlekey zurück."""
+    """Reads a ticket and returns rights ID, titlekey type and (for common tickets) the titlekey."""
     if len(data) < 4:
-        raise TikError("Ticket zu kurz")
+        raise TikError("ticket too short")
     sig_type = struct.unpack_from("<I", data, 0)[0]
     if sig_type not in TIK_SIG_SIZES:
         sig_type = struct.unpack_from(">I", data, 0)[0]
         if sig_type not in TIK_SIG_SIZES:
-            raise TikError("unbekannter Signaturtyp")
+            raise TikError("unknown signature type")
     sig_len, pad = TIK_SIG_SIZES[sig_type]
     body = 4 + sig_len + pad
     if len(data) < body + 0x170:
-        raise TikError("Ticket abgeschnitten")
+        raise TikError("ticket truncated")
     title_key_type = data[body + 0x141]
     rights_id = data[body + 0x160:body + 0x170].hex()
     key_block = data[body + 0x40:body + 0x140]
-    # Common-Ticket (Typ 0): die ersten 16 Byte sind der verschlüsselte Titlekey
+    # Common ticket (type 0): the first 16 bytes are the encrypted titlekey
     key = key_block[:16].hex() if title_key_type == 0 else None
     return {"rights_id": rights_id, "key_type": title_key_type, "title_key": key}
 
 
 def parse_title_keys(text):
-    """title.keys-Format: Zeilen `rightsid=key` (je 32 Hex-Zeichen), Kommentare mit ; oder #."""
+    """title.keys format: lines `rightsid=key` (32 hex characters each), comments start with ; or #."""
     keys = {}
     for line in text.splitlines():
         line = line.strip()
@@ -74,7 +74,7 @@ def parse_title_keys(text):
 
 
 def find_title_key(rights_id, tik_dir=None, title_keys_text=None):
-    """Sucht den Titlekey: zuerst Common-Ticket im Ordner, dann title.keys. Gibt (key, quelle) zurück."""
+    """Looks up the titlekey: first a common ticket in the folder, then title.keys. Returns (key, source)."""
     rid = rights_id.lower()
     personalized = False
     if tik_dir and os.path.isdir(tik_dir):
@@ -96,12 +96,12 @@ def find_title_key(rights_id, tik_dir=None, title_keys_text=None):
         if key:
             return key, "title.keys"
     if personalized:
-        raise KeyError("personalisiertes Ticket (nicht entschlüsselbar) und kein Eintrag in title.keys")
-    raise KeyError("kein Ticket und kein Eintrag in title.keys für die Rights-ID")
+        raise KeyError("personalized ticket (cannot be decrypted) and no entry in title.keys")
+    raise KeyError("no ticket and no entry in title.keys for the rights ID")
 
 
 def parse_nca_info(text, path=""):
-    """Zieht nur unkritische Felder aus der `hactool -i`-Ausgabe (nie Schlüsselzeilen)."""
+    """Extracts only non-critical fields from the `hactool -i` output (never key lines)."""
     fields = {}
     wanted = {
         "Title ID": "title_id", "Content Type": "content_type",
@@ -114,7 +114,7 @@ def parse_nca_info(text, path=""):
             continue
         fields.setdefault(wanted[m.group(1)], m.group(2).strip())
     if "title_id" not in fields or "content_type" not in fields:
-        raise ValueError("keine NCA-Info (Schlüssel fehlen oder keine NCA)")
+        raise ValueError("no NCA info (keys missing or not an NCA)")
     rights = fields.get("rights_id", ZERO_RIGHTS).lower()
     return {
         "path": path,
@@ -133,7 +133,7 @@ def info_row(info):
 
 
 def pick_nca(rows, content_type, title_id=None):
-    """Wählt aus TSV-Zeilen die größte NCA mit Content-Typ (und Titel-ID); None, wenn keine passt."""
+    """Picks the largest NCA with the content type (and title ID) from TSV lines; None if none matches."""
     best = None
     for row in rows:
         cols = row.rstrip("\n").split("\t")
@@ -150,9 +150,9 @@ def pick_nca(rows, content_type, title_id=None):
 
 
 def cnmt_version(data):
-    """Titelversion (u32 LE bei Offset 8) und Titel-ID aus einer PackagedContentMeta."""
+    """Title version (u32 LE at offset 8) and title ID from a PackagedContentMeta."""
     if len(data) < 0x10:
-        raise ValueError("cnmt zu kurz")
+        raise ValueError("cnmt too short")
     title_id, version = struct.unpack_from("<QI", data, 0)
     return {"title_id": "%016x" % title_id, "version": version}
 
@@ -160,7 +160,7 @@ def cnmt_version(data):
 def nacp_display_version(data):
     """Anzeigeversion aus control.nacp (Offset 0x3060, 16 Byte)."""
     if len(data) < 0x3070:
-        raise ValueError("nacp zu kurz")
+        raise ValueError("nacp too short")
     return data[0x3060:0x3070].split(b"\0", 1)[0].decode("utf-8", "replace")
 
 
@@ -189,7 +189,7 @@ def file_hashes(path):
 
 
 def build_manifest(work, title_id, title_version, display_version, update_applied, xci_size, nsp_size):
-    """Nur Hashes, Titel-ID, Version und Größen – kein Schlüsselmaterial."""
+    """Only hashes, title ID, version and sizes, no key material."""
     exefs_dir = os.path.join(work, "exefs")
     main_sha256, main_sha1 = file_hashes(os.path.join(exefs_dir, "main"))
     exefs_files = {}
@@ -213,7 +213,7 @@ def build_manifest(work, title_id, title_version, display_version, update_applie
 
 
 def manifest_matches(work, xci_size, nsp_size):
-    """True, wenn manifest.json zu Eingaben und vorhandenen Ergebnissen passt."""
+    """True if manifest.json matches the inputs and the existing results."""
     try:
         with open(os.path.join(work, "manifest.json")) as f:
             m = json.load(f)
@@ -290,7 +290,7 @@ def main(argv=None):
         except KeyError as e:
             print(e.args[0], file=sys.stderr)
             return EX_KEYS
-        print("Titlekey-Quelle: " + source, file=sys.stderr)
+        print("Titlekey source: " + source, file=sys.stderr)
         print(key)
         return 0
     if a.cmd == "cnmt-version":

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Stufenlogik für scripts/build_all.sh (Auswahl, Marker mit Eingabe-Hashes, Preflight).
+"""Stage logic for scripts/build_all.sh (selection, markers with input hashes, preflight).
 
-Nur Standardbibliothek. Gibt nie Schlüsselmaterial, Team-IDs oder Spielinhalte aus; Marker und Logs
-enthalten nur Hashes, Größen und Zählwerte.
+Standard library only. Never prints key material, team IDs or game content; markers and logs
+contain only hashes, sizes and counts.
 
-Unterbefehle (Aufruf: build_stages.py <befehl> ...):
-  stages [--stage S ...] [--from S] [--to S] [--only S ...]   gewählte Stufen in fester Reihenfolge
-  stage-hash --stage S --root R --work W [--target T]   Eingabe-Hash einer Stufe
-  marker-check --work W --stage S --hash H       Exit 0, wenn der Marker zum Hash passt
+Subcommands (usage: build_stages.py <command> ...):
+  stages [--stage S ...] [--from S] [--to S] [--only S ...]   selected stages in fixed order
+  stage-hash --stage S --root R --work W [--target T]   input hash of a stage
+  marker-check --work W --stage S --hash H       exit 0 if the marker matches the hash
   marker-write --work W --stage S --hash H [--note K=V ...]
   marker-clear --work W --stage S
   preflight --stages "a b" --target T --root R --work W [--min-free-gb N] [--tools-dir D] ...
-  env-get --file F --key K                       Wert aus einer KEY=Wert-Datei (z. B. work/local.env)
-  tree-size --path P                             "<Dateien> <Bytes>" eines Ordners
+  env-get --file F --key K                       value from a KEY=value file (e.g. work/local.env)
+  tree-size --path P                             "<files> <bytes>" of a folder
 """
 import argparse
 import hashlib
@@ -24,7 +24,7 @@ import subprocess
 import sys
 import time
 
-# Exit-Codes (müssen zu build_all.sh passen)
+# Exit codes (must match build_all.sh)
 EX_USAGE = 2
 EX_TOOLS = 4
 EX_DISK = 8
@@ -33,7 +33,7 @@ STAGES = ["tools", "extract", "recomp", "shaders"]
 ALIASES = {"shader": "shaders", "macapp": "recomp"}
 MARKER_SCHEMA = 1
 MIN_FREE_GB = 60
-RECOMP_MIN_FREE_GB = 25   # Generator-C, Objekte, Binärdatei, App, Zwischenablagen (gemessen rund 3 GB; der Rest ist Reserve für Compiler und Auslagerung)
+RECOMP_MIN_FREE_GB = 25   # generator C, objects, binary, app, intermediate copies (measured about 3 GB; the rest is reserve for the compiler and swapping)
 HEAVY_STAGES = {"extract", "shaders"}
 TARGETS = ("macos", "ios", "all")
 
@@ -42,7 +42,7 @@ def normalize_stage(name):
     name = name.strip().lower()
     name = ALIASES.get(name, name)
     if name not in STAGES:
-        raise ValueError("Unbekannte Stufe: %s (bekannt: %s)" % (name, " ".join(STAGES)))
+        raise ValueError("Unknown stage: %s (known: %s)" % (name, " ".join(STAGES)))
     return name
 
 
@@ -54,11 +54,11 @@ def _names(values):
 
 
 def select_stages(requested=(), from_stage=None, to_stage=None, only=()):
-    """Wählt Stufen in kanonischer Reihenfolge. `all` oder keine Angabe = alle."""
+    """Selects stages in canonical order. `all` or no argument = all."""
     only_names = _names(only)
     if only_names:
         if from_stage or to_stage:
-            raise ValueError("--only lässt sich nicht mit --from/--to kombinieren")
+            raise ValueError("--only cannot be combined with --from/--to")
         chosen = {normalize_stage(n) for n in only_names}
         return [s for s in STAGES if s in chosen]
     req = _names(requested)
@@ -69,14 +69,16 @@ def select_stages(requested=(), from_stage=None, to_stage=None, only=()):
     lo = STAGES.index(normalize_stage(from_stage)) if from_stage else 0
     hi = STAGES.index(normalize_stage(to_stage)) if to_stage else len(STAGES) - 1
     if lo > hi:
-        raise ValueError("--from (%s) liegt hinter --to (%s)" % (from_stage, to_stage))
+        raise ValueError("--from (%s) is after --to (%s)" % (from_stage, to_stage))
     result = [s for i, s in enumerate(STAGES) if lo <= i <= hi and s in chosen]
     if not result:
-        raise ValueError("Keine Stufe im gewählten Bereich")
+        raise ValueError("No stage in the selected range")
     return result
 
 
-# ---------- Hashes und Marker ----------
+# ---------- Hashes and markers ----------
+# NOTE: the tokens "fehlt", "kein-marker", "ohne-prepare", "kein-manifest" and "keine" below are part of the stage
+# hashes. They only look German; changing them would invalidate every existing marker (and force a cold rebuild).
 
 def _sha(data):
     return hashlib.sha256(data).hexdigest()
@@ -102,7 +104,7 @@ def _walk(root):
 
 
 def hash_tree_content(root, suffixes=None, skip_dirs=("Library", "Temp", "Logs", "obj", "UserSettings")):
-    """Hash über relative Pfade und Inhalte (für kleine Quellordner)."""
+    """Hash over relative paths and contents (for small source folders)."""
     if not os.path.isdir(root):
         return "fehlt"
     h = hashlib.sha256()
@@ -117,7 +119,7 @@ def hash_tree_content(root, suffixes=None, skip_dirs=("Library", "Temp", "Logs",
 
 
 def extract_core(work):
-    """Eingaben-Kern aus manifest.json (Stufe extract): Titel, Version, main-Hash, RomFS-Zahlen."""
+    """Input core from manifest.json (stage extract): title, version, main hash, RomFS counts."""
     try:
         with open(os.path.join(work, "manifest.json")) as f:
             m = json.load(f)
@@ -170,7 +172,7 @@ def _marker_hash(work, stage):
 
 
 def read_env_value(path, key):
-    """Wert aus einer Datei mit KEY=Wert-Zeilen (optional `export`, Anführungszeichen, #-Kommentare)."""
+    """Value from a file with KEY=value lines (optional `export`, quotes, #-comments)."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
@@ -193,18 +195,18 @@ def read_env_value(path, key):
 
 
 def nvn_source_stamp(rec):
-    """Quell-Hash der NVN-Schicht (nvn/src, translate.c, shader.h, prepare.sh); einzige Definition steht in prepare.sh."""
+    """Source hash of the NVN layer (nvn/src, translate.c, shader.h, prepare.sh); the only definition is in prepare.sh."""
     script = os.path.join(rec, "rt-bdsp", "nvn", "prepare.sh")
     if not os.path.isfile(script):
         return "ohne-prepare"
     r = subprocess.run(["bash", script, "--print"], capture_output=True, text=True, timeout=120)
     if r.returncode != 0 or not r.stdout.strip():
-        raise RuntimeError("prepare.sh --print fehlgeschlagen: " + r.stderr.strip())
+        raise RuntimeError("prepare.sh --print failed: " + r.stderr.strip())
     return r.stdout.strip()
 
 
 def stage_hash(stage, root, work, target="all", env=None):
-    """Hash der Eingaben einer Stufe; ändert sich er, läuft die Stufe neu. Liefert (hash, teile)."""
+    """Hash of a stage's inputs; if it changes, the stage runs again. Returns (hash, parts)."""
     env = os.environ if env is None else env
     scripts = os.path.join(root, "scripts")
     core = extract_core(work)
@@ -214,14 +216,14 @@ def stage_hash(stage, root, work, target="all", env=None):
         return {n: hash_file(os.path.join(scripts, n)) for n in names}
 
     if stage in ("recomp-gen", "recomp"):
-        # Generator: Module des Dumps, eigene Generatorskripte und der Klon, dessen Werkzeuge er zur Laufzeit importiert
+        # Generator: modules of the dump, own generator scripts and the clone whose tools it imports at run time
         rec = os.path.join(scripts, "recomp")
         parts["modules"] = {m: hash_file(os.path.join(work, "exefs", m)) for m in ("main", "sdk", "subsdk0", "rtld")}
         parts["generator"] = {n: hash_file(os.path.join(rec, n)) for n in
                               ("eh_gen.py", "eh_lsda.py", "eh_pick.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
         parts["las_tools"] = hash_tree_content(os.path.join(rec, "upstream", "generator"), (".py",), skip_dirs=("__pycache__",))
         if stage == "recomp":
-            # Laufzeit, NVN-Schicht (vendort + Patches), Übersetzer, App-Hülle; die Teilmarker bilden Generator und Objekte ab
+            # runtime, NVN layer (vendored + patches), translator, app shell; the partial markers cover generator and objects
             skip = ("test", "vulkan", "__pycache__")
             parts["gen"] = _marker_hash(work, "recomp-gen")
             parts["obj"] = _marker_hash(work, "recomp-obj")
@@ -242,8 +244,6 @@ def stage_hash(stage, root, work, target="all", env=None):
     digest = _sha(json.dumps(parts, sort_keys=True).encode())
     return digest, parts
 
-
-# ---------- Editor-Erkennung ----------
 
 # ---------- Preflight ----------
 
@@ -272,88 +272,88 @@ def _run_ok(cmd, env=None, timeout=60):
 
 def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_GB,
               which=shutil.which, run=_run_ok, free=free_gb):
-    """Prüft nur, was die gewählten Stufen brauchen; nichts wird installiert. Eintrag: dict(name, ok, detail, hint, level)."""
+    """Checks only what the selected stages need; nothing is installed. Entry: dict(name, ok, detail, hint, level)."""
     tools_dir = tools_dir or os.path.join(root, "tools")
     s = set(stages)
     want_mac = target in ("macos", "all")
     items = []
 
-    def add(name, ok, detail="", hint="", level="fehlt"):
+    def add(name, ok, detail="", hint="", level="missing"):
         items.append({"name": name, "ok": bool(ok), "detail": detail, "hint": hint, "level": level})
 
     major = sys.version_info
     add("python3 >= 3.9", major >= (3, 9), "%d.%d.%d" % major[:3], "brew install python")
     if s & HEAVY_STAGES:
         gb = free(work)
-        add("Plattenplatz >= %d GB frei" % min_free_gb, gb >= min_free_gb, "%.0f GB frei unter %s" % (gb, work),
-            "Platz schaffen (Caches, alte work/-Unterordner) oder bewusst weniger verlangen: --min-free-gb N "
-            "(Gesamtbedarf mit Bundles, Kopien und Builds grob 60 GB)")
+        add("Disk space >= %d GB free" % min_free_gb, gb >= min_free_gb, "%.0f GB free under %s" % (gb, work),
+            "Free up space (caches, old work/ subfolders) or deliberately ask for less: --min-free-gb N "
+            "(total need with bundles, copies and builds roughly 60 GB)")
 
     hactool = os.path.join(tools_dir, "hactool", "hactool")
     if "tools" in s:
         for c in ("git", "make", "cc"):
-            add(c + " (für hactool)", which(c), "", "xcode-select --install (Command Line Tools)")
+            add(c + " (for hactool)", which(c), "", "xcode-select --install (Command Line Tools)")
     elif "extract" in s:
         add("hactool", os.access(hactool, os.X_OK), hactool,
-            "scripts/build_all.sh tools (klont und baut hactool lokal, ohne sudo)")
+            "scripts/build_all.sh tools (clones and builds hactool locally, without sudo)")
     if "extract" in s and "tools" in s and not os.access(hactool, os.X_OK):
-        add("hactool", True, "wird von Stufe tools gebaut", level="hinweis")
+        add("hactool", True, "built by stage tools", level="note")
 
     if "shaders" in s:
-        add("Python-Pakete (UnityPy, lz4) in tools/pydeps", os.path.isdir(os.path.join(tools_dir, "pydeps", "UnityPy")),
+        add("Python packages (UnityPy, lz4) in tools/pydeps", os.path.isdir(os.path.join(tools_dir, "pydeps", "UnityPy")),
             os.path.join(tools_dir, "pydeps"), "python3 -m pip install --target tools/pydeps UnityPy lz4")
         for c in ("make", "cc"):
-            add(c + " (für shader_translator)", which(c), "", "xcode-select --install (Command Line Tools)")
+            add(c + " (for shader_translator)", which(c), "", "xcode-select --install (Command Line Tools)")
 
     if "recomp" in s and want_mac:
-        if not (s & HEAVY_STAGES):   # sonst deckt der allgemeine Platz-Check (strenger) das schon ab
+        if not (s & HEAVY_STAGES):   # otherwise the general space check (stricter) already covers it
             need = min(RECOMP_MIN_FREE_GB, min_free_gb)
             gb = free(work)
-            add("Plattenplatz >= %d GB frei (Stufe recomp)" % need, gb >= need, "%.0f GB frei unter %s" % (gb, work),
-                "Platz schaffen (alte work/recomp-Unterordner wie img*, gen, obj*, spike2 löschen) oder bewusst weniger verlangen: --min-free-gb N")
-        add("clang (Homebrew-LLVM im PATH)", which("clang"), which("clang") or "", "brew install llvm und /opt/homebrew/opt/llvm/bin vor /usr/bin in den PATH")
+            add("Disk space >= %d GB free (stage recomp)" % need, gb >= need, "%.0f GB free under %s" % (gb, work),
+                "Free up space (delete old work/recomp subfolders such as img*, gen, obj*, spike2) or deliberately ask for less: --min-free-gb N")
+        add("clang (Homebrew LLVM in PATH)", which("clang"), which("clang") or "", "brew install llvm and put /opt/homebrew/opt/llvm/bin before /usr/bin in the PATH")
         ok, _ = run(["/usr/bin/xcrun", "--find", "clang"])
-        add("Apple-clang (Objective-C, Command Line Tools)", ok, "", "xcode-select --install")
-        for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync ist Teil von macOS"), ("codesign", "xcode-select --install"),
+        add("Apple clang (Objective-C, Command Line Tools)", ok, "", "xcode-select --install")
+        for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync is part of macOS"), ("codesign", "xcode-select --install"),
                         ("install_name_tool", "xcode-select --install"), ("otool", "xcode-select --install"),
-                        ("iconutil", "xcode-select --install"), ("plutil", "plutil ist Teil von macOS")):
-            add(c + " (für die App)", which(c), "", hint)
+                        ("iconutil", "xcode-select --install"), ("plutil", "plutil is part of macOS")):
+            add(c + " (for the app)", which(c), "", hint)
         pc = which("pkg-config")
         ok, _ = run([pc, "--exists", "sdl3", "libavcodec", "libavformat", "libavutil"]) if pc else (False, "")
-        add("SDL3 und FFmpeg-Bibliotheken (pkg-config)", ok, "", "brew install sdl3 ffmpeg")
+        add("SDL3 and FFmpeg libraries (pkg-config)", ok, "", "brew install sdl3 ffmpeg")
         ok, _ = run([sys.executable, "-c", "from PIL import Image"])
-        add("Pillow (App-Icons)", ok, "", "python3 -m pip install Pillow")
+        add("Pillow (app icons)", ok, "", "python3 -m pip install Pillow")
         pyd = os.path.join(tools_dir, "pydeps")
-        add("Python-Pakete capstone, unicorn in tools/pydeps (Generator)",
+        add("Python packages capstone, unicorn in tools/pydeps (generator)",
             os.path.isdir(os.path.join(pyd, "capstone")) and os.path.isdir(os.path.join(pyd, "unicorn")), pyd,
             "python3 -m pip install --target tools/pydeps capstone unicorn")
         up = os.path.join(root, "scripts", "recomp", "upstream")
-        add("Vendorte LASRecomp-Teile (Generator, Header; MIT)",
+        add("Vendored LASRecomp parts (generator, headers; MIT)",
             os.path.isfile(os.path.join(up, "generator", "gen.py")) and os.path.isfile(os.path.join(up, "runtime", "cpu.h")), up,
-            "git checkout -- scripts/recomp/upstream (Ordner fehlt im Arbeitsstand)")
+            "git checkout -- scripts/recomp/upstream (folder missing in the working tree)")
 
     return items
 
 
 def format_preflight(items):
-    """Zeilen für die Ausgabe plus Installationsliste; gibt (zeilen, fehlend, disk_fehlt) zurück."""
+    """Lines for the output plus install list; returns (lines, missing, disk_missing)."""
     lines, missing, disk = [], [], False
     for it in items:
         if it["ok"]:
-            tag = "OK    " if it["level"] != "hinweis" else "HINWEIS"
+            tag = "OK    " if it["level"] != "note" else "NOTE   "
         else:
-            tag = "FEHLT " if it["level"] == "fehlt" else "HINWEIS"
+            tag = "MISSING " if it["level"] == "missing" else "NOTE   "
         lines.append("  %s %s%s" % (tag, it["name"], " (%s)" % it["detail"] if it["detail"] else ""))
-        if not it["ok"] and it["level"] == "fehlt":
+        if not it["ok"] and it["level"] == "missing":
             missing.append(it)
-            if it["name"].startswith("Plattenplatz"):
+            if it["name"].startswith("Disk space"):
                 disk = True
     return lines, missing, disk
 
 
 def install_list(missing):
-    out = ["Installationsliste (keine sudo-Befehle werden ausgeführt; bitte selbst ausführen):"]
-    for i, it in enumerate(m for m in missing if not m["name"].startswith("Plattenplatz")):
+    out = ["Install list (nothing is run with administrator rights; please run these yourself):"]
+    for i, it in enumerate(m for m in missing if not m["name"].startswith("Disk space")):
         out.append("  %d. %s: %s" % (i + 1, it["name"], it["hint"]))
     return out
 
@@ -400,7 +400,7 @@ def main(argv=None):
         try:
             print(" ".join(select_stages(a.stage, a.from_stage, a.to_stage, a.only)))
         except ValueError as e:
-            print("FEHLER: %s" % e, file=sys.stderr)
+            print("ERROR: %s" % e, file=sys.stderr)
             return EX_USAGE
         return 0
     if a.cmd == "stage-hash":
@@ -423,12 +423,12 @@ def main(argv=None):
         lines, missing, disk = format_preflight(items)
         print("\n".join(lines))
         for m in missing:
-            if m["name"].startswith("Plattenplatz"):
-                print("Platz: " + m["hint"])
-        if any(not m["name"].startswith("Plattenplatz") for m in missing):
+            if m["name"].startswith("Disk space"):
+                print("Space: " + m["hint"])
+        if any(not m["name"].startswith("Disk space") for m in missing):
             print("\n".join(install_list(missing)))
         if disk:
-            return EX_DISK if all(m["name"].startswith("Plattenplatz") for m in missing) else EX_TOOLS
+            return EX_DISK if all(m["name"].startswith("Disk space") for m in missing) else EX_TOOLS
         return EX_TOOLS if missing else 0
     if a.cmd == "env-get":
         v = read_env_value(a.file, a.key)

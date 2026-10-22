@@ -1,5 +1,5 @@
-// Spielstand der App: Sicherung beim Start, Import (Ryujinx/Switch), Zurücksetzen. Reines C.
-// Das Format bleibt unverändert: <save>/save_1/SaveData.bin und Backup.bin (979.108 Byte, MD5 bei 0xE9818), wie bei Ryujinx/Switch.
+// Save game of the app: backup at start, import (Ryujinx/Switch), reset. Plain C.
+// The format is unchanged: <save>/save_1/SaveData.bin and Backup.bin (979,108 bytes, MD5 at 0xE9818), as with Ryujinx/Switch.
 #include "app.h"
 
 #include <CommonCrypto/CommonDigest.h>
@@ -12,13 +12,13 @@
 #include <time.h>
 #include <unistd.h>
 
-// MD5 ist hier keine Sicherheitsfunktion, sondern die Prüfsumme des Spielstandformats
+// MD5 is not a security function here, but the checksum of the save format
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #define HASH_OFFSET 0xE9818u
 #define HASH_LEN 16u
 #define LAUNCH_VERSION 0x25
 #define CURRENT_VERSION 0x34
-// Größe je Version 0x25 … 0x34 (scripts/bdsp_save.py, BINARY_SIZE)
+// Size per version 0x25 … 0x34 (scripts/bdsp_save.py, BINARY_SIZE)
 static const uint32_t k_size[] = {0xE9828, 0xE9BE8, 0xED158, 0xED188, 0xED188, 0xED680, 0xEDC20, 0xEDC20, 0xEDC20, 0xEDC20,
                                   0xEDC20, 0xEDC20, 0xEDC20, 0xEED8C, 0xEED8C, 0xEF0A4};
 
@@ -50,7 +50,7 @@ static uint8_t *read_all(const char *path, size_t *len) {
     return b;
 }
 
-// atomar: erst <pfad>.tmp schreiben und auf die Platte bringen, dann umbenennen
+// atomic: first write <path>.tmp and flush it to disk, then rename
 static int write_atomic(const char *path, const void *data, size_t len) {
     char tmp[1500];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
@@ -78,23 +78,23 @@ static void sha12(const uint8_t *d, size_t n, char out[13]) {
 }
 
 int bdsp_save_validate(const uint8_t *d, size_t len, char *msg, size_t n) {
-    if (len < 4) { snprintf(msg, n, "Datei kürzer als 4 Byte"); return -1; }
+    if (len < 4) { snprintf(msg, n, "file shorter than 4 bytes"); return -1; }
     int32_t version = (int32_t)(d[0] | d[1] << 8 | d[2] << 16 | (uint32_t)d[3] << 24);
     if (version < LAUNCH_VERSION || version > CURRENT_VERSION) {
-        snprintf(msg, n, "unbekannte Spielstand-Version 0x%X (bekannt: 0x%X bis 0x%X)", (unsigned)version, LAUNCH_VERSION, CURRENT_VERSION);
+        snprintf(msg, n, "unknown save version 0x%X (known: 0x%X to 0x%X)", (unsigned)version, LAUNCH_VERSION, CURRENT_VERSION);
         return -1;
     }
     uint32_t want = k_size[version - LAUNCH_VERSION];
-    if (len != want) { snprintf(msg, n, "falsche Größe: %zu Byte, erwartet %u Byte (Version 0x%X)", len, want, (unsigned)version); return -1; }
+    if (len != want) { snprintf(msg, n, "wrong size: %zu bytes, expected %u bytes (version 0x%X)", len, want, (unsigned)version); return -1; }
     uint8_t *buf = malloc(want);
-    if (!buf) { snprintf(msg, n, "kein Speicher"); return -1; }
+    if (!buf) { snprintf(msg, n, "out of memory"); return -1; }
     memcpy(buf, d, want);
     memset(buf + HASH_OFFSET, 0, HASH_LEN);
     unsigned char h[CC_MD5_DIGEST_LENGTH];
     CC_MD5(buf, want, h);
     free(buf);
-    if (memcmp(h, d + HASH_OFFSET, HASH_LEN)) { snprintf(msg, n, "Prüfsumme (MD5 bei 0xE9818) stimmt nicht: Datei beschädigt oder verändert (scripts/bdsp_save.py check/fix-hash)"); return -1; }
-    snprintf(msg, n, "Version 0x%X, %u Byte, Prüfsumme gültig", (unsigned)version, want);
+    if (memcmp(h, d + HASH_OFFSET, HASH_LEN)) { snprintf(msg, n, "checksum (MD5 at 0xE9818) does not match: file damaged or modified (scripts/bdsp_save.py check/fix-hash)"); return -1; }
+    snprintf(msg, n, "version 0x%X, %u bytes, checksum valid", (unsigned)version, want);
     return 0;
 }
 
@@ -107,7 +107,7 @@ static void stamp(char *out, size_t n) {
 
 static int cmp_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
 
-// Namen der Unterordner von <save>/backups mit Präfix, aufsteigend sortiert
+// Names of the subfolders of <save>/backups with the prefix, sorted ascending
 static int list_backups(const char *prefix, char ***out) {
     char dir[1300];
     snprintf(dir, sizeof dir, "%s/backups", g_app.save);
@@ -169,11 +169,11 @@ int bdsp_save_backup_start(char *msg, size_t n) {
     snprintf(f1, sizeof f1, "%s/SaveData.bin", sd);
     size_t len;
     uint8_t *cur = read_all(f1, &len);
-    if (!cur) { snprintf(msg, n, "kein Spielstand unter %s (das Spiel beginnt neu; Import: Menü Spiel)", sd); return 0; }
+    if (!cur) { snprintf(msg, n, "no save under %s (the game starts fresh; import: Game menu)", sd); return 0; }
     char **v;
     int cnt = list_backups("start-", &v);
     int same = 0;
-    if (cnt) {   // identisch zur letzten Sicherung: keine neue anlegen
+    if (cnt) {   // identical to the last backup: do not create a new one
         char last[1700];
         snprintf(last, sizeof last, "%s/backups/%s/SaveData.bin", g_app.save, v[cnt - 1]);
         size_t ln;
@@ -184,15 +184,15 @@ int bdsp_save_backup_start(char *msg, size_t n) {
     for (int i = 0; i < cnt; i++) free(v[i]);
     free(v);
     free(cur);
-    if (same) { snprintf(msg, n, "Spielstand unverändert seit der letzten Sicherung (%s/backups)", g_app.save); return 0; }
+    if (same) { snprintf(msg, n, "save unchanged since the last backup (%s/backups)", g_app.save); return 0; }
     char where[1500];
     int r = backup_current("start", where, sizeof where);
-    if (r < 0) { snprintf(msg, n, "Sicherung in %s fehlgeschlagen (%s)", where, strerror(errno)); return -1; }
+    if (r < 0) { snprintf(msg, n, "backup in %s failed (%s)", where, strerror(errno)); return -1; }
     cnt = list_backups("start-", &v);
     for (int i = 0; i + g_app.backups < cnt; i++) remove_backup(v[i]);
     for (int i = 0; i < cnt; i++) free(v[i]);
     free(v);
-    snprintf(msg, n, "Spielstand gesichert: %s", where);
+    snprintf(msg, n, "Save backed up: %s", where);
     return 1;
 }
 
@@ -202,29 +202,29 @@ static int is_file(const char *p) { struct stat st; return stat(p, &st) == 0 && 
 int bdsp_save_import(const char *path, char *msg, size_t n) {
     char dir[1300] = "", p[1500];
     if (is_dir(path)) {
-        // Ordner mit SaveData.bin, Ryujinx-Layout (…/save/<ID>/0) oder unser Ordner (save_1)
+        // folder with SaveData.bin, Ryujinx layout (…/save/<ID>/0) or our folder (save_1)
         static const char *const sub[] = {"", "/0", "/save_1", "/save/save_1"};
         for (size_t i = 0; i < sizeof sub / sizeof *sub && !dir[0]; i++) {
             snprintf(p, sizeof p, "%s%s/SaveData.bin", path, sub[i]);
             if (is_file(p)) snprintf(dir, sizeof dir, "%s%s", path, sub[i]);
         }
-        if (!dir[0]) { snprintf(msg, n, "In %s liegt keine SaveData.bin (auch nicht in 0/ oder save_1/)", path); return -1; }
+        if (!dir[0]) { snprintf(msg, n, "There is no SaveData.bin in %s (nor in 0/ or save_1/)", path); return -1; }
     } else if (is_file(path)) {
         const char *b = strrchr(path, '/');
         b = b ? b + 1 : path;
         if (strcmp(b, "SaveData.bin") && strcmp(b, "Backup.bin") && strcmp(b, "ExtraData0")) {
-            snprintf(msg, n, "%s ist keine Spielstand-Datei (erwartet: SaveData.bin, Backup.bin oder ein Ordner damit)", b);
+            snprintf(msg, n, "%s is not a save file (expected: SaveData.bin, Backup.bin or a folder containing them)", b);
             return -1;
         }
         snprintf(dir, sizeof dir, "%.*s", (int)(b - path > 1 ? b - path - 1 : 1), path);
-    } else { snprintf(msg, n, "%s nicht gefunden", path); return -1; }
+    } else { snprintf(msg, n, "%s not found", path); return -1; }
 
     char src_sd[1500], src_bk[1500], src_x[1500], why[300];
     snprintf(src_sd, sizeof src_sd, "%s/SaveData.bin", dir);
     snprintf(src_bk, sizeof src_bk, "%s/Backup.bin", dir);
     size_t len;
     uint8_t *sd = read_all(src_sd, &len);
-    if (!sd) { snprintf(msg, n, "%s lässt sich nicht lesen", src_sd); return -1; }
+    if (!sd) { snprintf(msg, n, "%s cannot be read", src_sd); return -1; }
     if (bdsp_save_validate(sd, len, why, sizeof why) != 0) {
         snprintf(msg, n, "SaveData.bin abgelehnt: %s", why);
         free(sd);
@@ -245,7 +245,7 @@ int bdsp_save_import(const char *path, char *msg, size_t n) {
 
     char where[1500], sdir[1300], dst[1500];
     int br = backup_current("import", where, sizeof where);
-    if (br < 0) { snprintf(msg, n, "Sicherung des bisherigen Spielstands fehlgeschlagen (%s): Import abgebrochen", strerror(errno)); free(sd); free(bk); return -1; }
+    if (br < 0) { snprintf(msg, n, "backup of the previous save failed (%s): import aborted", strerror(errno)); free(sd); free(bk); return -1; }
     bdsp_save_dir(sdir, sizeof sdir);
     mkdir_p(sdir);
     snprintf(dst, sizeof dst, "%s/SaveData.bin", sdir);
@@ -253,7 +253,7 @@ int bdsp_save_import(const char *path, char *msg, size_t n) {
     snprintf(dst, sizeof dst, "%s/Backup.bin", sdir);
     if (rc == 0) {
         if (bk_ok) rc = write_atomic(dst, bk, bl);
-        else unlink(dst);   // ein altes Backup.bin gehört zum bisherigen Stand
+        else unlink(dst);   // an old Backup.bin belongs to the previous state
     }
     if (rc == 0 && have_user) {
         char hex[40];
@@ -265,23 +265,23 @@ int bdsp_save_import(const char *path, char *msg, size_t n) {
     sha12(sd, len, h);
     free(sd);
     free(bk);
-    if (rc != 0) { snprintf(msg, n, "Schreiben nach %s fehlgeschlagen (%s)", sdir, strerror(errno)); return -1; }
-    snprintf(msg, n, "Spielstand importiert (SaveData.bin %zu Byte, sha256 %s%s%s). %s%s", len, h,
-             bk_ok ? ", Backup.bin übernommen" : (bk_present ? ", Backup.bin ungültig und ausgelassen" : ", ohne Backup.bin"),
-             have_user ? ", Benutzer-ID aus ExtraData0" : "", where[0] ? "Bisheriger Stand gesichert in " : "Kein bisheriger Stand.", where);
+    if (rc != 0) { snprintf(msg, n, "writing to %s failed (%s)", sdir, strerror(errno)); return -1; }
+    snprintf(msg, n, "Save imported (SaveData.bin %zu bytes, sha256 %s%s%s). %s%s", len, h,
+             bk_ok ? ", Backup.bin taken over" : (bk_present ? ", Backup.bin invalid and skipped" : ", without Backup.bin"),
+             have_user ? ", user ID from ExtraData0" : "", where[0] ? "Previous state backed up in " : "No previous state.", where);
     return 0;
 }
 
 int bdsp_save_reset(char *msg, size_t n) {
     char where[1500], sd[1300], f[1500];
     int r = backup_current("reset", where, sizeof where);
-    if (r < 0) { snprintf(msg, n, "Sicherung fehlgeschlagen (%s): nichts gelöscht", strerror(errno)); return -1; }
+    if (r < 0) { snprintf(msg, n, "backup failed (%s): nothing deleted", strerror(errno)); return -1; }
     bdsp_save_dir(sd, sizeof sd);
     snprintf(f, sizeof f, "%s/SaveData.bin", sd);
     unlink(f);
     snprintf(f, sizeof f, "%s/Backup.bin", sd);
     unlink(f);
-    if (r) snprintf(msg, n, "Spielstand zurückgesetzt, alter Stand in %s", where);
-    else snprintf(msg, n, "Es war kein Spielstand vorhanden.");
+    if (r) snprintf(msg, n, "Save reset, old state in %s", where);
+    else snprintf(msg, n, "There was no save.");
     return 0;
 }

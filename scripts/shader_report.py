@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Erzeugt Markdown-Tabellen und Kennzahlen fuer das Shader-Inventar (Dokument im Git-Verlauf) aus den JSON-Dateien
+"""Generates Markdown tables and key figures for the shader inventory (document in the git history) from the JSON files
 (work/shaders/inventory.json, mapping.json, reflect.json).
 
-Aufruf: python3 scripts/shader_report.py [--out work/shaders/tables.md]
+Usage: python3 scripts/shader_report.py [--out work/shaders/tables.md]
 """
 import argparse
 import json
@@ -89,7 +89,7 @@ def main():
     for s in shaders:
         byfam[family(s["name"])].append(s)
 
-    # Pro Shader: Kennzahlen
+    # Per shader: key figures
     def info(s):
         passes = [p for ss in s["subShaders"] for p in ss["passes"]]
         v = sum(p["programCounts"]["vertex"] for p in passes)
@@ -100,18 +100,18 @@ def main():
         inst = any(p["hasInstancing"] for p in passes)
         return passes, v, f, kwc, kws, tex, inst
 
-    w("## Tabelle A: Übersicht je Shader\n")
-    w("Spalten: Pässe (alle SubShader), Programme Vertex/Fragment, Keyword-Kombinationen (Summe über Pässe), Keywords (Anzahl), Eigenschaften (gesamt/Texturen), Instancing, Cache-Einträge (voll zugeordnet).\n")
+    w("## Table A: Overview per shader\n")
+    w("Columns: passes (all SubShaders), programs vertex/fragment, keyword combinations (sum over passes), keywords (count), properties (total/textures), instancing, cache entries (fully matched).\n")
     for fam, lst in sorted(byfam.items()):
         w(f"\n### {fam} ({len(lst)})\n")
-        w("| Shader | Pässe | V/F | Kombi | Kw | Prop/Tex | Inst | Cache |")
+        w("| Shader | Passes | V/F | Combos | Kw | Prop/Tex | Inst | Cache |")
         w("|---|---|---|---|---|---|---|---|")
         for s in sorted(lst, key=lambda x: x["name"]):
             passes, v, f, kwc, kws, tex, inst = info(s)
             c = per.get(f'{s["bundle"]}: {s["name"]}', {}).get("cacheEntries", 0)
             w(f'| `{s["name"]}` | {len(passes)} | {v}/{f} | {kwc} | {len(kws)} | {len(s["properties"])}/{len(tex)} | {"ja" if inst else "nein"} | {c} |')
 
-    w("\n## Tabelle B: Render-State je Pass\n")
+    w("\n## Table B: Render state per pass\n")
     for fam, lst in sorted(byfam.items()):
         w(f"\n### {fam}\n")
         w("| Shader | Pass | Tags | State |")
@@ -156,14 +156,14 @@ def main():
             inst_shaders.append(s["name"])
         for pr in s["properties"]:
             props_types[pr["type"]] += 1
-    w("\n## Kennzahlen (64 Shader)\n")
-    w(f"- Programme gesamt (Vertex/Fragment/Geometry/Hull/Domain): {prog['vertex']}/{prog['fragment']}/{prog['geometry']}/{prog['hull']}/{prog['domain']}")
-    w(f"- Pässe je Shader: {dict(sorted(passcount.items()))}; SubShader-LOD: {dict(lod)}")
-    w(f"- Queue-Tags: {dict(queue)}; RenderType: {dict(rtype)}")
-    w(f"- Blend (Pass-Zähler): {dict(blend)}")
-    w(f"- ZWrite: {dict(zw)}; ZTest: {dict(zt)}; Cull: {dict(cull)}; Pässe mit Stencil: {stencil}; UsePass/GrabPass: {usepass}/{grab}")
-    w(f"- Shader mit Instancing-Variante: {len(inst_shaders)} ({', '.join(sorted(inst_shaders))})")
-    w(f"- Eigenschaftstypen (alle Shader): {dict(props_types)}")
+    w("\n## Key figures (64 shaders)\n")
+    w(f"- Programs in total (vertex/fragment/geometry/hull/domain): {prog['vertex']}/{prog['fragment']}/{prog['geometry']}/{prog['hull']}/{prog['domain']}")
+    w(f"- Passes per shader: {dict(sorted(passcount.items()))}; SubShader LOD: {dict(lod)}")
+    w(f"- Queue tags: {dict(queue)}; RenderType: {dict(rtype)}")
+    w(f"- Blend (pass counter): {dict(blend)}")
+    w(f"- ZWrite: {dict(zw)}; ZTest: {dict(zt)}; Cull: {dict(cull)}; passes with stencil: {stencil}; UsePass/GrabPass: {usepass}/{grab}")
+    w(f"- Shaders with an instancing variant: {len(inst_shaders)} ({', '.join(sorted(inst_shaders))})")
+    w(f"- Property types (all shaders): {dict(props_types)}")
     custom = Counter(s["customEditor"] for s in shaders if s["customEditor"])
     fb = {s["name"]: s["fallback"] for s in shaders if s["fallback"]}
     w(f"- CustomEditor: {dict(custom)}; Fallback: {fb}")
@@ -179,20 +179,20 @@ def main():
                         gp[sp["gpuProgramType"]] += 1; hw[sp["hwTier"]] += 1; sm[sp["requirements"]] += 1
     w(f"- GpuProgramType: {dict(gp)}; HardwareTier: {dict(hw)}; ShaderRequirements: {dict(sm)}")
 
-    # Eingänge/Texturen
+    # Inputs/textures
     texdim = Counter(); texprops = Counter()
     for s in shaders:
         for p in s["properties"]:
             if p["type"] == "Texture":
                 texdim[p["texDim"]] += 1; texprops[p["name"]] += 1
-    w(f"- Textur-Eigenschaften: {dict(texdim)}; häufigste Namen: {texprops.most_common(12)}")
+    w(f"- Texture properties: {dict(texdim)}; most frequent names: {texprops.most_common(12)}")
     chans = Counter()
     for s in shaders:
         for ss in s["subShaders"]:
             for p in ss["passes"]:
                 for sp in p["stages"]["vertex"]:
                     chans[tuple(sorted((c["source"], c["target"]) for c in sp["inputChannels"]))] += 1
-    w(f"- Vertex-Kanalbelegungen (Unity-Quelle→Eingang), häufigste: {chans.most_common(6)}")
+    w(f"- Vertex channel assignments (Unity source→input), most frequent: {chans.most_common(6)}")
 
     # Member-Klassifikation
     cls = defaultdict(lambda: defaultdict(set))  # klasse -> name -> shaders
@@ -216,10 +216,10 @@ def main():
                                 cls[k][n].add(s["name"])
     w("\n## Konstanten-Klassifikation (Namen in VGlobals/PGlobals/UnityInstancing_*)\n")
     for k in ("builtin", "derived", "material", "global"):
-        w(f"- {k}: {len(cls[k])} Namen")
-    w("\n### Unity-Built-ins (Name: Anzahl Shader)\n")
+        w(f"- {k}: {len(cls[k])} names")
+    w("\n### Unity built-ins (name: number of shaders)\n")
     w(", ".join(f"`{n}` {len(v)}" for n, v in sorted(cls["builtin"].items(), key=lambda kv: (-len(kv[1]), kv[0]))))
-    w("\n### Nicht-Material, nicht-Built-in („globale“ Werte, vom Spiel zu liefern)\n")
+    w("\n### Not material, not built-in (\"global\" values, to be supplied by the game)\n")
     w(", ".join(f"`{n}` {len(v)}" for n, v in sorted(cls["global"].items(), key=lambda kv: (-len(kv[1]), kv[0]))))
 
     # Verwendete Built-ins laut SPIR-V
@@ -229,11 +229,11 @@ def main():
             for n in names:
                 if BUILTIN_RE.match(n):
                     used[n].add(key)
-    w("\n### Tatsächlich im Code genutzte Built-ins (Zahl Shader, SPIR-V-Zugriffe der zugeordneten Cache-Module)\n")
+    w("\n### Built-ins actually used in the code (number of shaders, SPIR-V accesses of the matched cache modules)\n")
     w(", ".join(f"`{n}` {len(v)}" for n, v in sorted(used.items(), key=lambda kv: (-len(kv[1]), kv[0]))))
     w("\n### Reflexion: Constant-Buffer-Bindung\n")
     w(f"- {json.dumps(rf['unityBindingToHwCb'])}")
-    w(f"- Regelprüfung (HW-cbuf = Unity-Bindung + 3): {json.dumps(rf['hwCbRuleCheck'])}")
+    w(f"- Rule check (HW cbuf = Unity binding + 3): {json.dumps(rf['hwCbRuleCheck'])}")
     ubo = Counter(); tb = Counter(); dyn = Counter(); vin = Counter()
     for key, v in rf["perShader"].items():
         for k in v["ubos"]:
@@ -241,10 +241,10 @@ def main():
             ubo[f"{st}:{nm}:{sz}"] += v["ubos"][k]
         for k in v["dynamicIndexing"]:
             dyn[k] += v["dynamicIndexing"][k]
-    w(f"- UBO-Namen/-Größen (Zähler über Module): {dict(ubo)}")
+    w(f"- UBO names/sizes (counter over modules): {dict(ubo)}")
     w(f"- Dynamisch indizierte Constant-Buffer: {dict(dyn)}")
     Path(args.out).write_text("\n".join(out) + "\n")
-    print("geschrieben:", args.out, len(out), "Zeilen")
+    print("written:", args.out, len(out), "lines")
 
 
 if __name__ == "__main__":

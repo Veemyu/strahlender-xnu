@@ -284,7 +284,7 @@ static void storage_romfs(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
-void fs_report(FILE *f) { fprintf(f, "RomFS-Lesezugriffe: %llu (%llu MiB)\n", (unsigned long long)rom.nreads, (unsigned long long)(rom.nbytes >> 20)); }
+void fs_report(FILE *f) { fprintf(f, "RomFS reads: %llu (%llu MiB)\n", (unsigned long long)rom.nreads, (unsigned long long)(rom.nbytes >> 20)); }
 
 // ------------------------------------------------------------------ Host-Ordner als IFileSystem
 typedef struct { char root[1024]; } HostFs;

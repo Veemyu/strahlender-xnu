@@ -1,14 +1,14 @@
 #!/bin/bash
-# Stufe recomp: aus dem eigenen Dump (work/exefs, work/romfs) zur macOS-App work/builds/macos-recomp/BDSP.app.
-#   1 Generator  -> C (rund 1 GB, work/recomp/gen4), nur wenn sich Eingaben/Generator geändert haben (sonst übersprungen;
-#                   bei vorhandenem C werden nur Dateien mit geändertem Inhalt ersetzt)
-#   2 Übersetzen -> work/recomp/obj4 (inkrementell, höchstens 4 Compiler, Ausreißer -O0 ab 300 KB)
-#   3 Modulbilder (mkimages.sh), 4 Laufzeit/NVN-Metal bauen und mit libgame (obj4/*.o) zu bdsp_app linken
-#   5 BDSP.app zusammensetzen, ad hoc signieren; 6 Daten bereitstellen (RomFS als APFS-Klon nach Application Support)
-# Teilschritte tragen eigene Marker (work/.stages/recomp-*.json). Alles unter work/ (nie im Repo), Meldungen auf Deutsch.
-# Aufruf: recomp_build.sh [--dry-run] [--force] [--jobs N] [--o0-kb N] [--hardened] [--no-install-data] [--out BDSP.app]
-# Umgebung: RECOMP_DIR (Standard work/recomp), BDSP_HOME (Ziel der Daten, Standard ~/Library/Application Support/dev.local.xnubdsp)
-# Exit-Codes wie build_all.sh: 2 Aufruf, 4 Werkzeug/Build, 8 Platz, 10 Voraussetzung fehlt
+# Stage recomp: from your own dump (work/exefs, work/romfs) to the macOS app work/builds/macos-recomp/BDSP.app.
+#   1 generator -> C (about 1 GB, work/recomp/gen4), only if inputs/generator changed (otherwise skipped;
+#                  with existing C only files with changed content are replaced)
+#   2 compile   -> work/recomp/obj4 (incremental, at most 4 compilers, outliers -O0 from 300 KB)
+#   3 module images (mkimages.sh), 4 build runtime/NVN-Metal and link with libgame (obj4/*.o) into bdsp_app
+#   5 assemble BDSP.app, sign ad hoc; 6 provide data (RomFS as an APFS clone into Application Support)
+# The sub-steps carry their own markers (work/.stages/recomp-*.json). Everything under work/ (never in the repo), messages in English.
+# Usage: recomp_build.sh [--dry-run] [--force] [--jobs N] [--o0-kb N] [--hardened] [--no-install-data] [--out BDSP.app]
+# Environment: RECOMP_DIR (default work/recomp), BDSP_HOME (data target, default ~/Library/Application Support/dev.local.xnubdsp)
+# Exit codes like build_all.sh: 2 usage, 4 tool/build, 8 space, 10 prerequisite missing
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
@@ -18,7 +18,7 @@ case "$R" in /*) ;; *) R="$PWD/$R" ;; esac
 JOBS=4 O0_KB=300 DRY=0 FORCE=0 HARDENED=0 INSTALL_DATA=1 OUT="$WORK/builds/macos-recomp/BDSP.app"
 SP="python3 $ROOT/scripts/build_stages.py"
 log() { echo "[$(date +%H:%M:%S)] recomp: $*"; }
-die() { local c="$1"; shift; echo "FEHLER: $*" >&2; exit "$c"; }
+die() { local c="$1"; shift; echo "ERROR: $*" >&2; exit "$c"; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift ;;
@@ -28,26 +28,26 @@ while [ $# -gt 0 ]; do
     --hardened) HARDENED=1; shift ;;
     --no-install-data) INSTALL_DATA=0; shift ;;
     --out) OUT="$2"; shift 2 ;;
-    *) die 2 "Unbekannte Option: $1" ;;
+    *) die 2 "Unknown option: $1" ;;
   esac
 done
-[ "$JOBS" -ge 1 ] 2>/dev/null || die 2 "--jobs braucht eine Zahl >= 1"
-[ "$JOBS" -le 4 ] || JOBS=4   # die Maschine ist geteilt: höchstens vier Compiler
+[ "$JOBS" -ge 1 ] 2>/dev/null || die 2 "--jobs needs a number >= 1"
+[ "$JOBS" -le 4 ] || JOBS=4   # the machine is shared: at most four compilers
 case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
 
 GEN="$R/gen4" OBJ="$R/obj4" IMG="$R/img_app" RTO="$R/rt-bdsp-app" NVNRT="$R/rt-bdsp" NVNSRC="$R/nvn-src" BIN="$R/bdsp_app"
 O0_BYTES=$((O0_KB * 1000))
-# Die Hilfsskripte lesen work/exefs fest relativ zum Repo
-[ -s "$ROOT/work/exefs/main" ] || die 10 "work/exefs/main fehlt: zuerst die Stufe extract (scripts/build_all.sh extract --xci … --keys …)"
-[ -d "$ROOT/work/romfs/Data" ] || die 10 "work/romfs/Data fehlt: zuerst die Stufe extract"
-[ -f "$ROOT/work/exefs/main.npdm" ] || die 10 "work/exefs/main.npdm fehlt: Stufe extract unvollständig"
+# The helper scripts read work/exefs hard-coded relative to the repo
+[ -s "$ROOT/work/exefs/main" ] || die 10 "work/exefs/main missing: run the extract stage first (scripts/build_all.sh extract --xci … --keys …)"
+[ -d "$ROOT/work/romfs/Data" ] || die 10 "work/romfs/Data missing: run the extract stage first"
+[ -f "$ROOT/work/exefs/main.npdm" ] || die 10 "work/exefs/main.npdm missing: extract stage incomplete"
 [ -f "$ROOT/scripts/recomp/upstream/generator/gen.py" ] \
-  || die 10 "scripts/recomp/upstream fehlt: git checkout -- scripts/recomp/upstream (vendorter Generator, MIT; siehe THIRD_PARTY_NOTICES.md)"
+  || die 10 "scripts/recomp/upstream missing: git checkout -- scripts/recomp/upstream (vendored generator, MIT; see THIRD_PARTY_NOTICES.md)"
 
 hash_of() { $SP stage-hash --stage "$1" --root "$ROOT" --work "$WORK" | tail -n 1; }
 marker_ok() { $SP marker-check --work "$WORK" --stage "$1" --hash "$2"; }
 marker_put() { local st="$1" h="$2" args=() n; shift 2; for n in "$@"; do args+=(--note "$n"); done; $SP marker-write --work "$WORK" --stage "$st" --hash "$h" ${args[@]+"${args[@]}"}; }
-doit() {  # Beschreibung, Kommando…  (bei --dry-run nur anzeigen)
+doit() {  # description, command…  (with --dry-run only show)
   local what="$1"; shift
   if [ "$DRY" -eq 1 ]; then printf '    [dry-run] %s:' "$what"; printf ' %q' "$@"; printf '\n'; return 0; fi
   "$@"
@@ -57,37 +57,37 @@ doit() {  # Beschreibung, Kommando…  (bei --dry-run nur anzeigen)
 # ---------- 1 Generator ----------
 H_GEN="$(hash_of recomp-gen)"
 if [ "$FORCE" -eq 0 ] && [ -d "$GEN/main" ] && marker_ok recomp-gen "$H_GEN"; then
-  log "1/6 Generator: Marker passt, C vorhanden ($(ls "$GEN"/*/*.c | wc -l | tr -d ' ') Dateien), übersprungen"
+  log "1/6 generator: marker matches, C present ($(ls "$GEN"/*/*.c | wc -l | tr -d ' ') files), skipped"
 else
-  log "1/6 Generator: C aus den vier Modulen erzeugen (rund 75 s, bis 5 GB Arbeitsspeicher, rund 1 GB Platz)"
+  log "1/6 generator: generating C from the four modules (about 75 s, up to 5 GB memory, about 1 GB space)"
   if [ -d "$GEN/main" ] && [ "$FORCE" -eq 0 ]; then
-    # inkrementell: neu erzeugen und nur Dateien mit geändertem Inhalt übertragen (Zeitstempel bleiben, Compiler läuft nur für Änderungen)
+    # incremental: regenerate and transfer only files with changed content (timestamps stay, the compiler runs only for changes)
     NEW="$R/gen4.new"
-    doit "alte Zwischenablage löschen" rm -rf "$NEW"
-    doit "Generator" env OUT="$NEW" "$ROOT/scripts/recomp/gen_all.sh"
+    doit "delete old intermediate folder" rm -rf "$NEW"
+    doit "generator" env OUT="$NEW" "$ROOT/scripts/recomp/gen_all.sh"
     if [ "$DRY" -eq 0 ]; then
       for d in "$NEW"/*/; do
         m=$(basename "$d"); mkdir -p "$GEN/$m"
         n=$(rsync -rc --delete --itemize-changes "$d" "$GEN/$m/" | { grep -c '^>f' || true; })
-        log "    $m: $n geänderte Dateien"
+        log "    $m: $n changed files"
       done
       rm -rf "$NEW"
     fi
   else
-    doit "Generator" env OUT="$GEN" "$ROOT/scripts/recomp/gen_all.sh"
+    doit "generator" env OUT="$GEN" "$ROOT/scripts/recomp/gen_all.sh"
   fi
-  [ "$DRY" -eq 1 ] || { [ -d "$GEN/main" ] || die 4 "Generator lieferte kein C (Log: work/recomp/spike2/gen4_*.log)"; marker_put recomp-gen "$H_GEN" "dateien=$(ls "$GEN"/*/*.c | wc -l | tr -d ' ')"; }
+  [ "$DRY" -eq 1 ] || { [ -d "$GEN/main" ] || die 4 "Generator produced no C (log: work/recomp/spike2/gen4_*.log)"; marker_put recomp-gen "$H_GEN" "files=$(ls "$GEN"/*/*.c | wc -l | tr -d ' ')"; }
 fi
 
-# ---------- 2 Übersetzen ----------
-H_HOT="$(shasum -a 256 < "$ROOT/scripts/recomp/hot_o2.txt" | cut -c1-16)"   # Liste der mit -O2 gebauten Funktionen
+# ---------- 2 Compile ----------
+H_HOT="$(shasum -a 256 < "$ROOT/scripts/recomp/hot_o2.txt" | cut -c1-16)"   # list of the functions built with -O2
 H_OBJ="$(printf '%s|%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" "$H_HOT" | shasum -a 256 | cut -c1-64)"
 if [ "$FORCE" -eq 0 ] && [ -d "$OBJ" ] && marker_ok recomp-obj "$H_OBJ"; then
-  log "2/6 Übersetzen: Marker passt ($(ls "$OBJ"/*.o | wc -l | tr -d ' ') Objekte), übersprungen"
+  log "2/6 compile: marker matches ($(ls "$OBJ"/*.o | wc -l | tr -d ' ') objects), skipped"
 else
-  log "2/6 Übersetzen: höchstens $JOBS Compiler, Ausreißer ab ${O0_KB} KB mit -O0 (rund 12 bis 16 min kalt; Fortschritt: $WORK/logs/recomp-compile.log)"
+  log "2/6 compile: at most $JOBS compilers, outliers from ${O0_KB} KB with -O0 (about 12 to 16 min cold; progress: $WORK/logs/recomp-compile.log)"
   if [ "$FORCE" -eq 1 ] && [ "$DRY" -eq 0 ]; then rm -rf "$OBJ"; fi
-  # geänderte -O0-Schwelle: Objekte der betroffenen Dateien verwerfen (compile_chunk.sh überspringt vorhandene)
+  # changed -O0 threshold: discard the objects of the affected files (compile_chunk.sh skips existing ones)
   if [ "$DRY" -eq 0 ] && [ -f "$OBJ/.o0_bytes" ] && [ "$(cat "$OBJ/.o0_bytes")" != "$O0_BYTES" ]; then
     old=$(cat "$OBJ/.o0_bytes")
     for f in "$GEN"/*/*.c; do
@@ -97,65 +97,65 @@ else
     done
   fi
   if [ "$DRY" -eq 1 ]; then
-    printf '    [dry-run] Übersetzen: env GEN=%q OBJ=%q O0_BYTES=%q scripts/recomp/build_all.sh %q\n' "$GEN" "$OBJ" "$O0_BYTES" "$JOBS"
+    printf '    [dry-run] compile: env GEN=%q OBJ=%q O0_BYTES=%q scripts/recomp/build_all.sh %q\n' "$GEN" "$OBJ" "$O0_BYTES" "$JOBS"
   else
     mkdir -p "$OBJ"
     if ! GEN="$GEN" OBJ="$OBJ" O0_BYTES="$O0_BYTES" "$ROOT/scripts/recomp/build_all.sh" "$JOBS" > "$WORK/logs/recomp-compile.log" 2>&1; then
       tail -n 20 "$WORK/logs/recomp-compile.log" >&2
-      die 4 "Übersetzen fehlgeschlagen (Log: $WORK/logs/recomp-compile.log). Häufige Ursachen: zu wenig Arbeitsspeicher (ein Compiler braucht bis 1,7 GB: --jobs 2), Platte voll"
+      die 4 "Compile failed (log: $WORK/logs/recomp-compile.log). Common causes: not enough memory (one compiler needs up to 1.7 GB: --jobs 2), disk full"
     fi
-    grep -q "^FEHLER" "$WORK/logs/recomp-compile.log" && die 4 "Übersetzen meldet Fehler (Log: $WORK/logs/recomp-compile.log)"
+    grep -q "^ERROR" "$WORK/logs/recomp-compile.log" && die 4 "Compile reports errors (log: $WORK/logs/recomp-compile.log)"
     echo "$O0_BYTES" > "$OBJ/.o0_bytes"
     expected=$(ls "$GEN"/*/*.c | wc -l | tr -d ' '); have=$(ls "$OBJ"/*.o | wc -l | tr -d ' ')
-    [ "$expected" = "$have" ] || die 4 "Objekte unvollständig: $have von $expected (Log: $WORK/logs/recomp-compile.log)"
+    [ "$expected" = "$have" ] || die 4 "Objects incomplete: $have of $expected (log: $WORK/logs/recomp-compile.log)"
     tail -n 2 "$WORK/logs/recomp-compile.log" | sed 's/^/    /'
-    marker_put recomp-obj "$H_OBJ" "objekte=$have"
+    marker_put recomp-obj "$H_OBJ" "objects=$have"
   fi
 fi
 
-# ---------- 3 Modulbilder ----------
-log "3/6 Modulbilder (Relokationen, Importe, HLE-Slots)"
+# ---------- 3 Module images ----------
+log "3/6 module images (relocations, imports, HLE slots)"
 if [ "$DRY" -eq 1 ]; then
-  printf '    [dry-run] Modulbilder: env IMG=%q HLE_LIST=hle_nvn.txt scripts/recomp/rt-bdsp/mkimages.sh\n' "$IMG"
+  printf '    [dry-run] module images: env IMG=%q HLE_LIST=hle_nvn.txt scripts/recomp/rt-bdsp/mkimages.sh\n' "$IMG"
 else
   IMG="$IMG" HLE_LIST="$ROOT/scripts/recomp/rt-bdsp/hle_nvn.txt" "$ROOT/scripts/recomp/rt-bdsp/mkimages.sh" > "$WORK/logs/recomp-images.log" 2>&1 \
-    || { tail -n 10 "$WORK/logs/recomp-images.log" >&2; die 4 "mkimages.sh fehlgeschlagen (Log: $WORK/logs/recomp-images.log)"; }
+    || { tail -n 10 "$WORK/logs/recomp-images.log" >&2; die 4 "mkimages.sh failed (log: $WORK/logs/recomp-images.log)"; }
 fi
 
-# ---------- 4 Laufzeit und NVN/Metal ----------
-log "4/6 Laufzeit und NVN/Metal bauen, mit libgame zu bdsp_app linken"
+# ---------- 4 Runtime and NVN/Metal ----------
+log "4/6 building runtime and NVN/Metal, linking with libgame into bdsp_app"
 if [ "$DRY" -eq 1 ]; then
   printf '    [dry-run] Bau: env BDSP_APP=1 OBJ=%q RT=%q NVN_RT=%q NVN_SRC=%q OUT=%q scripts/recomp/rt-bdsp/build.sh\n' "$OBJ" "$RTO" "$NVNRT" "$NVNSRC" "$BIN"
 else
   mkdir -p "$RTO" "$NVNRT"
   BDSP_APP=1 OBJ="$OBJ" RT="$RTO" NVN_RT="$NVNRT" NVN_SRC="$NVNSRC" OUT="$BIN" "$ROOT/scripts/recomp/rt-bdsp/build.sh" > "$WORK/logs/recomp-runtime.log" 2>&1 \
-    || { tail -n 20 "$WORK/logs/recomp-runtime.log" >&2; die 4 "Laufzeit-Bau fehlgeschlagen (Log: $WORK/logs/recomp-runtime.log). Voraussetzung: brew install sdl3 ffmpeg pkg-config llvm; Xcode Command Line Tools"; }
+    || { tail -n 20 "$WORK/logs/recomp-runtime.log" >&2; die 4 "Runtime build failed (log: $WORK/logs/recomp-runtime.log). Prerequisite: brew install sdl3 ffmpeg pkg-config llvm; Xcode Command Line Tools"; }
   tail -n 1 "$WORK/logs/recomp-runtime.log" | sed 's/^/    /'
 fi
 
 # ---------- 5 App ----------
-log "5/6 BDSP.app zusammensetzen und signieren (ad hoc$([ "$HARDENED" -eq 1 ] && echo ', Hardened Runtime'))"
+log "5/6 assembling and signing BDSP.app (ad hoc$([ "$HARDENED" -eq 1 ] && echo ', hardened runtime'))"
 APPARGS=(--bin "$BIN" --img "$IMG" --npdm "$ROOT/work/exefs/main.npdm" --out "$OUT")
 export BDSP_ICON_SOURCE="${BDSP_ICON_SOURCE:-$R/icons/source}"
 [ "$HARDENED" -eq 0 ] || APPARGS+=(--hardened)
-doit "App" "$ROOT/scripts/recomp/app/make_app.sh" "${APPARGS[@]}"
+doit "app" "$ROOT/scripts/recomp/app/make_app.sh" "${APPARGS[@]}"
 
-# ---------- 6 Daten ----------
+# ---------- 6 Data ----------
 HOME_DIR="${BDSP_HOME:-$HOME/Library/Application Support/dev.local.xnubdsp}"
 if [ "$INSTALL_DATA" -eq 0 ]; then
-  log "6/6 Daten: übersprungen (--no-install-data); die App erwartet das RomFS unter $HOME_DIR/romfs oder per romfs = … in config.ini"
+  log "6/6 data: skipped (--no-install-data); the app expects the RomFS at $HOME_DIR/romfs or via romfs = … in config.ini"
 else
-  # Kennung des Dumps: main-Hash plus Dateizahl des RomFS (manifest.json ist nicht in jedem Arbeitsordner vorhanden)
+  # Identifier of the dump: main hash plus the RomFS file count (manifest.json does not exist in every work folder)
   STAMP="$(shasum -a 256 "$ROOT/work/exefs/main" | cut -c1-16) $(find "$ROOT/work/romfs" -type f | wc -l | tr -d ' ')"
   if [ -f "$HOME_DIR/romfs.stamp" ] && [ "$(cat "$HOME_DIR/romfs.stamp")" = "$STAMP" ] && [ -d "$HOME_DIR/romfs/Data" ] && [ "$FORCE" -eq 0 ]; then
-    log "6/6 Daten: RomFS unter $HOME_DIR/romfs ist aktuell, übersprungen"
+    log "6/6 data: RomFS at $HOME_DIR/romfs is up to date, skipped"
   else
-    log "6/6 Daten: RomFS nach $HOME_DIR/romfs (APFS-Klon, braucht keinen zusätzlichen Platz; sonst Kopie)"
+    log "6/6 data: RomFS to $HOME_DIR/romfs (APFS clone, needs no extra space; otherwise a copy)"
     if [ "$DRY" -eq 0 ]; then
       mkdir -p "$HOME_DIR"
       rm -rf "$HOME_DIR/romfs.new"
       cp -cR "$ROOT/work/romfs" "$HOME_DIR/romfs.new" 2>/dev/null || cp -R "$ROOT/work/romfs" "$HOME_DIR/romfs.new" \
-        || die 8 "RomFS lässt sich nicht nach $HOME_DIR kopieren (Platz?)"
+        || die 8 "RomFS cannot be copied to $HOME_DIR (space?)"
       rm -rf "$HOME_DIR/romfs"
       mv "$HOME_DIR/romfs.new" "$HOME_DIR/romfs"
       printf '%s' "$STAMP" > "$HOME_DIR/romfs.stamp"
@@ -164,4 +164,4 @@ else
     fi
   fi
 fi
-[ "$DRY" -eq 1 ] || log "fertig: $OUT ($(du -sh "$OUT" | cut -f1))"
+[ "$DRY" -eq 1 ] || log "done: $OUT ($(du -sh "$OUT" | cut -f1))"

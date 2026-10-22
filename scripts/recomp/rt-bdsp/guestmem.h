@@ -1,21 +1,21 @@
-// Speichermodell der BDSP-Laufzeit: eine einzige Stelle, die Gast- in Hostadressen umrechnet.
-// Eigener Code.
+// Memory model of the BDSP runtime: the one place that converts guest addresses to host addresses.
+// Own code.
 //
-// Variante A (Gate 1, nur Mac): ein festes 12,5-GiB-Fenster bei 0x70_0000_0000, Gastadresse == Hostadresse.
-//   G2H(a) = (void *)a, H2G(p) = (uint64_t)p. Der erzeugte Code greift über LD8..ST64 (cpu.h) zu: direkt.
-// Variante B (iPad, Gate 2): alle Gastadressen < 4 GiB, ein Fenster bei g_base.
-//   G2H(a) = g_base + (uint32_t)a. Der erzeugte Code wird mit -I scripts/recomp/rt32 vor rt/ übersetzt
-//   (rt32/cpu.h überschreibt LD*/ST* mit derselben Rechnung), die Module liegen bei Adressen < 4 GiB
-//   (gen_all.sh mit anderen Basen), und die Runtime wird mit -DBDSP_REBASE32 gebaut.
+// Variant A (gate 1, Mac only): a fixed 12.5 GiB window at 0x70_0000_0000, guest address == host address.
+//   G2H(a) = (void *)a, H2G(p) = (uint64_t)p. The generated code accesses memory through LD8..ST64 (cpu.h): directly.
+// Variant B (iPad, gate 2): all guest addresses < 4 GiB, one window at g_base.
+//   G2H(a) = g_base + (uint32_t)a. The generated code is compiled with -I scripts/recomp/rt32 before rt/
+//   (rt32/cpu.h overrides LD*/ST* with the same computation), the modules sit at addresses < 4 GiB
+//   (gen_all.sh with other bases), and the runtime is built with -DBDSP_REBASE32.
 //
-// Regel für alle Host-Quellen: jede Gastadresse (Register, IPC-Puffer, Tabellen im Gastspeicher) geht durch G2H(),
-// jeder Zeiger in den Gastspeicher, der dem Gast zurückgegeben wird, durch H2G(). Keine Umwandlung nach uintptr_t
-// außerhalb dieses Headers.
+// Rule for all host sources: every guest address (register, IPC buffer, table in guest memory) goes through G2H(),
+// every pointer into guest memory that is returned to the guest goes through H2G(). No conversion to uintptr_t
+// outside this header.
 #pragma once
 #include <stdint.h>
 
 #ifdef BDSP_REBASE32
-extern uint8_t *g_base;  // Basis des 4-GiB-Fensters (derselbe Name wie in rt32/cpu.h, vom Host gesetzt)
+extern uint8_t *g_base;  // base of the 4 GiB window (same name as in rt32/cpu.h, set by the host)
 #ifndef G2H
 #define G2H(a) ((void *)(g_base + (uint32_t)(uint64_t)(a)))
 #endif

@@ -1,4 +1,4 @@
-// Pfade, Konfiguration und Start der App-Hülle (siehe app.h, docs/recomp-macapp.md). Reines C, kein AppKit.
+// Paths, configuration and start of the app shell (see app.h, docs/recomp-macapp.md). Plain C, no AppKit.
 #include "app.h"
 
 #include <CoreFoundation/CoreFoundation.h>
@@ -32,7 +32,7 @@ static void trim(char *s) {
     if (a != s) memmove(s, a, strlen(a) + 1);
 }
 
-// "~" und relative Pfade (gegen das Arbeitsverzeichnis des Aufrufs) in absolute Pfade verwandeln
+// Turn "~" and relative paths (against the working directory of the call) into absolute paths
 static void absolutize(char *dst, size_t n, const char *src) {
     if (src[0] == '~' && (src[1] == '/' || !src[1])) {
         const char *h = getenv("HOME");
@@ -46,7 +46,7 @@ static void absolutize(char *dst, size_t n, const char *src) {
     }
 }
 
-// Konfigurationsdatei: Zeilen "schlüssel = wert", # beginnt einen Kommentar.
+// Configuration file: lines "key = value", # starts a comment.
 static const char *cfg_get(char (*keys)[32], char (*vals)[1024], int n, const char *k) {
     for (int i = 0; i < n; i++) if (!strcmp(keys[i], k)) return vals[i];
     return NULL;
@@ -68,7 +68,7 @@ static void pick_path(char *dst, size_t n, const char *env, const char *cfg, con
 static void redirect_log_if_gui(void) {
     struct stat so, dn;
     if (getenv("BDSP_LOG_STDOUT")) return;
-    // aus Finder/Dock gestartet: stdout zeigt auf /dev/null
+    // started from Finder/Dock: stdout points to /dev/null
     if (fstat(1, &so) != 0 || stat("/dev/null", &dn) != 0 || !S_ISCHR(so.st_mode) || so.st_rdev != dn.st_rdev) return;
     char path[1200], prev[1200];
     mkdir_p(g_app.logs);
@@ -83,9 +83,9 @@ static void redirect_log_if_gui(void) {
 }
 
 void bdsp_app_init(int argc, char **argv) {
-    // Metal-HUD (Menü Ansicht > Debug): MTL_HUD_ENABLED wird beim Start gelesen, daher hier und vor jeder Metal-Initialisierung
+    // Metal HUD (menu View > Debug): MTL_HUD_ENABLED is read at start, hence here and before any Metal initialisation
     Boolean hud_valid = false;
-    if (CFPreferencesGetAppBooleanValue(CFSTR("bdsp_metal_hud"), kCFPreferencesCurrentApplication, &hud_valid) && hud_valid && !getenv("BDSP_NO_HUD")) {   // BDSP_NO_HUD=1: Messläufe ohne HUD
+    if (CFPreferencesGetAppBooleanValue(CFSTR("bdsp_metal_hud"), kCFPreferencesCurrentApplication, &hud_valid) && hud_valid && !getenv("BDSP_NO_HUD")) {   // BDSP_NO_HUD=1: measurement runs without HUD
         setenv("MTL_HUD_ENABLED", "1", 1);
         printf("[app] Metal-HUD an (Start)\n");
     }
@@ -146,7 +146,7 @@ void bdsp_app_init(int argc, char **argv) {
     pick_path(g_app.save, sizeof g_app.save, "BDSP_SAVE", cfg_get(keys, vals, n, "save"), d_save);
     pick_path(g_app.cache, sizeof g_app.cache, "BDSP_CACHE", cfg_get(keys, vals, n, "cache"), def_cache);
     pick_path(g_app.logs, sizeof g_app.logs, "BDSP_LOG_DIR", cfg_get(keys, vals, n, "logs"), def_logs);
-    for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--save")) {   // Option der Laufzeit: gilt vor der Konfiguration
+    for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--save")) {   // runtime option: takes effect before the configuration
         absolutize(g_app.save, sizeof g_app.save, argv[i + 1]);
         argv[i + 1] = strdup(g_app.save);
     }
@@ -163,14 +163,14 @@ void bdsp_app_init(int argc, char **argv) {
     if (!win) win = cfg_get(keys, vals, n, "window");
     if (win) sscanf(win, "%dx%d", &g_app.win_w, &g_app.win_h);
     const char *lang = cfg_get(keys, vals, n, "language");
-    if (lang && *lang) setenv("BDSP_LANG", lang, 0);   // z. B. de-DE, en-US (Sprache, die das Spiel von der Konsole erfragt)
+    if (lang && *lang) setenv("BDSP_LANG", lang, 0);   // e.g. de-DE, en-US (language the game asks the console for)
 
     mkdir_p(g_app.save);
     mkdir_p(g_app.cache);
     mkdir_p(g_app.logs);
     redirect_log_if_gui();
 
-    // --import-save <SaveData.bin oder Ordner>: Spielstand prüfen, installieren, beenden (ohne Fenster; für Skripte)
+    // --import-save <SaveData.bin or folder>: check and install the save, then exit (no window; for scripts)
     for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--import-save")) {
         char abs[1200], msg[3000];
         absolutize(abs, sizeof abs, argv[i + 1]);
@@ -178,7 +178,7 @@ void bdsp_app_init(int argc, char **argv) {
         fprintf(r == 0 ? stdout : stderr, "%s\n", msg);
         exit(r == 0 ? 0 : 1);
     }
-    // Umgebung der Laufzeit (die Optionen der Kommandozeile überschreiben sie später)
+    // Environment of the runtime (the command-line options override it later)
     setenv("BDSP_ROMFS", g_app.romfs, 1);
     setenv("BDSP_SAVE", g_app.save, 1);
     char tmp[1200];
@@ -188,7 +188,7 @@ void bdsp_app_init(int argc, char **argv) {
         snprintf(tmp, sizeof tmp, "%s/main.npdm", g_app.resources);
         setenv("BDSP_NPDM", tmp, 0);
     }
-    setenv("BDSP_TIMEOUT", "2000000000", 0);   // die App läuft, bis der Nutzer sie beendet
+    setenv("BDSP_TIMEOUT", "2000000000", 0);   // the app runs until the user quits it
     snprintf(tmp, sizeof tmp, "%s/shots", g_app.cache);
     setenv("BDSP_SHOT_DIR", tmp, 0);
     {
@@ -196,7 +196,7 @@ void bdsp_app_init(int argc, char **argv) {
         snprintf(w, sizeof w, "%dx%d", g_app.win_w, g_app.win_h);
         setenv("BDSP_WINDOW", w, 0);
     }
-    // Relative Pfade der Umgebung und der Kommandozeile beziehen sich auf den Aufruf: vor dem Wechsel des Arbeitsverzeichnisses absolut machen
+    // Relative paths from the environment and the command line refer to the call: make them absolute before changing the working directory
     static const char *const path_env[] = {"BDSP_IMG", "BDSP_NPDM", "BDSP_IL2SYM", "BDSP_SHOT_DIR", "BDSP_SHOT_PATH", NULL};
     for (int i = 0; path_env[i]; i++) {
         const char *v = getenv(path_env[i]);
@@ -209,38 +209,38 @@ void bdsp_app_init(int argc, char **argv) {
         snprintf(b, sizeof b, "@%s", a);
         argv[i + 1] = strdup(b);
     }
-    // Arbeitsverzeichnis im Cache: die NVN-Schicht schreibt relativ nach work/recomp/cache/shaders (Shader-Cache). Der Ordner "cache"
-    // dort ist ein Verweis auf den Cache-Ordner der App, damit nichts im Repo oder im Anwendungsordner entsteht.
+    // Working directory in the cache: the NVN layer writes relative to work/recomp/cache/shaders (shader cache). The folder "cache"
+    // there is a link to the app's cache folder, so nothing is created in the repo or in the application folder.
     char cwd[1200], p[1400];
     snprintf(cwd, sizeof cwd, "%s/cwd", g_app.cache);
     snprintf(p, sizeof p, "%s/work/recomp", cwd);
     mkdir_p(p);
     snprintf(p, sizeof p, "%s/work/recomp/cache", cwd);
     struct stat st;
-    if (lstat(p, &st) != 0 && symlink(g_app.cache, p) != 0) fprintf(stderr, "Hinweis: Verweis %s nicht angelegt: %s\n", p, strerror(errno));
-    if (chdir(cwd) != 0) fprintf(stderr, "Hinweis: Arbeitsverzeichnis %s nicht erreichbar: %s\n", cwd, strerror(errno));
+    if (lstat(p, &st) != 0 && symlink(g_app.cache, p) != 0) fprintf(stderr, "Note: link %s not created: %s\n", p, strerror(errno));
+    if (chdir(cwd) != 0) fprintf(stderr, "Note: working directory %s not reachable: %s\n", cwd, strerror(errno));
 
-    // Voraussetzungen mit klaren Meldungen
+    // Preconditions with clear messages
     char msg[2048];
     snprintf(tmp, sizeof tmp, "%s/Data", g_app.romfs);
     if (access(tmp, R_OK) != 0) {
         snprintf(msg, sizeof msg,
-                 "Das RomFS wurde nicht gefunden:\n%s\n\nEs wird beim Bauen aus deinem eigenen Dump bereitgestellt (scripts/build_all.sh --only recomp) "
-                 "oder per Eintrag romfs = <Ordner> in %s gesetzt.", g_app.romfs, g_app.config);
-        bdsp_app_alert("BDSP: RomFS fehlt", msg);
+                 "The RomFS was not found:\n%s\n\nIt is provided from your own dump when building (scripts/build_all.sh --only recomp) "
+                 "or set with the entry romfs = <folder> in %s.", g_app.romfs, g_app.config);
+        bdsp_app_alert("BDSP: RomFS missing", msg);
         exit(2);
     }
     if (g_app.resources[0]) {
         snprintf(tmp, sizeof tmp, "%s/img/main.img", g_app.resources);
         if (access(tmp, R_OK) != 0) {
-            snprintf(msg, sizeof msg, "Die Modulbilder fehlen in der App:\n%s\n\nDie App wurde unvollständig gebaut (scripts/build_all.sh --only recomp --force).", tmp);
-            bdsp_app_alert("BDSP: App unvollständig", msg);
+            snprintf(msg, sizeof msg, "The module images are missing in the app:\n%s\n\nThe app was built incompletely (scripts/build_all.sh --only recomp --force).", tmp);
+            bdsp_app_alert("BDSP: app incomplete", msg);
             exit(2);
         }
     }
     free(keys);
     free(vals);
     if (bdsp_save_backup_start(msg, sizeof msg) >= 0) fprintf(stderr, "[app] %s\n", msg);
-    else fprintf(stderr, "[app] Sicherung des Spielstands: %s\n", msg);
-    fprintf(stderr, "[app] Daten: %s | Spielstand: %s | Cache: %s | Log: %s\n", g_app.romfs, g_app.save, g_app.cache, g_app.logs);
+    else fprintf(stderr, "[app] Save backup: %s\n", msg);
+    fprintf(stderr, "[app] Data: %s | Save: %s | Cache: %s | Log: %s\n", g_app.romfs, g_app.save, g_app.cache, g_app.logs);
 }

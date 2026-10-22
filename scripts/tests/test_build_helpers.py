@@ -1,4 +1,4 @@
-"""Tests für scripts/build_helpers.py – ausschließlich synthetische Daten (keine Keys, keine Spieldateien)."""
+"""Tests for scripts/build_helpers.py: synthetic data only (no keys, no game files)."""
 import json
 import os
 import struct
@@ -180,17 +180,17 @@ class ManifestTests(unittest.TestCase):
         self.assertTrue(bh.manifest_matches(self.work, 10, 20))
 
     def test_mismatch_cases(self):
-        self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # kein Manifest
+        self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # no manifest
         self.write()
-        self.assertFalse(bh.manifest_matches(self.work, 11, 20))  # andere Eingabe
+        self.assertFalse(bh.manifest_matches(self.work, 11, 20))  # different input
         with open(os.path.join(self.work, "romfs", "c.bin"), "wb") as f:
             f.write(b"x")
-        self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # romfs verändert
+        self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # romfs changed
         os.remove(os.path.join(self.work, "romfs", "c.bin"))
         self.assertTrue(bh.manifest_matches(self.work, 10, 20))
         with open(os.path.join(self.work, "exefs", "main"), "wb") as f:
             f.write(b"changed")
-        self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # main verändert
+        self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # main changed
 
 
 if __name__ == "__main__":

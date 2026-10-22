@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Liest das SPIR-V-Interface der Cache-Module, die per scripts/shader_map.py einem Bundle-Shader zugeordnet wurden
-(spirv-cross --reflect und --msl), und verknuepft es mit den Constant-Buffer-Layouts aus dem Inventar.
+"""Reads the SPIR-V interface of the cache modules that scripts/shader_map.py matched to a bundle shader
+(spirv-cross --reflect and --msl) and links it with the constant buffer layouts from the inventory.
 
-Aufruf (aus dem Repo-Root, braucht spirv-cross im PATH):
+Usage (from the repo root, needs spirv-cross in the PATH):
     PYTHONPATH=tools/pydeps python3 scripts/shader_reflect.py [--out work/shaders/reflect.json] [--limit N]
 
-Voraussetzung: work/shaders/inventory.json und work/shaders/mapping.json (siehe shader_inventory.py, shader_map.py).
-Ausgabe: nur Namen, Indizes und Zahlen (keine Shaderinhalte). Die SPIR-V-Module werden nur im Speicher und
-in work/shaders/reflect_tmp/ gehalten; das Verzeichnis wird am Ende geloescht.
+Prerequisite: work/shaders/inventory.json and work/shaders/mapping.json (see shader_inventory.py, shader_map.py).
+Output: only names, indices and numbers (no shader contents). The SPIR-V modules are kept only in memory and
+in work/shaders/reflect_tmp/; the folder is deleted at the end.
 """
 import argparse
 import json
@@ -102,7 +102,7 @@ def main():
     ap.add_argument("--limit", type=int)
     args = ap.parse_args()
     if shutil.which("spirv-cross") is None:
-        sys.exit("spirv-cross fehlt")
+        sys.exit("spirv-cross missing")
     mapping = json.load(open("work/shaders/mapping.json"))
     inv = json.load(open("work/shaders/inventory.json"))
     sub_lookup = {}
@@ -116,7 +116,7 @@ def main():
 
     chosen = []
     for e in mapping["cacheEntries"]:
-        if e["status"] != "voll":
+        if e["status"] != "full":
             continue
         cands = sorted(e["candidates"], key=lambda c: (SOURCE_PRIORITY.get(c["bundle"], 9), c["shader"], c["subShader"], c["pass"]))
         chosen.append((e, cands[0]))
@@ -142,8 +142,8 @@ def main():
     agg = defaultdict(lambda: {"entries": 0, "hwCbByUnityBinding": Counter(), "usedMembers": defaultdict(Counter),
                                "dynamic": Counter(), "textureBindings": Counter(), "inputs": Counter(), "outputs": Counter(),
                                "ubos": Counter(), "supportBufferOnlyStages": 0})
-    bind_map = Counter()  # (stage, unity cb name, unity binding, hw cb) -> Anzahl
-    rule_check = Counter()  # (stage, beobachtet ohne Vorhersage, vorhergesagt ohne Beobachtung) -> Anzahl
+    bind_map = Counter()  # (stage, unity cb name, unity binding, hw cb) -> count
+    rule_check = Counter()  # (stage, observed without prediction, predicted without observation) -> count
     failed = 0
     for e, c in chosen:
         rec = {"cacheIndex": e["index"], "shader": c["shader"], "bundle": c["bundle"], "subShader": c["subShader"], "pass": c["pass"],
@@ -174,7 +174,7 @@ def main():
             if sub:
                 cbs = {cb["name"]: cb for cb in sub["constantBuffers"]}
                 bind_idx = {b["name"]: b["index"] for b in sub["cbBindings"]}
-                # Regel (wird unten geprueft): HW-cbuf = Unity-Bindungsindex + 3
+                # Rule (checked below): HW cbuf = Unity binding index + 3
                 predicted = {bind_idx[n] + 3 for n in cbs if n in bind_idx}
                 observed = {int(n.split("_c")[1]) for n in res["usedBytes"]}
                 rule_check[(stage, tuple(sorted(observed - predicted)), tuple(sorted(predicted - observed)))] += 1
@@ -202,10 +202,10 @@ def main():
             "usedMembers": {k: dict(v.most_common()) for k, v in a["usedMembers"].items()},
         }
     out = {"modulesAnalysed": len(results), "modulesFailed": failed, "unityBindingToHwCb": {f"{k[0]}|{k[1]}|{k[2]}->{k[3]}": v for k, v in bind_map.items()},
-           "hwCbRuleCheck": {f"{k[0]}|extra_beobachtet={list(k[1])}|nicht_beobachtet={list(k[2])}": v for k, v in rule_check.items()},
+           "hwCbRuleCheck": {f"{k[0]}|extra_observed={list(k[1])}|not_observed={list(k[2])}": v for k, v in rule_check.items()},
            "perShader": summary_agg, "entries": entries_out}
     Path(args.out).write_text(json.dumps(out, indent=1, ensure_ascii=False))
-    print("fertig:", len(results), "Module,", failed, "Fehler ->", args.out)
+    print("done:", len(results), "modules,", failed, "errors ->", args.out)
 
 
 if __name__ == "__main__":

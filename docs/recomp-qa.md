@@ -25,15 +25,17 @@ Status when paused at the user's request (2026-10-19, about 17:25, early instead
 
 | Scenario | File | Result | Evidence |
 |---|---|---|---|
-| Language selection (no save) | `sprachauswahl.txt` | **not run** (written only) | — |
-| boot_title | `boot_titel.txt` | **inconclusive**: the only run, `boot_titel-…-a2`, crashed due to my own intermediate change (signal 11, see issue 3); not repeated. The title was reached in all `weiter_stadt` runs (title screen seen). | `work/recomp/qa/boot_titel-20261019-164130-a2/` |
-| continue_city | `weiter_stadt.txt` | **passed** (versions v2 and v5: Title::Start at 21–86 s depending on load, city at 36–102 s) | `weiter_stadt-…-161239-v2`, `…-171256-skipws2`, `…-171924-wlog2` |
-| walk_city | `laufen_stadt.txt` | **failed/not retested**: two of five runs, `laufen_stadt-…-rep1..5` (timed script, before audio fix), hung (issue 1); not repeated with event-driven inputs and corrected runtime | `work/recomp/qa/laufen_stadt-2026101916*` |
+| Language selection (no save) | `language_select.txt` | **not run** (written only) | — |
+| boot_title | `boot_title.txt` | **inconclusive**: the only run, `boot_titel-…-a2`, crashed due to my own intermediate change (signal 11, see issue 3); not repeated. The title was reached in all `weiter_stadt` runs (title screen seen). | `work/recomp/qa/boot_titel-20261019-164130-a2/` |
+| continue_city | `continue_city.txt` | **passed** (versions v2 and v5: Title::Start at 21–86 s depending on load, city at 36–102 s) | `weiter_stadt-…-161239-v2`, `…-171256-skipws2`, `…-171924-wlog2` |
+| walk_city | `walk_city.txt` | **failed/not retested**: two of five runs, `laufen_stadt-…-rep1..5` (timed script, before audio fix), hung (issue 1); not repeated with event-driven inputs and corrected runtime | `work/recomp/qa/laufen_stadt-2026101916*` |
 | Pokémon Center | `pokecenter.txt` | **passed** (3/3 runs with audio pacing: entered door, interior rendered (hall, nurse, yes/no dialog “Hello! Welcome to the Pokémon Center!”, healing, Pokémon screen), 0 hangs). An earlier run (k1, without pacing) hung inside (issue 2). | `pokecenter-…-162752-k2`, `…-164447-a3`, `…-164824-a4` |
 | menu | — | **not implemented**; exploration `_menue_erkunden-…-165203-m1`: X opens menu (Pokédex, Pokémon, Bag, Trainer Card, Map, Capsule Decoration, Settings, Mystery Gift; prompts “Save R”, “Open map +”), B closes it; 0 errors. Saving was not tested. | `work/recomp/qa/_menue_erkunden-20261019-165203-m1/` |
 | wild battle | — | **not implemented** | — |
 | save_load | — | **not implemented** (harness supports `phase`, `save-valid`, `save-changed`; untested) | — |
 | long run (30 min) | — | **not run**: no sustained memory-leak or FPS data | — |
+
+The scenario files were renamed to English afterwards; the run folders listed above keep their original (German) names.
 
 **Measurements (measured, one run each):** `pokecenter-…-164447-a3` (Mac nearly idle, load 3): median 46.6 FPS, p5 33.3, minimum 11.8, 5,684 frames in 137 s; peak RSS 1,968 MiB, median 869 MiB, CPU 138%; 58,231 IPC, 2.35 million SVCs. `…-164824-a4`: median 51.2, p5 29.4; peak RSS 1,882 MiB. Under other load (25–55 from parallel compilers/Unity), rate fell to median 17–35 with minimum 0.5; **these runs say nothing about runtime performance**. No crashes in the city/Pokémon Center with version v4 or later.
 
@@ -74,7 +76,7 @@ All build; version v5 and the local debug build were linked from this state.
 | File | Change | Status |
 |---|---|---|
 | `scripts/recomp/qa/qa_run.sh`, `qa_run.py` | Harness (anchors, control file, reports, contact sheets) | done, tested only with scenarios above |
-| `scripts/recomp/qa/scenarios/*.txt` | 7 files (2 explorations prefixed with `_`; `sprachauswahl` untested) | partly done |
+| `scripts/recomp/qa/scenarios/*.txt` | 7 files (2 explorations prefixed with `_`; `language_select` untested) | partly done |
 | `scripts/recomp/rt-bdsp/services_audio.c` | Audio pacing, lock, timer, `BDSP_TRACE_AUDIO` | done (issue 1 fixed) |
 | `scripts/recomp/rt-bdsp/nvn/nvn_glue.c` | Input script up to 8,192 steps, `@file`, `BDSP_INPUT_CTL` (the `ap-recomp-macapp` branch also added `g_ext_buttons` in the same area; compatible) | done |
 | `scripts/recomp/rt-bdsp/kernel.c` | Report only: mutex owners in thread state (`BDSP_BT`); timeout fix came from `ap-recomp-ios` | done |

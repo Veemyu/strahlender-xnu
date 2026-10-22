@@ -1,4 +1,4 @@
-"""Tests für scripts/build_stages.py – nur synthetische Daten, keine Keys, keine Spieldateien, keine Unity-Starts."""
+"""Tests for scripts/build_stages.py: synthetic data only, no keys, no game files, no Unity starts."""
 import contextlib
 import io
 import json
@@ -49,7 +49,7 @@ class StageSelectionTests(unittest.TestCase):
     def test_unknown_stage(self):
         with self.assertRaises(ValueError) as cm:
             bs.select_stages(["nix"])
-        self.assertIn("Unbekannte Stufe", str(cm.exception))
+        self.assertIn("Unknown stage", str(cm.exception))
 
     def test_explicit_stage_outside_range_is_empty(self):
         with self.assertRaises(ValueError):
@@ -65,12 +65,12 @@ class MarkerTests(unittest.TestCase):
     def test_roundtrip_and_mismatch(self):
         with tempfile.TemporaryDirectory() as work:
             self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
-            bs.write_marker(work, "shaders", "abc", {"dateien": "3"})
+            bs.write_marker(work, "shaders", "abc", {"files": "3"})
             self.assertTrue(bs.marker_matches(work, "shaders", "abc"))
             self.assertFalse(bs.marker_matches(work, "shaders", "abd"))
             self.assertFalse(bs.marker_matches(work, "assets", "abc"))
             with open(bs.marker_path(work, "shaders")) as f:
-                self.assertEqual(json.load(f)["notes"], {"dateien": "3"})
+                self.assertEqual(json.load(f)["notes"], {"files": "3"})
             bs.clear_marker(work, "shaders")
             self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
 
@@ -126,7 +126,7 @@ class EnvFileTests(unittest.TestCase):
             write(p, "# Kommentar\nOTHER=1\nexport TEAM_ID=\"AB12\"\n\nX='y'\n")
             self.assertEqual(bs.read_env_value(p, "TEAM_ID"), "AB12")
             self.assertEqual(bs.read_env_value(p, "X"), "y")
-            self.assertIsNone(bs.read_env_value(p, "FEHLT"))
+            self.assertIsNone(bs.read_env_value(p, "MISSING"))
             self.assertIsNone(bs.read_env_value(os.path.join(d, "nix"), "TEAM_ID"))
 
     def test_empty_value_is_none(self):
@@ -163,7 +163,7 @@ class PreflightTests(unittest.TestCase):
                             which=which, run=run, free=free)
 
     def names(self, items, ok):
-        return [i["name"] for i in items if i["ok"] == ok and i["level"] == "fehlt"]
+        return [i["name"] for i in items if i["ok"] == ok and i["level"] == "missing"]
 
     def test_everything_present(self):
         items = self.run_pf(bs.STAGES)
@@ -171,7 +171,7 @@ class PreflightTests(unittest.TestCase):
 
     def test_disk_requirement(self):
         items = self.run_pf(["shaders"], free=lambda p: 42.0)
-        self.assertEqual(self.names(items, False), ["Plattenplatz >= 60 GB frei"])
+        self.assertEqual(self.names(items, False), ["Disk space >= 60 GB free"])
         lines, missing, disk = bs.format_preflight(items)
         self.assertTrue(disk)
         with contextlib.redirect_stdout(io.StringIO()):
@@ -183,12 +183,12 @@ class PreflightTests(unittest.TestCase):
         items = self.run_pf(["extract"], which=lambda c: None)
         self.assertEqual(self.names(items, False), [])
         items = self.run_pf(["shaders"], which=lambda c: None)
-        self.assertEqual(self.names(items, False), ["make (für shader_translator)", "cc (für shader_translator)"])
+        self.assertEqual(self.names(items, False), ["make (for shader_translator)", "cc (for shader_translator)"])
 
     def test_shaders_need_unitypy(self):
         os.rmdir(os.path.join(self.tools, "pydeps", "UnityPy"))
         items = self.run_pf(["shaders"])
-        self.assertEqual(self.names(items, False), ["Python-Pakete (UnityPy, lz4) in tools/pydeps"])
+        self.assertEqual(self.names(items, False), ["Python packages (UnityPy, lz4) in tools/pydeps"])
 
     def test_missing_hactool_is_reported_for_extract(self):
         os.remove(os.path.join(self.tools, "hactool", "hactool"))
@@ -209,11 +209,11 @@ class PreflightTests(unittest.TestCase):
         text = "\n".join(bs.install_list(missing))
         self.assertNotIn("sudo ", text)
         self.assertIn("brew install sdl3 ffmpeg", text)
-        self.assertNotIn("Plattenplatz", text)
+        self.assertNotIn("Disk space", text)
 
 
 class RecompStageTests(unittest.TestCase):
-    """Stufe recomp: Reihenfolge, Preflight (Platz, Klon, Pakete) und Eingabe-Hashes."""
+    """Stage recomp: order, preflight (space, clone, packages) and input hashes."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -240,7 +240,7 @@ class RecompStageTests(unittest.TestCase):
                             which=which, run=run, free=lambda p: free)
 
     def missing(self, items):
-        return [i["name"] for i in items if not i["ok"] and i["level"] == "fehlt"]
+        return [i["name"] for i in items if not i["ok"] and i["level"] == "missing"]
 
     def test_order_after_extract(self):
         self.assertEqual(bs.STAGES[bs.STAGES.index("extract") + 1], "recomp")
@@ -248,7 +248,7 @@ class RecompStageTests(unittest.TestCase):
 
     def test_preflight_ok_and_disk_limit_is_25_gb(self):
         self.assertEqual(self.missing(self.pf(free=30.0)), [])
-        self.assertEqual(self.missing(self.pf(free=21.0)), ["Plattenplatz >= 25 GB frei (Stufe recomp)"])
+        self.assertEqual(self.missing(self.pf(free=21.0)), ["Disk space >= 25 GB free (stage recomp)"])
         # bewusst weniger verlangt
         self.assertEqual(self.missing(self.pf(free=21.0, min_free=15)), [])
 
@@ -258,12 +258,12 @@ class RecompStageTests(unittest.TestCase):
         self.assertTrue(disk)
         self.assertEqual(len(missing), 1)
 
-    def test_missing_clone_and_packages_get_german_hints(self):
+    def test_missing_clone_and_packages_get_hints(self):
         os.remove(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
         os.rmdir(os.path.join(self.tools, "pydeps", "unicorn"))
         items = self.pf()
-        self.assertEqual(sorted(self.missing(items)), ["Python-Pakete capstone, unicorn in tools/pydeps (Generator)",
-                                                       "Vendorte LASRecomp-Teile (Generator, Header; MIT)"])
+        self.assertEqual(sorted(self.missing(items)), ["Python packages capstone, unicorn in tools/pydeps (generator)",
+                                                       "Vendored LASRecomp parts (generator, headers; MIT)"])
         _, missing, _ = bs.format_preflight(items)
         text = "\n".join(bs.install_list(missing))
         self.assertIn("git checkout -- scripts/recomp/upstream", text)
@@ -271,7 +271,7 @@ class RecompStageTests(unittest.TestCase):
 
     def test_ios_target_does_not_check_mac_app_tools(self):
         names = [i["name"] for i in self.pf(which=lambda c: None, target="ios")]
-        self.assertNotIn("clang (Homebrew-LLVM im PATH)", names)
+        self.assertNotIn("clang (Homebrew LLVM in PATH)", names)
 
     def test_hash_reacts_to_module_runtime_and_options(self):
         env = {"XNU_RECOMP_OPTS": "o0kb=300"}

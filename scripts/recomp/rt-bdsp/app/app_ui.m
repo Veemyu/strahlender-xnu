@@ -1,6 +1,6 @@
-// Menü, Tastatur, Controller, Ablegen von Dateien, Pause und Neustart der macOS-App (siehe app.h, docs/recomp-macapp.md).
-// Die Fensterschleife (ui_run in metal.m, SDL3) ruft menu_handle_event für jedes Ereignis und menu_apply_window_requests
-// etwa alle 16 ms auf dem Hauptthread auf; beides ist hier umgesetzt (die Stummel in nvn/nvn_glue.c sind schwach gebunden).
+// Menu, keyboard, controller, file drops, pause and restart of the macOS app (see app.h, docs/recomp-macapp.md).
+// The window loop (ui_run in metal.m, SDL3) calls menu_handle_event for every event and menu_apply_window_requests
+// about every 16 ms on the main thread; both are implemented here (the stubs in nvn/nvn_glue.c are weakly bound).
 // Ton: keiner. Netz: keines.
 #import <AppKit/AppKit.h>
 #import <GameController/GameController.h>
@@ -26,14 +26,14 @@ static void ApplyDockIcon(void) {
 
 extern char **environ;
 SDL_Window *ui_window(void);
-// Eingabe der Laufzeit (nvn/nvn_glue.c): Tasten als Bitmaske, Sticks von -32767 bis 32767 (lx, ly, rx, ry)
+// Input of the runtime (nvn/nvn_glue.c): buttons as a bit mask, sticks from -32767 to 32767 (lx, ly, rx, ry)
 extern _Atomic uint64_t g_ext_buttons;
 extern _Atomic int32_t g_ext_stick[4];
 
 enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
 
-// ---- Tastenbelegung (Standard von Ryujinx, dazu Return/Leertaste = A und Rücktaste = B)
-typedef struct { SDL_Scancode sc; int kind; int a; int b; } KeyMap;   // kind 0: Taste a; kind 1: Stick-Achse a mit Richtung b (+1/-1)
+// ---- Key mapping (Ryujinx default, plus Return/Space = A and Backspace = B)
+typedef struct { SDL_Scancode sc; int kind; int a; int b; } KeyMap;   // kind 0: button a; kind 1: stick axis a with direction b (+1/-1)
 static const KeyMap k_keys[] = {
     {SDL_SCANCODE_Z, 0, PB_A, 0}, {SDL_SCANCODE_RETURN, 0, PB_A, 0}, {SDL_SCANCODE_SPACE, 0, PB_A, 0},
     {SDL_SCANCODE_X, 0, PB_B, 0}, {SDL_SCANCODE_BACKSPACE, 0, PB_B, 0},
@@ -135,7 +135,7 @@ void bdsp_app_alert(const char *title, const char *msg) {
     }
 }
 
-// Antwort 1 = erste Schaltfläche
+// answer 1 = first button
 static NSInteger ask(NSString *title, NSString *msg, NSArray<NSString *> *buttons) {
     front();
     NSAlert *a = [NSAlert new];
@@ -147,13 +147,13 @@ static NSInteger ask(NSString *title, NSString *msg, NSArray<NSString *> *button
 
 void bdsp_app_restart(void) {
     fflush(NULL);
-    // Die Umgebung wandert über open/exec zum neuen Exemplar (BDSP_HOME usw. sollen bleiben); Testhaken dürfen nicht mit, sonst
-    // startet sich das neue Exemplar nach demselben Zeitplan wieder neu
+    // The environment travels through open/exec to the new instance (BDSP_HOME etc. must stay); test hooks must not come along,
+    // otherwise the new instance restarts itself on the same schedule
     static const char *const test_env[] = {"BDSP_UI_SELFTEST", "BDSP_KEY_SCRIPT", "BDSP_PAUSE_SELFTEST", "BDSP_INPUT_SCRIPT", "BDSP_SCREENSHOT_EVERY",
                                            "BDSP_SCREENSHOT_FROM", "BDSP_EXIT_AFTER_SHOT", NULL};
     for (int i = 0; test_env[i]; i++) unsetenv(test_env[i]);
     if (g_app.bundle[0]) {
-        // Das neue Exemplar startet nach einer Sekunde, wenn dieses beendet ist (gleicher Spielstand-Ordner, gleiches Fenster)
+        // The new instance starts after one second, when this one has exited (same save folder, same window)
         char *args[] = {"/bin/sh", "-c", "sleep 1; exec /usr/bin/open -n \"$0\"", g_app.bundle, NULL};
         posix_spawnattr_t at;
         posix_spawnattr_init(&at);
@@ -166,7 +166,7 @@ void bdsp_app_restart(void) {
     _exit(1);
 }
 
-// ---- Spielstand-Aktionen
+// ---- Save actions
 static void do_import(NSString *path) {
     char msg[3000];
     NSInteger ok = ask(@"Spielstand importieren?",
@@ -234,7 +234,7 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
             @[@"Zurücksetzen", @"Abbrechen"]) != 1) return;
     char msg[1700];
     int r = bdsp_save_reset(msg, sizeof msg);
-    fprintf(stderr, "[app] Zurücksetzen: %s\n", msg);
+    fprintf(stderr, "[app] Reset: %s\n", msg);
     if (r != 0) { ask(@"Zurücksetzen fehlgeschlagen", [NSString stringWithUTF8String:msg], @[@"OK"]); return; }
     bdsp_app_restart();
 }
@@ -302,7 +302,7 @@ static void install_menu(void) {
     g_target = [BdspMenu new];
     NSMenu *bar = [NSMenu new];
     NSString *name = @"BDSP";
-    // App-Menü
+    // App menu
     NSMenuItem *ai = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
     NSMenu *am = [[NSMenu alloc] initWithTitle:name];
     ai.submenu = am;
@@ -333,7 +333,7 @@ static void install_menu(void) {
     item(am, @"Alle einblenden", @selector(unhideAllApplications:), @"", 0, NSApp);
     [am addItem:[NSMenuItem separatorItem]];
     item(am, @"BDSP beenden", @selector(terminate:), @"q", NSEventModifierFlagCommand, NSApp);
-    // Spiel
+    // Game
     NSMenuItem *gi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
     NSMenu *gm = [[NSMenu alloc] initWithTitle:@"Spiel"];
     gi.submenu = gm;
@@ -369,7 +369,7 @@ static void install_menu(void) {
     NSMenu *dm = [[NSMenu alloc] initWithTitle:NSLocalizedString(@"Debug", nil)];
     di.submenu = dm;
     item(dm, NSLocalizedString(@"Metal-HUD anzeigen", nil), @selector(toggleMetalHud:), @"", 0, g_target);
-    // Fenster
+    // Window
     NSMenuItem *wi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
     NSMenu *wm = [[NSMenu alloc] initWithTitle:@"Fenster"];
     wi.submenu = wm;
@@ -385,7 +385,7 @@ static void install_menu(void) {
     item(hm, @"Log-Ordner öffnen", @selector(openLogs:), @"", 0, g_target);
     [NSApp setMainMenu:bar];
     [NSApp setHelpMenu:hm];
-    if (getenv("BDSP_MENU_DUMP")) {   // Prüfung der Menüstruktur ohne Sichtkontakt
+    if (getenv("BDSP_MENU_DUMP")) {   // check of the menu structure without looking at the screen
         for (NSMenuItem *top in bar.itemArray) {
             fprintf(stderr, "[menu] %s\n", top.submenu.title.UTF8String);
             for (NSMenuItem *it in top.submenu.itemArray)
@@ -401,7 +401,7 @@ static void install_menu(void) {
 bool menu_handle_event(const SDL_Event *e) {
     switch (e->type) {
     case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP:
-        if (e->key.mod & SDL_KMOD_GUI) return true;   // Menükürzel (Cmd+…) gehören dem Menü
+        if (e->key.mod & SDL_KMOD_GUI) return true;   // menu shortcuts (Cmd+…) belong to the menu
         if (e->type == SDL_EVENT_KEY_DOWN && e->key.scancode == SDL_SCANCODE_ESCAPE) {
             SDL_Window *w = ui_window();
             if (w && (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN)) SDL_SetWindowFullscreen(w, false);
@@ -423,8 +423,8 @@ bool menu_handle_event(const SDL_Event *e) {
     }
 }
 
-// ---- Tastenskript für Tests (BDSP_KEY_SCRIPT="Sekunde:TASTE:Dauer,…" oder "@Datei", ab Prozessstart): speist echte SDL-Tastenereignisse
-// in die Fensterschleife ein, also durch dieselbe Belegung wie die Tastatur (z. B. "62:Z:0.4,70:Up:2"; Tastennamen wie SDL_GetScancodeFromName)
+// ---- Key script for tests (BDSP_KEY_SCRIPT="second:KEY:duration,…" or "@file", counted from process start): feeds real SDL key events
+// into the window loop, so through the same mapping as the keyboard (e.g. "62:Z:0.4,70:Up:2"; key names as in SDL_GetScancodeFromName)
 typedef struct { double at, len; SDL_Scancode sc; bool down; } KeyStep;
 static KeyStep g_ks[4096];
 static int g_nks = -1;
@@ -450,7 +450,7 @@ static void key_script_load(void) {
         if (sc == SDL_SCANCODE_UNKNOWN) { fprintf(stderr, "[app] Tastenskript: unbekannte Taste %s\n", name); continue; }
         g_ks[g_nks++] = (KeyStep){at, len, sc, false};
     }
-    fprintf(stderr, "[app] Tastenskript mit %d Schritten\n", g_nks);
+    fprintf(stderr, "[app] Key script with %d steps\n", g_nks);
 }
 
 static void key_script_tick(void) {
@@ -471,8 +471,8 @@ static void key_script_tick(void) {
     }
 }
 
-// ---- Selbsttest der Menüaktionen (BDSP_UI_SELFTEST="Sekunde:Aktion,…", Aktionen: fs, w960, w1280, w1920, w2560, pause, restart): ruft dieselben
-// Methoden wie die Menüeinträge auf (ohne Rückfrage), weil sich Tastenkürzel nicht von außen senden lassen (Bedienungshilfen nicht erlaubt)
+// ---- Self-test of the menu actions (BDSP_UI_SELFTEST="second:action,…", actions: fs, w960, w1280, w1920, w2560, pause, restart): calls the same
+// methods as the menu items (without confirmation), because key shortcuts cannot be sent from outside (accessibility access not allowed)
 static void ui_selftest_tick(void) {
     static char buf[512];
     static struct { double at; char act[16]; bool done; } st[32];
@@ -518,14 +518,14 @@ void menu_apply_window_requests(void *window) {
             SDL_SetWindowMinimumSize(w, 640, 360);
             if (g_app.fullscreen && !g_app.headless) SDL_SetWindowFullscreen(w, true);
             if (!g_app.headless) {
-                // Das Fenster erscheint erst jetzt im Vordergrund (SDL zeigt es ohne Aktivierung)
+                // The window only now appears in the foreground (SDL shows it without activation)
                 front();
             }
         }
     }
     @autoreleasepool { pad_poll(); }
     key_script_tick();
-    // Selbsttest der Pause (BDSP_PAUSE_SELFTEST="<ab Sekunde>:<Dauer>"): hält das Vsync-Ereignis an und gibt es wieder frei
+    // Self-test of the pause (BDSP_PAUSE_SELFTEST="<from second>:<duration>"): stops the vsync event and releases it again
     static double t0, p0 = -1, plen;
     if (!t0) {
         t0 = SDL_GetTicks() / 1000.0;

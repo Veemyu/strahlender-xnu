@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Massenfertigung: alle verpackbaren Shader-Varianten als .shader erzeugen (eine Datei je Shader/Pass/Keyword-Menge).
+"""Mass production: generate all wrappable shader variants as .shader (one file per shader/pass/keyword set).
 
-Eigener Code des strahlender-xnu-Projekts. Eingaben wie scripts/shader_wrap.py (work/shaders/: inventory.json,
-prog_blob.json, blobs/; kein Ryujinx-Cache). Ausgabe (Spieldaten: nur unter work/ oder in einem gitignorierten
-Unity-Projekt, nie im Repo): <out>/<name>.shader, <out>/variants.json (je Variante Status, Fehlergrund).
+Own code of the strahlender-xnu project. Inputs as for scripts/shader_wrap.py (work/shaders/: inventory.json,
+prog_blob.json, blobs/; no Ryujinx cache). Output (game data: only under work/ or in a gitignored
+Unity project, never in the repo): <out>/<name>.shader, <out>/variants.json (status and error reason per variant).
 
-Aufruf:
+Usage:
     python3 scripts/shader_wrap_all.py --out work/unity-shader-lab/Assets/XnuShaders [--used used.json] [--shader NAME]
---used: JSON-Liste [{"shader": "...", "keywords": ["..."]}], die tatsaechlich von Materialien/Szenen gebrauchten
-Keyword-Mengen; alle anderen Varianten werden nicht erzeugt (Strippen: Variantenzahl und Bundlegroesse).
-Exit-Code 0, wenn jede gewuenschte Variante erzeugt wurde, sonst 1 (die Liste steht in variants.json).
+--used: JSON list [{"shader": "...", "keywords": ["..."]}] of the keyword sets actually used by materials/scenes;
+all other variants are not generated (stripping: variant count and bundle size).
+Exit code 0 if every wanted variant was generated, otherwise 1 (the list is in variants.json).
 """
 import argparse
 import collections
@@ -27,7 +27,7 @@ import shader_wrap as sw  # noqa: E402
 
 
 def variants(inv, all_subshaders=False):
-    """(Shader, SubShader, Pass, Keyword-Menge) aller Normal-Paesse, deren Keyword-Menge in Vertex- und Fragmentstufe vorkommt."""
+    """(shader, subshader, pass, keyword set) of all normal passes whose keyword set occurs in both vertex and fragment stage."""
     for sh in inv["shaders"]:
         for si, ss in enumerate(sh["subShaders"][: (None if all_subshaders else 1)]):
             for pi, p in enumerate(ss["passes"]):
@@ -43,22 +43,22 @@ def variants(inv, all_subshaders=False):
 
 
 def variant_name(sh, si, pi, k):
-    h = hashlib.sha1("|".join(k).encode()).hexdigest()[:8]  # stabil (kein hash())
+    h = hashlib.sha1("|".join(k).encode()).hexdigest()[:8]  # stable (no hash())
     return f"{sw.ident(sh['name'])}_s{si}_p{pi}_{h}"
 
 
 def pass_keysets(p):
-    """Keyword-Mengen, die in Vertex- und Fragmentstufe des Passes vorkommen."""
+    """Keyword sets that occur in both the vertex and fragment stage of the pass."""
     def sets(stage):
         return {tuple(sorted(set(e.get("globalKeywords", [])) | set(e.get("localKeywords", [])))) for e in p["stages"].get(stage, [])}
     return sets("vertex") & sets("fragment")
 
 
 def shadow_partner(ss, forward_pass, k):
-    """Schattenwurf-Pass (Index, Keywords) zu einer Forward-Variante k oder None.
+    """Shadow caster pass (index, keywords) for a forward variant k, or None.
 
-    Regel wie ShaderVariantResolver: angefordert = (k geschnitten mit allen Keywords des Wurf-Passes) plus SHADOWS_DEPTH;
-    exakte Variante, sonst ohne INSTANCING_ON."""
+    Rule like ShaderVariantResolver: requested = (k intersected with all keywords of the caster pass) plus SHADOWS_DEPTH;
+    exact variant, otherwise without INSTANCING_ON."""
     for ci, cp in enumerate(ss["passes"]):
         if ci == forward_pass or cp["type"] != "Normal" or cp.get("tags", {}).get("LIGHTMODE") != "SHADOWCASTER":
             continue
@@ -82,13 +82,13 @@ def namespace(args, **kw):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", required=True, help="Zielordner (gitignoriert, z. B. work/unity-shader-lab/Assets/XnuShaders)")
-    ap.add_argument("--used", help="JSON-Liste gebrauchter Keyword-Mengen (Strippen)")
-    ap.add_argument("--shader", help="nur dieser Shadername")
+    ap.add_argument("--out", required=True, help="target folder (gitignored, e.g. work/unity-shader-lab/Assets/XnuShaders)")
+    ap.add_argument("--used", help="JSON list of used keyword sets (stripping)")
+    ap.add_argument("--shader", help="only this shader name")
     ap.add_argument("--all-subshaders", action="store_true")
     ap.add_argument("--combine-shadow", action="store_true",
-                    help="Forward-Varianten mit dem passenden Schattenwurf-Pass im selben Shader erzeugen "
-                         "(Unity nimmt den Schattenwurf aus dem Shader des Materials; variants.json: Feld 'shadow')")
+                    help="generate forward variants with the matching shadow caster pass in the same shader "
+                         "(Unity takes the shadow caster from the material's shader; variants.json: field 'shadow')")
     ap.add_argument("--mode", choices=("named", "array"), default="named")
     ap.add_argument("--inventory", default=str(sw.WORK / "inventory.json"))
     ap.add_argument("--prog-blob", default=str(sw.WORK / "prog_blob.json"))
@@ -99,7 +99,7 @@ def main(argv=None):
     ignored = "work" in out.resolve().parts or subprocess.run(
         ["git", "check-ignore", "-q", str(out / "x.shader")], cwd=sw.REPO).returncode == 0
     if not ignored:
-        sys.exit("Abbruch: erzeugte Shader enthalten Spieldaten und gehoeren nur unter work/ oder in einen gitignorierten Ordner.")
+        sys.exit("Abort: generated shaders contain game data and belong only under work/ or in a gitignored folder.")
     out.mkdir(parents=True, exist_ok=True)
     used = None
     if args.used:
@@ -112,7 +112,7 @@ def main(argv=None):
             continue
         stats["total"] += 1
         if used is not None and (sh["name"], k) not in used:
-            stats["gestrichen"] += 1
+            stats["stripped"] += 1
             continue
         name = variant_name(sh, si, pi, k)
         a = namespace(args, shader=sh["name"], bundle=sh.get("bundle"), sub=si, pass_index=pi, keywords=list(k),
@@ -134,7 +134,7 @@ def main(argv=None):
             except sw.WrapError as e:
                 if not a.also:
                     raise
-                # Schattenwurf nicht uebersetzbar: Forward-Variante trotzdem erzeugen, ohne Schattenwurf
+                # shadow caster not translatable: generate the forward variant anyway, without the shadow caster
                 entry["shadowError"] = str(e).split("translation failed: ")[-1][:80]
                 entry.pop("shadow", None)
                 a.also = []
@@ -144,13 +144,13 @@ def main(argv=None):
             entry["status"] = "ok"
         except sw.WrapError as e:
             msg = str(e).split("translation failed: ")[-1][:80]
-            stats["fehler"] += 1
+            stats["error"] += 1
             errors[msg] += 1
-            entry.update(status="fehler", error=msg)
+            entry.update(status="error", error=msg)
         manifest.append(entry)
     (out / "variants.json").write_text(json.dumps({"stats": dict(stats), "errors": dict(errors), "variants": manifest}, indent=1))
     print(json.dumps({"stats": dict(stats), "errors": dict(errors), "sec": round(time.time() - t0)}, indent=1))
-    return 0 if not stats["fehler"] else 1
+    return 0 if not stats["error"] else 1
 
 
 if __name__ == "__main__":

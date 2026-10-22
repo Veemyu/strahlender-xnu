@@ -1,4 +1,4 @@
-"""Tests für scripts/shader_compare.py – ausschließlich synthetische Bilder."""
+"""Tests for scripts/shader_compare.py: synthetic images only."""
 import io
 import math
 import os
@@ -35,7 +35,7 @@ def filter_row(ftype, row, prev, bpp):
 
 
 def make_png(w, h, ctype, depth, rows, filters=None, extra=(), interlace_data=None):
-    """rows: bereits gepackte Zeilen (bytes). filters: Filtertyp je Zeile (Standard 0)."""
+    """rows: already packed rows (bytes). filters: filter type per row (default 0)."""
     nch = sc.CHANNELS[ctype]
     bpp = max(1, nch * depth // 8)
     raw = b""
@@ -57,7 +57,7 @@ def solid(w, h, color):
 
 
 def test_pattern(w, h):
-    """Schachbrett mit Farbverlauf (RGBA)."""
+    """Checkerboard with a color gradient (RGBA)."""
     px = bytearray()
     for y in range(h):
         for x in range(w):
@@ -148,13 +148,13 @@ class DecodeTests(unittest.TestCase):
         with self.assertRaises(sc.PngError):
             sc.decode_png(b"nicht png")
         broken = bytearray(good)
-        broken[20] ^= 0xFF  # IHDR-Inhalt -> CRC passt nicht mehr
+        broken[20] ^= 0xFF  # IHDR content -> CRC no longer matches
         with self.assertRaises(sc.PngError):
             sc.decode_png(bytes(broken))
         with self.assertRaises(sc.PngError):
             sc.decode_png(good[:-20])
         short = make_png(2, 2, 6, 8, [bytes(8), bytes(8)])
-        # Bilddaten kuerzen: IDAT mit zu wenig Zeilen
+        # shorten the image data: IDAT with too few rows
         short = short.replace(zlib.compress(b"".join(b"\x00" + bytes(8) for _ in range(2))), zlib.compress(b"\x00" + bytes(8)))
         with self.assertRaises(sc.PngError):
             sc.decode_png(short)
@@ -237,16 +237,16 @@ class CliTests(unittest.TestCase):
 
             code, out, _ = self.run_cli(pa, pb, "--max-diff", "10")
             self.assertEqual(code, 1)
-            self.assertIn("GRENZWERT", out)
+            self.assertIn("LIMIT EXCEEDED", out)
             self.assertEqual(self.run_cli(pa, pb, "--max-diff", "20", "--max-pixels", "1")[0], 0)
             self.assertEqual(self.run_cli(pa, pb, "--min-psnr", "90")[0], 1)
 
             code, out, _ = self.run_cli(pa, pb, "--json")
             self.assertIn('"pixels_over": 1', out)
 
-            code, _, err = self.run_cli(pa, os.path.join(d, "fehlt.png"))
+            code, _, err = self.run_cli(pa, os.path.join(d, "missing.png"))
             self.assertEqual(code, 2)
-            self.assertIn("FEHLER", err)
+            self.assertIn("ERROR", err)
 
 
 def sips_available():
@@ -254,19 +254,19 @@ def sips_available():
 
 
 class SipsCrossCheck(unittest.TestCase):
-    @unittest.skipUnless(sips_available(), "sips nicht vorhanden")
+    @unittest.skipUnless(sips_available(), "sips not available")
     def test_decode_png_written_by_system_tools(self):
         import subprocess
         px = test_pattern(12, 7)
         with tempfile.TemporaryDirectory() as d:
             src, dst = os.path.join(d, "s.png"), os.path.join(d, "t.png")
             sc.write_png(src, 12, 7, px)
-            # sips schreibt die Datei neu (andere Filter/Chunks); die Pixel muessen gleich bleiben
+            # sips rewrites the file (other filters/chunks); the pixels must stay the same
             subprocess.run(["/usr/bin/sips", "-s", "format", "png", src, "--out", dst],
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             w, h, out = sc.read_png(dst)
             self.assertEqual((w, h), (12, 7))
-            # Alpha ist hier vollstaendig deckend bis auf 250: vormultiplizierte Rundung wird toleriert
+            # alpha is fully opaque here except for 250: premultiplied rounding is tolerated
             r = sc.compare((w, h, out), (12, 7, px))
             self.assertLessEqual(r["max_abs_diff"], 4)
 

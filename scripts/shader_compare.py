@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Pixelvergleich zweier PNG-Bilder (nur Python-Standardbibliothek).
+"""Pixel comparison of two PNG images (Python standard library only).
 
-Aufruf:
+Usage:
   python3 scripts/shader_compare.py a.png b.png [--threshold N] [--ignore-alpha]
           [--diff diff.png] [--diff-gain G] [--json]
           [--max-diff N] [--max-pixels N] [--min-psnr DB]
 
-Metriken (auf RGBA8, bzw. RGB bei --ignore-alpha):
-  max_abs_diff      groesste Abweichung eines Kanals (0..255)
-  mean_abs_diff     mittlere Abweichung ueber alle Kanalwerte
-  pixels_over       Anzahl Pixel, bei denen mindestens ein Kanal um mehr als --threshold abweicht
-  mse / psnr        mittlerer quadratischer Fehler / PSNR in dB (inf bei identischen Bildern)
-Exit-Code: 0 = in Ordnung (oder keine Grenzwerte angegeben), 1 = Grenzwert verletzt, 2 = Fehler.
+Metrics (on RGBA8, or RGB with --ignore-alpha):
+  max_abs_diff      largest deviation of a channel (0..255)
+  mean_abs_diff     mean deviation over all channel values
+  pixels_over       number of pixels where at least one channel deviates by more than --threshold
+  mse / psnr        mean squared error / PSNR in dB (inf for identical images)
+Exit code: 0 = fine (or no limits given), 1 = limit exceeded, 2 = error.
 
-Der PNG-Decoder kennt alle Farbtypen, Bittiefen 1-16, Adam7 und tRNS; Farbprofile/Gamma werden ignoriert
-(es zaehlen die gespeicherten Rohwerte).
+The PNG decoder handles all color types, bit depths 1-16, Adam7 and tRNS; color profiles/gamma are ignored
+(the stored raw values count).
 """
 import argparse
 import json
@@ -35,7 +35,7 @@ class PngError(Exception):
 
 def _chunks(data):
     if data[:8] != PNG_SIG:
-        raise PngError("keine PNG-Signatur")
+        raise PngError("no PNG signature")
     pos = 8
     while pos + 12 <= len(data):
         n, typ = struct.unpack(">I4s", data[pos:pos + 8])
@@ -47,7 +47,7 @@ def _chunks(data):
         pos += 12 + n
         if typ == b"IEND":
             return
-    raise PngError("IEND fehlt")
+    raise PngError("IEND missing")
 
 
 def _unfilter(ftype, row, prev, bpp):
@@ -78,7 +78,7 @@ def _unfilter(ftype, row, prev, bpp):
 
 
 def _samples(row, count, depth):
-    """Zerlegt eine entfilterte Zeile in Samples (Ganzzahlen)."""
+    """Splits an unfiltered row into samples (integers)."""
     if depth == 8:
         return list(row[:count])
     if depth == 16:
@@ -100,7 +100,7 @@ def _scale8(v, depth):
 
 
 def decode_png(data):
-    """Gibt (breite, hoehe, rgba) zurueck; rgba ist ein bytearray mit 4 Bytes je Pixel."""
+    """Returns (width, height, rgba); rgba is a bytearray with 4 bytes per pixel."""
     ihdr = plte = trns = None
     idat = bytearray()
     for typ, body in _chunks(data):
@@ -113,14 +113,14 @@ def decode_png(data):
         elif typ == b"IDAT":
             idat += body
     if ihdr is None:
-        raise PngError("IHDR fehlt")
+        raise PngError("IHDR missing")
     w, h, depth, ctype, comp, filt, inter = ihdr
     if ctype not in CHANNELS or depth not in VALID_DEPTHS[ctype] or comp != 0 or filt != 0 or inter not in (0, 1):
-        raise PngError(f"nicht unterstuetzter Header {ihdr}")
+        raise PngError(f"unsupported header {ihdr}")
     if w == 0 or h == 0:
         raise PngError("leeres Bild")
     if ctype == 3 and plte is None:
-        raise PngError("PLTE fehlt")
+        raise PngError("PLTE missing")
     try:
         raw = zlib.decompress(bytes(idat))
     except zlib.error as e:
@@ -166,7 +166,7 @@ def decode_png(data):
                 elif ctype == 3:
                     k = px[0]
                     if 3 * k + 3 > len(plte):
-                        raise PngError("Palettenindex ausserhalb PLTE")
+                        raise PngError("palette index outside PLTE")
                     a = trns[k] if trns and k < len(trns) else 255
                     rgba = (plte[3 * k], plte[3 * k + 1], plte[3 * k + 2], a)
                 elif ctype == 4:
@@ -185,7 +185,7 @@ def read_png(path):
 
 
 def encode_png(w, h, rgba):
-    """RGBA8 -> PNG (Filter 0, ohne Zusatz-Chunks)."""
+    """RGBA8 -> PNG (filter 0, no extra chunks)."""
     if len(rgba) != w * h * 4:
         raise ValueError("rgba-Laenge passt nicht zu Breite*Hoehe*4")
 
@@ -203,10 +203,10 @@ def write_png(path, w, h, rgba):
 
 
 def compare(a, b, threshold=0, ignore_alpha=False):
-    """Vergleicht zwei (w, h, rgba)-Bilder. Gibt ein Dict mit den Metriken zurueck."""
+    """Compares two (w, h, rgba) images. Returns a dict with the metrics."""
     (wa, ha, pa), (wb, hb, pb) = a, b
     if (wa, ha) != (wb, hb):
-        raise ValueError(f"Bildgroessen verschieden: {wa}x{ha} gegen {wb}x{hb}")
+        raise ValueError(f"Image sizes differ: {wa}x{ha} vs {wb}x{hb}")
     nch = 3 if ignore_alpha else 4
     count = wa * ha
     max_diff = 0
@@ -254,14 +254,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("a")
     ap.add_argument("b")
-    ap.add_argument("--threshold", type=int, default=0, help="Kanalabweichung, ab der ein Pixel zaehlt (Standard 0)")
+    ap.add_argument("--threshold", type=int, default=0, help="channel deviation from which a pixel counts (default 0)")
     ap.add_argument("--ignore-alpha", action="store_true")
-    ap.add_argument("--diff", help="Differenzbild als PNG schreiben")
+    ap.add_argument("--diff", help="write the difference image as PNG")
     ap.add_argument("--diff-gain", type=int, default=1)
-    ap.add_argument("--json", action="store_true", help="Ausgabe als JSON")
-    ap.add_argument("--max-diff", type=int, help="Fehler, wenn max_abs_diff darueber liegt")
-    ap.add_argument("--max-pixels", type=int, help="Fehler, wenn pixels_over darueber liegt")
-    ap.add_argument("--min-psnr", type=float, help="Fehler, wenn PSNR darunter liegt")
+    ap.add_argument("--json", action="store_true", help="output as JSON")
+    ap.add_argument("--max-diff", type=int, help="error if max_abs_diff is above this")
+    ap.add_argument("--max-pixels", type=int, help="error if pixels_over is above this")
+    ap.add_argument("--min-psnr", type=float, help="error if PSNR is below this")
     args = ap.parse_args(argv)
 
     try:
@@ -270,7 +270,7 @@ def main(argv=None):
         if args.diff:
             write_png(args.diff, *diff_image(a, b, args.diff_gain))
     except (PngError, ValueError, OSError) as e:
-        print(f"FEHLER: {e}", file=sys.stderr)
+        print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
     failures = []
@@ -284,17 +284,17 @@ def main(argv=None):
 
     if args.json:
         out = dict(res)
-        out["psnr"] = None if math.isinf(res["psnr"]) else res["psnr"]  # None = identisch
+        out["psnr"] = None if math.isinf(res["psnr"]) else res["psnr"]  # None = identical
         print(json.dumps(out, indent=1))
     else:
         psnr = "inf" if math.isinf(res["psnr"]) else f"{res['psnr']:.2f} dB"
-        print(f"Bild {res['width']}x{res['height']} ({res['channels']})")
+        print(f"Image {res['width']}x{res['height']} ({res['channels']})")
         print(f"max_abs_diff   {res['max_abs_diff']}")
         print(f"mean_abs_diff  {res['mean_abs_diff']:.6f}")
-        print(f"pixels_over    {res['pixels_over']} / {res['pixels_total']} (Schwelle {res['threshold']})")
+        print(f"pixels_over    {res['pixels_over']} / {res['pixels_total']} (threshold {res['threshold']})")
         print(f"psnr           {psnr}")
         for f in failures:
-            print("GRENZWERT: " + f)
+            print("LIMIT EXCEEDED: " + f)
     return 1 if failures else 0
 
 

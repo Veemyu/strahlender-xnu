@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Ordnet Switch-Shaderprogramme der Unity-Bundles den Eintraegen des Ryujinx-Shader-Caches zu.
+"""Maps the Switch shader programs of the Unity bundles to the entries of the Ryujinx shader cache.
 
-Idee: Jedes Bundle-Programm ist ein GLSLC-Binaer (NVN) mit eingebettetem Maxwell-Code samt
-Shader-Programm-Header (SPH, 0x50 Byte). Der Ryujinx-guest.data-Eintrag enthaelt exakt SPH + Code
-der Variante. Verglichen wird Byte fuer Byte (Praefix des Blob-Codes ab SPH).
+Idea: every bundle program is a GLSLC binary (NVN) with embedded Maxwell code plus the
+shader program header (SPH, 0x50 bytes). The Ryujinx guest.data entry contains exactly SPH + code
+of the variant. Compared byte by byte (prefix of the blob code from the SPH on).
 
-Aufruf (aus dem Repo-Root):
+Usage (from the repo root):
     PYTHONPATH=tools/pydeps python3 scripts/shader_map.py [--out work/shaders/mapping.json]
 
-Liest nur. Schreibt nur die JSON-Datei (Zahlen, Namen, Indizes; keine Binaerdaten).
+Read only. Writes only the JSON file (numbers, names, indices; no binary data).
 """
 import argparse
 import hashlib
@@ -37,14 +37,14 @@ def u32(d, o):
 
 
 def parse_nvn(d):
-    """Zerlegt ein Bundle-Programm. Gibt None zurueck, wenn das Muster nicht passt."""
+    """Parses a bundle program. Returns None if the pattern does not match."""
     if len(d) < 0x80 or u32(d, 0) != NVN_MAGIC:
         return None
     nkw = u32(d, 0x18)
     pos = 0x1C
     kws = []
     lkws = []
-    for target in (kws, lkws):  # erst globale, dann lokale Keywords: [Anzahl]{[Laenge][Text\0, auf 4 aufgerundet]}
+    for target in (kws, lkws):  # first global, then local keywords: [count]{[length][text\0, rounded up to 4]}
         for _ in range(nkw):
             ln = u32(d, pos)
             target.append(d[pos + 4:pos + 4 + ln].decode("ascii", "replace"))
@@ -100,7 +100,7 @@ def load_shared():
             import brotli
             head = brotli.Decompressor().process(bytes(body[:4096]))[:64]
         mask = u32(head, 0)
-        stages = [b for b in range(6) if mask >> b & 1] or [0]  # Maske 0 = Compute
+        stages = [b for b in range(6) if mask >> b & 1] or [0]  # mask 0 = compute
         guests = [struct.unpack_from("<i", head, 4 + 4 * k)[0] for k in range(len(stages))]
         res.append({"index": i, "mask": mask, "stages": dict(zip(stages, guests))})
     return res
@@ -121,8 +121,8 @@ def main():
         if len(c) >= SPH_SIZE + KEY_LEN and c[0] & 0x1F in (1, 2):
             by_key[bytes(c[SPH_SIZE:SPH_SIZE + KEY_LEN])].append(g["index"])
 
-    programs = []  # ein Eintrag je Bundle-Programm
-    guest_hits = defaultdict(list)  # guest index -> Programmindizes
+    programs = []  # one entry per bundle program
+    guest_hits = defaultdict(list)  # guest index -> program indices
     guest_hits_codeonly = defaultdict(list)
     parse_fail = 0
     tiers = Counter()
@@ -174,9 +174,9 @@ def main():
                                     rec.setdefault("guestCodeOnly", []).append(gi)
                             programs.append(rec)
 
-    # Guest-Eintraege ohne Treffer: Teilstring-Suche (Code ohne SPH) im Rohblob jedes Shaders
+    # Guest entries without a hit: substring search (code without SPH) in the raw blob of every shader
     unmatched = [g for g in guest if g["index"] not in guest_hits and g["index"] not in guest_hits_codeonly]
-    print("ohne Prefix-Treffer:", len(unmatched), file=sys.stderr)
+    print("without prefix hit:", len(unmatched), file=sys.stderr)
     substr_hits = {}
     if unmatched:
         needles = {}
@@ -201,7 +201,7 @@ def main():
                         substr_hits[gi] = {"shader": tt["m_ParsedForm"]["m_Name"], "offset": p}
                 del big, blob
 
-    # Cache-Eintraege (shared) -> Bundle-Programme
+    # Cache entries (shared) -> bundle programs
     stage_idx = {1: "vertex", 5: "fragment"}
     prog_by_id = {p["id"]: p for p in programs}
     cache_entries = []
@@ -234,38 +234,38 @@ def main():
                             "vertexPrograms": vp[k], "fragmentPrograms": fp[k],
                             "vertexKeywordSets": [list(t) for t in kwsets(vp[k])],
                             "fragmentKeywordSets": [list(t) for t in kwsets(fp[k])]}
-                    # Paarbildung: Vertex- und Fragmentprogramm mit gleicher Keyword-Menge = dieselbe Variante
+                    # Pairing: vertex and fragment program with the same keyword set = the same variant
                     eq = [(v, f) for v in vp[k] for f in fp[k]
                           if sorted(prog_by_id[v]["blobKeywords"]) == sorted(prog_by_id[f]["blobKeywords"])]
-                    cand["pairKind"] = "gleiche_keywords" if eq else "keine_gleiche_menge"
+                    cand["pairKind"] = "same_keywords" if eq else "no_common_set"
                     cand["pairs"] = eq[:20]
                     cand["pairCount"] = len(eq)
                     for v, f in eq:
                         covered_variants.add((k[0], k[1], k[2], k[3], tuple(sorted(prog_by_id[v]["blobKeywords"]))))
                     e["candidates"].append(cand)
         e["status"] = ("compute" if sh["mask"] == 0 else
-                       "voll" if e["candidates"] else
-                       "nur_eine_stufe" if (ok_v or ok_f) else "keine")
+                       "full" if e["candidates"] else
+                       "one_stage_only" if (ok_v or ok_f) else "none")
         summary["cache_" + e["status"]] += 1
         if e["candidates"]:
             shaders = {c["shader"] for c in e["candidates"]}
-            summary["cache_voll_shader_eindeutig" if len(shaders) == 1 else "cache_voll_shader_mehrdeutig"] += 1
+            summary["cache_full_shader_unique" if len(shaders) == 1 else "cache_full_shader_ambiguous"] += 1
             passes = {(c["shader"], c["subShader"], c["pass"]) for c in e["candidates"]}
-            summary["cache_voll_pass_eindeutig" if len(passes) == 1 else "cache_voll_pass_mehrdeutig"] += 1
+            summary["cache_full_pass_unique" if len(passes) == 1 else "cache_full_pass_ambiguous"] += 1
             if len(e["candidates"]) == 1:
                 c = e["candidates"][0]
                 if len(c["vertexPrograms"]) == 1 and len(c["fragmentPrograms"]) == 1:
-                    summary["cache_voll_variante_eindeutig"] += 1
+                    summary["cache_full_variant_unique"] += 1
             vs = {(c["shader"], c["subShader"], c["pass"], tuple(sorted(prog_by_id[v]["blobKeywords"])))
                   for c in e["candidates"] for v, _f in c["pairs"]}
             if len(vs) == 1 and all(c["pairCount"] <= 20 for c in e["candidates"]):
-                summary["cache_voll_keywordvariante_eindeutig"] += 1
+                summary["cache_full_keyword_variant_unique"] += 1
             elif not vs:
-                summary["cache_voll_ohne_gleiche_keywordmenge"] += 1
+                summary["cache_full_without_common_keyword_set"] += 1
         cache_entries.append(e)
 
     matched_prog_ids = {pid for lst in guest_hits.values() for pid in lst} | {pid for lst in guest_hits_codeonly.values() for pid in lst}
-    # Varianten = Keyword-Mengen, die in Vertex- und Fragmentliste desselben Passes vorkommen
+    # Variants = keyword sets that occur in the vertex and fragment list of the same pass
     vsets = defaultdict(lambda: [set(), set()])
     for p in programs:
         vsets[(p["bundle"], p["shader"], p["subShader"], p["pass"])][0 if p["stage"] == "vertex" else 1].add(tuple(sorted(p["blobKeywords"])))
@@ -314,7 +314,7 @@ def main():
     for g in unmatched:
         unm.append({"index": g["index"], "size": len(g["code"]), "cb1": g["cb1"], "sphWord0": hex(u32(g["code"], 0)),
                     "substring": substr_hits.get(g["index"])})
-    out = {"method": "Byte-Vergleich: Guest-Code (SPH+Maxwell) == Praefix des Blobs ab SPH (SPH = Position von 0x12345678 + 0x30)",
+    out = {"method": "byte comparison: guest code (SPH+Maxwell) == prefix of the blob from the SPH on (SPH = position of 0x12345678 + 0x30)",
            "stats": stats, "unmatchedGuest": unm, "cacheEntries": cache_entries,
            "programs": [{k: v for k, v in p.items()} for p in programs]}
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

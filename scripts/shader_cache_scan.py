@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Zaehlt Eintraege im Ryujinx-Shader-Cache und sucht SPIR-V-Module (nur Zahlen/Groessen).
+"""Counts entries in the Ryujinx shader cache and looks for SPIR-V modules (numbers/sizes only).
 
-Aufruf: python3 scripts/shader_cache_scan.py [cache_dir] [--extract N out_dir]
-Braucht das Python-Paket `brotli` (pip install brotli, z. B. in tools/venv-shader).
-Layout laut oeffentlichem Ryujinx-Quellcode (DiskCache/*Storage.cs), selbst nachgebaut.
+Usage: python3 scripts/shader_cache_scan.py [cache_dir] [--extract N out_dir]
+Needs the Python package `brotli` (pip install brotli, e.g. in tools/venv-shader).
+Layout per the public Ryujinx source code (DiskCache/*Storage.cs), re-implemented independently.
 """
 import struct
 import sys
@@ -17,7 +17,7 @@ SPIRV_MAGIC = 0x07230203
 
 
 def read_ulz(buf, pos, expected):
-    """Liest [algo:1][komprimierter Strom]; gibt (Daten, Algo) zurueck."""
+    """Reads [algo:1][compressed stream]; returns (data, algo)."""
     algo = buf[pos]
     body = buf[pos + 1:]
     if algo == 0:
@@ -57,7 +57,7 @@ def main():
         print(f"{name}.toc: magic={magic} version={ver[0]}.{ver[1]} codegen={cg} "
               f"ts={ts} entries={n} data={data.stat().st_size} B")
 
-    # Host-Cache (Vulkan): Eintraege = (Offset, unkomprimiert, komprimiert)
+    # Host cache (Vulkan): entries = (offset, uncompressed, compressed)
     toc, *_ = header(base / "vulkan_apple.toc")
     data = (base / "vulkan_apple.data").read_bytes()
     n = (len(toc) - 32) // 16

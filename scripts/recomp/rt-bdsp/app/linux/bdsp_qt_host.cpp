@@ -1,11 +1,11 @@
-// Qt-Hülle für BDSP unter Linux (C++/Qt6 Widgets): Menüleiste wie die Mac-App (rt-bdsp/app/app_ui.m), der Vulkan-Canvas als Kind-Fenster darunter.
-// Portierung der früheren Python-Fassung (gleiches Verhalten, im Lauf gegen sie geprüft). Der Spielprozess (bdsp_boot_vk) läuft mit BDSP_EMBED=1 und SDL_VIDEODRIVER=x11: er legt ein
-// randloses X11-Fenster an, meldet dessen Kennung ("[embed] xid=N") und nimmt Befehle auf stdin ("fps 30|60|120", "pause 0|1") an. Das Fenster wird
-// mit QWindow::fromWinId eingebettet (nur öffentliche Qt-API). Nur Linux; der Mac-Pfad (app_ui.m) bleibt unberührt.
+// Qt shell for BDSP on Linux (C++/Qt6 Widgets): menu bar like the Mac app (rt-bdsp/app/app_ui.m), the Vulkan canvas as a child window below it.
+// Port of the earlier Python version (same behavior, checked against it in a run). The game process (bdsp_boot_vk) runs with BDSP_EMBED=1 and SDL_VIDEODRIVER=x11: it creates a
+// borderless X11 window, reports its id ("[embed] xid=N") and accepts commands on stdin ("fps 30|60|120", "pause 0|1"). The window is
+// embedded with QWindow::fromWinId (public Qt API only). Linux only; the Mac path (app_ui.m) is untouched.
 //
-// Aufruf: bdsp_qt_host [--game PFAD] [-- Argumente des Spiels]
-// Umgebung: BDSP_LANG=de_DE|en_GB|... (überschreibt LC_ALL/LC_MESSAGES/LANG), BDSP_LPROJ=<Ordner> (Übersetzungen), BDSP_MANGOHUD=1 (Overlay beim Start an),
-//           BDSP_QT_SCRIPT="Sekunde:aktion,..." (Testläufe: fps30 fps60 fps120 size1920x1080 win1000x900 pause fullscreen hud grab spectacle dumpmenus
+// Usage: bdsp_qt_host [--game PATH] [-- arguments of the game]
+// Environment: BDSP_LANG=de_DE|en_GB|... (overrides LC_ALL/LC_MESSAGES/LANG), BDSP_LPROJ=<folder> (translations), BDSP_MANGOHUD=1 (overlay on at start),
+//           BDSP_QT_SCRIPT="second:action,..." (test runs: fps30 fps60 fps120 size1920x1080 win1000x900 pause fullscreen hud grab spectacle dumpmenus
 //           menufps menudebug menuclose quit), BDSP_FPS, BDSP_SAVE.
 #include <QAction>
 #include <QActionGroup>
@@ -63,7 +63,7 @@ QString lprojDir() {
 #endif
 }
 
-QString fillSize(QString s, int w, int h) {  // "%d × %d" wie die Mac-Texte
+QString fillSize(QString s, int w, int h) {  // "%d × %d" as in the Mac texts
     for (int v : {w, h}) {
         const int i = s.indexOf(QStringLiteral("%d"));
         if (i >= 0) s.replace(i, 2, QString::number(v));
@@ -71,8 +71,8 @@ QString fillSize(QString s, int w, int h) {  // "%d × %d" wie die Mac-Texte
     return s;
 }
 
-// Schwarze Fläche unter der Menüleiste: der Canvas bleibt 16:9, zentriert und wird nie gestreckt (Rest schwarz). Maße in logischen Pixeln;
-// Qt rechnet mit devicePixelRatio (z. B. 1,7 bei 170 %) in die Pixel des X11-Fensters um.
+// Black area below the menu bar: the canvas stays 16:9, centered, and is never stretched (the rest is black). Sizes in logical pixels;
+// Qt converts with devicePixelRatio (e.g. 1.7 at 170 %) into the pixels of the X11 window.
 class Stage : public QWidget {
 public:
     explicit Stage(QWidget *parent) : QWidget(parent) {
@@ -118,7 +118,7 @@ public:
         if (fps_ != 30 && fps_ != 120) fps_ = 60;
         const QString rt = qEnvironmentVariable("XDG_RUNTIME_DIR");
         hudConf_ = (rt.isEmpty() ? QDir::homePath() : rt) + QStringLiteral("/bdsp-mangohud.conf");
-        hudOn_ = qEnvironmentVariable("BDSP_MANGOHUD") == QLatin1String("1");  // Standard aus; im Menü (Ansicht > Debug) im Lauf umschaltbar
+        hudOn_ = qEnvironmentVariable("BDSP_MANGOHUD") == QLatin1String("1");  // off by default; can be toggled while running in the menu (View > Debug)
         writeHudConf(hudOn_);
         buildMenus();
         bdsp::installIconMenu(menuBar(), this);
@@ -163,7 +163,7 @@ private:
         return a;
     }
 
-    // Struktur und Texte nach app_ui.m; Inhalt der Mac-Menüs "Spiel" und "BDSP" steht im Menü Datei (Bearbeiten gibt es am Mac nicht)
+    // Structure and texts follow app_ui.m; the content of the Mac menus "Game" and "BDSP" is in the File menu (there is no Edit menu on the Mac)
     void buildMenus() {
         QMenuBar *bar = menuBar();
         QMenu *m = bar->addMenu(tr_("Datei"));
@@ -221,7 +221,7 @@ private:
         proc_->setProcessChannelMode(QProcess::MergedChannels);
         connect(proc_, &QProcess::readyRead, this, [this] { onOutput(); });
         connect(proc_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus) {
-            out(QStringLiteral("[qt] Spiel beendet, Code %1").arg(code));
+            out(QStringLiteral("[qt] Game exited, code %1").arg(code));
             if (!restarting_) QApplication::quit();
         });
         buf_.clear();
@@ -261,7 +261,7 @@ private:
         out(QStringLiteral("[qt] Bildrate %1").arg(f));
     }
 
-    void setSize(int w, int h) {  // gewünschte Canvas-Größe in logischen Pixeln; Fenster = Canvas + Menüleiste/Ränder
+    void setSize(int w, int h) {  // desired canvas size in logical pixels; window = canvas + menu bar/borders
         if (isFullScreen()) {
             showNormal();
             fullAct_->setChecked(false);
@@ -274,7 +274,7 @@ private:
     void reportCanvas() {
         if (!container_) return;
         const double r = devicePixelRatioF();
-        out(QStringLiteral("[qt] Canvas %1x%2 logisch, %3x%4 Pixel (devicePixelRatio %5), Stage %6x%7, Fenster %8x%9")
+        out(QStringLiteral("[qt] Canvas %1x%2 logical, %3x%4 pixels (devicePixelRatio %5), stage %6x%7, window %8x%9")
                 .arg(container_->width()).arg(container_->height()).arg(qRound(container_->width() * r)).arg(qRound(container_->height() * r))
                 .arg(r, 0, 'f', 2).arg(stage_->width()).arg(stage_->height()).arg(width()).arg(height()));
     }
@@ -290,8 +290,8 @@ private:
         send(QStringLiteral("pause %1").arg(paused_ ? 1 : 0));
     }
 
-    void writeHudConf(bool shown) {  // MangoHud lädt die Konfigurationsdatei bei Änderung neu: Umschalten im Lauf ohne Neustart
-        const double ratio = QApplication::primaryScreen() ? QApplication::primaryScreen()->devicePixelRatio() : 1.0;  // Schrift mit der Skalierung
+    void writeHudConf(bool shown) {  // MangoHud reloads the configuration file on change: switching while running without a restart
+        const double ratio = QApplication::primaryScreen() ? QApplication::primaryScreen()->devicePixelRatio() : 1.0;  // font scales with the display scaling
         QFile f(hudConf_);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
         QString s = QStringLiteral("fps\nframetime\nframe_timing=1\ncpu_stats\ngpu_stats\nfont_size=%1\nposition=top-left\n").arg(qRound(20 * ratio));
@@ -321,7 +321,7 @@ private:
         return QDir(base.isEmpty() ? QStringLiteral("work/recomp/save") : base).absoluteFilePath(QStringLiteral("save_1"));
     }
 
-    void backupSave(const QString &kind) {  // wie app_save.c: der aktuelle Stand wandert vor jeder Änderung nach <Speicher>/backups/<Art>-<Zeit>
+    void backupSave(const QString &kind) {  // as app_save.c: the current state moves to <save>/backups/<kind>-<time> before every change
         const QDir sd(saveDir());
         QStringList files;
         for (const QString &n : {QStringLiteral("SaveData.bin"), QStringLiteral("Backup.bin")})
@@ -385,7 +385,7 @@ private:
         } else if (a.startsWith(QStringLiteral("size"))) {
             const QStringList p = a.mid(4).split(QLatin1Char('x'));
             if (p.size() == 2) setSize(p[0].toInt(), p[1].toInt());
-        } else if (a.startsWith(QStringLiteral("win"))) {  // freies Seitenverhältnis des Fensters: der Canvas muss 16:9 bleiben
+        } else if (a.startsWith(QStringLiteral("win"))) {  // free aspect ratio of the window: the canvas must stay 16:9
             const QStringList p = a.mid(3).split(QLatin1Char('x'));
             if (p.size() == 2) resize(p[0].toInt(), p[1].toInt());
             QTimer::singleShot(300, this, [this] { reportCanvas(); });
@@ -401,7 +401,7 @@ private:
             grab().save(QStringLiteral("work/recomp/shots/qt_window.png"));
             reportCanvas();
         } else if (a == QLatin1String("dumpmenus")) {
-            out(QStringLiteral("[menu] Sprache: %1").arg(tr_.locale().isEmpty() ? QStringLiteral("(keine, Rückfall en)") : tr_.locale()));
+            out(QStringLiteral("[menu] Language: %1").arg(tr_.locale().isEmpty() ? QStringLiteral("(none, fallback en)") : tr_.locale()));
             for (QAction *x : menuBar()->actions()) {
                 out(QStringLiteral("[menu] %1").arg(x->text()));
                 if (x->menu()) dumpMenu(x->menu(), 1);
@@ -412,7 +412,7 @@ private:
             popupView(debugMenu_);
         } else if (a == QLatin1String("menuclose")) {
             viewMenu_->close();
-        } else if (a == QLatin1String("spectacle")) {  // Wayland-Abzug des aktiven Fensters (KDE): Xwayland-Inhalt der Vulkan-Fläche ist per X11 nicht lesbar
+        } else if (a == QLatin1String("spectacle")) {  // Wayland capture of the active window (KDE): the Xwayland content of the Vulkan surface is not readable via X11
             QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
             env.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), QStringLiteral("unix:path=%1/bus").arg(qEnvironmentVariable("XDG_RUNTIME_DIR")));
             const QString wl = qEnvironmentVariable("BDSP_WAYLAND_DISPLAY");
@@ -448,7 +448,7 @@ private:
 
 int main(int argc, char **argv) {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "xcb");  // Einbettung eines X11-Fensters: xcb (unter Wayland Xwayland)
-    if (qEnvironmentVariableIsEmpty("XAUTHORITY")) {  // Xwayland der Sitzung: KDE/GNOME legen die Datei im Laufzeitordner an
+    if (qEnvironmentVariableIsEmpty("XAUTHORITY")) {  // Xwayland of the session: KDE/GNOME create the file in the runtime folder
         const QDir rt(qEnvironmentVariable("XDG_RUNTIME_DIR"));
         const QStringList c = rt.entryList({QStringLiteral("*xauth*")}, QDir::Files, QDir::Name);
         if (!c.isEmpty()) qputenv("XAUTHORITY", rt.filePath(c.first()).toUtf8());

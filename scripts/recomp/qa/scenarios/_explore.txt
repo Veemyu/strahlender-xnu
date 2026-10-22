@@ -1,0 +1,10 @@
+desc Exploration: way to the Pokémon Center (times are being calibrated)
+include continue_city
+timeout 420
+finish 10
+shots 45
+field+12 UP 3.0
+field+17 RIGHT 0.2
+field+19 UP 4.0
+field+25 UP 4.0
+field+32 NONE 0.1

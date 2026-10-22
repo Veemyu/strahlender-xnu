@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Messskript für die Machbarkeitsstudie zur statischen Rekompilation (docs/architecture.md).
+"""Measurement script for the static recompilation feasibility study (docs/architecture.md).
 
-Eigener Code. Liest nur lokale Dateien (NSO aus work/exefs, optional ELF) und schreibt Zahlen
-nach work/recomp/*.json. Es entstehen keine Binärdaten, keine Disassembly und kein erzeugtes C
-im Repo; ausgegeben werden nur Zähler und Mnemonic-Namen.
+Own code. Reads only local files (NSO from work/exefs, optionally ELF) and writes numbers
+to work/recomp/*.json. No binary data, no disassembly and no generated C end up
+in the repo; only counters and mnemonic names are printed.
 
-Unterbefehle:
-  nso      Segmentgrößen der NSO-Module (rtld, main, sdk, subsdk0)
-  hist     Instruktionsklassen-Histogramm je Modul (capstone, linear über __text__)
-  imports  Dynsym-Importe von main nach Namensraum und Anbieter-Modul
-  npdm     main.npdm parsen (Header, ACI0, ACID, Kernel-Capabilities, SVC-Maske)
-  gensample optional: Stichprobe mit gen.py (Funktionsgenerator): C-Bytes je Instruktion/Funktion
-  lifter   optional: LASRecomp-Lifter (nur gelesen, Pfad per --lifter-dir) über den Text laufen
-           lassen und zählen, welche Encodings er ablehnt (Unsupported) und wie viel C je
-           Instruktion entsteht. Es wird nichts kopiert.
+Subcommands:
+  nso      segment sizes of the NSO modules (rtld, main, sdk, subsdk0)
+  hist     instruction class histogram per module (capstone, linear over __text__)
+  imports  dynsym imports of main by namespace and provider module
+  npdm     parse main.npdm (header, ACI0, ACID, kernel capabilities, SVC mask)
+  gensample optional: sample with gen.py (function generator): C bytes per instruction/function
+  lifter   optional: run the LASRecomp lifter (read only, path via --lifter-dir) over the text
+           and count which encodings it rejects (Unsupported) and how much C is produced per
+           instruction. Nothing is copied.
 
-capstone liegt unter tools/pydeps (pip install --target tools/pydeps capstone).
-Beispiel: python3 scripts/recomp_survey.py hist --module main
+capstone lives under tools/pydeps (pip install --target tools/pydeps capstone).
+Example: python3 scripts/recomp_survey.py hist --module main
 """
 import argparse
 import json
@@ -44,7 +44,7 @@ class Nso:
         import lz4.block
         raw = Path(path).read_bytes()
         if raw[:4] != b"NSO0":
-            raise ValueError(f"{path}: kein NSO")
+            raise ValueError(f"{path}: not an NSO")
         flags = struct.unpack_from("<I", raw, 0xC)[0]
         segs = []
         for i in range(3):
@@ -129,14 +129,14 @@ def cmd_nso(args):
         }
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "nso_segments.json").write_text(json.dumps(rows, indent=1))
-    print(f"{'Modul':8} {'Datei':>11} {'text':>11} {'ro':>11} {'data':>10} {'bss':>10} {'Image':>11} {'Instr.':>10} {'Imp.':>5} {'Exp.':>5}")
+    print(f"{'Module':8} {'File':>11} {'text':>11} {'ro':>11} {'data':>10} {'bss':>10} {'Image':>11} {'Instr.':>10} {'Imp.':>5} {'Exp.':>5}")
     tot = Counter()
     for m, r in rows.items():
         print(f"{m:8} {r['file_bytes']:>11,} {r['text']:>11,} {r['ro']:>11,} {r['data']:>10,} {r['bss']:>10,} "
               f"{r['image_bytes']:>11,} {r['instructions_4B']:>10,} {r['imports']:>5} {r['exports']:>5}")
         for k in ("file_bytes", "text", "ro", "data", "bss", "image_bytes", "instructions_4B"):
             tot[k] += r[k]
-    print(f"{'Summe':8} {tot['file_bytes']:>11,} {tot['text']:>11,} {tot['ro']:>11,} {tot['data']:>10,} {tot['bss']:>10,} "
+    print(f"{'Sum':8} {tot['file_bytes']:>11,} {tot['text']:>11,} {tot['ro']:>11,} {tot['data']:>10,} {tot['bss']:>10,} "
           f"{tot['image_bytes']:>11,} {tot['instructions_4B']:>10,}")
 
 
@@ -163,23 +163,23 @@ COND = {"csel", "csinc", "csinv", "csneg", "cset", "csetm", "cinc", "cinv", "cne
 PCREL = {"adr", "adrp"}
 BITMANIP = {"rbit", "rev", "rev16", "rev32", "clz", "cls", "extr", "ror"}
 
-CLASSES = ["Integer (ALU/Move/Bitfeld)", "Integer Mul/Div", "Integer bedingt (CSEL/CCMP)", "PC-relativ (ADR/ADRP)",
-           "Load/Store (einzeln, GPR)", "Load/Store Paare (GPR)", "Load-Acquire/Store-Release",
-           "Prefetch", "Exklusive (LDXR/STXR/LDAXR/STLXR)", "Atomics/LSE (CAS/SWP/LDADD...)",
-           "FP/NEON/SIMD (Rechnen)", "FP/NEON/SIMD Load/Store", "Crypto (AES/SHA/PMULL)", "CRC32",
-           "System: MRS/MSR", "System: Barrieren (DMB/DSB/ISB)", "System: DC/IC/SYS/TLBI", "System: SVC/BRK/UDF/HLT",
-           "System: NOP/Hints", "PAC/BTI", "Sprung direkt (B/BL/B.cond/CBZ/TBZ)", "Sprung indirekt (BR/BLR)",
-           "Return (RET)", "nicht dekodierbar/Daten"]
+CLASSES = ["Integer (ALU/move/bitfield)", "Integer mul/div", "Integer conditional (CSEL/CCMP)", "PC-relative (ADR/ADRP)",
+           "Load/store (single, GPR)", "Load/store pairs (GPR)", "Load-acquire/store-release",
+           "Prefetch", "Exclusive (LDXR/STXR/LDAXR/STLXR)", "Atomics/LSE (CAS/SWP/LDADD...)",
+           "FP/NEON/SIMD (arithmetic)", "FP/NEON/SIMD load/store", "Crypto (AES/SHA/PMULL)", "CRC32",
+           "System: MRS/MSR", "System: barriers (DMB/DSB/ISB)", "System: DC/IC/SYS/TLBI", "System: SVC/BRK/UDF/HLT",
+           "System: NOP/hints", "PAC/BTI", "Branch direct (B/BL/B.cond/CBZ/TBZ)", "Branch indirect (BR/BLR)",
+           "Return (RET)", "undecodable/data"]
 
 
 def classify(mn, w):
-    """Klasse einer Instruktion nach Mnemonic (capstone) und Wort w (Encodings nach Arm ARM, Gruppe op0)."""
+    """Class of an instruction by mnemonic (capstone) and word w (encodings per Arm ARM, group op0)."""
     if mn.startswith(PAC_PREFIX) and mn not in ("autiasp_",):
         return "PAC/BTI"
     if mn in EXCL:
-        return "Exklusive (LDXR/STXR/LDAXR/STLXR)"
+        return "Exclusive (LDXR/STXR/LDAXR/STLXR)"
     if mn in ACQREL:
-        return "Load-Acquire/Store-Release"
+        return "Load-acquire/store-release"
     if mn.startswith(LSE_PREFIX):
         return "Atomics/LSE (CAS/SWP/LDADD...)"
     if mn in CRYPTO:
@@ -189,47 +189,47 @@ def classify(mn, w):
     if mn == "mrs" or mn == "msr":
         return "System: MRS/MSR"
     if mn in SYS_BARRIER:
-        return "System: Barrieren (DMB/DSB/ISB)"
+        return "System: barriers (DMB/DSB/ISB)"
     if mn in ("dc", "ic", "tlbi", "at", "sys", "sysl"):
         return "System: DC/IC/SYS/TLBI"
     if mn in ("svc", "hvc", "smc", "brk", "hlt", "udf", "dcps1", "dcps2", "dcps3", "eret", "drps"):
         return "System: SVC/BRK/UDF/HLT"
     if mn in ("nop", "yield", "wfe", "wfi", "sev", "sevl", "hint", "esb", "dgh"):
-        return "System: NOP/Hints"
+        return "System: NOP/hints"
     if mn == "ret":
         return "Return (RET)"
     if mn in ("br", "blr"):
-        return "Sprung indirekt (BR/BLR)"
+        return "Branch indirect (BR/BLR)"
     if mn in ("b", "bl", "cbz", "cbnz", "tbz", "tbnz") or mn.startswith("b."):
-        return "Sprung direkt (B/BL/B.cond/CBZ/TBZ)"
+        return "Branch direct (B/BL/B.cond/CBZ/TBZ)"
     if mn.startswith("prfm") or mn.startswith("prfum"):
         return "Prefetch"
     op0 = (w >> 25) & 0xF
     if (op0 & 0b0101) == 0b0100:  # Load/Store-Gruppe
         if (w >> 26) & 1:  # V-Bit: FP/SIMD-Register
-            return "FP/NEON/SIMD Load/Store"
+            return "FP/NEON/SIMD load/store"
         if (w >> 27) & 7 == 0b101:
-            return "Load/Store Paare (GPR)"
-        return "Load/Store (einzeln, GPR)"
+            return "Load/store pairs (GPR)"
+        return "Load/store (single, GPR)"
     if (op0 & 0b0111) == 0b0111:
-        return "FP/NEON/SIMD (Rechnen)"
+        return "FP/NEON/SIMD (arithmetic)"
     if mn in MULDIV:
-        return "Integer Mul/Div"
+        return "Integer mul/div"
     if mn in COND:
-        return "Integer bedingt (CSEL/CCMP)"
+        return "Integer conditional (CSEL/CCMP)"
     if mn in PCREL:
-        return "PC-relativ (ADR/ADRP)"
-    return "Integer (ALU/Move/Bitfeld)"
+        return "PC-relative (ADR/ADRP)"
+    return "Integer (ALU/move/bitfield)"
 
 
 def decode_all(code, base=0):
-    """Gibt (Klassenzähler, Mnemonic-Zähler, nicht dekodierbare Wörter) zurück; linear, 4 Byte je Wort."""
+    """Returns (class counter, mnemonic counter, undecodable words); linear, 4 bytes per word."""
     import capstone
     md = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM)
     cls, mn_count = Counter(), Counter()
     bad = 0
     nwords = len(code) // 4
-    chunk = 1 << 18  # Wörter je Block (1 MiB Maschinencode)
+    chunk = 1 << 18  # words per block (1 MiB of machine code)
     for start in range(0, nwords, chunk):
         end = min(nwords, start + chunk)
         words = struct.unpack_from(f"<{end - start}I", code, start * 4)
@@ -242,9 +242,9 @@ def decode_all(code, base=0):
                 mn_count[mn] += 1
                 got += 1
             i += got
-            if i < end - start:  # nicht dekodierbares Wort überspringen
+            if i < end - start:  # skip an undecodable word
                 bad += 1
-                cls["nicht dekodierbar/Daten"] += 1
+                cls["undecodable/data"] += 1
                 i += 1
     return cls, mn_count, bad
 
@@ -260,7 +260,7 @@ def cmd_hist(args):
         total = sum(cls.values())
         result[m] = {"words": len(code) // 4, "classes": dict(cls), "undecodable": bad,
                      "distinct_mnemonics": len(mnc), "mnemonics": dict(mnc.most_common())}
-        print(f"\n== {m}: {len(code) // 4:,} Wörter, {len(mnc)} verschiedene Mnemonics, {bad:,} nicht dekodierbar")
+        print(f"\n== {m}: {len(code) // 4:,} words, {len(mnc)} distinct mnemonics, {bad:,} undecodable")
         for c in CLASSES:
             v = cls.get(c, 0)
             print(f"  {c:46} {v:>12,}  {100.0 * v / total:6.2f} %")
@@ -270,17 +270,17 @@ def cmd_hist(args):
         for r in result.values():
             agg.update(r["classes"])
         t = sum(agg.values())
-        print(f"\n== Summe aller Module: {t:,} Wörter")
+        print(f"\n== Sum of all modules: {t:,} words")
         for c in CLASSES:
             print(f"  {c:46} {agg.get(c, 0):>12,}  {100.0 * agg.get(c, 0) / t:6.2f} %")
 
 
-# ---------------------------------------------------------------- Importe
+# ---------------------------------------------------------------- Imports
 
 NS_RULES = [
-    ("nn::* (Nintendo-SDK, _ZN2nn)", re.compile(r"^_ZN2nn|^_ZNK2nn|^_ZNSt3__.*2nn")),
-    ("nvn* (NVN-Grafik)", re.compile(r"^nvn|^_ZN3nvn|^__nvn")),
-    ("nv/nvdrv/EGL/GLES (Nvidia-Treiber)", re.compile(r"^(nv[A-Z_a-z0-9]*$)|^egl|^gl[A-Z]|^_nv")),
+    ("nn::* (Nintendo SDK, _ZN2nn)", re.compile(r"^_ZN2nn|^_ZNK2nn|^_ZNSt3__.*2nn")),
+    ("nvn* (NVN graphics)", re.compile(r"^nvn|^_ZN3nvn|^__nvn")),
+    ("nv/nvdrv/EGL/GLES (Nvidia driver)", re.compile(r"^(nv[A-Z_a-z0-9]*$)|^egl|^gl[A-Z]|^_nv")),
     ("Wwise/AK", re.compile(r"^_ZN2AK|^_ZN\d+AK|^AK|^_ZN\d*Ak|^_ZNK2AK|^_ZN3AKM|^_ZN3AKS")),
     ("Unity-Native (UnityPlayer/il2cpp)", re.compile(r"^il2cpp|^_ZN6il2cpp|^unity|^_ZN5Unity|^UnityPlayer|^_Z\d*Unity|^_ZN\d+il2cpp")),
     ("C++-ABI/Unwind/libcxx (__cxa, std::, _Unwind)", re.compile(r"^__cxa|^_Unwind|^_ZNSt|^_ZSt|^_ZNKSt|^_ZTV|^_ZTI|^_ZTS|^_Zn|^_Zd|^_ZN9__gnu|^__gxx|^__dynamic_cast|^_ZN10__cxxabi|^_ZNK10__cxxabi")),
@@ -293,7 +293,7 @@ def namespace_of(name):
     for label, rx in NS_RULES:
         if rx.search(name):
             return label
-    return "sonstige (mangled C++ / Rest)"
+    return "other (mangled C++ / rest)"
 
 
 def cmd_imports(args):
@@ -305,24 +305,24 @@ def cmd_imports(args):
     for m, n in mods.items():
         for s in n.exports():
             exporter.setdefault(s[0], m)
-    prov = Counter(exporter.get(s[0], "(nicht in NSO-Exporten)") for s in imps)
-    both = Counter((namespace_of(s[0]), exporter.get(s[0], "(unaufgelöst)")) for s in imps)
+    prov = Counter(exporter.get(s[0], "(not in NSO exports)") for s in imps)
+    both = Counter((namespace_of(s[0]), exporter.get(s[0], "(unresolved)")) for s in imps)
     types = Counter({0: "NOTYPE", 1: "OBJECT", 2: "FUNC"}.get(s[1] & 0xF, str(s[1] & 0xF)) for s in imps)
-    # häufigste Top-Level-Namespaces der gemangelten Namen (nur Namen, kein Inhalt)
+    # most frequent top-level namespaces of the mangled names (names only, no content)
     top = Counter()
     for s in imps:
         m = re.match(r"^_ZN(?:K)?(\d+)", s[0])
         if m:
             k = int(m.group(1))
             top[s[0][m.end():m.end() + k]] += 1
-    # zweite Ebene von nn::<x>:: (nur Namen)
+    # second level of nn::<x>:: (names only)
     nn2 = Counter()
     for s in imps:
         m = re.match(r"^_ZN(?:K)?2nn(\d+)", s[0])
         if m:
             k = int(m.group(1))
             nn2[s[0][m.end():m.end() + k]] += 1
-    other = sorted(s[0] for s in imps if namespace_of(s[0]).startswith(("sonstige", "nv"))
+    other = sorted(s[0] for s in imps if namespace_of(s[0]).startswith(("other", "nv"))
                    or exporter.get(s[0]) is None)
     out = {
         "nn_second_level": dict(nn2.most_common()), "other_import_names": other,
@@ -334,21 +334,21 @@ def cmd_imports(args):
     for m, n in mods.items():
         out[f"{m}_syms"] = {"dynsym": len(n.syms), "imports": len(n.imports()), "exports": len(n.exports())}
         out[f"{m}_export_namespaces"] = dict(Counter(namespace_of(s[0]) for s in n.exports()))
-        out[f"{m}_import_providers"] = dict(Counter(exporter.get(s[0], "(unaufgelöst)") for s in n.imports()))
+        out[f"{m}_import_providers"] = dict(Counter(exporter.get(s[0], "(unresolved)") for s in n.imports()))
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "imports.json").write_text(json.dumps(out, indent=1))
-    print(f"main: Dynsym {len(main.syms)}, Importe {len(imps)}, Exporte {len(main.exports())}, NEEDED {main.needed}")
-    print("\nNach Namensraum:")
+    print(f"main: dynsym {len(main.syms)}, imports {len(imps)}, exports {len(main.exports())}, NEEDED {main.needed}")
+    print("\nBy namespace:")
     for k, v in by_ns.most_common():
         print(f"  {k:52} {v:>5}")
-    print("\nNach Anbieter-Modul:")
+    print("\nBy provider module:")
     for k, v in prov.most_common():
         print(f"  {k:30} {v:>5}")
-    print("\nTop gemangelte Namensräume:", dict(top.most_common(15)))
+    print("\nTop mangled namespaces:", dict(top.most_common(15)))
     for m in ("sdk", "subsdk0", "rtld"):
-        print(f"\n{m}: Dynsym {len(mods[m].syms)}, Importe {len(mods[m].imports())}, Exporte {len(mods[m].exports())}")
-        print("  Exporte nach Namensraum:", dict(Counter(namespace_of(s[0]) for s in mods[m].exports()).most_common()))
-        print("  Importe aufgelöst bei:", dict(Counter(exporter.get(s[0], "(unaufgelöst)") for s in mods[m].imports()).most_common()))
+        print(f"\n{m}: dynsym {len(mods[m].syms)}, imports {len(mods[m].imports())}, exports {len(mods[m].exports())}")
+        print("  Exports by namespace:", dict(Counter(namespace_of(s[0]) for s in mods[m].exports()).most_common()))
+        print("  Imports resolved at:", dict(Counter(exporter.get(s[0], "(unresolved)") for s in mods[m].imports()).most_common()))
 
 
 # ---------------------------------------------------------------- NPDM
@@ -380,7 +380,7 @@ SVC_NAMES = {
     0x5A: "MapDeviceAddressSpaceAligned", 0x5C: "UnmapDeviceAddressSpace", 0x5D: "InvalidateProcessDataCache",
     0x5E: "StoreProcessDataCache", 0x5F: "FlushProcessDataCache",
 }
-ADDRESS_SPACE = {0: "32 Bit", 1: "64 Bit alt (36 Bit)", 2: "32 Bit ohne Alias", 3: "64 Bit (39 Bit)"}
+ADDRESS_SPACE = {0: "32 bit", 1: "64 bit old (36 bit)", 2: "32 bit without alias", 3: "64 bit (39 bit)"}
 KC_TYPES = {3: "ThreadInfo", 4: "EnableSystemCalls", 6: "MapIoOrNormalRange", 7: "MapNormalPage",
             11: "EnableInterrupts", 13: "MiscParams", 14: "KernelVersion", 15: "HandleTableSize", 16: "MiscFlags"}
 
@@ -397,43 +397,43 @@ def parse_kc(blob):
         ones = 0
         while ones < 32 and (w >> ones) & 1:
             ones += 1
-        t = KC_TYPES.get(ones, f"unbekannt({ones})")
+        t = KC_TYPES.get(ones, f"unknown({ones})")
         if ones == 4:
             mask, idx = (w >> 5) & 0xFFFFFF, w >> 29
             out["svc_ids"] += [idx * 24 + b for b in range(24) if (mask >> b) & 1]
         elif ones == 3:
-            out["other"].append({"typ": t, "min_prio": (w >> 4) & 63, "max_prio": (w >> 10) & 63,
+            out["other"].append({"type": t, "min_prio": (w >> 4) & 63, "max_prio": (w >> 10) & 63,
                                  "min_core": (w >> 16) & 255, "max_core": (w >> 24) & 255})
         elif ones == 6:  # Paar: zweites Wort folgt
             w2 = words[i] if i < len(words) else 0
             i += 1
-            out["other"].append({"typ": t, "begin_roh": (w >> 7) & 0xFFFFFF, "size_roh": (w2 >> 7) & 0xFFFFFF,
+            out["other"].append({"type": t, "begin_raw": (w >> 7) & 0xFFFFFF, "size_raw": (w2 >> 7) & 0xFFFFFF,
                                  "ro": bool((w >> 31) & 1)})
         elif ones == 7:
-            out["other"].append({"typ": t, "page": (w >> 8) & 0xFFFFFF})
+            out["other"].append({"type": t, "page": (w >> 8) & 0xFFFFFF})
         elif ones == 11:
-            out["other"].append({"typ": t, "irq0": (w >> 12) & 0x3FF, "irq1": (w >> 22) & 0x3FF})
+            out["other"].append({"type": t, "irq0": (w >> 12) & 0x3FF, "irq1": (w >> 22) & 0x3FF})
         elif ones == 13:
-            out["other"].append({"typ": t, "program_type": (w >> 14) & 7})
+            out["other"].append({"type": t, "program_type": (w >> 14) & 7})
         elif ones == 14:
-            out["other"].append({"typ": t, "minor": (w >> 15) & 15, "major": (w >> 19) & 0x1FFF})
+            out["other"].append({"type": t, "minor": (w >> 15) & 15, "major": (w >> 19) & 0x1FFF})
         elif ones == 15:
-            out["other"].append({"typ": t, "handle_table_size": (w >> 16) & 0x3FF})
+            out["other"].append({"type": t, "handle_table_size": (w >> 16) & 0x3FF})
         elif ones == 16:
-            out["other"].append({"typ": t, "enable_debug": bool((w >> 17) & 1), "force_debug": bool((w >> 18) & 1)})
+            out["other"].append({"type": t, "enable_debug": bool((w >> 17) & 1), "force_debug": bool((w >> 18) & 1)})
         else:
-            out["other"].append({"typ": t, "roh": f"{w:#010x}"})
+            out["other"].append({"type": t, "raw": f"{w:#010x}"})
     return out
 
 
 def cmd_npdm(args):
     d = Path(args.npdm).read_bytes()
     if d[:4] != b"META":
-        raise SystemExit("kein META-Header")
+        raise SystemExit("no META header")
     u32 = lambda o: struct.unpack_from("<I", d, o)[0]
     flags = d[0xC]
     meta = {
-        "signature_key_generation": u32(4), "flags_roh": flags, "is_64bit": bool(flags & 1),
+        "signature_key_generation": u32(4), "flags_raw": flags, "is_64bit": bool(flags & 1),
         "address_space_type": (flags >> 1) & 7, "address_space": ADDRESS_SPACE.get((flags >> 1) & 7),
         "optimize_memory_allocation": bool(flags & 0x10),
         "main_thread_priority": d[0xE], "default_cpu_id": d[0xF],
@@ -449,7 +449,7 @@ def cmd_npdm(args):
     aci.update({"fac_size": fac_sz, "sac_size": sac_sz, "kc_size": kc_sz})
     sac = d[ao + sac_off:ao + sac_off + sac_sz]
     services, p = [], 0
-    while p < len(sac):  # SAC: Kopfbyte (Bit 7 = Server, niedrige Bits = Länge-1), dann Name
+    while p < len(sac):  # SAC: header byte (bit 7 = server, low bits = length-1), then name
         hb = sac[p]
         ln = (hb & 7) + 1
         services.append((bool(hb & 0x80), sac[p + 1:p + 1 + ln].decode("ascii", "replace")))
@@ -462,7 +462,7 @@ def cmd_npdm(args):
     do = meta["acid_off"]
     acid = {"magic": d[do + 0x200:do + 0x204].decode("ascii", "replace")}
     acid_flags = u32(do + 0x20C)
-    acid.update({"flags_roh": acid_flags, "production": bool(acid_flags & 1), "unqualified_approval": bool(acid_flags & 2),
+    acid.update({"flags_raw": acid_flags, "production": bool(acid_flags & 1), "unqualified_approval": bool(acid_flags & 2),
                  "memory_region": (acid_flags >> 2) & 15,
                  "memory_region_name": {0: "Application", 1: "Applet", 2: "SecureSystem", 3: "NonSecureSystem"}.get((acid_flags >> 2) & 15, "?")})
     acid["title_id_min"] = f"{struct.unpack_from('<Q', d, do + 0x210)[0]:016x}"
@@ -476,10 +476,10 @@ def cmd_npdm(args):
     print(json.dumps(res, indent=1, ensure_ascii=False))
 
 
-# ---------------------------------------------------------------- Lifter-Messung (optional)
+# ---------------------------------------------------------------- Lifter measurement (optional)
 
 def cmd_lifter(args):
-    """Lässt den LASRecomp-Lifter (--lifter-dir, nur gelesen) Wort für Wort über den Text laufen."""
+    """Runs the LASRecomp lifter (--lifter-dir, read only) word by word over the text."""
     import time
     import capstone
     sys.dont_write_bytecode = True
@@ -555,7 +555,7 @@ def cmd_lifter(args):
 
 
 def cmd_eh(args):
-    """.eh_frame aus dem NSO lesen: FDE-Zahl und wie viele eine LSDA (C++-Landing-Pads) tragen."""
+    """Read .eh_frame from the NSO: FDE count and how many carry an LSDA (C++ landing pads)."""
     n = Nso(EXEFS / args.module)
     img = n.image
     mod0 = struct.unpack_from("<I", img, 4)[0]
@@ -631,7 +631,7 @@ def cmd_eh(args):
 
 
 def cmd_svc(args):
-    """SVC-Immediates im Text je Modul (SVC = 0xD4000001 | imm16 << 5) gegen NPDM-Maske."""
+    """SVC immediates in the text per module (SVC = 0xD4000001 | imm16 << 5) against the NPDM mask."""
     res = {}
     for m in MODULES:
         words = struct.unpack("<%dI" % (len(Nso(EXEFS / m).text_bytes()) // 4), Nso(EXEFS / m).text_bytes())
@@ -646,14 +646,14 @@ def cmd_svc(args):
 
 
 def cmd_gensample(args):
-    """Stichprobe mit dem Funktionsgenerator (gen.py aus --lifter-dir, nur gelesen): erzeugtes C je Funktion."""
+    """Sample with the function generator (gen.py from --lifter-dir, read only): generated C per function."""
     import random
     import struct as st
     import time
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(Path(args.lifter_dir).resolve()))
     import gen  # noqa: E402
-    gen.PATCHES.clear()  # Patches/Randomizer-Varianten des Zielspiels sind hier ohne Bedeutung
+    gen.PATCHES.clear()  # patches/randomizer variants of the target game are irrelevant here
     gen.RANDO_CODE.clear()
     t0 = time.time()
     base = 0x7000000000
@@ -661,7 +661,7 @@ def cmd_gensample(args):
     starts = m.boundaries()
     start_set = set(starts)
     n0 = len(start_set)
-    for i, w in enumerate(m.words):  # BL-Ziele wie in gen.main
+    for i, w in enumerate(m.words):  # BL targets as in gen.main
         if (w & 0xFC000000) == 0x94000000:
             t = m.lo + i * 4 + gen.sext26(w) * 4
             if m.in_text(t):
@@ -739,10 +739,10 @@ def main():
     p.add_argument("--npdm", default=str(EXEFS / "main.npdm"))
     p.set_defaults(fn=cmd_npdm)
     p = sub.add_parser("lifter")
-    p.add_argument("--lifter-dir", required=True, help="Ordner mit lifter.py (z. B. scripts/recomp/upstream/generator), nur gelesen")
+    p.add_argument("--lifter-dir", required=True, help="folder with lifter.py (e.g. scripts/recomp/upstream/generator), read only")
     p.add_argument("--module", default="main", choices=MODULES)
     p.add_argument("--simd", default="asm", choices=("asm", "c"))
-    p.add_argument("--stride", type=int, default=1, help="nur jedes n-te Wort lifteten (Stichprobe)")
+    p.add_argument("--stride", type=int, default=1, help="lift only every n-th word (sample)")
     p.set_defaults(fn=cmd_lifter)
     p = sub.add_parser("gensample")
     p.add_argument("--lifter-dir", required=True)
@@ -750,9 +750,9 @@ def main():
     p.add_argument("--simd", default="asm", choices=("asm", "c"))
     p.add_argument("--functions", type=int, default=2000)
     p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--emit-dir", help="Stichproben-C als Chunks hierhin schreiben (nur unter work/recomp)")
+    p.add_argument("--emit-dir", help="write the sample C as chunks here (only under work/recomp)")
     p.add_argument("--chunk-bytes", type=int, default=1500000)
-    p.add_argument("--emit-min-bytes", type=int, default=0, help="nur Funktionen mit mindestens so viel C ausgeben")
+    p.add_argument("--emit-min-bytes", type=int, default=0, help="only output functions with at least this much C")
     p.set_defaults(fn=cmd_gensample)
     args = ap.parse_args()
     args.fn(args)

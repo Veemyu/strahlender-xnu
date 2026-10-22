@@ -1,4 +1,4 @@
-"""Tests für scripts/shader_extract_blobs.py – ausschließlich synthetische Container, keine Spieldaten."""
+"""Tests for scripts/shader_extract_blobs.py: synthetic containers only, no game data."""
 import json
 import os
 import struct
@@ -36,7 +36,7 @@ def program(stage, keywords, payload, local=()):
             out += struct.pack("<I", len(raw)) + raw + b"\0" * (-len(raw) % 4)
         return out
 
-    # 0x18: Anzahl der globalen Keywords, danach deren Eintraege, dann Anzahl und Eintraege der lokalen
+    # 0x18: count of the global keywords, then their entries, then count and entries of the local ones
     d += struct.pack("<I", len(keywords)) + entries(keywords) + struct.pack("<I", len(local)) + entries(local)
     ctrl = bytearray(0x40)
     struct.pack_into("<IIIII", ctrl, 0, 0x200, stage, 0, 0x100, 0x80)

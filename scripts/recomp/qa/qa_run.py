@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""QA-Harness der rekompilierten BDSP-Laufzeit (siehe qa_run.sh und docs/recomp-qa.md).
+"""QA harness of the recompiled BDSP runtime (see qa_run.sh and docs/recomp-qa.md).
 
-Startet work/recomp/qa/bin/bdsp_boot headless mit einem Eingabeskript aus scenarios/<name>.txt, sammelt Log, Screenshots, RSS und
-Bildrate, erkennt Abstürze (Exit-Code, Signal, FATAL, letzter Gast-Stack mit IL2CPP-Namen), Hänger (Bildstillstand, Thread-Zustände)
-und unbehandelte Dienste/SVCs, und schreibt <lauf>/report.md und report.json. Nur Standardbibliothek, numpy und Pillow; kein Netz.
+Starts work/recomp/qa/bin/bdsp_boot headless with an input script from scenarios/<name>.txt, collects log, screenshots, RSS and
+frame rate, detects crashes (exit code, signal, FATAL, last guest stack with IL2CPP names), hangs (frame stall, thread states)
+and unhandled services/SVCs, and writes <run>/report.md and report.json. Standard library, numpy and Pillow only; no network.
 
-Szenariodatei (eine Anweisung je Zeile, # beginnt einen Kommentar):
-  desc <Text>                         Beschreibung
-  timeout <s> | shots <Bilder> | il2sym on|off | save base|none | env KEY=WERT     Einstellungen (gelten für die aktuelle Phase)
-  include <szenario>                  Eingaben, Prüfungen (und mark-Zeilen) eines anderen Szenarios an dieser Stelle einfügen
-  phase                               neuer Prozess (z. B. Spiel neu starten); gleicher Spielstandordner, Zeit beginnt bei 0
-  <Sekunde> <TASTE[+TASTE]> [Dauer]   Tastendruck (A B X Y L R ZL ZR PLUS MINUS UP DOWN LEFT RIGHT LSTICK RSTICK), Dauer Standard 0,3 s
-  anchor <Name> <IL2-Teil>            Bezugszeit = erster Aufruf der Spielmethode; danach "<Name>+<Sekunden>" statt <Sekunde> (ereignisgesteuert, unabhängig von der Ladezeit)
-  cycle <von> <Spanne> <Dauer> T1,T2,..  nacheinander jeweils <Dauer> s halten, im Kreis, <Spanne> Sekunden lang (<von> auch "Anker+s")
-  every <von> <Spanne> <Periode> <TASTE> [Dauer]   Taste periodisch
-  mark <Teilzeichenkette>             Zeitpunkt des ersten Auftretens der IL2CPP-Methode in der Zeitleiste ausgeben
-  expect il2 <Teil> | il2-not <Teil> | log <regex> | log-not <regex> | fps-min <Wert> [ab <s>] | rss-max <MiB> | frames <n>
-         save-valid | save-changed | save-unchanged | save-time-gt <Sekunden>
+Scenario file (one instruction per line, # starts a comment):
+  desc <text>                         description
+  timeout <s> | shots <images> | il2sym on|off | save base|none | env KEY=VALUE     settings (apply to the current phase)
+  include <scenario>                  insert inputs, checks (and mark lines) of another scenario at this point
+  phase                               new process (e.g. restart the game); same save folder, time starts at 0
+  <second> <KEY[+KEY]> [duration]     key press (A B X Y L R ZL ZR PLUS MINUS UP DOWN LEFT RIGHT LSTICK RSTICK), default duration 0.3 s
+  anchor <name> <IL2 part>            reference time = first call of the game method; afterwards "<name>+<seconds>" instead of <second> (event driven, independent of the load time)
+  cycle <from> <span> <duration> K1,K2,..  hold each for <duration> s in turn, in a loop, for <span> seconds (<from> also "anchor+s")
+  every <from> <span> <period> <KEY> [duration]   press a key periodically
+  mark <substring>                    print the time of the first occurrence of the IL2CPP method in the timeline
+  expect il2 <part> | il2-not <part> | log <regex> | log-not <regex> | fps-min <value> [from <s>] | rss-max <MiB> | frames <n>
+         save-valid | save-changed | save-unchanged | save-time-gt <seconds>
 """
 import argparse
 import bisect
@@ -41,7 +41,7 @@ MIN_FREE_GB = 15
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Szenarien
+# Scenarios
 # ---------------------------------------------------------------------------------------------------------------------
 
 def new_phase():
@@ -51,7 +51,7 @@ def new_phase():
 def parse_scenario(name, depth=0):
     path = SCN / (name + ".txt")
     if not path.is_file():
-        raise SystemExit("Szenario %s nicht gefunden (%s)" % (name, path))
+        raise SystemExit("Scenario %s not found (%s)" % (name, path))
     sc = {"name": name, "desc": "", "phases": [new_phase()], "expects": [], "marks": []}
     for n, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.split("#", 1)[0].strip()
@@ -78,11 +78,11 @@ def parse_scenario(name, depth=0):
                 ph["env"][k] = v
             elif key == "phase":
                 sc["phases"].append(new_phase())
-            elif key == "anchor":   # anchor <Name> <IL2CPP-Teilzeichenkette>: Zeit des ersten Aufrufs, Bezug für "<Name>+<Sekunden>"
+            elif key == "anchor":   # anchor <name> <IL2CPP substring>: time of the first call, reference for "<name>+<seconds>"
                 ph["anchors"][tok[1]] = " ".join(tok[2:])
             elif key == "include":
                 if depth > 3:
-                    raise ValueError("include zu tief")
+                    raise ValueError("include nested too deeply")
                 inc = parse_scenario(tok[1], depth + 1)
                 ph["inputs"] += inc["phases"][0]["inputs"]
                 ph["anchors"].update(inc["phases"][0]["anchors"])
@@ -114,22 +114,22 @@ def parse_scenario(name, depth=0):
                 dur = float(tok[2]) if len(tok) > 2 else 0.3
                 for k in keys.split("+"):
                     if k not in KEYS:
-                        raise ValueError("unbekannte Taste " + k)
+                        raise ValueError("unknown key " + k)
                 ph["inputs"].append((a0, t, keys, dur))
             else:
-                raise ValueError("unbekannte Anweisung " + key)
+                raise ValueError("unknown instruction " + key)
         except (IndexError, ValueError) as exc:
             raise SystemExit("%s:%d: %s (%s)" % (path.name, n, exc, raw.strip()))
     for ph in sc["phases"]:
         for a0, _, _, _ in ph["inputs"]:
             if a0 and a0 not in ph["anchors"]:
-                raise SystemExit("%s: Anker %s nicht definiert" % (path.name, a0))
+                raise SystemExit("%s: anchor %s not defined" % (path.name, a0))
         ph["inputs"].sort(key=lambda x: (x[0] or "", x[1]))
     return sc
 
 
 def tspec(s):
-    """'12.5' -> (None, 12.5); 'boot+6' -> ('boot', 6.0): absolute Sekunde ab Prozessstart oder Sekunde nach einem Anker."""
+    """'12.5' -> (None, 12.5); 'boot+6' -> ('boot', 6.0): absolute second since process start or second after an anchor."""
     if "+" in s and not s[0].isdigit():
         a, _, off = s.partition("+")
         return a, float(off)
@@ -141,7 +141,7 @@ def input_string(inputs):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Hilfen
+# Helpers
 # ---------------------------------------------------------------------------------------------------------------------
 
 def sha256(p, n=12):
@@ -207,7 +207,7 @@ def median(v):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Lauf
+# Run
 # ---------------------------------------------------------------------------------------------------------------------
 
 PAD_BITS = {n: i for i, n in enumerate(["A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS", "MINUS", "LEFT", "UP", "RIGHT", "DOWN"])}
@@ -216,13 +216,13 @@ PAD_BITS = {n: i for i, n in enumerate(["A", "B", "X", "Y", "LSTICK", "RSTICK", 
 def keys_mask(keys):
     m = 0
     for k in keys.split("+"):
-        m |= (1 << PAD_BITS[k]) if k in PAD_BITS else 0   # NONE: keine Taste (nur Zeitmarke für finish)
+        m |= (1 << PAD_BITS[k]) if k in PAD_BITS else 0   # NONE: no key (only a time marker for finish)
     return m
 
 
 def feeder(log_path, ph, ctl_path, stop, found, proc=None):
-    """Ereignisgesteuerte Eingaben: wartet auf den ersten Aufruf der Anker-Methoden im Log und schreibt die Tastenmaske in die Steuerdatei
-    (BDSP_INPUT_CTL, von der Laufzeit je Abfrage gelesen)."""
+    """Event-driven inputs: waits for the first call of the anchor methods in the log and writes the key mask into the control file
+    (BDSP_INPUT_CTL, read by the runtime on every poll)."""
     steps = [(a, t, keys_mask(k), d) for a, t, k, d in ph["inputs"] if a]
     if not steps:
         return
@@ -253,13 +253,13 @@ def feeder(log_path, ph, ctl_path, stop, found, proc=None):
         if mask != last:
             os.pwrite(fd, b"%016x\n" % mask, 0)
             last = mask
-        # finish <s>: nach der letzten ereignisgesteuerten Eingabe so lange weiterlaufen, dann beenden (SIGINT: die Laufzeit schreibt den Bericht);
-        # das Zeitlimit bleibt nur Sicherung. So hängt das Ende eines Laufs nicht von der Ladezeit (Fremdlast) ab.
+        # finish <s>: keep running that long after the last event-driven input, then end (SIGINT: the runtime writes the report);
+        # the time limit remains only a safeguard. So the end of a run does not depend on the load time (external load).
         if ph.get("finish") and proc is not None and not finished:
             ends = [found[a] + t + d for a, t, m, d in steps if a in found]
             if len(ends) == len(steps) and now > max(ends) + ph["finish"]:
                 finished = True
-                found["_ende"] = time.time()
+                found["_end"] = time.time()
                 try:
                     os.kill(proc.pid, signal.SIGINT)
                 except OSError:
@@ -279,7 +279,7 @@ def run_phase(args, sc, idx, ph, run_dir):
     timeout = args.timeout or ph["timeout"]
     env = dict(os.environ)
     env.update({"BDSP_IMG": args.img, "BDSP_SHOT_DIR": str(shots), "BDSP_TRACE_INPUT": "1", "BDSP_INPUT_CTL": str(ctl), "BDSP_BT": "1", "BDSP_TRACE_SYNC": "300",
-                "BDSP_DUMP": "7004f91f60:24"})   # Gastspeicher beim Ende ausgeben: Ereignis des Hauptthreads (Hänger-Analyse)
+                "BDSP_DUMP": "7004f91f60:24"})   # print guest memory at the end: event of the main thread (hang analysis)
     if ph["il2sym"] and not args.no_il2sym and (ROOT / "work/recomp/il2sym.tsv").is_file():
         env["BDSP_IL2SYM"] = "work/recomp/il2sym.tsv"
     env.update(ph["env"])
@@ -316,13 +316,13 @@ def run_phase(args, sc, idx, ph, run_dir):
                 except (subprocess.SubprocessError, ValueError):
                     pass
                 if not killed and el > timeout + 60:
-                    killed = "kein Ende 60 s nach dem Zeitlimit: beendet"
+                    killed = "no end 60 s after the time limit: terminated"
                     proc.terminate()
                     time.sleep(3)
                     if proc.poll() is None:
                         proc.kill()
                 elif not killed and free_gb() < 10:
-                    killed = "Platte fast voll (%.1f GB): abgebrochen" % free_gb()
+                    killed = "disk almost full (%.1f GB): aborted" % free_gb()
                     proc.terminate()
         proc.wait()
     stop.set()
@@ -336,12 +336,12 @@ def run_phase(args, sc, idx, ph, run_dir):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Auswertung
+# Analysis
 # ---------------------------------------------------------------------------------------------------------------------
 
 METAL = re.compile(r"\[metal\] t=([\d.]+) frame (\d+) ([\d.]+) fps max (\d+)ms level (\S+) \((\d+) draws, (\d+) skipped, (\d+) passes, (\d+) dispatches")
 IL2 = re.compile(r"\[il2\]\s+(\d+) ms t(\d+) (.*)")
-NOISE = re.compile(r"FATAL|unimplemented|nicht umgesetzt|nicht implementiert|unsupported|not supported|not implemented|fehlt|failed|pipeline|Fehler|error|WARN|mismatch|invalid|ungültig|abort",
+NOISE = re.compile(r"FATAL|unimplemented|not implemented|unsupported|not supported|missing|failed|pipeline|error|WARN|mismatch|invalid|abort",
                    re.I)
 NOISE_SKIP = re.compile(r"^\[metal\] t=|^\[il2\]|^\[kernel\] CreateThread|^\[copy\]|^\[input\]|^\[texdump\]|^  Thread \d+:")
 
@@ -377,11 +377,11 @@ def analyze_log(path, ph_cfg):
             if len(last_il2) > 40:
                 last_il2.pop(0)
             continue
-        if line.startswith("[input] Tasten"):
+        if line.startswith("[input] Buttons"):
             r["inputs"] += 1
-        if line.startswith("==== ERGEBNIS"):
+        if line.startswith("==== RESULT"):
             r["complete"] = True
-            r["result"] = line.strip("= ").replace("ERGEBNIS: ", "")
+            r["result"] = line.strip("= ").replace("RESULT: ", "")
             section = "result"
             continue
         if line.startswith("dump "):
@@ -393,12 +393,12 @@ def analyze_log(path, ph_cfg):
             section = "hostbt"
             continue
         if section == "hostbt":
-            if line.startswith("Gast:"):
+            if line.startswith("Guest:"):
                 section = "regs"
             elif line.startswith("  "):
                 r["host_bt"].append(line.strip())
                 continue
-        if line.startswith("Gast-Rückverfolgung"):
+        if line.startswith("Guest backtrace"):
             section = "guestbt"
             continue
         if section == "guestbt":
@@ -406,34 +406,34 @@ def analyze_log(path, ph_cfg):
                 r["guest_bt"].append(line.strip())
                 continue
             section = None
-        if line.startswith("[ipc]") and "nicht umgesetzt" in line:
-            mm = re.match(r"\[ipc\] (\S+) Befehl (\d+) nicht umgesetzt", line)
+        if line.startswith("[ipc]") and "not implemented" in line:
+            mm = re.match(r"\[ipc\] (\S+) command (\d+) not implemented", line)
             if mm:
                 r["unimpl_ipc"].setdefault("%s:%s" % (mm.group(1), mm.group(2)), 0)
-        mm = re.match(r"\s+fehlt: (\S+) Befehl (\d+) \((\d+)x\)", line)
+        mm = re.match(r"\s+missing: (\S+) command (\d+) \((\d+)x\)", line)
         if mm:
             r["unimpl_ipc"]["%s:%s" % (mm.group(1), mm.group(2))] = int(mm.group(3))
-        if "nicht umgesetzte SVC" in line:
+        if "unimplemented SVC" in line:
             r["unimpl_svc"].append(line)
         if section == "result":
             if line.startswith("  Thread "):
-                mm = re.search(r"Thread (\d+): .*?, (läuft|beendet), letzte SVC (\S+) \((\w+)\), (\d+) SVCs, (\d+) IPC", line)
+                mm = re.search(r"Thread (\d+): .*?, (running|finished|not started), last SVC (\S+) \((\w+)\), (\d+) SVCs, (\d+) IPC", line)
                 if mm:
                     key = "%s/%s" % (mm.group(2), mm.group(4))
                     r["threads"][key] = r["threads"].get(key, 0) + 1
                     r["thread_detail"].append({"id": int(mm.group(1)), "state": mm.group(2), "svc": mm.group(4), "svcs": int(mm.group(5)), "ipc": int(mm.group(6)),
                                                "wait": "", "mutex": "", "bt": []})
-            elif line.startswith("      wartet:") and r["thread_detail"]:
+            elif line.startswith("      waiting:") and r["thread_detail"]:
                 r["thread_detail"][-1]["wait"] = line.strip()
             elif line.startswith("      Mutex ") and r["thread_detail"]:
                 r["thread_detail"][-1]["mutex"] = line.strip()
             elif re.match(r"      (lr|#\d+) ", line) and r["thread_detail"]:
                 r["thread_detail"][-1]["bt"].append(line.strip())
-            if line.startswith("Synchronisation, letzte Ereignisse:"):
+            if line.startswith("Synchronization, last events:"):
                 section = "sync"
                 continue
             mm = re.match(r"\s+(\S.*\S|\S)$", line)
-            if line.startswith("NVN-Funktionen ohne Host-Umsetzung"):
+            if line.startswith("NVN functions without host implementation"):
                 section = "nvnmiss"
                 continue
         if section == "sync":
@@ -442,32 +442,32 @@ def analyze_log(path, ph_cfg):
                 continue
             section = "result"
         if section == "nvnmiss":
-            if line.startswith("  ") and "(keine)" not in line:
+            if line.startswith("  ") and "(none)" not in line:
                 r["nvn_missing"].append(line.strip())
                 continue
             section = "result"
         if line.startswith("NVN: "):
-            mm = re.match(r"NVN: (\d+) Bilder", line)
+            mm = re.match(r"NVN: (\d+) frames", line)
             if mm:
                 r["frames_presented"] = int(mm.group(1))
-        mm = re.match(r"IPC-Anfragen gesamt (\d+)", line)
+        mm = re.match(r"IPC requests total (\d+)", line)
         if mm:
             r["ipc_total"] = int(mm.group(1))
-        mm = re.match(r"\d+ verschiedene SVCs, (\d+) Aufrufe", line)
+        mm = re.match(r"\d+ distinct SVCs, (\d+) calls", line)
         if mm:
             r["svc_total"] = int(mm.group(1))
-        if line.startswith("RomFS-Lesezugriffe"):
+        if line.startswith("RomFS reads"):
             r["romfs"] = line
-        if line.startswith("RSS jetzt"):
+        if line.startswith("RSS now"):
             r["rss_final"] = line
-        if line.startswith("Dienste/Befehle (Anzahl):"):
+        if line.startswith("Services/commands (count):"):
             for tok in line.split(":", 1)[1].split():
                 mm = re.match(r"(.+)\((\d+)\)$", tok)
                 if mm:
                     r["services"][mm.group(1)] = int(mm.group(2))
         if line.startswith("[movie]"):
             r["movie"].append(line)
-        if NOISE.search(line) and not NOISE_SKIP.match(line) and not line.startswith("  fehlt:") and not line.startswith("davon mit Standardantwort"):
+        if NOISE.search(line) and not NOISE_SKIP.match(line) and not line.startswith("  missing:") and not line.startswith("of those with default response"):
             k = norm_msg(line)
             noise[k] = noise.get(k, 0) + 1
             if noise[k] == 1:
@@ -490,9 +490,9 @@ def detect_stalls(series, end_secs, min_gap=12.0):
     stalls = []
     for a, b in zip(series, series[1:]):
         if b["t"] - a["t"] > min_gap or (b["frame"] == a["frame"]):
-            stalls.append({"von_t": a["t"], "bis_t": b["t"], "frame": a["frame"]})
+            stalls.append({"from_t": a["t"], "to_t": b["t"], "frame": a["frame"]})
     if series and end_secs and end_secs - series[-1]["t"] > min_gap + 3:
-        stalls.append({"von_t": series[-1]["t"], "bis_t": end_secs, "frame": series[-1]["frame"], "ende": True})
+        stalls.append({"from_t": series[-1]["t"], "to_t": end_secs, "frame": series[-1]["frame"], "end": True})
     return stalls
 
 
@@ -565,7 +565,7 @@ def check_save(run_dir, base_dir):
     r["size"] = sd.stat().st_size
     out = subprocess.run([sys.executable, "-I", str(ROOT / "scripts/bdsp_save.py"), "check", str(sd)], capture_output=True, text=True).stdout
     r["check"] = out.strip().replace("\n", " | ")
-    r["valid"] = "Hash gültig: ja" in out and "passt: ja" in out
+    r["valid"] = "Hash valid: yes" in out and "matches: yes" in out
     r["mtime"] = time.strftime("%H:%M:%S", time.localtime(sd.stat().st_mtime))
     return r
 
@@ -586,22 +586,22 @@ def evaluate(sc, phases, run_dir, save_info, args):
         if a["fatal"]:
             reason.append(a["fatal"][0][:120])
         if rc not in (0, None) and not reason:
-            reason.append("Exit-Code %s%s" % (rc, " (Signal %s)" % signal.Signals(-rc).name if rc is not None and rc < 0 else ""))
+            reason.append("exit code %s%s" % (rc, " (signal %s)" % signal.Signals(-rc).name if rc is not None and rc < 0 else ""))
         if p["killed"]:
             reason.append(p["killed"])
         if not a["complete"] and not reason:
-            reason.append("kein Ergebnisbericht (Prozess ohne Abschlussbericht beendet)")
+            reason.append("no result report (process ended without a final report)")
         if reason:
             crash = True
-        add("Phase %s ohne Absturz/FATAL" % p["tag"], not reason, "; ".join(reason) or "Exit-Code 0, %s" % a["result"])
+        add("Phase %s without crash/FATAL" % p["tag"], not reason, "; ".join(reason) or "exit code 0, %s" % a["result"])
         stalls = p.get("stalls", [])
-        add("Phase %s ohne Bildstillstand (> 12 s)" % p["tag"], not stalls, "; ".join("t=%.0f..%.0f bei Bild %d" % (s["von_t"], s["bis_t"], s["frame"]) for s in stalls[:4]))
+        add("Phase %s without frame stall (> 12 s)" % p["tag"], not stalls, "; ".join("t=%.0f..%.0f at frame %d" % (s["from_t"], s["to_t"], s["frame"]) for s in stalls[:4]))
         if p.get("anchors_missing"):
-            add("Phase %s: alle Eingabe-Anker erreicht" % p["tag"], False, "nicht erreicht: " + ", ".join(p["anchors_missing"]))
+            add("Phase %s: all input anchors reached" % p["tag"], False, "not reached: " + ", ".join(p["anchors_missing"]))
         if a["unimpl_svc"]:
-            add("Phase %s: nicht umgesetzte SVC" % p["tag"], False, a["unimpl_svc"][0][:150])
+            add("Phase %s: unimplemented SVC" % p["tag"], False, a["unimpl_svc"][0][:150])
         if a["nvn_missing"]:
-            add("Phase %s: NVN-Funktionen ohne Umsetzung" % p["tag"], False, ", ".join(a["nvn_missing"][:5]))
+            add("Phase %s: NVN functions without implementation" % p["tag"], False, ", ".join(a["nvn_missing"][:5]))
     il2_all = {}
     for p in phases:
         for k, v in p["analysis"]["il2_first"].items():
@@ -613,77 +613,77 @@ def evaluate(sc, phases, run_dir, save_info, args):
         try:
             if kind == "il2":
                 hit = [k for k in il2_all if arg in k]
-                add("erwartet IL2CPP-Aufruf %s" % arg, hit, "erstmals bei %.1f s" % (min(il2_all[k] for k in hit) / 1000) if hit else "nicht aufgetreten")
+                add("expects IL2CPP call %s" % arg, hit, "first at %.1f s" % (min(il2_all[k] for k in hit) / 1000) if hit else "did not occur")
             elif kind == "il2-not":
                 hit = [k for k in il2_all if arg in k]
-                add("erwartet kein IL2CPP-Aufruf %s" % arg, not hit, hit[0] if hit else "")
+                add("expects no IL2CPP call %s" % arg, not hit, hit[0] if hit else "")
             elif kind == "log":
-                add("erwartet Logzeile /%s/" % arg, re.search(arg, texts, re.M), "")
+                add("expects log line /%s/" % arg, re.search(arg, texts, re.M), "")
             elif kind == "log-not":
                 m = re.search(arg, texts, re.M)
-                add("erwartet keine Logzeile /%s/" % arg, not m, m.group(0)[:100] if m else "")
+                add("expects no log line /%s/" % arg, not m, m.group(0)[:100] if m else "")
             elif kind == "fps-min":
-                since = float(e[3]) if len(e) > 3 and e[2] == "ab" else 0.0
+                since = float(e[3]) if len(e) > 3 and e[2] == "from" else 0.0
                 st = fps_stats([x for p in phases for x in p["analysis"]["fps"]], since)
-                add("Bildrate (Median) >= %s ab %g s" % (e[1], since), st and st["median"] >= float(e[1]), "Median %s, p5 %s" % (st.get("median"), st.get("p5")))
+                add("Frame rate (median) >= %s from %g s" % (e[1], since), st and st["median"] >= float(e[1]), "median %s, p5 %s" % (st.get("median"), st.get("p5")))
             elif kind == "rss-max":
                 mx = max([s[1] for p in phases for s in p["samples"]] or [0])
-                add("RSS-Spitze <= %s MiB" % e[1], mx <= float(e[1]), "gemessen %d MiB" % mx)
+                add("RSS peak <= %s MiB" % e[1], mx <= float(e[1]), "measured %d MiB" % mx)
             elif kind == "frames":
                 n = sum(p["analysis"]["frames_presented"] for p in phases)
-                add("mindestens %s Bilder präsentiert" % e[1], n >= int(e[1]), "gemessen %d" % n)
+                add("at least %s frames presented" % e[1], n >= int(e[1]), "measured %d" % n)
             elif kind == "save-valid":
-                add("Spielstand gültig (bdsp_save.py check)", save_info.get("valid"), save_info.get("check", ""))
+                add("Save valid (bdsp_save.py check)", save_info.get("valid"), save_info.get("check", ""))
             elif kind == "save-changed":
-                add("Spielstand wurde geschrieben (Hash geändert)", save_info.get("changed"), "%s -> %s" % (save_info.get("base_sha"), save_info.get("sha")))
+                add("Save was written (hash changed)", save_info.get("changed"), "%s -> %s" % (save_info.get("base_sha"), save_info.get("sha")))
             elif kind == "save-unchanged":
-                add("Spielstand unverändert", save_info.get("exists") and not save_info.get("changed"), "%s" % save_info.get("sha"))
+                add("Save unchanged", save_info.get("exists") and not save_info.get("changed"), "%s" % save_info.get("sha"))
         except (IndexError, ValueError) as exc:
-            add("Prüfung %s fehlerhaft definiert" % " ".join(e), False, str(exc))
+            add("Check %s defined incorrectly" % " ".join(e), False, str(exc))
     return checks, crash
 
 
 def render_md(rep):
     L = []
     w = L.append
-    w("# QA-Lauf %s\n" % rep["run"])
-    w("Szenario **%s**: %s  " % (rep["scenario"], rep["desc"]))
-    w("Start %s, Dauer %.0f s, Binärdatei `%s` (sha256 %s…), Bild-Ordner `%s`  " % (rep["started"], rep["wall"], rep["bin"], rep["bin_sha"], rep["img"]))
-    w("\n**Ergebnis: %s** (%d von %d Prüfungen bestanden)\n" % ("BESTANDEN" if rep["ok"] else "FEHLER", sum(c["ok"] for c in rep["checks"]), len(rep["checks"])))
-    w("| Prüfung | Ergebnis | Angabe |\n|---|---|---|")
+    w("# QA run %s\n" % rep["run"])
+    w("Scenario **%s**: %s  " % (rep["scenario"], rep["desc"]))
+    w("Start %s, duration %.0f s, binary `%s` (sha256 %s…), image folder `%s`  " % (rep["started"], rep["wall"], rep["bin"], rep["bin_sha"], rep["img"]))
+    w("\n**Result: %s** (%d of %d checks passed)\n" % ("PASSED" if rep["ok"] else "FAILED", sum(c["ok"] for c in rep["checks"]), len(rep["checks"])))
+    w("| Check | Result | Detail |\n|---|---|---|")
     for c in rep["checks"]:
-        w("| %s | %s | %s |" % (c["name"], "ok" if c["ok"] else "**FEHLER**", c["detail"].replace("|", "/")))
+        w("| %s | %s | %s |" % (c["name"], "ok" if c["ok"] else "**FAILED**", c["detail"].replace("|", "/")))
     for p in rep["phases"]:
         a = p["analysis"]
-        w("\n## Phase %s (Zeitlimit %d s, %d Eingabeschritte, Exit-Code %s)\n" % (p["tag"], p["timeout"], p["input_steps"], p["returncode"]))
-        w("- Ergebnis laut Laufzeit: %s" % (a["result"] or "(kein Ergebnisbericht)"))
-        w("- Bilder präsentiert: %d, IL2CPP-Methoden (erste Aufrufe): %d, IPC-Anfragen: %d, SVC-Aufrufe: %d, Tastenänderungen im Gast: %d" % (a["frames_presented"], len(a["il2_first"]), a["ipc_total"], a["svc_total"], a["inputs"]))
+        w("\n## Phase %s (time limit %d s, %d input steps, exit code %s)\n" % (p["tag"], p["timeout"], p["input_steps"], p["returncode"]))
+        w("- Result per runtime: %s" % (a["result"] or "(no result report)"))
+        w("- Frames presented: %d, IL2CPP methods (first calls): %d, IPC requests: %d, SVC calls: %d, button changes in the guest: %d" % (a["frames_presented"], len(a["il2_first"]), a["ipc_total"], a["svc_total"], a["inputs"]))
         if a["romfs"]:
             w("- %s" % a["romfs"])
         st = p.get("fps_stats")
         if st:
-            w("- Bildrate: Median %s, Mittel %s, p5 %s, Minimum %s, Maximum %s (n=%d Intervalle à 2 s)" % (st["median"], st["mean"], st["p5"], st["min"], st["max"], st["n"]))
-            w("  - Verlauf `%s`" % spark([e["fps"] for e in a["fps"]]))
+            w("- Frame rate: median %s, mean %s, p5 %s, minimum %s, maximum %s (n=%d intervals of 2 s)" % (st["median"], st["mean"], st["p5"], st["min"], st["max"], st["n"]))
+            w("  - Trend `%s`" % spark([e["fps"] for e in a["fps"]]))
         if p["samples"]:
             rs = [s[1] for s in p["samples"]]
-            w("- RSS (Host, alle 2 s): Spitze %d MiB, Median %d MiB, zuletzt %d MiB; CPU des Prozesses Median %.0f %%; Last des Macs (Load 1 min) Median %.0f, Spitze %.0f%s" % (
+            w("- RSS (host, every 2 s): peak %d MiB, median %d MiB, last %d MiB; process CPU median %.0f %%; Mac load (load 1 min) median %.0f, peak %.0f%s" % (
                 max(rs), median(rs), rs[-1], median([s[2] for s in p["samples"]]), median([s[3] for s in p["samples"]]), max(s[3] for s in p["samples"]),
-                " **(hohe Fremdlast: Bildraten nicht aussagekräftig)**" if median([s[3] for s in p["samples"]]) > 12 else ""))
-            w("  - Verlauf `%s`" % spark(rs))
+                " **(high external load: frame rates not meaningful)**" if median([s[3] for s in p["samples"]]) > 12 else ""))
+            w("  - Trend `%s`" % spark(rs))
         if p.get("marks"):
-            w("\n**Zeitleiste** (erster Aufruf der markierten Methoden):\n")
+            w("\n**Timeline** (first call of the marked methods):\n")
             for name, ms in p["marks"]:
                 w("- %7.1f s  %s" % (ms / 1000, name))
         if p.get("anchors"):
-            w("- Eingabe-Anker (Sekunden ab Start des Harness): " + ", ".join("%s %.1f" % kv for kv in p["anchors"].items()))
+            w("- Input anchors (seconds since the harness start): " +", ".join("%s %.1f" % kv for kv in p["anchors"].items()))
         if a["threads"]:
-            w("\nThread-Zustände am Ende: " + ", ".join("%s ×%d" % (k, v) for k, v in sorted(a["threads"].items(), key=lambda x: -x[1])))
+            w("\nThread states at the end: " +", ".join("%s ×%d" % (k, v) for k, v in sorted(a["threads"].items(), key=lambda x: -x[1])))
         if p.get("stalls"):
-            w("\n**Bildstillstände:** " + "; ".join("t=%.0f bis %.0f s (Bild %d)" % (s["von_t"], s["bis_t"], s["frame"]) for s in p["stalls"]))
-            w("\n### Thread-Zustände beim Stillstand (Hänger-Analyse)\n")
-            w("Beteiligt (Hauptthread 80, Mutex-/Arbiter-Wartende, Threads mit IPC im Dauerbetrieb):\n\n```")
+            w("\n**Frame stalls:** " + "; ".join("t=%.0f to %.0f s (frame %d)" % (s["from_t"], s["to_t"], s["frame"]) for s in p["stalls"]))
+            w("\n### Thread states during the stall (hang analysis)\n")
+            w("Involved (main thread 80, mutex/arbiter waiters, threads with continuous IPC):\n\n```")
             for d in a["thread_detail"]:
-                if d["state"] == "beendet" or not (d["id"] == 80 or d["svc"] in ("ArbitrateLock", "ArbitrateUnlock", "SleepThread", "WaitSynchronization") or d["ipc"] > 1000 or d["mutex"]):
+                if d["state"] == "finished" or not (d["id"] == 80 or d["svc"] in ("ArbitrateLock", "ArbitrateUnlock", "SleepThread", "WaitSynchronization") or d["ipc"] > 1000 or d["mutex"]):
                     continue
                 w("Thread %d: %s, %d SVCs, %d IPC" % (d["id"], d["svc"], d["svcs"], d["ipc"]))
                 for x in ([d["wait"], d["mutex"]] + d["bt"][:8]):
@@ -691,60 +691,60 @@ def render_md(rep):
                         w("    " + sym_line(x)[:200])
             w("```")
             if a["dumps"]:
-                w("\nGastspeicher beim Ende (Wörter ab Adresse):\n\n```")
+                w("\nGuest memory at the end (words from the address):\n\n```")
                 L.extend(a["dumps"])
                 w("```")
             if a["sync_tail"]:
-                w("\nLetzte Synchronisationsereignisse (T = Thread):\n\n```")
+                w("\nLast synchronization events (T = thread):\n\n```")
                 L.extend(a["sync_tail"][-40:])
                 w("```")
         if a["signal"] or a["fatal"] or p["returncode"] not in (0, None):
-            w("\n### Absturz / Abbruch\n")
+            w("\n### Crash / abort\n")
             if a["signal"]:
                 w("- %s" % a["signal"].strip())
             for f in a["fatal"][:5]:
                 w("- `%s`" % sym_line(f)[:300])
-            w("- Exit-Code %s, Dauer %.0f s" % (p["returncode"], p["wall"]))
+            w("- Exit code %s, duration %.0f s" % (p["returncode"], p["wall"]))
             if a["host_bt"]:
-                w("\nHost-Rückverfolgung (oberste 12):\n\n```")
+                w("\nHost backtrace (top 12):\n\n```")
                 L.extend(x[:150] for x in a["host_bt"][:12])
                 w("```")
             if a["guest_bt"]:
-                w("\nLetzter Gast-Stack (mit IL2CPP-Namen):\n\n```")
+                w("\nLast guest stack (with IL2CPP names):\n\n```")
                 L.extend(sym_line(x)[:200] for x in a["guest_bt"])
                 w("```")
             if a["last_il2"]:
-                w("\nLetzte erstmals aufgerufene Spielmethoden:\n\n```")
+                w("\nLast game methods called for the first time:\n\n```")
                 L.extend(a["last_il2"])
                 w("```")
         if a["unimpl_ipc"]:
-            w("\n### Unbehandelte IPC-Befehle (Standardantwort)\n\n| Dienst:Befehl | Häufigkeit |\n|---|---|")
+            w("\n### Unhandled IPC commands (default response)\n\n| Service:command | Count |\n|---|---|")
             for k, v in sorted(a["unimpl_ipc"].items(), key=lambda x: -x[1]):
                 w("| %s | %d |" % (k, v))
         if a["unimpl_svc"]:
-            w("\n### Nicht umgesetzte SVCs\n")
+            w("\n### Unimplemented SVCs\n")
             for s in a["unimpl_svc"][:5]:
                 w("- `%s`" % s[:200])
         if a["nvn_missing"]:
-            w("\n### NVN-Funktionen ohne Host-Umsetzung\n")
+            w("\n### NVN functions without host implementation\n")
             for s in a["nvn_missing"][:20]:
                 w("- %s" % s)
         if a["noise"]:
-            w("\n### Auffällige Logzeilen (Muster, Häufigkeit)\n\n| Anzahl | Muster |\n|---|---|")
+            w("\n### Conspicuous log lines (pattern, count)\n\n| Count | Pattern |\n|---|---|")
             for k, v in sorted(a["noise"].items(), key=lambda x: -x[1])[:15]:
                 w("| %d | `%s` |" % (v, k.replace("|", "/")))
         top = sorted(a["services"].items(), key=lambda x: -x[1])[:8]
         if top:
-            w("\nHäufigste Dienstbefehle: " + ", ".join("%s ×%d" % kv for kv in top))
+            w("\nMost frequent service commands: " +", ".join("%s ×%d" % kv for kv in top))
         if p.get("shot_summary"):
             s = p["shot_summary"]
-            w("\n### Bilder\n\n%d Bilder in `%s` (schwarz: %d, unverändert zum Vorgänger: %d)." % (s["n"], p["shots"], s["black"], s["same"]))
+            w("\n### Images\n\n%d images in `%s` (black: %d, unchanged from the previous: %d)." % (s["n"], p["shots"], s["black"], s["same"]))
             for c in s["sheets"]:
-                w("- Kontaktbogen `%s`" % c)
+                w("- Contact sheet `%s`" % c)
     if rep.get("save"):
         s = rep["save"]
-        w("\n## Spielstand\n\n- `SaveData.bin`: %s, Größe %s, sha256 %s…, Ausgangsstand %s…, geändert: %s, Änderungszeit %s" % ("vorhanden" if s.get("exists") else "fehlt", s.get("size"), s.get("sha"), s.get("base_sha"), s.get("changed"), s.get("mtime")))
-        w("- Prüfung: %s" % s.get("check"))
+        w("\n## Save\n\n- `SaveData.bin`: %s, size %s, sha256 %s…, initial state %s…, changed: %s, modification time %s" % ("present" if s.get("exists") else "missing", s.get("size"), s.get("sha"), s.get("base_sha"), s.get("changed"), s.get("mtime")))
+        w("- Check: %s" % s.get("check"))
     return "\n".join(L) + "\n"
 
 
@@ -753,7 +753,7 @@ def build_report(run_dir, sc, phases, args, started, bin_sha):
         a = analyze_log(p["log"], None)
         p["analysis"] = a
         end = a["fps"][-1]["t"] if a["fps"] else 0
-        m = re.search(r"nach ([\d.]+) s", a["result"])
+        m = re.search(r"after ([\d.]+) s", a["result"])
         endt = float(m.group(1)) if m else p["wall"]
         p["stalls"] = detect_stalls(a["fps"], endt)
         p["fps_stats"] = fps_stats(a["fps"], 30.0) or fps_stats(a["fps"])
@@ -768,7 +768,7 @@ def build_report(run_dir, sc, phases, args, started, bin_sha):
         sheets = []
         if extra and infos:
             files = extra[0]
-            keep = [(f, i) for f, i in zip(files, infos) if not i["black"] and not i["same_as_prev"]]   # Kontaktbogen nur mit Bildern, die etwas zeigen
+            keep = [(f, i) for f, i in zip(files, infos) if not i["black"] and not i["same_as_prev"]]   # contact sheet only with images that show something
             if keep:
                 sheets = contact_sheet([f for f, _ in keep], [i for _, i in keep], str(Path(p["shots"]).parent / ("contact_%s" % p["tag"])))
         p["shot_summary"] = {"n": len(infos), "black": sum(i["black"] for i in infos), "same": sum(i["same_as_prev"] for i in infos), "sheets": sheets, "files": infos}
@@ -783,7 +783,7 @@ def build_report(run_dir, sc, phases, args, started, bin_sha):
         if len(pr["il2_first"]) > 4000:
             pr["il2_first"] = dict(list(pr["il2_first"].items())[:4000])
     (run_dir / "report.json").write_text(json.dumps(rep, indent=1, ensure_ascii=False), encoding="utf-8")
-    # der Markdown-Bericht braucht die Rohdaten je Phase (a, marks, ...)
+    # the Markdown report needs the raw data per phase (a, marks, ...)
     md_rep = dict(rep)
     md_rep["phases"] = [dict(pr, analysis=p["analysis"]) for pr, p in zip(rep["phases"], phases)]
     (run_dir / "report.md").write_text(render_md(md_rep), encoding="utf-8")
@@ -798,7 +798,7 @@ def main():
     ap.add_argument("--no-il2sym", action="store_true")
     ap.add_argument("--timeout", type=int, default=0)
     ap.add_argument("--label", default="")
-    ap.add_argument("--min-free", type=int, default=10, help="harte Untergrenze freier Platz in GB (Soll 15: Warnung darunter)")
+    ap.add_argument("--min-free", type=int, default=10, help="hard lower limit of free space in GB (target 15: warning below)")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--report", default="")
     args = ap.parse_args()
@@ -813,25 +813,25 @@ def main():
         sc = parse_scenario(meta["scenario"])
         phases = meta["phases"]
         rep = build_report(run_dir, sc, phases, args, meta["started"], meta["bin_sha"])
-        print("Bericht: %s" % (run_dir / "report.md"))
+        print("Report: %s" % (run_dir / "report.md"))
         return 0 if rep["ok"] else 1
     if not args.scenario:
-        ap.error("Szenario fehlt")
+        ap.error("scenario missing")
     if not Path(args.bin).is_file():
-        print("Binärdatei fehlt: %s" % args.bin, file=sys.stderr)
+        print("Binary missing: %s" % args.bin, file=sys.stderr)
         return 2
     if free_gb() < args.min_free:
-        print("Zu wenig freier Platz: %.1f GB (< %d GB)" % (free_gb(), args.min_free), file=sys.stderr)
+        print("Not enough free space: %.1f GB (< %d GB)" % (free_gb(), args.min_free), file=sys.stderr)
         return 3
     if free_gb() < MIN_FREE_GB:
-        print("Warnung: nur %.1f GB frei (Soll %d GB); dieser Lauf braucht unter 100 MB" % (free_gb(), MIN_FREE_GB), file=sys.stderr)
+        print("Warning: only %.1f GB free (target %d GB); this run needs under 100 MB" % (free_gb(), MIN_FREE_GB), file=sys.stderr)
     sc = parse_scenario(args.scenario)
     QA.mkdir(parents=True, exist_ok=True)
     lock = open(QA / ".lock", "w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        print("Es läuft schon ein QA-Lauf (Sperrdatei %s)" % (QA / ".lock"), file=sys.stderr)
+        print("A QA run is already in progress (lock file %s)" % (QA / ".lock"), file=sys.stderr)
         return 2
     stamp = time.strftime("%Y%m%d-%H%M%S")
     run_dir = QA / ("%s-%s%s" % (args.scenario, stamp, ("-" + args.label) if args.label else ""))
@@ -847,19 +847,19 @@ def main():
         if (base / "user_id.hex").is_file():
             shutil.copy(base / "user_id.hex", run_dir / "save" / "user_id.hex")
     for i, ph in enumerate(sc["phases"]):
-        print("[qa] Phase %d/%d: %d Eingaben, Zeitlimit %d s" % (i + 1, len(sc["phases"]), len(ph["inputs"]), args.timeout or ph["timeout"]), flush=True)
+        print("[qa] Phase %d/%d: %d inputs, time limit %d s" % (i + 1, len(sc["phases"]), len(ph["inputs"]), args.timeout or ph["timeout"]), flush=True)
         res = run_phase(args, sc, i, ph, run_dir)
         phases.append(res)
-        print("[qa] Phase %d beendet: Exit-Code %s nach %.0f s" % (i + 1, res["returncode"], res["wall"]), flush=True)
+        print("[qa] Phase %d finished: exit code %s after %.0f s" % (i + 1, res["returncode"], res["wall"]), flush=True)
         if res["returncode"] not in (0, None) and i + 1 < len(sc["phases"]):
-            print("[qa] Absturz, weitere Phasen entfallen", flush=True)
+            print("[qa] Crash, further phases are skipped", flush=True)
             break
     (run_dir / "meta.json").write_text(json.dumps({"scenario": sc["name"], "started": started, "bin_sha": bin_sha, "phases": phases}, indent=1), encoding="utf-8")
     rep = build_report(run_dir, sc, phases, args, started, bin_sha)
-    print("[qa] Ergebnis %s -> %s" % ("BESTANDEN" if rep["ok"] else "FEHLER", run_dir / "report.md"))
+    print("[qa] Result %s -> %s" % ("PASSED" if rep["ok"] else "FAILED", run_dir / "report.md"))
     for c in rep["checks"]:
         if not c["ok"]:
-            print("  FEHLER: %s: %s" % (c["name"], c["detail"]))
+            print("  FAILED: %s: %s" % (c["name"], c["detail"]))
     return 0 if rep["ok"] else 1
 
 

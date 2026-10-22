@@ -1,4 +1,4 @@
-"""Tests für scripts/shader_wrap.py – ausschließlich synthetische Eingaben (kein Spielinhalt, kein Unity, kein Metal)."""
+"""Tests for scripts/shader_wrap.py: synthetic inputs only (no game content, no Unity, no Metal)."""
 import argparse
 import contextlib
 import io
@@ -49,7 +49,7 @@ class Members(unittest.TestCase):
 
     def test_word_expr_matrix_is_column_major(self):
         m = mat("unity_ObjectToWorld", 0)
-        # Zeile r des Blocks = Spalte r der Matrix: Wort 4*c + r = M[r][c]
+        # row r of the block = column r of the matrix: word 4*c + r = M[r][c]
         self.assertEqual(sw.word_expr(m, 0), "unity_ObjectToWorld[0][0]")
         self.assertEqual(sw.word_expr(m, 1), "unity_ObjectToWorld[1][0]")
         self.assertEqual(sw.word_expr(m, 4), "unity_ObjectToWorld[0][1]")
@@ -59,7 +59,7 @@ class Members(unittest.TestCase):
         self.assertEqual(sw.word_expr(m2, 16 + 4), "M[1][0][1]")
         m3 = mat("N", 0, 9)
         self.assertEqual(sw.word_expr(m3, 5), "N[1][1]")
-        self.assertIsNone(sw.word_expr(m3, 3))  # Fuellwort der dritten Spalte
+        self.assertIsNone(sw.word_expr(m3, 3))  # filler word of the third column
 
     def test_rows(self):
         cb = {"name": "VGlobals", "size": 80, "members": [vec("_Time", 0, 4), vec("_Scale", 16, 1), vec("_Off", 20, 2),
@@ -71,7 +71,7 @@ class Members(unittest.TestCase):
         self.assertEqual(rows[2][3], "unity_MatrixVP[3][0]")
         self.assertEqual(rows[5][3], "unity_MatrixVP[3][3]")
         self.assertEqual(sw.uint4_row(rows[1]), "uint4(asuint(_Scale), asuint(_Off.x), asuint(_Off.y), 0u)")
-        # kleinere Zeilenzahl als der Block: abgeschnitten, kein Fehler
+        # fewer rows than the block: truncated, no error
         self.assertEqual(len(sw.rows_for_block(cb, 3)), 3)
 
 
@@ -121,7 +121,7 @@ class RenderState(unittest.TestCase):
         lines = sw.render_state_lines(s)
         self.assertIn("Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha", lines)
         self.assertIn("BlendOp Max", lines)
-        self.assertIn("ColorMask RGB", lines)   # 14 = R+G+B ohne Alpha
+        self.assertIn("ColorMask RGB", lines)   # 14 = R+G+B without alpha
         s["rtBlend"][0]["colMask"] = 0
         self.assertIn("ColorMask 0", sw.render_state_lines(s))
 
@@ -181,7 +181,7 @@ class Selection(unittest.TestCase):
         self.assertEqual(sw.select_entry(self.pas, "fragment", ["A", "B"])[0], 0)   # Reihenfolge egal, lokal + global
         with self.assertRaises(sw.WrapError) as cm:
             sw.select_entry(self.pas, "fragment", ["Z"])
-        self.assertIn("keine fragment-Variante", str(cm.exception))
+        self.assertIn("no fragment variant", str(cm.exception))
 
     def test_find_shader(self):
         inv = {"shaders": [{"name": "X/Y", "bundle": "b1"}, {"name": "X/Y", "bundle": "b2"}], "extraShaders": [{"name": "Z", "bundle": "r"}]}
@@ -256,7 +256,7 @@ class Build(unittest.TestCase):
         self.assertIn("#pragma disable_fastmath", text)
         self.assertIn("#pragma skip_optimizations metal", text)
         self.assertIn("#define MX_EXTERNAL_RESOURCES", text)
-        # Uniforms genau einmal deklariert (gemeinsamer Name _Tint kommt nur im Vertex-Block vor, _Cut im Fragment-Block)
+        # uniforms declared exactly once (the shared name _Tint appears only in the vertex block, _Cut in the fragment block)
         self.assertEqual(text.count("float4x4 unity_MatrixVP;"), 1)
         self.assertEqual(text.count("float _Cut;"), 1)
         self.assertIn("Texture2D<float4> _MainTex;", text)
@@ -289,7 +289,7 @@ class Build(unittest.TestCase):
         self.assertIn("MxFOut o = mx_fs(f, front);", text)
         self.assertIn("bool front : SV_IsFrontFace", text)
         self.assertEqual(man["varyings"], [{"location": 0, "interpolation": "perspective"}, {"location": 2, "interpolation": "flat"}])
-        self.assertTrue(any("Varyings [5]" in w for w in man["warnings"]))
+        self.assertTrue(any("varyings [5]" in w for w in man["warnings"]))
         self.assertEqual(man["vertexInputs"], [{"location": 0, "semantic": "POSITION"}, {"location": 1, "semantic": "TEXCOORD0"}])
         self.assertEqual(man["textures"]["fragment"][0]["property"], "_MainTex")
 
@@ -302,7 +302,7 @@ class Build(unittest.TestCase):
         self.assertEqual(man["arrays"], {"mxav_cb3": 16, "mxaf_cb3": 16})
 
     def test_int_uniform_words_are_converted(self):
-        # Das Original liest das Wort als int (float(int(cb))): die Float-Eigenschaft 1.0 darf nicht als Bitmuster 0x3F800000 ankommen.
+        # The original reads the word as int (float(int(cb))): the float property 1.0 must not arrive as the bit pattern 0x3F800000.
         vs, fs = stages()
         fs.hlsl += "\n    r1 = asuint(float(int(mx_cb3[0][0])));\n"
         text, _, _ = sw.build_shader(SHADER, 0, 0, ["KW_A"], vs, fs, "named", "metal", sw.EXACT_PRAGMAS, None, None)
@@ -338,7 +338,7 @@ class Build(unittest.TestCase):
         self.assertIn("float4x4 unity_WorldToObjectArray; } unity_Builtins0Array[500]; }", text)
         self.assertIn("uint mxv_cbr4(uint off)", text)
         self.assertIn("uint e = min(off / 128u, 499u);", text)
-        # Wort 0 = M[0][0], Wort 1 = M[1][0] (Zeile des Blocks = Spalte der Matrix), zweite Matrix ab Wort 16
+        # word 0 = M[0][0], word 1 = M[1][0] (row of the block = column of the matrix), second matrix from word 16
         self.assertIn("case 0: return asuint(unity_Builtins0Array[e].unity_ObjectToWorldArray[0][0]);", text)
         self.assertIn("case 1: return asuint(unity_Builtins0Array[e].unity_ObjectToWorldArray[1][0]);", text)
         self.assertIn("case 16: return asuint(unity_Builtins0Array[e].unity_WorldToObjectArray[0][0]);", text)
@@ -376,7 +376,7 @@ class Build(unittest.TestCase):
             sw.build_shader(SHADER, 0, 0, [], vs, fs, "named")
 
     def test_texture_table_uses_sampler_field(self):
-        # Maxwell-Texturindex 1 gehoert zum Eintrag mit sampler == 1 (hier _MainTex), nicht zu dem mit index == 1
+        # Maxwell texture index 1 belongs to the entry with sampler == 1 (here _MainTex), not to the one with index == 1
         vs, fs = stages(fs_extra={"textures": [{"slot": 0, "bindless": True, "textureTableIndex": 1, "typeName": "2d", "shadow": False}]})
         fs.entry = dict(FS_ENTRY, textures=[{"name": "_Other", "index": 1, "sampler": 0, "dim": "2D"},
                                             {"name": "_MainTex", "index": 0, "sampler": 1, "dim": "2D"}])
@@ -387,7 +387,7 @@ class Build(unittest.TestCase):
         dyn = {"constantBuffers": [{"index": 4, "size": 65536, "dynamic": True}]}
         with self.assertRaises(sw.WrapError) as cm:
             self.build(stage_kw={"vs_extra": dyn})
-        self.assertIn("Instancing", str(cm.exception))
+        self.assertIn("instancing", str(cm.exception))
         text, _, _ = self.build("array", stage_kw={"vs_extra": dyn})
         self.assertIn("float4 mxav_cb4[4096];", text)
 
@@ -425,7 +425,7 @@ class Build(unittest.TestCase):
 
 
 class EndToEnd(unittest.TestCase):
-    """wrap() mit Inventar, Zuordnung und einem Schein-Uebersetzer (schreibt feste Ausgaben)."""
+    """wrap() with inventory, mapping and a fake translator (writes fixed outputs)."""
 
     FAKE = textwrap.dedent('''\
         #!/usr/bin/env python3
@@ -490,13 +490,13 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(sw.wrap(self.args()), 0)
         text = (self.d / "o" / "x.shader").read_text()
         self.assertIn("// fake vs mask=", text)
-        self.assertIn("// fake fs mask=1", text)     # --vs-out-mask kommt aus der Ausgabemaske des Vertex-Shaders
+        self.assertIn("// fake fs mask=1", text)     # --vs-out-mask comes from the output mask of the vertex shader
         man = json.loads((self.d / "o" / "x.wrap.json").read_text())
         self.assertEqual(man["blobs"], {"vertex": "aa", "fragment": "bb"})
         self.assertEqual(man["mode"], "named")
 
     def test_failing_translation_is_reported(self):
-        # der Schein-Uebersetzer lehnt den Blob "cc" ab (wie maxwell2msl bei globalem Speicher)
+        # the fake translator rejects the blob "cc" (like maxwell2msl for global memory)
         with self.assertRaises(sw.WrapError) as cm:
             sw.run_translator(self.d / "blobs" / "cc.bin", "vs", self.d / "w2", "t", None, (), self.d / "fake_translator.py")
         self.assertIn("global memory", str(cm.exception))
@@ -507,7 +507,7 @@ class EndToEnd(unittest.TestCase):
             rc = sw.main(["No/Such", "--out", str(self.d / "z.shader"), "--inventory", str(self.d / "inv.json"),
                           "--mapping", str(self.d / "map.json"), "--prog-blob", str(self.d / "pb.json")])
         self.assertEqual(rc, 1)
-        self.assertIn("nicht im Inventar", err.getvalue())
+        self.assertIn("not in the inventory", err.getvalue())
 
     def test_unknown_keywords(self):
         with self.assertRaises(sw.WrapError):
@@ -571,7 +571,7 @@ class ShadowPartner(unittest.TestCase):
         self.assertEqual((1, ["SHADOWS_DEPTH"]), wa.shadow_partner(ss, 0, ("DIRECTIONAL", "SHADOWS_SCREEN")))
         self.assertEqual((1, ["INSTANCING_ON", "SHADOWS_DEPTH"]), wa.shadow_partner(ss, 0, ("DIRECTIONAL", "INSTANCING_ON")))
         self.assertEqual((1, ["SHADOWS_DEPTH", "_ALPHATEST_ON"]), wa.shadow_partner(ss, 0, ("DIRECTIONAL", "_ALPHATEST_ON", "_CASCADE_SINGLE")))
-        # INSTANCING_ON ohne passende Wurf-Variante: ohne Instancing zurueckfallen
+        # INSTANCING_ON without a matching variant: fall back to non-instancing
         self.assertEqual((1, ["SHADOWS_DEPTH", "_ALPHATEST_ON"]),
                          wa.shadow_partner(ss, 0, ("INSTANCING_ON", "_ALPHATEST_ON")))
         self.assertIsNone(wa.shadow_partner({"passes": [self.pass_("FORWARDBASE", [("DIRECTIONAL",)])]}, 0, ("DIRECTIONAL",)))

@@ -1,6 +1,6 @@
-"""Tests für scripts/build_all.sh (Stufenauswahl, Dry-run, Marker, Fehlerwege) – nur synthetische Daten.
+"""Tests for scripts/build_all.sh (stage selection, dry run, markers, error paths), synthetic data only.
 
-Es werden weder Unity noch Xcode noch hactool gestartet; der Preflight ist abgeschaltet (--no-preflight).
+Neither Unity nor Xcode nor hactool is started; the preflight is switched off (--no-preflight).
 """
 import os
 import subprocess
@@ -33,10 +33,10 @@ class DryRunTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.work = os.path.join(self.tmp.name, "work")
-        self.xci = os.path.join(self.tmp.name, "spiel.xci")
+        self.xci = os.path.join(self.tmp.name, "game.xci")
         self.keys = os.path.join(self.tmp.name, "keys")
-        write(self.xci, "synthetisch")
-        write(os.path.join(self.keys, "prod.keys"), "synthetisch")
+        write(self.xci, "synthetic")
+        write(os.path.join(self.keys, "prod.keys"), "synthetic")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -51,34 +51,34 @@ class DryRunTests(unittest.TestCase):
             self.assertIn("  %-12s" % stage, out, stage)
         for stage in ("il2cpp", "masterdata", "video", "audio"):
             self.assertNotIn("  %-12s" % stage, out, stage)
-        self.assertFalse(os.path.exists(self.work), "Dry-run darf nichts anlegen")
+        self.assertFalse(os.path.exists(self.work), "dry run must not create anything")
 
     def test_recomp_dry_run_plans_all_steps_and_writes_nothing(self):
         rc, out, err = self.dry(["--only", "recomp"])
         self.assertEqual(rc, 0, err)
-        self.assertIn("Stufe recomp", out)
-        for part in ("Generator", "Übersetzen", "Modulbilder", "BDSP.app", "RomFS"):
+        self.assertIn("Stage recomp", out)
+        for part in ("generator", "compile", "module images", "BDSP.app", "RomFS"):
             self.assertIn(part, out)
-        self.assertIn("-O0 ab 300 KB", out)
-        self.assertFalse(os.path.exists(self.work), "Dry-run darf nichts anlegen")
+        self.assertIn("-O0 from 300 KB", out)
+        self.assertFalse(os.path.exists(self.work), "dry run must not create anything")
 
     def test_recomp_options_reach_the_plan(self):
         rc, out, err = self.dry(["--only", "recomp", "--recomp-o0-kb", "500", "--hardened", "--no-install-data"])
         self.assertEqual(rc, 0, err)
-        self.assertIn("-O0 ab 500 KB", out)
-        self.assertNotIn("RomFS nach Application Support", out)
+        self.assertIn("-O0 from 500 KB", out)
+        self.assertNotIn("RomFS into Application Support", out)
 
     def test_recomp_skipped_for_ios_target(self):
         rc, out, err = self.dry(["--only", "recomp", "--target", "ios"])
         self.assertEqual(rc, 0, err)
-        self.assertIn("übersprungen", out)
+        self.assertIn("skipped", out)
 
     def test_from_to_and_only(self):
         rc, out, _ = self.dry(["--from", "recomp", "--to", "shaders"])
         self.assertEqual(rc, 0)
-        self.assertIn("Stufen: recomp shaders ", out)
+        self.assertIn("Stages: recomp shaders ", out)
         rc, out, _ = self.dry(["--only", "shaders,tools"])
-        self.assertIn("Stufen: tools shaders ", out)
+        self.assertIn("Stages: tools shaders ", out)
 
     def test_removed_stages_and_options_are_rejected(self):
         for stage in ("il2cpp", "masterdata", "video", "audio"):
@@ -94,12 +94,12 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(run(["--only", "shaders", "--from", "tools", "--dry-run"])[0], 2)
         rc, _, err = run(["extract", "--no-preflight", "--work", self.work])
         self.assertEqual(rc, 2)
-        self.assertIn("--xci fehlt", err)
+        self.assertIn("--xci missing", err)
 
-    def test_missing_input_file_has_german_message(self):
-        rc, _, err = run(["extract", "--no-preflight", "--work", self.work, "--xci", "/nicht/da.xci"])
+    def test_missing_input_file_has_clear_message(self):
+        rc, _, err = run(["extract", "--no-preflight", "--work", self.work, "--xci", "/not/there.xci"])
         self.assertEqual(rc, 3)
-        self.assertIn("XCI nicht gefunden", err)
+        self.assertIn("XCI not found", err)
 
     def test_dry_run_respects_marker(self):
         write(os.path.join(self.work, "exefs", "main"), "m")
@@ -109,9 +109,9 @@ class DryRunTests(unittest.TestCase):
         bs.write_marker(self.work, "shaders", digest)
         rc, out, _ = self.dry(["--only", "shaders"])
         self.assertEqual(rc, 0)
-        self.assertIn("Marker passt", out)
+        self.assertIn("marker matches", out)
         rc, out, _ = self.dry(["--only", "shaders", "--force"])
-        self.assertIn("würde ausgeführt", out)
+        self.assertIn("would run", out)
 
 
 

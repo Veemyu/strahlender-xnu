@@ -1,0 +1,8 @@
+desc City: arrow keys in all directions (walking, B = running), camera pan, location name window
+include continue_city
+timeout 420
+finish 15
+shots 90
+cycle field+12 22 2.0 UP,RIGHT,DOWN,LEFT
+cycle field+36 20 1.5 UP+B,LEFT+B,DOWN+B,RIGHT+B
+field+58 NONE 0.1

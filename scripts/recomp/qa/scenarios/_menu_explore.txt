@@ -1,0 +1,15 @@
+desc Exploration: X menu (order of the entries)
+include continue_city
+timeout 420
+finish 8
+shots 45
+field+10 X 0.3
+field+16 DOWN 0.3
+field+20 DOWN 0.3
+field+24 DOWN 0.3
+field+28 DOWN 0.3
+field+32 DOWN 0.3
+field+36 DOWN 0.3
+field+40 DOWN 0.3
+field+44 B 0.3
+field+50 NONE 0.1

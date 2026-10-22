@@ -1,4 +1,4 @@
-desc Start bis zum Titelbild (Eröffnungsfilm, Titelschleife), ohne Eingabe
+desc Start up to the title screen (opening movie, title loop), without input
 timeout 80
 shots 270
 mark Title::Start
@@ -8,4 +8,4 @@ mark OpeningController::OpenSelectLanguage
 expect il2 Title::Start
 expect il2 TitlePlayer::Play
 expect il2-not OpeningController::OpenSelectLanguage
-expect fps-min 25 ab 30
+expect fps-min 25 from 30
