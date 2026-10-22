@@ -39,6 +39,9 @@ void rt_fatal(const char *fmt, ...);
 #ifdef BDSP_REBASE32   // fallback values as in bdsp.h (variant B)
 #define ALIAS_BASE 0x20000000ull
 #define ALIAS_SIZE 0xE0000000ull
+#elif defined(BDSP_COMPACT_BASE)   // variant A-low
+#define ALIAS_BASE (BDSP_COMPACT_BASE + 0x20000000ull)
+#define ALIAS_SIZE 0xE0000000ull
 #else
 #define ALIAS_BASE 0x7190000000ull
 #define ALIAS_SIZE 0x0190000000ull

@@ -10,7 +10,8 @@
 #          deploy_ios.sh save             put SaveData.bin/Backup.bin/user_id.hex from work/recomp/save into Documents/ (the app imports them)
 #          deploy_ios.sh shots            fetch Documents/Shots to work/visual/ipad-recomp/
 #          deploy_ios.sh files [path]     file list of the container (default Documents)
-# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables)
+# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables),
+#              IOS_MODEL=a (memory model A-low instead of B, see gen32.sh)
 set -euo pipefail
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -19,6 +20,12 @@ cd "$ROOT"
 BUNDLE_ID="${BUNDLE_ID:-dev.local.xnubdsp}"
 DD="$ROOT/work/builds/ios-recomp-derived"
 RT=work/recomp/ios-rt
+OBJD=work/recomp/obj32
+IMGD=work/recomp/img32
+# IOS_MODEL=a: memory model A-low (gen32.sh and build_rt32.sh with MODEL=a): own folders and build output, the app project is the same
+if [[ "${IOS_MODEL:-b}" = a ]]; then
+  export MODEL=a; RT=work/recomp/ios-rt-a; OBJD=work/recomp/obj4i; IMGD=work/recomp/img4i; DD="$ROOT/work/builds/ios-recomp-derived-a"
+fi
 RES=work/ios/res
 mkdir -p work/builds work/visual/ipad-recomp work/ios
 
@@ -78,13 +85,13 @@ case "${1:-}" in
   build)
     scripts/recomp/ios/build_rt32.sh ios
     rm -f "$RT/libgame.a"
-    libtool -static -o "$RT/libgame.a" work/recomp/obj32/*.o 2> /dev/null
+    libtool -static -o "$RT/libgame.a" "$OBJD"/*.o 2> /dev/null
     rm -rf "$RES"; mkdir -p "$RES/img32"
-    for f in work/recomp/img32/*.img work/recomp/img32/*.mod work/recomp/img32/*.syms.json work/recomp/img32/hle.txt; do cp "$f" "$RES/img32/"; done
+    for f in "$IMGD"/*.img "$IMGD"/*.mod "$IMGD"/*.syms.json "$IMGD"/hle.txt; do cp "$f" "$RES/img32/"; done
     cp work/exefs/main.npdm "$RES/main.npdm"
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
-      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
+      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates BDSP_RT_DIR="$(basename "$RT")" OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "built:$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
     # The Xcode build phase puts the shader cache, metallibs and pipelines.bin into the bundle (app/copy_bundle_resources.sh)

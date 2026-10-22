@@ -14,6 +14,10 @@ void ui_window_init(void) {
     LOG("[ios] Metal device %s, BC textures %d, maxBufferLength %llu MiB, recommendedMaxWorkingSetSize %llu MiB\n", dev.name.UTF8String,
         (int)dev.supportsBCTextureCompression, (unsigned long long)(dev.maxBufferLength >> 20),
         (unsigned long long)(dev.recommendedMaxWorkingSetSize >> 20));
+    // The game's textures are BC1 to BC7. A GPU without BC (iPhones without M-class GPU, as far as known) cannot create them yet: say so clearly
+    // instead of failing later with a missing texture. BDSP_ALLOW_NO_BC=1 starts anyway.
+    if (!dev.supportsBCTextureCompression && !getenv("BDSP_ALLOW_NO_BC"))
+        FATAL("this GPU does not support BC texture compression (needed by the game); BDSP_ALLOW_NO_BC=1 starts anyway\n");
 }
 
 SDL_Window *ui_window(void) { return NULL; }

@@ -229,6 +229,16 @@ static void thread_start(KThread *t, uint64_t host_stack) {
     pthread_attr_init(&attr);
     t->host_stack_size = host_stack ? host_stack : g_host_stack;
     pthread_attr_setstacksize(&attr, t->host_stack_size);
+#ifdef BDSP_IOS
+    // The iPad has 4 performance cores for 5 busy guest threads: the game and job threads (Horizon priority 44 or better, lower is
+    // more important) get a QoS class so they stay on performance cores. BDSP_QOS=0 switches it off.
+    static int qos = -1;
+    if (qos < 0) qos = getenv("BDSP_QOS") ? atoi(getenv("BDSP_QOS")) : 1;
+    if (qos) {
+        if (t->prio <= 32) pthread_attr_set_qos_class_np(&attr, QOS_CLASS_USER_INTERACTIVE, 0);
+        else if (t->prio <= 50) pthread_attr_set_qos_class_np(&attr, QOS_CLASS_USER_INITIATED, 0);
+    }
+#endif
     t->started = true;
     int rc = pthread_create(&t->host, &attr, thread_main, t);
     pthread_attr_destroy(&attr);
@@ -465,7 +475,7 @@ out:
 // ------------------------------------------------------------------ Anhalten fremder Threads (Boehm-GC)
 // SetThreadActivity(handle, paused) -> thread_suspend; GetThreadContext3 returns the guest register set from Cpu.
 // The guest keeps its registers only in Cpu and on the guest stack (spike measurement: 100 % of the windows).
-static uint64_t g_suspends, g_resumes;
+uint64_t g_suspends, g_resumes;
 static uint32_t svc_set_thread_activity(uint32_t h, uint32_t activity) {
     KObject *o = handle_get(h);
     if (!o || o->type != KOBJ_THREAD) return R_INVALID_HANDLE;

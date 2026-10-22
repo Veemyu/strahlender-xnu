@@ -4,22 +4,43 @@
 #   build_rt32.sh ios     -> work/recomp/ios-rt/*.o and work/recomp/ios-rt/libbdsp_rt.a (iPhoneOS, without SDL/FFmpeg; input and window
 #                            are provided by the app, scripts/recomp/ios/app)
 # The NVN sources (work/recomp/nvn-src, prepare.sh) are rewritten by nvn_rebase32.py into a copy nvn-src32.
+# MODEL=a (ios only) builds memory model A-low instead: guest address == host address at the fixed window ORG (default 0x400000000, must match
+# gen32.sh), the NVN sources are used unchanged (copy nvn-src-a, only the UI part is replaced), objects from work/recomp/obj4i, output
+# work/recomp/ios-rt-a.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 TARGET=${1:-mac}
 SRC=scripts/recomp/rt-bdsp
-NVN32=work/recomp/nvn-src32
-OBJ=${OBJ:-work/recomp/obj32}
-BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
+MODEL=${MODEL:-b}
+ORG=${ORG:-0x400000000}
+if [ "$MODEL" = a ]; then
+  [ "$TARGET" = ios ] || { echo "MODEL=a: only the ios target" >&2; exit 2; }
+  NVN32=work/recomp/nvn-src-a
+  OBJ=${OBJ:-work/recomp/obj4i}
+  BASEINC="-I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
+else
+  NVN32=work/recomp/nvn-src32
+  OBJ=${OBJ:-work/recomp/obj32}
+  BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
+fi
 # Recreate the copy if it is missing or the repo sources are newer (otherwise the iPad runs with an outdated renderer)
 scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null   # copies only if the stamp differs
-# nvn-src32: stamp from the source stamp plus nvn_rebase32.py and movie_glue.c
+# nvn-src32: stamp from the source stamp plus nvn_rebase32.py and movie_glue.c (model A-low: nvn_ios.py and ui_ios.inc instead)
 . scripts/recomp/rt-bdsp/nvn/hash.inc.sh
-want32=$({ cat work/recomp/nvn-src/.stamp; sha256 scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c"; } | sha256 | cut -d' ' -f1)
-if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
-  python3 scripts/recomp/ios/nvn_rebase32.py work/recomp/nvn-src "$NVN32" > /dev/null
-  echo "$want32" > "$NVN32/.stamp32"
+if [ "$MODEL" = a ]; then
+  want32=$({ cat work/recomp/nvn-src/.stamp; sha256 scripts/recomp/ios/nvn_ios.py scripts/recomp/ios/ui_ios.inc; } | sha256 | cut -d' ' -f1)
+  if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
+    rm -rf "$NVN32"; cp -R work/recomp/nvn-src "$NVN32"
+    python3 scripts/recomp/ios/nvn_ios.py "$NVN32" > /dev/null
+    echo "$want32" > "$NVN32/.stamp32"
+  fi
+else
+  want32=$({ cat work/recomp/nvn-src/.stamp; sha256 scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c"; } | sha256 | cut -d' ' -f1)
+  if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
+    python3 scripts/recomp/ios/nvn_rebase32.py work/recomp/nvn-src "$NVN32" > /dev/null
+    echo "$want32" > "$NVN32/.stamp32"
+  fi
 fi
 
 case "$TARGET" in
@@ -31,7 +52,7 @@ case "$TARGET" in
     FW="-framework AudioToolbox -framework Metal -framework MetalFX -framework AppKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework ImageIO -framework CoreServices -framework UniformTypeIdentifiers -framework Foundation $(pkg-config --libs sdl3) $(pkg-config --libs libavcodec libavformat libavutil)"
     ;;
   ios)
-    RT=work/recomp/ios-rt; OUT=
+    RT=work/recomp/ios-rt; [ "$MODEL" = a ] && RT=work/recomp/ios-rt-a; OUT=
     SDKP=$(xcrun --sdk iphoneos --show-sdk-path)
     CCFLAGS="-target arm64-apple-ios17.0 -isysroot $SDKP -DBDSP_IOS"; MCC="/usr/bin/clang $CCFLAGS"
     NVINC="-I scripts/recomp/ios/shim -I $NVN32 -I $NVN32/nvn $BASEINC"
@@ -44,7 +65,7 @@ mkdir -p "$RT/nvn"
 TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; } | sha256 | cut -d' ' -f1)
 if [ "$(cat "$RT/.stamp" 2>/dev/null || true)" != "$TC_STAMP" ]; then rm -f "$RT"/*.o "$RT"/nvn/*.o; echo "$TC_STAMP" > "$RT/.stamp"; fi
 . scripts/recomp/rt-bdsp/nvn/flags.inc.sh
-DEFS="-DBDSP_REBASE32"
+DEFS="-DBDSP_REBASE32"; [ "$MODEL" = a ] && DEFS="-DBDSP_COMPACT_BASE=${ORG}ull"
 [ "$TARGET" = ios ] && SDLINC="-I scripts/recomp/ios/shim" || SDLINC=""
 
 compile() {  # Quelle Objekt Compiler Flags...
@@ -76,7 +97,8 @@ fi
 compile "$SRC/nvn/nvn_glue.c" "$RT/nvn/nvn_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC
 compile "$SRC/nvn/debug_thread.c" "$RT/nvn/debug_thread.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC
 if [ "$TARGET" = mac ] || [ -n "$FFINC" ]; then
-  compile "$NVN32/movie_glue32.c" "$RT/nvn/movie_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC $FFINC
+  MG="$NVN32/movie_glue32.c"; [ "$MODEL" = a ] && MG="$SRC/nvn/movie_glue.c"
+  compile "$MG" "$RT/nvn/movie_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC $FFINC
 fi
 
 if [ "$TARGET" = mac ]; then

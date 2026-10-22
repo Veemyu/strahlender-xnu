@@ -2,28 +2,34 @@
 # Memory model B (--rebase32): generates the C of all modules with base addresses below 4 GiB and C SIMD (--simd c) to
 # work/recomp/gen32/<module>, builds the module images (relocations to the new bases) to work/recomp/img32 and
 # compiles everything for iPhoneOS arm64 to work/recomp/obj32 (target iOS, afterwards platformless via vtool for the Mac test).
-# Everything under work/ (gitignored). The bases must match the B values in scripts/recomp/rt-bdsp/bdsp.h.
-# Usage: gen32.sh gen | img | build [JOBS] | hot | all [JOBS]   (hot: only the -O2 files of scripts/recomp/hot_o2.txt)
+# MODEL=a selects memory model A-low: the same compact layout shifted to the fixed host address ORG (default 0x400000000), guest address ==
+# host address, NEON inline assembler (--simd asm); folders gen4i, img4i, obj4i (the runtime is built with -DBDSP_COMPACT_BASE=ORG).
+# Everything under work/ (gitignored). The bases must match the compact layout in scripts/recomp/rt-bdsp/bdsp.h.
+# Usage: [MODEL=a] gen32.sh gen | img | build [JOBS] | hot | all [JOBS]   (hot: only the -O2 files of scripts/recomp/hot_o2.txt)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
-GEN=${GEN:-work/recomp/gen32}
-IMG=${IMG:-work/recomp/img32}
-OBJ=${OBJ:-work/recomp/obj32}
-base_of() { case "$1" in main) echo 0x01000000;; sdk) echo 0x07000000;; subsdk0) echo 0x08000000;; rtld) echo 0x09000000;; esac; }
+MODEL=${MODEL:-b}
+if [ "$MODEL" = a ]; then ORG=${ORG:-0x400000000}; SIMD=asm; D=4i; else ORG=0; SIMD=c; D=32; fi
+export MODEL
+GEN=${GEN:-work/recomp/gen$D}
+IMG=${IMG:-work/recomp/img$D}
+OBJ=${OBJ:-work/recomp/obj$D}
+base_of() { local o; case "$1" in main) o=0x01000000;; sdk) o=0x07000000;; subsdk0) o=0x08000000;; rtld) o=0x09000000;; esac; printf '0x%x' $(( ORG + o )); }
+HLE_BASE=$(printf '0x%x' $(( ORG + 0x0A000000 )))
 # Toolchain stamp of the guest objects: SDKs, compiler, compile script and headers of the runtime. If one of them changes, everything is recompiled.
 obj_stamp() {
   . scripts/recomp/rt-bdsp/nvn/hash.inc.sh
-  { xcrun --sdk iphoneos --show-sdk-version; xcrun --sdk iphoneos --show-sdk-path; xcode-select -p; clang --version; sha256 scripts/recomp/ios/compile_chunk_ios.sh
-    find scripts/recomp/rt32 scripts/recomp/rt scripts/recomp/upstream/runtime -name '*.h' | LC_ALL=C sort | while IFS= read -r h; do sha256 "$h"; done; } | sha256 | cut -d' ' -f1
+  { echo "model $MODEL $ORG"; xcrun --sdk iphoneos --show-sdk-version; xcrun --sdk iphoneos --show-sdk-path; xcode-select -p; clang --version; sha256 scripts/recomp/ios/compile_chunk_ios.sh
+    find $([ "$MODEL" = a ] || echo scripts/recomp/rt32) scripts/recomp/rt scripts/recomp/upstream/runtime -name '*.h' | LC_ALL=C sort | while IFS= read -r h; do sha256 "$h"; done; } | sha256 | cut -d' ' -f1
 }
 
 do_gen() {
   mkdir -p "$GEN" work/recomp/spike2
   for m in rtld main sdk subsdk0; do
     # The base only enters the adrp/adr constants, the rest is unchanged compared to variant A.
-    python3 scripts/recomp/eh_gen.py gen "$m" "work/exefs/$m" "$(base_of "$m")" "$GEN/$m" --simd c > "work/recomp/spike2/gen32_$m.log" 2>&1
-    tail -1 "work/recomp/spike2/gen32_$m.log"
+    python3 scripts/recomp/eh_gen.py gen "$m" "work/exefs/$m" "$(base_of "$m")" "$GEN/$m" --simd $SIMD > "work/recomp/spike2/gen${D}_$m.log" 2>&1
+    tail -1 "work/recomp/spike2/gen${D}_$m.log"
   done
 }
 
@@ -33,9 +39,9 @@ do_img() {
   for pass in 1 2; do
     for m in main sdk subsdk0; do
       if [ $pass = 1 ]; then
-        python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --hle-base 0x0A000000 --out "$IMG" > /dev/null
+        python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" > /dev/null
       else
-        python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --hle-base 0x0A000000 --out "$IMG" \
+        python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" \
           --link "$IMG/main.syms.json" --link "$IMG/sdk.syms.json" --link "$IMG/subsdk0.syms.json" \
           --interpose-from "$IMG/main.syms.json" --hle-list scripts/recomp/rt-bdsp/hle_nvn.txt
       fi
@@ -82,7 +88,7 @@ do_hot() {
   local fn n f o
   while read -r fn; do
     case "$fn" in ""|"#"*) continue ;; esac
-    n=$(printf 'f_%x' $(( 0x${fn#f_} - 0x7000000000 + 0x1000000 )))
+    n=$(printf 'f_%x' $(( 0x${fn#f_} - 0x7000000000 + $(base_of main) )))
     for f in $(grep -l "^void $n(.*{\$" "$GEN"/main/*.c); do
       o="$OBJ/main_$(basename "$f" .c).o"
       [ -e "$o.o2" ] && [ "$o.o2" -nt "$f" ] && continue

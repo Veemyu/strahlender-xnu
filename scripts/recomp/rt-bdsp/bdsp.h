@@ -29,7 +29,7 @@
 
 // ---- Guest address space, variant A (fixed window, guest address == host address). The modules sit where the generator
 // expects them (gen_all.sh); everything else is freely chosen. Variant B (iPad) is in guestmem.h.
-#ifndef BDSP_REBASE32
+#if !defined(BDSP_REBASE32) && !defined(BDSP_COMPACT_BASE)
 #define GUEST_LO     0x7000000000ull
 #define GUEST_HI     0x7320000000ull   // 12,5 GiB
 #define MAIN_BASE    0x7000000000ull
@@ -53,32 +53,40 @@
 // In nninitStartup BDSP asks for almost all application memory (3.14 GB) as one contiguous region, which the SDK
 // takes from the alias region with MapPhysicalMemory: it must be at least that large (measured: abort in StandardAllocator::Initialize).
 #else
-// ---- Variant B (--rebase32, iPad): everything below 4 GiB, window at g_base (scripts/recomp/ios/gen32.sh generates C and images with
-// these bases). The alias region takes the application-memory chunk (SDK: 3.14 GiB in one piece via MapPhysicalMemory), the heap region
+// ---- Compact layout. Variant B (--rebase32, iPad): everything below 4 GiB, window at g_base. Variant A-low (BDSP_COMPACT_BASE, iOS): the same
+// layout shifted to a fixed host address, guest address == host address (no G2H), NEON inline assembler (scripts/recomp/ios/gen_a.sh).
+// gen32.sh generates C and images for variant B with these bases. The alias region takes the application-memory chunk (SDK: 3.14 GiB in one piece via MapPhysicalMemory), the heap region
 // (SetHeapSize) stays small: BDSP does not call SetHeapSize (measured, docs/recomp-ios.md).
-#define GUEST_LO     0x00000000ull
-#define GUEST_HI     0x100000000ull
-#define MAIN_BASE    0x01000000ull
-#define SDK_BASE     0x07000000ull
-#define SUBSDK0_BASE 0x08000000ull
-#define RTLD_BASE    0x09000000ull
-#define HLE_BASE     0x0A000000ull
+#ifdef BDSP_COMPACT_BASE
+#define LAYOUT_ORG   (BDSP_COMPACT_BASE)
+#else
+#define LAYOUT_ORG   0x00000000ull
+#endif
+#define GUEST_LO     LAYOUT_ORG
+#define GUEST_HI     (LAYOUT_ORG + 0x100000000ull)
+#define MAIN_BASE    (LAYOUT_ORG + 0x01000000ull)
+#define SDK_BASE     (LAYOUT_ORG + 0x07000000ull)
+#define SUBSDK0_BASE (LAYOUT_ORG + 0x08000000ull)
+#define RTLD_BASE    (LAYOUT_ORG + 0x09000000ull)
+#define HLE_BASE     (LAYOUT_ORG + 0x0A000000ull)
 #define HLE_SIZE     0x00100000ull
-#define TLS_BASE     0x0A100000ull
+#define TLS_BASE     (LAYOUT_ORG + 0x0A100000ull)
 #define TLS_SIZE     0x00100000ull
-#define HLE_HEAP     0x0A200000ull
+#define HLE_HEAP     (LAYOUT_ORG + 0x0A200000ull)
 #define HLE_HEAP_SIZE 0x06000000ull
-#define STACK_BASE   0x10400000ull
+#define STACK_BASE   (LAYOUT_ORG + 0x10400000ull)
 #define STACK_SIZE   0x0FC00000ull   // 252 MiB: the SDK places the thread stacks into this region with MapMemory (32 MiB were enough for 19 threads)
-#define ALIAS_BASE   0x20000000ull   // the SDK places its block on the next 2 GiB boundary of the alias region (here 0x8000_0000, A: 0x72_0000_0000);
+#define ALIAS_BASE   (LAYOUT_ORG + 0x20000000ull)   // the SDK places its block on the next 2 GiB boundary of the alias region (here 0x8000_0000, A: 0x72_0000_0000);
 #define ALIAS_SIZE   0xE0000000ull   // the region must be large enough for the randomly placed rest (measured: from 0x4000_0000 on a 32 MiB allocation fails)
-#define HEAP_BASE    0x10300000ull
+#define HEAP_BASE    (LAYOUT_ORG + 0x10300000ull)
 #define HEAP_MAX     0x00100000ull   // SetHeapSize is not used (measured); the region sits in a gap only for completeness
 #define APP_MEMORY   0x83000000ull   // application memory reported to the SDK (GetInfo 6/21; it deducts 64 MiB of system resources): 1.98 GiB from 0x8000_0000
 #define HEAP_REPORT  0xD0000000ull   // reported size of the heap region (GetInfo 5); the SDK checks the application memory against it, SetHeapSize does not use it
 #endif
-#ifdef BDSP_REBASE32
+#if defined(BDSP_REBASE32)
 #define ADDR_SPACE_END (1ull << 32)
+#elif defined(BDSP_COMPACT_BASE)
+#define ADDR_SPACE_END GUEST_HI
 #else
 #define ADDR_SPACE_END (1ull << 39)
 #endif
@@ -238,11 +246,18 @@ void fnprof_report(FILE *f, unsigned n);
 void nvn_report(FILE *f);       // nvn_glue.c: counters of the NVN layer
 void nvn_glue_init(void);       // nvn_glue.c: binds the host functions of the NVN layer to the HLE slots
 int ui_run(void);               // nvn/metal.m: window loop of the main thread (does not return)
+uint64_t renderer_present_count(void);   // nvn/metal.m: frames presented so far
 #else
 #define nvn_report(f) ((void)0)
 #define nvn_glue_init() ((void)0)
 #define ui_run() 0
+#define renderer_present_count() 0
 #endif
+// Per-second performance log (BDSP_PERF_LOG=1, main.c): frames, GC stop-the-world calls (kernel.c), entries of the guest functions
+// listed in BDSP_COUNT_FN=<hex>[,<hex>...] (dispatch.c, at most 4; this turns on the function-entry hook, which slows the guest down)
+extern uint64_t g_suspends, g_resumes;
+extern uint64_t g_count_addr[4], g_count_hits[4];
+extern int g_count_n;
 void bdsp_fatal_report(const char *why, int code);   // main.c: report from a normal context (main thread) and process exit; does not return from the main thread
 void bdsp_gate_hit(const char *what);   // main.c: with BDSP_STOP_AT_GATE=1 (default) report and exit
 void guest_log(const char *line);

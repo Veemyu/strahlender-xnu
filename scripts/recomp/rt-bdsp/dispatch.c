@@ -106,8 +106,15 @@ static __thread uint64_t ring_fn[RING], ring_lr[RING];
 static __thread unsigned ring_pos;
 static struct { uint64_t tid; uint64_t *fn, *lr; unsigned *pos; } ring_reg[128];
 static int ring_nreg;
+uint64_t g_count_addr[4], g_count_hits[4];
+int g_count_n;
 void fnprof_hit(uint64_t a, uint64_t lr, uint64_t x0) {
     (void)x0;
+    if (g_count_n) {   // BDSP_COUNT_FN: only count the listed functions
+        for (int i = 0; i < g_count_n; i++)
+            if (a == g_count_addr[i]) __atomic_fetch_add(&g_count_hits[i], 1, __ATOMIC_RELAXED);
+        return;
+    }
     static __thread int registered;
     if (il2_n) il2_hit(a);
     if (!registered) {
@@ -141,6 +148,11 @@ void dispatch_init(void) {
     tables[2] = (FnTable){subsdk0_fn_addrs, subsdk0_fn_ptrs, subsdk0_fn_count, subsdk0_fn_addrs[0], subsdk0_fn_addrs[subsdk0_fn_count - 1]};
     tables[3] = (FnTable){rtld_fn_addrs, rtld_fn_ptrs, rtld_fn_count, rtld_fn_addrs[0], rtld_fn_addrs[rtld_fn_count - 1]};
     if (getenv("BDSP_FNPROF")) g_fnprof = 1;
+    for (const char *p = getenv("BDSP_COUNT_FN"); p && *p && g_count_n < 4;) {
+        g_count_addr[g_count_n++] = strtoull(p, (char **)&p, 16);
+        while (*p == ',') p++;
+        g_fnprof = 1;
+    }
     if (getenv("BDSP_IL2SYM")) {
         il2_load(getenv("BDSP_IL2SYM"));
         if (il2_n) qsort(il2_syms, il2_n, sizeof *il2_syms, il2_cmp);

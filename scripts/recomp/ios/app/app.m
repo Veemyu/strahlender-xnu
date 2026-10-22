@@ -12,6 +12,8 @@
 #include <stdatomic.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
+#import <Metal/Metal.h>
 #import "../../app/icon_variants.h"
 
 static BOOL sceneActive;   // state of the scene, set by SceneDelegate
@@ -162,6 +164,41 @@ static double FootprintMiB(void) {
     mach_msg_type_number_t n = TASK_VM_INFO_COUNT;
     if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&v, &n) != KERN_SUCCESS) return -1;
     return v.phys_footprint / 1048576.0;
+}
+
+// BDSP_PROBE_FIXED=1 (diagnostic, off by default): device data (memory, cores, GPU features) and the question whether a fixed window of
+// 12.5 GiB can be reserved at a chosen address. Prints one line per candidate and ends the app. The result decides whether guest address
+// == host address (memory model A-low) is possible on a device, and whether the GPU can run the game at all (BC textures, buffer size).
+static long SysctlLong(const char *name) {
+    int64_t v = 0;
+    size_t n = sizeof v;
+    return sysctlbyname(name, &v, &n, NULL, 0) == 0 ? (long)v : -1;
+}
+
+static void ProbeFixedWindows(void) {
+    id<MTLDevice> d = MTLCreateSystemDefaultDevice();
+    fprintf(stderr, "[probe-fixed] device %s, RAM %ld MiB, CPU cores %ld (performance %ld, efficiency %ld)\n", d.name.UTF8String,
+            SysctlLong("hw.memsize") >> 20, SysctlLong("hw.physicalcpu"), SysctlLong("hw.perflevel0.physicalcpu"), SysctlLong("hw.perflevel1.physicalcpu"));
+    fprintf(stderr, "[probe-fixed] GPU: BC textures %d, maxBufferLength %llu MiB, recommendedMaxWorkingSetSize %llu MiB, Apple7 %d, Apple8 %d, Apple9 %d\n",
+            (int)d.supportsBCTextureCompression, (unsigned long long)(d.maxBufferLength >> 20),
+            (unsigned long long)(d.recommendedMaxWorkingSetSize >> 20), (int)[d supportsFamily:MTLGPUFamilyApple7],
+            (int)[d supportsFamily:MTLGPUFamilyApple8], (int)[d supportsFamily:MTLGPUFamilyApple9]);
+    static const vm_address_t cand[] = {0x100000000ull, 0x200000000ull, 0x300000000ull, 0x400000000ull, 0x800000000ull,
+                                        0x1000000000ull, 0x2000000000ull, 0x7000000000ull};
+    const vm_size_t size = 12800ull << 20;
+    fprintf(stderr, "[probe-fixed] os_proc_available_memory %zu MiB\n", os_proc_available_memory() >> 20);
+    for (size_t i = 0; i < sizeof cand / sizeof *cand; i++) {
+        vm_address_t a = cand[i];
+        kern_return_t kr = vm_allocate(mach_task_self(), &a, size, VM_FLAGS_FIXED);
+        fprintf(stderr, "[probe-fixed] %#llx + %llu MiB: %s (kr %d)\n", (unsigned long long)cand[i], (unsigned long long)(size >> 20),
+                kr == KERN_SUCCESS ? "ok" : "ERROR", kr);
+        if (kr == KERN_SUCCESS) {
+            memset((void *)a, 1, 64ull << 20);   // really touch some pages
+            vm_deallocate(mach_task_self(), a, size);
+        }
+    }
+    fprintf(stderr, "[probe-fixed] done\n");
+    exit(0);
 }
 
 static void *StatsLoop(void *arg) {
@@ -455,6 +492,7 @@ static void *RuntimeThread(void *arg) {
 
 // Called from SceneDelegate as soon as the game view appears: then the CAMetalLayer exists with its size
 static void StartRuntime(void) {
+    if (getenv("BDSP_PROBE_FIXED")) ProbeFixedWindows();
     NSString *docs = Documents(), *res = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res"];
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:[docs stringByAppendingPathComponent:@"Shots"] withIntermediateDirectories:YES attributes:nil error:nil];

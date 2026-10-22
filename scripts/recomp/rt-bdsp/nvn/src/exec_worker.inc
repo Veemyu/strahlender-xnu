@@ -108,7 +108,13 @@ static int xw_enabled(void) {
             g_nvn_ordered = xw_ordered;
             if (getenv("BDSP_EXEC_FRAMES") && atoi(getenv("BDSP_EXEC_FRAMES")) > 0) xw_max_frames = atoi(getenv("BDSP_EXEC_FRAMES"));
             pthread_t t;
-            pthread_create(&t, NULL, xw_main, NULL);
+            pthread_attr_t xa;
+            pthread_attr_init(&xa);
+#ifdef BDSP_IOS   // the worker sat 30 % of its time on efficiency cores in the profile (see kernel.c, BDSP_QOS=0 switches it off)
+            if (!getenv("BDSP_QOS") || atoi(getenv("BDSP_QOS"))) pthread_attr_set_qos_class_np(&xa, QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+            pthread_create(&t, &xa, xw_main, NULL);
+            pthread_attr_destroy(&xa);
             pthread_detach(t);
         }
     }

@@ -10,7 +10,7 @@
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <unistd.h>
-#if !defined(BDSP_REBASE32) || !defined(__APPLE__) || !TARGET_OS_IPHONE
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
 #include <mach/mach_vm.h>
 #endif
 
@@ -32,6 +32,14 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
     if (p == MAP_FAILED) { fprintf(stderr, "FATAL: guest window (4 GiB) cannot be reserved: %s\n", strerror(errno)); _exit(1); }
     g_base = p;
     mprotect(p, 0x10000, PROT_NONE);
+}
+#elif defined(BDSP_COMPACT_BASE)
+// Variant A-low (iOS): the compact layout at a fixed address (guest address == host address). mach_vm_allocate does not exist on iOS.
+__attribute__((constructor(101))) static void reserve_guest_space(void) {
+    vm_address_t a = GUEST_LO;
+    if (vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) == KERN_SUCCESS) return;
+    fprintf(stderr, "FATAL: guest window %llx-%llx is not free\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI);
+    _exit(1);
 }
 #else
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
@@ -147,17 +155,44 @@ void bdsp_gate_hit(const char *what) {
 
 static int g_timeout = 120;
 
+// A fixed amount of dependent integer work, best of three: its duration follows the CPU clock, so thermal throttling shows in the perf log
+// (microseconds; the same number on a cool and a throttled device means the game's growing cost per frame is not the clock).
+static uint64_t cpu_cal_us(void) {
+    uint64_t best = ~0ull;
+    for (int r = 0; r < 3; r++) {
+        uint64_t t0 = rt_now_ns(), x = 88172645463325252ull;
+        for (int i = 0; i < 4000000; i++) { x ^= x << 13; x ^= x >> 7; x ^= x << 17; }
+        __asm__ volatile("" : : "r"(x));
+        uint64_t d = (rt_now_ns() - t0) / 1000;
+        if (d < best) best = d;
+    }
+    return best;
+}
+
 // Supervision: time limit, guest end, crash report, progress lines
 static void *monitor_loop(void *arg) {
     (void)arg;
-    uint64_t last_progress = 0;
+    uint64_t last_progress = 0, last_perf = 0;
     const char *why = "time limit";
+    const int perf_log = getenv("BDSP_PERF_LOG") != NULL || g_count_n > 0;
+    if (perf_log) pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);   // stay on a performance core: the calibration must see the clock
     for (;;) {
         usleep(20000);
         double secs = (rt_now_ns() - g_start_ns) / 1e9;
         if (g_fatal_why) { report(g_fatal_why); _exit(g_fatal_code); }
         if (g_stop) { why = g_stop == 3 ? "guest requested exit" : g_stop == 4 ? "abort (SIGINT)" : "guest ended the process"; break; }
         if (secs > g_timeout) break;
+        if (perf_log && (uint64_t)secs > last_perf) {   // cumulative values; the difference between two lines is the rate
+            last_perf = (uint64_t)secs;
+            char fns[160] = "";
+            for (int i = 0, n = 0; i < g_count_n; i++)
+                n += snprintf(fns + n, sizeof fns - n, " %llx=%llu", (unsigned long long)g_count_addr[i], (unsigned long long)g_count_hits[i]);
+            struct rusage ru;   // CPU time of all threads: independent of the frame rate cap, so growing cost per frame shows at 120 fps too
+            getrusage(RUSAGE_SELF, &ru);
+            long long cpu_ms = ((long long)ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) * 1000 + (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1000;
+            LOG("[perf] %.0f s frames %llu cpu_ms %lld gc_suspends %llu gc_resumes %llu rss %ld MiB cal_us %llu fn%s\n", secs, (unsigned long long)renderer_present_count(),
+                cpu_ms, (unsigned long long)g_suspends, (unsigned long long)g_resumes, rss_now_mib(), (unsigned long long)cpu_cal_us(), fns);
+        }
         if ((uint64_t)secs >= last_progress + 10) {
             last_progress = (uint64_t)secs;
             LOG("[progress] %.0f s, Threads %d, RSS %ld MiB\n", secs, kernel_thread_count(), rss_now_mib());
@@ -178,6 +213,13 @@ int main(int argc, char **argv) {
 #endif
     signal(SIGINT, on_sigint);
     signal(SIGPIPE, SIG_IGN);
+#ifndef BDSP_APP
+    {   // without the app configuration (bdsp_boot32, tests): BDSP_FPS=30|60|120 sets the frame rate target
+        extern volatile int g_bdsp_fps;
+        int f = getenv("BDSP_FPS") ? atoi(getenv("BDSP_FPS")) : 0;
+        if (f == 30 || f == 60 || f == 120) g_bdsp_fps = f;
+    }
+#endif
     int no_window = 0;
 #ifdef BDSP_NVN_NONE
     no_window = 1;
