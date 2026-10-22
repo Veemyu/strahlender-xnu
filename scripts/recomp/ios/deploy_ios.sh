@@ -87,15 +87,10 @@ case "${1:-}" in
       -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "gebaut: $(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
-    # Shader-Cache (lokal erzeugt, gitignoriert) ins App-Bundle, damit der Start nicht alles neu kompiliert
+    # Shader-Cache, Metallibs und pipelines.bin legt die Xcode-Build-Phase ins Bundle (app/copy_bundle_resources.sh)
     APPB="$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' -path '*iphoneos*' | head -1)"
     python3 scripts/recomp/app/game_icons.py ios --source "${BDSP_ICON_SOURCE:-work/recomp/icons/source}" \
       --output work/ios/icons --bundle "$APPB"
-    if [[ -d work/recomp/cache/shaders && -n "$APPB" ]]; then
-      rm -rf "$APPB/shaders" && cp -R work/recomp/cache/shaders "$APPB/shaders" && echo "Shader-Cache ins Bundle: $(ls "$APPB/shaders" | wc -l | tr -d ' ') Dateien"
-    fi
-    if [[ -n "$APPB" && -f work/recomp/cache/pipelines.bin ]]; then cp work/recomp/cache/pipelines.bin "$APPB/pipelines.bin"; fi
-    if [[ -n "$APPB" && -d work/recomp/cache/shaders-bin-iphoneos ]]; then rm -rf "$APPB/shaders-bin" && cp -R work/recomp/cache/shaders-bin-iphoneos "$APPB/shaders-bin"; fi
     python3 scripts/recomp/app/game_icons.py sign-ios --bundle "$APPB"
     ;;
   build-stub)   # Sondenbau ohne Laufzeit und Gastcode: Gerätedaten, 4-GiB-Fenster, Metal-Puffer (Container für die Datenkopie)

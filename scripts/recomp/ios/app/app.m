@@ -13,10 +13,12 @@
 #include <sys/stat.h>
 #import "../../app/icon_variants.h"
 
+static BOOL sceneActive;   // Zustand der Szene, von SceneDelegate gesetzt
+
 static void ApplyAppIcon(void) {
     static BOOL pending;
     UIApplication *app = UIApplication.sharedApplication;
-    if (pending || !app.supportsAlternateIcons || app.applicationState != UIApplicationStateActive) return;
+    if (pending || !app.supportsAlternateIcons || !sceneActive) return;
     NSDictionary *icons = BDSPReadIcons(NSBundle.mainBundle.resourcePath);
     NSDictionary *variant = BDSPFindIcon(icons, BDSPIconSelection(icons));
     if (!variant) return;
@@ -64,7 +66,7 @@ static void ConfigureAudioSession(void) {
         audio_output_set_active(0);
         return;
     }
-    SetAudioActive(UIApplication.sharedApplication.applicationState == UIApplicationStateActive && !audioInterrupted);
+    SetAudioActive(sceneActive && !audioInterrupted);
 }
 #ifdef BDSP_STUB
 // Sondenbau (deploy_ios.sh build-stub): ohne Laufzeit und Gastcode; meldet Gerätedaten und prüft das 4-GiB-Fenster auf dem Gerät.
@@ -193,7 +195,6 @@ static void *StatsLoop(void *arg) {
         self.backgroundColor = UIColor.blackColor;
         CAMetalLayer *l = (CAMetalLayer *)self.layer;
         l.opaque = YES;
-        l.contentsScale = UIScreen.mainScreen.scale;
         g_ios_layer = l;
     }
     return self;
@@ -202,7 +203,7 @@ static void *StatsLoop(void *arg) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CAMetalLayer *l = (CAMetalLayer *)self.layer;
-    CGFloat sc = self.window.screen.scale ?: UIScreen.mainScreen.scale;
+    CGFloat sc = self.traitCollection.displayScale;
     l.contentsScale = sc;
     l.drawableSize = CGSizeMake(self.bounds.size.width * sc, self.bounds.size.height * sc);
     CGRect b = self.bounds;
@@ -240,7 +241,7 @@ static void *StatsLoop(void *arg) {
     tl.fontSize = sz;
     tl.alignmentMode = kCAAlignmentCenter;
     tl.foregroundColor = [UIColor colorWithWhite:1 alpha:0.8].CGColor;
-    tl.contentsScale = UIScreen.mainScreen.scale;
+    tl.contentsScale = self.traitCollection.displayScale;
     tl.frame = CGRectMake(c.x - 40, c.y - sz * 0.6, 80, sz * 1.3);
     [self.layer addSublayer:tl];
     [self.pads addObject:(CAShapeLayer *)tl];
@@ -359,11 +360,18 @@ static int KeyBit(UIKeyboardHIDUsage k) {
 
 #pragma mark - App
 
+static GameView *gView;   // Spielansicht der Szene (Controller-Overlay)
+
+@interface SceneDelegate : UIResponder <UIWindowSceneDelegate>
+@property(nonatomic, strong) UIWindow *window;
+- (void)startRuntime;
+@end
+
 @interface GameVC : UIViewController
 @end
 
 @implementation GameVC
-- (void)loadView { self.view = [[GameView alloc] initWithFrame:UIScreen.mainScreen.bounds]; }
+- (void)loadView { gView = [[GameView alloc] initWithFrame:CGRectZero]; self.view = gView; }
 - (BOOL)prefersStatusBarHidden { return YES; }
 - (BOOL)prefersHomeIndicatorAutoHidden { return YES; }
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskLandscape; }
@@ -372,7 +380,7 @@ static int KeyBit(UIKeyboardHIDUsage k) {
     [super viewDidAppear:a];
     [self becomeFirstResponder];
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ [(id)UIApplication.sharedApplication.delegate performSelector:@selector(startRuntime)]; });
+    dispatch_once(&once, ^{ [(SceneDelegate *)self.view.window.windowScene.delegate startRuntime]; });
 }
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)e {
     BOOL handled = NO;
@@ -394,7 +402,6 @@ static int KeyBit(UIKeyboardHIDUsage k) {
 @end
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
-@property(nonatomic, strong) UIWindow *window;
 @end
 
 static void *RuntimeThread(void *arg) {
@@ -415,14 +422,11 @@ static void *RuntimeThread(void *arg) {
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"bdsp_metal_hud"]) setenv("MTL_HUD_ENABLED", "1", 1);
     fprintf(stderr, "[ipad] Metal-HUD %s\n", getenv("MTL_HUD_ENABLED") ? "an" : "aus");
     app.idleTimerDisabled = YES;
-    self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    self.window.rootViewController = [GameVC new];
-    [self.window makeKeyAndVisible];
     for (GCController *c in GCController.controllers) BindController(c);
     [NSNotificationCenter.defaultCenter addObserverForName:GCControllerDidConnectNotification object:nil queue:NSOperationQueue.mainQueue
                                                 usingBlock:^(NSNotification *n) {
         BindController(n.object);
-        GameView *v = (GameView *)self.window.rootViewController.view;
+        GameView *v = gView;
         v.overlayHidden = YES;   // mit Controller: Touch-Gamepad aus
         [v buildOverlay];
     }];
@@ -430,7 +434,7 @@ static void *RuntimeThread(void *arg) {
                                                 usingBlock:^(NSNotification *n) {
         atomic_store(&g_pad_mask, 0);
         publish_buttons();
-        GameView *v = (GameView *)self.window.rootViewController.view;
+        GameView *v = gView;
         v.overlayHidden = GCController.controllers.count > 0;
         [v buildOverlay];
     }];
@@ -441,24 +445,15 @@ static void *RuntimeThread(void *arg) {
         audioInterrupted = type == AVAudioSessionInterruptionTypeBegan;
         if (audioInterrupted) SetAudioActive(NO);
         else if (([n.userInfo[AVAudioSessionInterruptionOptionKey] unsignedIntegerValue] & AVAudioSessionInterruptionOptionShouldResume) &&
-                 UIApplication.sharedApplication.applicationState == UIApplicationStateActive) SetAudioActive(YES);
+                 sceneActive) SetAudioActive(YES);
     }];
     return YES;
 }
 
-- (void)applicationWillResignActive:(UIApplication *)app {
-    (void)app;
-    SetAudioActive(NO);
-}
+@end
 
-- (void)applicationDidBecomeActive:(UIApplication *)app {
-    (void)app;
-    if (!audioInterrupted) SetAudioActive(YES);
-    ApplyAppIcon();
-}
-
-// Aufruf aus viewDidAppear: erst dann gibt es die CAMetalLayer mit ihrer Größe
-- (void)startRuntime {
+// Aufruf aus SceneDelegate, sobald die Spielansicht erscheint: dann gibt es die CAMetalLayer mit ihrer Größe
+static void StartRuntime(void) {
     NSString *docs = Documents(), *res = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res"];
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:[docs stringByAppendingPathComponent:@"Shots"] withIntermediateDirectories:YES attributes:nil error:nil];
@@ -484,6 +479,29 @@ static void *RuntimeThread(void *arg) {
     pthread_detach(t);
     pthread_create(&st, NULL, StatsLoop, NULL);
     pthread_detach(st);
+}
+
+@implementation SceneDelegate
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options {
+    (void)session;
+    (void)options;
+    self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+    self.window.rootViewController = [GameVC new];
+    [self.window makeKeyAndVisible];
+}
+- (void)sceneWillResignActive:(UIScene *)scene {
+    (void)scene;
+    sceneActive = NO;
+    SetAudioActive(NO);
+}
+- (void)sceneDidBecomeActive:(UIScene *)scene {
+    (void)scene;
+    sceneActive = YES;
+    if (!audioInterrupted) SetAudioActive(YES);
+    ApplyAppIcon();
+}
+- (void)startRuntime {
+    StartRuntime();
 }
 @end
 

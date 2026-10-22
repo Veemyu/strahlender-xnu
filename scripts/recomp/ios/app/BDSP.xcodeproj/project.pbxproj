@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* app.m in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* app.m */; };
 		A10000000000000000000002 /* res in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* res */; };
+		A10000000000000000000003 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Settings.bundle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -17,6 +18,7 @@
 		A20000000000000000000003 /* BDSP.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BDSP.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000004 /* BDSP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BDSP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000005 /* res */ = {isa = PBXFileReference; lastKnownFileType = folder; name = res; path = ../../../../work/ios/res; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000006 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = Settings.bundle; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -27,6 +29,7 @@
 				A20000000000000000000002 /* Info.plist */,
 				A20000000000000000000003 /* BDSP.entitlements */,
 				A20000000000000000000005 /* res */,
+				A20000000000000000000006 /* Settings.bundle */,
 				A30000000000000000000002 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -48,6 +51,7 @@
 			buildPhases = (
 				A50000000000000000000001 /* Sources */,
 				A50000000000000000000002 /* Resources */,
+				A50000000000000000000003 /* Shader und Pipelines ins Bundle kopieren */,
 			);
 			buildRules = (
 			);
@@ -91,10 +95,34 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000002 /* res in Resources */,
+				A10000000000000000000003 /* Settings.bundle in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A50000000000000000000003 /* Shader und Pipelines ins Bundle kopieren */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Shader und Pipelines ins Bundle kopieren";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"${SRCROOT}/copy_bundle_resources.sh\"";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A50000000000000000000001 /* Sources */ = {
