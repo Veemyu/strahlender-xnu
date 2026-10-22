@@ -11,6 +11,12 @@ GEN=${GEN:-work/recomp/gen32}
 IMG=${IMG:-work/recomp/img32}
 OBJ=${OBJ:-work/recomp/obj32}
 base_of() { case "$1" in main) echo 0x01000000;; sdk) echo 0x07000000;; subsdk0) echo 0x08000000;; rtld) echo 0x09000000;; esac; }
+# Toolchain-Stempel der Gast-Objekte: SDKs, Compiler, Übersetzungsskript und Header der Laufzeit. Ändert sich einer davon, wird neu übersetzt.
+obj_stamp() {
+  . scripts/recomp/rt-bdsp/nvn/hash.inc.sh
+  { xcrun --sdk iphoneos --show-sdk-version; xcrun --sdk iphoneos --show-sdk-path; xcode-select -p; clang --version; sha256 scripts/recomp/ios/compile_chunk_ios.sh
+    find scripts/recomp/rt32 scripts/recomp/rt scripts/recomp/upstream/runtime -name '*.h' | LC_ALL=C sort | while IFS= read -r h; do sha256 "$h"; done; } | sha256 | cut -d' ' -f1
+}
 
 do_gen() {
   mkdir -p "$GEN" work/recomp/spike2
@@ -44,6 +50,10 @@ do_build() {
   [ "$jobs" -gt 4 ] && jobs=4
   local sdk; sdk=$(xcrun --sdk iphoneos --show-sdk-path)
   mkdir -p "$OBJ"
+  local stamp; stamp=$(obj_stamp)
+  if [ "$(cat "$OBJ/.stamp" 2>/dev/null || true)" != "$stamp" ]; then
+    rm -f "$OBJ"/*.o; echo "$stamp" > "$OBJ/.stamp"; echo "Toolchain-Stempel fehlt oder passt nicht: alle Objekte in $OBJ werden neu übersetzt"
+  fi
   for o in "$OBJ"/*.o; do
     [ -e "$o" ] || continue
     b=$(basename "$o" .o); m=${b%%_*}; rest=${b#*_}

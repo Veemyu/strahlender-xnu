@@ -40,6 +40,9 @@ case "$TARGET" in
   *) echo "Aufruf: build_rt32.sh mac|ios" >&2; exit 2 ;;
 esac
 mkdir -p "$RT/nvn"
+# Toolchain-Stempel: Objekte nur mit dem Compiler und den SDKs wiederverwenden, mit denen sie entstanden sind
+TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; } | sha256 | cut -d' ' -f1)
+if [ "$(cat "$RT/.stamp" 2>/dev/null || true)" != "$TC_STAMP" ]; then rm -f "$RT"/*.o "$RT"/nvn/*.o; echo "$TC_STAMP" > "$RT/.stamp"; fi
 . scripts/recomp/rt-bdsp/nvn/flags.inc.sh
 DEFS="-DBDSP_REBASE32"
 [ "$TARGET" = ios ] && SDLINC="-I scripts/recomp/ios/shim" || SDLINC=""
