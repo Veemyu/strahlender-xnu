@@ -20,6 +20,10 @@ shader_translator/__pycache__/
 .DS_Store
 __pycache__/
 
+# Xcode: Benutzerzustand (Fensterlayout, offene Dateien, Pfade mit Benutzernamen) gehört nicht ins Repo
+xcuserdata/
+*.xcuserstate
+
 # Unity-Projekt (unity/): nur eigener Code und Einstellungen tracken
 unity/Library/
 unity/Temp/
