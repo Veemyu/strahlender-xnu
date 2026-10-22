@@ -25,6 +25,12 @@ one() {
   local base; base="$(basename "$src" .metal)"
   local flags=()
   [[ "$base" == v_* ]] && flags+=(-fpreserve-invariance)
+  # Ziel-OS fest auf 26.0: ohne -target erzeugt Xcode 27 AIR v29 für iOS 27.1, das iPadOS 26 nicht lädt (die Laufzeit würde
+  # solche Bibliotheken still verwerfen). 26.0 läuft auch unter Xcode 26.
+  case "$sdk" in
+    iphoneos) flags+=(-target air64-apple-ios26.0) ;;
+    macosx)   flags+=(-target air64-apple-macos26.0) ;;
+  esac
   if xcrun -sdk "$sdk" metal -c "${flags[@]}" "$src" -o "$tmp/$base.air" 2>"$tmp/$base.err" \
      && xcrun -sdk "$sdk" metallib "$tmp/$base.air" -o "$out/$base.metallib" 2>>"$tmp/$base.err"; then
     rm -f "$tmp/$base.air" "$tmp/$base.err"

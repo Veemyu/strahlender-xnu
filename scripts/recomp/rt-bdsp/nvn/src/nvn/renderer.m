@@ -901,6 +901,7 @@ static id<MTLLibrary> prebuilt_library_hash(uint64_t h, char kind) {
     NSError *err = nil;
     id<MTLLibrary> lib = [dev newLibraryWithURL:[NSURL fileURLWithPath:path] error:&err];
     if (lib) @synchronized(prebuilt_libs) { prebuilt_libs[path] = lib; }
+    else { static int n; if (n++ < 3) LOG("[shader] %s nicht geladen: %s\n", path.lastPathComponent.UTF8String, err.localizedDescription.UTF8String); }
     return lib;
 }
 
