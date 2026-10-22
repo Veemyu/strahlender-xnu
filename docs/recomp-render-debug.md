@@ -41,9 +41,10 @@ Center from outside, 2 runs spawning inside it; no long soak yet).
 
 **Related fixes made on the way.**
 - A draw copies its vertex streams from guest memory when it is encoded, but a compute dispatch writes such buffers on the
-  GPU. A stream that overlaps a range a still-pending dispatch writes is now preceded by a flush (`hz_ranges`,
-  `streams_hit_pending_compute`). Cost: a few extra flushes per frame. Whether this is needed on top of the first fix is not
-  established; it removes a real ordering hazard (60 overlaps with identical address and size were measured).
+  GPU. A stream that overlaps a range a dispatch writes (`hz_ranges`, `streams_pending_compute`) is bound straight from the
+  guest buffer, so the GPU orders the draw after the dispatch. (First version: a full flush before the draw; it stalled the
+  render worker ~4 ms per frame and capped Route 222 at ~65 fps; direct binding gave ~85 fps. `BDSP_HZ_FLUSH=1` restores the
+  flush.)
 - `TexBackend` remembers the guest descriptor (target, size, format, samples) its Metal texture was created from and is
   recreated when it changes. This removed 29 of 30 "type mismatch" fallbacks (a 256x256 2D texture served as 1D).
 
@@ -69,6 +70,14 @@ they were encoded, missed texture updates in the cheap change check, stale shade
 | `BDSP_SAVE_CS_DIR=<absolute dir>` | Write the translated MSL of every compute program. |
 | `BDSP_DEBUG_FRAME=<f>` | Existing: detailed draw log of one frame; also accepted as `BDSP_GEOM_FROM`. |
 | `BDSP_PASS_DIR=<absolute dir>` | With `BDSP_DEBUG_FRAME`: write the colour target of every pass as `pass_NNN.png` there (the app's working directory has no `build/`). Multisample targets are not readable this way. |
+
+Performance counters:
+
+| Variable | Effect |
+|---|---|
+| (always, in the `[metal]` stats line) | `flush by hazard/readback/buf2buf/other n/ms`: full GPU flushes by cause and the time the CPU waited. |
+| `BDSP_PASS_TIMES=1` | `[pass]` lines with each stats line: GPU time per pass target (stage-boundary timestamps; a pass is charged only the time after the previous one ended). |
+| `BDSP_XW_LOG=1` | Render worker: time per command list, queue length, how long the guest waits. |
 
 Hang diagnostics (runtime, not rendering). None of these does anything in a normal session:
 

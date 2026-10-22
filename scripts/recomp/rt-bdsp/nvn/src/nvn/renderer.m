@@ -29,8 +29,17 @@ static id<MTLRenderPipelineState> clear_pipes[64];
 static NSMutableDictionary<NSString *, id> *cache;
 // (stats) GPU wait time by cause: 0 = guest fence (nvnSyncWait), 1 = full flush (CPU reads GPU results / ring), 2 = sync all
 static uint64_t stat_wait_by[3], stat_wait_n[3];
+// (stats) full flushes by cause: compute-write hazard on a vertex stream, texture read-back, buffer copy, other
+enum { FL_OTHER, FL_HAZARD, FL_READBACK, FL_BUF2BUF, FL_N };
+static uint64_t stat_flush_n[FL_N], stat_flush_ticks[FL_N];
 static uint64_t stat_draws, stat_skipped, stat_passes, stat_dispatches, stat_wait_ns, stat_flushes, stat_feedback_copies;
 static double stat_gpu_s;
+// BDSP_PASS_TIMES (render_debug.inc): GPU time per pass
+static void pt_attach_render(MTLRenderPassDescriptor *rp);
+static void pt_close_render(void);
+static id<MTLComputeCommandEncoder> pt_compute_encoder(const char *label);
+static void pt_submit(id<MTLCommandBuffer> c);
+static void pt_report(void);
 static uint64_t prof_exec_ns, prof_submit_ns, prof_n, prof_last_ns;
 uint64_t g_gpu_total_ns;  // GPU time of all completed command buffers (dynamic resolution: output_scale.c)
 // (forward: texture-lifetime cleanup and stats, defined further down)
@@ -119,9 +128,13 @@ const char *renderer_stats(void) {
     struct task_vm_info vmi;
     mach_msg_type_number_t vn = TASK_VM_INFO_COUNT;
     uint64_t foot = task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmi, &vn) == KERN_SUCCESS ? vmi.phys_footprint : 0;
-    snprintf(stats_text, sizeof stats_text, "%llu draws, %llu skipped, %llu passes, %llu dispatches, %llu flushes, gpu %.0fms, wait %.0fms, compile %d/%.0fms, fbcopy %llu | tex %d (%.0f MB) views %d snaps %lu mem %.0f MB | waits fence %.0fms/%llu flush %.0fms/%llu all %.0fms/%llu", stat_draws, stat_skipped,
+    snprintf(stats_text, sizeof stats_text, "%llu draws, %llu skipped, %llu passes, %llu dispatches, %llu flushes, gpu %.0fms, wait %.0fms, compile %d/%.0fms, fbcopy %llu | tex %d (%.0f MB) views %d snaps %lu mem %.0f MB | waits fence %.0fms/%llu flush %.0fms/%llu all %.0fms/%llu | flush by hazard %llu/%.0fms readback %llu/%.0fms buf2buf %llu/%.0fms other %llu/%.0fms", stat_draws, stat_skipped,
              stat_passes, stat_dispatches, stat_flushes, stat_gpu_s * 1000.0, (double)stat_wait_ns / 1e6 * 125.0 / 3.0, stat_compiles, stat_compile_ms, stat_feedback_copies,
-             g_tex_live, g_tex_live_bytes / 1048576.0, g_views_live, (unsigned long)(g_snap_copies ? g_snap_copies.count : 0), foot / 1048576.0, stat_wait_by[0] / 24e3, (unsigned long long)stat_wait_n[0], stat_wait_by[1] / 24e3, (unsigned long long)stat_wait_n[1], stat_wait_by[2] / 24e3, (unsigned long long)stat_wait_n[2]);
+             g_tex_live, g_tex_live_bytes / 1048576.0, g_views_live, (unsigned long)(g_snap_copies ? g_snap_copies.count : 0), foot / 1048576.0, stat_wait_by[0] / 24e3, (unsigned long long)stat_wait_n[0], stat_wait_by[1] / 24e3, (unsigned long long)stat_wait_n[1], stat_wait_by[2] / 24e3, (unsigned long long)stat_wait_n[2],
+             (unsigned long long)stat_flush_n[FL_HAZARD], stat_flush_ticks[FL_HAZARD] / 24e3, (unsigned long long)stat_flush_n[FL_READBACK], stat_flush_ticks[FL_READBACK] / 24e3,
+             (unsigned long long)stat_flush_n[FL_BUF2BUF], stat_flush_ticks[FL_BUF2BUF] / 24e3, (unsigned long long)stat_flush_n[FL_OTHER], stat_flush_ticks[FL_OTHER] / 24e3);
+    memset(stat_flush_n, 0, sizeof stat_flush_n); memset(stat_flush_ticks, 0, sizeof stat_flush_ticks);
+    pt_report();
     stat_compiles = 0;
     stat_feedback_copies = 0;
     stat_compile_ms = 0;
@@ -178,6 +191,7 @@ static void end_pass(void) {
     if (enc) {
         [enc endEncoding];
         enc = nil;
+        pt_close_render();
         if (g_debug_frame && pass_color0) {
             id<MTLTexture> t = pass_color0;
             id<MTLCommandBuffer> c = cmdbuf;
@@ -256,6 +270,7 @@ void renderer_submit(void) {
             __atomic_add_fetch(&g_gpu_total_ns, (uint64_t)((done.GPUEndTime - done.GPUStartTime) * 1e9), __ATOMIC_RELAXED);
             if (done.error) LOG("[metal] command buffer error: %s\n", done.error.localizedDescription.UTF8String);
         }];
+        pt_submit(c);
         [c commit];
         g_passes_in_cb = 0;
         pthread_mutex_lock(&cb_lock);
@@ -275,17 +290,21 @@ static struct { uint64_t addr, size; } hz_ranges[HZ_MAX];
 static int hz_n;
 
 // Finish all recorded GPU work (the CPU is about to read GPU results, or reuse the ring).
-void renderer_flush(void) {
+static void flush_why(int why) {
     renderer_submit();
     pthread_mutex_lock(&cb_lock);
     id<MTLCommandBuffer> c = last_cb;
     pthread_mutex_unlock(&cb_lock);
     g_wait_kind = 1;
+    uint64_t t0 = mach_absolute_time();
     wait_cb(c);
+    stat_flush_n[why]++;
+    stat_flush_ticks[why] += mach_absolute_time() - t0;
     g_wait_kind = 0;
     hz_n = 0;  // the GPU has run everything submitted so far
     ring_reset();
 }
+void renderer_flush(void) { flush_why(FL_OTHER); }
 
 #include "render_debug.inc"  // environment-driven debug tools (geometry check, draw hiding, compute MSL dump)
 
@@ -490,6 +509,7 @@ static void begin_pass(void) {
     static int chunk = -1;
     if (chunk < 0) { const char *e = ENV("BDSP_CHUNK_PASSES"); chunk = e ? atoi(e) : 8; }
     if (chunk > 0 && cmdbuf && ++g_passes_in_cb >= chunk) renderer_submit();
+    pt_attach_render(rp);
     enc = [cb() renderCommandEncoderWithDescriptor:rp];
     vp_sx = pass_sx; vp_sy = pass_sy; vp_ox = 0; vp_oy = 0;
     stat_passes++;
@@ -1486,8 +1506,12 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
     CsProg *cp = compute_program(st.program);
     if (!cp) return;
     for (int i = 0; i < 16; i++)  // every storage range this dispatch can write (see hz_ranges)
-        if (st.sbuf[5][i].addr && st.sbuf[5][i].size && hz_n < HZ_MAX) {
-            hz_ranges[hz_n].addr = st.sbuf[5][i].addr; hz_ranges[hz_n].size = st.sbuf[5][i].size; hz_n++;
+        if (st.sbuf[5][i].addr && st.sbuf[5][i].size) {
+            int k = 0;  // ranges are kept until a flush; the same buffer is written every frame, so deduplicate
+            while (k < hz_n && !(hz_ranges[k].addr == st.sbuf[5][i].addr && hz_ranges[k].size == st.sbuf[5][i].size)) k++;
+            if (k == HZ_MAX) k = HZ_MAX - 1;  // full: reuse the last slot
+            else if (k == hz_n) hz_n++;
+            hz_ranges[k].addr = st.sbuf[5][i].addr; hz_ranges[k].size = st.sbuf[5][i].size;
         }
     static int trace = -1;
     if (trace < 0) trace = getenv("BDSP_TRACE_CS") != NULL;
@@ -1495,7 +1519,7 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
     CST("end_pass");
     end_pass();
     CST("encoder");
-    id<MTLComputeCommandEncoder> ce = [cb() computeCommandEncoder];
+    id<MTLComputeCommandEncoder> ce = pt_compute_encoder("compute");
     CST("pipeline");
     [ce setComputePipelineState:cp->pipe];
     ShaderInfo *si = cp->si;
@@ -1962,14 +1986,16 @@ static void startup_gate(void) {
 }
 
 // True if one of the vertex streams in `used` covers a storage range that a compute dispatch may still write.
-static bool streams_hit_pending_compute(uint32_t used) {
+// Mask of the used vertex streams that overlap a range a pending compute dispatch writes.
+static uint32_t streams_pending_compute(uint32_t used) {
+    uint32_t m = 0;
     for (int s = 0; s < 12; s++) {
         if (!(used & (1u << s)) || !st.vbuf[s].addr) continue;
         uint64_t lo = st.vbuf[s].addr, hi = lo + (st.vbuf[s].size ? st.vbuf[s].size : 16);
         for (int i = 0; i < hz_n; i++)
-            if (lo < hz_ranges[i].addr + hz_ranges[i].size && hi > hz_ranges[i].addr) return true;
+            if (lo < hz_ranges[i].addr + hz_ranges[i].size && hi > hz_ranges[i].addr) { m |= 1u << s; break; }
     }
-    return false;
+    return m;
 }
 
 static void draw(CmdRec *r, bool indexed) {
@@ -2076,9 +2102,13 @@ static void draw(CmdRec *r, bool indexed) {
         if (i >= st.nattrib || (a & 0xFF) == 0) used_streams |= 1u << 31;
         else used_streams |= 1u << ((a >> 8) & 0x1F);
     }
-    // A stream the draw copies now may overlap a compute write the GPU has not run yet (its ssbo range was recorded
-    // in dispatch_compute): finish the submitted work first, otherwise the copy holds the data from before the dispatch.
-    if (hz_n && streams_hit_pending_compute(used_streams)) renderer_flush();
+    // A stream the draw would copy now may overlap a compute write the GPU has not run yet (its ssbo range was recorded
+    // in dispatch_compute): such a stream is bound straight from the guest buffer the dispatch writes, so the GPU orders
+    // the draw after it (no CPU copy of stale data, no flush). BDSP_HZ_FLUSH=1: the old behaviour (flush, then copy).
+    static int hz_flush = -1;
+    if (hz_flush < 0) hz_flush = getenv("BDSP_HZ_FLUSH") != NULL;
+    uint32_t gpu_streams = hz_n ? streams_pending_compute(used_streams) : 0;
+    if (hz_flush && gpu_streams) { flush_why(FL_HAZARD); gpu_streams = 0; }
     begin_pass();
 
     // pipeline
@@ -2312,7 +2342,9 @@ static void draw(CmdRec *r, bool indexed) {
     for (int s = 0; s < 12; s++) {
         if (!(used_streams & (1u << s))) continue;
         Range v = st.vbuf[s];
-        if (v.addr) bind_guest(enc, true, v.addr, v.size ? v.size : 16, 18 + s);
+        if (v.addr && (gpu_streams & (1u << s)) && v.addr >= HEAP_BASE && v.addr + (v.size ? v.size : 16) <= HEAP_BASE + HEAP_MAX && !(v.addr & 3))
+            [enc setVertexBuffer:g_guest_buffer offset:v.addr - HEAP_BASE atIndex:18 + s];
+        else if (v.addr) bind_guest(enc, true, v.addr, v.size ? v.size : 16, 18 + s);
         else { static const float zero[4]; [enc setVertexBytes:zero length:16 atIndex:18 + s]; }
     }
     if (used_streams & (1u << 31)) { static const float zero[4] = {0, 0, 0, 1}; [enc setVertexBytes:zero length:16 atIndex:30]; }
@@ -2580,7 +2612,7 @@ static void copy_texture_to_buffer(const TexRefRec *src, uint64_t dst) {
                 sourceSize:MTLSizeMake(rg[3], rg[4], array ? 1 : rg[5]) toBuffer:g_guest_buffer
          destinationOffset:dst - HEAP_BASE + (uint64_t)z * img destinationBytesPerRow:row destinationBytesPerImage:img];
     [b endEncoding];
-    renderer_flush();  // the CPU may read the result right after the fence
+    flush_why(FL_READBACK);  // the CPU may read the result right after the fence
 }
 
 static void copy_texture(const TexRefRec *src, const TexRefRec *dst, uint64_t flags) {
@@ -2979,7 +3011,7 @@ static void exec_list(uint64_t handle, int depth) {
         case CMD_COPY_BUFFER_TO_TEXTURE: copy_buffer_to_texture(r->x[0], x); break;
         case CMD_COPY_TEXTURE_TO_BUFFER: copy_texture_to_buffer(x, r->x[3]); break;
         case CMD_COPY_BUFFER_TO_BUFFER:
-            renderer_flush();
+            flush_why(FL_BUF2BUF);
             memmove((void *)(uintptr_t)r->x[1], (void *)(uintptr_t)r->x[0], r->x[2]);
             break;
         default: break;

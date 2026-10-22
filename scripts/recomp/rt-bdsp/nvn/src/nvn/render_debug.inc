@@ -12,6 +12,8 @@
 //       Hide the draws of a vertex shader (and index/vertex count). Bisecting which draw paints what.
 //   BDSP_SAVE_CS_DIR=<absolute dir>
 //       Write the translated MSL of every compute program there (<code addr>_cs.metal).
+//   BDSP_PASS_TIMES=1
+//       GPU time per render pass / compute dispatch, grouped by target, with the stats line (see the end of this file).
 
 typedef struct { bool on, scan; int64_t frame; } GeomState;
 
@@ -127,4 +129,149 @@ static void debug_save_compute_msl(uint64_t code_addr, const char *msl) {
     if (!f) return;
     fputs(msl, f);
     fclose(f);
+}
+
+// BDSP_PASS_TIMES=1: GPU time per render pass and compute dispatch (stage-boundary timestamps), summed by pass target and
+// printed with the stats line as "[pass]". Apple GPUs overlap the vertex work of a pass with the fragment work of the
+// previous one, so each pass is charged only the time after the previous pass ended ("timed" then adds up to at most
+// the command buffers' total).
+#define PT_MAX 128
+typedef struct { id<MTLCounterSampleBuffer> buf; int n; struct { char label[72]; uint32_t d0, draws; } e[PT_MAX]; } PtCb;
+static int pt_on = -1, pt_open = -1;
+static PtCb *pt_cur, *pt_pool[8];
+static int pt_npool;
+static pthread_mutex_t pt_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct { char label[72]; uint64_t n, draws, ns; } pt_agg[64];
+static int pt_nagg;
+static uint64_t pt_timed_ns, pt_cb_ns;
+
+static bool pt_enabled(void) {
+    if (pt_on < 0) pt_on = getenv("BDSP_PASS_TIMES") != NULL && [dev supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary];
+    return pt_on;
+}
+
+// Sample index of a new entry in the open command buffer's sample buffer, or -1.
+static int pt_start(const char *label) {
+    if (!pt_enabled()) return -1;
+    if (!pt_cur) {
+        pthread_mutex_lock(&pt_lock);
+        if (pt_npool) pt_cur = pt_pool[--pt_npool];
+        pthread_mutex_unlock(&pt_lock);
+    }
+    if (!pt_cur) {
+        id<MTLCounterSet> set = nil;
+        for (id<MTLCounterSet> s in dev.counterSets) if ([s.name isEqualToString:MTLCommonCounterSetTimestamp]) set = s;
+        MTLCounterSampleBufferDescriptor *d = [MTLCounterSampleBufferDescriptor new];
+        d.counterSet = set;
+        d.storageMode = MTLStorageModeShared;
+        d.sampleCount = 2 * PT_MAX;
+        NSError *err = nil;
+        id<MTLCounterSampleBuffer> b = set ? [dev newCounterSampleBufferWithDescriptor:d error:&err] : nil;
+        if (!b) { LOG("[pass] no sample buffer: %s\n", err.localizedDescription.UTF8String); pt_on = 0; return -1; }
+        pt_cur = calloc(1, sizeof *pt_cur);
+        pt_cur->buf = b;
+    }
+    if (pt_cur->n >= PT_MAX) return -1;
+    int e = pt_cur->n++;
+    snprintf(pt_cur->e[e].label, sizeof pt_cur->e[e].label, "%s", label);
+    pt_cur->e[e].d0 = (uint32_t)stat_draws;
+    pt_cur->e[e].draws = 0;
+    return 2 * e;
+}
+
+static void pt_attach_render(MTLRenderPassDescriptor *rp) {
+    pt_open = -1;
+    if (!pt_enabled()) return;
+    id<MTLTexture> c = nil, dt = rp.depthAttachment.texture;
+    int nc = 0;
+    for (int i = 0; i < 8; i++)
+        if (rp.colorAttachments[i].texture) { if (!c) c = rp.colorAttachments[i].texture; nc++; }
+    id<MTLTexture> t = c ?: dt;
+    char label[72] = "no target";
+    if (t) snprintf(label, sizeof label, "%lux%lu s%lu pf%lu c%d%s", (unsigned long)t.width, (unsigned long)t.height, (unsigned long)t.sampleCount, (unsigned long)t.pixelFormat, nc, dt ? " +depth" : "");
+    int s = pt_start(label);
+    if (s < 0) return;
+    MTLRenderPassSampleBufferAttachmentDescriptor *a = rp.sampleBufferAttachments[0];
+    a.sampleBuffer = pt_cur->buf;
+    a.startOfVertexSampleIndex = s;
+    a.endOfVertexSampleIndex = MTLCounterDontSample;
+    a.startOfFragmentSampleIndex = MTLCounterDontSample;
+    a.endOfFragmentSampleIndex = s + 1;
+    pt_open = s / 2;
+}
+
+static void pt_close_render(void) {
+    if (pt_open >= 0 && pt_cur) pt_cur->e[pt_open].draws = (uint32_t)stat_draws - pt_cur->e[pt_open].d0;
+    pt_open = -1;
+}
+
+static id<MTLComputeCommandEncoder> pt_compute_encoder(const char *label) {
+    int s = pt_start(label);
+    if (s < 0) return [cb() computeCommandEncoder];
+    MTLComputePassDescriptor *d = [MTLComputePassDescriptor computePassDescriptor];
+    d.sampleBufferAttachments[0].sampleBuffer = pt_cur->buf;
+    d.sampleBufferAttachments[0].startOfEncoderSampleIndex = s;
+    d.sampleBufferAttachments[0].endOfEncoderSampleIndex = s + 1;
+    return [cb() computeCommandEncoderWithDescriptor:d];
+}
+
+static void pt_resolve(PtCb *p, id<MTLCommandBuffer> done) {
+    NSData *data = [p->buf resolveCounterRange:NSMakeRange(0, 2 * p->n)];
+    const uint64_t *ts = data.bytes;
+    // The tick length is taken from this command buffer: its timestamps span (about) its GPU start to end.
+    uint64_t lo = UINT64_MAX, hi = 0;
+    for (int i = 0; data && i < 2 * p->n; i++) { if (!ts[i]) continue; if (ts[i] < lo) lo = ts[i]; if (ts[i] > hi) hi = ts[i]; }
+    double sc = hi > lo ? (done.GPUEndTime - done.GPUStartTime) / (double)(hi - lo) : 1e-9;
+    uint64_t prev_end = 0;
+    pthread_mutex_lock(&pt_lock);
+    for (int i = 0; data && i < p->n; i++) {
+        uint64_t a = ts[2 * i], b = ts[2 * i + 1];
+        if (!a || b <= a) continue;
+        // exclusive time: the part of the pass after the previous one finished (passes overlap on the GPU)
+        uint64_t from = a > prev_end ? a : prev_end;
+        if (b <= from) continue;
+        prev_end = b;
+        uint64_t ns = (uint64_t)((double)(b - from) * sc * 1e9);
+        int k = 0;
+        while (k < pt_nagg && strcmp(pt_agg[k].label, p->e[i].label)) k++;
+        if (k == pt_nagg && pt_nagg < 64) { snprintf(pt_agg[k].label, sizeof pt_agg[k].label, "%s", p->e[i].label); pt_nagg++; }
+        if (k == 64) continue;
+        pt_agg[k].n++; pt_agg[k].draws += p->e[i].draws; pt_agg[k].ns += ns;
+        pt_timed_ns += ns;
+    }
+    pt_cb_ns += (uint64_t)((done.GPUEndTime - done.GPUStartTime) * 1e9);
+    p->n = 0;
+    if (pt_npool < 8) pt_pool[pt_npool++] = p;
+    pthread_mutex_unlock(&pt_lock);
+}
+
+// Called with the command buffer about to be committed: its sample buffer is resolved when the GPU is done.
+static void pt_submit(id<MTLCommandBuffer> c) {
+    PtCb *p = pt_cur;
+    pt_cur = NULL;
+    pt_open = -1;
+    if (!p || !p->n) { if (p) { pthread_mutex_lock(&pt_lock); if (pt_npool < 8) pt_pool[pt_npool++] = p; pthread_mutex_unlock(&pt_lock); } return; }
+    [c addCompletedHandler:^(id<MTLCommandBuffer> done) { pt_resolve(p, done); }];
+}
+
+// Largest entries since the last report, per presented frame.
+static void pt_report(void) {
+    if (!pt_on) return;
+    extern uint64_t renderer_present_count(void);
+    static uint64_t last_frames;
+    uint64_t frames = renderer_present_count(), nf = frames > last_frames ? frames - last_frames : 1;
+    last_frames = frames;
+    pthread_mutex_lock(&pt_lock);
+    LOG("[pass] per frame: timed %.2f ms of %.2f ms in command buffers\n", pt_timed_ns / 1e6 / nf, pt_cb_ns / 1e6 / nf);
+    for (int shown = 0; shown < 12; shown++) {
+        int best = -1;
+        for (int k = 0; k < pt_nagg; k++) if (pt_agg[k].ns && (best < 0 || pt_agg[k].ns > pt_agg[best].ns)) best = k;
+        if (best < 0) break;
+        LOG("[pass]   %-44s %6.2f ms  %5.1f passes  %6.0f draws\n", pt_agg[best].label, pt_agg[best].ns / 1e6 / nf, (double)pt_agg[best].n / nf, (double)pt_agg[best].draws / nf);
+        pt_agg[best].ns = 0;
+    }
+    memset(pt_agg, 0, sizeof pt_agg);
+    pt_nagg = 0;
+    pt_timed_ns = pt_cb_ns = 0;
+    pthread_mutex_unlock(&pt_lock);
 }
