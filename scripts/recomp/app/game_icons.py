@@ -348,13 +348,18 @@ def build_ios(source, output, bundle, settings):
     texts = (
         ("de", "App-Symbol", "Variante", "Standard (Englisch)", "Verfügbare Originalvarianten aus deinem Dump; die passende Systemsprache ist empfohlen. Die Auswahl gilt beim nächsten Aktivieren; iPadOS zeigt beim Wechsel einen Hinweis. Entfällt eine Variante, gilt wieder der Standard. Die Spielsprache bleibt unverändert."),
         ("en", "App icon", "Variant", "Default (English)", "Original variants from your dump; your system language is recommended. Applied when the app becomes active; iPadOS may display a change notice. Unavailable selections revert to the default. Game language is unchanged."),
+        ("es", "Icono de la app", "Variante", "Predeterminado (inglés)", "Variantes originales de tu volcado; se recomienda la del idioma del sistema. Se aplica al activar la app; iPadOS puede mostrar un aviso del cambio. Si una variante deja de estar disponible, se usa la predeterminada. El idioma del juego no cambia."),
+        ("pt", "Ícone do app", "Variante", "Padrão (inglês)", "Variantes originais do seu dump; recomenda-se a do idioma do sistema. Vale ao ativar o app; o iPadOS pode mostrar um aviso da mudança. Se uma variante deixar de existir, volta o padrão. O idioma do jogo não muda."),
     )
+    default_word = {"de": "Standard", "es": "Predeterminado", "pt": "Padrão"}
+    recommended_word = {"de": " (empfohlen)", "es": " (recomendado)", "pt": " (recomendado)"}
     translations = {row[0]: row[1:] for row in texts}
-    for locale in sorted({"de", "en"} | {v["id"] for v in manifest["variants"] if v["id"] != "placeholder"}):
-        group, title, default, footer = translations.get(locale, translations["en"])
+    for locale in sorted({"de", "en", "es", "pt"} | {v["id"] for v in manifest["variants"] if v["id"] != "placeholder"}):
+        lang = locale.split("-")[0]   # pt-BR -> pt, es-419 -> es; English variants -> en
+        group, title, default, footer = translations.get(lang, translations["en"])
         if not manifest["default"].startswith("en-"):
             default_name = next(v["label"] for v in manifest["variants"] if v["id"] == manifest["default"])
-            default = ("Standard" if locale == "de" else "Default") + " (" + default_name + ")"
+            default = default_word.get(lang, "Default") + " (" + default_name + ")"
         recommended = recommend(manifest["variants"], [locale])
         path = settings_out / (locale + ".lproj") / "Root.strings"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -364,7 +369,7 @@ def build_ios(source, output, bundle, settings):
             for variant in manifest["variants"]:
                 label = variant["label"]
                 if variant["id"] == recommended:
-                    label += " (empfohlen)" if locale == "de" else " (recommended)"
+                    label += recommended_word.get(lang, " (recommended)")
                 file.write("\n%s = %s;\n" % (json.dumps("ICON_VARIANT_" + variant["id"]), json.dumps(label, ensure_ascii=False)))
 
 

@@ -1,4 +1,4 @@
-/* Settings.bundle, Englisch (Fallback) */
+/* Settings.bundle, English (fallback) */
 "FPS_GROUP" = "Display";
 "FPS_TITLE" = "Frame rate";
 "FPS_FOOTER" = "Frame rate of the emulation. Takes effect after restarting the app. Default: 60 fps. 120 fps requires a 120 Hz display.";

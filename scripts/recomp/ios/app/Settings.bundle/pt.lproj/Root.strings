@@ -1,0 +1,10 @@
+/* Settings.bundle, português (também para pt-BR e outras regiões) */
+"FPS_GROUP" = "Tela";
+"FPS_TITLE" = "Taxa de quadros";
+"FPS_FOOTER" = "Taxa de quadros da emulação. Vale após reiniciar o app. Padrão: 60 fps. 120 fps exige uma tela de 120 Hz.";
+"FPS_30" = "30 fps";
+"FPS_60" = "60 fps";
+"FPS_120" = "120 fps";
+"DEBUG_GROUP" = "Depuração";
+"DEBUG_FOOTER" = "Mostra o HUD de desempenho do Metal (FPS, tempo de quadro, GPU). Vale após reiniciar o app.";
+"DEBUG_METAL_HUD" = "Mostrar HUD do Metal";

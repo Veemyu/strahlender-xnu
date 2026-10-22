@@ -1,0 +1,10 @@
+/* Settings.bundle, español (también para es-419 y otras regiones) */
+"FPS_GROUP" = "Pantalla";
+"FPS_TITLE" = "Tasa de fotogramas";
+"FPS_FOOTER" = "Tasa de fotogramas de la emulación. Se aplica al reiniciar la app. Predeterminado: 60 fps. 120 fps requiere una pantalla de 120 Hz.";
+"FPS_30" = "30 fps";
+"FPS_60" = "60 fps";
+"FPS_120" = "120 fps";
+"DEBUG_GROUP" = "Depuración";
+"DEBUG_FOOTER" = "Muestra el HUD de rendimiento de Metal (FPS, tiempo de fotograma, GPU). Se aplica al reiniciar la app.";
+"DEBUG_METAL_HUD" = "Mostrar HUD de Metal";
