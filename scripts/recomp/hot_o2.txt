@@ -1,0 +1,7 @@
+# Guest functions that dominate CPU time on the Mac build (Unity job workers and the main guest thread, measured with `sample`
+# on the Sonnewik beach scene). build_all.sh compiles the generated C files that define them with -O2; everything else keeps
+# its normal level. Two of them had been built with -O0 (so every flag helper such as subs32 was a real call): beach scene
+# ~85 -> ~112 fps at the 120 fps target. One name per line, # starts a comment.
+f_7000b39cf0
+f_7000b3f020
+f_7000b701d0

@@ -28,5 +28,14 @@ echo "O1: $(wc -l < "$OBJ/list_O1.txt") Dateien, O0: $(wc -l < "$OBJ/list_O0.txt
 start=$(date +%s)
 OPT=-O0 xargs -P "$JOBS" -n 1 -I{} scripts/recomp/test/compile_chunk.sh {} "$OBJ" < "$OBJ/list_O0.txt"
 OPT=-O1 xargs -P "$JOBS" -n 1 -I{} scripts/recomp/test/compile_chunk.sh {} "$OBJ" < "$OBJ/list_O1.txt"
+# Heiße Funktionen (hot_o2.txt): ihre Dateien mit -O2 neu übersetzen, falls das Objekt nicht schon -O2 ist (Marke *.o2)
+while read -r fn; do
+  case "$fn" in ""|"#"*) continue ;; esac
+  for f in $(grep -l "^void $fn(.*{\$" "$GEN"/*/*.c); do
+    o="$OBJ/$(basename "$(dirname "$f")")_$(basename "$f" .c).o"
+    [ -e "$o.o2" ] && [ "$o.o2" -nt "$f" ] && continue
+    rm -f "$o"; OPT=-O2 scripts/recomp/test/compile_chunk.sh "$f" "$OBJ" && : > "$o.o2"
+  done
+done < scripts/recomp/hot_o2.txt
 echo "Gesamtzeit Übersetzung: $(( $(date +%s) - start )) s"
 du -sh "$OBJ"

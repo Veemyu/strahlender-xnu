@@ -85,6 +85,19 @@ time in a Metal System Trace; the render worker (`xw_main`) was 96-100 % busy. T
 Route 222: ~65 → ~95 fps; beach standing ~85, walking ~35 → ~74. Beware when measuring: Metal validation and Instruments
 traces slow the game to 20-30 fps; measure without them.
 
+## Finding: the hottest guest functions were built with -O0
+
+After the worker fixes, `sample` on the beach scene showed three guest threads (Unity job workers) at 65-78 % CPU, almost all of
+it in two huge engine functions (`f_7000b39cf0`, `f_7000b3f020`). Their generated C files were still on the `-O0` list, so every
+flag helper (`subs32`, `adds32`, `logic32`, ...) was a real call. `scripts/recomp/hot_o2.txt` now lists such functions and
+`build_all.sh` compiles the files that define them with `-O2` (a few seconds, no full rebuild). Beach walking: ~85 → ~112 fps at
+the 120 fps target. Rebuilding the other 63 `-O0` files with `-O2` (11 min) gave nothing measurable. Add a function to the list
+when `sample <pid> 6` shows it at the top of a guest thread (`python3 -I scripts/recomp/symres.py` names IL2CPP methods; engine
+code has no names).
+
+Do not bind vertex data straight from the wrapped guest heap (`BDSP_GUEST_BUF=1`) to save the worker's copy: it reaches 117 fps,
+but the GPU reads stale data and the water mesh covers the whole scene.
+
 Performance counters:
 
 | Variable | Effect |
