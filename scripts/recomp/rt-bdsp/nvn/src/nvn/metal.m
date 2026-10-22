@@ -697,12 +697,14 @@ void backend_init(void) {
                                            options:MTLResourceStorageModeShared deallocator:nil];
     if (!g_guest_buffer) FATAL("cannot wrap guest heap in a Metal buffer (max %llu)\n", (uint64_t)dev.maxBufferLength);
     renderer_init(dev);
+#ifndef BDSP_REBASE32   // Test mit fester Mac-Gastadresse; unter Speichermodell B nicht gültig
     if (getenv("BDSP_ASPECT_TEST")) {  // experiment: widen the game's 16:9 aspect constant
         float *k = (float *)(uintptr_t)0x70016afba4ull;
         mprotect((void *)((uintptr_t)k & ~0x3fffull), 0x4000, PROT_READ | PROT_WRITE);
         LOG("[aspect] constant %f -> %f\n", *k, (float)atof(getenv("BDSP_ASPECT_TEST")));
         *k = (float)atof(getenv("BDSP_ASPECT_TEST"));
     }
+#endif
     LOG("[metal] %s, heap buffer %llu MB\n", dev.name.UTF8String, (uint64_t)HEAP_MAX >> 20);
 }
 

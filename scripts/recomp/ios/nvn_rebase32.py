@@ -115,3 +115,25 @@ rest = [l.strip() for l in s.splitlines() if "(uintptr_t)" in l and "GA(" not in
 print("movie_glue32.c: übrige (uintptr_t)-Stellen:", len(rest))
 for l in rest:
     print("   ", l[:150])
+
+# Zeiger-Reste: nach dem Umschreiben darf (uintptr_t) nur an den gelisteten Stellen stehen. Das sind Hostzeiger (Befehlsobjekte, Hashes,
+# Hostobjekte, Makro-Definitionen, undurchsichtige Griffe der Filmwiedergabe, die nur der Host liest). Eine neue Stelle kann ein
+# Gastzeiger sein, den keine Regel erreicht: dann bricht das Skript ab. Der Übersetzer (nvn/maxwell) ist Hostcode ohne Gastspeicher.
+EXPECTED_CASTS = {"nvn/renderer.m": 16, "nvn/cmdbuf.c": 7, "nvn/metal.m": 4, "nvn/nvn.h": 4, "movie_glue32.c": 6}
+found = {}
+for dp, _, fn in os.walk(out):
+    rel_dir = os.path.relpath(dp, out)
+    if rel_dir.startswith("nvn/maxwell"):
+        continue
+    for f in fn:
+        if not f.endswith((".c", ".h", ".m", ".inc")):
+            continue
+        p = os.path.join(dp, f)
+        n = sum(1 for line in open(p, encoding="utf-8") if "(uintptr_t)" in line)
+        if n:
+            found[os.path.relpath(p, out)] = n
+unexpected = {f: (found.get(f, 0), EXPECTED_CASTS.get(f, 0)) for f in set(found) | set(EXPECTED_CASTS)
+              if found.get(f, 0) != EXPECTED_CASTS.get(f, 0)}
+if unexpected:
+    sys.exit("Zeiger-Reste (uintptr_t) weichen von der Liste ab (gefunden, erwartet): %s" % unexpected)
+print("Zeiger-Reste wie erwartet:", found)

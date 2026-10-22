@@ -93,7 +93,7 @@ static void geom_report(const CmdRec *r, bool indexed, id<MTLBuffer> buf, const 
     uint32_t v = first % 4096;
     uint64_t stride = st.stream[0][0];
     if (st.vbuf[0].addr && stride && (uint64_t)v * stride + 16 <= st.vbuf[0].size) {  // is the vertex stream itself garbage at that vertex?
-        const float *in = (const float *)(uintptr_t)(st.vbuf[0].addr + (uint64_t)v * stride);
+        const float *in = (const float *)GA(st.vbuf[0].addr + (uint64_t)v * stride);
         LOG("[geom]   input vb0 v%u: %g %g %g %g | %g %g %g %g\n", v, in[0], in[1], in[2], in[3], in[4], in[5], in[6], in[7]);
     }
 }

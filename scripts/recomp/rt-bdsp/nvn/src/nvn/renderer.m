@@ -1368,7 +1368,7 @@ static void bind_cbufs(int stage, ShaderInfo *si) {
                         if (lf) {
                             uint64_t sz = st.sbuf[stage][i].size, n = sz > 4096 ? 4096 : sz;
                             fprintf(lf, "S %llu %llu %llx %d %llu", (unsigned long long)f, (unsigned long long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000), (unsigned long long)a, stage * 16 + i, (unsigned long long)sz);
-                            for (uint64_t j = 0; j + 4 <= n; j += 4) fprintf(lf, " %08x", *(const uint32_t *)((const uint8_t *)(uintptr_t)a + j));
+                            for (uint64_t j = 0; j + 4 <= n; j += 4) fprintf(lf, " %08x", *(const uint32_t *)((const uint8_t *)GA(a) + j));
                             fputc('\n', lf);
                             fflush(lf);
                         }
@@ -1511,7 +1511,7 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
                         if (lf) {
                             uint64_t sz = st.sbuf[5][i].size, n = sz > 4096 ? 4096 : sz;
                             fprintf(lf, "S %llu %llu %llx %d %llu", (unsigned long long)f, (unsigned long long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000), (unsigned long long)a, 100 + i, (unsigned long long)sz);
-                            for (uint64_t j = 0; j + 4 <= n; j += 4) fprintf(lf, " %08x", *(const uint32_t *)((const uint8_t *)(uintptr_t)a + j));
+                            for (uint64_t j = 0; j + 4 <= n; j += 4) fprintf(lf, " %08x", *(const uint32_t *)((const uint8_t *)GA(a) + j));
                             fputc('\n', lf);
                             fflush(lf);
                         }
@@ -3117,7 +3117,7 @@ static uint8_t *xw_snap_list(XwSnap *s, uint64_t handle, int depth) {
         case CMD_UPDATE_UNIFORM_BUFFER:
             // gilt in Befehlsreihenfolge: jetzt anwenden, so sehen die folgenden Kopien den neuen Stand (wie im Standardpfad beim
             // Einreichen); die Anweisung selbst schreibt dann nichts mehr
-            if (c->x[3]) memcpy((void *)(uintptr_t)(c->x[0] + c->x[2]), c->extra, c->x[3]);
+            if (c->x[3]) memcpy((void *)GA(c->x[0] + c->x[2]), c->extra, c->x[3]);
             c->x[3] = 0;
             xw_dup_gen++;
             break;

@@ -3,6 +3,9 @@
 #pragma once
 #include "../hle.h"
 #include "tegra.h"
+#ifndef GA
+#define GA(a) ((uintptr_t)(a))   // Gastadresse als Hostzeiger; nvn_rebase32.py setzt davor G2H
+#endif
 
 #define NVN(name) HLE_FUNC(#name, hle_##name)
 
