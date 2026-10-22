@@ -42,6 +42,13 @@ macOS tools are BSD variants (no GNU `ls --time-style` and similar); Xcode is se
 Other runtime variables: `BDSP_TIMEOUT`, `BDSP_BT` (backtrace), `BDSP_WAIT` (wait reports), `BDSP_WATCH`, `BDSP_ALIAS_BASE/SIZE`,
 `BDSP_APPMEM`, `BDSP_FPS` (30, 60, 120), `BDSP_PRESENT_AT`, `BDSP_EXEC_WORKER=0` (synchronous renderer path).
 
+Measuring (all off by default): `BDSP_PERF_LOG=1` logs once per second `frames`, `cpu_ms` (CPU time of all threads), GC stop-the-world calls, RSS and
+`cal_us` (a fixed calibration loop: grows when the CPU is throttled); CPU ms per frame is the difference of `cpu_ms` over the difference of `frames`, which
+also works at a frame rate cap. `BDSP_COUNT_FN=<hex>[,<hex>...]` adds the entry counts of up to four guest functions (slows the guest). `BDSP_PROBE_FIXED=1`
+(iOS app) prints device data and tries a fixed 12.5 GiB window at several addresses, then ends. `BDSP_QOS=0` (iOS) switches off the QoS classes of the guest
+threads and the render worker. `BDSP_INPUT_SCRIPT="12:A:0.3,40:LEFT:5.8,..."` scripts the input in seconds since the process start. Comparisons need the
+same save, the same script and a cool device; check the screenshots (`BDSP_SCREENSHOT_EVERY`, `BDSP_SHOT_DIR`) before trusting the numbers.
+
 ## 3. Testing with saves
 
 - The game reads input only after about 5 s; with a save it skips the language selection, the title appears after about 20 s,

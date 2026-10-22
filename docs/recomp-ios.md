@@ -100,6 +100,35 @@ verified. Early field runs reached about 2.1 GiB footprint and thermalState 0.
 These historical figures and the earlier 50–52 fps measurements are not current
 performance guarantees.
 
+## Memory model A-low, iPhone target and the thermal limit (2026-10-23)
+
+**Model A-low** is the compact layout of model B shifted to a fixed host address (`0x4_0000_0000`), so guest address == host address again
+(see [architecture.md](architecture.md)). Build: `MODEL=a scripts/recomp/ios/gen32.sh all` (folders `gen4i`, `img4i`, `obj4i`, about 15 minutes cold),
+`IOS_MODEL=a scripts/recomp/ios/deploy_ios.sh build` and `install` (own runtime folder `ios-rt-a`, own build output). Model B stays the default
+(`deploy_ios.sh` without `IOS_MODEL`). A fixed 12.5 GiB `vm_allocate` on the M2 iPad Pro succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start
+(`BDSP_PROBE_FIXED=1`, three starts); `0x1_` is invalid, `0x2_`/`0x3_` are used by the system, everything from `0x10_0000_0000` up is invalid.
+
+Measured on the M2 iPad Pro, 240 s, the same input script (left/right walking on the Route 222 beach, `BDSP_INPUT_SCRIPT`), 120 fps target,
+cool start. CPU time is the process CPU time of all threads per presented frame (`BDSP_PERF_LOG=1`):
+
+| | B (C SIMD, `G2H`) | A-low (NEON asm, direct) | Mac M1 Pro, model A |
+|---|---|---|---|
+| CPU ms per frame, cool (30 to 60 s) | about 28 to 32 | about 22 to 25 | about 28 |
+| CPU ms per frame, after 2 minutes | about 47 | about 37 to 42 | about 28 (flat) |
+| fps after 2 minutes | about 70 | about 90 to 100 | about 118 |
+
+The growth over time is **thermal throttling**, not a leak: a fixed integer calibration loop in the perf log (`cal_us`) takes 7.5 ms on a cool device
+and 12 to 14 ms after one to three minutes of load, also when the player stands still (`thermalState` stays 0 the whole time). At a 60 fps target
+the same scene runs at a flat 22 to 23 ms per frame and `cal_us` stays at 7.4 ms for 200 s. The game needs about 2.7 busy cores at 120 fps (it runs its
+whole per-frame logic at the display rate, the original ran it at 30), which the passively cooled iPad cannot sustain. Practical consequence: 60 fps
+is the sustainable setting on the iPad; 120 fps drops to about 90 after a minute.
+
+**iPhone target.** The Xcode project builds for iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`); the touch overlay scales with the screen and the
+safe area. Not verified on a device yet: `DEVICE_NAME=iPhone scripts/recomp/ios/deploy_ios.sh ...` selects the phone. Known blockers to check first with
+`BDSP_PROBE_FIXED=1` (prints RAM, cores, BC texture support, `maxBufferLength` and the fixed-window result): the game's textures are BC1 to BC7 and the
+iPhone GPUs are not known to support BC (the app stops with a clear message; `BDSP_ALLOW_NO_BC=1` starts anyway); the footprint is 2.6 to 2.9 GiB against 4 GB
+RAM on an iPhone 11 Pro Max; the Metal buffer over the guest memory is 3.5 GiB; the A13 has two performance cores.
+
 ## Memory entitlements and address space (research, 2026-10-18; sources are Apple's documentation)
 
 | Question | Finding | Confidence |

@@ -99,6 +99,13 @@ test with the real GC on a running game.
 | Why | simplest; no per-access cost | iOS allows far less address space, a fixed 448 GiB base fails, and the free-team profile has no Extended Virtual Addressing |
 | Cost | none | about 5 % in the exception test; FP/SIMD must be generated in `c` mode |
 
+**Variant A-low (iOS, `MODEL=a`).** The compact layout of variant B shifted to a fixed host address (`BDSP_COMPACT_BASE`, default `0x4_0000_0000`),
+so guest address == host address again: no `G2H`, NEON inline assembler (`--simd asm`), the same compile flags as the Mac build. A probe on the M2 iPad Pro
+showed that a fixed 12.5 GiB `vm_allocate` succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start (`0x1_` is invalid, `0x2_`/`0x3_` are taken by the system,
+everything from `0x10_0000_0000` up is invalid, which is why the Mac address could never work). Measured on the Mac with the beach scene (same game work per frame):
+A needs about 31 ms CPU per frame, B about 36 ms, the M2 iPad Pro with B about 47 ms. Build: `MODEL=a scripts/recomp/ios/gen32.sh all`,
+`IOS_MODEL=a scripts/recomp/ios/deploy_ios.sh build`.
+
 Rules: host code converts guest addresses only through `G2H()`/`H2G()` (`rt-bdsp/guestmem.h`). The game obtains all its
 application memory (3.14 GB, as reported by `GetInfo`) as one `MapPhysicalMemory` region from the alias region in `nninitStartup`;
 it never calls `SetHeapSize`. For variant B the reported total must be capped so that everything fits below 4 GiB. A scan of
