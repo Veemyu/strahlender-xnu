@@ -1,5 +1,5 @@
 // Linux-Ersatz für den kleinen Teil der Mach-API, den scripts/recomp/rt-bdsp (kernel.c, main.c) benutzt.
-// Eigener Code, nur für die Linux host-Farm (docs/recomp-linux.md): macht es möglich, die Laufzeit unverändert unter Linux zu
+// Eigener Code, nur für die Linux-Ausführung (docs/recomp-linux.md): macht es möglich, die Laufzeit unverändert unter Linux zu
 // übersetzen (`-I scripts/recomp/linux/compat`), ohne ihre Dateien anzufassen. Kein Ersatz für die Mach-Semantik auf dem
 // Mac: Anhalten per Signal (SIGUSR2), Speicherbelegung aus /proc, Regionen per mincore.
 #pragma once

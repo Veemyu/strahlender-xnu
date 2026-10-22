@@ -10,7 +10,7 @@
 #   visual_auto.sh accept [LAUF|latest]                           Lauf als neue Baseline übernehmen (erst nach Sichtung der Kontaktbögen!)
 #   visual_auto.sh watch [--interval MIN] [--once] [--quick]      alle N Minuten (Standard 10) laufen, wenn sich unity/Assets/Scripts/{Field,Render}
 #                                                                 oder scripts/shader_* geändert haben
-#   visual_auto.sh ref [--run LAUF|latest] [--fetch]              Ryujinx-Referenzen holen (--fetch) und gegen den Lauf vergleichen
+#   visual_auto.sh ref [--run LAUF|latest]              Ryujinx-Referenzen aus work/visual/ref/ryujinx gegen den Lauf vergleichen
 #   visual_auto.sh scenarios                                      Szenarioliste prüfen und auflisten
 #   visual_auto.sh test                                           Python-Tests der Sichtprüfung
 #   visual_auto.sh status                                         Zustand (Editor, Baseline, letzter Lauf, Referenzen)
@@ -184,13 +184,13 @@ ref_compare() { # RUN
     elif [ -f "$REFDIR/assignments.json" ]; then
       "$PY" "$HERE/scripts/visual_compare.py" ref compare --run "$run" --ref "$REFDIR" || log "Referenzvergleich ryujinx meldete Fehler"
     else
-      log "Keine Ryujinx-Referenzen (scripts/ryujinx_fetch_shots.sh fetch)"
+      log "Keine Ryujinx-Referenzen in $REFDIR (Bilder dort ablegen, siehe docs/visuelle-pruefung.md)"
     fi
   done
 }
 
 cmd="${1:-help}"; shift || true
-MODE=editor; NAME=""; TAG=""; ONLY=""; STRICT=0; NOCAP=0; WITH_REF=0; REF_SRC=ryujinx; RUNARG=latest; INTERVAL=10; ONCE=0; FETCH=0
+MODE=editor; NAME=""; TAG=""; ONLY=""; STRICT=0; NOCAP=0; WITH_REF=0; REF_SRC=ryujinx; RUNARG=latest; INTERVAL=10; ONCE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode) MODE="$2"; shift 2 ;;
@@ -200,7 +200,6 @@ while [ $# -gt 0 ]; do
     --strict) STRICT=1; shift ;;
     --no-capture) NOCAP=1; shift ;;
     --ref) WITH_REF=1; case "${2:-}" in ryujinx|recomp|both) REF_SRC="$2"; shift ;; esac; shift ;;
-    --fetch) FETCH=1; shift ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --run) RUNARG="$2"; shift 2 ;;
     --interval) INTERVAL="$2"; shift 2 ;;
@@ -251,7 +250,6 @@ case "$cmd" in
     done
     ;;
   ref)
-    [ "$FETCH" = 1 ] && { "$HERE/scripts/ryujinx_fetch_shots.sh" fetch || exit $?; }
     RUN="$(resolve_run "$RUNARG")"
     WITH_REF=1
     ref_compare "$RUN"
@@ -260,7 +258,7 @@ case "$cmd" in
     vs validate && vs list
     ;;
   test)
-    cd "$HERE/scripts/tests" && "$PY" -m unittest test_visual_compare test_visual_ref test_visual_scenarios test_ryzen_keys -v
+    cd "$HERE/scripts/tests" && "$PY" -m unittest test_visual_compare test_visual_ref test_visual_scenarios -v
     ;;
   status)
     echo "Editor     : $(editor_state)"

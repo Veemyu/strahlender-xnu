@@ -1,6 +1,6 @@
 // Harness für den erzeugten C-Code (c-Modus) im Differenzialtest (docs/recomp-diff.md). Eigener Code.
 // lifted.c (von mktests.py erzeugt) definiert die Tabelle `test_fns[]` mit Gast-Funktionen `void t_<id>(Cpu *)`.
-// Übersetzt als Bibliothek (Mac: Gegenprobe, Ryzen: Varianten), von difftest.py per ctypes geladen.
+// Übersetzt als Bibliothek (Mac: Gegenprobe, Linux: Varianten), von difftest.py per ctypes geladen.
 #include <string.h>
 #if defined(__x86_64__)
 #include <xmmintrin.h>

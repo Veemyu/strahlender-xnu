@@ -6,7 +6,7 @@
         auf 1280x720 normalisieren (schwarze Ränder abschneiden, auf 16:9 zuschneiden, skalieren) nach <dest>/views/<Ansicht>.png,
         Zuordnung und Spieluhr nach <dest>/assignments.json. Idempotent: bekannte Dateien werden nicht erneut zugeordnet.
   visual_ref.py import --source recomp [--raw DIR…] [--all-free]
-        Rekompilations-Screenshots (Standard: work/recomp/shots = Mac-Metal, work/visual/recomp = Ryzen) nach work/visual/ref/recomp/views/.
+        Rekompilations-Screenshots (Standard: work/recomp/shots = Mac-Metal, work/visual/recomp = Linux) nach work/visual/ref/recomp/views/.
         Zuordnung nur per Name (Ansichtsname, "aliases" in ref_map.json, Präfix free_); sonst wird die Datei übergangen.
   visual_ref.py compare --run work/visual/auto/<lauf> [--source ryujinx|recomp] [--ref work/visual/ref/ryujinx] [--out DIR] [--gate] [--no-align]
         Unity-/Recomp-Bild des Laufs gegen die Referenz: SSIM, mittlere Abweichung (roh und nach Histogramm-Angleichung),
@@ -32,7 +32,7 @@ from visual_compare import np, Image, ImageDraw  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MAP = ROOT / "scripts" / "visual" / "ref_map.json"
 DEFAULT_REF = ROOT / "work" / "visual" / "ref" / "ryujinx"
-# Referenzquellen: Ryujinx (Emulator, F8) und Rekompilation (Original-Engine rekompiliert: Mac-Metal und Ryzen-Vulkan)
+# Referenzquellen: Ryujinx (Emulator, F8) und Rekompilation (Original-Engine rekompiliert: Mac-Metal und Linux-Vulkan)
 SOURCES = {"ryujinx": DEFAULT_REF, "recomp": ROOT / "work" / "visual" / "ref" / "recomp"}
 RECOMP_RAW = (ROOT / "work" / "recomp" / "shots", ROOT / "work" / "visual" / "recomp")
 IMG_EXT = {".png", ".jpg", ".jpeg", ".bmp"}
@@ -81,7 +81,7 @@ def import_new(raw_dir, dest, ref_map, offset_seconds=0, log=print, since=None):
     views = [v["view"] for v in ref_map.get("views", [])]
     files = sorted((p for p in raw_dir.glob("*") if p.suffix.lower() in IMG_EXT), key=lambda p: (p.stat().st_mtime, p.name))
     new = [p for p in files if p.name not in state["files"]]
-    # Originale, die der Nutzer/ryujinx_record.sh umbenannt hat (<Ansicht>__<Original>), nicht noch einmal der Reihe nach zuordnen
+    # Originale, die der Nutzer umbenannt hat (<Ansicht>__<Original>), nicht noch einmal der Reihe nach zuordnen
     renamed_from = {p.name.split("__", 1)[1] for p in files if "__" in p.name}
     for p in [p for p in new if p.name in renamed_from]:
         state["files"][p.name] = {"view": None, "ignored": "umbenannte Kopie vorhanden", "mtime": int(p.stat().st_mtime)}
@@ -141,7 +141,7 @@ def _view_for(stem, views, aliases):
 
 
 def import_recomp(raw_dirs, dest, ref_map, log=print, all_free=False):
-    """Rekompilations-Screenshots (Mac-Metal: work/recomp/shots, Ryzen: work/visual/recomp) als zweite Referenzquelle.
+    """Rekompilations-Screenshots (Mac-Metal: work/recomp/shots, Linux: work/visual/recomp) als zweite Referenzquelle.
     Nur Zuordnung per Name (Ansichtsname, Alias aus ref_map.json "aliases" oder Präfix free_); alles andere wird übergangen
     (all_free=True: auch als free_<Name> führen). Eine geänderte Datei (Größe/Zeit) wird erneut importiert, die neuere gewinnt."""
     dest = Path(dest)

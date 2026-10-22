@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs on the Linux host: Linux counterparts of the spike tests from scripts/recomp/test/ (x86 host, c mode, `weak_import` → `weak`).
+# Runs locally on Linux: Linux counterparts of the spike tests from scripts/recomp/test/ (x86 host, c mode, `weak_import` → `weak`).
 # Usage: probe.sh <test>   with test = eh | eh-real | rebase32 | gc | bench | boot | boot-las | alle
 #   eh        exception test (T0-T6) with the real SDK module          (Mac: run_eh_test.sh)
 #   eh-real   throw test with real LSDA functions from main (PER_KIND, default 60)   (run_eh_real.sh; after eh)
@@ -8,7 +8,7 @@
 #   bench     micro benchmarks recompiled against native                (run_bench.sh)
 #   boot      boot probe: main+sdk+subsdk0 up to the first blocker      (run_boot_probe.sh; needs compile.sh)
 #   boot-las  like boot, with the IPC/service layer of LASRecomp       (run_boot_probe_las.sh; after boot)
-#   bdsp      build and start the Gate-1 runtime scripts/recomp/rt-bdsp (ap-recomp-3) under Linux; ends at the RomFS (not on the Linux host)
+#   bdsp      build and start the Gate-1 runtime scripts/recomp/rt-bdsp (ap-recomp-3) under Linux; ends at the RomFS (not available on Linux)
 # Everything under work/recomp/probe/. Nothing is played back, no graphics.
 source "$(dirname "$0")/common.sh"
 T=scripts/recomp/test
@@ -156,16 +156,16 @@ probe_boot_las() {
   tm "$S/boot_probe_las" "$S" "$(START_ADDR)"
 }
 
-probe_bdsp() {   # Gate-1 runtime of ap-recomp-3 (scripts/recomp/rt-bdsp, only with sync.sh --mit-rt-bdsp), Mach API via linux/compat
+probe_bdsp() {   # Gate-1 runtime (scripts/recomp/rt-bdsp), Mach API via scripts/recomp/linux/compat
   local RTD=scripts/recomp/rt-bdsp OBJ=$W/obj4-c O=$W/rt-bdsp-x86
-  [ -d "$RTD" ] || die "scripts/recomp/rt-bdsp is missing on the Linux host (sync.sh --mit-rt-bdsp)."
-  ls "$OBJ"/*.o > /dev/null 2>&1 || die "No objects in $OBJ (run build.sh first)."
+  [ -d "$RTD" ] || die "scripts/recomp/rt-bdsp is missing."
+  ls "$OBJ"/*.o > /dev/null 2>&1 || die "No objects in $OBJ (run build_all.sh first)."
   mkdir -p "$O"
   export O CF2="-O1 -g -w -fPIC -march=x86-64-v3 -Wno-error=implicit-function-declaration -I scripts/recomp/linux/compat -I scripts/recomp/rt -I $LAS/runtime -I $RTD"
   ls "$RTD"/*.c scripts/recomp/linux/compat/nvn_stub.c | xargs -P "$JOBS" -I{} bash -c 'clang $CF2 -c "{}" -o "$O/$(basename "{}" .c).o"' || die "Compilation of the runtime failed (working state of ap-recomp-3 or Mach replacement in linux/compat incomplete; see errors above). From Gate 2 (NVN/Metal) the Linux probe is no longer intended."
   clang -o "$O/bdsp_boot" "$O"/*.o "$OBJ"/*.o -lm -lpthread -ldl || die "Link failed (runtime needs symbols that do not exist under Linux)."
   bash "$RTD/mkimages.sh" > /dev/null
-  echo "--- bdsp_boot (time limit ${BDSP_TIMEOUT:-30} s; RomFS and NPDM are intentionally not on the Linux host: the run ends there)"
+  echo "--- bdsp_boot (time limit ${BDSP_TIMEOUT:-30} s; RomFS and NPDM are intentionally not present on Linux: the run ends there)"
   BDSP_TIMEOUT=${BDSP_TIMEOUT:-30} BDSP_NPDM=${BDSP_NPDM:-/nonexistent} "${TIMEV[@]}" "$O/bdsp_boot" 2>&1 | head -${BDSP_LINES:-80}
 }
 

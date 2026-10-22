@@ -1,5 +1,5 @@
 // Gemeinsame Testdaten-Erzeugung und Struktur-Definitionen des Differenzialtests (docs/recomp-diff.md).
-// Eigener Code. Deterministisch (splitmix64, fester Startwert je Test); läuft auf Mac und Ryzen identisch und wird
+// Eigener Code. Deterministisch (splitmix64, fester Startwert je Test); läuft auf Mac und Linux identisch und wird
 // per ctypes aus difftest.py benutzt. Keine Spielbytes: alle Eingaben sind synthetisch.
 #include <math.h>
 #include <stdint.h>

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs on the Linux host: builds the Linux path of the LASRecomp runtime (runtime/platform/linux.c, core, services, HLE) without graphics,
+# Runs locally on Linux: builds the Linux path of the LASRecomp runtime (runtime/platform/linux.c, core, services, HLE) without graphics,
 # as far as the headers (SDL3, FFmpeg, Vulkan, shaderc) are present. Reports ok/error per source file, including the first error line.
 # Usage: las_runtime.sh        Output: logs/las-runtime.stats, objects to work/recomp/lasrt/ (no game data)
 source "$(dirname "$0")/common.sh"

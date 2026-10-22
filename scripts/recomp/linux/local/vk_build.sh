@@ -1,11 +1,11 @@
 #!/bin/bash
-# Runs on the Linux host: builds rt-bdsp with the Vulkan NVN backend and links translated guest modules.
+# Runs locally on Linux: builds rt-bdsp with the Vulkan NVN backend and links translated guest modules.
 # Uses installed development packages through pkg-config; no header copies or fixed SONAMEs.
 # Usage: vk_build.sh [-Dmacro ...]
 source "$(dirname "$0")/common.sh"
 source scripts/recomp/linux/deps.sh
 linux_require_runtime
-[ -d "$W/obj4-c" ] || die "$W/obj4-c is missing (run scripts/recomp/linux/host/build_all.sh first)."
+[ -d "$W/obj4-c" ] || die "$W/obj4-c is missing (run scripts/recomp/linux/local/build_all.sh first)."
 export NVN_BACKEND=vulkan OBJ=$W/obj4-c
 BARGS=()
 for a in "$@"; do [ "$a" = --qt ] && export BDSP_QT=1 || BARGS+=("$a"); done

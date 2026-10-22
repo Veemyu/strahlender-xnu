@@ -17,7 +17,7 @@ if [ -x "$W/bdsp_boot_vk_qt" ] && [ -z "${BDSP_QT_PROCESS:-}" ]; then  # In-proc
   exit 0
 fi
 QT_BIN=$W/qt-host/bdsp_qt_host
-[ -x "$QT_BIN" ] || die "$QT_BIN is missing (build with scripts/recomp/linux/host/vk_qt_build.sh; Qt 6 development files required)."
+[ -x "$QT_BIN" ] || die "$QT_BIN is missing (build with scripts/recomp/linux/local/vk_qt_build.sh; Qt 6 development files required)."
 echo "# Start Qt host: ${ARGS[*]}"
 "${TIMEV[@]}" "$QT_BIN" --game "$W/bdsp_boot_vk" -- ${ARGS[@]+"${ARGS[@]}"}
 echo "# End, exit code $?"

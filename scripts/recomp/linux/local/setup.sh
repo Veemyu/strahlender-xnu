@@ -1,6 +1,6 @@
 #!/bin/bash
 # Check Linux tools and Python dependencies without installing anything.
-# Compare the checksums of the inputs against the manifest from the Mac. Reports missing packages as an install list.
+# Compare the checksums of the inputs against work/exefs.sha256 (if present). Reports missing packages as an install list.
 source "$(dirname "$0")/common.sh"
 missing=()
 for t in clang gcc make cmake ninja rsync python3 git; do command -v "$t" >/dev/null || missing+=("$t"); done
@@ -15,10 +15,10 @@ echo "== Python packages"
 python3 -c "import lz4, capstone, unicorn; from importlib.metadata import version as v; print('lz4', v('lz4'), 'capstone', v('capstone'), 'unicorn', v('unicorn'))" \
   || die "Install the Python build dependencies yourself: lz4, capstone, unicorn. See docs/BUILD.md."
 echo "== Input checksums"
-if [ -f manifest/exefs.sha256 ]; then
-  sha256sum -c manifest/exefs.sha256 || die "Checksums do not match the manifest from the Mac (run sync.sh again)."
+if [ -f work/exefs.sha256 ]; then
+  sha256sum -c work/exefs.sha256 || die "Checksums do not match work/exefs.sha256 (inputs changed or copied incorrectly)."
 else
-  die "manifest/exefs.sha256 is missing (run sync.sh)."
+  echo "NOTE: work/exefs.sha256 is missing; inputs are not checked against a manifest (optional, see docs/BUILD.md)."
 fi
 if [ ${#missing[@]} -gt 0 ]; then
   echo "MISSING PACKAGES (to be installed by the user): ${missing[*]}"

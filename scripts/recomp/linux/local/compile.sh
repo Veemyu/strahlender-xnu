@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs on the Linux host: compiles the generated C (work/recomp/gen4-<modus>) with JOBS parallel clang calls and measures
+# Runs locally on Linux: compiles the generated C (work/recomp/gen4-<modus>) with JOBS parallel clang calls and measures
 # wall clock/CPU/RAM per chunk, total peak RAM (sampler on /proc/meminfo) and links the target library.
 # As scripts/recomp/build_all.sh on the Mac: -O1; single-function files > 1 MB with -O0.
 # Usage: [TAG=name] [THRESH_O0=bytes] compile.sh [c] [--neu]   --neu: discard objects (full rebuild); otherwise only newer/missing sources

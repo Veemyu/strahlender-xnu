@@ -1,5 +1,5 @@
 #!/bin/bash
-# Läuft auf dem Ryzen (~/xnu-recomp): Float-Benchmark mit verschiedenen Fusions-Einstellungen für Gastcode und native
+# Läuft lokal auf Linux (aus der Repo-Wurzel): Float-Benchmark mit verschiedenen Fusions-Einstellungen für Gastcode und native
 # Referenz (docs/recomp-diff.md, Abschnitt 6). Alles unter work/recomp/diff/bench. Aufruf: bench_fp.sh [n]
 set -uo pipefail
 cd "$(dirname "$0")/../../.."

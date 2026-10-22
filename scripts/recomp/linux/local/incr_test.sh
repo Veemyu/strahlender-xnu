@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs on the Linux host: measures incremental rebuilds (only changed chunks) on a copy of the finished build
+# Runs locally on Linux: measures incremental rebuilds (only changed chunks) on a copy of the finished build
 # (gen4-incr / obj4-c-incr); the real build stays untouched. Prerequisite: build.sh ran (work/recomp/obj4-c).
 # Scenarios: A no change, B five chunks change (touch), C seven SDK functions become HLE stubs (real generator change).
 # Output: logs/incr.stats

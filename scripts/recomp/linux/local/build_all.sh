@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs on the Linux host: generator (c mode) + compile + link, with total time. Usage: build_all.sh [--neu] [--nur-gen] [--nur-compile]
+# Runs locally on Linux: generator (c mode) + compile + link, with total time. Usage: build_all.sh [--neu] [--nur-gen] [--nur-compile]
 source "$(dirname "$0")/common.sh"
 NEU=""; DO_GEN=1; DO_CC=1
 for a in "$@"; do case "$a" in --neu) NEU=--neu;; --nur-gen) DO_CC=0;; --nur-compile) DO_GEN=0;; --tag=*) export TAG=${a#--tag=};; --jobs=*) export JOBS=${a#--jobs=};; --schwelle=*) export THRESH_O0=${a#--schwelle=};; *) die "Unknown argument '$a'.";; esac; done

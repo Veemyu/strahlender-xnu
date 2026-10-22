@@ -1,8 +1,8 @@
 #!/bin/bash
-# Runs on the Linux host: generates the C of all four modules with the LAS lifter (eh_gen.py) and measures time/RAM/size.
+# Runs locally on Linux: generates the C of all four modules with the LAS lifter (eh_gen.py) and measures time/RAM/size.
 # Usage: gen.sh [c|asm] [modul ...]      Default: c, all four modules in turn (like gen_all.sh on the Mac)
 #   c   = portable C (simd.h), the path for x86 hosts
-#   asm = inline asm for AArch64 hosts; on the x86 Linux host only producible for comparison (not compilable)
+#   asm = inline asm for AArch64 hosts; on x86 Linux only producible for comparison (not compilable)
 # Output: work/recomp/gen4-<modus>/<modul>/*.c, logs/gen-<modus>.stats (numbers), work/recomp/gen4-<modus>.sha256 (tree checksum)
 source "$(dirname "$0")/common.sh"
 MODE=${1:-c}; shift
@@ -11,7 +11,7 @@ mods=("$@"); [ ${#mods[@]} -eq 0 ] && mods=(rtld main sdk subsdk0)
 OUT=$W/gen4-$MODE
 ST=logs/gen-$MODE.stats
 mkdir -p "$OUT" logs
-for m in "${mods[@]}"; do [ -f "work/exefs/$m" ] || die "work/exefs/$m is missing (sync.sh)."; done
+for m in "${mods[@]}"; do [ -f "work/exefs/$m" ] || die "work/exefs/$m is missing (extract it first, see docs/BUILD.md section 4.1)."; done
 : > "$ST"
 tot0=$(date +%s.%N)
 for m in "${mods[@]}"; do

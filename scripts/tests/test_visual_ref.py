@@ -135,7 +135,7 @@ class ImportAndRunTests(Tmp):
         self.assertEqual(code2, 0)
 
     def test_import_recomp_by_name_alias_and_change(self):
-        raw1, raw2 = self.tmp / "mac", self.tmp / "ryzen"
+        raw1, raw2 = self.tmp / "mac", self.tmp / "linux"
         dest = self.tmp / "recomp"
         amap = json.loads(json.dumps(MAP))
         amap["views"][1]["aliases"] = ["gate2_b"]

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Läuft auf dem Ryzen (Arbeitsordner ~/xnu-recomp): baut die c-Varianten des Differenzialtests und führt ihn aus
-# (docs/recomp-diff.md). Aufruf: run_ryzen.sh <Satz> [ids]   Satz = Name der Variantenliste unten.
+# Läuft lokal auf Linux (aus der Repo-Wurzel): baut die c-Varianten des Differenzialtests und führt ihn aus
+# (docs/recomp-diff.md). Aufruf: scripts/recomp/diff/run_linux.sh <Satz> [ids]   Satz = Name der Variantenliste unten.
 # Ergebnisse: work/recomp/diff/rep_<Satz>.json, Log work/recomp/diff/run_<Satz>.log. Höchstens 4 parallele Prozesse.
 set -uo pipefail
 cd "$(dirname "$0")/../../.."
