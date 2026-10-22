@@ -330,7 +330,7 @@ Details: `docs/recomp-vulkan.md`.
 
 ## 7. Build stages overview
 
-Stage order: `tools extract il2cpp recomp masterdata shaders video audio`. Run one part with `--only` or
+Stage order: `tools extract recomp shaders`. Run one part with `--only` or
 `--from`/`--to`. Use `--dry-run` first. Each stage writes a marker `work/.stages/<stage>.json` with an input hash.
 If the hash matches, the stage is skipped (`--force` rebuilds it).
 
@@ -338,8 +338,10 @@ If the hash matches, the stage is skipped (`--force` rebuilds it).
 |---|---|---|
 | `tools` | checks tools, builds `hactool` into `tools/hactool` | yes (for `extract`) |
 | `extract` | decrypts the `.xci`/`.nsp` into `work/exefs`, `work/romfs`, `work/manifest.json` | yes |
-| `il2cpp`, `masterdata`, `shaders`, `video`, `audio` | Unity-related stages | no: `recomp_build.sh` reads only `work/exefs` and `work/romfs` |
 | `recomp` | macOS app from the recompilation | macOS app only |
+| `shaders` | converts cached game shaders for the Unity-era shader tools (needs UnityPy in `tools/pydeps`) | no: `recomp_build.sh` reads only `work/exefs` and `work/romfs` |
+
+The Unity-era stages `il2cpp`, `masterdata`, `video` and `audio` were removed (they remain on the branch `unity`).
 
 ### 7.1 The `recomp` stage
 
@@ -389,4 +391,3 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 - `docs/recomp-macapp.md`: macOS app, data locations, save import, measurements.
 - `docs/recomp-ios.md`: iPadOS build steps.
 - `docs/recomp-vulkan.md`: Vulkan path and its status.
-- `docs/build-pipeline.md`: stages, markers, preflight.

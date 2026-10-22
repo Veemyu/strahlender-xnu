@@ -1,6 +1,6 @@
 # Recompilation QA (`ap-recomp-qa`)
 
-Status: 2026-10-19, interim (to be updated after each scenario). Based on `docs/recomp-gate2.md`, `docs/architektur-entscheidung.md` (decision 3: recompilation is the main path), and `docs/visuelle-pruefung.md`. Task: systematically test the recompiled runtime (`work/recomp/bdsp_boot`, Metal, headless), find and fix errors, and compare images with the Ryujinx reference. **No audio** (audio services are silent); no game binaries, saves, or screenshots in the repository (everything is under `work/recomp/qa/`).
+Status: 2026-10-19, interim (to be updated after each scenario). Based on `docs/recomp-gate2.md`, `docs/architektur-entscheidung.md` (decision 3: recompilation is the main path). Task: systematically test the recompiled runtime (`work/recomp/bdsp_boot`, Metal, headless), find and fix errors, and compare images with the Ryujinx reference. **No audio** (audio services are silent); no game binaries, saves, or screenshots in the repository (everything is under `work/recomp/qa/`).
 
 **Labels:** **measured** = recorded in runs under `work/recomp/qa/<run>/`; *suspected* = inference without a test. **Test conditions:** M1 Pro, 16 GB. Another agent was building and testing in parallel during these runs (Mac load averaged 25–55; at times a second game instance was running), so **frame rates from these runs are not representative** (see long run). Each report includes load and process CPU.
 

@@ -227,7 +227,7 @@ Lücken (unverändert): Szenenwerte des `EnvironmentController`, Nachbearbeitung
 
 ### 10b. Nachtrag 2026-10-19 (`ap-effects-fidelity`, Teil 4): Szenenwerte, `_ShadowMapTexture`, Nachbearbeitung
 
-Ausführlich: `docs/sichtpruefung-2.md` (Abschnitte 5, 7, 8, 9).
+Ausführlich: `sichtpruefung-2` (Git-Verlauf; Abschnitte 5, 7, 8, 9).
 
 | Thema | Ergebnis |
 |---|---|

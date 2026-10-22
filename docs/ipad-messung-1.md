@@ -90,7 +90,7 @@ Basis: limit without entitlement 5120 MiB, with entitlement 8192 MiB; warning th
 - **Code implications:**
   1. Read `Limit = available + footprint` at startup and before each zone transition, and budget against it (do not hard-code it; other iPads with 4 or 6 GB will differ).
   2. Handle `Application.lowMemory` (clear caches, unload bundles): without entitlement the warning came 1 GiB before the limit.
-  3. Keep large textures and bundles only for the current zone (see `docs/feld-szene-1.md`, section 9), then unload them; avoid managed allocations in the loading path.
+  3. Keep large textures and bundles only for the current zone (see `feld-szene-1` in the git history, section 9), then unload them; avoid managed allocations in the loading path.
   4. Unified memory: render targets (e.g. shadows, post-processing at 2732 × 2048) count fully.
   5. Always set `Application.targetFrameRate` (section 5).
 

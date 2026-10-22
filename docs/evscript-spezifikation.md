@@ -5,7 +5,7 @@ As of 2026-10-19. Names, numbers, and structure only; no game text or data in th
 
 **The story order for the opening route is unconfirmed.** Dependent claims are marked **[A]** (assumption).
 
-Continuation: the concrete host for host commands, game loop, and real-data run through the first battle are in `docs/spielkern-1.md` (assembly `Xnu.Game`); all 599 host IDs, `CMPWK` (19), and `CASE_CANCEL` (38) as **core commands** (now 63 instead of 61), the Pokémon Center flow, and story run are in `docs/spielkern-2.md`.
+Continuation: the concrete host for host commands, game loop, and real-data run through the first battle are in the Unity-era document `spielkern-1` (assembly `Xnu.Game`, git history); all 599 host IDs, `CMPWK` (19), and `CASE_CANCEL` (38) as **core commands** (now 63 instead of 61), the Pokémon Center flow, and story run are in `spielkern-2` (git history).
 
 ## 1. Summary
 

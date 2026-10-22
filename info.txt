@@ -1,5 +1,0 @@
-https://github.com/TeamLumi/opendpr
-
-debug symbols present apparently
-
-unity based

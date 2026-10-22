@@ -331,5 +331,5 @@ Nur 4 von 5.150 deklarierten Namen in opendpr tauchen im Dump nicht auf.
 
 - Auf Namensebene ist opendpr dem Dump praktisch deckungsgleich. Die Lücken sind Wwise (liegt dort als eigenes Projekt `Dpr_WwiseProject` und in nur 8 Dateien im Ordner `AK`), DOTween-Teile und etwa 47 global benannte Spieltypen.
 - **Das heißt nicht, dass die Logik fertig ist.** Ein Namenstreffer sagt nichts über Methodenrumpf, Korrektheit oder Vollständigkeit. Der Umfang in Zeilen (ca. 310.600 für ca. 43.400 Methodeneinträge der Spieltypen) spricht für ausgefüllte Rümpfe, geprüft wurde das hier nicht.
-- Ob die Dateien „handgeschrieben“ sind, lässt sich aus Zahlen nicht ableiten; die README von opendpr nennt handgeschriebenen und skriptgenerierten Code. Wiederverwendung gehört in eine eigene Lizenz- und Qualitätsprüfung (siehe `docs/opendpr-machbarkeit.md`).
+- Ob die Dateien „handgeschrieben“ sind, lässt sich aus Zahlen nicht ableiten; die README von opendpr nennt handgeschriebenen und skriptgenerierten Code. Wiederverwendung gehört in eine eigene Lizenz- und Qualitätsprüfung (siehe opendpr-Machbarkeitsbericht im Git-Verlauf).
 - Für den Aufwand heißt das: Die Rekonstruktion ist nach Dump-Umfang groß (ca. 6.200 Typen), die verbleibende Arbeit steckt weniger in der Menge der Klassen als in Prüfung, Lauffähigkeit und dem Ersatz der Middleware.

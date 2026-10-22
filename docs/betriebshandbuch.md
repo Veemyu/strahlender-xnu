@@ -30,8 +30,6 @@ macOS tools are BSD variants (`ls --time-style` and GNU options are unavailable)
 | Install save into runtime | `scripts/recomp/rt-bdsp/install_save.sh` (source `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`, destination `work/recomp/save`) |
 | Build/start iPad | `scripts/recomp/ios/deploy_ios.sh build|install|run [SEC]|data|save|shots|files`; runtime environment via `RUN_ENV='{"BDSP_TIMEOUT":"40","BDSP_BT":"1","BDSP_WAIT":"1"}'`; logs `work/builds/ipad-recomp-<time>.log` (`docs/recomp-ios.md`, section 6) |
 | iPad save | `scripts/ios_push_save.sh [--source FILE] [--reimport] [--dry-run]` |
-| Ryujinx reference images | `python3 scripts/visual_ref.py import --raw work/visual/ref/ryujinx/raw --dest work/visual/ref/ryujinx`, after F8 images are copied by hand into `raw/` (`docs/visuelle-pruefung.md`, section 8) |
-| Image comparison | `scripts/visual_auto.sh run\|compare\|accept\|ref [--ref ryujinx\|recomp\|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
 | QA scenarios | `scripts/recomp/qa/qa_run.sh <scenario>|--list|--report <directory>` (lock file, save copy from `work/recomp/qa/save_base`) |
 | Unity (deprecated, only if ever needed again) | `scripts/unity_safe.sh open|restart|status|test|watch` is only on branch `unity` (absent on `main`; `visual_auto.sh` needs it to start Editor); never test in Play mode (hangs), run `editor_stop` first |
 

@@ -21,5 +21,5 @@ Dieses Repository enthält eigenen Code und folgende übernommene Teile. Das Rep
 
 ## Weitere Drittkomponenten (nur Verweis)
 
-- **FFmpeg** (LGPL/GPL je nach Bauart): wird bei der Filmwiedergabe gelinkt, nicht mitgeliefert. Die Bauart ist in `docs/bauen.md` zu prüfen.
+- **FFmpeg** (LGPL/GPL je nach Bauart): wird bei der Filmwiedergabe gelinkt, nicht mitgeliefert. Die Bauart ist in `docs/BUILD.de.md` zu prüfen.
 - **Build-Werkzeuge** `capstone`, `unicorn`, `lz4` (`tools/pydeps`): nur lokal genutzt, nicht mitgeliefert.

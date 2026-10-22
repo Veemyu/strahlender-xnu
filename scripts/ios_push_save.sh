@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Legt den eigenen Spielstand (SaveData.bin) als Ablage-Datei in den App-Container des iPads: Documents/SaveData.bin.
 # Beim nächsten „Weiter“ importiert die App sie in ihren Slot (Documents/Saves/main), sichert den bisherigen Slot unter
-# Documents/Backups/main und merkt sich den Hash der Datei (docs/ipad-durchstich-1.md). Eigener Code, kein Fremdcode.
+# Documents/Backups/main und merkt sich den Hash der Datei (docs/recomp-ios.md). Eigener Code, kein Fremdcode.
 #
 # Warum nicht direkt nach Documents/Saves/main/SaveData.bin: devicectl legt fehlende Ordner mit Besitzer root an; die App (mobile)
 # darf dort keine Datei anlegen, Speichern schlüge fehl. Documents selbst gehört der App, die Ablage-Datei braucht keinen Ordner.

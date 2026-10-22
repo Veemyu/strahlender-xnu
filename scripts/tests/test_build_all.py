@@ -47,9 +47,10 @@ class DryRunTests(unittest.TestCase):
     def test_all_stages_listed_and_nothing_written(self):
         rc, out, err = self.dry(["all", "--xci", self.xci, "--keys", self.keys])
         self.assertEqual(rc, 0, err)
-        for stage in ("tools", "extract", "il2cpp", "recomp", "masterdata", "shaders", "video", "audio"):
+        for stage in ("tools", "extract", "recomp", "shaders"):
             self.assertIn("  %-12s" % stage, out, stage)
-        self.assertIn("nicht implementiert", out)
+        for stage in ("il2cpp", "masterdata", "video", "audio"):
+            self.assertNotIn("  %-12s" % stage, out, stage)
         self.assertFalse(os.path.exists(self.work), "Dry-run darf nichts anlegen")
 
     def test_recomp_dry_run_plans_all_steps_and_writes_nothing(self):
@@ -73,25 +74,24 @@ class DryRunTests(unittest.TestCase):
         self.assertIn("übersprungen", out)
 
     def test_from_to_and_only(self):
-        rc, out, _ = self.dry(["--from", "video", "--to", "audio"])
+        rc, out, _ = self.dry(["--from", "recomp", "--to", "shaders"])
         self.assertEqual(rc, 0)
-        self.assertIn("Stufen: video audio ", out)
-        rc, out, _ = self.dry(["--only", "shaders,video"])
-        self.assertIn("Stufen: shaders video ", out)
+        self.assertIn("Stufen: recomp shaders ", out)
+        rc, out, _ = self.dry(["--only", "shaders,tools"])
+        self.assertIn("Stufen: tools shaders ", out)
 
-    def test_audio_is_a_placeholder_without_marker(self):
-        rc, out, _ = run(["--only", "audio", "--no-preflight", "--work", self.work])
-        self.assertEqual(rc, 0)
-        self.assertIn("NICHT IMPLEMENTIERT", out)
-        self.assertIn("stumm", out)
-        self.assertFalse(os.path.exists(os.path.join(self.work, ".stages", "audio.json")))
+    def test_removed_stages_and_options_are_rejected(self):
+        for stage in ("il2cpp", "masterdata", "video", "audio"):
+            self.assertEqual(run(["--only", stage, "--dry-run"])[0], 2, stage)
+        for option in ("--video-profile", "--movie-src", "--bundle-platform", "--bundle-subset", "--texture-format", "--launch"):
+            self.assertEqual(run([option, "x", "--dry-run", "--only", "tools"])[0], 2, option)
 
     def test_usage_errors(self):
         self.assertEqual(run([])[0], 2)
         self.assertEqual(run(["--only", "nix", "--dry-run"])[0], 2)
         self.assertEqual(run(["--target", "windows", "--dry-run", "all"])[0], 2)
-        self.assertEqual(run(["--from", "audio", "--to", "video", "--dry-run"])[0], 2)
-        self.assertEqual(run(["--only", "video", "--from", "tools", "--dry-run"])[0], 2)
+        self.assertEqual(run(["--from", "shaders", "--to", "tools", "--dry-run"])[0], 2)
+        self.assertEqual(run(["--only", "shaders", "--from", "tools", "--dry-run"])[0], 2)
         rc, _, err = run(["extract", "--no-preflight", "--work", self.work])
         self.assertEqual(rc, 2)
         self.assertIn("--xci fehlt", err)
@@ -104,13 +104,13 @@ class DryRunTests(unittest.TestCase):
     def test_dry_run_respects_marker(self):
         write(os.path.join(self.work, "exefs", "main"), "m")
         write(os.path.join(self.work, "romfs", "Data", "x"), "r")
-        write(os.path.join(self.work, "masterdata", "_counts.json"), "{}")
-        digest, _ = bs.stage_hash("masterdata", ROOT, self.work, "all")
-        bs.write_marker(self.work, "masterdata", digest)
-        rc, out, _ = self.dry(["--only", "masterdata"])
+        write(os.path.join(self.work, "build", "shaders", "x"), "{}")
+        digest, _ = bs.stage_hash("shaders", ROOT, self.work, "all")
+        bs.write_marker(self.work, "shaders", digest)
+        rc, out, _ = self.dry(["--only", "shaders"])
         self.assertEqual(rc, 0)
         self.assertIn("Marker passt", out)
-        rc, out, _ = self.dry(["--only", "masterdata", "--force"])
+        rc, out, _ = self.dry(["--only", "shaders", "--force"])
         self.assertIn("würde ausgeführt", out)
 
 

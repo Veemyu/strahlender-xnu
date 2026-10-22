@@ -214,7 +214,7 @@ Historische Messungen: [recomp-linux.de.md](recomp-linux.de.md).
 
 ## 7. Überblick über die Bau-Stufen
 
-Reihenfolge der Stufen: `tools extract il2cpp recomp masterdata shaders video audio`. Mit `--only` oder
+Reihenfolge der Stufen: `tools extract recomp shaders`. Mit `--only` oder
 `--from`/`--to` läufst du einen Teil. Prüfe vorher mit `--dry-run`. Jede Stufe schreibt einen Marker
 `work/.stages/<Stufe>.json` mit einem Eingabe-Hash. Passt der Hash, wird die Stufe übersprungen
 (`--force` baut sie neu).
@@ -223,8 +223,10 @@ Reihenfolge der Stufen: `tools extract il2cpp recomp masterdata shaders video au
 |---|---|---|
 | `tools` | prüft Werkzeuge, baut `hactool` nach `tools/hactool` | ja (für `extract`) |
 | `extract` | entschlüsselt `.xci`/`.nsp` nach `work/exefs`, `work/romfs`, `work/manifest.json` | ja |
-| `il2cpp`, `masterdata`, `shaders`, `video`, `audio` | Unity-bezogene Stufen | nein: `recomp_build.sh` liest nur `work/exefs` und `work/romfs` |
 | `recomp` | macOS-App aus der Rekompilation | nur für die macOS-App |
+| `shaders` | wandelt zwischengespeicherte Spiel-Shader für die Unity-Shader-Werkzeuge um (braucht UnityPy in `tools/pydeps`) | nein: `recomp_build.sh` liest nur `work/exefs` und `work/romfs` |
+
+Die Unity-Stufen `il2cpp`, `masterdata`, `video` und `audio` wurden entfernt (sie liegen im Branch `unity`).
 
 ### 7.1 Die Stufe `recomp`
 
@@ -275,4 +277,3 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 - `docs/recomp-macapp.md`: macOS-App, Datenpfade, Spielstand-Import, Messwerte.
 - `docs/recomp-ios.md`: Schritte für die iPadOS-App.
 - `docs/recomp-vulkan.md`: Vulkan-Pfad und Stand.
-- `docs/build-pipeline.md`: Stufen, Marker, Preflight.

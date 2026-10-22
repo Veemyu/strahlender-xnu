@@ -9,7 +9,7 @@
 - All conversions (for example, video format conversion) are **additional build steps** and do not modify the source data.
 
 ## Build Pipeline (Goal)
-Entry point: `scripts/build_all.sh all --xci <file> --nsp <file> --keys <directory> --target macos|ios|all` (guide: `docs/bauen.md`, technical details: `docs/build-pipeline.md`; `--dry-run` previews the plan).
+Entry point: `scripts/build_all.sh all --xci <file> --nsp <file> --keys <directory> --target macos|ios|all` (guide: `docs/BUILD.md`; `--dry-run` previews the plan).
 
 | Step | Contents | Status |
 |---|---|---|

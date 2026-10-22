@@ -5,7 +5,7 @@
 Status: 2026-10-19, todo `ap-ui` (analysis phase). This document describes how the original stores and assembles text, and the C# reader built for it (`unity/Assets/Scripts/Text`, assembly `Xnu.Text`, tests `unity/Assets/Tests/EditMode/TextTests.cs`).
 It contains only structures, field names, and numbers. All text examples are invented; original text appears neither here nor in the tests.
 
-**Verification levels** (as in `docs/ui-spezifikation-1.md`):
+**Verification levels** (as in the Unity-era `ui-spezifikation-1`, git history):
 
 - **[D]** Measured from data (catalog, UnityPy bundle reads, JSON exports); reproducible with scripts in section 11.
 - **[S]** Read from `work/il2cpp/dump.cs` (classes, fields, offsets, constants, method signatures): structure only, not logic.

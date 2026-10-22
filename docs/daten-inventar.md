@@ -133,7 +133,7 @@ Filename language suffixes, 9 languages each (`en`, `fr`, `ge`, `it`, `jp`, `ko`
 
 ## 7. Open Questions
 
-- ~~What exactly is `Dpr.bin`?~~ Resolved: bundle catalog (`AssetBundleDownloadManifest`, .NET BinaryFormatter, version 6), see `docs/bundle-katalog.md`.
+- ~~What exactly is `Dpr.bin`?~~ Resolved: bundle catalog (`AssetBundleDownloadManifest`, .NET BinaryFormatter, version 6).
 - Which assets (paths) are inside bundles? Requires decompressing block data and reading serialization (TypeTree).
 - How do `Message/Message` and `common_msbt` work together, and what format is text in bundles (MSBT?)?
 - Exactly which bundles contain items, moves, maps, trainers (probably `Dpr/masterdatas`, but unverified)?

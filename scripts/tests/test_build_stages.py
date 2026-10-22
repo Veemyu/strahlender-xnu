@@ -24,22 +24,27 @@ class StageSelectionTests(unittest.TestCase):
         self.assertEqual(bs.select_stages([]), bs.STAGES)
 
     def test_order_is_canonical_and_aliases_work(self):
-        self.assertEqual(bs.select_stages(["video", "masterdata", "shader"]), ["masterdata", "shaders", "video"])
+        self.assertEqual(bs.select_stages(["shader", "recomp", "tools"]), ["tools", "recomp", "shaders"])
         self.assertEqual(bs.select_stages(["macapp"]), ["recomp"])
 
     def test_from_to(self):
-        self.assertEqual(bs.select_stages(from_stage="masterdata", to_stage="video"), ["masterdata", "shaders", "video"])
-        self.assertEqual(bs.select_stages(from_stage="audio"), ["audio"])
+        self.assertEqual(bs.select_stages(from_stage="extract", to_stage="recomp"), ["extract", "recomp"])
+        self.assertEqual(bs.select_stages(from_stage="shaders"), ["shaders"])
         self.assertEqual(bs.select_stages(to_stage="extract"), ["tools", "extract"])
 
     def test_from_after_to_fails(self):
         with self.assertRaises(ValueError):
-            bs.select_stages(from_stage="video", to_stage="il2cpp")
+            bs.select_stages(from_stage="shaders", to_stage="extract")
+
+    def test_removed_stages_are_unknown(self):
+        for name in ("il2cpp", "masterdata", "video", "audio"):
+            with self.assertRaises(ValueError):
+                bs.select_stages([name])
 
     def test_only(self):
-        self.assertEqual(bs.select_stages(only=["video,shaders"]), ["shaders", "video"])
+        self.assertEqual(bs.select_stages(only=["shaders,tools"]), ["tools", "shaders"])
         with self.assertRaises(ValueError):
-            bs.select_stages(only=["video"], from_stage="tools")
+            bs.select_stages(only=["shaders"], from_stage="tools")
 
     def test_unknown_stage(self):
         with self.assertRaises(ValueError) as cm:
@@ -48,31 +53,31 @@ class StageSelectionTests(unittest.TestCase):
 
     def test_explicit_stage_outside_range_is_empty(self):
         with self.assertRaises(ValueError):
-            bs.select_stages(["tools"], from_stage="video")
+            bs.select_stages(["tools"], from_stage="shaders")
 
     def test_cli_exit_codes(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(bs.main(["stages", "--stage", "nix"]), bs.EX_USAGE)
-            self.assertEqual(bs.main(["stages", "--only", "audio"]), 0)
+            self.assertEqual(bs.main(["stages", "--only", "shaders"]), 0)
 
 
 class MarkerTests(unittest.TestCase):
     def test_roundtrip_and_mismatch(self):
         with tempfile.TemporaryDirectory() as work:
-            self.assertFalse(bs.marker_matches(work, "video", "abc"))
-            bs.write_marker(work, "video", "abc", {"dateien": "3"})
-            self.assertTrue(bs.marker_matches(work, "video", "abc"))
-            self.assertFalse(bs.marker_matches(work, "video", "abd"))
+            self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
+            bs.write_marker(work, "shaders", "abc", {"dateien": "3"})
+            self.assertTrue(bs.marker_matches(work, "shaders", "abc"))
+            self.assertFalse(bs.marker_matches(work, "shaders", "abd"))
             self.assertFalse(bs.marker_matches(work, "assets", "abc"))
-            with open(bs.marker_path(work, "video")) as f:
+            with open(bs.marker_path(work, "shaders")) as f:
                 self.assertEqual(json.load(f)["notes"], {"dateien": "3"})
-            bs.clear_marker(work, "video")
-            self.assertFalse(bs.marker_matches(work, "video", "abc"))
+            bs.clear_marker(work, "shaders")
+            self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
 
     def test_corrupt_marker_is_ignored(self):
         with tempfile.TemporaryDirectory() as work:
-            write(bs.marker_path(work, "video"), "{kaputt")
-            self.assertFalse(bs.marker_matches(work, "video", "abc"))
+            write(bs.marker_path(work, "shaders"), "{kaputt")
+            self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
 
 
 class HashTests(unittest.TestCase):
@@ -80,10 +85,7 @@ class HashTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = os.path.join(self.tmp.name, "repo")
         self.work = os.path.join(self.tmp.name, "work")
-        write(os.path.join(self.root, "scripts", "masterdata_export.py"), "v1")
-        write(os.path.join(self.root, "scripts", "video_convert.sh"), "v1")
-        write(os.path.join(self.work, "romfs", "Data", "StreamingAssets", "Movie", "a.webm"), "12345")
-        write(os.path.join(self.work, "romfs", "Data", "StreamingAssets", "AssetAssistant", "b", "bundle"), "123")
+        write(os.path.join(self.root, "scripts", "shader_build.sh"), "v1")
         manifest = {"title_id": "t", "title_version": 1, "exefs": {"main": {"sha256": "aa"}},
                     "romfs": {"files": 2, "bytes": 8}}
         write(os.path.join(self.work, "manifest.json"), json.dumps(manifest))
@@ -95,26 +97,26 @@ class HashTests(unittest.TestCase):
         return bs.stage_hash(stage, self.root, self.work, env={}, **kw)[0]
 
     def test_stable(self):
-        self.assertEqual(self.h("masterdata"), self.h("masterdata"))
+        self.assertEqual(self.h("shaders"), self.h("shaders"))
 
     def test_script_change_changes_hash(self):
-        before = self.h("masterdata")
-        write(os.path.join(self.root, "scripts", "masterdata_export.py"), "v2")
-        self.assertNotEqual(before, self.h("masterdata"))
+        before = self.h("shaders")
+        write(os.path.join(self.root, "scripts", "shader_build.sh"), "v2")
+        self.assertNotEqual(before, self.h("shaders"))
 
     def test_manifest_change_changes_hash(self):
-        before = self.h("masterdata")
+        before = self.h("shaders")
         with open(os.path.join(self.work, "manifest.json")) as f:
             m = json.load(f)
         m["exefs"]["main"]["sha256"] = "bb"
         write(os.path.join(self.work, "manifest.json"), json.dumps(m))
-        self.assertNotEqual(before, self.h("masterdata"))
+        self.assertNotEqual(before, self.h("shaders"))
 
-    def test_video_depends_on_profile_and_sources(self):
-        base = self.h("video")
-        self.assertNotEqual(base, self.h("video", profile="h265-crf14"))
-        write(os.path.join(self.work, "romfs", "Data", "StreamingAssets", "Movie", "b.webm"), "1")
-        self.assertNotEqual(base, self.h("video"))
+    def test_shader_used_list_changes_hash(self):
+        base = self.h("shaders")
+        used = os.path.join(self.tmp.name, "used.txt")
+        write(used, "a")
+        self.assertNotEqual(base, bs.stage_hash("shaders", self.root, self.work, env={"SHADER_USED": used})[0])
 
 
 class EnvFileTests(unittest.TestCase):
@@ -145,7 +147,6 @@ class PreflightTests(unittest.TestCase):
             os.makedirs(d)
         write(os.path.join(self.tools, "hactool", "hactool"))
         os.chmod(os.path.join(self.tools, "hactool", "hactool"), 0o755)
-        write(os.path.join(self.tools, "il2cppdumper-bin", "Il2CppDumper.dll"))
         os.makedirs(os.path.join(self.tools, "pydeps", "UnityPy"))
         os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
         os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
@@ -157,8 +158,7 @@ class PreflightTests(unittest.TestCase):
 
     def run_pf(self, stages, target="all", which=None, run=None, free=lambda p: 200.0):
         which = which or (lambda c: "/usr/bin/" + c)
-        run = run or (lambda cmd, env=None, timeout=60: (True, "8.0.100" if "dotnet" in cmd[0]
-                                                         else "libx265 encoder" if "-encoders" in cmd else "ok"))
+        run = run or (lambda cmd, env=None, timeout=60: (True, "ok"))
         return bs.preflight(stages, target, self.root, self.work, self.tools, 60,
                             which=which, run=run, free=free)
 
@@ -170,30 +170,25 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(self.names(items, False), [])
 
     def test_disk_requirement(self):
-        items = self.run_pf(["masterdata"], free=lambda p: 42.0)
+        items = self.run_pf(["shaders"], free=lambda p: 42.0)
         self.assertEqual(self.names(items, False), ["Plattenplatz >= 60 GB frei"])
         lines, missing, disk = bs.format_preflight(items)
         self.assertTrue(disk)
         with contextlib.redirect_stdout(io.StringIO()):
-            rc = bs.main(["preflight", "--stages", "masterdata", "--root", self.root, "--work", self.work,
+            rc = bs.main(["preflight", "--stages", "shaders", "--root", self.root, "--work", self.work,
                           "--tools-dir", self.tools, "--min-free-gb", "100000000"])
         self.assertEqual(rc, bs.EX_DISK)
 
     def test_only_selected_stages_are_checked(self):
-        items = self.run_pf(["audio"], which=lambda c: None)
+        items = self.run_pf(["extract"], which=lambda c: None)
         self.assertEqual(self.names(items, False), [])
-        items = self.run_pf(["video"], which=lambda c: None)
-        self.assertEqual(self.names(items, False), ["ffmpeg mit libx265"])
+        items = self.run_pf(["shaders"], which=lambda c: None)
+        self.assertEqual(self.names(items, False), ["make (für shader_translator)", "cc (für shader_translator)"])
 
-    def test_ffmpeg_without_x265(self):
-        run = lambda cmd, env=None, timeout=60: (True, "libx264 only")
-        items = self.run_pf(["video"], run=run)
-        self.assertEqual(self.names(items, False), ["ffmpeg mit libx265"])
-
-    def test_old_dotnet(self):
-        run = lambda cmd, env=None, timeout=60: (True, "6.0.400")
-        items = self.run_pf(["il2cpp"], run=run)
-        self.assertEqual(self.names(items, False), ["dotnet >= 8"])
+    def test_shaders_need_unitypy(self):
+        os.rmdir(os.path.join(self.tools, "pydeps", "UnityPy"))
+        items = self.run_pf(["shaders"])
+        self.assertEqual(self.names(items, False), ["Python-Pakete (UnityPy, lz4) in tools/pydeps"])
 
     def test_missing_hactool_is_reported_for_extract(self):
         os.remove(os.path.join(self.tools, "hactool", "hactool"))
@@ -213,7 +208,7 @@ class PreflightTests(unittest.TestCase):
         _, missing, _ = bs.format_preflight(items)
         text = "\n".join(bs.install_list(missing))
         self.assertNotIn("sudo ", text)
-        self.assertIn("brew install ffmpeg", text)
+        self.assertIn("brew install sdl3 ffmpeg", text)
         self.assertNotIn("Plattenplatz", text)
 
 
@@ -247,8 +242,8 @@ class RecompStageTests(unittest.TestCase):
     def missing(self, items):
         return [i["name"] for i in items if not i["ok"] and i["level"] == "fehlt"]
 
-    def test_order_after_il2cpp(self):
-        self.assertEqual(bs.STAGES[bs.STAGES.index("il2cpp") + 1], "recomp")
+    def test_order_after_extract(self):
+        self.assertEqual(bs.STAGES[bs.STAGES.index("extract") + 1], "recomp")
         self.assertEqual(bs.normalize_stage("macapp"), "recomp")
 
     def test_preflight_ok_and_disk_limit_is_25_gb(self):

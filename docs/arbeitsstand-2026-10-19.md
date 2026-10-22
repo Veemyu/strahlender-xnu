@@ -32,7 +32,7 @@ There is now **one** development track: recompilation.
 - **Bit-exactness (`recomp-diff.md`):** x86 C mode vs ARM64: 0 mismatches (93.5 million cases per variant, 44 instructions exhaustively over 2^32 inputs). Required: `rt_fp_guest_mode()` in guest thread (otherwise FTZ/DAZ cases differ), flags `-O1 -ffp-contract=off -fno-fast-math`.
 - **Mac run (Metal):** rtld → opening video (VP8, FFmpeg) → title after 21.9 s → “Continue” → save → 3D city (Zone 24) at 45 fps, RSS 1.0–1.5 GiB, 24–37 threads, no crash for 135 s.
 - **Linux run (Vulkan, RTX 2080 Ti):** language selection with correct text at 60 fps; all 4,276 unique game programs pass through translator + `glslc`, deterministically (1,206 SPIR-V files byte-identical).
-- **iPad (app `dev.local.xnubdsp`):** runs at 50–52 fps (previous measurement 41), footprint 1.6–2.1 GiB (8-GiB limit with Increased Memory Limit), 37–39 threads, memory model B (all guest addresses below 4 GiB, 1.98 GiB app memory). Details in `recomp-ios.md` and `ipad-durchstich-1.md` (save path).
+- **iPad (app `dev.local.xnubdsp`):** runs at 50–52 fps (previous measurement 41), footprint 1.6–2.1 GiB (8-GiB limit with Increased Memory Limit), 37–39 threads, memory model B (all guest addresses below 4 GiB, 1.98 GiB app memory). Details in `recomp-ios.md`.
 - **Reference comparison:** recompilation language selection pixel-identical to Ryujinx (SSIM 0.999). City image colors are close (difference 15–17 per channel); water is missing (white instead of blue).
 
 ### 3.2 Components (Where Things Live)

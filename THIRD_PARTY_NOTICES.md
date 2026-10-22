@@ -21,5 +21,5 @@ This repository contains original code and the components listed below. It conta
 
 ## Other third-party dependencies (references only)
 
-- **FFmpeg** (LGPL/GPL depending on its build configuration): Linked for video playback, not distributed here. Check the build configuration as described in `docs/bauen.md`.
+- **FFmpeg** (LGPL/GPL depending on its build configuration): Linked for video playback, not distributed here. Check the build configuration as described in `docs/BUILD.md`.
 - **Build tools** `capstone`, `unicorn`, and `lz4` (`tools/pydeps`): Used locally, not distributed.

@@ -1,6 +1,6 @@
 # Rekompilation, Qualitätssicherung (`ap-recomp-qa`)
 
-Stand: 2026-10-19, Zwischenstand (wird nach jedem Szenario fortgeschrieben). Grundlage: `docs/recomp-gate2.md`, `docs/architektur-entscheidung.md` (Entscheidung 3: Rekompilation ist Hauptweg), `docs/visuelle-pruefung.md`. Auftrag: die rekompilierte Laufzeit (`work/recomp/bdsp_boot`, Metal, headless) systematisch testen, Fehler finden und beheben, Bild gegen die Ryujinx-Referenz messen. **Kein Ton** (die Audiodienste sind stumm), keine Spielbytes, Saves oder Screenshots im Repo (alles unter `work/recomp/qa/`).
+Stand: 2026-10-19, Zwischenstand (wird nach jedem Szenario fortgeschrieben). Grundlage: `docs/recomp-gate2.md`, `docs/architektur-entscheidung.md` (Entscheidung 3: Rekompilation ist Hauptweg). Auftrag: die rekompilierte Laufzeit (`work/recomp/bdsp_boot`, Metal, headless) systematisch testen, Fehler finden und beheben, Bild gegen die Ryujinx-Referenz messen. **Kein Ton** (die Audiodienste sind stumm), keine Spielbytes, Saves oder Screenshots im Repo (alles unter `work/recomp/qa/`).
 
 **Kennzeichnung:** **gemessen** = in den Läufen unter `work/recomp/qa/<lauf>/` ermittelt; *vermutet* = Schluss ohne Test. **Messbedingung:** M1 Pro, 16 GB. Während der Läufe baute und testete ein anderer Agent parallel (Last des Macs im Mittel 25 bis 55, zeitweise lief eine zweite Spielinstanz); **Bildraten dieser Läufe sind deshalb nicht aussagekräftig** (Abschnitt Dauerlauf). Jeder Bericht enthält Last und Prozess-CPU.
 

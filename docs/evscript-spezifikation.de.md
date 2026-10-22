@@ -5,7 +5,7 @@ Stand: 2026-10-19. Nur Namen, Zahlen und Struktur; keine Spieltexte, keine Daten
 
 **Die Story-Reihenfolge der ersten Strecke ist nicht bestätigt.** Stellen, die davon abhängen, sind mit **[A]** (Annahme) markiert.
 
-Fortsetzung: Der konkrete Host für die Host-Befehle, die Spielschleife und der Echtdatenlauf bis zum ersten Kampf stehen in `docs/spielkern-1.md` (Assembly `Xnu.Game`); alle 599 Host-Kennungen, `CMPWK` (19) und `CASE_CANCEL` (38) als **Kernbefehle** (jetzt 63 statt 61), der Pokécenter-Ablauf und der Story-Lauf in `docs/spielkern-2.md`.
+Fortsetzung: Der konkrete Host für die Host-Befehle, die Spielschleife und der Echtdatenlauf bis zum ersten Kampf stehen in dem Unity-Dokument `spielkern-1` (Assembly `Xnu.Game`, Git-Verlauf); alle 599 Host-Kennungen, `CMPWK` (19) und `CASE_CANCEL` (38) als **Kernbefehle** (jetzt 63 statt 61), der Pokécenter-Ablauf und der Story-Lauf in `spielkern-2` (Git-Verlauf).
 
 ## 1. Ergebnis in Kürze
 

@@ -42,10 +42,10 @@ The image is consistent with this: `_WaterColor` in Gamma space produces deep bl
 
 From the inventory (`docs/shader-inventar.md`, Globals section) and `docs/shader-globals.md`:
 
-1. **`_OpaqueDepthTexture`** (`FlowmapWater`, `FlowmapBumpWater`): Depth after the opaque pass (`CameraEvent.AfterForwardOpaque`, `MultipleCameraCompositor`). Without it the shader uses depth 0/1 and draws a uniform brown surface in Unity (`docs/sichtpruefung-3.md`, **verified** in the Unity rebuild). Water must not write to this depth texture (`ZWrite Off`).
+1. **`_OpaqueDepthTexture`** (`FlowmapWater`, `FlowmapBumpWater`): Depth after the opaque pass (`CameraEvent.AfterForwardOpaque`, `MultipleCameraCompositor`). Without it the shader uses depth 0/1 and draws a uniform brown surface in Unity (`sichtpruefung-3` in the git history, **verified** in the Unity rebuild). Water must not write to this depth texture (`ZWrite Off`).
 2. **`_ReflectionTex` and `_ReflectionVP`**: Reflection camera (`ReflectionCameraFollower`), mirrored across y = 0, position (x, −y, z), Euler rotation (−x, y, −z), FOV = main-camera FOV × `_fovScale`, screen-sized texture with mips. **Inventory inconsistency:** The table lists `_ReflectionTex` only for `Map/FlowMap` and `Map/Standard`, while section 7 of `docs/shader-globals.md` also lists it for `FlowmapWater`. Whether zone 24 reads it is unresolved. The bridge reflection suggests it does (*inferred*).
 3. **`_Time`** from game time (animation, section 1), plus environment globals (`_SkyColor`-like values come from the material; light and `_ShadowColor` from `EnvironmentController`).
-4. Pass **blend state** (`SrcAlpha OneMinusSrcAlpha`, `ZWrite Off`) and **transparent draw order (queue 3000)** after all opaque surfaces; Cull Back. The mesh has no normals (only position, color, UV0 as Float16×2, `docs/sichtpruefung-3.md`): missing normals are zero; water normals come from bump calculations.
+4. Pass **blend state** (`SrcAlpha OneMinusSrcAlpha`, `ZWrite Off`) and **transparent draw order (queue 3000)** after all opaque surfaces; Cull Back. The mesh has no normals (only position, color, UV0 as Float16×2, `sichtpruefung-3` in the git history): missing normals are zero; water normals come from bump calculations.
 5. Original **texture binding** uses material property names (`_CausticsTex`, `_FlowMap`, `_TimeOffsetMap`). Recompilation receives bindless handles in `cbuf 2` (from 0x568, stride 8, `docs/render-treue.md`); incorrect handles or unloaded textures produce a uniform surface.
 
 ## 4. Grab pass (other water shaders)

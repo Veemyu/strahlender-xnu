@@ -9,7 +9,7 @@
 - Alle Umwandlungen (z. B. Videoformat) sind **zusätzliche Build-Schritte** und ändern die Quelldaten nicht.
 
 ## Build-Pipeline (Ziel)
-Einstiegspunkt: `scripts/build_all.sh all --xci <Datei> --nsp <Datei> --keys <Ordner> --target macos|ios|all` (Anleitung: `docs/bauen.md`, Technik: `docs/build-pipeline.md`; `--dry-run` zeigt vorab den Plan).
+Einstiegspunkt: `scripts/build_all.sh all --xci <Datei> --nsp <Datei> --keys <Ordner> --target macos|ios|all` (Anleitung: `docs/BUILD.md`; `--dry-run` zeigt vorab den Plan).
 
 | Schritt | Inhalt | Stand |
 |---|---|---|

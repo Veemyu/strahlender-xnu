@@ -227,7 +227,7 @@ Gaps (unchanged): `EnvironmentController` scene values, post-processing globals 
 
 ### 10b. Update 2026-10-19 (`ap-effects-fidelity`, Part 4): Scene Values, `_ShadowMapTexture`, Post-Processing
 
-Details: `docs/sichtpruefung-2.md` (sections 5, 7, 8, 9).
+Details: `sichtpruefung-2` (git history; sections 5, 7, 8, 9).
 
 | Topic | Result |
 |---|---|

@@ -26,13 +26,21 @@ recomp-gate1.md → recomp-gate2.md. Additional evidence: recomp-qa.md,
 recomp-vulkan.md, recomp-linux.md, recomp-diff.md, recomp-referenzen.md.
 
 Rendering investigations: shader-translator.md, shader-inventar.md,
-shader-harness.md, shader-globals.md, wasser.md, ios-texturen.md,
-video-umwandlung.md, render-treue.md.
+shader-harness.md, shader-globals.md, wasser.md, video-umwandlung.md,
+render-treue.md.
 
 Data and saves: extraktion.md, daten-inventar.md, save-format.md,
 save-validator.md, save-kompatibilitaet.md, spielcode-inventar.md.
 Historical filenames remain stable so existing links continue to work.
 
 The Unity rebuild is deprecated and must not be modified for native work.
-Older Unity specifications remain research references only.
+Its documents (feasibility and build reports, UI, scene and visual-review
+notes, the night reports, the old build guide and pipeline description) were
+removed from `main`; they remain in the git history and on the branch `unity`.
+The remaining specifications of the original game behavior (battle, Pokémon
+parameters, event scripts, localization, saves) are research references only.
+They name Unity-era scripts (`battle_oracle*`, `evscript_stats`,
+`data_inventory`, `il2cpp_lookup`, `assetripper_export`, the `visual_*` and
+`ui_*` tools, and others) and `work/` folders that no longer exist on `main`;
+the scripts are in the git history and on the branch `unity`.
 The former German index is preserved in [README.de.md](README.de.md).

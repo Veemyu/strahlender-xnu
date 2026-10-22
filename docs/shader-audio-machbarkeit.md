@@ -69,7 +69,7 @@ Command: `spirv-cross --msl --msl-version 20300 <module>.spv`. All 5,932 vertex 
 **Path A: create a Unity project and rewrite shaders in ShaderLab.**
 
 - Pros: fits opendpr (Unity 2019.4.27f1, scripts, Wwise). It runs on Mac with the editor under Rosetta and can be built for iPad. There are roughly 64 shaders, of which about 9 standard shaders (TMP, UI, Bloom, FXAA) are commonplace.
-- Cons: each shader requires manual work (Delphis/Map/Standard, Character, Poffin, Mitake). MSL outputs, bundle uniform names, and reference SPIR-V serve as guides. The result will not be 1:1, only “visually similar.” The main blocker remains B1 from `opendpr-machbarkeit.md`: the Switch shader bundles are unusable on Mac.
+- Cons: each shader requires manual work (Delphis/Map/Standard, Character, Poffin, Mitake). MSL outputs, bundle uniform names, and reference SPIR-V serve as guides. The result will not be 1:1, only “visually similar.” The main blocker remains B1 from the opendpr feasibility report (removed, see git history): the Switch shader bundles are unusable on Mac.
 
 **Path B: custom runtime, SPIR-V to MSL.**
 
@@ -97,7 +97,7 @@ Path: `work/romfs/Data/StreamingAssets/Audio/GeneratedSoundBanks/Switch` (427 MB
 | Sample rates | 32 kHz: 2,337; 48 kHz: 371; 36 kHz: 344; 24 kHz: 162; other: 27 |
 | Events in `Wwise_IDs.h` | 24,278 named IDs in namespace `EVENTS` |
 
-- Version check: opendpr includes Wwise 2019.2.4 with Mac plugins (see `opendpr-machbarkeit.md`). Bank version 135 matches. *Suspected:* the Switch banks will work if their folder is renamed to `Windows`, as opendpr instructs; this is untested.
+- Version check: opendpr includes Wwise 2019.2.4 with Mac plugins (see the opendpr feasibility report in the git history). Bank version 135 matches. *Suspected:* the Switch banks will work if their folder is renamed to `Windows`, as opendpr instructs; this is untested.
 - **vgmstream:** release `r2117`. The Mac release `vgmstream-mac.zip` hardcodes paths to Homebrew libraries (`libvorbis`, `libogg`, FFmpeg version 62) that are missing or too new here. I therefore built vgmstream r2117 with libogg 1.3.5 and libvorbis 1.3.7 under `tools/vgmstream/` (without ffmpeg/mpg123/speex/celt). The build is at `tools/vgmstream/b-vgm/cli/vgmstream-cli`. Homebrew was not changed.
 - Decode tests to `work/audio-test/*.wav` (all succeeded, encoding “Custom Vorbis”):
 

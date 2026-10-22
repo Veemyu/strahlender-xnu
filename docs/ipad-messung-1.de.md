@@ -89,7 +89,7 @@ Grundlage: Limit ohne Entitlement 5120 MiB, mit 8192 MiB; Warnschwelle ohne Enti
 - **Folgerungen für den Code:**
   1. Beim Start und vor jedem Zonenwechsel `Limit = available + footprint` lesen und das Budget daran messen (nicht fest verdrahten, andere iPads mit 4 oder 6 GB werden abweichen).
   2. `Application.lowMemory` behandeln (Caches leeren, Bundles entladen): ohne Entitlement kam die Warnung 1 GiB vor dem Limit.
-  3. Große Texturen und Bundles nur zonenweise halten (siehe `docs/feld-szene-1.md`, Abschnitt 9) und danach entladen; Managed-Allokationen im Ladepfad vermeiden.
+  3. Große Texturen und Bundles nur zonenweise halten (siehe `feld-szene-1` im Git-Verlauf, Abschnitt 9) und danach entladen; Managed-Allokationen im Ladepfad vermeiden.
   4. Unified Memory: Render-Ziele (z. B. Schatten, Nachbearbeitung in 2732 × 2048) zählen voll mit.
   5. `Application.targetFrameRate` immer setzen (Abschnitt 5).
 

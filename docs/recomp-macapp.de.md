@@ -96,7 +96,7 @@ Die Reihenfolge ist: Umgebungsvariable vor `config.ini` vor Standard. Weitere Sc
 
 ## Build-Stufe `recomp`
 
-Aufruf und Optionen: `docs/bauen.md`. Ablauf (`scripts/recomp/app/recomp_build.sh`, von `build_all.sh` aufgerufen):
+Aufruf und Optionen: `docs/BUILD.de.md`. Ablauf (`scripts/recomp/app/recomp_build.sh`, von `build_all.sh` aufgerufen):
 
 | Schritt | Werkzeug | Inkrementell durch |
 |---|---|---|

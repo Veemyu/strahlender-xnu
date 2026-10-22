@@ -68,7 +68,7 @@ Aufruf: `spirv-cross --msl --msl-version 20300 <modul>.spv`. Alle 5932 Vertex- u
 
 **Weg A: Unity-Neuprojekt, Shader als ShaderLab neu schreiben.**
 - Pro: passt zu opendpr (Unity 2019.4.27f1, Scripts, Wwise). Läuft auf Mac per Rosetta-Editor und kann auf iPad gebaut werden. Rund 64 Shader, davon etwa 9 Standard-Shader (TMP, UI, Bloom, FXAA) sind Standardware.
-- Contra: Handarbeit pro Shader (Delphis/Map/Standard, Character, Poffin, Mitake). Als Vorlage dienen die MSL-Ausgaben, Uniform-Namen aus den Bundles und die Referenz-SPIR-V. Es entsteht kein 1:1-Ergebnis, nur "sieht ähnlich aus". Das Hauptproblem bleibt der Blocker B1 aus `opendpr-machbarkeit.md`: Die Switch-Shaderbundles sind auf Mac unbrauchbar.
+- Contra: Handarbeit pro Shader (Delphis/Map/Standard, Character, Poffin, Mitake). Als Vorlage dienen die MSL-Ausgaben, Uniform-Namen aus den Bundles und die Referenz-SPIR-V. Es entsteht kein 1:1-Ergebnis, nur "sieht ähnlich aus". Das Hauptproblem bleibt der Blocker B1 aus dem opendpr-Machbarkeitsbericht (entfernt, siehe Git-Verlauf): Die Switch-Shaderbundles sind auf Mac unbrauchbar.
 
 **Weg B: eigene Runtime, SPIR-V nach MSL.**
 - Pro: 100 % der im Cache vorhandenen Shader sind automatisch übersetzbar; keine Handarbeit pro Shader.
@@ -95,7 +95,7 @@ Pfad: `work/romfs/Data/StreamingAssets/Audio/GeneratedSoundBanks/Switch` (427 MB
 | Abtastraten | 32 kHz 2337, 48 kHz 371, 36 kHz 344, 24 kHz 162, andere 27 |
 | Events in `Wwise_IDs.h` | 24.278 benannte IDs im Namespace `EVENTS` |
 
-- Versionsabgleich: opendpr bringt Wwise 2019.2.4 mit Mac-Plugins mit (siehe `opendpr-machbarkeit.md`). Bankversion 135 passt dazu. *Vermutet:* Die Switch-Bänke laufen mit dem Umbenennen des Ordners nach `Windows` (so schreibt es opendpr vor), ungetestet.
+- Versionsabgleich: opendpr bringt Wwise 2019.2.4 mit Mac-Plugins mit (siehe opendpr-Machbarkeitsbericht im Git-Verlauf). Bankversion 135 passt dazu. *Vermutet:* Die Switch-Bänke laufen mit dem Umbenennen des Ordners nach `Windows` (so schreibt es opendpr vor), ungetestet.
 - **vgmstream:** Release `r2117`. Das Mac-Release `vgmstream-mac.zip` hat feste Pfade zu Homebrew-Bibliotheken (`libvorbis`, `libogg`, ffmpeg-Version 62), die hier fehlen oder zu neu sind. Also habe ich vgmstream r2117 samt libogg 1.3.5 und libvorbis 1.3.7 nach `tools/vgmstream/` gebaut (ohne ffmpeg/mpg123/speex/celt). Der Build liegt unter `tools/vgmstream/b-vgm/cli/vgmstream-cli`. Homebrew wurde nicht verändert.
 - Dekodiertests nach `work/audio-test/*.wav` (alle erfolgreich, Encoding "Custom Vorbis"):
 

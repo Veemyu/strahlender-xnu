@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Einstiegspunkt der Build-Pipeline (docs/build-pipeline.md, Anleitung: docs/bauen.md, Ziel: docs/kernziel.md).
+# Einstiegspunkt der Build-Pipeline (Anleitung: docs/BUILD.md).
 # Das Repo enthält nie Spieldaten oder Keys.
 #
-# Stufen (feste Reihenfolge): tools extract il2cpp recomp masterdata shaders video audio
+# Stufen (feste Reihenfolge): tools extract recomp shaders
 #   Vorab läuft ein Preflight (nur Prüfung, keine Installation).
 #
 # Aufruf (alles in einem Befehl):
 #   scripts/build_all.sh all --xci <x.xci> --nsp <update.nsp> --keys <Ordner> [--target macos|ios|all]
 #   scripts/build_all.sh --dry-run all --xci ... --keys ...     zeigt Plan und Kommandos, ändert nichts
-#   scripts/build_all.sh --from masterdata --to video           nur ein Bereich der Reihenfolge
-#   scripts/build_all.sh --only shaders,video                   genau diese Stufen
+#   scripts/build_all.sh --from extract --to recomp            nur ein Bereich der Reihenfolge
+#   scripts/build_all.sh --only tools,extract                   genau diese Stufen
 #   scripts/build_all.sh preflight                              nur Voraussetzungen prüfen
 # Eingaben (nur für extract): --xci DATEI, --nsp DATEI (optional), --keys ORDNER | --prod-keys DATEI [--title-keys DATEI]
 # Steuerung:
@@ -20,14 +20,7 @@
 #   --force             gewählte Stufen neu erzeugen, auch wenn der Marker passt
 #   --no-preflight      Preflight überspringen;  --min-free-gb N  Mindestplatz im Preflight (Standard 60)
 #   --keep-nca          entpackte NCAs (mehrere GB) behalten
-#   --video-profile P   h265-crf18 (Standard) oder h265-crf14
-#   --movie-src ORDNER  Videoquelle statt romfs/.../Movie (Stichproben)
-#   --shader-only NAME  nur ein Shader (Test);  --launch  iOS-App nach der Installation starten
-#   --bundle-platform P macos|ios|keep: Zielplattform in den Bundles (Standard aus --target; bei all: macos).
-#                       Ein Player lädt nur Bundles mit passender Kennung (Switch-Kennung 38 wird abgelehnt).
-#   --bundle-subset F   nur die in F aufgeführten Bundles (plus Katalog) in den Player legen (iPad: Platz/Speicher)
-#   --texture-format F  BC-Texturen der Bundles nach ASTC umwandeln (scripts/texture_transcode.py): 6x6|4x4|8x8|off.
-#                       Standard: 6x6 bei Bundle-Plattform ios (Apple-GPUs kennen kein BC), sonst off.
+#   --shader-only NAME  nur ein Shader (Test, Stufe shaders)
 #   Stufe recomp (macOS-App aus der Rekompilation, work/builds/macos-recomp/BDSP.app; nur für --target macos|all):
 #   --recomp-jobs N     Zahl der Compiler (Standard 4, höchstens 4);  --recomp-o0-kb N  Ausreißer ab N KB mit -O0 (Standard 300)
 #   --hardened          App mit Hardened Runtime signieren (Standard: nur ad hoc);  --no-install-data  RomFS nicht nach Application Support klonen
@@ -36,7 +29,7 @@
 #
 # Exit-Codes: 0 ok, 2 Aufruf, 3 Eingabe fehlt, 4 Werkzeug fehlt/Build, 5 hactool-Fehler,
 #   6 Schlüssel/Titlekey, 7 NCA nicht gefunden, 8 zu wenig Platz, 9 Prüfung, 10 Voraussetzung/Stufe fehlt,
-#   14 Stufe il2cpp/masterdata/video fehlgeschlagen (11 bis 13 entfallen mit den Unity-Stufen)
+#   14 Stufe shaders fehlgeschlagen
 # hactool gibt Schlüsselwerte aus: stdout/stderr gehen nie ins Log (nur gefilterte Felder).
 set -euo pipefail
 
@@ -50,15 +43,15 @@ HACTOOL_REPO="https://github.com/SciresM/hactool"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 MIN_FREE_GB="${MIN_FREE_GB:-25}"
 PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-60}"
-ALL_STAGES="tools extract il2cpp recomp masterdata shaders video audio"
+ALL_STAGES="tools extract recomp shaders"
 
 XCI="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
-DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all VIDEO_PROFILE="h265-crf18" MOVIE_SRC=""
-SHADER_ONLY="" LAUNCH=0 BUNDLE_PLATFORM="" BUNDLE_SUBSET="" TEXTURE_FORMAT=""
+DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all
+SHADER_ONLY=""
 EXTRACT_ACTIVE=0
 RECOMP_JOBS=4 RECOMP_O0_KB=300 RECOMP_HARDENED=0 RECOMP_DATA=1
-SELECTED="" RESULTS="" UPSTREAM_DIRTY=0 NOT_IMPL=""
+SELECTED="" RESULTS="" UPSTREAM_DIRTY=0
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 die() { local code="$1"; shift; echo "FEHLER: $*" >&2; exit "$code"; }
@@ -181,7 +174,7 @@ stage_extract() {
     log "extract: keine --xci angegeben, vorhandenes Ergebnis in $WORK wird verwendet"
     stage_result extract "vorhanden"; return 0
   fi
-  [ -n "$XCI" ] || die 2 "--xci fehlt (die Stufe extract braucht die eigene XCI; Aufruf siehe docs/bauen.md)"
+  [ -n "$XCI" ] || die 2 "--xci fehlt (die Stufe extract braucht die eigene XCI; Aufruf siehe docs/BUILD.md)"
   [ -f "$XCI" ] || die 3 "XCI nicht gefunden: $XCI"
   [ -z "$NSP" ] || [ -f "$NSP" ] || die 3 "NSP nicht gefunden: $NSP"
   if [ -n "$KEYS_DIR" ]; then
@@ -351,7 +344,7 @@ run() {
 # Marker prüfen: 0 = überspringen. Argumente: Stufe [Ausgabepfade, die existieren müssen]
 stage_cached() {
   local st="$1" p present=1; shift
-  STAGE_HASH="$(sp stage-hash --stage "$st" --root "$ROOT" --work "$WORK" --target "$TARGET" --profile "$VIDEO_PROFILE" | tail -n 1)"
+  STAGE_HASH="$(sp stage-hash --stage "$st" --root "$ROOT" --work "$WORK" --target "$TARGET" | tail -n 1)"
   for p in "$@"; do [ -e "$p" ] || present=0; done
   if [ "$FORCE" -eq 0 ] && [ "$present" -eq 1 ] && { [ "$DRY" -eq 0 ] || [ "$UPSTREAM_DIRTY" -eq 0 ]; } \
      && sp marker-check --work "$WORK" --stage "$st" --hash "$STAGE_HASH"; then
@@ -376,7 +369,7 @@ need_extract() {
   [ -s "$WORK/exefs/main" ] && [ -d "$WORK/romfs/Data" ] && return 0
   case " $SELECTED " in *" extract "*) return 0 ;; esac
   if [ "$DRY" -eq 1 ]; then echo "    [dry-run] Hinweis: $WORK/exefs und romfs fehlen (Stufe extract nicht gewählt)"; return 0; fi
-  die 10 "exefs/romfs fehlen in $WORK: zuerst 'scripts/build_all.sh extract --xci <Datei> --nsp <Datei> --keys <Ordner>' (docs/bauen.md)"
+  die 10 "exefs/romfs fehlen in $WORK: zuerst 'scripts/build_all.sh extract --xci <Datei> --nsp <Datei> --keys <Ordner>' (docs/BUILD.md)"
 }
 
 need_pydeps() {
@@ -384,37 +377,9 @@ need_pydeps() {
   [ -d "$TOOLS_DIR/pydeps/UnityPy" ] || die 4 "Python-Pakete fehlen (UnityPy, lz4): python3 -m pip install --target tools/pydeps UnityPy lz4"
 }
 
-AA_REL="romfs/Data/StreamingAssets/AssetAssistant"
-MOVIE_REL="romfs/Data/StreamingAssets/Movie"
-
-# ---------- Stufe il2cpp ----------
-stage_il2cpp() {
-  log "Stufe il2cpp"
-  need_extract
-  stage_cached il2cpp "$WORK/il2cpp/dump.cs" && return 0
-  local meta="$WORK/romfs/Data/Managed/Metadata/global-metadata.dat" dll="$TOOLS_DIR/il2cppdumper-bin/Il2CppDumper.dll"
-  local out="$WORK/il2cpp" stg="$WORK/il2cpp.stage"
-  if [ "$DRY" -eq 0 ]; then
-    command -v dotnet >/dev/null 2>&1 || die 4 "dotnet fehlt (brew install dotnet, ohne sudo)"
-    [ -f "$dll" ] || die 4 "Il2CppDumper fehlt: $dll (Bauanleitung: docs/extraktion.md, Abschnitt IL2CPP-Dump)"
-    [ -f "$meta" ] || die 10 "global-metadata.dat fehlt: $meta (Stufe extract unvollständig?)"
-    rm -rf "$stg"; mkdir -p "$stg"
-  fi
-  export DOTNET_ROLL_FORWARD=Major
-  # Der Dumper wartet am Ende auf eine Taste und wirft ohne Terminal eine harmlose Ausnahme: Erfolg zählt am Ergebnis.
-  QUIET_FAIL=1 logrun il2cpp dotnet "$dll" "$WORK/exefs/main" "$meta" "$stg" || true
-  if [ "$DRY" -eq 0 ]; then
-    [ -s "$stg/dump.cs" ] && [ -s "$stg/script.json" ] || die 14 "Il2CppDumper lieferte kein dump.cs/script.json (Log: $WORK/logs/il2cpp.log)"
-    rm -rf "$out"; mv "$stg" "$out"
-  else
-    echo "    [dry-run] danach: $stg nach $out verschieben (dump.cs, script.json, il2cpp.h, DummyDll)"
-  fi
-  stage_done il2cpp
-}
-
 # ---------- Stufe recomp ----------
 # macOS-App aus der Rekompilation des eigenen Dumps (Generator -> C -> Übersetzen -> Laufzeit/Metal -> BDSP.app); Technik und
-# Teilschritte: scripts/recomp/app/recomp_build.sh, Anleitung: docs/bauen.md, docs/recomp-macapp.md
+# Teilschritte: scripts/recomp/app/recomp_build.sh, Anleitung: docs/BUILD.md, docs/recomp-macapp.md
 recomp_out() { echo "$WORK/builds/macos-recomp/BDSP.app"; }
 
 stage_recomp() {
@@ -447,26 +412,9 @@ stage_recomp() {
   [ "$rc" -eq 0 ] || die "$rc" "Stufe recomp fehlgeschlagen (Meldungen oben; Logs: $WORK/logs/recomp-*.log). Wiederholung setzt dort fort, wo es stehen blieb."
   log "Stufe recomp fertig in $((SECONDS - t0)) s: $out"
   # Teilmarker (recomp-gen, recomp-obj) sind jetzt geschrieben und gehören zum Eingabe-Hash der Stufe: neu berechnen
-  STAGE_HASH="$(sp stage-hash --stage recomp --root "$ROOT" --work "$WORK" --target "$TARGET" --profile "$VIDEO_PROFILE" | tail -n 1)"
+  STAGE_HASH="$(sp stage-hash --stage recomp --root "$ROOT" --work "$WORK" --target "$TARGET" | tail -n 1)"
   local sz; sz="$(sp tree-size --path "$out" | cut -d' ' -f2)"
   stage_done recomp "app=${out#"$ROOT"/}" "bytes=$sz"
-}
-
-# ---------- Stufe masterdata ----------
-stage_masterdata() {
-  log "Stufe masterdata"
-  need_extract; need_pydeps
-  stage_cached masterdata "$WORK/masterdata/_counts.json" && return 0
-  local aa="$WORK/$AA_REL" out="$WORK/masterdata"
-  [ "$DRY" -eq 1 ] || [ -d "$aa" ] || die 10 "AssetAssistant fehlt: $aa (Stufe extract unvollständig?)"
-  PYTHONPATH="$TOOLS_DIR/pydeps" logrun masterdata python3 "$ROOT/scripts/masterdata_export.py" export \
-    --assets "$aa" --out "$out" --dump "$WORK/il2cpp/dump.cs" --set all --messages \
-    || die 14 "Stammdaten-Export fehlgeschlagen (Log: $WORK/logs/masterdata.log)"
-  PYTHONPATH="$TOOLS_DIR/pydeps" logrun masterdata-counts python3 "$ROOT/scripts/masterdata_export.py" counts \
-    --assets "$aa" --out "$out" || die 14 "Stammdaten-Zählung fehlgeschlagen"
-  local n="0 0"
-  [ "$DRY" -eq 1 ] || n="$(sp tree-size --path "$out")"
-  stage_done masterdata "dateien=${n% *}" "bytes=${n#* }"
 }
 
 # ---------- Stufe shaders ----------
@@ -512,47 +460,13 @@ stage_shaders() {
   stage_done shaders "dateien=${n% *}" "bytes=${n#* }" "ausgabe=${out#"$ROOT"/}"
 }
 
-# ---------- Stufe video ----------
-stage_video() {
-  log "Stufe video (H.265, $VIDEO_PROFILE)"
-  local src="$WORK/$MOVIE_REL" dst="$WORK/video"
-  [ -z "$MOVIE_SRC" ] || src="$MOVIE_SRC"
-  [ -n "$MOVIE_SRC" ] || need_extract
-  command -v ffmpeg >/dev/null 2>&1 || [ "$DRY" -eq 1 ] || die 4 "ffmpeg fehlt (brew install ffmpeg)"
-  if [ -z "$MOVIE_SRC" ]; then stage_cached video "$dst/video-manifest.json" && return 0
-  elif [ "$DRY" -eq 1 ]; then echo "    [dry-run] Stufe video (Stichprobe, ohne Marker) würde ausgeführt:"; fi
-  if [ "$DRY" -eq 0 ] && [ -z "$(find "$src" -type f -name '*.webm' -print -quit 2>/dev/null)" ]; then
-    echo "  Hinweis: keine .webm-Videos unter $src; Stufe übernimmt nichts."
-    stage_result video "übersprungen (keine Quelle)"; return 0
-  fi
-  logrun video "$ROOT/scripts/video_convert.sh" "$src" "$dst" "$VIDEO_PROFILE" \
-    || die 14 "Videoumwandlung fehlgeschlagen (Log: $WORK/logs/video.log)"
-  if [ -n "$MOVIE_SRC" ]; then stage_result video "Stichprobe, kein Marker"; return 0; fi
-  local n="0 0"
-  [ "$DRY" -eq 1 ] || n="$(sp tree-size --path "$dst")"
-  stage_done video "dateien=${n% *}" "bytes=${n#* }" "profil=$VIDEO_PROFILE"
-}
-
-# ---------- Stufe audio ----------
-stage_audio() {
-  log "Stufe audio"
-  echo "  NICHT IMPLEMENTIERT: Ton wird erforscht (docs/shader-audio-machbarkeit.md, todo/neustart.md Todo rc-audio)."
-  echo "  Das Spiel läuft bis dahin stumm."
-  NOT_IMPL="$NOT_IMPL audio"
-  stage_result audio "nicht implementiert"
-}
-
 # ---------- Aufruf ----------
 run_stage() {
   case "$1" in
     tools) stage_tools ;;
     extract) stage_extract ;;
-    il2cpp) stage_il2cpp ;;
     recomp) stage_recomp ;;
-    masterdata) stage_masterdata ;;
     shaders) stage_shaders ;;
-    video) stage_video ;;
-    audio) stage_audio ;;
     *) die 2 "Unbekannte Stufe: $1 (bekannt: $ALL_STAGES)" ;;
   esac
 }
@@ -569,13 +483,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1; shift ;;
     --no-preflight) NO_PREFLIGHT=1; shift ;;
     --min-free-gb) need_val $# "$1"; PREFLIGHT_FREE_GB="$2"; shift 2 ;;
-    --video-profile) need_val $# "$1"; VIDEO_PROFILE="$2"; shift 2 ;;
-    --movie-src) need_val $# "$1"; MOVIE_SRC="$2"; shift 2 ;;
     --shader-only) need_val $# "$1"; SHADER_ONLY="$2"; shift 2 ;;
-    --launch) LAUNCH=1; shift ;;
-    --bundle-platform) need_val $# "$1"; BUNDLE_PLATFORM="$2"; shift 2 ;;
-    --bundle-subset) need_val $# "$1"; BUNDLE_SUBSET="$2"; shift 2 ;;
-    --texture-format) need_val $# "$1"; TEXTURE_FORMAT="$2"; shift 2 ;;
     --xci) need_val $# "$1"; XCI="$2"; shift 2 ;;
     --nsp) need_val $# "$1"; NSP="$2"; shift 2 ;;
     --keys) need_val $# "$1"; KEYS_DIR="$2"; shift 2 ;;
@@ -595,16 +503,6 @@ while [ $# -gt 0 ]; do
 done
 case "$TARGET" in macos|ios|all) ;; *) die 2 "--target: macos, ios oder all erwartet (nicht '$TARGET')" ;; esac
 case "$PREFLIGHT_FREE_GB" in ''|*[!0-9]*) die 2 "--min-free-gb braucht eine ganze Zahl" ;; esac
-if [ -z "$BUNDLE_PLATFORM" ]; then
-  case "$TARGET" in ios) BUNDLE_PLATFORM=ios ;; *) BUNDLE_PLATFORM=macos ;; esac
-fi
-case "$BUNDLE_PLATFORM" in macos|ios|keep) ;; *) die 2 "--bundle-platform: macos, ios oder keep erwartet (nicht '$BUNDLE_PLATFORM')" ;; esac
-[ -z "$BUNDLE_SUBSET" ] || [ -f "$BUNDLE_SUBSET" ] || die 3 "--bundle-subset: Datei fehlt: $BUNDLE_SUBSET"
-if [ -z "$TEXTURE_FORMAT" ]; then
-  case "$BUNDLE_PLATFORM" in ios) TEXTURE_FORMAT=6x6 ;; *) TEXTURE_FORMAT=off ;; esac
-fi
-case "$TEXTURE_FORMAT" in 4x4|6x6|8x8|off) ;; *) die 2 "--texture-format: 4x4, 6x6, 8x8 oder off erwartet (nicht '$TEXTURE_FORMAT')" ;; esac
-export XNU_BUNDLE_PLATFORM="$BUNDLE_PLATFORM" XNU_BUNDLE_SUBSET="$BUNDLE_SUBSET" XNU_TEXTURE_FORMAT="$TEXTURE_FORMAT"
 if [ -z "${STAGES// /}" ] && [ -z "$FROM" ] && [ -z "$TO" ] && [ -z "${ONLY// /}" ] && [ "$PREFLIGHT_ONLY" -eq 0 ]; then usage; exit 2; fi
 SELECTED="$(sp stages --stage "$STAGES" ${FROM:+--from "$FROM"} ${TO:+--to "$TO"} --only "$ONLY")" || exit 2
 case "$WORK" in /*) ;; *) WORK="$PWD/$WORK" ;; esac
@@ -636,5 +534,4 @@ for s in $SELECTED; do run_stage "$s"; done
 
 log "Zusammenfassung"
 printf '%s' "$RESULTS" | while IFS='|' read -r s r; do [ -z "$s" ] || printf '  %-12s %s\n' "$s" "$r"; done
-[ -z "$NOT_IMPL" ] || log "Nicht implementierte Stufen (Platzhalter):$NOT_IMPL"
 exit 0

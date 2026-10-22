@@ -6,7 +6,7 @@ enthalten nur Hashes, Größen und Zählwerte.
 
 Unterbefehle (Aufruf: build_stages.py <befehl> ...):
   stages [--stage S ...] [--from S] [--to S] [--only S ...]   gewählte Stufen in fester Reihenfolge
-  stage-hash --stage S --root R --work W [--target T] [--profile P]   Eingabe-Hash einer Stufe
+  stage-hash --stage S --root R --work W [--target T]   Eingabe-Hash einer Stufe
   marker-check --work W --stage S --hash H       Exit 0, wenn der Marker zum Hash passt
   marker-write --work W --stage S --hash H [--note K=V ...]
   marker-clear --work W --stage S
@@ -29,12 +29,12 @@ EX_USAGE = 2
 EX_TOOLS = 4
 EX_DISK = 8
 
-STAGES = ["tools", "extract", "il2cpp", "recomp", "masterdata", "shaders", "video", "audio"]
-ALIASES = {"shader": "shaders", "videos": "video", "macapp": "recomp"}
+STAGES = ["tools", "extract", "recomp", "shaders"]
+ALIASES = {"shader": "shaders", "macapp": "recomp"}
 MARKER_SCHEMA = 1
 MIN_FREE_GB = 60
 RECOMP_MIN_FREE_GB = 25   # Generator-C, Objekte, Binärdatei, App, Zwischenablagen (gemessen rund 3 GB; der Rest ist Reserve für Compiler und Auslagerung)
-HEAVY_STAGES = {"extract", "il2cpp", "masterdata", "shaders", "video"}
+HEAVY_STAGES = {"extract", "shaders"}
 TARGETS = ("macos", "ios", "all")
 
 
@@ -99,18 +99,6 @@ def _walk(root):
             if name == ".DS_Store":
                 continue
             yield os.path.join(dirpath, name)
-
-
-def hash_listing(root, suffixes=None):
-    """Hash über relative Pfade und Größen (schnell, für große Ordner)."""
-    if not os.path.isdir(root):
-        return "fehlt"
-    h = hashlib.sha256()
-    for p in _walk(root):
-        if suffixes and not p.lower().endswith(tuple(suffixes)):
-            continue
-        h.update(("%s\t%d\n" % (os.path.relpath(p, root), os.path.getsize(p))).encode())
-    return h.hexdigest()
 
 
 def hash_tree_content(root, suffixes=None, skip_dirs=("Library", "Temp", "Logs", "obj", "UserSettings")):
@@ -215,7 +203,7 @@ def nvn_source_stamp(rec):
     return r.stdout.strip()
 
 
-def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
+def stage_hash(stage, root, work, target="all", env=None):
     """Hash der Eingaben einer Stufe; ändert sich er, läuft die Stufe neu. Liefert (hash, teile)."""
     env = os.environ if env is None else env
     scripts = os.path.join(root, "scripts")
@@ -225,12 +213,7 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
     def files(*names):
         return {n: hash_file(os.path.join(scripts, n)) for n in names}
 
-    if stage == "il2cpp":
-        parts["metadata"] = hash_file(os.path.join(work, "romfs", "Data", "Managed", "Metadata", "global-metadata.dat"))
-        parts["dumper"] = hash_file(os.path.join(root, "tools", "il2cppdumper-bin", "Il2CppDumper.dll"))
-    elif stage == "masterdata":
-        parts["scripts"] = files("masterdata_export.py")
-    elif stage in ("recomp-gen", "recomp"):
+    if stage in ("recomp-gen", "recomp"):
         # Generator: Module des Dumps, eigene Generatorskripte und der Klon, dessen Werkzeuge er zur Laufzeit importiert
         rec = os.path.join(scripts, "recomp")
         parts["modules"] = {m: hash_file(os.path.join(work, "exefs", m)) for m in ("main", "sdk", "subsdk0", "rtld")}
@@ -256,10 +239,6 @@ def stage_hash(stage, root, work, target="all", profile="h265-crf18", env=None):
         parts["translator"] = hash_tree_content(tr, (".c", ".h", "makefile"), skip_dirs=("build", "__pycache__"))
         used = env.get("SHADER_USED", "")
         parts["used"] = hash_file(used) if used else "keine"
-    elif stage == "video":
-        parts["scripts"] = files("video_convert.sh")
-        parts["profile"] = profile
-        parts["movies"] = hash_listing(os.path.join(work, "romfs", "Data", "StreamingAssets", "Movie"), (".webm",))
     digest = _sha(json.dumps(parts, sort_keys=True).encode())
     return digest, parts
 
@@ -320,24 +299,9 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
     if "extract" in s and "tools" in s and not os.access(hactool, os.X_OK):
         add("hactool", True, "wird von Stufe tools gebaut", level="hinweis")
 
-    if "il2cpp" in s:
-        ok, out = (False, "")
-        dotnet = which("dotnet")
-        if dotnet:
-            ok, out = run([dotnet, "--version"])
-        ver = out.strip().split("\n")[0] if ok else ""
-        good = bool(ver) and ver.split(".")[0].isdigit() and int(ver.split(".")[0]) >= 8
-        add("dotnet >= 8", good, ver or "nicht gefunden",
-            "brew install dotnet (Formel, ohne sudo; alternativ den Installer von dotnet.microsoft.com, der ein Admin-Passwort verlangt)")
-        dumper = os.path.join(tools_dir, "il2cppdumper-bin", "Il2CppDumper.dll")
-        add("Il2CppDumper (gebaut)", os.path.isfile(dumper), dumper,
-            "git clone https://github.com/Perfare/Il2CppDumper tools/Il2CppDumper && "
-            "dotnet build tools/Il2CppDumper/Il2CppDumper -c Release -f net8.0 -o tools/il2cppdumper-bin")
-
-    if s & {"masterdata", "shaders"}:
+    if "shaders" in s:
         add("Python-Pakete (UnityPy, lz4) in tools/pydeps", os.path.isdir(os.path.join(tools_dir, "pydeps", "UnityPy")),
             os.path.join(tools_dir, "pydeps"), "python3 -m pip install --target tools/pydeps UnityPy lz4")
-    if "shaders" in s:
         for c in ("make", "cc"):
             add(c + " (für shader_translator)", which(c), "", "xcode-select --install (Command Line Tools)")
 
@@ -367,11 +331,6 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         add("Vendorte LASRecomp-Teile (Generator, Header; MIT)",
             os.path.isfile(os.path.join(up, "generator", "gen.py")) and os.path.isfile(os.path.join(up, "runtime", "cpu.h")), up,
             "git checkout -- scripts/recomp/upstream (Ordner fehlt im Arbeitsstand)")
-
-    if "video" in s:
-        ffmpeg = which("ffmpeg")
-        ok, out = run([ffmpeg, "-hide_banner", "-encoders"]) if ffmpeg else (False, "")
-        add("ffmpeg mit libx265", ok and "libx265" in out, ffmpeg or "nicht gefunden", "brew install ffmpeg")
 
     return items
 
@@ -412,7 +371,6 @@ def main(argv=None):
     p.add_argument("--root", required=True)
     p.add_argument("--work", required=True)
     p.add_argument("--target", default="all")
-    p.add_argument("--profile", default="h265-crf18")
     p.add_argument("--parts", action="store_true")
     for name in ("marker-check", "marker-write"):
         p = sub.add_parser(name)
@@ -446,7 +404,7 @@ def main(argv=None):
             return EX_USAGE
         return 0
     if a.cmd == "stage-hash":
-        digest, parts = stage_hash(a.stage, a.root, a.work, a.target, a.profile)
+        digest, parts = stage_hash(a.stage, a.root, a.work, a.target)
         if a.parts:
             print(json.dumps(parts, indent=2, sort_keys=True))
         print(digest)

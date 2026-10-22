@@ -1,5 +1,7 @@
 # Arbeitsnotizen und Todos (lokal, nicht im Repo)
 todo/
+goal.md
+info.txt
 
 # Nie committen: Keys, Dumps, Saves, extrahierte Inhalte
 nsp/
@@ -24,38 +26,7 @@ __pycache__/
 xcuserdata/
 *.xcuserstate
 
-# Unity-Projekt (unity/): nur eigener Code und Einstellungen tracken
-unity/Library/
-unity/Temp/
-unity/Logs/
-unity/UserSettings/
-unity/obj/
-unity/Builds/
-unity/.vs/
-unity/.idea/
-unity/*.csproj
-unity/*.sln
-unity/*.slnx
-unity/*.user
-unity/Assets/GameData/
-unity/Assets/GameData.meta
-unity/Assets/StreamingAssets.meta
-unity/Assets/XnuGenerated/
-unity/Assets/XnuGenerated.meta
-unity/Assets/Scripts/BattleFlow/Ai/Generated/
-unity/Assets/Scripts/BattleFlow/Ai/Generated.meta
 cache/
-unity/Assets/_Recovery/
-unity/Assets/_Recovery.meta
-unity/Assets/XnuStubs/
-unity/Assets/XnuStubs.meta
-unity/Assets/csc.rsp
-unity/Assets/csc.rsp.meta
-unity/Assets/StreamingAssets/
-unity/Assets/Scripts/Probe/Resources/MemoryProbeVariant.txt*
-unity/Assets/Screenshots/
-unity/Assets/M0Tests/
-unity/Assets/Plugins/Wwise*/
 *.unitypackage
 *.bundle
 !scripts/recomp/ios/app/Settings.bundle/

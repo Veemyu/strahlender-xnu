@@ -326,5 +326,5 @@ Dump-class method entries with matching names: 36,597 of 39,951 (91.6%, top-leve
 
 - At name level, opendpr almost completely matches the dump. Gaps are Wwise (separate `Dpr_WwiseProject` and only eight `AK` files), DOTween portions, and about 47 global game types.
 - **This does not mean the logic is finished.** A name match says nothing about method bodies, correctness, or completeness. About 310,600 lines for roughly 43,400 game-type method entries suggests populated bodies, but that was not checked here.
-- Counts cannot establish whether files are handwritten; opendpr's README describes both handwritten and script-generated code. Reuse requires a separate license/quality review (`docs/opendpr-machbarkeit.md`).
+- Counts cannot establish whether files are handwritten; opendpr's README describes both handwritten and script-generated code. Reuse requires a separate license/quality review (opendpr feasibility report, git history).
 - Effort implication: Reconstruction is large by dump size (about 6,200 types); remaining work is less about class count than verification, executability, and replacing middleware.

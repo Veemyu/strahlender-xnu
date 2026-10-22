@@ -4,7 +4,7 @@ Stand: 2026-10-19, Todo `ap-ui` (Analysephase). Dieses Dokument beschreibt, wie 
 C#-Leser (`unity/Assets/Scripts/Text`, Assembly `Xnu.Text`, Tests `unity/Assets/Tests/EditMode/TextTests.cs`).
 Es enthält nur Strukturen, Feldnamen und Zahlen. Alle Textbeispiele sind erfunden; Originaltexte stehen weder hier noch in den Tests.
 
-**Prüfstufen** (wie in `docs/ui-spezifikation-1.md`):
+**Prüfstufen** (wie in `ui-spezifikation-1` aus der Unity-Zeit, Git-Verlauf):
 - **[D]** aus den Daten gemessen (Katalog, UnityPy-Lesen der Bundles, Auswertung der JSON-Exporte); reproduzierbar mit den Skripten in Abschnitt 11.
 - **[S]** aus `work/il2cpp/dump.cs` gelesen (Klassen, Felder, Offsets, Konstanten, Methodensignaturen), also die Form, nicht die Logik.
 - **[A]** Annahme oder Schluss ohne direkten Beleg; im Text benannt.

@@ -4,11 +4,11 @@ Stand: 2026-10-18. Grundlage sind die eigenen Notizen in `docs/`. Zahlen sind Me
 
 ## Ausgangslage in Zahlen
 - **Spiellogik:** ca. 6.200 Typen (53 %) mit ca. 39.100 Methoden (rund 60 % der Methoden ohne .NET-Basisbibliothek). Schwerpunkte: Kampf (1.816 Typen), UI (1.232), Feldklassen (935). Engine und Middleware (Unity, uGUI, DOTween, TMP, Wwise, Nintendo-SDK) sind rund 20 % der Methoden (`spielcode-inventar.md`).
-- **Rekonstruktionswerkzeug:** Ghidra mit 166.095 benannten Funktionen ist die Hauptquelle. Cpp2IL liefert nur 27,9 % saubere Rümpfe, 65,5 % haben Platzhalter. Es gibt keine automatische C#-Rekonstruktion in brauchbarer Qualität (`cpp2il-bewertung.md`).
+- **Rekonstruktionswerkzeug:** Ghidra mit 166.095 benannten Funktionen ist die Hauptquelle. Cpp2IL liefert nur 27,9 % saubere Rümpfe, 65,5 % haben Platzhalter. Es gibt keine automatische C#-Rekonstruktion in brauchbarer Qualität (Bewertung aus dem Repository entfernt, siehe Git-Verlauf).
 - **Save:** Format ist belegt und mit einem eigenen Validator geprüft (Größe 0xEF0A4, Version 0x34, MD5 bei 0xE9818). Die Innenlayouts der Unterstrukturen sind offen (`save-spec-entwurf.md`, `save-validator.md`).
 - **Daten:** 14.052 UnityFS-Bundles (v7, Unity 2019.4.27f1, LZ4HC), 696 Wwise-Banks (v135) und 3.241 WEM (Vorbis) (`daten-inventar.md`).
 - **Shader:** Switch-Bundles `shaders` (63 Shader) und `fxparticle` (1 Shader), ohne Quelltext. Der Ryujinx-Cache enthält 2.971 Einträge und 5.937 SPIR-V-Module. `spirv-cross` übersetzt alle 5.932 Grafik-Module nach MSL, Bildgleichheit ungeprüft (`shader-audio-machbarkeit.md`).
-- **opendpr** (Referenz, ohne Lizenz): Gerüst mit ca. 3.800 Dateien, 93 % der Typnamen des Dumps, viele Platzhalter. Im Unity-2019.4-Editor unter Rosetta kompiliert es, der Boot scheitert (`UIManager.Instance` null, Shader-Bundle fehlt) (`opendpr-aufbau.md`).
+- **opendpr** (Referenz, ohne Lizenz): Gerüst mit ca. 3.800 Dateien, 93 % der Typnamen des Dumps, viele Platzhalter. Im Unity-2019.4-Editor unter Rosetta kompiliert es, der Boot scheitert (`UIManager.Instance` null, Shader-Bundle fehlt) (Bericht aus dem Repository entfernt, siehe Git-Verlauf).
 - **Recomp-Projekte** (LASRecomp, letsgo-recomp): keine Unity-Spiele, kompilieren beim Nutzer, liefern Nintendo-Code mit. Für iPadOS ungeeignet. Nur Checkliste für Switch-Dienste (`recomp-referenzen.md`).
 - **Editor-Lage:** Unity 2019.4.27f1 läuft nur als Intel-Editor unter Rosetta. Im Batchmodus scheitert die Lizenz, in der GUI geht es.
 

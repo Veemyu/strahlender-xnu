@@ -30,8 +30,6 @@ macOS-Werkzeuge sind BSD-Varianten (`ls --time-style` und GNU-Optionen fehlen). 
 | Spielstand in die Laufzeit | `scripts/recomp/rt-bdsp/install_save.sh` (Quelle `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`, Ziel `work/recomp/save`) |
 | iPad bauen/starten | `scripts/recomp/ios/deploy_ios.sh build|install|run [Sek]|data|save|shots|files`; Lauf-Umgebung per `RUN_ENV='{"BDSP_TIMEOUT":"40","BDSP_BT":"1","BDSP_WAIT":"1"}'`; Logs `work/builds/ipad-recomp-<Zeit>.log` (`docs/recomp-ios.md` Abschnitt 6) |
 | iPad-Spielstand | `scripts/ios_push_save.sh [--source DATEI] [--reimport] [--dry-run]` |
-| Ryujinx-Referenzbilder | `python3 scripts/visual_ref.py import --raw work/visual/ref/ryujinx/raw --dest work/visual/ref/ryujinx`, nachdem F8-Bilder von Hand nach `raw/` kopiert wurden (`docs/visuelle-pruefung.md`, Abschnitt 8) |
-| Bildvergleich | `scripts/visual_auto.sh run\|compare\|accept\|ref [--ref ryujinx\|recomp\|both]`, `visual_compare.py` (`docs/visuelle-pruefung.md`) |
 | QA-Szenarien | `scripts/recomp/qa/qa_run.sh <szenario>|--list|--report <ordner>` (Sperrdatei, Spielstand-Kopie aus `work/recomp/qa/save_base`) |
 | Unity (deprecated, nur falls je wieder nötig) | `scripts/unity_safe.sh open|restart|status|test|watch` liegt nur auf Branch `unity` (auf `main` fehlt es; `visual_auto.sh` braucht es für den Editor-Start); Tests nie im Play-Modus (hängt), vorher `editor_stop` |
 
