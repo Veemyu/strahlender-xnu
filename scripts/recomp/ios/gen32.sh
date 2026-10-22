@@ -3,7 +3,7 @@
 # work/recomp/gen32/<module>, builds the module images (relocations to the new bases) to work/recomp/img32 and
 # compiles everything for iPhoneOS arm64 to work/recomp/obj32 (target iOS, afterwards platformless via vtool for the Mac test).
 # Everything under work/ (gitignored). The bases must match the B values in scripts/recomp/rt-bdsp/bdsp.h.
-# Usage: gen32.sh gen | img | build [JOBS] | all [JOBS]
+# Usage: gen32.sh gen | img | build [JOBS] | hot | all [JOBS]   (hot: only the -O2 files of scripts/recomp/hot_o2.txt)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -70,12 +70,33 @@ do_build() {
   OPT=-O0 xargs -P "$jobs" -n 1 scripts/recomp/ios/compile_chunk_ios.sh < "$OBJ/list_O0.txt"
   OPT=-O1 xargs -P "$jobs" -n 1 scripts/recomp/ios/compile_chunk_ios.sh < "$OBJ/list_O1.txt"
   echo "Total compile time: $(( $(date +%s) - start )) s"
+  do_hot
+}
+
+# Hot functions (scripts/recomp/hot_o2.txt, Mac names of module main, base 0x7000000000) with -O2, like scripts/recomp/build_all.sh.
+# In model B the function name is the offset plus the main base 0x1000000. An object that already is -O2 (marker *.o2) is kept.
+do_hot() {
+  local sdk; sdk=$(xcrun --sdk iphoneos --show-sdk-path)
+  mkdir -p "$OBJ"
+  export OBJ sdk
+  local fn n f o
+  while read -r fn; do
+    case "$fn" in ""|"#"*) continue ;; esac
+    n=$(printf 'f_%x' $(( 0x${fn#f_} - 0x7000000000 + 0x1000000 )))
+    for f in $(grep -l "^void $n(.*{\$" "$GEN"/main/*.c); do
+      o="$OBJ/main_$(basename "$f" .c).o"
+      [ -e "$o.o2" ] && [ "$o.o2" -nt "$f" ] && continue
+      rm -f "$o"; OPT=-O2 scripts/recomp/ios/compile_chunk_ios.sh "$f" && : > "$o.o2"
+      echo "-O2: $n in $(basename "$f")"
+    done
+  done < scripts/recomp/hot_o2.txt
 }
 
 case "${1:-all}" in
   gen) do_gen ;;
   img) do_img ;;
   build) do_build "${2:-3}" ;;
+  hot) do_hot ;;
   all) do_gen; do_img; do_build "${2:-3}" ;;
-  *) echo "Usage: gen32.sh gen|img|build [JOBS]|all [JOBS]" >&2; exit 2 ;;
+  *) echo "Usage: gen32.sh gen|img|build [JOBS]|hot|all [JOBS]" >&2; exit 2 ;;
 esac

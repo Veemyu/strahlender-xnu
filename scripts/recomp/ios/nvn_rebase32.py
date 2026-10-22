@@ -30,7 +30,7 @@ GUEST = {
                        r"e->tex->addr", r"\(ss->code_addr \+ ss->const_offset\)", r"r\.addr", r"ss->code_addr", r"st\.ubuf\[[^\]]*\]\[[^\]]*\]\.addr",
                        r"st\.sbuf\[[^\]]*\]\[[^\]]*\]\.addr", r"st\.vbuf\[[^\]]*\]\.addr", r"\(fs \+ 0x30\)", r"st\.program->stages\[0\]\.code_addr",
                        r"iaddr", r"\(src \+ \(uint64_t\)z \* img\)", r"st_->addr", r"p", r"cs", r"st\.program->stages\[5\]\.code_addr",
-                       r"\(r->x\[0\] \+ r->x\[2\]\)", r"r->x\[1\]", r"r->x\[0\]", r"t->addr"],
+                       r"\(r->x\[0\] \+ r->x\[2\]\)", r"r->x\[1\]", r"r->x\[0\]", r"r->x\[3\]", r"t->addr"],
     "nvn/metal.m": [r"t->addr"],
 }
 # Exceptions within these files: expressions that carry host pointers although they look like the ones above
