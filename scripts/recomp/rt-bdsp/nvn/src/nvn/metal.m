@@ -507,7 +507,7 @@ static void release_backend_texture(NvnTexture *t, TexBackend *b) {  // (also dr
 
 void backend_texture_destroyed(NvnTexture *t) {
     extern void renderer_xw_destroy_wait(void);
-    renderer_xw_destroy_wait();   // Worker-Modus (nur Diagnose BDSP_XW_DRAIN_DESTROY): erst die eingereihte Arbeit abwarten
+    renderer_xw_destroy_wait();   // Worker-Modus: mit BDSP_XW_DRAIN_DESTROY (iOS-Standard) erst die eingereihte Arbeit abwarten
     TexBackend *b = t->backend;
     renderer_texture_gone(t, NULL);  // its snapshot copy
     if (b) { reg_remove(b); release_backend_texture(t, b); free(b); }

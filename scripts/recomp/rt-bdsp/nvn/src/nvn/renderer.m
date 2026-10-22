@@ -93,7 +93,7 @@ static inline double now_ms(void) { return (double)clock_gettime_nsec_np(CLOCK_U
 #define TIMED_COMPILE(expr) ({ double t0_ = now_ms(); __auto_type r_ = (expr); stat_compile_ms += now_ms() - t0_; stat_compiles++; r_; })
 
 void renderer_draw_counts(uint64_t *draws, uint64_t *skipped) { *draws = stat_draws; *skipped = stat_skipped; }
-// Diagnose: Zerstörungen von Texturen, solange der Worker noch Arbeit hat (BDSP_XW_DRAIN_DESTROY=1: dann warten)
+// Texturfreigabe wartet auf den Worker, solange er noch Arbeit hat (BDSP_XW_DRAIN_DESTROY=1, iOS-Standard)
 void renderer_xw_destroy_wait(void) {
     if (!xw_enabled() || xw_is_worker) return;
     static int drain = -1;
@@ -3043,6 +3043,7 @@ static uint64_t xw_list_hash(uint64_t handle) { return xw_walk(handle, 0, 0); }
 // (ring_alloc im Draw); bis dahin hat der Gast sie evtl. schon für das nächste Bild überschrieben. Darum kopiert das
 // Einreihen die Datensätze samt der gebundenen Uniform-Bereiche (höchstens 64 KiB je Bindung) und der Indexdaten.
 // Storage- und Vertexdaten liest die GPU über den umhüllten Gastspeicher (Adressen), sie bleiben unberührt.
+// Stand 2026-10-22: liefert leere Befehlslisten (exec_list sieht nur CMD_END, 0 Zeichenaufrufe am Mac und iPad). Nicht verwenden, bis die Ursache behoben ist.
 typedef struct { void **blk; int n, cap; } XwSnap;
 static void xw_snap_add(XwSnap *s, void *p) {
     if (s->n == s->cap) { s->cap = s->cap ? s->cap * 2 : 64; s->blk = realloc(s->blk, s->cap * sizeof *s->blk); }

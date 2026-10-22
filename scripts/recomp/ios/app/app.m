@@ -10,6 +10,7 @@
 #include <mach/mach.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <signal.h>
 #include <sys/stat.h>
 #import "../../app/icon_variants.h"
 
@@ -465,6 +466,7 @@ static void StartRuntime(void) {
     setenv("BDSP_SHOT_DIR", [docs stringByAppendingPathComponent:@"Shots"].UTF8String, 0);
     setenv("BDSP_TIMEOUT", "86400", 0);
     setenv("BDSP_FPS_INTERVAL", "5", 0);
+    setenv("BDSP_XW_DRAIN_DESTROY", "1", 0);   // Texturfreigabe wartet auf den Renderer-Worker (vermutete Ursache des Absturzes in bind_textures); Bildrate bleibt asynchron
     NSInteger fps = [NSUserDefaults.standardUserDefaults integerForKey:@"bdsp_fps"];
     bdsp_set_fps(fps ? (int)fps : 60);
     fprintf(stderr, "[ipad] Start: %s, Gerät %s, os_proc_available_memory %zu MiB\n", UIDevice.currentDevice.systemVersion.UTF8String,
@@ -506,5 +508,17 @@ static void StartRuntime(void) {
 @end
 
 int main(int argc, char *argv[]) {
+    if (getenv("BDSP_HANG_DUMP")) {   // Stillstandsdiagnose: der Harness beendet hängende Läufe mit SIGTERM, dann kommt der Thread-Bericht
+        extern void kernel_report(FILE *f);
+        signal(SIGTERM, SIG_IGN);
+        dispatch_source_t term = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+        dispatch_source_set_event_handler(term, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ _exit(143); });  // Bericht hängt an einer gehaltenen Sperre
+            kernel_report(stderr);
+            fflush(stderr);
+            _exit(143);
+        });
+        dispatch_resume(term);
+    }
     @autoreleasepool { return UIApplicationMain(argc, argv, nil, NSStringFromClass(AppDelegate.class)); }
 }
