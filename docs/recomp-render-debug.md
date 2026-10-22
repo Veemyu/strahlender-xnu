@@ -95,6 +95,10 @@ the 120 fps target. Rebuilding the other 63 `-O0` files with `-O2` (11 min) gave
 when `sample <pid> 6` shows it at the top of a guest thread (`python3 -I scripts/recomp/symres.py` names IL2CPP methods; engine
 code has no names).
 
+Next, the render worker's `memcpy` into the ring ran at only ~2 GB/s: every ring wrap allocated a new 64 MB buffer (~25 per
+second), which the kernel zeroes and faults in. Retired rings are now reused once the last command buffer that could read them
+has completed (`BDSP_RING_POOL=0` allocates fresh ones again). Beach walking ~112 → ~118 fps, Route 222 ~95 → ~120 fps.
+
 Do not bind vertex data straight from the wrapped guest heap (`BDSP_GUEST_BUF=1`) to save the worker's copy: it reaches 117 fps,
 but the GPU reads stale data and the water mesh covers the whole scene.
 

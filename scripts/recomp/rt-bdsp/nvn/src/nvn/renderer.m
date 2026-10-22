@@ -717,6 +717,9 @@ static int cbuf_base = 3, tex_base = 8;
 static id<MTLBuffer> ring;
 static uint64_t ring_off;
 #define RING_SIZE (64u << 20)
+#define RING_POOL_MAX 12
+static struct { id<MTLBuffer> buf; uint64_t seq; } ring_retired[RING_POOL_MAX];  // seq: last command buffer that may read it
+static int ring_nretired;
 
 static uint64_t ring_alloc_skip(const void *data, uint64_t size, uint64_t skip);
 static uint64_t ring_alloc(const void *data, uint64_t size) { return ring_alloc_skip(data, size, 0); }
@@ -726,8 +729,31 @@ static uint64_t ring_alloc_skip(const void *data, uint64_t size, uint64_t skip) 
     if (!ring) ring = [dev newBufferWithLength:RING_SIZE options:MTLResourceStorageModeShared];
     uint64_t aligned = (ring_off + 255) & ~255ull;
     if (aligned + size > RING_SIZE) {
-        // Start a fresh ring; command buffers in flight keep the old one alive until they complete.
-        ring = [dev newBufferWithLength:(size > RING_SIZE ? size : RING_SIZE) options:MTLResourceStorageModeShared];
+        // Start a fresh ring; command buffers in flight keep the old one alive until they complete. A fresh 64 MB buffer
+        // costs the kernel zeroing and page faults (~25 per second here), so a retired ring is reused once the last
+        // command buffer that could read it has completed (BDSP_RING_POOL=0: always allocate).
+        static int pool_on = -1;
+        if (pool_on < 0) pool_on = !(getenv("BDSP_RING_POOL") && !strcmp(getenv("BDSP_RING_POOL"), "0"));
+        pthread_mutex_lock(&cb_lock);
+        uint64_t pend = submit_seq + (cmdbuf ? 1 : 0), done_to = submit_seq;
+        pthread_mutex_unlock(&cb_lock);
+        if (pool_on && ring.length == RING_SIZE) {
+            if (ring_nretired == RING_POOL_MAX) {  // pool full: let the oldest go (freed when its command buffers finish)
+                for (int i = 1; i < ring_nretired; i++) ring_retired[i - 1] = ring_retired[i];
+                ring_retired[--ring_nretired].buf = nil;
+            }
+            ring_retired[ring_nretired].buf = ring; ring_retired[ring_nretired].seq = pend; ring_nretired++;
+        }
+        id<MTLBuffer> reuse = nil;
+        for (int i = 0; i < ring_nretired && !reuse; i++) {
+            uint64_t q = ring_retired[i].seq;
+            bool done = q <= done_to && (done_to - q >= CB_HIST || cb_hist[q % CB_HIST].status >= MTLCommandBufferStatusCompleted);
+            if (!done) continue;
+            reuse = ring_retired[i].buf;
+            for (int k = i + 1; k < ring_nretired; k++) ring_retired[k - 1] = ring_retired[k];
+            ring_retired[--ring_nretired].buf = nil;
+        }
+        ring = reuse ?: [dev newBufferWithLength:(size > RING_SIZE ? size : RING_SIZE) options:MTLResourceStorageModeShared];
         aligned = 0;
     }
     memcpy((uint8_t *)ring.contents + aligned + skip, (const uint8_t *)data + skip, size - skip);
