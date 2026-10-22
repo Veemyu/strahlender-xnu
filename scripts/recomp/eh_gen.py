@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Generator-Erweiterung für C++-Exceptions und setjmp/longjmp (Phase-2-Spike, docs/architecture.md).
+"""Generator extension for C++ exceptions and setjmp/longjmp (phase 2 spike, docs/architecture.md).
 
-Eigener Code. Der Generator aus scripts/recomp/upstream/generator (MIT, unverändert vendort)
-wird nicht verändert, sondern hier zur Laufzeit erweitert:
+Own code. The generator from scripts/recomp/upstream/generator (MIT, vendored unchanged)
+is not modified, but extended here at run time:
 
-* `EhModule` ist eine Unterklasse von `gen.Module`. Jede erzeugte Gastfunktion, die einen Wiedereinstiegspunkt
-  enthält (Landing-Pad aus einer LSDA oder die Stelle hinter einem `bl setjmp`), bekommt am Anfang einen
-  Rahmeneintrag (`EhRec` auf dem Host-Stack, verkettet über `Cpu`) und ein `__builtin_setjmp`. Der Eintrag wird
-  bei jedem Verlassen der Funktion (Return, Tail-Call, Dispatch) wieder ausgehängt.
-* `rt_dispatch` bekommt für Adressen mitten in einer Funktion (kein Funktionsanfang) den Pfad
-  `rt_nle_enter`: passenden Rahmeneintrag suchen und per `__builtin_longjmp` dorthin zurückspringen; die
-  Funktion verteilt dann auf das Label des Landing-Pads (`switch (c->pc)`).
-* `ret` nach `mov sp, xN` (libunwind-`jumpto`) und `ret xN` mit N != 30 werden zu einem indirekten
-  Sprung auf das Registerziel (der Standard-Lifter macht daraus ein `return`).
+* `EhModule` is a subclass of `gen.Module`. Every generated guest function that contains a re-entry point
+  (landing pad from an LSDA or the spot behind a `bl setjmp`) gets, at the start, a
+  frame entry (`EhRec` on the host stack, chained through `Cpu`) and a `__builtin_setjmp`. The entry is
+  unhooked again whenever the function is left (return, tail call, dispatch).
+* `rt_dispatch` gets the path `rt_nle_enter` for addresses in the middle of a function (not a function start):
+  search the matching frame entry and jump back there via `__builtin_longjmp`; the
+  function then dispatches to the label of the landing pad (`switch (c->pc)`).
+* `ret` after `mov sp, xN` (libunwind `jumpto`) and `ret xN` with N != 30 become an indirect
+  jump to the register target (the standard lifter turns them into a `return`).
 
-Aufruf wie `gen.py`:  eh_gen.py gen <name> <nso> <basis> <ausgabeordner> [--chunk-bytes N] [--simd asm|c] [--limit N]
-Zusätzlich: --las-dir <Ordner mit gen.py> (Standard scripts/recomp/upstream/generator).
+Usage like `gen.py`:  eh_gen.py gen <name> <nso> <base> <output folder> [--chunk-bytes N] [--simd asm|c] [--limit N]
+Additionally: --las-dir <folder with gen.py> (default scripts/recomp/upstream/generator).
 """
 import atexit
 import bisect
@@ -38,7 +38,7 @@ TAIL = re.compile(r"__attribute__\(\(musttail\)\) return ([^;]+);")
 
 
 def excl_pair(w):
-    """C für LDXP/LDAXP (Bit 22 = 1) und STXP/STLXP: Hilfsfunktionen aus rt/cpu.h (Adresse über GPTR)."""
+    """C for LDXP/LDAXP (bit 22 = 1) and STXP/STLXP: helper functions from rt/cpu.h (address via GPTR)."""
     from lifter import X, XS, set_reg
     sz64 = (w >> 30) & 1
     load = (w >> 22) & 1
@@ -77,7 +77,7 @@ def install(las_dir):
             STATS["setjmp_returns"] += len(self.setjmp_set)
 
         def _find_setjmp_returns(self):
-            """Adressen hinter `bl setjmp` (Wiedereinstieg bei longjmp): direkte Exporte oder PLT-Stubs auf Importe."""
+            """Addresses behind `bl setjmp` (re-entry on longjmp): direct exports or PLT stubs to imports."""
             n, base = self.nso, self.base
             target_fns = {base + s[3] for s in n.syms if s[0] in SETJMP_NAMES and s[2]} | {base + o for o in EXTRA_SETJMP}
             slots = {}
@@ -110,7 +110,7 @@ def install(las_dir):
 
         def lift(self, a):
             w0 = self.word(a)
-            if (w0 & 0xBFA00000) == 0x88200000:  # LDXP/LDAXP/STXP/STLXP (Standardlifter: nicht unterstützt)
+            if (w0 & 0xBFA00000) == 0x88200000:  # LDXP/LDAXP/STXP/STLXP (standard lifter: not supported)
                 STATS["excl_pair"] += 1
                 return Insn("op", excl_pair(w0))
             ins = super().lift(a)
@@ -157,9 +157,9 @@ def install(las_dir):
 
 
 def is_jumptable_base_adr(words, i):
-    """`adr xD, T` gefolgt (<= 24 Wörter) von `add xD, xD, xM, lsl n` und `br xD`: T ist die Basis einer relativen
-    Sprungtabelle (oder der erste Fall einer Byte-Offset-Tabelle, Fenster 24 wegen dazwischen liegender Konstantenladungen)
-    innerhalb derselben Funktion, kein Funktionsanfang (der Standard-Generator zerschneidet sonst die Funktion an T)."""
+    """`adr xD, T` followed (<= 24 words) by `add xD, xD, xM, lsl n` and `br xD`: T is the base of a relative
+    jump table (or the first case of a byte offset table, window 24 because of constant loads in between)
+    within the same function, not a function start (the standard generator would otherwise cut the function at T)."""
     w = words[i]
     d = w & 31
     seen_add = False
@@ -173,8 +173,8 @@ def is_jumptable_base_adr(words, i):
 
 
 def generate(gen, args):
-    """Wie gen.main (LASRecomp, MIT), mit einer Änderung: ADR-Ziele, die Sprungtabellenbasen sind, werden keine
-    Funktionsanfänge. Ausgabe: Chunks `<name>_NNN.c` und `<name>_table.c`."""
+    """Like gen.main (LASRecomp, MIT), with one change: ADR targets that are jump table bases do not become
+    function starts. Output: chunks `<name>_NNN.c` and `<name>_table.c`."""
     import io
     import os
     import time
@@ -241,16 +241,16 @@ def generate(gen, args):
     order = sorted(entries)
     if args.limit:
         order = order[:args.limit]
-    if args.only:  # Datei mit Funktionsanfängen (hex, relativ zur Modulbasis), nur diese erzeugen (Teilbau für Tests)
+    if args.only:  # file with function starts (hex, relative to the module base), generate only these (partial build for tests)
         want = {args.base + int(x, 16) for x in open(args.only).read().split()}
         order = [a for a in order if a in want]
         missing = want - set(order)
         if missing:
-            print(f"{args.name}: --only: {len(missing)} Anfänge sind keine Funktionsanfänge", file=sys.stderr)
+            print(f"{args.name}: --only: {len(missing)} starts are not function starts", file=sys.stderr)
     nchunks, ci, pending = 0, 0, None
     all_refs = set()
     written, last_win, sub = set(), None, 0
-    win_of = lambda a: (a - m.lo) // args.window if args.window else 0  # feste Adressfenster: Chunks bleiben bei lokalen Änderungen stabil
+    win_of = lambda a: (a - m.lo) // args.window if args.window else 0  # fixed address windows: chunks stay stable under local changes
     while ci < len(order) or pending:
         body, refs, size, fns = [], set(), 0, []
         while (pending or ci < len(order)) and len(fns) < args.chunk and size < args.chunk_bytes:
@@ -290,7 +290,7 @@ def generate(gen, args):
         all_refs |= refs
         nchunks += 1
         print(f"{args.name}: progress {ci}/{len(order)} files {nchunks}", file=sys.stderr, flush=True)
-    for fn in os.listdir(args.outdir):  # Chunks früherer Läufe (andere Fenster oder alte Nummerierung)
+    for fn in os.listdir(args.outdir):  # chunks of earlier runs (other windows or old numbering)
         if re.fullmatch(re.escape(args.name) + r"_(\d{3}|[0-9a-f]{5}_\d+)\.c", fn) and fn not in written:
             os.remove(os.path.join(args.outdir, fn))
     with io.StringIO() as f:
@@ -302,7 +302,7 @@ def generate(gen, args):
         f.write(f"const uint64_t {args.name}_fn_count = {len(order)};\n")
         gen.write_if_changed(os.path.join(args.outdir, f"{args.name}_table.c"), f.getvalue())
     print(f"{args.name}: wrote {nchunks} chunks, {time.time() - t0:.0f}s total", file=sys.stderr)
-    if args.only:  # Teilbau: direkte Aufrufe auf nicht erzeugte Funktionen laufen über den Dispatch (Test-Stubs)
+    if args.only:  # partial build: direct calls to non-generated functions go through the dispatch (test stubs)
         missing_refs = sorted(all_refs - set(order))
         stub = ['#include "cpu.h"\n'] + [
             f"void {gen.fname(a)}(Cpu *c) {{ c->pc = {gen.hx(a)}; rt_dispatch(c); }}\n" for a in missing_refs]
@@ -337,9 +337,9 @@ def main():
     ap.add_argument("--chunk", type=int, default=1500)
     ap.add_argument("--chunk-bytes", type=int, default=1500000)
     ap.add_argument("--big-fn", type=int, default=100000)
-    ap.add_argument("--window", type=lambda x: int(x, 0), default=0x8000, help="Chunk-Grenze alle N Byte Gastcode (0 = nur nach Größe)")
+    ap.add_argument("--window", type=lambda x: int(x, 0), default=0x8000, help="chunk boundary every N bytes of guest code (0 = by size only)")
     ap.add_argument("--setjmp-at", action="append", type=lambda x: int(x, 0), default=[],
-                    help="zusätzliche setjmp-Funktion (Offset zur Modulbasis) für Module ohne dynamische Symbole (Testmodul)")
+                    help="additional setjmp function (offset to the module base) for modules without dynamic symbols (test module)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only")
     ap.add_argument("--simd", choices=("asm", "c"), default="asm" if platform.machine().lower() in ("arm64", "aarch64") else "c")

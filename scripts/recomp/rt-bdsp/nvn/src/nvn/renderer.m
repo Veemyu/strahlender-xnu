@@ -106,7 +106,7 @@ static inline double now_ms(void) { return (double)clock_gettime_nsec_np(CLOCK_U
 #define TIMED_COMPILE(expr) ({ double t0_ = now_ms(); __auto_type r_ = (expr); stat_compile_ms += now_ms() - t0_; stat_compiles++; r_; })
 
 void renderer_draw_counts(uint64_t *draws, uint64_t *skipped) { *draws = stat_draws; *skipped = stat_skipped; }
-// Texturfreigabe wartet auf den Worker, solange er noch Arbeit hat (BDSP_XW_DRAIN_DESTROY=1, iOS-Standard)
+// Texture release waits for the worker while it still has work (BDSP_XW_DRAIN_DESTROY=1, iOS default)
 void renderer_xw_destroy_wait(void) {
     if (!xw_enabled() || xw_is_worker) return;
     static int drain = -1;
@@ -117,7 +117,7 @@ void renderer_xw_destroy_wait(void) {
     bool busy = xw_done < xw_tail;
     pthread_mutex_unlock(&xw_lock);
     if (busy) pending++;
-    if (n % 200 == 0 || n == 1) printf("[xw] Texturen zerstört %llu, davon bei laufendem Worker %llu\n", (unsigned long long)n, (unsigned long long)pending);
+    if (n % 200 == 0 || n == 1) printf("[xw] textures destroyed %llu, of those with the worker running %llu\n", (unsigned long long)n, (unsigned long long)pending);
     if (drain) xw_drain();
 }
 const char *renderer_stats(void) {
@@ -454,7 +454,7 @@ static id<MTLTexture> view_texture(NvnTexture *t, const NvnTextureView *v, bool 
     MTLTextureType type = base.textureType;
     if (render && (type == MTLTextureType2DArray || type == MTLTextureTypeCube) && nly == 1) type = MTLTextureType2D;
     if (lv0 + nlv > base.mipmapLevelCount) nlv = base.mipmapLevelCount - lv0;
-    if (nlv == 0 || nly == 0) return base;  // leerer View: Metal bricht ab, Basis verwenden
+    if (nlv == 0 || nly == 0) return base;  // empty view: Metal aborts, use the base
     if (pf == base.pixelFormat && lv0 == 0 && nlv == base.mipmapLevelCount && ly0 == 0 && type == base.textureType)
         return base;
     static int vlog;  // BDSP_LOG_VIEWS: texture views that change the pixel format
@@ -708,7 +708,7 @@ static int cbuf_base = 3, tex_base = 8;
     ShaderInfo *vi, *fi;
     bool failed;
     bool ready;
-    uint64_t vh, fh;     // fnv64 der MSL-Quelltexte (Namen der vorübersetzten Bibliotheken)
+    uint64_t vh, fh;     // fnv64 of the MSL sources (names of the pre-compiled libraries)
 }
 @end
 @implementation Prog
@@ -765,7 +765,7 @@ static void ring_reset(void) { ring_off = 0; }
 
 // Bind guest memory [addr, addr+size) as a buffer: zero-copy inside the heap, copied otherwise.
 static bool guest_heap_ok(uint64_t addr, uint64_t size) {
-    static int off = -1;  // Standard: Daten über den Ring kopieren; BDSP_GUEST_BUF=1 nutzt den umhüllten Gastspeicher (siehe docs/rendering.md: die GPU sah dort alte Seiten)
+    static int off = -1;  // default: copy data through the ring; BDSP_GUEST_BUF=1 uses the wrapped guest memory (see docs/rendering.md: the GPU saw old pages there)
     if (off < 0) off = getenv("BDSP_GUEST_BUF") == NULL;
     return !off && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
 }
@@ -963,8 +963,8 @@ static int rt_kind(uint32_t f) {
 #define PROG_TAB 4096
 static struct { uint64_t key; void *prog; } prog_tab[PROG_TAB];
 
-// Compiler-Warnungen des Shader-Übersetzers (unbenutzte Funktionen und Variablen) stören nur die Konsole; sie stehen
-// vor jedem Shader-Quelltext.
+// Compiler warnings of the shader translator (unused functions and variables) only clutter the console; they are placed
+// in front of every shader source.
 #define MSL_QUIET @"#pragma clang diagnostic ignored \"-Wunused-function\"\n#pragma clang diagnostic ignored \"-Wunused-variable\"\n#pragma clang diagnostic ignored \"-Wunused-but-set-variable\"\n#pragma clang diagnostic ignored \"-Wunused-label\"\n"
 
 // Shader warm-up cache: every translated shader's MSL is kept in cache/shaders/ (v_/f_<hash>.metal). At startup
@@ -989,7 +989,7 @@ static void shader_cache_note(const char *vs, const char *fs) {
     }
 }
 
-static NSMutableDictionary *prebuilt_libs;  // Pfad -> MTLLibrary (Gate und Draws teilen sich die Bibliotheken)
+static NSMutableDictionary *prebuilt_libs;  // path -> MTLLibrary (gate and draws share the libraries)
 static NSString *prebuilt_dir_path;
 static bool prebuilt_dir_looked;
 
@@ -1001,13 +1001,13 @@ static NSString *prebuilt_dir(void) {
         if ([[NSFileManager defaultManager] fileExistsAtPath:b]) prebuilt_dir_path = b;
         else if ([[NSFileManager defaultManager] fileExistsAtPath:@"work/recomp/cache/shaders-bin-macosx"]) prebuilt_dir_path = @"work/recomp/cache/shaders-bin-macosx";
         if (getenv("BDSP_SHADER_SALT") || getenv("BDSP_NO_PREBUILT")) prebuilt_dir_path = nil;
-        LOG("[shader] vorübersetzte Bibliotheken: %s\n", prebuilt_dir_path ? prebuilt_dir_path.UTF8String : "keine gefunden");
+        LOG("[shader] pre-compiled libraries: %s\n", prebuilt_dir_path ? prebuilt_dir_path.UTF8String : "none found");
     }
     return prebuilt_dir_path;
 }
 
-// Vorübersetzte Shader-Bibliothek (scripts/recomp/shader_bin.sh, Ordner shaders-bin im App-Bundle) per Hash des
-// MSL-Quelltexts. Fehlt die Datei, liefert sie nil.
+// Pre-compiled shader library (scripts/recomp/shader_bin.sh, folder shaders-bin in the app bundle) by hash of the
+// MSL source. If the file is missing, it returns nil.
 static id<MTLLibrary> prebuilt_library_hash(uint64_t h, char kind) {
     NSString *dir = prebuilt_dir();
     if (!dir) return nil;
@@ -1024,8 +1024,8 @@ static id<MTLLibrary> prebuilt_library_hash(uint64_t h, char kind) {
 static id<MTLLibrary> prebuilt_library(const char *msl, char kind) {
     return prebuilt_library_hash(fnv64(msl), kind);
 }
-// Compiler-Warnungen des Shader-Übersetzers (unbenutzte Funktionen und Variablen aus den übersetzten Shadern) stören
-// nur die Konsole; sie stehen vor jedem Shader-Quelltext.
+// Compiler warnings of the shader translator (unused functions and variables from the translated shaders) only
+// clutter the console; they are placed in front of every shader source.
 #define MSL_QUIET @"#pragma clang diagnostic ignored \"-Wunused-function\"\n#pragma clang diagnostic ignored \"-Wunused-variable\"\n#pragma clang diagnostic ignored \"-Wunused-but-set-variable\"\n#pragma clang diagnostic ignored \"-Wunused-label\"\n"
 
 static void compile_program(Prog *pr) {
@@ -1228,7 +1228,7 @@ static id<MTLTexture> sampled_texture(NvnTexture *t, const NvnTextureView *v, bo
     // uploads (if the CPU-side contents changed) go into their own command buffer, committed before
     // the current one so they land first
     id<MTLTexture> tex = view_texture(t, v, has_view, false, nil);
-    if (tex.mipmapLevelCount == 0) return dummy_texture(want_type);  // ungültige Textur (Ziel/Format 0), kein Metal-View
+    if (tex.mipmapLevelCount == 0) return dummy_texture(want_type);  // invalid texture (target/format 0), no Metal view
     tex = apply_swizzle(tex, t, v, has_view);
     MTLTextureType want = mtl_type_for(want_type);
     if (tex.textureType != want && tex.textureType != MTLTextureType2DMultisample) {
@@ -1273,7 +1273,7 @@ static uint64_t shader_handle(int stage, const ShaderTexture *st_) {
         int slot = ((int)st_->handle_offset - 0x20) / 8;  // 64-bit handles from offset 0x20
         return (slot >= 0 && slot < 32) ? st.tex[stage][slot] : 0;
     }
-    // Handles aus zwei Wörtern: die Textur steht in der Tabelle ab 0x168, der Sampler in der ab 0x568 (Fund des Vulkan-Strangs)
+    // Handles of two words: the texture is in the table starting at 0x168, the sampler in the one at 0x568 (finding of the Vulkan branch)
     int ti = ((int)(st_->bindless_has_sampler ? st_->bindless_sampler_offset : st_->bindless_offset) - (st_->bindless_has_sampler ? 0x168 : 0x568)) / 8;
     uint64_t th = (ti >= 0 && ti < 32) ? st.tex[stage][ti] : 0;
     if (!th) return 0;
@@ -1853,10 +1853,10 @@ static uint64_t pipeline_state_hash(Prog *pr) {
     return h ? h : 1;
 }
 
-// Pipeline als Daten (keine Zeiger, kein Draw-Zustand). Sie ist zugleich der Cache-Schlüssel und der Eintrag in
-// pipelines.bin; beim Start baut das Gate alle Einträge der Datei vorab (startup_gate).
+// Pipeline as data (no pointers, no draw state). It is both the cache key and the entry in
+// pipelines.bin; at startup the gate builds all entries of the file in advance (startup_gate).
 typedef struct {
-    uint64_t vh, fh;  // fnv64 der MSL-Quelltexte (Namen der vorübersetzten Bibliotheken)
+    uint64_t vh, fh;  // fnv64 of the MSL sources (names of the pre-compiled libraries)
     uint32_t depth_fmt, stencil_fmt, samples, a2c, ncolor;
     struct { uint32_t present, fmt, wmask, blend, sf, df, sa, da, ro, ao; } ca[8];
     struct { uint32_t present, fmt, off, buf; } attr[32];
@@ -1969,7 +1969,7 @@ static id<MTLRenderPipelineState> build_pipeline(const PipeRec *r, id<MTLFunctio
 
 static NSString *pipe_key(const PipeRec *r) { return [[NSData dataWithBytes:r length:sizeof *r] base64EncodedStringWithOptions:0]; }
 
-// Alle Pipeline-Schlüssel, die bekannt sind (aus den Manifesten geladen oder schon angehängt).
+// All pipeline keys that are known (loaded from the manifests or already appended).
 static NSMutableSet *known_recs;
 
 static NSString *pipe_manifest_path(void) {
@@ -1979,8 +1979,8 @@ static NSString *pipe_manifest_path(void) {
     return [d stringByAppendingPathComponent:@"pipelines.bin"];
 }
 
-// Neue Pipeline aus dem Draw: einmalig an die Caches-Datei anhängen (das ausgelieferte pipelines.bin im Bundle wird
-// nur von Hand aus dieser Datei erzeugt).
+// New pipeline from the draw: append it once to the caches file (the shipped pipelines.bin in the bundle is only
+// created by hand from this file).
 static void pipe_record_add(const PipeRec *r) {
     NSString *k = pipe_key(r);
     if ([known_recs containsObject:k]) return;
@@ -2012,8 +2012,8 @@ static void load_manifest(NSString *path, NSMutableArray *out) {
     fclose(f);
 }
 
-// Start-Gate: vor dem ersten Gast-Draw werden alle Pipelines aus pipelines.bin gebaut. Solange steht der Gast still;
-// ein Präsentationsthread zeigt den Zähler (renderer_gate_present, metal.m) fest mit 60 Hz.
+// Start gate: before the first guest draw all pipelines from pipelines.bin are built. Meanwhile the guest stands still;
+// a presentation thread shows the counter (renderer_gate_present, metal.m) at a fixed 60 Hz.
 static uint64_t gate_done, gate_total;
 static bool gate_finished;
 void renderer_gate_present(uint64_t done, uint64_t total);  // metal.m
@@ -2040,7 +2040,7 @@ static void startup_gate(void) {
     NSMutableArray *recs = [NSMutableArray new];
     load_manifest([[NSBundle mainBundle].resourcePath stringByAppendingPathComponent:@"pipelines.bin"], recs);
     load_manifest(pipe_manifest_path(), recs);
-    NSMutableArray *gated = [NSMutableArray new];  // nur Einträge, deren Bibliotheken vorliegen
+    NSMutableArray *gated = [NSMutableArray new];  // only entries whose libraries are present
     for (NSData *d in recs) {
         const PipeRec *r = d.bytes;
         NSString *dir = prebuilt_dir();
@@ -3098,7 +3098,7 @@ static void exec_list(uint64_t handle, int depth) {
             if (fence_flush < 0) fence_flush = getenv("BDSP_FENCE_FLUSH") ? 1 : 0;
             if (fence_flush) renderer_flush();
             extern void nvn_sync_set_seq(uint64_t guest, uint64_t seq);
-            if (r->x[1] && !xw_is_worker) nvn_sync_set_seq(r->x[1], renderer_fence_seq());   // im Worker setzt schon das Einreihen den Token (xw_prescan_fences)
+            if (r->x[1] && !xw_is_worker) nvn_sync_set_seq(r->x[1], renderer_fence_seq());   // in the worker the enqueueing already sets the token (xw_prescan_fences)
             break;
         }
         case CMD_REPORT_COUNTER: {
@@ -3168,13 +3168,13 @@ void renderer_reset(void) {
     st_defaults();
 }
 
-// Worker-Modus: Fences, die in der Liste stehen (nvnCommandBufferFenceSync), bekommen ihren Token schon beim Einreihen.
-// Sonst liest ein nvnSyncWait im Gast noch den alten Stand, bevor der Worker die Fence-Anweisung ausgeführt hat, und
-// kehrt zu früh zurück; der Gast überschriebe dann Speicher, den der Worker noch liest.
-// Prüfsumme über alle Datensätze einer Liste (Sprünge und Aufrufe verfolgt); mit Fence-Token ≠ 0 setzt sie zugleich die Fences.
+// Worker mode: fences that are in the list (nvnCommandBufferFenceSync) get their token already when enqueued.
+// Otherwise an nvnSyncWait in the guest still reads the old state before the worker has executed the fence instruction, and
+// returns too early; the guest would then overwrite memory that the worker still reads.
+// Checksum over all records of a list (following jumps and calls); with a fence token ≠ 0 it also sets the fences.
 static int xw_measure = -1;
 static struct { uint64_t n[3], uniq[3], bytes[3], ubytes[3], set[8192]; uint64_t frame, frames; } xw_ms;
-static void xw_measure_report(uint64_t pres) {   // je Bild: Zähler aufsummieren, alle 240 Bilder ausgeben, Menge leeren
+static void xw_measure_report(uint64_t pres) {   // per frame: sum up counters, print every 240 frames, clear the set
     if (xw_ms.frame == pres) return;
     xw_ms.frame = pres;
     memset(xw_ms.set, 0, sizeof xw_ms.set);
@@ -3204,7 +3204,7 @@ static uint64_t xw_walk(uint64_t handle, uint64_t token, int depth) {
         }
         case CMD_FENCE_SYNC: if (token && r->x[1]) nvn_sync_set_seq(r->x[1], token); break;
         case CMD_BIND_UNIFORM_BUFFERS: case CMD_BIND_STORAGE_BUFFERS: case CMD_BIND_VERTEX_BUFFERS:
-            if (xw_measure) {   // BDSP_XW_MEASURE=1: was ein Snapshot der gebundenen Bereiche kosten würde
+            if (xw_measure) {   // BDSP_XW_MEASURE=1: what a snapshot of the bound ranges would cost
                 uint64_t cnt = r->op == CMD_BIND_VERTEX_BUFFERS ? r->x[1] : r->x[2];
                 const uint64_t *rg = (const uint64_t *)r->extra;
                 int k = r->op == CMD_BIND_UNIFORM_BUFFERS ? 0 : r->op == CMD_BIND_STORAGE_BUFFERS ? 1 : 2;
@@ -3226,11 +3226,11 @@ static uint64_t xw_walk(uint64_t handle, uint64_t token, int depth) {
 }
 static uint64_t xw_list_hash(uint64_t handle) { return xw_walk(handle, 0, 0); }
 
-// BDSP_XW_SNAP=1: Kopie der Liste für den Worker. Der Worker liest Uniform- und Indexdaten erst bei der Ausführung
-// (ring_alloc im Draw); bis dahin hat der Gast sie evtl. schon für das nächste Bild überschrieben. Darum kopiert das
-// Einreihen die Datensätze samt der gebundenen Uniform-Bereiche (höchstens 64 KiB je Bindung) und der Indexdaten.
-// Storage- und Vertexdaten liest die GPU über den umhüllten Gastspeicher (Adressen), sie bleiben unberührt.
-// Stand 2026-10-22: liefert leere Befehlslisten (exec_list sieht nur CMD_END, 0 Zeichenaufrufe am Mac und iPad). Nicht verwenden, bis die Ursache behoben ist.
+// BDSP_XW_SNAP=1: copy of the list for the worker. The worker reads uniform and index data only at execution time
+// (ring_alloc in the draw); by then the guest may already have overwritten them for the next frame. Therefore the
+// enqueueing copies the records together with the bound uniform ranges (at most 64 KiB per binding) and the index data.
+// Storage and vertex data are read by the GPU through the wrapped guest memory (addresses), they stay untouched.
+// State 2026-10-22: yields empty command lists (exec_list sees only CMD_END, 0 draw calls on Mac and iPad). Do not use until the cause is fixed.
 typedef struct { void **blk; int n, cap; } XwSnap;
 static void xw_snap_add(XwSnap *s, void *p) {
     if (s->n == s->cap) { s->cap = s->cap ? s->cap * 2 : 64; s->blk = realloc(s->blk, s->cap * sizeof *s->blk); }
@@ -3242,7 +3242,7 @@ static void xw_snap_free(void *p) {
     free(s->blk);
     free(s);
 }
-static struct { uint64_t gen, addr, len; void *ptr; } xw_dup_tab[4096];   // Erzeugungszähler statt Leeren
+static struct { uint64_t gen, addr, len; void *ptr; } xw_dup_tab[4096];   // generation counter instead of clearing
 static uint64_t xw_dup_gen;
 static uint64_t xw_snap_bytes;   // Diagnose: kopierte Bytes
 static void *xw_dup(XwSnap *s, uint64_t addr, uint64_t len) {
@@ -3303,8 +3303,8 @@ static uint8_t *xw_snap_list(XwSnap *s, uint64_t handle, int depth) {
             break;
         }
         case CMD_UPDATE_UNIFORM_BUFFER:
-            // gilt in Befehlsreihenfolge: jetzt anwenden, so sehen die folgenden Kopien den neuen Stand (wie im Standardpfad beim
-            // Einreichen); die Anweisung selbst schreibt dann nichts mehr
+            // applies in command order: apply now, so the following copies see the new state (as in the default path when
+            // submitting); the instruction itself then writes nothing more
             if (c->x[3]) memcpy((void *)GA(c->x[0] + c->x[2]), c->extra, c->x[3]);
             c->x[3] = 0;
             xw_dup_gen++;
@@ -3331,7 +3331,7 @@ void backend_execute(uint64_t handle) {
             if (xw_measure && ++snapdbg % 1000 == 0) printf("[xw] Snapshot kopiert insgesamt %.1f MiB in %d Listen\n", xw_snap_bytes / 1048576.0, snapdbg);
         }
         xw_enqueue(h2, xw_check && !snapon ? chk : 0, snap);
-        static int xsync = -1;  // BDSP_EXEC_SYNC=1 (Test auf Datenrennen): der Gast wartet nach jedem Einreihen auf den Worker
+        static int xsync = -1;  // BDSP_EXEC_SYNC=1 (data race test): the guest waits for the worker after every enqueue
         if (xsync < 0) xsync = getenv("BDSP_EXEC_SYNC") != NULL;
         if (xsync) xw_drain();
         return;
@@ -3351,7 +3351,7 @@ void backend_execute(uint64_t handle) {
             prof_exec_ns += t1 - t0; prof_submit_ns += t2 - t1; prof_n++;
             if (!prof_last_ns) prof_last_ns = t2;
             if (t2 - prof_last_ns >= 3000000000ull && prof_n) {
-                printf("[prof] %llu Aufrufe je 3 s: exec %.2f ms je Aufruf (Summe %.0f ms), submit %.2f ms je Aufruf\n",
+                printf("[prof] %llu calls per 3 s: exec %.2f ms per call (sum %.0f ms), submit %.2f ms per call\n",
                        (unsigned long long)prof_n, prof_exec_ns / 1e6 / prof_n, prof_exec_ns / 1e6, prof_submit_ns / 1e6 / prof_n);
                 prof_exec_ns = prof_submit_ns = prof_n = 0;
                 prof_last_ns = t2;

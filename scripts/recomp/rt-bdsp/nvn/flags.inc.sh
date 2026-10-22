@@ -1,5 +1,5 @@
-# Gemeinsame Compiler-Flags der NVN-Schicht (per source eingebunden von build_nvn.sh und ios/build_rt32.sh).
-# Plattformspezifische Defines (BDSP_IOS, BDSP_REBASE32, BDSP_STUB) stehen im jeweiligen Skript.
+# Shared compiler flags of the NVN layer (sourced by build_nvn.sh and ios/build_rt32.sh).
+# Platform-specific defines (BDSP_IOS, BDSP_REBASE32, BDSP_STUB) are in the respective script.
 BDSP_OPT="-O1 -g"
 BDSP_NOWARN="-w"
 BDSP_WARN_GLUE="-Wall -Wextra -Wno-unused-parameter"

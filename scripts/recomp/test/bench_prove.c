@@ -1,6 +1,6 @@
-// Leistungsvergleich: dieselben C-Funktionen (bench_guest.c) rekompiliert (Cpu im Speicher, Dispatch) gegen nativ.
-// Eigener Code. Der Gastcode kommt aus eh_gen.py (Modul "gbn"); die native Variante bindet dieselbe Quelle mit
-// umbenannten Symbolen ein. Ausgabe: Zeit je Funktion und Verhältnis rekompiliert / nativ.
+// Performance comparison: the same C functions (bench_guest.c) recompiled (Cpu in memory, dispatch) against native.
+// Own code. The guest code comes from eh_gen.py (module "gbn"); the native variant includes the same source with
+// renamed symbols. Output: time per function and ratio recompiled / native.
 #define _GNU_SOURCE
 #include "cpu.h"
 #include <stdio.h>
@@ -34,7 +34,7 @@ void rt_brk(Cpu *c, uint32_t i, uint64_t pc) { (void)c; (void)i; (void)pc; abort
 void rt_udf(Cpu *c, uint64_t pc) { (void)c; (void)pc; abort(); }
 uint64_t rt_ticks(void) { return 0; }
 
-// Dispatch wie in LASRecomp: direkt abgebildeter Cache (4096) vor der Binärsuche
+// Dispatch as in LASRecomp: direct-mapped cache (4096) before the binary search
 #define DC 4096
 static struct { uint64_t a; GuestFn f; } dcache[DC];
 static GuestFn find(uint64_t pc) {
@@ -70,9 +70,9 @@ int main(void) {
     double *gfb = (double *)(STACK + 0x10000), *nfb = calloc(1024, 8);
     for (int i = 0; i < 1024; i++) { gfb[i] = nfb[i] = i * 0.001; }
     struct { const char *name, *env; long n; } B[] = {
-        { "Ganzzahl+Speicher (Xorshift, 32 KiB)", "OFF_INT", 100000000 },
-        { "Aufrufe+Stack (fib(35))", "OFF_CALLS", 35 },
-        { "Gleitkomma (FMA-Schleife)", "OFF_FLOAT", 100000000 },
+        { "Integer+memory (xorshift, 32 KiB)", "OFF_INT", 100000000 },
+        { "Calls+stack (fib(35))", "OFF_CALLS", 35 },
+        { "Floating point (FMA loop)", "OFF_FLOAT", 100000000 },
         { "indirekte Aufrufe (8er-Tabelle)", "OFF_IND", 60000000 },
     };
     for (int i = 0; i < 4; i++) {
@@ -82,7 +82,7 @@ int main(void) {
         else if (i == 1) { rg = gcall(B[i].env, B[i].n, 0); tg = now() - t0; t0 = now(); rn = native_bench_calls(B[i].n); tn = now() - t0; }
         else if (i == 2) { gcall(B[i].env, (uint64_t)(uintptr_t)gfb, B[i].n); rg = (uint64_t)(cpu->v[0]); tg = now() - t0; t0 = now(); double d = native_bench_float(nfb, B[i].n); memcpy(&rn, &d, 8); tn = now() - t0; }
         else { rg = gcall(B[i].env, 0, B[i].n); tg = now() - t0; t0 = now(); rn = native_bench_indirect(0, B[i].n); tn = now() - t0; }
-        printf("%-40s rekompiliert %7.3f s, nativ %7.3f s, Faktor %5.2f  (Ergebnis %s)\n", B[i].name, tg, tn, tg / tn, rg == rn ? "gleich" : "ABWEICHEND");
+        printf("%-40s recompiled %7.3f s, native %7.3f s, factor %5.2f  (result %s)\n", B[i].name, tg, tn, tg / tn, rg == rn ? "equal" : "DIFFERENT");
     }
     return 0;
 }

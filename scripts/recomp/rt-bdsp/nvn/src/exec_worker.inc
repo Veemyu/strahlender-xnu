@@ -1,31 +1,31 @@
-// Übersetzungs-Worker (Mac: Standard an, BDSP_EXEC_WORKER=0 = alter synchroner Pfad), eingebunden von renderer.m.
-// backend_execute reiht die Handles ein; ein Worker-Thread führt exec_list und renderer_submit in Reihenfolge aus.
-// backend_present (metal.m) reiht die Präsentation als Job ein (renderer_worker_present), der Gast läuft höchstens
-// BDSP_EXEC_FRAMES (Standard 2) Bilder voraus.
-// Gast-seitige Synchronisation (renderer_submit, renderer_sync, renderer_fence_seq, renderer_wait_seq) wartet vorher auf den Worker.
-// Ohne Umgebungsvariable sind alle Zähler 0 und die Drains kehren sofort zurück.
+// Translation worker (Mac: on by default, BDSP_EXEC_WORKER=0 = old synchronous path), included by renderer.m.
+// backend_execute enqueues the handles; a worker thread runs exec_list and renderer_submit in order.
+// backend_present (metal.m) enqueues the presentation as a job (renderer_worker_present), the guest runs at most
+// BDSP_EXEC_FRAMES (default 2) frames ahead.
+// Guest-side synchronisation (renderer_submit, renderer_sync, renderer_fence_seq, renderer_wait_seq) waits for the worker first.
+// Without the environment variable all counters are 0 and the drains return immediately.
 void renderer_submit(void);
 static void exec_list(uint64_t handle, int depth);
 
 #define XW_CAP 8192
 static pthread_mutex_t xw_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t xw_cond = PTHREAD_COND_INITIALIZER;
-static uint64_t xw_handles[XW_CAP], xw_tail, xw_next, xw_done;   // eingereiht / übernommen / fertig
+static uint64_t xw_handles[XW_CAP], xw_tail, xw_next, xw_done;   // enqueued / taken / done
 uint64_t renderer_last_submit_seq(void);
 static uint64_t xw_job_seq[XW_CAP];   // per job: sequence number of the newest command buffer committed when it finished
-static void *xw_blocks[XW_CAP];   // != NULL: Präsentations-Job (retained Block) statt Befehlsliste
-static uint8_t xw_isp[XW_CAP];   // Block ist eine Präsentation (zählt für die Bild-Vorlaufgrenze)
-static uint64_t xw_chk[XW_CAP];   // Prüfsumme der Datensätze beim Einreihen (nur BDSP_XW_CHECK)
+static void *xw_blocks[XW_CAP];   // != NULL: presentation job (retained block) instead of a command list
+static uint8_t xw_isp[XW_CAP];   // block is a presentation (counts toward the frame lead limit)
+static uint64_t xw_chk[XW_CAP];   // checksum of the records at enqueue time (only BDSP_XW_CHECK)
 static int xw_check;
 static uint64_t xw_list_hash(uint64_t handle);
 bool xw_ordered(void (*fn)(void *), void *arg);
-static void *xw_snaps[XW_CAP];   // Kopie der Liste samt Uniform-/Indexdaten (BDSP_XW_SNAP), vom Worker nach der Ausführung freigegeben
+static void *xw_snaps[XW_CAP];   // copy of the list including uniform/index data (BDSP_XW_SNAP), released by the worker after execution
 static void xw_snap_free(void *s);
-static uint64_t xw_pres_enq, xw_pres_done;   // eingereihte / fertige Präsentationen
-static int xw_max_frames = 2;   // so viele Bilder darf der Gast dem Worker voraus sein (BDSP_EXEC_FRAMES)
+static uint64_t xw_pres_enq, xw_pres_done;   // enqueued / finished presentations
+static int xw_max_frames = 2;   // this many frames the guest may be ahead of the worker (BDSP_EXEC_FRAMES)
 static int xw_on = -1;
 static __thread int xw_is_worker;
-// BDSP_XW_LOG=1: Zeitstempel je Job, Warteschlangenlänge, Wartezeit des Gasts (alle 2 s eine Zeile [xw-t], Ausreißer einzeln)
+// BDSP_XW_LOG=1: timestamp per job, queue length, wait time of the guest (one [xw-t] line every 2 s, outliers individually)
 static int xw_log;
 static uint64_t xw_ts[XW_CAP];
 static uint64_t xw_now_ns(void) { return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
@@ -55,14 +55,14 @@ static void *xw_main(void *arg) {
                 void (^job)(void) = CFBridgingRelease(blk);
                 job();
             } else {
-                if (xw_check) {   // BDSP_XW_CHECK=1: wurden die Befehlsdatensätze zwischen Einreihen und Ausführen verändert?
+                if (xw_check) {   // BDSP_XW_CHECK=1: were the command records changed between enqueueing and execution?
                     static uint64_t njobs, nbad;
                     njobs++;
                     if (xw_list_hash(h) != chk) {
                         nbad++;
-                        if (nbad <= 30) printf("[xw] Befehlsliste %llx wurde nach dem Einreihen verändert (%llu von %llu)\n", (unsigned long long)h, (unsigned long long)nbad, (unsigned long long)njobs);
+                        if (nbad <= 30) printf("[xw] command list %llx was changed after enqueueing (%llu of %llu)\n", (unsigned long long)h, (unsigned long long)nbad, (unsigned long long)njobs);
                     }
-                    if (njobs % 1000 == 0) printf("[xw] Listen %llu, verändert %llu\n", (unsigned long long)njobs, (unsigned long long)nbad);
+                    if (njobs % 1000 == 0) printf("[xw] lists %llu, changed %llu\n", (unsigned long long)njobs, (unsigned long long)nbad);
                 }
                 exec_list(h, 0);
                 if (snap) xw_snap_free(snap);
@@ -85,9 +85,9 @@ static void *xw_main(void *arg) {
             if (blk && isp) { xw_st.npres++; if (dur > xw_st.pres_max) xw_st.pres_max = dur; }
             else if (!blk && dur > xw_st.list_max) xw_st.list_max = dur;
             xw_st.busy += dur;
-            if (dur > 12000000ull) printf("[xw-t] t=%.3f %s dauert %.2f ms (Latenz %.2f ms, Warteschlange %llu)\n", t_end / 1e9, blk ? (isp ? "Präsentation" : "Zustandsjob") : "Befehlsliste", dur / 1e6, lat / 1e6, (unsigned long long)qlen);
+            if (dur > 12000000ull) printf("[xw-t] t=%.3f %s takes %.2f ms (latency %.2f ms, queue %llu)\n", t_end / 1e9, blk ? (isp ? "presentation" : "state job") : "command list", dur / 1e6, lat / 1e6, (unsigned long long)qlen);
             if (t_end - xw_st.t0 >= 2000000000ull) {
-                printf("[xw-t] t=%.3f Jobs %llu, Präsentationen %llu, Warteschlange max %llu, Latenz max %.2f ms, Liste max %.2f ms, Präsentation max %.2f ms, Gast-Wartezeit max %.2f ms Mittel %.2f ms, Worker beschäftigt %.0f %%\n", t_end / 1e9,
+                printf("[xw-t] t=%.3f jobs %llu, presentations %llu, queue max %llu, latency max %.2f ms, list max %.2f ms, presentation max %.2f ms, guest wait max %.2f ms mean %.2f ms, worker busy %.0f %%\n", t_end / 1e9,
                        (unsigned long long)xw_st.njobs, (unsigned long long)xw_st.npres, (unsigned long long)xw_st.qmax, xw_st.lat_max / 1e6, xw_st.list_max / 1e6, xw_st.pres_max / 1e6,
                        xw_st.guest_wait_max / 1e6, xw_st.nwait ? xw_st.guest_wait_sum / 1e6 / xw_st.nwait : 0.0, 100.0 * xw_st.busy / (double)(t_end - xw_st.t0));
                 memset(&xw_st, 0, sizeof xw_st);
@@ -99,7 +99,7 @@ static void *xw_main(void *arg) {
 
 static int xw_enabled(void) {
     if (xw_on < 0) {
-        const char *ew = getenv("BDSP_EXEC_WORKER");   // Mac: Standard an; BDSP_EXEC_WORKER=0 schaltet auf den alten synchronen Pfad
+        const char *ew = getenv("BDSP_EXEC_WORKER");   // Mac: on by default; BDSP_EXEC_WORKER=0 switches to the old synchronous path
         xw_on = !(ew && !strcmp(ew, "0"));
         xw_check = xw_on && getenv("BDSP_XW_CHECK") != NULL;
         xw_log = xw_on && getenv("BDSP_XW_LOG") != NULL;
@@ -129,8 +129,8 @@ static void xw_enqueue(uint64_t h, uint64_t chk, void *snap) {
     pthread_mutex_unlock(&xw_lock);
 }
 
-// Präsentation als Job in dieselbe Warteschlange (Reihenfolge zu den Befehlslisten bleibt). Der Gast wartet nur, wenn er mehr
-// als xw_max_frames Bilder voraus ist. false: Worker aus (oder Aufruf aus dem Worker), der Aufrufer präsentiert selbst.
+// Presentation as a job in the same queue (the order relative to the command lists stays). The guest waits only if it is more
+// than xw_max_frames frames ahead. false: worker off (or call from the worker), the caller presents itself.
 bool renderer_worker_present(void (^job)(void)) {
     if (!xw_enabled() || xw_is_worker) return false;
     void *blk = (void *)CFBridgingRetain([job copy]);
@@ -145,7 +145,7 @@ bool renderer_worker_present(void (^job)(void)) {
     xw_pres_enq++;
     pthread_cond_broadcast(&xw_cond);
     uint64_t w0 = xw_log ? xw_now_ns() : 0;
-    while (xw_pres_enq - xw_pres_done > (uint64_t)xw_max_frames) xw_cond_wait("Präsentations-Vorlauf");
+    while (xw_pres_enq - xw_pres_done > (uint64_t)xw_max_frames) xw_cond_wait("presentation lead");
     if (xw_log) {
         uint64_t w = xw_now_ns() - w0;
         xw_st.nwait++; xw_st.guest_wait_sum += w;
@@ -155,10 +155,10 @@ bool renderer_worker_present(void (^job)(void)) {
     return true;
 }
 
-// Fence-Token: Bit 63 gesetzt, Rest = Anzahl der bis dahin eingereihten Jobs. Der Wartende wartet nur bis zu diesem Job,
-// nicht auf die ganze Warteschlange.
-// Zustandsänderungen des Gasts, die der Worker beim Ausführen liest (Textur-/Sampler-Pools), laufen in Reihenfolge der
-// Warteschlange: Der Gast reiht die Änderung ein statt sie sofort zu schreiben; der Worker wendet sie zwischen den Listen an.
+// Fence token: bit 63 set, rest = number of jobs enqueued up to then. The waiter waits only until this job,
+// not for the whole queue.
+// State changes of the guest that the worker reads while executing (texture/sampler pools) run in queue order:
+// the guest enqueues the change instead of writing it immediately; the worker applies it between the lists.
 bool xw_ordered(void (*fn)(void *), void *arg) {
     if (xw_on <= 0 || xw_is_worker) return false;
     void (^job)(void) = ^{ fn(arg); };
@@ -183,20 +183,20 @@ static uint64_t xw_fence_token(void) {
     pthread_mutex_unlock(&xw_lock);
     return XW_TAG | t;
 }
-static uint64_t xw_next_token(void) {   // Token des Jobs, der als nächster eingereiht wird (nur ein einreichender Thread)
+static uint64_t xw_next_token(void) {   // token of the job that is enqueued next (only one submitting thread)
     pthread_mutex_lock(&xw_lock);
     uint64_t t = xw_tail + 1;
     pthread_mutex_unlock(&xw_lock);
     return XW_TAG | t;
 }
-// Mit BDSP_XW_LOG meldet ein Wartender, der länger als 1 s hängt, den Zustand der Warteschlange (Hänger-Diagnose).
+// With BDSP_XW_LOG a waiter that hangs for longer than 1 s reports the state of the queue (hang diagnosis).
 static void xw_cond_wait(const char *what) {
     if (!xw_log) { pthread_cond_wait(&xw_cond, &xw_lock); return; }
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += 1;
     if (pthread_cond_timedwait(&xw_cond, &xw_lock, &ts))
-        printf("[xw-t] t=%.3f HÄNGT in %s: eingereiht %llu, übernommen %llu, fertig %llu, Präsentationen %llu/%llu\n", xw_now_ns() / 1e9, what,
+        printf("[xw-t] t=%.3f HANGS in %s: enqueued %llu, taken %llu, done %llu, presentations %llu/%llu\n", xw_now_ns() / 1e9, what,
                (unsigned long long)xw_tail, (unsigned long long)xw_next, (unsigned long long)xw_done, (unsigned long long)xw_pres_done, (unsigned long long)xw_pres_enq);
 }
 static void xw_wait_job(uint64_t n) {
@@ -206,7 +206,7 @@ static void xw_wait_job(uint64_t n) {
     pthread_mutex_unlock(&xw_lock);
 }
 
-// Wartet, bis alles Eingereihte übersetzt und eingereicht ist. Vom Worker selbst aus wirkungslos.
+// Waits until everything enqueued is translated and submitted. Has no effect when called from the worker itself.
 static void xw_drain(void) {
     if (xw_is_worker) return;
     pthread_mutex_lock(&xw_lock);

@@ -1,3 +1,3 @@
-// Linux-Ersatz für <mach/mach_time.h> (siehe mach/mach.h)
+// Linux replacement for <mach/mach_time.h> (see mach/mach.h)
 #pragma once
 #include <mach/mach.h>

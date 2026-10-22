@@ -1,5 +1,5 @@
-// Linux-Ersatz für <mach/mach_vm.h> (siehe mach/mach.h): mach_vm_allocate (fester Bereich, nur wenn frei) und
-// mach_vm_region (Residenz je 1-MiB-Schritt per mincore; nur für Berichte der Laufzeit).
+// Linux replacement for <mach/mach_vm.h> (see mach/mach.h): mach_vm_allocate (fixed range, only if free) and
+// mach_vm_region (residency per 1 MiB step via mincore; only for runtime reports).
 #pragma once
 #include <mach/mach.h>
 #include <stdlib.h>

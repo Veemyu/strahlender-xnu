@@ -1,4 +1,4 @@
-// Linux-Ersatz für <mach/vm_map.h> (siehe mach/mach.h): vm_region_64 über mach_vm_region (mincore).
+// Linux replacement for <mach/vm_map.h> (see mach/mach.h): vm_region_64 via mach_vm_region (mincore).
 #pragma once
 #include <mach/mach_vm.h>
 

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Wurf-Test mit echten LSDA-Funktionen aus main (docs/architecture.md, Abschnitt Ausnahmen).
-# Voraussetzung: run_eh_test.sh lief (SDK-Objekte, Testmodul). Alles unter work/recomp/, nichts davon im Repo.
+# Throw test with real LSDA functions from main (docs/architecture.md, section exceptions).
+# Prerequisite: run_eh_test.sh ran (SDK objects, test module). Everything under work/recomp/, none of it in the repo.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 S=work/recomp/spike2

@@ -1,7 +1,7 @@
-// fsp-srv der BDSP-Laufzeit: RomFS als virtuelles Speicherbild (Tabellen im Speicher, Dateidaten aus work/romfs per pread,
-// kein 5-GB-Abbild nötig), Speicherstände und SD-Karte als Host-Ordner (work/recomp/save, nie im Repository).
-// Eigener Code; Aufbau des RomFS-Abbildes (Kopf, Daten ab 0x200, danach Hash-/Metatabellen) und der IFileSystem-/IFile-
-// Befehlssatz nach LASRecomp runtime/romfs_build.c und services/fs.c (MIT, Copyright (c) 2026 Peiikai, siehe NOTICE.md).
+// fsp-srv of the BDSP runtime: RomFS as a virtual memory image (tables in memory, file data from work/romfs via pread,
+// no 5 GB image needed), saves and SD card as host folders (work/recomp/save, never in the repository).
+// Own code; layout of the RomFS image (header, data from 0x200, then hash/meta tables) and the IFileSystem/IFile
+// command set after LASRecomp runtime/romfs_build.c and services/fs.c (MIT, Copyright (c) 2026 Peiikai, see NOTICE.md).
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -33,7 +33,7 @@ typedef struct { char *name, *path; uint64_t size, data_off; uint32_t off; RDir 
 struct RDir { char *name, *path; RDir *parent; RDir **dirs; RFile **files; int ndirs, nfiles; uint32_t off; };
 
 typedef struct {
-    uint8_t *tables;           // Hash- und Metatabellen (ab tables_off im Abbild)
+    uint8_t *tables;           // hash and meta tables (from tables_off in the image)
     uint64_t tables_off, tables_size, data_end;
     uint8_t header[0x50];
     RFile **sorted;            // nach Datenoffset
@@ -59,7 +59,7 @@ static RDir *scan(const char *path, const char *name, RDir *parent, int depth, i
     int cd = 0, cf = 0;
     struct dirent *e;
     while ((e = readdir(d))) {
-        if (e->d_name[0] == '.') continue;  // ".", "..", .DS_Store gehören nicht zum Spiel
+        if (e->d_name[0] == '.') continue;  // ".", "..", .DS_Store are not part of the game
         size_t n = strlen(path) + strlen(e->d_name) + 2;
         char *p = malloc(n);
         snprintf(p, n, "%s/%s", path, e->d_name);
@@ -90,7 +90,7 @@ static uint32_t romfs_hash(uint32_t parent, const char *name, uint32_t len) {
     for (uint32_t i = 0; i < len; i++) { h = (h >> 5) | (h << 27); h ^= (uint8_t)name[i]; }
     return h;
 }
-static uint32_t hash_count(uint32_t n) {  // ungerade, zu den kleinen Primzahlen teilerfremd (wie die Werkzeuge der Konsole)
+static uint32_t hash_count(uint32_t n) {  // odd, coprime to the small primes (like the console's tools)
     if (n < 3) return 3;
     if (n < 19) return n | 1;
     uint32_t c = n | 1;
@@ -111,7 +111,7 @@ static uint64_t next_data;
 static RFile **filelist;
 static int nfilelist;
 
-// Reihenfolge: ein Verzeichnis, seine Dateien, dann die Unterverzeichnisse (Tiefensuche)
+// Order: a directory, its files, then the subdirectories (depth first)
 static void layout_dir(RDir *d, uint32_t parent_off) {
     d->off = dmeta_size;
     uint32_t nl = (uint32_t)strlen(d->name);
@@ -163,14 +163,14 @@ static void romfs_build_index(void) {
     if (rom.tables) { pthread_mutex_unlock(&rom_lock); return; }
     int total = 0;
     RDir *root = scan(g_romfs_dir, "", NULL, 0, &total);
-    if (!root) rt_fatal("RomFS-Ordner %s nicht lesbar (BDSP_ROMFS)\n", g_romfs_dir);
+    if (!root) rt_fatal("RomFS folder %s not readable (BDSP_ROMFS)\n", g_romfs_dir);
     nfiles_total = total;
     count_dirs(root);
     dcount = hash_count((uint32_t)ndirs_total);
     fcount = hash_count((uint32_t)nfiles_total);
     filelist = calloc(nfiles_total + 1, sizeof *filelist);
     next_data = DATA_START;
-    // Größe der Metatabellen vorab durch Probelauf der Anordnung
+    // size of the meta tables in advance by a trial run of the layout
     layout_dir(root, 0);
     uint64_t data_end = next_data;
     dmeta = calloc(1, dmeta_size + 8); fmeta = calloc(1, fmeta_size + 8);
@@ -197,7 +197,7 @@ static void romfs_build_index(void) {
     rom.sorted = filelist;
     rom.nfiles = nfilelist;
     qsort(rom.sorted, rom.nfiles, sizeof *rom.sorted, by_off);
-    LOG("[fs] RomFS-Index: %d Dateien, %d Ordner, Daten %llu MiB, Tabellen %llu KiB (virtuell, kein Abbild)\n", nfiles_total, ndirs_total,
+    LOG("[fs] RomFS index: %d files, %d folders, data %llu MiB, tables %llu KiB (virtual, no image)\n", nfiles_total, ndirs_total,
         (unsigned long long)(data_end >> 20), (unsigned long long)(rom.tables_size >> 10));
     pthread_mutex_unlock(&rom_lock);
 }
@@ -221,7 +221,7 @@ static uint64_t romfs_read(uint8_t *dst, uint64_t size, uint64_t off) {
                 else if (o >= rom.sorted[mid]->data_off + rom.sorted[mid]->size) lo = mid + 1;
                 else { idx = mid; break; }
             }
-            if (idx < 0) {  // Ausrichtungslücke zwischen Dateien
+            if (idx < 0) {  // alignment gap between files
                 uint64_t next = rom.data_end;
                 if (lo < rom.nfiles) next = rom.sorted[lo]->data_off;
                 if (n > next - o) n = next - o;
@@ -286,7 +286,7 @@ static void storage_romfs(Service *s, IpcReq *req, IpcResp *resp) {
 
 void fs_report(FILE *f) { fprintf(f, "RomFS reads: %llu (%llu MiB)\n", (unsigned long long)rom.nreads, (unsigned long long)(rom.nbytes >> 20)); }
 
-// ------------------------------------------------------------------ Host-Ordner als IFileSystem
+// ------------------------------------------------------------------ Host folder as IFileSystem
 typedef struct { char root[1024]; } HostFs;
 typedef struct { int fd; char path[1100]; } HostFile;
 typedef struct { DIR *d; char path[1024]; int mode; } HostDir;
@@ -298,8 +298,8 @@ static const char *in_path(IpcReq *req, int i) {
 }
 static void host_path(HostFs *fs, const char *p, char *out, size_t n) { snprintf(out, n, "%s%s%s", fs->root, p[0] == '/' ? "" : "/", p); }
 
-// Spielstände: Löschen wird zu Umbenennen nach _safety/ (außerhalb des Spielstand-Ordners). Bricht der Lauf
-// mitten im Speichern ab, bleibt der letzte vollständige Stand in <Datei>.prev erhalten.
+// Saves: deleting becomes renaming to _safety/ (outside the save folder). If the run aborts
+// in the middle of saving, the last complete state is kept in <file>.prev.
 static bool is_save_root(const HostFs *fs) { return strstr(fs->root, "save_") != NULL; }
 static void safety_path(const HostFs *fs, const char *p, const char *suffix, char *out, size_t n) {
     const char *sub = strrchr(fs->root, '/'), *base = strrchr(p, '/');
@@ -330,7 +330,7 @@ static void save_startup(HostFs *fs) {
         if (!stat(sf, &sb) && sb.st_size > 0) {
             copy_file(sf, st);
         } else if (!stat(pv, &sb) && rename(pv, sf) == 0) {
-            LOG("[save] %s fehlte oder war leer, aus %s wiederhergestellt\n", names[i], pv);
+            LOG("[save] %s was missing or empty, restored from %s\n", names[i], pv);
         }
     }
 }
@@ -370,7 +370,7 @@ static void host_file(Service *s, IpcReq *req, IpcResp *resp) {
 static void host_directory(Service *s, IpcReq *req, IpcResp *resp) {
     HostDir *d = s->state;
     switch (req->cmd) {
-    case 0: {  // Read -> B: Einträge zu 0x310 Byte
+    case 0: {  // Read -> B: entries of 0x310 bytes
         IpcBuf *b = out_buf(req, 0);
         uint8_t *out = G2H8(b->addr);
         int64_t max = (int64_t)(b->size / 0x310), n = 0;
@@ -395,7 +395,7 @@ static void host_directory(Service *s, IpcReq *req, IpcResp *resp) {
         resp_size(resp, 8);
         break;
     }
-    case 1: {  // GetEntryCount: über einen eigenen Verzeichnisstrom, die Leseposition des Gastes bleibt unberührt
+    case 1: {  // GetEntryCount: via a separate directory stream, the guest's read position stays untouched
         DIR *cd = opendir(d->path);
         int64_t n = 0;
         struct dirent *e;
@@ -509,7 +509,7 @@ static Service *open_host_fs(const char *sub) {
         if (*q == '/') { *q = 0; mkdir(cmd, 0755); *q = '/'; }
     mkdir(cmd, 0755);
     if (is_save_root(fs)) save_startup(fs);
-    LOG("[fs] Host-Ordner eingehängt: %s\n", fs->root);
+    LOG("[fs] host folder mounted: %s\n", fs->root);
     return service_new("IFileSystem", host_filesystem, fs);
 }
 
@@ -528,8 +528,8 @@ static void fsp_srv(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     }
     case 200: romfs_build_index(); ipc_return_object(resp, service_new("IStorage(romfs)", storage_romfs, NULL)); break;  // OpenDataStorageByCurrentProcess
-    case 202: LOG("[fs] OpenDataStorageByDataId %llx (nicht verfügbar)\n", (unsigned long long)IN(uint64_t, 8)); resp->result = MAKE_RESULT(2, 1001); break;
-    case 203: resp->result = MAKE_RESULT(2, 1001); break;  // OpenPatchDataStorageByCurrentProcess: kein Update-Abbild
+    case 202: LOG("[fs] OpenDataStorageByDataId %llx (not available)\n", (unsigned long long)IN(uint64_t, 8)); resp->result = MAKE_RESULT(2, 1001); break;
+    case 203: resp->result = MAKE_RESULT(2, 1001); break;  // OpenPatchDataStorageByCurrentProcess: no update image
     case 601: OUT(int64_t, 0) = 0x10000000; resp_size(resp, 8); break;  // QuerySaveDataTotalSize
     case 1005: OUT(uint32_t, 0) = 0; resp_size(resp, 4); break;  // GetGlobalAccessLogMode
     case 1003: case 1004: case 1006: case 1002: case 600: break;

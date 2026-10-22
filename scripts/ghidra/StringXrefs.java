@@ -1,6 +1,6 @@
-// Listet je String-Literal-Slot (Il2CppDumper-Adresse aus stringliteral.json) die Funktionen, die darauf verweisen.
-// Skriptargumente: <Ausgabedatei> <Name>=<Adresse-Hex> [<Name>=<Adresse-Hex> ...]
-// Die Ghidra-Adresse ist Il2CppDumper-Adresse + 0x100000.
+// Lists, per string literal slot (Il2CppDumper address from stringliteral.json), the functions that reference it.
+// Script arguments: <output-file> <name>=<address-hex> [<name>=<address-hex> ...]
+// The Ghidra address is the Il2CppDumper address + 0x100000.
 // @category IL2CPP
 
 import java.io.File;

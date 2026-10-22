@@ -1,2 +1,2 @@
-// Leer: metal_ios.m braucht von SDL_metal.h nichts (die App liefert die CAMetalLayer).
+// Empty: metal_ios.m needs nothing from SDL_metal.h (the app provides the CAMetalLayer).
 #pragma once

@@ -1,8 +1,8 @@
-// Referenz-Schleife des Differenzialtests (docs/recomp-diff.md). Eigener Code, AArch64.
-// void tmpl(const Case *in /*x0*/, Out *out /*x1*/, uint64_t n /*x2*/): je Fall V0..V7, X0..X3, NZCV, FPCR laden,
-// FPSR löschen, die vier Befehlsplätze (UDF-Marken 0xE7F0A001..4, werden vom Treiber überschrieben) ausführen und
-// V0, X0, NZCV, FPSR ablegen. V8..V31 sind null (wie ein frisches Cpu im c-Modus). Dieselben Bytes laufen unter Unicorn
-// und nativ auf dem M1 (JIT), die Gegenstelle ist der erzeugte C-Code.
+// Reference loop of the differential test (docs/recomp-diff.md). Own code, AArch64.
+// void tmpl(const Case *in /*x0*/, Out *out /*x1*/, uint64_t n /*x2*/): per case load V0..V7, X0..X3, NZCV, FPCR,
+// clear FPSR, execute the four instruction slots (UDF markers 0xE7F0A001..4, overwritten by the driver) and
+// store V0, X0, NZCV, FPSR. V8..V31 are zero (like a fresh Cpu in c mode). The same bytes run under Unicorn
+// and natively on the M1 (JIT), the counterpart is the generated C code.
     .text
     .globl tmpl
 tmpl:

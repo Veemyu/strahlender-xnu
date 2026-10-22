@@ -1,5 +1,5 @@
-// Dekompiliert Funktionen, deren Name auf <Regex> passt, und schreibt je Klasse (Teil vor "$$") eine .c-Datei.
-// Skriptargumente: <Regex auf Funktionsnamen> [Ausgabeverzeichnis, Standard work/decomp]
+// Decompiles functions whose name matches <regex> and writes one .c file per class (part before "$$").
+// Script arguments: <regex on function names> [output directory, default work/decomp]
 // @category IL2CPP
 
 import java.io.File;
@@ -37,7 +37,7 @@ public class ExportDecompiled extends GhidraScript {
 	protected void run() throws Exception {
 		String[] args = getScriptArgs();
 		if (args.length < 1) {
-			throw new IllegalArgumentException("Argumente: <Regex> [Ausgabeverzeichnis]");
+			throw new IllegalArgumentException("Arguments: <regex> [output directory]");
 		}
 		Pattern rx = Pattern.compile(args[0]);
 		File root = repoRoot();
@@ -62,12 +62,12 @@ public class ExportDecompiled extends GhidraScript {
 			byClass.computeIfAbsent(cls, k -> new ArrayList<>()).add(f);
 			matched++;
 		}
-		println("ExportDecompiled: " + matched + " Funktionen in " + byClass.size() + " Klassen passen auf " + rx);
+		println("ExportDecompiled: " + matched + " functions in " + byClass.size() + " classes match " + rx);
 
 		DecompInterface ifc = new DecompInterface();
 		try {
 			if (!ifc.openProgram(currentProgram)) {
-				throw new IllegalStateException("Decompiler konnte nicht geoeffnet werden: " + ifc.getLastMessage());
+				throw new IllegalStateException("Decompiler could not be opened: " + ifc.getLastMessage());
 			}
 			int done = 0, failed = 0;
 			long t0 = System.currentTimeMillis();
@@ -84,24 +84,24 @@ public class ExportDecompiled extends GhidraScript {
 							}
 							else {
 								failed++;
-								w.println("// FEHLER: " + (res == null ? "kein Ergebnis" : res.getErrorMessage()));
+								w.println("// ERROR: " + (res == null ? "no result" : res.getErrorMessage()));
 								w.println();
 							}
 						}
 						catch (Exception ex) {
 							failed++;
-							w.println("// FEHLER: " + ex);
+							w.println("// ERROR: " + ex);
 							w.println();
 						}
 						done++;
 						if (done % 200 == 0) {
-							println("ExportDecompiled: " + done + "/" + matched + " (Fehler " + failed + "), " +
+							println("ExportDecompiled: " + done + "/" + matched + " (errors " + failed + "), " +
 								(System.currentTimeMillis() - t0) / 1000 + " s");
 						}
 					}
 				}
 			}
-			println("ExportDecompiled: fertig, " + done + " Funktionen, " + failed + " Fehler/Timeouts, Ausgabe: " + outDir);
+			println("ExportDecompiled: done, " + done + " functions, " + failed + " errors/timeouts, output: " + outDir);
 		}
 		finally {
 			ifc.dispose();

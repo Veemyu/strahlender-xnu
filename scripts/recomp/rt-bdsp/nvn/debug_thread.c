@@ -1,5 +1,5 @@
-// Debug-Thread (BDSP_DEBUG_THREAD=1, Standard aus): Screenshots und Readbacks (nvn/dbgthread.patch) laufen auf einem eigenen Thread
-// statt auf dem Render-Thread. Einfache Warteschlange (Mutex + Bedingungsvariable), Aufträge laufen der Reihe nach. Eigener Code.
+// Debug thread (BDSP_DEBUG_THREAD=1, off by default): screenshots and readbacks (nvn/dbgthread.patch) run on a thread of their own
+// instead of the render thread. Simple queue (mutex + condition variable), jobs run in order. Own code.
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -41,7 +41,7 @@ bool dbg_thread_enabled(void) {
     return enabled;
 }
 
-// Reiht einen Auftrag ein; ohne aktiven Debug-Thread läuft er sofort auf dem aufrufenden Thread.
+// Enqueues a job; without an active debug thread it runs immediately on the calling thread.
 void dbg_thread_submit(void (*fn)(void *), void *arg) {
     if (!dbg_thread_enabled()) { fn(arg); return; }
     Job *j = calloc(1, sizeof *j);
@@ -60,7 +60,7 @@ void dbg_thread_submit(void (*fn)(void *), void *arg) {
     pthread_mutex_unlock(&mu);
 }
 
-// Wartet, bis die Warteschlange leer ist (vor dem Beenden des Prozesses).
+// Waits until the queue is empty (before the process exits).
 void dbg_thread_drain(void) {
     if (!started) return;
     pthread_mutex_lock(&mu);

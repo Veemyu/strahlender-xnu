@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Platzhalter-Symbol für BDSP.app: eine geometrische Raute auf blauem Verlauf, ohne jede Spielgrafik.
+"""Placeholder icon for BDSP.app: a geometric diamond on a blue gradient, without any game artwork.
 
-Schreibt <ordner>/BDSP.iconset (PNG in allen Größen, nur Standardbibliothek) und ruft `iconutil` auf, das
-<ausgabe>.icns erzeugt. Aufruf: make_icon.py <ausgabe.icns>
+Writes <folder>/BDSP.iconset (PNG in all sizes, standard library only) and calls `iconutil`, which
+creates <output>.icns. Usage: make_icon.py <output.icns>
 """
 import os
 import shutil
@@ -30,7 +30,7 @@ def png(size, pixel):
 
 
 def pixel(u, v):
-    # abgerundetes Quadrat (Alpha außerhalb), Verlauf Dunkelblau -> Hellblau, weiße Raute in der Mitte
+    # rounded square (alpha outside), gradient dark blue -> light blue, white diamond in the middle
     cx, cy = abs(u - 0.5), abs(v - 0.5)
     r, half = 0.18, 0.42
     qx, qy = max(cx - (half - r), 0), max(cy - (half - r), 0)

@@ -1,5 +1,5 @@
-// Legt (nur im Speicher, mit -readOnly) Funktionen an Adressen an und dekompiliert sie.
-// Skriptargumente: <Ausgabedatei> <Adresse-Hex> [<Adresse-Hex> ...]
+// Creates functions at addresses (in memory only, with -readOnly) and decompiles them.
+// Script arguments: <output-file> <address-hex> [<address-hex> ...]
 // @category IL2CPP
 
 import java.io.File;
@@ -28,10 +28,10 @@ public class DecompAt extends GhidraScript {
 					disassemble(a);
 					f = createFunction(a, "adhoc_" + a);
 				}
-				w.println("// " + a + " " + (f == null ? "KEINE FUNKTION" : f.getName() + " body=" + f.getBody().getNumAddresses()));
+				w.println("// " + a + " " + (f == null ? "NO FUNCTION" : f.getName() + " body=" + f.getBody().getNumAddresses()));
 				if (f != null) {
 					DecompileResults res = ifc.decompileFunction(f, 120, monitor);
-					w.println(res.decompileCompleted() ? res.getDecompiledFunction().getC() : "// FEHLER " + res.getErrorMessage());
+					w.println(res.decompileCompleted() ? res.getDecompiledFunction().getC() : "// ERROR " + res.getErrorMessage());
 				}
 			}
 		}

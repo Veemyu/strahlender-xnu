@@ -1,15 +1,15 @@
 #!/bin/bash
-# Baut die Speicherbilder der Module (Relokationen angewandt, Importe zwischen den Modulen gebunden, übrige Importe
-# als HLE-Slots) nach work/recomp/img. Die Basisadressen müssen zu den Adressen passen, mit denen eh_gen.py das C
-# erzeugt hat (gen_all.sh, Variante A). Aufruf: mkimages.sh   (Ausgabeordner per IMG=... änderbar,
-# HLE_LIST=<Datei> erzwingt HLE-Bindung für die genannten Symbole)
+# Builds the memory images of the modules (relocations applied, imports between the modules bound, remaining imports
+# as HLE slots) into work/recomp/img. The base addresses must match the addresses with which eh_gen.py generated the C
+# (gen_all.sh, variant A). Usage: mkimages.sh   (output folder changeable via IMG=...,
+# HLE_LIST=<file> forces HLE binding for the listed symbols)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 O=${IMG:-work/recomp/img}
 mkdir -p "$O"
 base_of() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; rtld) echo 0x7008000000;; esac; }
 rm -f "$O/hle.txt"
-# erster Durchlauf: nur die Exporte sammeln; zweiter: Importe über die Module binden
+# first pass: only collect the exports; second: bind imports across the modules
 for m in main sdk subsdk0; do
   python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --out "$O" > /dev/null
 done

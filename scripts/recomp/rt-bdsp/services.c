@@ -1,8 +1,8 @@
-// Dienste der BDSP-Laufzeit (sm:-Unterobjekte): lm, apm, appletOE, acc:u0, aoc:u, pctl, ectx:aw, set, set:sys, time, hid.
-// Eigener Code; Aufbau und Teile der Antworten (Zeitdienst-Gemeinsamspeicher, Sprachliste, Profilstruktur) nach LASRecomp
-// runtime/services/*.c (MIT, Copyright (c) 2026 Peiikai, siehe NOTICE.md). Neu gegenüber dem Vorbild: vollständige
-// ICommonStateGetter-/ISelfController-/IApplicationFunctions-Tabellen (Ereignis-Handles für alle bekannten *Event-Befehle),
-// Mitschrift nicht umgesetzter Befehle (ipc_note), Sprache über BDSP_LANG.
+// Services of the BDSP runtime (sm: sub-objects): lm, apm, appletOE, acc:u0, aoc:u, pctl, ectx:aw, set, set:sys, time, hid.
+// Own code; layout and parts of the responses (time service shared memory, language list, profile structure) after LASRecomp
+// runtime/services/*.c (MIT, Copyright (c) 2026 Peiikai, see NOTICE.md). New compared to the model: complete
+// ICommonStateGetter/ISelfController/IApplicationFunctions tables (event handles for all known *Event commands),
+// a record of unimplemented commands (ipc_note), language via BDSP_LANG.
 #include <sys/time.h>
 #include <time.h>
 
@@ -21,13 +21,13 @@ static uint32_t new_event_handle(void) {
 #define EVENT_OUT() (resp->copy_handles[resp->ncopy++] = new_event_handle())
 #define UNHANDLED(name) do { ipc_note(name, req->cmd, 1); resp_size(resp, 0x10); } while (0)
 
-// ------------------------------------------------------------------ lm (Gast-Log)
+// ------------------------------------------------------------------ lm (guest log)
 static void lm_logger(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s; (void)resp;
     if (req->cmd != 0) { ipc_note("lm:ILogger", req->cmd, 1); return; }
     IpcBuf *b = in_buf(req, 0);
     if (!b || !b->size) return;
-    // Paketaufbau: 0x18 Byte Kopf, danach TLV-Blöcke (Schlüssel, Länge, Wert); Textblöcke ausgeben
+    // Packet layout: 0x18 bytes header, then TLV blocks (key, length, value); print the text blocks
     const uint8_t *p = G2H8(b->addr), *end = p + b->size;
     p += 0x18;
     char line[1024];
@@ -55,7 +55,7 @@ static void apm_session(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     if (req->cmd == 0) return;                                              // SetPerformanceConfiguration
     if (req->cmd == 1) { OUT(uint32_t, 0) = 0x92220008; resp_size(resp, 4); return; }  // GetPerformanceConfiguration
-    if (req->cmd == 2 || req->cmd == 3) { resp->copy_handles[resp->ncopy++] = new_event_handle(); return; }  // Ereignis
+    if (req->cmd == 2 || req->cmd == 3) { resp->copy_handles[resp->ncopy++] = new_event_handle(); return; }  // event
     UNHANDLED("apm:ISession");
 }
 static void apm_service(Service *s, IpcReq *req, IpcResp *resp) {
@@ -75,7 +75,7 @@ static uint32_t msg_queue[16];
 static int msg_count;
 static bool preselected_popped;
 uint8_t g_user_id[16] = {0x42, 0x44, 0x53, 0x50, 0x72, 0x65, 0x63, 0x6f, 0x6d, 0x70, 0x01, 0, 0, 0, 0, 0x01};
-// <Speicherstand-Ordner>/user_id.hex (32 Hexzeichen, von install_save.sh aus ExtraData0 gelesen): Besitzer des installierten Spielstands
+// <save folder>/user_id.hex (32 hex characters, read from ExtraData0 by install_save.sh): owner of the installed save
 void user_id_load(const char *save_dir) {
     char path[1024], hex[64] = "";
     snprintf(path, sizeof path, "%s/user_id.hex", save_dir);
@@ -119,7 +119,7 @@ static void common_state_getter(Service *s, IpcReq *req, IpcResp *resp) {
     case 6: OUT(uint32_t, 0) = 1; resp_size(resp, 4); break;  // GetPerformanceMode: Boost
     case 8: OUT(uint8_t, 0) = 0; resp_size(resp, 1); break;   // GetBootMode
     case 9: OUT(uint8_t, 0) = 1; resp_size(resp, 1); break;   // GetCurrentFocusState: im Fokus
-    case 13: case 61: EVENT_OUT(); break;                      // Sleep-Lock-/Auflösungsereignis
+    case 13: case 61: EVENT_OUT(); break;                      // sleep lock/resolution event
     case 60: OUT(int32_t, 0) = 1920; OUT(int32_t, 4) = 1080; resp_size(resp, 8); break;  // GetDefaultDisplayResolution
     case 10: case 11: case 12: case 20: case 30: case 31: case 900: resp_size(resp, 0x10); break;  // Sleep-Lock, PushToGeneralChannel, CpuBoost
     default: UNHANDLED("ICommonStateGetter");
@@ -193,7 +193,7 @@ static Service *new_am_storage(const void *data, uint64_t size) {
 static void application_functions(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
-    case 1:  // PopLaunchParameter(kind): einmalig der vorgewählte Benutzer
+    case 1:  // PopLaunchParameter(kind): the preselected user, once
         if (IN(uint32_t, 0) == 2 && !preselected_popped) {
             uint8_t p[0x88] = {0};
             *(uint32_t *)p = 0xC79497CA;
@@ -203,7 +203,7 @@ static void application_functions(Service *s, IpcReq *req, IpcResp *resp) {
             ipc_return_object(resp, new_am_storage(p, sizeof p));
         } else resp->result = AM_NO_DATA;
         break;
-    case 20: OUT(uint64_t, 0) = 0; resp_size(resp, 8); break;  // EnsureSaveData -> Ergebnis „vorhanden“
+    case 20: OUT(uint64_t, 0) = 0; resp_size(resp, 8); break;  // EnsureSaveData -> result "present"
     case 21: {                                                  // GetDesiredLanguage
         char lang[8] = {0};
         snprintf(lang, sizeof lang, "%s", settings_language());
@@ -215,7 +215,7 @@ static void application_functions(Service *s, IpcReq *req, IpcResp *resp) {
     case 25: case 26: OUT(int64_t, 0) = 0; resp_size(resp, 8); break;       // ExtendSaveData, GetSaveDataSize
     case 40: OUT(uint8_t, 0) = 0; resp_size(resp, 1); break;                // NotifyRunning
     case 50: memset(resp->data, 0x5a, 16); resp_size(resp, 16); break;      // GetPseudoDeviceId
-    case 130: case 140: case 150: case 160: EVENT_OUT(); break;            // Gpu-/Einladungs-/Benachrichtigungs-/Health-Ereignis
+    case 130: case 140: case 150: case 160: EVENT_OUT(); break;            // GPU/invitation/notification/health event
     case 22: case 30: case 31: case 32: case 33: case 60: case 66: case 67: case 68: case 90: case 100: case 101: case 102: case 110: case 111:
     case 121: case 124: case 170: case 190: resp_size(resp, 0x10); break;
     case 123: OUT(int32_t, 0) = 0; resp_size(resp, 4); break;               // GetPreviousProgramIndex
@@ -287,7 +287,7 @@ static void acc_u0(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
-// ------------------------------------------------------------------ aoc:u (keine DLC), pctl (keine Einschränkungen), ectx:aw
+// ------------------------------------------------------------------ aoc:u (no DLC), pctl (no restrictions), ectx:aw
 static void aoc_u(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
@@ -445,43 +445,43 @@ static void time_static(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
-// ------------------------------------------------------------------ hid (gemeinsamer Speicher, Eingaben bleiben leer)
-// Der TouchScreen-Ring liegt im HID-Gemeinsamspeicher bei +0x400 (Switchbrew: HidSharedMemory.touch_screen; hier bestätigt durch die Disassemblierung von
-// nn::hid::server::RingLifo<TouchScreenState<16>,17>::ReadImpl, SDK 0x721f4b4 / iPad-Basis 0x7000000):
-//   Kopf (0x20): +0 u64 Zeitstempel, +8 u64 Pufferzahl (17), +0x10 u64 tail (Index des neuesten Eintrags), +0x18 u64 count (höchstens 16)
-//   Einträge ab +0x20, je 0x298 Byte = AtomicStorage {u64 Version = Sampling-Zähler; TouchScreenState (0x290): u64 Sampling-Zähler, s32 Zahl der Berührungen,
-//   4 Byte Füllung, 16 × TouchState (je 0x28)}. ReadImpl liest die letzten n = min(count, Anzahl) Einträge ältester zuerst, liest dabei die Version vor
-//   und nach dem Kopieren (Abweichung: von vorn) und verlangt, dass die Sampling-Zähler benachbarter Einträge genau um 1 steigen, sonst von vorn.
-// Die Laufzeit schreibt daher mit dem Vsync-Takt (hid_idle_tick, services_gfx.c) einen leeren Sample (0 Berührungen) nach dem Schema der echten HID-Dienste:
-// Zustand, dann Version, dann tail, dann count (Leser sehen nie einen halb geschriebenen neuesten Eintrag; der überschriebene Platz tail+1 wird bei
-// höchstens 16 gelesenen Einträgen nie gelesen).
+// ------------------------------------------------------------------ hid (shared memory, inputs stay empty)
+// The TouchScreen ring lives in the HID shared memory at +0x400 (Switchbrew: HidSharedMemory.touch_screen; confirmed here by the disassembly of
+// nn::hid::server::RingLifo<TouchScreenState<16>,17>::ReadImpl, SDK 0x721f4b4 / iPad base 0x7000000):
+//   header (0x20): +0 u64 timestamp, +8 u64 buffer count (17), +0x10 u64 tail (index of the newest entry), +0x18 u64 count (at most 16)
+//   entries from +0x20, 0x298 bytes each = AtomicStorage {u64 version = sampling counter; TouchScreenState (0x290): u64 sampling counter, s32 number of touches,
+//   4 bytes padding, 16 × TouchState (0x28 each)}. ReadImpl reads the last n = min(count, number) entries oldest first, reads the version before
+//   and after copying (mismatch: start over) and requires that the sampling counters of neighboring entries rise by exactly 1, otherwise start over.
+// The runtime therefore writes an empty sample (0 touches) with the vsync clock (hid_idle_tick, services_gfx.c) following the scheme of the real HID services:
+// state, then version, then tail, then count (readers never see a half-written newest entry; the overwritten slot tail+1 is never read with
+// at most 16 entries read).
 #define HID_TOUCH_OFF 0x400
 #define HID_RING_N 17
 #define HID_ENTRY 0x298
 static uint32_t hid_shmem_handle;
 static pthread_mutex_t g_hid_lock = PTHREAD_MUTEX_INITIALIZER;
-static uint64_t g_hid_base, g_hid_seq;   // Gastadresse des Gemeinsamspeichers (0 = noch nicht eingeblendet), Nummer des letzten Samples
+static uint64_t g_hid_base, g_hid_seq;   // guest address of the shared memory (0 = not mapped yet), number of the last sample
 static void hid_touch_step(void) {   // g_hid_lock gehalten
     uint8_t *ring = (uint8_t *)G2H(g_hid_base + HID_TOUCH_OFF);
     uint64_t *hdr = (uint64_t *)ring;
     uint64_t seq = ++g_hid_seq;
     uint64_t tail = __atomic_load_n(&hdr[2], __ATOMIC_RELAXED);
     uint64_t count = __atomic_load_n(&hdr[3], __ATOMIC_RELAXED);
-    if (hdr[1] != HID_RING_N) { hdr[1] = HID_RING_N; tail = HID_RING_N - 1; count = 0; }   // erster Aufruf: der nächste Sample landet in Platz 0
+    if (hdr[1] != HID_RING_N) { hdr[1] = HID_RING_N; tail = HID_RING_N - 1; count = 0; }   // first call: the next sample lands in slot 0
     uint64_t next = (tail + 1) % HID_RING_N;
     uint8_t *e = ring + 0x20 + next * HID_ENTRY;
     memset(e + 8, 0, HID_ENTRY - 8);
-    *(uint64_t *)(e + 8) = seq;                                  // TouchScreenState.sampling_number (Berührungszahl 0)
+    *(uint64_t *)(e + 8) = seq;                                  // TouchScreenState.sampling_number (touch count 0)
     __atomic_store_n((uint64_t *)e, seq, __ATOMIC_RELEASE);      // Version
-    hdr[0] = seq * 1000000ull;                                   // Zeitstempel (nur aufsteigend nötig)
+    hdr[0] = seq * 1000000ull;                                   // timestamp (only needs to ascend)
     __atomic_store_n(&hdr[2], next, __ATOMIC_RELEASE);
     __atomic_store_n(&hdr[3], count < 16 ? count + 1 : 16, __ATOMIC_RELEASE);
 }
-static void hid_shmem_mapped(KSharedMem *s) {   // nach dem Einblenden (der Kernel hat den Bereich genullt)
+static void hid_shmem_mapped(KSharedMem *s) {   // after mapping (the kernel zeroed the range)
     pthread_mutex_lock(&g_hid_lock);
     __atomic_store_n(&g_hid_base, s->guest_addr, __ATOMIC_RELEASE);
     g_hid_seq = 0;
-    for (int i = 0; i < 16; i++) hid_touch_step();   // der Ring ist von Anfang an gefüllt: count 16, Zähler 1..16
+    for (int i = 0; i < 16; i++) hid_touch_step();   // the ring is filled from the start: count 16, counters 1..16
     pthread_mutex_unlock(&g_hid_lock);
 }
 void hid_idle_tick(void) {   // Vsync-Takt (services_gfx.c vsync_thread)

@@ -6,14 +6,14 @@ struct HarnessError: Error, CustomStringConvertible {
     init(_ s: String) { description = s }
 }
 
-/// JSON-Objekt mit Pfadangabe fuer Fehlermeldungen; unbekannte Schluessel gelten als Fehler (Tippfehler-Schutz).
+/// JSON object with path information for error messages; unknown keys count as errors (typo protection).
 final class Obj {
     let dict: [String: Any]
     let path: String
     private var used = Set<String>()
 
     init(_ any: Any, path: String) throws {
-        guard let d = any as? [String: Any] else { throw HarnessError("\(path): Objekt erwartet") }
+        guard let d = any as? [String: Any] else { throw HarnessError("\(path): object expected") }
         dict = d
         self.path = path
     }
@@ -28,38 +28,38 @@ final class Obj {
 
     func string(_ k: String) throws -> String? {
         guard let v = raw(k) else { return nil }
-        guard let s = v as? String else { throw HarnessError("\(path).\(k): String erwartet") }
+        guard let s = v as? String else { throw HarnessError("\(path).\(k): string expected") }
         return s
     }
 
     func int(_ k: String) throws -> Int? {
         guard let v = raw(k) else { return nil }
-        guard let n = v as? NSNumber, let i = Int(exactly: n.doubleValue) else { throw HarnessError("\(path).\(k): Ganzzahl erwartet") }
+        guard let n = v as? NSNumber, let i = Int(exactly: n.doubleValue) else { throw HarnessError("\(path).\(k): integer expected") }
         return i
     }
 
     func double(_ k: String) throws -> Double? {
         guard let v = raw(k) else { return nil }
-        guard let n = v as? NSNumber else { throw HarnessError("\(path).\(k): Zahl erwartet") }
+        guard let n = v as? NSNumber else { throw HarnessError("\(path).\(k): number expected") }
         return n.doubleValue
     }
 
     func bool(_ k: String) throws -> Bool? {
         guard let v = raw(k) else { return nil }
-        guard let b = v as? Bool else { throw HarnessError("\(path).\(k): true/false erwartet") }
+        guard let b = v as? Bool else { throw HarnessError("\(path).\(k): true/false expected") }
         return b
     }
 
     func array(_ k: String) throws -> [Any]? {
         guard let v = raw(k) else { return nil }
-        guard let a = v as? [Any] else { throw HarnessError("\(path).\(k): Liste erwartet") }
+        guard let a = v as? [Any] else { throw HarnessError("\(path).\(k): list expected") }
         return a
     }
 
     func doubles(_ k: String) throws -> [Double]? {
         guard let a = try array(k) else { return nil }
         return try a.enumerated().map { i, e in
-            guard let n = e as? NSNumber else { throw HarnessError("\(path).\(k)[\(i)]: Zahl erwartet") }
+            guard let n = e as? NSNumber else { throw HarnessError("\(path).\(k)[\(i)]: number expected") }
             return n.doubleValue
         }
     }
@@ -67,7 +67,7 @@ final class Obj {
     func ints(_ k: String) throws -> [Int]? {
         guard let a = try array(k) else { return nil }
         return try a.enumerated().map { i, e in
-            guard let n = e as? NSNumber, let v = Int(exactly: n.doubleValue) else { throw HarnessError("\(path).\(k)[\(i)]: Ganzzahl erwartet") }
+            guard let n = e as? NSNumber, let v = Int(exactly: n.doubleValue) else { throw HarnessError("\(path).\(k)[\(i)]: integer expected") }
             return v
         }
     }
@@ -75,7 +75,7 @@ final class Obj {
     func strings(_ k: String) throws -> [String]? {
         guard let a = try array(k) else { return nil }
         return try a.enumerated().map { i, e in
-            guard let s = e as? String else { throw HarnessError("\(path).\(k)[\(i)]: String erwartet") }
+            guard let s = e as? String else { throw HarnessError("\(path).\(k)[\(i)]: string expected") }
             return s
         }
     }
@@ -92,7 +92,7 @@ final class Obj {
 
     func finish() throws {
         let unknown = Set(dict.keys).subtracting(used).sorted()
-        if !unknown.isEmpty { throw HarnessError("\(path): unbekannte Schluessel \(unknown)") }
+        if !unknown.isEmpty { throw HarnessError("\(path): unknown keys \(unknown)") }
     }
 }
 
@@ -106,17 +106,17 @@ func littleEndian<T: FixedWidthInteger>(_ values: [T]) -> Data {
     return d
 }
 
-/// Nutzdaten aus genau einer der Formen floats / ints / uints / bytes / file.
+/// Payload from exactly one of the forms floats / ints / uints / bytes / file.
 func readPayload(_ o: Obj, base: URL) throws -> Data {
     var found: [(String, Data)] = []
     if let f = try o.doubles("floats") { found.append(("floats", littleEndian(f.map { Float($0).bitPattern }))) }
     if let i = try o.ints("ints") { found.append(("ints", littleEndian(i.map { Int32(truncatingIfNeeded: $0) }))) }
     if let u = try o.ints("uints") {
-        guard u.allSatisfy({ $0 >= 0 && $0 <= Int(UInt32.max) }) else { throw HarnessError("\(o.path).uints: ausserhalb 0...4294967295") }
+        guard u.allSatisfy({ $0 >= 0 && $0 <= Int(UInt32.max) }) else { throw HarnessError("\(o.path).uints: outside 0...4294967295") }
         found.append(("uints", littleEndian(u.map { UInt32($0) })))
     }
     if let b = try o.ints("bytes") {
-        guard b.allSatisfy({ $0 >= 0 && $0 <= 255 }) else { throw HarnessError("\(o.path).bytes: ausserhalb 0...255") }
+        guard b.allSatisfy({ $0 >= 0 && $0 <= 255 }) else { throw HarnessError("\(o.path).bytes: outside 0...255") }
         found.append(("bytes", Data(b.map { UInt8($0) })))
     }
     if let f = try o.string("file") {
@@ -124,7 +124,7 @@ func readPayload(_ o: Obj, base: URL) throws -> Data {
         guard let d = try? Data(contentsOf: url) else { throw HarnessError("\(o.path).file: \(url.path) nicht lesbar") }
         found.append(("file", d))
     }
-    guard found.count == 1 else { throw HarnessError("\(o.path): genau eine Quelle aus floats/ints/uints/bytes/file erwartet (gefunden: \(found.map { $0.0 }))") }
+    guard found.count == 1 else { throw HarnessError("\(o.path): exactly one source of floats/ints/uints/bytes/file expected (found:\(found.map { $0.0 }))") }
     return found[0].1
 }
 
@@ -229,7 +229,7 @@ struct Spec {
 
 func pick<T>(_ name: String?, _ table: [String: T], _ what: String, default def: T) throws -> T {
     guard let n = name else { return def }
-    guard let v = table[n] else { throw HarnessError("\(what): '\(n)' unbekannt, erlaubt: \(table.keys.sorted())") }
+    guard let v = table[n] else { throw HarnessError("\(what): '\(n)' unknown, allowed:\(table.keys.sorted())") }
     return v
 }
 
@@ -267,7 +267,7 @@ func parseStage(_ o: Obj, base: URL) throws -> StageSource {
     var s = StageSource()
     if let p = try o.string("spirv") { s.spirv = resolve(p, base: base) }
     if let p = try o.string("msl") { s.msl = resolve(p, base: base) }
-    guard (s.spirv == nil) != (s.msl == nil) else { throw HarnessError("\(o.path): genau eines aus 'spirv' oder 'msl' angeben") }
+    guard (s.spirv == nil) != (s.msl == nil) else { throw HarnessError("\(o.path): give exactly one of 'spirv' or 'msl'") }
     s.entry = try o.string("entry") ?? "main0"
     s.flipVertY = try o.bool("flipVertY") ?? false
     s.fixupClipspace = try o.bool("fixupClipspace") ?? false
@@ -292,7 +292,7 @@ func parseSampler(_ o: Obj?) throws -> SamplerSpec {
 
 func color4(_ d: [Double]?, _ path: String, default def: [Double]) throws -> [Double] {
     guard let d = d else { return def }
-    guard d.count == 4 else { throw HarnessError("\(path): 4 Werte (RGBA, 0...1) erwartet") }
+    guard d.count == 4 else { throw HarnessError("\(path): 4 values (RGBA, 0...1) expected") }
     return d
 }
 
@@ -303,7 +303,7 @@ func parseBlend(_ o: Obj) throws -> BlendSpec? {
         case "alpha": return BlendSpec(srcRGB: .sourceAlpha, dstRGB: .oneMinusSourceAlpha, opRGB: .add, srcA: .one, dstA: .oneMinusSourceAlpha, opA: .add)
         case "additive": return BlendSpec(srcRGB: .sourceAlpha, dstRGB: .one, opRGB: .add, srcA: .one, dstA: .one, opA: .add)
         case "premultiplied": return BlendSpec(srcRGB: .one, dstRGB: .oneMinusSourceAlpha, opRGB: .add, srcA: .one, dstA: .oneMinusSourceAlpha, opA: .add)
-        default: throw HarnessError("\(o.path).preset: alpha, additive oder premultiplied erwartet")
+        default: throw HarnessError("\(o.path).preset: alpha, additive or premultiplied expected")
         }
     }
     let b = BlendSpec(
@@ -348,8 +348,8 @@ func parseState(_ o: Obj?) throws -> StateSpec {
 
 func parseTexture(_ o: Obj, base: URL) throws -> TextureSpec {
     let stage = try o.string("stage") ?? "fragment"
-    guard stage == "vertex" || stage == "fragment" else { throw HarnessError("\(o.path).stage: vertex oder fragment erwartet") }
-    guard let slot = try o.int("slot") else { throw HarnessError("\(o.path): 'slot' fehlt") }
+    guard stage == "vertex" || stage == "fragment" else { throw HarnessError("\(o.path).stage: vertex or fragment expected") }
+    guard let slot = try o.int("slot") else { throw HarnessError("\(o.path): 'slot' missing") }
     let src: TextureSource
     if let f = try o.string("file") {
         src = .file(resolve(f, base: base))
@@ -364,11 +364,11 @@ func parseTexture(_ o: Obj, base: URL) throws -> TextureSpec {
                            a: try color4(g.doubles("colorA"), "\(g.path).colorA", default: [1, 1, 1, 1]),
                            b: try color4(g.doubles("colorB"), "\(g.path).colorB", default: [0, 0, 0, 1]))
         case "gradient": src = .gradient(size: size)
-        default: throw HarnessError("\(g.path).kind: solid, checker oder gradient erwartet")
+        default: throw HarnessError("\(g.path).kind: solid, checker or gradient expected")
         }
         try g.finish()
     } else {
-        throw HarnessError("\(o.path): 'file' oder 'generate' erwartet")
+        throw HarnessError("\(o.path): 'file' or 'generate' expected")
     }
     let t = TextureSpec(
         stage: stage, slot: slot, samplerSlot: try o.int("samplerSlot") ?? slot, source: src,
@@ -393,7 +393,7 @@ func parseSpec(_ json: Any, base: URL) throws -> Spec {
     s.vertexCount = try root.int("vertexCount") ?? 0
     s.instanceCount = try root.int("instanceCount") ?? 1
     if let i = try root.ints("indices") {
-        guard i.allSatisfy({ $0 >= 0 }) else { throw HarnessError("spec.indices: negative Werte") }
+        guard i.allSatisfy({ $0 >= 0 }) else { throw HarnessError("spec.indices: negative values") }
         s.indices = i.map { UInt32($0) }
     }
     s.indexType = try pick(root.string("indexType"), ["uint16": .uint16, "uint32": .uint32], "spec.indexType", default: .uint16)
@@ -401,7 +401,7 @@ func parseSpec(_ json: Any, base: URL) throws -> Spec {
     if let vp = s.viewport, vp.count != 4 { throw HarnessError("spec.viewport: [x, y, Breite, Hoehe]") }
 
     for o in try root.objs("vertexBuffers") ?? [] {
-        guard let slot = try o.int("slot") else { throw HarnessError("\(o.path): 'slot' fehlt") }
+        guard let slot = try o.int("slot") else { throw HarnessError("\(o.path): 'slot' missing") }
         let step = try pick(o.string("step"), ["vertex": false, "instance": true], "\(o.path).step", default: false)
         s.vertexBuffers.append(VertexBufferSpec(slot: slot, stride: try o.int("stride"), data: try readPayload(o, base: base), perInstance: step))
         try o.finish()
@@ -414,8 +414,8 @@ func parseSpec(_ json: Any, base: URL) throws -> Spec {
     }
     for o in try root.objs("buffers") ?? [] {
         let stage = try o.string("stage") ?? ""
-        guard stage == "vertex" || stage == "fragment" else { throw HarnessError("\(o.path).stage: vertex oder fragment erwartet") }
-        guard let slot = try o.int("slot") else { throw HarnessError("\(o.path): 'slot' fehlt") }
+        guard stage == "vertex" || stage == "fragment" else { throw HarnessError("\(o.path).stage: vertex or fragment expected") }
+        guard let slot = try o.int("slot") else { throw HarnessError("\(o.path): 'slot' missing") }
         var b = BufferSpec(stage: stage, slot: slot, minSize: try o.int("size") ?? 0, writes: [])
         if let ws = try o.objs("writes") {
             for w in ws {

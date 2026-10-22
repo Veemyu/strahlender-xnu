@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Referenz für den Float-Benchmark: führt bench_float aus dem aarch64-Bild unter Unicorn aus (echte ARM64-Semantik)
-und gibt Ergebnis (D0-Bits) und Hash des Puffers aus. Eigener Code. Aufruf: bench_fp_uc.py <bild> <offset-hex> <n>"""
+"""Reference for the float benchmark: runs bench_float from the aarch64 image under Unicorn (real ARM64 semantics)
+and prints the result (D0 bits) and the hash of the buffer. Own code. Usage: bench_fp_uc.py <image> <offset-hex> <n>"""
 import struct
 import sys
 from pathlib import Path

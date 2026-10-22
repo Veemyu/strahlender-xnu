@@ -1,6 +1,6 @@
 #!/bin/bash
-# Erzeugt das C für alle vier Module des Dumps (Standard-Layout des Spikes) nach work/recomp/gen4/<modul> und
-# misst die Generierungszeit. Nur lokal unter work/ (gitignoriert). Aufruf: gen_all.sh [modul ...] [-- weitere eh_gen-Argumente]
+# Generates the C for all four modules of the dump (standard layout of the spike) to work/recomp/gen4/<module> and
+# measures the generation time. Local only under work/ (gitignored). Usage: gen_all.sh [module ...] [-- further eh_gen arguments]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 OUT=${OUT:-work/recomp/gen4}

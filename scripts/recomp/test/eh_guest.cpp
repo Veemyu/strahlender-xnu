@@ -1,7 +1,7 @@
-// Synthetisches Gast-Testprogramm für den Exception-Spike (docs/architecture.md). Kein Spielcode.
-// Übersetzung: clang --target=aarch64-linux-gnu -O1 -fexceptions -fno-rtti -c eh_guest.cpp
-// Die C++-Laufzeit (__cxa_*, __gxx_personality_v0, _Unwind_*) kommt aus dem echten SDK-Modul des Spiels
-// (rekompiliert); hier wird nur aufgerufen.
+// Synthetic guest test program for the exception spike (docs/architecture.md). No game code.
+// Compile: clang --target=aarch64-linux-gnu -O1 -fexceptions -fno-rtti -c eh_guest.cpp
+// The C++ runtime (__cxa_*, __gxx_personality_v0, _Unwind_*) comes from the game's real SDK module
+// (recompiled); here it is only called.
 typedef unsigned long usize;
 
 extern void *operator new(usize);
@@ -19,7 +19,7 @@ __attribute__((noinline)) static void leaf(int v) {
 __attribute__((noinline)) static void mid(volatile int *log, int v) {
     Guard g{log, 2};
     leaf(v);
-    *log = 99999;  // darf bei v != 0 nie laufen
+    *log = 99999;  // must never run when v != 0
 }
 
 __attribute__((noinline)) static void mid2(volatile int *log, int v) {
@@ -28,7 +28,7 @@ __attribute__((noinline)) static void mid2(volatile int *log, int v) {
     *log = 88888;
 }
 
-// Wurf in Rahmen 1, Aufräumen in Rahmen 2 und 3, Fang in Rahmen 4; k1/k2 leben über den Aufruf (x19..x28).
+// Throw in frame 1, cleanup in frames 2 and 3, catch in frame 4; k1/k2 live across the call (x19..x28).
 extern "C" long test_basic(volatile int *log, int v, long a, long b) {
     long k1 = a * 7 + 1, k2 = b * 5 + 2;
     try {
@@ -49,7 +49,7 @@ __attribute__((noinline)) static void rethrower(volatile int *log, int v) {
     }
 }
 
-// catch(...) mit Rethrow (__cxa_rethrow, _Unwind_Resume_or_Rethrow), äußerer Fang mit Typ
+// catch(...) with rethrow (__cxa_rethrow, _Unwind_Resume_or_Rethrow), outer typed catch
 extern "C" long test_rethrow(volatile int *log, int v) {
     try {
         rethrower(log, v);
@@ -69,7 +69,7 @@ __attribute__((noinline)) static void deep(volatile int *log, int depth, int v) 
     else deep(log, depth - 1, v);
 }
 
-// n Rahmen mit Aufräum-Landing-Pads, Fang oben
+// n frames with cleanup landing pads, catch at the top
 extern "C" long test_deep(volatile int *log, int depth, int v) {
     *log = 0;
     try {
@@ -80,7 +80,7 @@ extern "C" long test_deep(volatile int *log, int depth, int v) {
     return -1;
 }
 
-// Wurf aus echtem SDK-Code (operator new -> std::bad_alloc); mindestens ein echter SDK-Rahmen liegt dazwischen
+// Throw from real SDK code (operator new -> std::bad_alloc); at least one real SDK frame lies in between
 extern "C" long test_badalloc(volatile int *log) {
     try {
         volatile void *p = ::operator new((usize)0x7fffffffffffull);
@@ -110,7 +110,7 @@ extern "C" long test_bench(volatile int *log, long n) {
     return sum;
 }
 
-// Wrapper für den Wurf-Test mit echten Funktionen (eh_harness real=...): ruft f mit Zeigerargumenten, fängt alles
+// Wrapper for the throw test with real functions (eh_harness real=...): calls f with pointer arguments, catches everything
 extern "C" long test_run(void (*f)(void *, void *, void *, void *), void *a) {
     try {
         f(a, a, a, a);
@@ -120,7 +120,7 @@ extern "C" long test_run(void (*f)(void *, void *, void *, void *), void *a) {
     return 0;
 }
 
-// Diagnose: Gast-Unwinder ohne Wurf benutzen (_Unwind_Backtrace) und je Rahmen IP, LSDA und Funktionsanfang melden
+// Diagnosis: use the guest unwinder without a throw (_Unwind_Backtrace) and report IP, LSDA and function start per frame
 extern "C" {
 int _Unwind_Backtrace(int (*)(void *, void *), void *);
 unsigned long _Unwind_GetIP(void *);
@@ -145,9 +145,9 @@ extern "C" long test_backtrace(long *out) {
     return out[0];
 }
 
-// ---- setjmp/longjmp (T7): eigene Fassung nach AAPCS64 wie die libc der Switch. Die Namen setjmp/longjmp sind wichtig:
-// der Generator findet daran die Rücksprungstellen (Wiedereinstieg hinter `bl setjmp`) und behandelt `mov sp, xN; ret`
-// in longjmp als indirekten Sprung auf x30.
+// ---- setjmp/longjmp (T7): own version per AAPCS64 like the Switch libc. The names setjmp/longjmp matter:
+// the generator finds the return points by them (re-entry behind `bl setjmp`) and treats `mov sp, xN; ret`
+// in longjmp as an indirect jump to x30.
 asm(R"(
 .text
 .global setjmp
@@ -191,7 +191,7 @@ extern "C" void longjmp(long *, int) __attribute__((noreturn));
 
 __attribute__((noinline)) static void lj_leaf(long *jb, int v) { longjmp(jb, v); }
 __attribute__((noinline)) static void lj_mid(long *jb, int v, volatile int *log) {
-    Guard g{log, 2};  // longjmp wickelt nicht ab: der Destruktor darf nicht laufen
+    Guard g{log, 2};  // longjmp does not unwind: the destructor must not run
     lj_leaf(jb, v);
 }
 __attribute__((noinline)) static void lj_rec(long *jb, int depth, int v, volatile int *log) {
@@ -199,7 +199,7 @@ __attribute__((noinline)) static void lj_rec(long *jb, int depth, int v, volatil
     else lj_rec(jb, depth - 1, v, log);
     *log = 99999;
 }
-// setjmp in einer Funktion, longjmp aus 3 + depth tieferen Rahmen; k1/k2 leben über setjmp/longjmp (x19..x28)
+// setjmp in one function, longjmp from 3 + depth deeper frames; k1/k2 live across setjmp/longjmp (x19..x28)
 extern "C" long test_longjmp(volatile int *log, int v, long a, long depth) {
     long jb[32];
     long k1 = a * 7 + 1, k2 = depth * 5 + 2;

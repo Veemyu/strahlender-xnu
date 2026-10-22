@@ -2,12 +2,12 @@
 # Runs locally on Linux: compiles the generated C (work/recomp/gen4-<modus>) with JOBS parallel clang calls and measures
 # wall clock/CPU/RAM per chunk, total peak RAM (sampler on /proc/meminfo) and links the target library.
 # As scripts/recomp/build_all.sh on the Mac: -O1; single-function files > 1 MB with -O0.
-# Usage: [TAG=name] [THRESH_O0=bytes] compile.sh [c] [--neu]   --neu: discard objects (full rebuild); otherwise only newer/missing sources
+# Usage: [TAG=name] [THRESH_O0=bytes] compile.sh [c] [--force]   --force: discard objects (full rebuild); otherwise only newer/missing sources
 #   TAG stores objects/numbers in obj4-c-<TAG>/ and build-c-<TAG>.* (comparison runs); THRESH_O0 default 1000000
 # Output: work/recomp/obj4-<modus>/*.o, logs/build-<modus>.times (per chunk: name wall user sys maxrss_KB c_bytes opt), logs/build-<modus>.stats
 source "$(dirname "$0")/common.sh"
 MODE=c; FORCE=0
-for a in "$@"; do case "$a" in c) MODE=c;; --neu) FORCE=1;; *) die "Unknown argument '$a'.";; esac; done
+for a in "$@"; do case "$a" in c) MODE=c;; --force) FORCE=1;; *) die "Unknown argument '$a'.";; esac; done
 GEN=${GEN:-$W/gen4-$MODE}
 OBJ=$W/obj4-$MODE${TAG:+-$TAG}
 TIMES=logs/build-$MODE${TAG:+-$TAG}.times
@@ -39,7 +39,7 @@ one() {   # <opt> <size> <source>
   local opt=$1 size=$2 src=$3
   local o="$OBJ/$(basename "$(dirname "$src")")_$(basename "$src" .c).o"
   [ "$o" -nt "$src" ] && exit 0
-  /usr/bin/time -f "%e %U %S %M" -o "$o.t" clang $opt $FLAGS -c "$src" -o "$o" 2> "$o.err" || { echo "FEHLER $src"; head -20 "$o.err"; exit 1; }
+  /usr/bin/time -f "%e %U %S %M" -o "$o.t" clang $opt $FLAGS -c "$src" -o "$o" 2> "$o.err" || { echo "ERROR $src"; head -20 "$o.err"; exit 1; }
   echo "$(basename "$o") $(cat "$o.t") $size $opt" >> "$TIMES"
   rm -f "$o.t" "$o.err"
 }
@@ -61,16 +61,16 @@ t1=$(date +%s.%N)
 
 wall=$(awk -v a="$t1" -v b="$t0" 'BEGIN{printf "%.1f", a-b}')
 {
-  echo "modus=$MODE tag=${TAG:-} jobs=$JOBS neu=$FORCE schwelle_O0=$THRESH_O0"
-  echo "uebersetzt_dateien=$(wc -l < "$TIMES")  von=$(cat "$OBJ/list_O0.txt" "$OBJ/list_O1.txt" | wc -l)"
+  echo "mode=$MODE tag=${TAG:-} jobs=$JOBS force=$FORCE threshold_O0=$THRESH_O0"
+  echo "compiled_files=$(wc -l < "$TIMES")  of=$(cat "$OBJ/list_O0.txt" "$OBJ/list_O1.txt" | wc -l)"
   echo "wall_s=$wall"
-  awk '{w+=$2; u+=$3; s+=$4; if ($5>m) m=$5; n++} END {printf "summe_wall_s=%.1f summe_user_s=%.1f summe_sys_s=%.1f max_chunk_rss_mb=%d\n", w, u, s, m/1024}' "$TIMES"
-  echo "spitzen_ram_gesamt_mb=$(( $(cat "$OBJ/peak_ram_kb.txt") / 1024 ))"
-  echo "langsamste_chunks (name wall_s user_s maxrss_mb c_bytes opt):"
+  awk '{w+=$2; u+=$3; s+=$4; if ($5>m) m=$5; n++} END {printf "sum_wall_s=%.1f sum_user_s=%.1f sum_sys_s=%.1f max_chunk_rss_mb=%d\n", w, u, s, m/1024}' "$TIMES"
+  echo "peak_ram_total_mb=$(( $(cat "$OBJ/peak_ram_kb.txt") / 1024 ))"
+  echo "slowest_chunks (name wall_s user_s maxrss_mb c_bytes opt):"
   sort -k2 -rn "$TIMES" | head -8 | awk '{printf "  %s %.1f %.1f %d %d %s\n", $1, $2, $3, $5/1024, $6, $7}'
-  echo "groesster_ram_chunks:"
+  echo "largest_ram_chunks:"
   sort -k5 -rn "$TIMES" | head -4 | awk '{printf "  %s %.1f s %d MB %d B %s\n", $1, $2, $5/1024, $6, $7}'
-  awk '{ if ($2>10) a++; if ($2>60) b++ } END {printf "ueber_10s=%d ueber_60s=%d\n", a, b}' "$TIMES"
+  awk '{ if ($2>10) a++; if ($2>60) b++ } END {printf "over_10s=%d over_60s=%d\n", a, b}' "$TIMES"
   sort -k2 -n "$TIMES" | awk '{v[NR]=$2} END {if (NR) printf "median_wall_s=%.2f\n", v[int((NR+1)/2)]}'
 } | tee "$ST"
 

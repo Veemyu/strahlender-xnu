@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Rekonstruiert das Marshal-Layout von PlayerWork.SaveData aus dump.cs und global-metadata.dat.
+"""Reconstructs the marshal layout of PlayerWork.SaveData from dump.cs and global-metadata.dat.
 
-Feldreihenfolge und -typen stammen aus dump.cs, ByValArray-/ByValTStr-Groessen aus
-fieldMarshaledSizes der Metadaten (Il2Cpp v24). Ausgabe: Feld, Offset, Groesse.
+Field order and types come from dump.cs, ByValArray/ByValTStr sizes from
+fieldMarshaledSizes of the metadata (Il2Cpp v24). Output: field, offset, size.
 """
 import re, struct, sys, json
 from pathlib import Path
@@ -58,4 +58,4 @@ if __name__ == "__main__":
     types.sort(key=lambda t: t["idx"])
     ms, nf = load_marshal()
     total = sum(len(t["fields"]) for t in types)
-    print("Felder dump.cs:", total, "Metadaten:", nf)
+    print("Fields dump.cs:", total, "metadata:", nf)

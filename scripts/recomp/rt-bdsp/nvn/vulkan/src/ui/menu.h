@@ -1,4 +1,4 @@
-// Ersatz für runtime/ui/menu.h beim Bau der Vulkan-Fassung: kein Overlay-Menü (die Funktionen sind Stummel in nvn_glue.c).
+// Replacement for runtime/ui/menu.h when building the Vulkan version: no overlay menu (the functions are stubs in nvn_glue.c).
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

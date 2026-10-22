@@ -1,5 +1,5 @@
-// Ersatz für runtime/rt.h des LAS-Klons beim Bau der NVN-Schicht (prepare.sh legt ihn neben die kopierten Quellen).
-// Nur das, was objects.c, cmdbuf.c, renderer.m, metal.m brauchen; Adressraum und Heap kommen aus der BDSP-Laufzeit.
+// Replacement for runtime/rt.h of the LAS clone when building the NVN layer (prepare.sh puts it next to the copied sources).
+// Only what objects.c, cmdbuf.c, renderer.m, metal.m need; address space and heap come from the BDSP runtime.
 #pragma once
 #include <pthread.h>
 #include <stdbool.h>
@@ -12,8 +12,8 @@
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #define FATAL(...) (fprintf(stderr, "FATAL: " __VA_ARGS__), nvn_fatal())
 
-// Der Speicherbereich, in dem NVN-Speicherpools liegen (BDSP: der per MapPhysicalMemory belegte Anwendungsspeicher):
-// ein einziger Metal-Puffer deckt ihn ab, GPU-Adressen sind Gastadressen. Gesetzt in nvn_glue.m.
+// The memory range that holds the NVN memory pools (BDSP: the application memory mapped via MapPhysicalMemory):
+// a single Metal buffer covers it, GPU addresses are guest addresses. Set in nvn_glue.m.
 extern uint64_t g_nvn_mem_base, g_nvn_mem_size;
 #define HEAP_BASE g_nvn_mem_base
 #define HEAP_MAX g_nvn_mem_size

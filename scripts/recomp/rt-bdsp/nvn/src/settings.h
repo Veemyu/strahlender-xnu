@@ -1,4 +1,4 @@
-// Ersatz für runtime/settings.h: feste Einstellungen ohne MetalFX, SMAA und Vollbild.
+// Replacement for runtime/settings.h: fixed settings without MetalFX, SMAA and fullscreen.
 #pragma once
 #include <stdbool.h>
 

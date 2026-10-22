@@ -1,6 +1,6 @@
-// Verbindung der LAS-NVN-Schicht (scripts/recomp/rt-bdsp/nvn/prepare.sh → work/recomp/nvn-src) mit der BDSP-Laufzeit:
-// Funktionstabelle von nvnBootstrapLoader, nn::vi/nv-Ersatz, Speicherbereich der Metal-Puffer und wirkungslose Stummel für die
-// Spiel-Hooks des Klons (Breitbild, Zelda-spezifische Textur- und Zeichenänderungen, Menü). Eigener Code.
+// Connects the LAS NVN layer (scripts/recomp/rt-bdsp/nvn/prepare.sh → work/recomp/nvn-src) to the BDSP runtime:
+// function table of nvnBootstrapLoader, nn::vi/nv replacement, memory range of the Metal buffers and no-op stubs for the
+// game hooks of the clone (widescreen, Zelda-specific texture and draw changes, menu). Own code.
 #ifdef __APPLE__
 #include <mach-o/getsect.h>
 #include <mach-o/ldsyms.h>
@@ -29,14 +29,14 @@ static inline uint64_t frame_clock_ns(void) {
 #include "output_scale.h"
 #include "settings.h"
 
-// Funktionen der BDSP-Laufzeit (bdsp.h kann hier nicht eingebunden werden: es kollidiert mit der Adressraum-Nachbildung in rt.h)
+// Functions of the BDSP runtime (bdsp.h cannot be included here: it collides with the address space emulation in rt.h)
 uint64_t rt_now_ns(void);
 void bdsp_fatal_report(const char *why, int code);
 void bdsp_gate_hit(const char *what);
 void kernel_phys_range(uint64_t *lo, uint64_t *hi);
 uint64_t loader_find_symbol(const char *name);
 void rt_fatal(const char *fmt, ...);
-#ifdef BDSP_REBASE32   // Rückfallwerte wie in bdsp.h (Variante B)
+#ifdef BDSP_REBASE32   // fallback values as in bdsp.h (variant B)
 #define ALIAS_BASE 0x20000000ull
 #define ALIAS_SIZE 0xE0000000ull
 #else
@@ -51,14 +51,14 @@ uint64_t plat_now_ns(void) { return rt_now_ns(); }
 void nvn_fatal(void) {
     rt_fatal_trace();
     bdsp_fatal_report("FATAL in der NVN-Schicht", 3);
-    for (;;) sleep(1);   // der Hauptthread/die Überwachung erstellt den Bericht und beendet den Prozess
+    for (;;) sleep(1);   // the main thread/the supervision creates the report and ends the process
 }
 void plat_sleep_until_ns(uint64_t t) {
     uint64_t now = rt_now_ns();
     if (t > now) { struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)}; nanosleep(&ts, NULL); }
 }
 
-// Tabelle der HLE_FUNC-Einträge: Mach-O-Abschnitt (macOS) oder ELF-Abschnitt mit __start_/__stop_ (Linux)
+// Table of the HLE_FUNC entries: Mach-O section (macOS) or ELF section with __start_/__stop_ (Linux)
 #ifdef __APPLE__
 static const HleImplEntry *hle_entries(size_t *n) {
     unsigned long size = 0;
@@ -82,7 +82,7 @@ HostFn hle_lookup_impl(const char *name) {
     return NULL;
 }
 
-// Bindet die HLE_FUNC-Einträge an Slots, die der Lader für HLE-gebundene Importe (hle.txt) schon angelegt hat; den Rest legt nvn_proc an.
+// Binds the HLE_FUNC entries to slots that the loader already created for HLE-bound imports (hle.txt); nvn_proc creates the rest.
 void nvn_glue_init(void) {
     size_t n;
     const HleImplEntry *start = hle_entries(&n);
@@ -93,7 +93,7 @@ void nvn_glue_init(void) {
     }
 }
 
-// Hülle des vom Spiel belegten Anwendungsspeichers: in ihr liegen die NVN-Speicherpools (Aufruf aus backend_init).
+// Envelope of the application memory occupied by the game: the NVN memory pools live in it (called from backend_init).
 void nvn_glue_mem_range(void) {
     uint64_t lo, hi;
     kernel_phys_range(&lo, &hi);
@@ -103,10 +103,10 @@ void nvn_glue_mem_range(void) {
     if (getenv("BDSP_NVN_MEM_MB")) hi = lo + ((uint64_t)atol(getenv("BDSP_NVN_MEM_MB")) << 20);
     g_nvn_mem_base = lo;
     g_nvn_mem_size = hi - lo;
-    LOG("[nvn] Metal-Puffer über 0x%llx + %llu MiB\n", (unsigned long long)lo, (unsigned long long)(g_nvn_mem_size >> 20));
+    LOG("[nvn] Metal buffer over 0x%llx + %llu MiB\n", (unsigned long long)lo, (unsigned long long)(g_nvn_mem_size >> 20));
 }
 
-// ---- NVN-Funktionstabelle: jeder Name wird an die Host-Implementierung gebunden; fehlende Namen werden gezählt (hle_unimpl_report)
+// ---- NVN function table: every name is bound to the host implementation; missing names are counted (hle_unimpl_report)
 static uint64_t nvn_proc(const char *name) {
     if (!name || !*name) return 0;
     HostFn f = hle_lookup_impl(name);
@@ -125,14 +125,14 @@ HLE_FUNC("nvnDeviceGetProcAddress", nvn_device_get_proc_address) {
     c->x[0] = nvn_proc((const char *)G2HC(c->x[1]));
 }
 
-// ---- Videowiedergabe (Unity SwitchVideoPlayer -> Android-Stagefright im SDK): die Codec-Liste ist ohne Hardware-Decoder leer;
-// strcasecmp bekommt dort einen Null-Namen. Ein NULL-sicheres strcasecmp lässt die Suche leer enden (Codec nicht gefunden).
+// ---- Video playback (Unity SwitchVideoPlayer -> Android Stagefright in the SDK): the codec list is empty without a hardware decoder;
+// strcasecmp gets a null name there. A NULL-safe strcasecmp lets the search end empty (codec not found).
 HLE_FUNC("strcasecmp", libc_strcasecmp) {
     const char *a = c->x[0] ? (const char *)G2HC(c->x[0]) : NULL, *b = c->x[1] ? (const char *)G2HC(c->x[1]) : NULL;
     c->x[0] = (uint64_t)(int64_t)(!a || !b ? (a == b ? 0 : a ? 1 : -1) : strcasecmp(a, b));
 }
 
-// ---- Debug-Prüfpunkte des NVN-SDK (in der LAS-Schicht nicht vorhanden): wirkungslos
+// ---- Debug checkpoints of the NVN SDK (not present in the LAS layer): no effect
 HLE_FUNC("nvnCommandBufferInsertCheckpointDynamic", nvn_ckpt_dyn) { (void)c; }
 HLE_FUNC("nvnCommandBufferInsertCheckpointStatic", nvn_ckpt_static) { (void)c; }
 HLE_FUNC("nvnDeviceSetAutomaticCheckpointsByDebugGroup", nvn_ckpt_group) { (void)c; }
@@ -141,7 +141,7 @@ HLE_FUNC("nvnDeviceSetAutomaticCheckpointsSamplingInterval", nvn_ckpt_interval) 
 HLE_FUNC("nvnDeviceSetCheckpointCallStacksEnable", nvn_ckpt_stacks) { (void)c; }
 HLE_FUNC("nvnDeviceSetCheckpointMaxCallStacksDepth", nvn_ckpt_depth) { (void)c; }
 
-// ---- nn::vi / nv: Anzeige und Grafiktreiber-Initialisierung des SDK auf dem Host
+// ---- nn::vi / nv: display and graphics driver initialisation of the SDK on the host
 uint32_t vi_vsync_handle(void);
 uint64_t g_native_window;
 
@@ -165,7 +165,7 @@ HLE_FUNC("_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7Display
     c->x[2] = 0;
     c->x[3] = 1;
     uint64_t f = loader_find_symbol("_ZN2nn2os33AttachReadableHandleToSystemEventEPNS0_15SystemEventTypeEjbNS0_14EventClearModeE");
-    if (!f) rt_fatal("AttachReadableHandleToSystemEvent nicht gefunden\n");
+    if (!f) rt_fatal("AttachReadableHandleToSystemEvent not found\n");
     guest_call(c, f);
     c->x[0] = 0;
 }
@@ -173,11 +173,11 @@ HLE_FUNC("_ZN2nv18InitializeGraphicsEPvm", nv_initialize_graphics) { (void)c; }
 HLE_FUNC("_ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_", nv_set_allocator) { (void)c; }
 HLE_FUNC("_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_", nv_set_dt_allocator) { (void)c; }
 
-// ---- Zähler für das Ergebnisprotokoll
+// ---- Counters for the result log
 uint64_t renderer_present_count(void);
 void nvn_report(FILE *f) { fprintf(f, "NVN: %llu frames presented, Metal buffer %llu MiB\n", (unsigned long long)renderer_present_count(), (unsigned long long)(g_nvn_mem_size >> 20)); }
 
-// ---- Ausgabegröße: das 1920x1080-Bild des Spiels wird eingepasst, ohne Skalierung des Rendering
+// ---- Output size: the game's 1920x1080 image is fitted, without scaling the rendering
 void output_scale(double dw, double dh, bool reshape_allowed, double now, double gpu_ms, OutScale *o) {
     (void)reshape_allowed; (void)now; (void)gpu_ms;
     double k = dw / 1920.0 < dh / 1080.0 ? dw / 1920.0 : dh / 1080.0;
@@ -190,24 +190,24 @@ void output_scale(double dw, double dh, bool reshape_allowed, double now, double
 }
 double output_scale_dynamic_factor(void) { return 1.0; }
 
-// SMAA (Nachbearbeitung des Klons) ist abgeschaltet: die Tabellen fehlen, g_settings.antialias bleibt 0
+// SMAA (post-processing of the clone) is switched off: the tables are missing, g_settings.antialias stays 0
 const char smaa_hlsl_src[] = "";
 const unsigned char *smaa_area_tex(void) { return NULL; }
 const unsigned char *smaa_search_tex(void) { return NULL; }
 
-// ---- Debug-Haken des LAS-Übersetzers (renderer.m verweist darauf; der XNU-Übersetzer hat sie entfernt)
+// ---- Debug hooks of the LAS translator (renderer.m refers to them; the XNU translator removed them)
 const uint8_t *maxwell_dbg_code, *maxwell_dbg_vs;
 uint32_t maxwell_dbg_pc;
 int maxwell_dbg_reg;
 
-// ---- Eingabe (nn::hid): Tastatur aus dem Fenster und ein Testskript speisen den Npad-Zustand (Muster: runtime/hle/input.c des Klons).
-// Die SDK-Funktionen GetNpadState(s)/GetNpadStyleSet werden durch Host-Funktionen ersetzt; der hid-Dienst bleibt für Verbindung/Aktivierung zuständig.
-// Tasten: Eingabe/Leertaste/K = A, Rücktaste/J = B, X, Y, Pfeiltasten und WASD = Steuerkreuz, Q/E = L/R, P = Plus, O = Minus.
+// ---- Input (nn::hid): keyboard from the window and a test script feed the Npad state (pattern: runtime/hle/input.c of the clone).
+// The SDK functions GetNpadState(s)/GetNpadStyleSet are replaced by host functions; the hid service stays responsible for connection/activation.
+// Keys: Enter/Space/K = A, Backspace/J = B, X, Y, arrow keys and WASD = D-pad, Q/E = L/R, P = Plus, O = Minus.
 // Testskript (--input-script / BDSP_INPUT_SCRIPT): "Sekunde:TASTE[+TASTE]:Dauer, ..." ab Prozessstart, z. B. "30:A:0.3,34:A+DOWN:0.2".
 enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
 static const char *const pad_names[16] = {"A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS", "MINUS", "LEFT", "UP", "RIGHT", "DOWN"};
 static _Atomic uint64_t key_buttons;
-// Tasten und Sticks der App-Hülle (rt-bdsp/app: Tastatur, GameController); Sticks lx, ly, rx, ry von -32767 bis 32767
+// Buttons and sticks of the app shell (rt-bdsp/app: keyboard, GameController); sticks lx, ly, rx, ry from -32767 to 32767
 _Atomic uint64_t g_ext_buttons;
 _Atomic int32_t g_ext_stick[4];
 static int64_t pad_sampling;
@@ -222,7 +222,7 @@ static void script_load(void) {
     const char *spec = getenv("BDSP_INPUT_SCRIPT");
     static char buf[MAX_SCRIPT * 24];
     if (!spec) return;
-    if (spec[0] == '@') {   // "@datei": Skript aus einer Datei (QA-Läufe mit vielen Schritten)
+    if (spec[0] == '@') {   // "@file": script from a file (QA runs with many steps)
         FILE *f = fopen(spec + 1, "rb");
         size_t n = f ? fread(buf, 1, sizeof buf - 1, f) : 0;
         if (f) fclose(f);
@@ -240,13 +240,13 @@ static void script_load(void) {
             for (int i = 0; i < 16; i++) if (!strcmp(n, pad_names[i])) m |= 1u << i;
         script[nscript++] = (ScriptStep){at, len, m};
     }
-    LOG("[input] Testskript mit %d Schritten\n", nscript);
+    LOG("[input] test script with %d steps\n", nscript);
 }
 
 static uint64_t buttons_now(void) {
     if (nscript < 0) script_load();
     uint64_t b = key_buttons | g_ext_buttons;
-    static int ctl_fd = -2;   // BDSP_INPUT_CTL=<Datei>: Tastenmaske (16 Hex-Ziffern) von außen, QA-Harness (ereignisgesteuerte Eingaben)
+    static int ctl_fd = -2;   // BDSP_INPUT_CTL=<file>: button mask (16 hex digits) from outside, QA harness (event-driven inputs)
     if (ctl_fd == -2) { const char *p = getenv("BDSP_INPUT_CTL"); ctl_fd = p ? open(p, O_RDONLY) : -1; }
     if (ctl_fd >= 0) {
         char s[24];
@@ -282,7 +282,7 @@ void input_handle_event(const void *ev) {
     else atomic_fetch_and(&key_buttons, ~(1ull << bit));
 }
 
-// Npad-Zustand (alle Zustandstypen gleich aufgebaut): {s64 Abtastnummer, u64 Tasten, Stick L {s32 x, y}, Stick R, u32 Attribute}; Spieler 1 ist ein verbundener Pro Controller
+// Npad state (all state types are laid out the same): {s64 sample number, u64 buttons, stick L {s32 x, y}, stick R, u32 attributes}; player 1 is a connected Pro Controller
 static void npad_fill(uint8_t *s) {
     memset(s, 0, 0x28);
     *(int64_t *)s = ++pad_sampling;
@@ -312,18 +312,18 @@ NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_17NpadHandheldStateEiRKj", npad_ss_h
 NPAD_STATES("_ZN2nn3hid13GetNpadStatesEPNS0_17NpadJoyRightStateEiRKj", npad_ss_right)
 HLE_FUNC("_ZN2nn3hid15GetNpadStyleSetERKj", npad_style) { c->x[0] = *(uint32_t *)G2HC(c->x[0]) == 0 ? 1 : 0; }  // nur Spieler 1, Stil „Pro Controller“
 
-// ---- Stummel für Hooks des Klons (Breitbild, Zelda-Effekte, Menü, Eingabe, Neustart im Prozess)
+// ---- Stubs for hooks of the clone (widescreen, Zelda effects, menu, input, restart within the process)
 void settings_load(void) {}
 void rt_window_icon(void *w) { (void)w; }
 int rt_reboot_requested(void) { return 0; }
 bool input_user_blocked(const void *e) { (void)e; return false; }
-__attribute__((weak)) bool menu_handle_event(const void *e) { (void)e; return false; }   // App-Hülle: rt-bdsp/app/app_ui.m
+__attribute__((weak)) bool menu_handle_event(const void *e) { (void)e; return false; }   // app shell: rt-bdsp/app/app_ui.m
 bool menu_is_open(void) { return false; }
 __attribute__((weak)) void menu_apply_window_requests(void *w) { (void)w; }
 void menu_test_open(void) {}
 void menu_render(void *dev, void *cb, void *target) { (void)dev; (void)cb; (void)target; }
-// Bildraten-Begrenzer auf g_bdsp_fps (30/60/120, services_gfx.c). Läuft pro präsentiertem Bild (metal.m ruft input_frame
-// nach dem Present) und wartet bis zum nächsten Zielzeitpunkt. Nur Spiel-Ticks (Wartezeit), keine Änderung am Renderer.
+// Frame rate limiter on g_bdsp_fps (30/60/120, services_gfx.c). Runs per presented frame (metal.m calls input_frame
+// after the present) and waits until the next target time. Game ticks only (waiting), no change to the renderer.
 extern volatile int g_bdsp_fps;
 static void frame_pace(void) {
     static uint64_t next_ns;
@@ -332,11 +332,11 @@ static void frame_pace(void) {
     static int hist_on = -1;
     if (hist_on < 0) hist_on = getenv("BDSP_FRAMEHIST") != NULL;
     uint64_t period_ns = 1000000000ull / (unsigned)g_bdsp_fps;
-    static int pace_pct = -1;   // BDSP_PACE_PCT: Taktgeber kürzer als die Anzeige (Rest übernimmt die Präsentation)
+    static int pace_pct = -1;   // BDSP_PACE_PCT: pacer shorter than the display (the presentation takes the rest)
     if (pace_pct < 0) pace_pct = getenv("BDSP_PACE_PCT") ? atoi(getenv("BDSP_PACE_PCT")) : 100;
     period_ns = period_ns * (unsigned)pace_pct / 100;
     uint64_t now = frame_clock_ns();
-    if (hist_on) {   // Frame-Zeit-Histogramm (nur mit BDSP_FRAMEHIST=1): Abstand zwischen zwei Frames in ms
+    if (hist_on) {   // frame time histogram (only with BDSP_FRAMEHIST=1): interval between two frames in ms
         static const double edge[8] = {7.5, 8.0, 8.25, 8.5, 9.0, 10.0, 12.0, 16.0};
         if (last_ns) {
             double ms = (double)(now - last_ns) / 1e6;

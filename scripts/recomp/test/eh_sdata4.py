@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Assembler-Filter für den Exception-Test: schreibt die EH-Kodierungen von sdata8 (0x1c/0x9c) auf sdata4 (0x1b/0x9b).
+"""Assembler filter for the exception test: rewrites the EH encodings from sdata8 (0x1c/0x9c) to sdata4 (0x1b/0x9b).
 
-Eigener Code. Die Gast-ABI der Switch (und damit die libunwind des Spiels) arbeitet mit 32-Bit-Kodierungen; der
-lokale Clang schreibt für aarch64-linux 64-Bit-Kodierungen. Gelesen wird Assembler von stdin, geschrieben nach stdout.
+Own code. The Switch guest ABI (and with it the game's libunwind) works with 32-bit encodings; the
+local Clang writes 64-bit encodings for aarch64-linux. Assembler is read from stdin, written to stdout.
 """
 import re
 import sys

@@ -1,7 +1,7 @@
-// Spike 2, Schritt 5: kleinstes lauffähiges Stück. Lädt main, sdk und subsdk0 des Dumps (rekompiliert, siehe
-// scripts/recomp/gen_all.sh und build_all.sh), startet nn::init::Start auf dem Hauptthread und läuft, bis das erste
-// fehlende Stück (SVC, Dienst, Thread, Import) den Lauf beendet oder nnMain erreicht ist. Es gibt keine Grafik.
-// Eigener Code. Mini-Kernel nur für den Befund: kein Mehrthreadbetrieb, keine echten Dienste.
+// Spike 2, step 5: smallest runnable piece. Loads main, sdk and subsdk0 of the dump (recompiled, see
+// scripts/recomp/gen_all.sh and build_all.sh), starts nn::init::Start on the main thread and runs until the first
+// missing piece (SVC, service, thread, import) ends the run or nnMain is reached. There is no graphics.
+// Own code. Mini kernel for the finding only: no multi-threading, no real services.
 #define _GNU_SOURCE
 #include "cpu.h"
 #include <fcntl.h>
@@ -26,7 +26,7 @@ int ipc_handle_request(Cpu *c, uint32_t handle);
 #define STACK_SZ   0x100000ull          // 1 MiB laut NPDM
 #define TLS_BASE   0x7300000000ull
 #define HEAP_BASE  0x7100000000ull
-#define HEAP_MAX   (3ull << 30) + (1ull << 28)  // 3,25 GiB wie LAS (HEAP_MAX)
+#define HEAP_MAX   (3ull << 30) + (1ull << 28)  // 3.25 GiB like LAS (HEAP_MAX)
 
 extern const uint64_t main_fn_addrs[]; extern const GuestFn main_fn_ptrs[]; extern const uint64_t main_fn_count;
 extern const uint64_t sdk_fn_addrs[]; extern const GuestFn sdk_fn_ptrs[]; extern const uint64_t sdk_fn_count;
@@ -35,7 +35,7 @@ typedef struct { const uint64_t *addrs; const GuestFn *fns; uint64_t n; } Tab;
 static Tab tabs[3];
 
 volatile int g_fnprof;
-// Ring der letzten Funktionseintritte (EH_FNTRACE=1), wird bei einem Absturz (SIGSEGV) ausgegeben
+// Ring of the last function entries (EH_FNTRACE=1), printed on a crash (SIGSEGV)
 #include <signal.h>
 static uint64_t ring_fn[64], ring_lr[64];
 static unsigned ring_pos;
@@ -43,7 +43,7 @@ void fnprof_hit(uint64_t a, uint64_t b, uint64_t c) { (void)c; ring_fn[ring_pos 
 static void segv(int sig, siginfo_t *si, void *uc) {
     (void)uc;
     char buf[160];
-    int n = snprintf(buf, sizeof buf, "ABSTURZ (Signal %d) bei Hostadresse %p; letzte Gastfunktionen (neueste zuletzt, Aufrufer in Klammern):\n", sig, si->si_addr);
+    int n = snprintf(buf, sizeof buf, "CRASH (signal %d) at host address %p; last guest functions (newest last, caller in parentheses):\n", sig, si->si_addr);
     write(2, buf, n);
     for (unsigned i = 24; i-- > 0;) {
         unsigned k = (ring_pos - 1 - i) & 63;
@@ -92,7 +92,7 @@ void rt_nle_enter(Cpu *c) {
     for (EhRec *r = EH_TOP(c); r; r = r->prev)
         if (c->pc >= r->lo && c->pc < r->hi && r->sp > c->sp) { EH_TOP(c) = r; _longjmp(r->jb, 1); }
     cnt.dispatch_miss++;
-    die("kein Gastcode bei %llx (lr=%llx): Sprung in Daten/ohne Funktion", c->pc, c->x[30]);
+    die("no guest code at %llx (lr=%llx): jump into data/without function", c->pc, c->x[30]);
 }
 
 static void module_init(Cpu *c, Mod *m);
@@ -103,7 +103,7 @@ static void guest_call(Cpu *c, uint64_t addr) {
     c->x[30] = lr; c->pc = pc;
 }
 static void module_init(Cpu *c, Mod *m) {
-    printf("  init %s (DT_INIT %llx, %llu init_array-Eintraege)\n", m->name, m->base + m->init, m->init_array_sz / 8);
+    printf("  init %s (DT_INIT %llx, %llu init_array entries)\n", m->name, m->base + m->init, m->init_array_sz / 8);
     if (m->init) { guest_call(c, m->base + m->init); return; }
     for (uint64_t i = 0; i < m->init_array_sz / 8; i++) {
         uint64_t fn = *(uint64_t *)(uintptr_t)(m->base + m->init_array + i * 8);
@@ -120,7 +120,7 @@ void rt_dispatch(Cpu *c) {
     if (pc >= HLE_BASE && pc < HLE_BASE + 16ull * 512) {
         if (pc == SLOT_INIT_SDK) { module_init(c, &mods[1]); return; }
         if (pc == SLOT_INIT_MAIN) { module_init(c, &mods[0]); return; }
-        if (pc == SLOT_NOP) { printf("  Fini-Rueckruf (nach nnMain) erreicht\n"); return; }
+        if (pc == SLOT_NOP) { printf("  fini callback (after nnMain) reached\n"); return; }
         int i = (int)((pc - HLE_BASE) / 16);
         extern void hle_call(Cpu *, int);
         hle_call(c, i);
@@ -131,15 +131,15 @@ void rt_dispatch(Cpu *c) {
     rt_nle_enter(c);
 }
 
-void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) { (void)c; die("BRK %u bei %llx (Abbruch im Gastcode)", imm, pc); }
-void rt_udf(Cpu *c, uint64_t pc) { (void)c; die("UDF bei %llx (nicht lift-bare/Datenworte oder fehlender Befehl)", pc); }
+void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) { (void)c; die("BRK %u at %llx (abort in the guest code)", imm, pc); }
+void rt_udf(Cpu *c, uint64_t pc) { (void)c; die("UDF at %llx (unliftable/data words or missing instruction)", pc); }
 uint64_t rt_ticks(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec * 19200000ull + t.tv_nsec * 19200000ull / 1000000000ull; }
 
-// ---- HLE-Importe: nur die wirklich nötigen Host-Ersatzfunktionen
+// ---- HLE imports: only the host replacement functions that are really needed
 void hle_call(Cpu *c, int i) {
     const char *n = i < hle_count ? hle_names[i] : "?";
     if (!strcmp(n, "malloc") || !strcmp(n, "calloc") || !strcmp(n, "realloc") || !strcmp(n, "free") || !strcmp(n, "aligned_alloc"))
-        die("Import %s (Allokator der Anwendung) wurde aufgerufen, bevor nninitStartup ihn bereitgestellt hat", n);
+        die("Import %s (application allocator) was called before nninitStartup provided it", n);
     die("fehlender Import/HLE: %s (lr=%llx)", n, c->x[30]);
 }
 
@@ -191,7 +191,7 @@ static void ipc_reply2(uint32_t *msg, int domain, uint32_t result, const uint32_
     msg[1] = (w - pos) | (move_handle ? 1u << 31 : 0);
 }
 static void ipc_reply(uint32_t *msg, uint32_t result, uint32_t move_handle) { ipc_reply2(msg, 0, result, NULL, 0, NULL, 0, move_handle); }
-// Dienste, die der Test mit "Erfolg, keine Daten" beantwortet (Umgebungsvariable STUBS=a,b,c erweitert die Liste)
+// Services that the test answers with "success, no data" (environment variable STUBS=a,b,c extends the list)
 static int is_stub(const char *name) {
     const char *list = getenv("STUBS");
     char buf[512];
@@ -239,7 +239,7 @@ static void ipc_request(Cpu *c) {
             c->x[0] = 0;
             return;
         }
-        die("sm: Befehl %u nicht umgesetzt", cmd);
+        die("sm: command %u not implemented", cmd);
     }
     if (s && !strcmp(s->svc, "lm") && obj == 1 && cmd == 0) {  // ILogService::OpenLogger -> ILogger als Domain-Objekt
         uint32_t id = s->next_obj++;
@@ -271,7 +271,7 @@ static void svc_getinfo(Cpu *c) {
 }
 
 static void svc_query_memory(Cpu *c) {
-    // x0 = MemoryInfo*, x2 = Adresse; Typ/Rechte nach den Modulsegmenten (GetExceptionInfo des SDK wertet sie aus)
+    // x0 = MemoryInfo*, x2 = address; type/permissions per the module segments (the SDK's GetExceptionInfo evaluates them)
     uint64_t a = c->x[2], base = a & ~0xFFFull, size = 0x1000;
     uint32_t type = 0, perm = 0;
     for (int i = 0; i < nmods; i++) {
@@ -299,7 +299,7 @@ void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) {
         printf("  SetHeapSize %llu MiB\n", sz >> 20);
         return;
     }
-    case 0x2C: {  // MapPhysicalMemory(addr, size): im Probelauf ist jede Adresse im Heap-/Aliasfenster schon abgebildet
+    case 0x2C: {  // MapPhysicalMemory(addr, size): in the trial run every address in the heap/alias window is already mapped
         printf("  MapPhysicalMemory addr=%llx size=%llx\n", c->x[0], c->x[1]);
         uint64_t a = c->x[0] & ~0xFFFull, n = (c->x[1] + 0xFFF) & ~0xFFFull;
         if (!(a >= HEAP_BASE && a + n <= HEAP_BASE + HEAP_MAX))
@@ -321,8 +321,8 @@ void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x09: threads_started++; c->x[0] = 0; return;
     case 0x11: c->x[0] = 0; return;
     case 0x45: c->x[0] = 0; c->x[1] = next_handle++; c->x[2] = next_handle++; return;
-    case 0x18: c->x[0] = 0; c->x[1] = 0; return;  // WaitSynchronization: Eingabe gilt als signalisiert
-    case 0x1A: case 0x1B: c->x[0] = 0; return;    // Arbitrate (ohne Konkurrenz)
+    case 0x18: c->x[0] = 0; c->x[1] = 0; return;  // WaitSynchronization: input counts as signaled
+    case 0x1A: case 0x1B: c->x[0] = 0; return;    // Arbitrate (without contention)
     case 0x1C: case 0x1D: c->x[0] = 0; return;
     case 0x34: case 0x35: c->x[0] = 0; return;
     case 0x1F: {  // ConnectToNamedPort(name)
@@ -344,11 +344,11 @@ void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) {
         return;
 #endif
         ipc_request(c); return;
-    case 0x26: die("Break (Gast bricht ab, Grund %llx): %s", c->x[0], "svcBreak");
+    case 0x26: die("Break (guest aborts, reason %llx): %s", c->x[0], "svcBreak");
     case 0x27: printf("  OutputDebugString: %.*s\n", (int)c->x[1], (const char *)(uintptr_t)c->x[0]); c->x[0] = 0; return;
     case 0x07: die("ExitProcess");
-    case 0x0A: die("ExitThread auf dem Hauptthread");
-    default: die("SVC %#x (%s) nicht umgesetzt (pc=%llx)", imm, svc_name(imm), pc);
+    case 0x0A: die("ExitThread on the main thread");
+    default: die("SVC %#x (%s) not implemented (pc=%llx)", imm, svc_name(imm), pc);
     }
 }
 
@@ -358,7 +358,7 @@ static void map_file(const char *path, uint64_t addr) {
     struct stat st; fstat(fd, &st);
     size_t len = (st.st_size + 0x3FFF) & ~0x3FFFull;
     void *p = mmap((void *)addr, len, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (p != (void *)addr) { fprintf(stderr, "mmap %s @%llx fehlgeschlagen\n", path, addr); exit(2); }
+    if (p != (void *)addr) { fprintf(stderr, "mmap %s @%llx failed\n", path, addr); exit(2); }
     if (read(fd, p, st.st_size) != st.st_size) { perror("read"); exit(2); }
     close(fd);
 }
@@ -373,7 +373,7 @@ int main(int argc, char **argv) {
         g_fnprof = 1;
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
-    if (argc < 3) { fprintf(stderr, "usage: %s <spike2-dir> <start-symbol-adresse>\n", argv[0]); return 2; }
+    if (argc < 3) { fprintf(stderr, "usage: %s <spike2-dir> <start-symbol-address>\n", argv[0]); return 2; }
     char path[512];
     snprintf(path, sizeof path, "%s/hle.txt", argv[1]);
     FILE *f = fopen(path, "r");
@@ -394,7 +394,7 @@ int main(int argc, char **argv) {
     }
     if (mmap((void *)STACK_LO, STACK_SZ, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0) != (void *)STACK_LO) return 2;
     if (mmap((void *)TLS_BASE, 0x10000, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0) != (void *)TLS_BASE) return 2;
-    if (mmap((void *)HEAP_BASE, HEAP_MAX, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0) != (void *)HEAP_BASE) { fprintf(stderr, "Heap-Fenster nicht reservierbar\n"); return 2; }
+    if (mmap((void *)HEAP_BASE, HEAP_MAX, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0) != (void *)HEAP_BASE) { fprintf(stderr, "Heap window cannot be reserved\n"); return 2; }
     tabs[0] = (Tab){ main_fn_addrs, main_fn_ptrs, main_fn_count };
     tabs[1] = (Tab){ sdk_fn_addrs, sdk_fn_ptrs, sdk_fn_count };
     tabs[2] = (Tab){ subsdk0_fn_addrs, subsdk0_fn_ptrs, subsdk0_fn_count };
@@ -406,15 +406,15 @@ int main(int argc, char **argv) {
     printf("Start: nn::init::Start @%llx, Hauptthread Stack %llu KiB, Module main/sdk/subsdk0 geladen, RSS %ld MiB\n", cpu->pc, STACK_SZ >> 10, rss_mib());
     if (!setjmp(stop_jb)) {
         rt_dispatch(cpu);
-        printf("ERGEBNIS: nn::init::Start kehrte zurueck (unerwartet)\n");
+        printf("RESULT: nn::init::Start returned (unexpected)\n");
     } else {
-        printf("ERGEBNIS: Lauf beendet: %s\n", stop_reason);
+        printf("RESULT: run ended: %s\n", stop_reason);
     }
     uint64_t total = 0; int distinct = 0;
-    printf("SVC-Zaehler:");
+    printf("SVC counters:");
     for (int i = 0; i < 256; i++) if (cnt.svc[i]) { printf(" %#x=%llu", i, (unsigned long long)cnt.svc[i]); total += cnt.svc[i]; distinct++; }
-    printf("\n%d verschiedene SVCs, %llu Aufrufe; Threads angelegt %d, gestartet %d; Dienste angefragt:", distinct, (unsigned long long)total, threads_created, threads_started);
+    printf("\n%d distinct SVCs, %llu calls; threads created %d, started %d; services requested:", distinct, (unsigned long long)total, threads_created, threads_started);
     for (int i = 0; i < ipc_seen; i++) printf(" %s", ipc_names[i]);
-    printf("\nHeap angefordert %llu MiB, Spitzen-RSS %ld MiB\n", (unsigned long long)(heap_size >> 20), rss_mib());
+    printf("\nHeap requested %llu MiB, peak RSS %ld MiB\n", (unsigned long long)(heap_size >> 20), rss_mib());
     return 0;
 }

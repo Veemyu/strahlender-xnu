@@ -1,13 +1,13 @@
 #!/bin/bash
-# Erschöpfender Einzelbefehlstest (exh.c): baut und läuft für alle Befehle und mehrere FPCR-Werte.
-# Aufruf: exh_run.sh m1            (Mac, nativ, Referenz)  oder  exh_run.sh c "<clang-Flags>" [Jobs]   (erzeugtes C)
-# Ergebnis: work/recomp/diff/exh_<m1|c>.txt (eine Zeile je Befehl und FPCR-Wert: Nr|Name|FPCR|Schritt|Hash|Fälle)
+# Exhaustive single-instruction test (exh.c): builds and runs for all instructions and several FPCR values.
+# Usage: exh_run.sh m1            (Mac, native, reference)  or  exh_run.sh c "<clang flags>" [jobs]   (generated C)
+# Result: work/recomp/diff/exh_<m1|c>.txt (one line per instruction and FPCR value: no|name|FPCR|step|hash|cases)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 D=work/recomp/diff
 mode=$1
 python3 scripts/recomp/diff/exh_gen.py $D/exh_ops.h > /dev/null
-# FPCR 0 vollständig; Rundungsmodi, FZ, FZ+DN+RZ mit Schritt 16 (jedes 16. Bitmuster)
+# FPCR 0 complete; rounding modes, FZ, FZ+DN+RZ with step 16 (every 16th bit pattern)
 CFG=("0 1" "400000 16" "800000 16" "c00000 16" "1000000 16" "2000000 16" "1c00000 16")
 if [ "$mode" = m1 ]; then
   clang -O2 -w -DREF_ASM -I $D scripts/recomp/diff/exh.c -o $D/exh_m1

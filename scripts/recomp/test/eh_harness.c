@@ -1,6 +1,6 @@
-// Testharness für den Exception-Spike (docs/architecture.md): Host-Laufzeit für rekompilierten Gastcode.
-// Eigener Code. Gast = Host-Adressen wie in LASRecomp; es wird nur das SDK-Modul des Spiels (rekompiliert, aus
-// dem lokalen Dump) und ein synthetisches Testmodul geladen. Es gibt kein Spiel, keine Grafik, keine Dienste.
+// Test harness for the exception spike (docs/architecture.md): host runtime for recompiled guest code.
+// Own code. Guest = host addresses as in LASRecomp; only the game's SDK module (recompiled, from
+// the local dump) and a synthetic test module are loaded. There is no game, no graphics, no services.
 #define _GNU_SOURCE
 #include "cpu.h"
 #include <stdio.h>
@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 
 #ifdef REBASE32
-// Speichermodell B: Gastadressen < 4 GiB, Zugriff über g_base (rt32/cpu.h)
+// Memory model B: guest addresses < 4 GiB, access through g_base (rt32/cpu.h)
 #define SDK_BASE  0x01000000ull
 #define EHT_BASE  0x02000000ull
 #define MAIN_BASE 0x10000000ull
@@ -36,7 +36,7 @@ uint8_t *g_base;
 
 extern const uint64_t sdk_fn_addrs[]; extern const GuestFn sdk_fn_ptrs[]; extern const uint64_t sdk_fn_count;
 extern const uint64_t eht_fn_addrs[]; extern const GuestFn eht_fn_ptrs[]; extern const uint64_t eht_fn_count;
-// optional: Teilbau von `main` (nur im Modus real=...)
+// optional: partial build of `main` (only in mode real=...)
 extern const uint64_t main_fn_addrs[] __attribute__((weak_import)); extern const GuestFn main_fn_ptrs[] __attribute__((weak_import));
 extern const uint64_t main_fn_count __attribute__((weak_import));
 
@@ -71,7 +71,7 @@ static void map_file(const char *path, uint64_t addr) {
     void *p = H(addr);
 #else
     void *p = mmap((void *)addr, len + 0x4000, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (p != (void *)addr) die("mmap %s @%llx fehlgeschlagen", path, addr);
+    if (p != (void *)addr) die("mmap %s @%llx failed", path, addr);
 #endif
     if (read(fd, p, st.st_size) != st.st_size) die("read %s", path);
     close(fd);
@@ -88,9 +88,9 @@ static GuestFn lookup(uint64_t a) {
 
 void rt_nle_fatal(Cpu *c) { die("rt_nle_fatal: pc=%llx unbekannter Wiedereinstiegspunkt", c->pc); }
 
-// Wiedereinstieg mitten in einer Gastfunktion (Landing-Pad, Rücksprung nach setjmp): den Host-Stack bis zu der
-// Funktion abwickeln, die den Rahmen besitzt. Innerster Eintrag, dessen Bereich pc enthält und dessen Eintritts-SP
-// oberhalb des Ziel-SP liegt (rekursive Aufrufe derselben Funktion liegen tiefer).
+// Re-entry in the middle of a guest function (landing pad, return after setjmp): unwind the host stack up to the
+// function that owns the frame. Innermost entry whose range contains pc and whose entry SP
+// is above the target SP (recursive calls of the same function are deeper).
 void rt_nle_enter(Cpu *c) {
     EhRec *top = EH_TOP(c);
     for (EhRec *r = top; r; r = r->prev) {
@@ -102,14 +102,14 @@ void rt_nle_enter(Cpu *c) {
             _longjmp(r->jb, 1);
         }
     }
-    die("rt_nle_enter: kein Rahmen fuer pc=%llx sp=%llx (Kette %p)", c->pc, c->sp, (void *)top);
+    die("rt_nle_enter: no frame for pc=%llx sp=%llx (chain %p)", c->pc, c->sp, (void *)top);
 }
 
 
 static int real_mode;
-// Aufrufziel ohne rekompilierte Funktion (Teilbau von main): der erste Aufruf wirft eine C++-Exception über den
-// echten Gast-Unwinder (als käme sie aus dem Aufgerufenen), alle weiteren kehren harmlos zurück.
-// PLT-Stub von main (adrp x16; ldr x17,[x16,#o]; add x16,..; br x17): Sprungziel aus dem GOT, 0 wenn keiner
+// Call target without a recompiled function (partial build of main): the first call throws a C++ exception through the
+// real guest unwinder (as if it came from the callee), all further ones return harmlessly.
+// PLT stub of main (adrp x16; ldr x17,[x16,#o]; add x16,..; br x17): jump target from the GOT, 0 if none
 static uint64_t plt_target(uint64_t pc) {
     if (pc < MAIN_BASE || pc >= MAIN_BASE + 84287488) return 0;
     const uint32_t *w = (const uint32_t *)(uintptr_t)pc;
@@ -122,13 +122,13 @@ static uint64_t plt_target(uint64_t pc) {
 
 static void stub_callee(Cpu *c) {
     rs.calls++;
-    if (rs.thrown) {  // nach dem Wurf: Importe (_Unwind_Resume, __cxa_*) laufen echt über den SDK-Code, der Rest kehrt zurück
+    if (rs.thrown) {  // after the throw: imports (_Unwind_Resume, __cxa_*) really run through the SDK code, the rest returns
         uint64_t t = plt_target(c->pc);
         if (t) { c->pc = t; rt_dispatch(c); return; }
         c->x[0] = 0;
         return;
     }
-    int covered = 0;  // nur Aufrufe, die in einer Call-Site mit Landing-Pad liegen, werfen (sonst wird kein Pad getestet)
+    int covered = 0;  // only calls inside a call site with a landing pad throw (otherwise no pad is tested)
     for (int i = 0; i < rs.nsites; i++)
         if (c->x[30] - 4 >= rs.sites[i][0] && c->x[30] - 4 < rs.sites[i][1]) { covered = 1; break; }
     if (!covered) { rs.skipped++; c->x[0] = 0; return; }
@@ -139,7 +139,7 @@ static void stub_callee(Cpu *c) {
     rt_dispatch(c);
     c->x[1] = rs.zti; c->x[2] = 0; c->x[30] = lr; c->sp = sp; c->pc = rs.thr;
     rt_dispatch(c);
-    die("__cxa_throw kehrte zurueck");
+    die("__cxa_throw returned");
 }
 
 void rt_dispatch(Cpu *c) {
@@ -150,7 +150,7 @@ void rt_dispatch(Cpu *c) {
         extern GuestFn hle_fns[];
         if (hle_fns[i]) { hle_fns[i](c); return; }
         if (real_mode) { c->x[0] = 0; return; }
-        die("HLE nicht umgesetzt: %s (lr=%llx)", hle_names[i], c->x[30]);
+        die("HLE not implemented: %s (lr=%llx)", hle_names[i], c->x[30]);
     }
     GuestFn f = lookup(pc);
     if (f) { __attribute__((musttail)) return f(c); }
@@ -165,15 +165,15 @@ void rt_dispatch(Cpu *c) {
 
 void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) {
     if (imm == 0x27) die("OutputDebugString: %.*s", (int)c->x[1], (const char *)H(c->x[0]));
-    die("SVC %#x bei %llx", imm, pc);
+    die("SVC %#x at %llx", imm, pc);
 }
-void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) { (void)c; die("BRK %u bei %llx", imm, pc); }
-void rt_udf(Cpu *c, uint64_t pc) { (void)c; die("UDF bei %llx", pc); }
+void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) { (void)c; die("BRK %u at %llx", imm, pc); }
+void rt_udf(Cpu *c, uint64_t pc) { (void)c; die("UDF at %llx", pc); }
 uint64_t rt_ticks(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec * 19200000ull + t.tv_nsec * 19200000ull / 1000000000ull; }
 
-// ---- HLE (Host-Ersatz für Importe und ausgewählte SDK-Funktionen)
+// ---- HLE (host replacement for imports and selected SDK functions)
 #ifdef REBASE32
-// Gast-Heap im 4-GiB-Fenster: einfacher Zeigerzähler mit 16-Byte-Kopf (Größe), free ohne Wirkung
+// Guest heap in the 4 GiB window: simple bump pointer with a 16-byte header (size), free has no effect
 static uint64_t heap_next = HEAP_LO + 0x1000;
 static uint64_t galloc(uint64_t n, uint64_t al) {
     if (n > (64ull << 20)) return 0;
@@ -212,7 +212,7 @@ void hle__ZN2nn2os9LockMutexEPNS0_9MutexTypeE(Cpu *c) { (void)c; }
 void hle__ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE(Cpu *c) { (void)c; }
 
 static const struct { uint64_t base, span; } mods[] = { { SDK_BASE, 13844480 }, { EHT_BASE, 12288 }, { MAIN_BASE, 84287488 } };
-// nn::ro::detail::GetExceptionInfo(info, pc): {Modulbasis, Spanne, Offset von eh_frame_hdr, Länge von eh_frame_hdr}
+// nn::ro::detail::GetExceptionInfo(info, pc): {module base, span, offset of eh_frame_hdr, length of eh_frame_hdr}
 void hle__ZN2nn2ro6detail16GetExceptionInfoEPNS1_13ExceptionInfoEm(Cpu *c) {
     uint64_t *info = (uint64_t *)H(c->x[0]), pc = c->x[1];
     for (unsigned i = 0; i < 3; i++) {
@@ -248,7 +248,7 @@ static uint64_t call(uint64_t addr, uint64_t a0, uint64_t a1, uint64_t a2, uint6
     return cpu->x[0];
 }
 
-// ---- Modus real=<spec>: Wurf durch echte Funktionen aus main (Teilbau), je Funktion ein Kindprozess
+// ---- Mode real=<spec>: throw through real functions from main (partial build), one child process per function
 #include <sys/wait.h>
 #define SCR 0x7050000000ull
 static int run_one(char *line, uint64_t wrapper) {
@@ -264,12 +264,12 @@ static int run_one(char *line, uint64_t wrapper) {
     memset(cpu, 0, sizeof(Cpu));
     cpu->tpidrro = cpu->tpidr = (uint64_t)(uintptr_t)calloc(1, 0x400);
     if (mmap((void *)SCR, 1 << 16, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0) != (void *)SCR) return 3;
-    for (uint64_t *w = (uint64_t *)SCR; w < (uint64_t *)(SCR + (1 << 16)); w++) *w = SCR;  // Zeiger zeigen auf sich selbst
+    for (uint64_t *w = (uint64_t *)SCR; w < (uint64_t *)(SCR + (1 << 16)); w++) *w = SCR;  // pointers point to themselves
     if (zti) rs.zti = zti;
     rs.sites = sites; rs.nsites = n;
     alarm(10);
     long r = (long)call(wrapper, f, SCR, 0, 0);
-    if (!rs.thrown) { printf("  %-11s %llx: kein gedeckter Aufruf erreicht (%d Aufrufe uebersprungen, Wrapper %ld)\n", kind, f, rs.skipped, r); return 1; }
+    if (!rs.thrown) { printf("  %-11s %llx: no covered call reached (%d calls skipped, wrapper %ld)\n", kind, f, rs.skipped, r); return 1; }
     unsigned long long expect = 0;
     for (int i = 0; i < n; i++)
         if (rs.ra - 4 >= sites[i][0] && rs.ra - 4 < sites[i][1]) { expect = sites[i][2]; break; }
@@ -289,7 +289,7 @@ static int real_main(const char *spec, uint64_t alloc, uint64_t thr, uint64_t zt
     {
         static char line[1 << 16];
         while (nl < 4096 && fgets(line, sizeof line, fp)) lines[nl++] = strdup(line);
-        fclose(fp);  // vor dem Forken lesen: exit() eines Kindes darf den Dateizeiger nicht zurückspulen
+        fclose(fp);  // read before forking: a child's exit() must not rewind the file pointer
     }
     int tot = 0, ok = 0, none = 0, bad = 0, crash = 0, trap = 0;
     for (int li = 0; li < nl; li++) {
@@ -303,13 +303,13 @@ static int real_main(const char *spec, uint64_t alloc, uint64_t thr, uint64_t zt
         if (WIFEXITED(st)) { int c = WEXITSTATUS(st); if (c == 0) ok++; else if (c == 1) none++; else if (c == 4) trap++; else bad++; }
         else { crash++; printf("  Absturz/Zeitueberschreitung (Signal %d) bei Eintrag %d\n", WIFSIGNALED(st) ? WTERMSIG(st) : 0, tot); }
     }
-    printf("REAL: %d echte LSDA-Funktionen aus main: %d bestanden (Landing-Pad stimmt), %d ohne erreichten gedeckten Aufruf, %d Landing-Pad-Abweichung, %d Absturz/Zeitlimit durch die synthetische Umgebung, %d Laufzeitfehler (UDF/fehlende Emulation)\n",
+    printf("REAL: %d real LSDA functions from main: %d passed (landing pad matches), %d without a covered call reached, %d landing pad mismatch, %d crash/timeout due to the synthetic environment, %d runtime errors (UDF/missing emulation)\n",
            tot, ok, none, bad, crash, trap);
     return bad ? 1 : 0;
 }
 
 static int fails;
-#define CHECK(cond, ...) do { if (!(cond)) { fails++; printf("  FEHLER: "); printf(__VA_ARGS__); printf("\n"); } } while (0)
+#define CHECK(cond, ...) do { if (!(cond)) { fails++; printf("  ERROR: "); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -323,7 +323,7 @@ int main(int argc, char **argv) {
     hle_bind();
 #ifdef REBASE32
     g_base = mmap(NULL, 1ull << 32, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
-    if (g_base == MAP_FAILED) die("4-GiB-Fenster nicht reservierbar");
+    if (g_base == MAP_FAILED) die("4 GiB window cannot be reserved");
     printf("Gastfenster 4 GiB bei Host %p\n", (void *)g_base);
 #endif
     map_file(argv[2], SDK_BASE);
@@ -337,7 +337,7 @@ int main(int argc, char **argv) {
 #ifdef REBASE32
     cpu->tpidrro = cpu->tpidr = galloc(0x400, 16);
 #else
-    cpu->tpidrro = cpu->tpidr = (uint64_t)(uintptr_t)calloc(1, 0x400);  // ThreadLocalRegion (0x200) des Gast-Threads
+    cpu->tpidrro = cpu->tpidr = (uint64_t)(uintptr_t)calloc(1, 0x400);  // ThreadLocalRegion (0x200) of the guest thread
 #endif
     uint64_t t_basic = 0, t_rethrow = 0, t_deep = 0, t_bad = 0, t_nothrow = 0, t_bench = 0, t_bt = 0, t_lj = 0;
     uint64_t a_alloc = 0, a_throw = 0, a_zti = 0, t_run = 0;
@@ -360,7 +360,7 @@ int main(int argc, char **argv) {
         else if (!strncmp(argv[i], "test_run=", 9)) t_run = v;
     }
     if (real_spec) {
-        if (!main_img || !main_fn_addrs) die("real=: mainimg= und ein main-Teilbau werden gebraucht");
+        if (!main_img || !main_fn_addrs) die("real=: mainimg= and a partial build of main are required");
         map_file(main_img, MAIN_BASE);
         tabs[2] = (Tab){ main_fn_addrs, main_fn_ptrs, main_fn_count };
         ntabs = 3;
@@ -371,51 +371,51 @@ int main(int argc, char **argv) {
     if (t_bt) {
         long *out = (long *)H(STACK_LO + 0x2000);
         long n = (long)call(t_bt, GA(out), 0, 0, 0);
-        printf("T0 Gast-Unwinder ohne Wurf (_Unwind_Backtrace): %ld Rahmen\n", n);
+        printf("T0 guest unwinder without throw (_Unwind_Backtrace): %ld frames\n", n);
         for (long i = 0; i < n && i < 30; i++)
-            printf("  Rahmen %ld: ip=%lx lsda=%lx start=%lx\n", i, out[1 + i * 3], out[2 + i * 3], out[3 + i * 3]);
+            printf("  frame %ld: ip=%lx lsda=%lx start=%lx\n", i, out[1 + i * 3], out[2 + i * 3], out[3 + i * 3]);
     }
 
-    printf("T1 throw -> catch ueber 3 Gastrahmen (leaf, mid, mid2 -> test_basic)\n");
+    printf("T1 throw -> catch across 3 guest frames (leaf, mid, mid2 -> test_basic)\n");
     *log = 1;
     long r = (long)call(t_basic, GA(log), 7, 5, 3);
     long k1 = 5 * 7 + 1, k2 = 3 * 5 + 2;
-    printf("  Rueckgabe %ld (erwartet %ld), Log %d (erwartet 1234)\n", r, 7 + k1 + k2, *log);
-    CHECK(r == 7 + k1 + k2, "Rueckgabe/Callee-Saved");
-    CHECK(*log == 1234, "Reihenfolge Aufraeumen/Fang");
+    printf("  return %ld (expected %ld), log %d (expected 1234)\n", r, 7 + k1 + k2, *log);
+    CHECK(r == 7 + k1 + k2, "return/callee-saved");
+    CHECK(*log == 1234, "order cleanup/catch");
 
-    printf("T2 kein Wurf: Rahmenkette bleibt konsistent\n");
+    printf("T2 no throw: frame chain stays consistent\n");
     *log = 1;
     r = (long)call(t_nothrow, GA(log), 0, 0, 0);
-    printf("  Rueckgabe %ld (erwartet 1), Log %d (erwartet 999992), Kette %p\n", r, *log, (void *)EH_TOP(cpu));
+    printf("  return %ld (expected 1), log %d (expected 999992), chain %p\n", r, *log, (void *)EH_TOP(cpu));
     CHECK(r == 1 && *log == 999992 && EH_TOP(cpu) == NULL, "nothrow");
 
-    printf("T3 catch(...) + throw; (Rethrow) + Fang mit Typ\n");
+    printf("T3 catch(...) + throw; (rethrow) + typed catch\n");
     *log = 1;
     r = (long)call(t_rethrow, GA(log), 9, 0, 0);
-    printf("  Rueckgabe %ld (erwartet 9), Log %d (erwartet 1256)\n", r, *log);
+    printf("  return %ld (expected 9), log %d (expected 1256)\n", r, *log);
     CHECK(r == 9 && *log == 256 + 1000, "rethrow");
 
-    printf("T4 Tiefe: 200 Rahmen mit Landing-Pads\n");
+    printf("T4 depth: 200 frames with landing pads\n");
     r = (long)call(t_deep, GA(log), 200, 5, 0);
-    printf("  Rueckgabe %ld (erwartet 5201)\n", r);
+    printf("  return %ld (expected 5201)\n", r);
     CHECK(r == 5 * 1000 + 201, "deep");
 
     if (t_bad) {
-        printf("T5 Wurf aus echtem SDK-Code (operator new -> bad_alloc)\n");
+        printf("T5 throw from real SDK code (operator new -> bad_alloc)\n");
         *log = 1;
         r = (long)call(t_bad, GA(log), 0, 0, 0);
-        printf("  Rueckgabe %ld (erwartet 77), Log %d (erwartet 17)\n", r, *log);
+        printf("  return %ld (expected 77), log %d (expected 17)\n", r, *log);
         CHECK(r == 77 && *log == 17, "badalloc");
     }
 
     if (t_lj) {
-        printf("T7 setjmp/longjmp (Wiedereinstieg hinter bl setjmp), longjmp aus 3 + 20 Rahmen, Destruktoren duerfen nicht laufen\n");
-        for (int pass = 0; pass < 2; pass++) {  // zweiter Durchlauf: Rahmenkette nach dem ersten Wiedereinstieg unversehrt
+        printf("T7 setjmp/longjmp (re-entry behind bl setjmp), longjmp from 3 + 20 frames, destructors must not run\n");
+        for (int pass = 0; pass < 2; pass++) {  // second pass: frame chain intact after the first re-entry
             *log = 1;
             r = (long)call(t_lj, GA(log), 5, 3, 20);
             long expect = 5 + (3 * 7 + 1) + (20 * 5 + 2);
-            printf("  Durchlauf %d: Rueckgabe %ld (erwartet %ld), Log %d (erwartet 18), Kette %p\n", pass + 1, r, expect, *log, (void *)EH_TOP(cpu));
+            printf("  pass %d: return %ld (expected %ld), log %d (expected 18), chain %p\n", pass + 1, r, expect, *log, (void *)EH_TOP(cpu));
             CHECK(r == expect && *log == 18 && EH_TOP(cpu) == NULL, "longjmp");
         }
     }
@@ -426,9 +426,9 @@ int main(int argc, char **argv) {
         long s = (long)call(t_bench, GA(log), n, 0, 0);
         clock_gettime(CLOCK_MONOTONIC, &b);
         double us = ((b.tv_sec - a.tv_sec) * 1e9 + (b.tv_nsec - a.tv_nsec)) / 1e3 / n;
-        printf("T6 Durchsatz: %ld Wuerfe, %.2f us je Wurf+Fang (4 Rahmen), Summe %ld\n", n, us, s);
+        printf("T6 throughput: %ld throws, %.2f us per throw+catch (4 frames), sum %ld\n", n, us, s);
     }
-    printf("Wiedereinstiege %llu, abgewickelte Host-Rahmen %llu\n", (unsigned long long)stats.nle_enters, (unsigned long long)stats.frames_dropped);
-    printf(fails ? "ERGEBNIS: %d FEHLER\n" : "ERGEBNIS: alle Tests bestanden\n", fails);
+    printf("Re-entries %llu, unwound host frames %llu\n", (unsigned long long)stats.nle_enters, (unsigned long long)stats.frames_dropped);
+    printf(fails ? "RESULT: %d ERRORS\n" : "RESULT: all tests passed\n", fails);
     return fails ? 1 : 0;
 }

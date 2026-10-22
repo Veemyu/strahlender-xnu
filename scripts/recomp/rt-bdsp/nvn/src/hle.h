@@ -1,5 +1,5 @@
-// Ersatz für runtime/hle.h des LAS-Klons: HLE_FUNC bindet eine Host-Funktion in einem Mach-O-Abschnitt an einen Namen;
-// hle_lookup_impl (nvn_glue.m) durchsucht ihn. Entwurf wie im Original (MIT, siehe NOTICE.md).
+// Replacement for runtime/hle.h of the LAS clone: HLE_FUNC binds a host function to a name in a Mach-O section;
+// hle_lookup_impl (nvn_glue.m) searches it. Design as in the original (MIT, see NOTICE.md).
 #pragma once
 #include <stdlib.h>
 
@@ -22,6 +22,6 @@ typedef struct { const char *name; HostFn fn; } HleImplEntry;
     static void fn(Cpu *c)
 
 #define RES_OK 0u
-// Neustart im Prozess gibt es hier nicht: die Rücksetz-Funktionen des Klons bleiben ungenutzt.
+// There is no in-process restart here: the clone's reset functions stay unused.
 #define RT_ON_RESET(fn) static void fn(void) __attribute__((unused)); static void fn(void)
 #define MAKE_RESULT(module, desc) ((uint32_t)(module) | ((uint32_t)(desc) << 9))

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""IL2CPP-Methodennamen -> Gastadresse (aus dem Speicherbild des Hauptmoduls und global-metadata.dat des RomFS).
+"""IL2CPP method names -> guest address (from the memory image of the main module and the RomFS's global-metadata.dat).
 
-Schreibt work/recomp/il2sym.tsv (Adresse hex <TAB> Name, nur Namen, keine Spielbytes im Repository). Verwendung:
-  python3 -I scripts/recomp/il2sym.py                       # (-I: kein Suchpfad des Skriptordners)
-  BDSP_IL2SYM=work/recomp/il2sym.tsv work/recomp/bdsp_boot ...   # jede Methode beim ersten Aufruf: "[il2] <ms> t<Thread> <Name>"
-  ... | python3 -I scripts/recomp/symres.py                  # Gastadressen in Berichten (Absturz, Ring) mit Namen versehen
-Umgebung: IMG (Standard work/recomp/img_gfx2), METADATA (Standard work/romfs/Data/Managed/Metadata/global-metadata.dat).
-Metadaten-Version 24 (Unity 2019): Kopf mit (Offset, Größe)-Paaren; Tabelle 20 = Images (40 Byte), 19 = Typen (92 Byte), 5 = Methoden (32 Byte),
-Tabelle 2 = Zeichenketten. Die Zeiger je Modul stehen in Il2CppCodeGenModule (Name, Zahl, Zeiger), gefunden über die Namenszeichenkette im Bild.
+Writes work/recomp/il2sym.tsv (address hex <TAB> name, names only, no game bytes in the repository). Usage:
+  python3 -I scripts/recomp/il2sym.py                       # (-I: no search path of the script folder)
+  BDSP_IL2SYM=work/recomp/il2sym.tsv work/recomp/bdsp_boot ...   # every method on its first call: "[il2] <ms> t<thread> <name>"
+  ... | python3 -I scripts/recomp/symres.py                  # annotate guest addresses in reports (crash, ring) with names
+Environment: IMG (default work/recomp/img_gfx2), METADATA (default work/romfs/Data/Managed/Metadata/global-metadata.dat).
+Metadata version 24 (Unity 2019): header with (offset, size) pairs; table 20 = images (40 bytes), 19 = types (92 bytes), 5 = methods (32 bytes),
+table 2 = strings. The pointers per module are in Il2CppCodeGenModule (name, count, pointer), found via the name string in the image.
 """
 import os
 import struct
@@ -38,7 +38,7 @@ imgs_off, imgs_sz = tab(20)
 td_off, td_sz = tab(19)
 m_off, m_sz = tab(5)
 nimg = imgs_sz // 40
-print("Images", nimg, "Typen", td_sz // 92, "Methoden", m_sz // 32)
+print("Images", nimg, "types", td_sz // 92, "methods", m_sz // 32)
 
 
 def u64(o):
@@ -69,7 +69,7 @@ for k in range(nimg):
         cnt, mp = u32(o + 8), u64(o + 16)
         if 0 < cnt < 200000 and BASE <= mp < BASE + len(img):
             modules[nm] = (cnt, mp - BASE)
-print("Module", len(modules))
+print("Modules", len(modules))
 out = []
 for k in range(nimg):
     nameidx, _asm, tstart, tcount = struct.unpack_from("<iiii", md, imgs_off + 40 * k)
@@ -93,4 +93,4 @@ dst = os.path.join(ROOT, "work/recomp/il2sym.tsv")
 with open(dst, "w") as fo:
     for p, n in out:
         fo.write("%x\t%s\n" % (p, n))
-print("Symbole", len(out), "->", dst)
+print("Symbols", len(out), "->", dst)

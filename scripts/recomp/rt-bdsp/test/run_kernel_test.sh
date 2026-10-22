@@ -1,5 +1,5 @@
 #!/bin/bash
-# Übersetzt und führt den synthetischen Kernel-Test aus. Braucht die Laufzeitobjekte (build.sh), aber nicht main.o.
+# Compiles and runs the synthetic kernel test. Needs the runtime objects (build.sh), but not main.o.
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 RT=${RT:-work/recomp/rt-bdsp}

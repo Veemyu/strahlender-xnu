@@ -1,6 +1,6 @@
-// Synthetischer Test der Exklusiv-Paar-Hilfen (rt/cpu.h: ldxp64/stxp64/ldxp32/stxp32) ohne Spielcode:
-// (1) Einzelthread-Semantik (Erfolg 0, Fehlschlag 1 nach fremdem Schreibzugriff), (2) 128-Bit-Zähler mit LL/SC-Schleife aus
-// 4 Threads, (3) 32-Bit-Paar. Übersetzen und ausführen: scripts/recomp/rt-bdsp/test/run_excl_test.sh
+// Synthetic test of the exclusive-pair helpers (rt/cpu.h: ldxp64/stxp64/ldxp32/stxp32) without game code:
+// (1) single-thread semantics (success 0, failure 1 after a foreign write), (2) 128-bit counter with an LL/SC loop from
+// 4 threads, (3) 32-bit pair. Compile and run: scripts/recomp/rt-bdsp/test/run_excl_test.sh
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +19,7 @@ volatile int g_fnprof;
 void fnprof_hit(uint64_t a, uint64_t b, uint64_t c) { (void)a; (void)b; (void)c; }
 
 static int fails;
-#define CHECK(x) do { if (!(x)) { printf("FEHLER Zeile %d: %s\n", __LINE__, #x); fails++; } } while (0)
+#define CHECK(x) do { if (!(x)) { printf("ERROR line %d: %s\n", __LINE__, #x); fails++; } } while (0)
 
 typedef struct { uint64_t lo, hi; } Pair __attribute__((aligned(16)));
 static Pair counter __attribute__((aligned(16)));
@@ -30,7 +30,7 @@ static void *worker(void *arg) {
     memset(c, 0, sizeof *c);
     (void)arg;
     for (int i = 0; i < ITER; i++) {
-        for (;;) {  // wie die Schleife im Spiel: ldxp; add (mit Übertrag); stxp; cbnz
+        for (;;) {  // like the loop in the game: ldxp; add (with carry); stxp; cbnz
             uint64_t lo, hi, a = (uint64_t)(uintptr_t)&counter;
             ldxp64(c, a, GPTR(a), &lo, &hi);
             uint64_t nlo = lo + 0xFFFFFFFFull, nhi = hi + (nlo < lo);
@@ -53,10 +53,10 @@ int main(void) {
     CHECK(stxp64(c, a, GPTR(a), 9, 9) == 1);  // Monitor ist verbraucht
     CHECK(p.lo == 7 && p.hi == 8);
     ldxp64(c, a, GPTR(a), &lo, &hi);
-    p.hi = 99;  // fremder Schreibzugriff zwischen ldxp und stxp
+    p.hi = 99;  // foreign write between ldxp and stxp
     CHECK(stxp64(c, a, GPTR(a), 1, 2) == 1);
     CHECK(p.lo == 7 && p.hi == 99);
-    // Wert unverändert, aber Adresse anders: stxp muss scheitern
+    // value unchanged, but different address: stxp must fail
     ldxp64(c, a, GPTR(a), &lo, &hi);
     CHECK(stxp64(c, a + 16, GPTR(a + 16), 1, 2) == 1);
 
@@ -73,6 +73,6 @@ int main(void) {
     unsigned __int128 total = ((unsigned __int128)counter.hi << 64) | counter.lo;
     unsigned __int128 expect = (unsigned __int128)THREADS * ITER * 0xFFFFFFFFull;
     CHECK(total == expect);
-    printf(fails ? "Exklusiv-Paare: %d Fehler\n" : "Exklusiv-Paare: bestanden (4 Threads x %d Zählschritte, Summe stimmt)\n", fails ? fails : ITER);
+    printf(fails ? "Exclusive pairs: %d errors\n" : "Exclusive pairs: passed (4 threads x %d count steps, sum matches)\n", fails ? fails : ITER);
     return fails != 0;
 }

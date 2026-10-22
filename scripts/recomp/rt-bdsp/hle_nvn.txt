@@ -1,5 +1,5 @@
-# Symbole, die mkimages.sh bei HLE_LIST=... an Host-Slots statt an die SDK-Definition bindet (Gate 2: NVN-Schicht und Anzeige auf dem Host).
-# Importe von main: nvnBootstrapLoader (die NVN-Funktionen holt der Gast über seine Rückgabe), nn::vi (5 Funktionen), nv (3 Funktionen).
+# Symbols that mkimages.sh binds to host slots instead of the SDK definition when HLE_LIST=... is set (gate 2: NVN layer and display on the host).
+# Imports of main: nvnBootstrapLoader (the guest fetches the NVN functions through its return value), nn::vi (5 functions), nv (3 functions).
 nvnBootstrapLoader
 _ZN2nn2vi10InitializeEv
 _ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE
@@ -9,9 +9,9 @@ _ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE
 _ZN2nv18InitializeGraphicsEPvm
 _ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_
 _ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_
-# Videowiedergabe: NULL-sicheres strcasecmp (leere Codec-Liste im SDK, siehe nvn_glue.c)
+# Video playback: NULL-safe strcasecmp (empty codec list in the SDK, see nvn_glue.c)
 strcasecmp
-# Eingabe: nn::hid-Npad-Zustand aus Tastatur/Testskript (nvn_glue.c)
+# Input: nn::hid Npad state from keyboard/test script (nvn_glue.c)
 _ZN2nn3hid12GetNpadStateEPNS0_16NpadFullKeyStateERKj
 _ZN2nn3hid12GetNpadStateEPNS0_16NpadJoyDualStateERKj
 _ZN2nn3hid12GetNpadStateEPNS0_16NpadJoyLeftStateERKj
@@ -23,7 +23,7 @@ _ZN2nn3hid13GetNpadStatesEPNS0_16NpadJoyLeftStateEiRKj
 _ZN2nn3hid13GetNpadStatesEPNS0_17NpadHandheldStateEiRKj
 _ZN2nn3hid13GetNpadStatesEPNS0_17NpadJoyRightStateEiRKj
 _ZN2nn3hid15GetNpadStyleSetERKj
-# Film: movie:: (nnMedia) mit FFmpeg (movie_glue.c)
+# Movie: movie:: (nnMedia) with FFmpeg (movie_glue.c)
 _ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_
 _ZN5movie11SetCoreMaskEm
 _ZN5movie17GetThreadPriorityEv

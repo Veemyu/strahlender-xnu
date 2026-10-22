@@ -22,7 +22,7 @@ for m in "${mods[@]}"; do
   fn=$(grep -o "[0-9]* functions" "$glog" | head -1 | cut -d' ' -f1)
   ch=$(ls "$OUT/$m"/*.c | wc -l)
   bytes=$(cat "$OUT/$m"/*.c | wc -c)
-  echo "modul=$m funktionen=$fn dateien=$ch c_bytes=$bytes $tm" | tee -a "$ST"
+  echo "module=$m functions=$fn files=$ch c_bytes=$bytes $tm" | tee -a "$ST"
 done
 tot1=$(date +%s.%N)
 echo "gesamt_wall_s=$(awk -v a="$tot1" -v b="$tot0" 'BEGIN{printf "%.1f", a-b}')" | tee -a "$ST"

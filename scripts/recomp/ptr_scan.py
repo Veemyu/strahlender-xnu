@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Sucht in den Modulen nach Anzeichen für Zeiger-Tags / 39-Bit-Annahmen (Speichermodell B, docs/architecture.md).
+"""Looks in the modules for signs of pointer tags / 39-bit assumptions (memory model B, docs/architecture.md).
 
-Eigener Code. Liest nur den lokalen Dump (work/exefs) und schreibt nach work/recomp/spike2/ptr_scan.json; ausgegeben
-werden nur Zähler. Heuristik über 64-Bit-Befehle (nur Zählung, keine Aussage über Semantik):
-  and_ptrmask   AND (imm) mit Maske 2^k-1, 39 <= k <= 63 (Zeigerbreite abschneiden)
-  and_lowmask   AND (imm) mit Maske 2^k-1, 32 <= k <= 38 (auf 32-39 Bit abschneiden)
-  or_hightag    ORR (imm) mit gesetztem Bit >= 40 (Tag setzen), eor_hightag: EOR (imm) ebenso
-  eor_allones   EOR (imm) mit Maske 0xFFFF...F (Boehm: GC_HIDE_POINTER und ähnliche Verdeckungen)
-  shift_high    LSR/ASR/UBFX/SBFX ab Bit >= 40 (Tag-/Höhenbits auslesen)
-  lsl_high      LSL um >= 40
-  movk_high     MOVK/MOVZ/MOVN mit Halbwort 2 oder 3 und Wert != 0/0xFFFF (hohe Konstanten, z. B. Tags)
-  ldr_sxtw      LDRSW (Hinweis auf 32-Bit-Werte, die zu 64 Bit erweitert werden)
+Own code. Reads only the local dump (work/exefs) and writes to work/recomp/spike2/ptr_scan.json; only counters
+are printed. Heuristic over 64-bit instructions (counting only, no statement about semantics):
+  and_ptrmask   AND (imm) with mask 2^k-1, 39 <= k <= 63 (truncate the pointer width)
+  and_lowmask   AND (imm) with mask 2^k-1, 32 <= k <= 38 (truncate to 32-39 bits)
+  or_hightag    ORR (imm) with a bit >= 40 set (set a tag), eor_hightag: EOR (imm) likewise
+  eor_allones   EOR (imm) with mask 0xFFFF...F (Boehm: GC_HIDE_POINTER and similar obfuscations)
+  shift_high    LSR/ASR/UBFX/SBFX from bit >= 40 (read tag/high bits)
+  lsl_high      LSL by >= 40
+  movk_high     MOVK/MOVZ/MOVN with halfword 2 or 3 and value != 0/0xFFFF (high constants, e.g. tags)
+  ldr_sxtw      LDRSW (hint at 32-bit values that are extended to 64 bits)
 """
 import json
 import struct

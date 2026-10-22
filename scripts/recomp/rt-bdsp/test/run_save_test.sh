@@ -1,5 +1,5 @@
 #!/bin/bash
-# Baut und startet save_test.c (Spielstand-Funktionen der App, synthetische Daten) unter work/recomp/save-test.
+# Builds and runs save_test.c (save functions of the app, synthetic data) under work/recomp/save-test.
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 mkdir -p work/recomp

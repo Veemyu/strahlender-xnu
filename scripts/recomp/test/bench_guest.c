@@ -1,9 +1,9 @@
-// Mikro-Benchmarks für den Leistungsvergleich "rekompiliert gegen nativ" (docs/architecture.md).
-// Eigener Code, kein Spielcode. Dieselbe Quelle wird (1) für aarch64-linux übersetzt und rekompiliert, (2) nativ auf
-// dem Mac übersetzt (bench_prove.c bindet sie mit umbenannten Symbolen ein).
+// Micro-benchmarks for the performance comparison "recompiled against native" (docs/architecture.md).
+// Own code, no game code. The same source is (1) compiled for aarch64-linux and recompiled, (2) compiled natively on
+// the Mac (bench_prove.c includes it with renamed symbols).
 typedef unsigned long u64;
 
-// Ganzzahl und Speicher: Xorshift, zufällige Zugriffe auf 32 KiB
+// Integer and memory: xorshift, random accesses to 32 KiB
 u64 bench_int(u64 *buf, u64 n) {
     u64 x = 88172645463325252ull, s = 0;
     for (u64 i = 0; i < n; i++) {
@@ -19,7 +19,7 @@ u64 bench_int(u64 *buf, u64 n) {
 u64 fib(u64 n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
 u64 bench_calls(u64 n) { return fib(n); }
 
-// Gleitkomma (Inline-asm-Blöcke im Rekompilat)
+// Floating point (inline asm blocks in the recompilation)
 double bench_float(double *buf, u64 n) {
     double a = 1.0001, b = 0.5;
     for (u64 i = 0; i < n; i++) {
@@ -30,7 +30,7 @@ double bench_float(double *buf, u64 n) {
     return b;
 }
 
-// Indirekte Aufrufe (Funktionszeiger-Tabelle: im Rekompilat ein rt_dispatch je Aufruf)
+// Indirect calls (function pointer table: one rt_dispatch per call in the recompilation)
 typedef u64 (*fn)(u64);
 __attribute__((noinline)) static u64 f0(u64 x) { return x + 1; }
 __attribute__((noinline)) static u64 f1(u64 x) { return x * 3; }

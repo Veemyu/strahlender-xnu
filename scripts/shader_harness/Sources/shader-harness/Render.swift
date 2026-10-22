@@ -11,10 +11,10 @@ struct RenderResult {
     var info: [String]
 }
 
-// Wie die GPU: Wert erst auf Float32 runden, dann exakt skalieren und runden
+// Like the GPU: first round the value to Float32, then scale exactly and round
 func toByte(_ v: Double) -> UInt8 { UInt8((min(max(Double(Float(v)), 0), 1) * 255).rounded()) }
 
-/// Liefert RGBA8 (nicht-vormultipliziert fuer Generatoren; PNG-Dateien werden von ImageIO vormultipliziert geladen).
+/// Returns RGBA8 (non-premultiplied for generators; PNG files are loaded premultiplied by ImageIO).
 func loadTexturePixels(_ src: TextureSource) throws -> (w: Int, h: Int, rgba: [UInt8]) {
     switch src {
     case .solid(let c):
@@ -36,7 +36,7 @@ func loadTexturePixels(_ src: TextureSource) throws -> (w: Int, h: Int, rgba: [U
         return (size, size, px)
     case .file(let url):
         guard let isrc = CGImageSourceCreateWithURL(url as CFURL, nil), let img = CGImageSourceCreateImageAtIndex(isrc, 0, nil) else {
-            throw HarnessError("Textur \(url.path) nicht ladbar (PNG/JPEG/TIFF erwartet)")
+            throw HarnessError("Textur \(url.path) not loadable (PNG/JPEG/TIFF expected)")
         }
         let w = img.width, h = img.height
         var px = [UInt8](repeating: 0, count: w * h * 4)
@@ -47,7 +47,7 @@ func loadTexturePixels(_ src: TextureSource) throws -> (w: Int, h: Int, rgba: [U
             ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
             return true
         }
-        guard ok else { throw HarnessError("Textur \(url.path): CGContext fehlgeschlagen") }
+        guard ok else { throw HarnessError("Texture \(url.path): CGContext failed") }
         return (w, h, px)
     }
 }
@@ -78,7 +78,7 @@ func compile(_ device: MTLDevice, _ msl: String, entry: String, label: String) t
         throw HarnessError("Metal-Compiler (\(label)): \(error.localizedDescription)")
     }
     guard let fn = lib.makeFunction(name: entry) else {
-        throw HarnessError("\(label): Funktion '\(entry)' nicht in MSL (vorhanden: \(lib.functionNames))")
+        throw HarnessError("\(label): function '\(entry)' not in MSL (available:\(lib.functionNames))")
     }
     return fn
 }
@@ -97,7 +97,7 @@ func describe(_ args: [MTLArgument]) -> [String] {
 }
 
 func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -> RenderResult {
-    guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { throw HarnessError("kein Metal-Geraet") }
+    guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { throw HarnessError("no Metal device") }
     var info = ["device=\(device.name) math=\(useFastMath ? "fast" : "safe")"]
     let vfn = try compile(device, vsMSL, entry: spec.vertex.entry, label: "Vertex")
     let ffn = try compile(device, fsMSL, entry: spec.fragment.entry, label: "Fragment")
@@ -125,17 +125,17 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
     }
     for vb in spec.vertexBuffers {
         let stride = vb.stride ?? strides[vb.slot] ?? 0
-        guard stride > 0 else { throw HarnessError("Vertexpuffer \(vb.slot): Stride unbekannt (stride angeben oder Attribute definieren)") }
+        guard stride > 0 else { throw HarnessError("Vertex buffer \(vb.slot): stride unknown (give stride or define attributes)") }
         vd.layouts[vb.slot].stride = stride
         vd.layouts[vb.slot].stepFunction = vb.perInstance ? .perInstance : .perVertex
     }
     for a in spec.attributes where !spec.vertexBuffers.contains(where: { $0.slot == a.buffer }) {
-        throw HarnessError("Attribut \(a.location) verweist auf Vertexpuffer-Slot \(a.buffer), der nicht definiert ist")
+        throw HarnessError("Attribute \(a.location) refers to vertex buffer slot \(a.buffer), which is not defined")
     }
     if !vfn.vertexAttributes!.isEmpty { desc.vertexDescriptor = vd }
 
     for a in vfn.vertexAttributes! where a.isActive && !spec.attributes.contains(where: { $0.location == a.attributeIndex }) {
-        throw HarnessError("Vertex-Attribut \(a.attributeIndex) '\(a.name)' ist aktiv, aber nicht in 'attributes' beschrieben")
+        throw HarnessError("Vertex attribute \(a.attributeIndex) '\(a.name)' is active, but not described in 'attributes'")
     }
     var refl: MTLRenderPipelineReflection?
     let pso: MTLRenderPipelineState
@@ -147,12 +147,12 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
     info.append("fragment-bindings:"); info += describe(fArgs)
     if infoOnly { return RenderResult(width: 0, height: 0, rgba: [], info: info) }
 
-    guard let cb = queue.makeCommandBuffer() else { throw HarnessError("Command-Buffer fehlgeschlagen") }
+    guard let cb = queue.makeCommandBuffer() else { throw HarnessError("Command buffer failed") }
 
     // Ziel-Texturen
     let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: spec.width, height: spec.height, mipmapped: false)
     td.usage = [.renderTarget]; td.storageMode = .shared
-    guard let color = device.makeTexture(descriptor: td) else { throw HarnessError("Farbtextur fehlgeschlagen") }
+    guard let color = device.makeTexture(descriptor: td) else { throw HarnessError("Color texture failed") }
     let rp = MTLRenderPassDescriptor()
     rp.colorAttachments[0].texture = color
     rp.colorAttachments[0].loadAction = .clear
@@ -173,7 +173,7 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
         dss = device.makeDepthStencilState(descriptor: ds)
     }
 
-    // Eingaben vorbereiten (Texturen mit Mipmaps brauchen vorher einen Blit)
+    // Prepare the inputs (textures with mipmaps need a blit first)
     var textures: [(TextureSpec, MTLTexture, MTLSamplerState)] = []
     var needMips: [MTLTexture] = []
     for t in spec.textures {
@@ -183,14 +183,14 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
         let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: t.format, width: w, height: h, mipmapped: false)
         d.mipmapLevelCount = levels
         d.usage = [.shaderRead]; d.storageMode = .shared
-        guard let tex = device.makeTexture(descriptor: d) else { throw HarnessError("Textur (slot \(t.slot)) fehlgeschlagen") }
+        guard let tex = device.makeTexture(descriptor: d) else { throw HarnessError("Texture (slot \(t.slot)) failed") }
         let data: [UInt8] = one ? stride(from: 0, to: rgba.count, by: 4).map { rgba[$0] } : rgba
         data.withUnsafeBytes { tex.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: w * (one ? 1 : 4)) }
         if levels > 1 { needMips.append(tex) }
         let sd = MTLSamplerDescriptor()
         sd.minFilter = t.sampler.minFilter; sd.magFilter = t.sampler.magFilter; sd.mipFilter = t.sampler.mipFilter
         sd.sAddressMode = t.sampler.s; sd.tAddressMode = t.sampler.t; sd.rAddressMode = t.sampler.r
-        guard let smp = device.makeSamplerState(descriptor: sd) else { throw HarnessError("Sampler fehlgeschlagen") }
+        guard let smp = device.makeSamplerState(descriptor: sd) else { throw HarnessError("Sampler failed") }
         textures.append((t, tex, smp))
     }
     if !needMips.isEmpty, let blit = cb.makeBlitCommandEncoder() {
@@ -198,7 +198,7 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
         blit.endEncoding()
     }
 
-    guard let enc = cb.makeRenderCommandEncoder(descriptor: rp) else { throw HarnessError("Encoder fehlgeschlagen") }
+    guard let enc = cb.makeRenderCommandEncoder(descriptor: rp) else { throw HarnessError("Encoder failed") }
     var encoderOpen = true
     defer { if encoderOpen { enc.endEncoding() } }
     enc.setRenderPipelineState(pso)
@@ -212,10 +212,10 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
     var inferredCount = 0
     for vb in spec.vertexBuffers {
         guard !vb.data.isEmpty, let buf = vb.data.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: vb.data.count, options: .storageModeShared) }) else {
-            throw HarnessError("Vertexpuffer \(vb.slot): leer oder nicht anlegbar")
+            throw HarnessError("Vertex buffer \(vb.slot): empty or cannot be created")
         }
         if spec.buffers.contains(where: { $0.stage == "vertex" && $0.slot == vb.slot }) {
-            throw HarnessError("Slot \(vb.slot) ist gleichzeitig Vertexpuffer und Uniform-Buffer der Vertexstufe")
+            throw HarnessError("Slot \(vb.slot) is both vertex buffer and uniform buffer of the vertex stage")
         }
         enc.setVertexBuffer(buf, offset: 0, index: vb.slot)
         if !vb.perInstance, let st = vb.stride ?? strides[vb.slot], st > 0 { inferredCount = max(inferredCount, vb.data.count / st) }
@@ -236,18 +236,18 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
                         bytes.replaceSubrange(w.offset..<(w.offset + w.data.count), with: w.data)
                     }
                 } else {
-                    info.append("WARNUNG: \(stage)-Buffer \(a.index) '\(a.name)' nicht in 'buffers' -> mit Nullen belegt")
+                    info.append("WARNING: \(stage) buffer \(a.index) '\(a.name)' not in 'buffers' -> filled with zeros")
                 }
                 let buf = bytes.withUnsafeBytes { device.makeBuffer(bytes: $0.baseAddress!, length: bytes.count, options: .storageModeShared)! }
                 if stage == "vertex" { enc.setVertexBuffer(buf, offset: 0, index: a.index) } else { enc.setFragmentBuffer(buf, offset: 0, index: a.index) }
             case .texture:
                 guard let t = textures.first(where: { $0.0.stage == stage && $0.0.slot == a.index }) else {
-                    throw HarnessError("\(stage)-Textur \(a.index) '\(a.name)' wird benutzt, ist aber nicht in 'textures' angegeben")
+                    throw HarnessError("\(stage) texture \(a.index) '\(a.name)' is used, but not given in 'textures'")
                 }
                 if stage == "vertex" { enc.setVertexTexture(t.1, index: a.index) } else { enc.setFragmentTexture(t.1, index: a.index) }
             case .sampler:
                 guard let t = textures.first(where: { $0.0.stage == stage && $0.0.samplerSlot == a.index }) else {
-                    throw HarnessError("\(stage)-Sampler \(a.index) '\(a.name)' wird benutzt, aber keine Textur mit samplerSlot \(a.index)")
+                    throw HarnessError("\(stage) sampler \(a.index) '\(a.name)' is used, but no texture with samplerSlot \(a.index)")
                 }
                 if stage == "vertex" { enc.setVertexSamplerState(t.2, index: a.index) } else { enc.setFragmentSamplerState(t.2, index: a.index) }
             default: break
@@ -255,7 +255,7 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
         }
     }
     for t in spec.textures where !(t.stage == "vertex" ? vArgs : fArgs).contains(where: { $0.type == .texture && $0.index == t.slot && $0.isActive }) {
-        info.append("WARNUNG: Textur \(t.stage)/\(t.slot) wird vom Shader nicht benutzt")
+        info.append("WARNING: texture \(t.stage)/\(t.slot) is not used by the shader")
     }
 
     if let idx = spec.indices {
@@ -265,21 +265,21 @@ func render(_ spec: Spec, vsMSL: String, fsMSL: String, infoOnly: Bool) throws -
         enc.drawIndexedPrimitives(type: spec.topology, indexCount: idx.count, indexType: spec.indexType, indexBuffer: ib, indexBufferOffset: 0, instanceCount: spec.instanceCount)
     } else {
         let n = spec.vertexCount > 0 ? spec.vertexCount : inferredCount
-        guard n > 0 else { throw HarnessError("vertexCount fehlt und laesst sich nicht aus den Vertexpuffern ableiten") }
+        guard n > 0 else { throw HarnessError("vertexCount missing and cannot be derived from the vertex buffers") }
         enc.drawPrimitives(type: spec.topology, vertexStart: 0, vertexCount: n, instanceCount: spec.instanceCount)
     }
     encoderOpen = false
     enc.endEncoding()
     cb.commit()
     cb.waitUntilCompleted()
-    if let e = cb.error { throw HarnessError("GPU-Fehler: \(e.localizedDescription)") }
+    if let e = cb.error { throw HarnessError("GPU error:\(e.localizedDescription)") }
 
     var px = [UInt8](repeating: 0, count: spec.width * spec.height * 4)
     color.getBytes(&px, bytesPerRow: spec.width * 4, from: MTLRegionMake2D(0, 0, spec.width, spec.height), mipmapLevel: 0)
     return RenderResult(width: spec.width, height: spec.height, rgba: px, info: info)
 }
 
-/// Schreibt RGBA8 (nicht vormultipliziert) als PNG ueber ImageIO.
+/// Writes RGBA8 (non-premultiplied) as PNG via ImageIO.
 func writePNG(_ r: RenderResult, to url: URL) throws {
     let data = Data(r.rgba)
     guard let prov = CGDataProvider(data: data as CFData),
@@ -288,8 +288,8 @@ func writePNG(_ r: RenderResult, to url: URL) throws {
                             bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: prov,
                             decode: nil, shouldInterpolate: false, intent: .defaultIntent),
           let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-        throw HarnessError("PNG-Ausgabe \(url.path) nicht anlegbar")
+        throw HarnessError("PNG output \(url.path) cannot be created")
     }
     CGImageDestinationAddImage(dest, img, nil)
-    guard CGImageDestinationFinalize(dest) else { throw HarnessError("PNG schreiben fehlgeschlagen: \(url.path)") }
+    guard CGImageDestinationFinalize(dest) else { throw HarnessError("Writing the PNG failed:\(url.path)") }
 }

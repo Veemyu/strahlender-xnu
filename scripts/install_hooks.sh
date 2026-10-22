@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Installiert den Pre-Commit-Hook, der scripts/repo_check.py --staged ausführt.
-# Eigener Code. Der Hook liegt lokal in .git/hooks und wird nicht getrackt.
+# Installs the pre-commit hook that runs scripts/repo_check.py --staged.
+# Own code. The hook lives locally in .git/hooks and is not tracked.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOOK="$ROOT/.git/hooks/pre-commit"
 cat > "$HOOK" <<'EOF'
 #!/usr/bin/env bash
-# Blockiert Commits mit Spieldaten, Schlüsseln oder Dumps (scripts/repo_check.py).
+# Blocks commits with game data, keys or dumps (scripts/repo_check.py).
 exec python3 "$(git rev-parse --show-toplevel)/scripts/repo_check.py" --staged
 EOF
 chmod +x "$HOOK"
-echo "Hook installiert: $HOOK"
+echo "Hook installed: $HOOK"

@@ -1,4 +1,4 @@
-// Ersatz für runtime/ui/menu.h: kein Overlay-Menü.
+// Replacement for runtime/ui/menu.h: no overlay menu.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

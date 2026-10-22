@@ -1,11 +1,11 @@
-// Speichermodell B (32-Bit-Gastadressen): Zugriffe als *(T*)(g_base + (uint32_t)ea).
-// Eigener Code für den Spike (docs/architecture.md, Speichermodell). Wird mit -DREBASE32 und vor scripts/recomp/rt im
-// Include-Pfad benutzt (-I scripts/recomp/rt32 -I scripts/recomp/rt -I <las>/runtime) und überschreibt die Speicher-
-// Makros der Original-cpu.h. Der Generator bleibt unverändert; FP/SIMD muss im C-Modus (--simd c) erzeugt werden,
-// weil der Inline-asm-Modus Gastadressen direkt als Hostadressen benutzt.
+// Memory model B (32-bit guest addresses): accesses as *(T*)(g_base + (uint32_t)ea).
+// Own code for the spike (docs/architecture.md, memory model). Used with -DREBASE32 and before scripts/recomp/rt in the
+// include path (-I scripts/recomp/rt32 -I scripts/recomp/rt -I <las>/runtime) and overrides the memory
+// macros of the original cpu.h. The generator stays unchanged; FP/SIMD must be generated in c mode (--simd c),
+// because the inline asm mode uses guest addresses directly as host addresses.
 #pragma once
 #include <stdint.h>
-// Die Exklusiv-/Acquire-Hilfen der Original-cpu.h benutzen (T *)(uintptr_t)a: umbenennen, unten neu definieren.
+// The exclusive/acquire helpers of the original cpu.h use (T *)(uintptr_t)a: rename them, redefine below.
 #define ldx8 orig_ldx8
 #define ldx16 orig_ldx16
 #define ldx32 orig_ldx32
@@ -43,7 +43,7 @@
 extern uint8_t *g_base;  // Basis des 4-GiB-Gastfensters (vom Host gesetzt)
 #define G2H(a) ((void *)(g_base + (uint32_t)(a)))
 #undef GPTR
-#define GPTR(a) G2H(a)  // Exklusiv-Paare (rt/cpu.h)
+#define GPTR(a) G2H(a)  // exclusive pairs (rt/cpu.h)
 
 #undef LD8
 #undef LD16
@@ -83,8 +83,8 @@ EXCL32(16, uint16_t)
 EXCL32(32, uint32_t)
 EXCL32(64, uint64_t)
 
-// DC ZVA erzeugt der Lifter als memset((void*)(uintptr_t)(Xn & ~63ull), 0, 64) mit der Gastadresse als Hostzeiger. Nur im erzeugten Code
-// (-DRT32_GEN, ios/compile_chunk_ios.sh) wird das memset auf die Gastbasis umgerechnet; die Laufzeit selbst bleibt unberührt.
+// The lifter emits DC ZVA as memset((void*)(uintptr_t)(Xn & ~63ull), 0, 64) with the guest address as host pointer. Only in the generated code
+// (-DRT32_GEN, ios/compile_chunk_ios.sh) is the memset converted to the guest base; the runtime itself stays untouched.
 #ifdef RT32_GEN
 static inline void *rt32_zva(void *p, int v, unsigned long n) { return __builtin_memset((void *)(g_base + (uint32_t)(uintptr_t)p), v, n); }
 #define memset(p, v, n) rt32_zva(p, v, n)

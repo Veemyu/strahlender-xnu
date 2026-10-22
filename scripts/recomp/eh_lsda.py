@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Phase-2-Spike der Rekompilation: .eh_frame / LSDA (C++-Landing-Pads) eines NSO-Moduls auswerten.
 
-Eigener Code. Liest nur lokale Dateien (work/exefs, NSO) und schreibt Zahlen nach work/recomp/spike2/.
-Es werden keine Spielbytes, kein erzeugter Code und keine Adressen in das Repo geschrieben; die Ausgabe
-enthält Zähler, Formen von Call-Site-Tabellen und (nur auf der Konsole bzw. unter work/) Moduladressen.
+Own code. Reads only local files (work/exefs, NSO) and writes numbers to work/recomp/spike2/.
+No game bytes, no generated code and no addresses are written to the repo; the output
+contains counters, shapes of call site tables and (only on the console or under work/) module addresses.
 
-Das Modul stellt auch die Bausteine für den Generator bereit (`eh_gen.py`):
-  parse_module(image, eh_hdr_off)  ->  Liste von FDE-Beschreibungen mit LSDA-Call-Sites
-  landing_pads(fdes)               ->  {Funktionsanfang: [Landing-Pad-Adressen]}
+The module also provides the building blocks for the generator (`eh_gen.py`):
+  parse_module(image, eh_hdr_off)  ->  list of FDE descriptions with LSDA call sites
+  landing_pads(fdes)               ->  {function start: [landing pad addresses]}
 
-Unterbefehle:
-  survey [--module M]   Zahlen über alle Module (FDEs, LSDA, Call-Sites, Landing-Pads, Aktionsarten)
-  sample [--module M]   drei echte Funktionen mit unterschiedlicher Form auswählen und beschreiben
+Subcommands:
+  survey [--module M]   numbers over all modules (FDEs, LSDA, call sites, landing pads, action kinds)
+  sample [--module M]   pick and describe three real functions of different shapes
 """
 import argparse
 import json
@@ -54,7 +54,7 @@ def sleb(img, p):
 
 
 def read_enc(img, p, enc):
-    """DWARF-EH-Zeigerkodierung lesen: (Wert, nächste Position). pcrel ist relativ zur Lesestelle (Basis 0)."""
+    """Read a DWARF EH pointer encoding: (value, next position). pcrel is relative to the read position (base 0)."""
     if enc == DW_EH_PE_omit:
         return None, p
     fmt, app = enc & 0x0F, enc & 0x70
@@ -120,7 +120,7 @@ def parse_cie(img, off):
 
 
 def parse_lsda(img, p):
-    """LSDA lesen. Rückgabe: dict mit Call-Sites [(start, len, lp, action)], Aktionen, Typtabelle."""
+    """Read an LSDA. Returns: dict with call sites [(start, len, lp, action)], actions, type table."""
     lp_enc = img[p]
     p += 1
     lpstart = None
@@ -143,19 +143,19 @@ def parse_lsda(img, p):
         lp, p = read_enc(img, p, cs_enc)
         act, p = uleb(img, p)
         sites.append((start, ln, lp, act))
-    # Aktionstabelle: ab cs_end bis zur Typtabelle (Einträge: filter SLEB, next SLEB; Verweis = 1-basiert in Bytes)
+    # Action table: from cs_end to the type table (entries: filter SLEB, next SLEB; reference = 1-based in bytes)
     actions = {}
     act_base = cs_end
     q = act_base
     limit = (tt_end - 0) if tt_end else q
-    # Die Typtabelle liegt rückwärts vor tt_end; die Aktionstabelle endet dort, wo sie beginnt. Wir lesen
-    # Aktionen nur bei Bedarf über die Verkettung der Call-Sites ab (siehe action_chain).
+    # The type table lies backwards before tt_end; the action table ends where it begins. We read
+    # actions only on demand through the chaining of the call sites (see action_chain).
     return {"lpstart": lpstart, "tt_enc": tt_enc, "tt_end": tt_end, "sites": sites, "act_base": act_base,
             "cs_enc": cs_enc, "end_cs": cs_end}
 
 
 def action_chain(img, lsda, act):
-    """Aktionskette ab Verweis `act` (1-basiert in die Aktionstabelle). -> Liste von Filtern (SLEB)."""
+    """Action chain from reference `act` (1-based into the action table). -> list of filters (SLEB)."""
     out, off = [], act
     guard = 0
     while off and guard < 64:
@@ -171,17 +171,17 @@ def action_chain(img, lsda, act):
 
 
 def type_entry(img, lsda, flt):
-    """Typtabelleneintrag für Filter > 0: Zeigerwert oder 0 (= catch(...))."""
+    """Type table entry for filter > 0: pointer value or 0 (= catch(...))."""
     enc = lsda["tt_enc"]
     sizes = {0x00: 8, 0x03: 4, 0x0B: 4, 0x04: 8, 0x0C: 8, 0x02: 2, 0x0A: 2}
     sz = sizes.get(enc & 0x0F, 4)
     p = lsda["tt_end"] - flt * sz
-    v, _ = read_enc(img, p, enc & 0x0F)  # Rohwert: 0 heißt catch(...)
+    v, _ = read_enc(img, p, enc & 0x0F)  # raw value: 0 means catch(...)
     return v
 
 
 def parse_module(img, hdr_off):
-    """Alle FDEs aus .eh_frame_hdr: Liste von dicts (start, size, lsda, sites, cie-Infos)."""
+    """All FDEs from .eh_frame_hdr: list of dicts (start, size, lsda, sites, CIE info)."""
     ver, ptr_enc, cnt_enc, tbl_enc = img[hdr_off:hdr_off + 4]
     p = hdr_off + 4
     _, p = read_enc(img, p, ptr_enc)
@@ -190,7 +190,7 @@ def parse_module(img, hdr_off):
     for i in range(count):
         loc, p = read_enc(img, p, tbl_enc & 0x0F)
         fde_off, p = read_enc(img, p, tbl_enc & 0x0F)
-        if (tbl_enc & 0x70) == 0x30:  # datarel: relativ zum Beginn der Hdr
+        if (tbl_enc & 0x70) == 0x30:  # datarel: relative to the start of the hdr
             loc += hdr_off
             fde_off += hdr_off
         ln = struct.unpack_from("<I", img, fde_off)[0]
@@ -301,7 +301,7 @@ def cmd_survey(args):
 
 
 def cfa_census(img, fdes):
-    """Zählt die DWARF-CFA-Befehle in den FDE-Programmen (Operandenlängen nach DWARF 5 / GNU-Erweiterungen)."""
+    """Counts the DWARF CFA instructions in the FDE programs (operand lengths per DWARF 5 / GNU extensions)."""
     names = {0x00: "nop", 0x01: "set_loc", 0x02: "advance_loc1", 0x03: "advance_loc2", 0x04: "advance_loc4",
              0x05: "offset_extended", 0x06: "restore_extended", 0x07: "undefined", 0x08: "same_value",
              0x09: "register", 0x0A: "remember_state", 0x0B: "restore_state", 0x0C: "def_cfa",
@@ -322,7 +322,7 @@ def cfa_census(img, fdes):
                 if hi == 0x80:
                     _, p = uleb(img, p)
             else:
-                nm = names.get(op, f"unbekannt_{op:#x}")
+                nm = names.get(op, f"unknown_{op:#x}")
                 if op in (0x05, 0x09, 0x0C, 0x11, 0x14):
                     _, p = uleb(img, p)
                     _, p = (sleb if op in (0x11,) else uleb)(img, p)
@@ -369,14 +369,14 @@ def cmd_cfa(args):
         res[name] = {"fdes": len(fdes), "opcodes": dict(cnt.most_common()), "fdes_containing_opcode": dict(fw.most_common())}
         rare = {k: v for k, v in fw.items() if k in ("remember_state", "restore_state", "def_cfa_expression",
                                                      "expression", "val_expression", "aarch64_negate_ra_state")
-                or k.startswith("unbekannt")}
-        print(name, "FDEs", len(fdes), "seltene/kritische Befehle (FDEs mit Befehl):", rare)
+                or k.startswith("unknown")}
+        print(name, "FDEs", len(fdes), "rare/critical instructions (FDEs with the instruction):", rare)
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "eh_cfa_census.json").write_text(json.dumps(res, indent=1))
 
 
 def cmd_sample(args):
-    """Drei echte LSDA-Funktionen (Stichprobe: nur Kennzahlen, keine Adressen im Repo)."""
+    """Three real LSDA functions (sample: key figures only, no addresses in the repo)."""
     n, img, hdr = load_module(args.module)
     fdes = parse_module(img, hdr)
     cand = {"cleanup_only": None, "catch_typed": None, "catch_all": None}

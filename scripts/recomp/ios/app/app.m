@@ -1,6 +1,6 @@
-// iPadOS-Hülle der BDSP-Rekompilation (Speichermodell B): UIKit-Fenster mit CAMetalLayer, Touch-Gamepad, GameController, Hardware-Tastatur,
-// Pfade (Documents), Spielstand-Import, Messzeilen. Die Laufzeit läuft auf einem eigenen Thread (bdsp_runtime_main = main.c mit -Dmain=...).
-// PCM-Ton über Audio Queue Services und AVAudioSession. Eigener Code.
+// iPadOS shell of the BDSP recompilation (memory model B): UIKit window with CAMetalLayer, touch gamepad, GameController, hardware keyboard,
+// paths (Documents), save import, measurement lines. The runtime runs on a thread of its own (bdsp_runtime_main = main.c with -Dmain=...).
+// PCM sound through Audio Queue Services and AVAudioSession. Own code.
 #import <AVFAudio/AVFAudio.h>
 #import <GameController/GameController.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -14,7 +14,7 @@
 #include <sys/stat.h>
 #import "../../app/icon_variants.h"
 
-static BOOL sceneActive;   // Zustand der Szene, von SceneDelegate gesetzt
+static BOOL sceneActive;   // state of the scene, set by SceneDelegate
 
 static void ApplyAppIcon(void) {
     static BOOL pending;
@@ -70,7 +70,7 @@ static void ConfigureAudioSession(void) {
     SetAudioActive(sceneActive && !audioInterrupted);
 }
 #ifdef BDSP_STUB
-// Sondenbau (deploy_ios.sh build-stub): ohne Laufzeit und Gastcode; meldet Gerätedaten und prüft das 4-GiB-Fenster auf dem Gerät.
+// Probe build (deploy_ios.sh build-stub): without runtime and guest code; reports device data and checks the 4 GiB window on the device.
 #import <Metal/Metal.h>
 #include <sys/mman.h>
 CAMetalLayer *g_ios_layer;
@@ -86,13 +86,13 @@ int bdsp_runtime_main(int argc, char **argv) {
     size_t sizes[] = {4096ull << 20, 5200ull << 20, 6000ull << 20, 12800ull << 20};
     for (int i = 0; i < 4; i++) {
         void *p = mmap(NULL, sizes[i], PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-        fprintf(stderr, "[probe] mmap %zu MiB anonym: %s (%p)\n", sizes[i] >> 20, p == MAP_FAILED ? "FEHLER" : "ok", p);
+        fprintf(stderr, "[probe] mmap %zu MiB anonymous: %s (%p)\n", sizes[i] >> 20, p == MAP_FAILED ? "ERROR" : "ok", p);
         if (p != MAP_FAILED) {
             void *b = NULL;
             if (sizes[i] <= (4096ull << 20) + (1ull << 30)) {
                 id<MTLBuffer> mb = [d newBufferWithBytesNoCopy:p length:sizes[i] options:MTLResourceStorageModeShared deallocator:nil];
                 b = (__bridge void *)mb;
-                fprintf(stderr, "[probe]   Metal-Puffer um %zu MiB: %s\n", sizes[i] >> 20, mb ? "ok" : "FEHLER");
+                fprintf(stderr, "[probe]   Metal buffer around %zu MiB: %s\n", sizes[i] >> 20, mb ? "ok" : "ERROR");
             }
             (void)b;
             memset(p, 1, 256ull << 20);   // 256 MiB wirklich anfassen
@@ -104,14 +104,14 @@ int bdsp_runtime_main(int argc, char **argv) {
 }
 #endif
 
-// Bits wie enum PB_* in nvn_glue.c
+// Bits as in enum PB_* in nvn_glue.c
 enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
 #define BIT(b) (1ull << (b))
 
 static _Atomic uint64_t g_touch_mask, g_pad_mask, g_key_mask;
 static void publish_buttons(void) { atomic_store(&g_ext_buttons, g_touch_mask | g_pad_mask | g_key_mask); }
 
-#pragma mark - Pfade, Spielstand
+#pragma mark - Paths, save
 
 static NSString *Documents(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject; }
 
@@ -123,8 +123,8 @@ static NSString *Sha256(NSData *d) {
     return s;
 }
 
-// Ablage-Dateien in Documents/ (Dateien-App, devicectl; devicectl legt Ordner als root an, darum nur Dateien) in Documents/Saves/save_1
-// übernehmen: SaveData.bin, Backup.bin, user_id.hex. Eine unveränderte Datei (Hash in Documents/ImportedDropIn.txt) wird nicht erneut importiert.
+// Take drop files in Documents/ (Files app, devicectl; devicectl creates folders as root, hence files only) over into Documents/Saves/save_1:
+// SaveData.bin, Backup.bin, user_id.hex. An unchanged file (hash in Documents/ImportedDropIn.txt) is not imported again.
 static void ImportSave(void) {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *docs = Documents(), *slot = [docs stringByAppendingPathComponent:@"Saves/save_1"];
@@ -144,7 +144,7 @@ static void ImportSave(void) {
             NSData *b = [NSData dataWithContentsOfFile:[docs stringByAppendingPathComponent:@"Backup.bin"]];
             if (b.length) [b writeToFile:[slot stringByAppendingPathComponent:@"Backup.bin"] atomically:YES];
             [h writeToFile:memo atomically:YES encoding:NSUTF8StringEncoding error:nil];
-            fprintf(stderr, "[ipad] Spielstand importiert (%lu Byte, sha256 %s)\n", (unsigned long)drop.length, [h substringToIndex:12].UTF8String);
+            fprintf(stderr, "[ipad] Save imported (%lu bytes, sha256 %s)\n", (unsigned long)drop.length, [h substringToIndex:12].UTF8String);
         }
     }
     NSString *uid = [docs stringByAppendingPathComponent:@"user_id.hex"];
@@ -310,7 +310,7 @@ static void BindController(GCController *c) {
     GCExtendedGamepad *g = c.extendedGamepad;
     if (!g) return;
     __weak GCExtendedGamepad *wg = g;
-    // Tastenlage der Konsole (nach Position): A = rechts, B = unten, X = oben, Y = links; GameController nennt unten „A“
+    // Button layout of the console (by position): A = right, B = bottom, X = top, Y = left; GameController calls the bottom one "A"
     void (^update)(void) = ^{
         GCExtendedGamepad *p = wg;
         if (!p) return;
@@ -410,7 +410,7 @@ static void *RuntimeThread(void *arg) {
     pthread_setname_np("bdsp-runtime");
     char *argv[] = {"bdsp", NULL};
     int rc = bdsp_runtime_main(1, argv);
-    fprintf(stderr, "[ipad] Laufzeit beendet (%d)\n", rc);
+    fprintf(stderr, "[ipad] Runtime ended (%d)\n", rc);
     exit(rc);
     return NULL;
 }
@@ -419,7 +419,7 @@ static void *RuntimeThread(void *arg) {
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)opts {
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
-    // Metal liest MTL_HUD_ENABLED beim Start des Geräts; deshalb vor jeder Metal-Nutzung setzen (Neustart nötig)
+    // Metal reads MTL_HUD_ENABLED when the device starts; therefore set it before any Metal use (restart required)
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"bdsp_metal_hud"]) setenv("MTL_HUD_ENABLED", "1", 1);
     fprintf(stderr, "[ipad] Metal-HUD %s\n", getenv("MTL_HUD_ENABLED") ? "an" : "aus");
     app.idleTimerDisabled = YES;
@@ -428,7 +428,7 @@ static void *RuntimeThread(void *arg) {
                                                 usingBlock:^(NSNotification *n) {
         BindController(n.object);
         GameView *v = gView;
-        v.overlayHidden = YES;   // mit Controller: Touch-Gamepad aus
+        v.overlayHidden = YES;   // with controller: touch gamepad off
         [v buildOverlay];
     }];
     [NSNotificationCenter.defaultCenter addObserverForName:GCControllerDidDisconnectNotification object:nil queue:NSOperationQueue.mainQueue
@@ -453,7 +453,7 @@ static void *RuntimeThread(void *arg) {
 
 @end
 
-// Aufruf aus SceneDelegate, sobald die Spielansicht erscheint: dann gibt es die CAMetalLayer mit ihrer Größe
+// Called from SceneDelegate as soon as the game view appears: then the CAMetalLayer exists with its size
 static void StartRuntime(void) {
     NSString *docs = Documents(), *res = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res"];
     NSFileManager *fm = NSFileManager.defaultManager;
@@ -466,13 +466,13 @@ static void StartRuntime(void) {
     setenv("BDSP_SHOT_DIR", [docs stringByAppendingPathComponent:@"Shots"].UTF8String, 0);
     setenv("BDSP_TIMEOUT", "86400", 0);
     setenv("BDSP_FPS_INTERVAL", "5", 0);
-    setenv("BDSP_XW_DRAIN_DESTROY", "1", 0);   // Texturfreigabe wartet auf den Renderer-Worker (vermutete Ursache des Absturzes in bind_textures); Bildrate bleibt asynchron
+    setenv("BDSP_XW_DRAIN_DESTROY", "1", 0);   // texture release waits for the renderer worker (suspected cause of the crash in bind_textures); frame rate stays asynchronous
     NSInteger fps = [NSUserDefaults.standardUserDefaults integerForKey:@"bdsp_fps"];
     bdsp_set_fps(fps ? (int)fps : 60);
-    fprintf(stderr, "[ipad] Start: %s, Gerät %s, os_proc_available_memory %zu MiB\n", UIDevice.currentDevice.systemVersion.UTF8String,
+    fprintf(stderr, "[ipad] Start: %s, device %s, os_proc_available_memory %zu MiB\n", UIDevice.currentDevice.systemVersion.UTF8String,
             UIDevice.currentDevice.model.UTF8String, os_proc_available_memory() >> 20);
     if (![fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"GameData/romfs"]])
-        fprintf(stderr, "[ipad] WARNUNG: Documents/GameData/romfs fehlt (RomFS per devicectl kopieren, docs/recomp-ios.md)\n");
+        fprintf(stderr, "[ipad] WARNING: Documents/GameData/romfs missing (copy the RomFS via devicectl, docs/recomp-ios.md)\n");
     pthread_t t, st;
     pthread_attr_t at;
     pthread_attr_init(&at);
@@ -508,12 +508,12 @@ static void StartRuntime(void) {
 @end
 
 int main(int argc, char *argv[]) {
-    if (getenv("BDSP_HANG_DUMP")) {   // Stillstandsdiagnose: der Harness beendet hängende Läufe mit SIGTERM, dann kommt der Thread-Bericht
+    if (getenv("BDSP_HANG_DUMP")) {   // stall diagnosis: the harness ends hanging runs with SIGTERM, then the thread report appears
         extern void kernel_report(FILE *f);
         signal(SIGTERM, SIG_IGN);
         dispatch_source_t term = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
         dispatch_source_set_event_handler(term, ^{
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ _exit(143); });  // Bericht hängt an einer gehaltenen Sperre
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ _exit(143); });  // the report hangs on a held lock
             kernel_report(stderr);
             fflush(stderr);
             _exit(143);

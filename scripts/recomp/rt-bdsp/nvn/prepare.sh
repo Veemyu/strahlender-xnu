@@ -1,11 +1,11 @@
 #!/bin/bash
-# Bereitet die Metal-Fassung der NVN-Schicht für den Bau vor. Die Quellen liegen im Repo unter nvn/src
-# (Herkunft LASRecomp, MIT, Commit 09f8e5e; geändert, siehe NOTICE.md). Kein Patchen mehr.
-# Der Übersetzer kommt aus shader_translator/ (einzige Quelle) und wird hier hineinkopiert.
-# Schreibt $DST/.stamp (SHA-256 über nvn/src, translate.c, shader.h, prepare.sh) und kopiert nur bei abweichendem Stempel.
-# Aufruf: prepare.sh [--check]      Umgebung: NVN_SRC=work/recomp/nvn-src
-# --check: kopiert nichts, Exit 0 wenn der Stempel zur Quelle passt, sonst 1.
-# --print: gibt nur den Quell-Hash aus (einzige Definition; build_stages.py nutzt ihn für die Stufe recomp).
+# Prepares the Metal version of the NVN layer for the build. The sources live in the repo under nvn/src
+# (origin LASRecomp, MIT, commit 09f8e5e; modified, see NOTICE.md). No patching any more.
+# The translator comes from shader_translator/ (single source) and is copied in here.
+# Writes $DST/.stamp (SHA-256 over nvn/src, translate.c, shader.h, prepare.sh) and copies only if the stamp differs.
+# Usage: prepare.sh [--check]      Environment: NVN_SRC=work/recomp/nvn-src
+# --check: copies nothing, exit 0 if the stamp matches the source, otherwise 1.
+# --print: prints only the source hash (single definition; build_stages.py uses it for the recomp stage).
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 SRC=scripts/recomp/rt-bdsp/nvn/src
@@ -21,11 +21,11 @@ fi
 have=$(cat "$DST/.stamp" 2>/dev/null || true)
 if [ "${1:-}" = "--check" ]; then
   [ -d "$DST/nvn" ] && [ "$want" = "$have" ] && exit 0
-  echo "NVN-Stempel passt nicht: $DST" >&2
+  echo "NVN stamp does not match: $DST" >&2
   exit 1
 fi
 if [ -d "$DST/nvn" ] && [ "$want" = "$have" ]; then
-  echo "NVN-Quellen aktuell: $DST"
+  echo "NVN sources up to date: $DST"
   exit 0
 fi
 rm -rf "$DST"
@@ -35,4 +35,4 @@ mkdir -p "$DST/nvn/maxwell"
 cp shader_translator/translate.c "$DST/nvn/maxwell/translate.c"
 cp shader_translator/shader.h "$DST/nvn/maxwell/shader.h"
 echo "$want" > "$DST/.stamp"
-echo "NVN-Quellen: $DST"
+echo "NVN sources: $DST"

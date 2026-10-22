@@ -1,9 +1,9 @@
 #!/bin/bash
-# Speichermodell B (--rebase32): erzeugt das C aller Module mit Basisadressen unter 4 GiB und C-SIMD (--simd c) nach
-# work/recomp/gen32/<modul>, baut die Modulbilder (Relokationen auf die neuen Basen) nach work/recomp/img32 und
-# übersetzt alles für iPhoneOS arm64 nach work/recomp/obj32 (Ziel iOS, danach mit vtool plattformlos für den Mac-Test).
-# Alles unter work/ (gitignoriert). Die Basen müssen zu den B-Werten in scripts/recomp/rt-bdsp/bdsp.h passen.
-# Aufruf: gen32.sh gen | img | build [JOBS] | all [JOBS]
+# Memory model B (--rebase32): generates the C of all modules with base addresses below 4 GiB and C SIMD (--simd c) to
+# work/recomp/gen32/<module>, builds the module images (relocations to the new bases) to work/recomp/img32 and
+# compiles everything for iPhoneOS arm64 to work/recomp/obj32 (target iOS, afterwards platformless via vtool for the Mac test).
+# Everything under work/ (gitignored). The bases must match the B values in scripts/recomp/rt-bdsp/bdsp.h.
+# Usage: gen32.sh gen | img | build [JOBS] | all [JOBS]
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -11,7 +11,7 @@ GEN=${GEN:-work/recomp/gen32}
 IMG=${IMG:-work/recomp/img32}
 OBJ=${OBJ:-work/recomp/obj32}
 base_of() { case "$1" in main) echo 0x01000000;; sdk) echo 0x07000000;; subsdk0) echo 0x08000000;; rtld) echo 0x09000000;; esac; }
-# Toolchain-Stempel der Gast-Objekte: SDKs, Compiler, Übersetzungsskript und Header der Laufzeit. Ändert sich einer davon, wird neu übersetzt.
+# Toolchain stamp of the guest objects: SDKs, compiler, compile script and headers of the runtime. If one of them changes, everything is recompiled.
 obj_stamp() {
   . scripts/recomp/rt-bdsp/nvn/hash.inc.sh
   { xcrun --sdk iphoneos --show-sdk-version; xcrun --sdk iphoneos --show-sdk-path; xcode-select -p; clang --version; sha256 scripts/recomp/ios/compile_chunk_ios.sh
@@ -21,7 +21,7 @@ obj_stamp() {
 do_gen() {
   mkdir -p "$GEN" work/recomp/spike2
   for m in rtld main sdk subsdk0; do
-    # Die Basis geht nur in die adrp/adr-Konstanten ein, der Rest ist gegenüber Variante A unverändert.
+    # The base only enters the adrp/adr constants, the rest is unchanged compared to variant A.
     python3 scripts/recomp/eh_gen.py gen "$m" "work/exefs/$m" "$(base_of "$m")" "$GEN/$m" --simd c > "work/recomp/spike2/gen32_$m.log" 2>&1
     tail -1 "work/recomp/spike2/gen32_$m.log"
   done
@@ -44,7 +44,7 @@ do_img() {
   done
 }
 
-# Übersetzung: wie build_all.sh (Einzelfunktionen über 300 KB mit -O0, sonst -O1), aber für iPhoneOS und mit REBASE32
+# Compilation: like build_all.sh (single functions above 300 KB with -O0, otherwise -O1), but for iPhoneOS and with REBASE32
 do_build() {
   local jobs=${1:-3}
   [ "$jobs" -gt 4 ] && jobs=4
@@ -52,7 +52,7 @@ do_build() {
   mkdir -p "$OBJ"
   local stamp; stamp=$(obj_stamp)
   if [ "$(cat "$OBJ/.stamp" 2>/dev/null || true)" != "$stamp" ]; then
-    rm -f "$OBJ"/*.o; echo "$stamp" > "$OBJ/.stamp"; echo "Toolchain-Stempel fehlt oder passt nicht: alle Objekte in $OBJ werden neu übersetzt"
+    rm -f "$OBJ"/*.o; echo "$stamp" > "$OBJ/.stamp"; echo "Toolchain stamp missing or does not match: all objects in $OBJ are recompiled"
   fi
   for o in "$OBJ"/*.o; do
     [ -e "$o" ] || continue
@@ -69,7 +69,7 @@ do_build() {
   local start; start=$(date +%s)
   OPT=-O0 xargs -P "$jobs" -n 1 scripts/recomp/ios/compile_chunk_ios.sh < "$OBJ/list_O0.txt"
   OPT=-O1 xargs -P "$jobs" -n 1 scripts/recomp/ios/compile_chunk_ios.sh < "$OBJ/list_O1.txt"
-  echo "Gesamtzeit Übersetzung: $(( $(date +%s) - start )) s"
+  echo "Total compile time: $(( $(date +%s) - start )) s"
 }
 
 case "${1:-all}" in
@@ -77,5 +77,5 @@ case "${1:-all}" in
   img) do_img ;;
   build) do_build "${2:-3}" ;;
   all) do_gen; do_img; do_build "${2:-3}" ;;
-  *) echo "Aufruf: gen32.sh gen|img|build [JOBS]|all [JOBS]" >&2; exit 2 ;;
+  *) echo "Usage: gen32.sh gen|img|build [JOBS]|all [JOBS]" >&2; exit 2 ;;
 esac

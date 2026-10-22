@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Wählt echte LSDA-Funktionen aus `main` für den Wurf-Test (docs/architecture.md, Abschnitt Ausnahmen).
+"""Picks real LSDA functions from `main` for the throw test (docs/architecture.md, section exceptions).
 
-Eigener Code. Liest den lokalen Dump (work/exefs/main, relokiertes Bild work/recomp/spike2/main.img von mkimg.py)
-und schreibt nur nach work/recomp/spike2/:
-  real_only.txt   Funktionsanfänge (hex, relativ zur Modulbasis) für `eh_gen.py ... --only`
-  real_spec.txt   Prüfauftrag je Funktion für den Testlauf: Anfang, Typinfo für den Wurf, Call-Sites mit Landing-Pad
+Own code. Reads the local dump (work/exefs/main, relocated image work/recomp/spike2/main.img from mkimg.py)
+and writes only to work/recomp/spike2/:
+  real_only.txt   function starts (hex, relative to the module base) for `eh_gen.py ... --only`
+  real_spec.txt   check job per function for the test run: start, type info for the throw, call sites with landing pad
 
-Auswahl: kleine bis mittlere Funktionen (24 bis 400 Anweisungen) mit mindestens einem Landing-Pad und einem Aufruf,
-je Art (nur Aufräumen / typisierter Catch / catch(...)) gleich viele, reproduzierbar (Seed).
+Selection: small to medium functions (24 to 400 instructions) with at least one landing pad and one call,
+the same number per kind (cleanup only / typed catch / catch(...)), reproducible (seed).
 """
 import argparse
 import random
@@ -79,7 +79,7 @@ def main():
         only.append(f"{f['start']:x}")
     (OUT / "real_spec.txt").write_text("\n".join(lines) + "\n")
     (OUT / "real_only.txt").write_text("\n".join(only) + "\n")
-    print(f"{len(picked)} Funktionen gewählt:", {k: min(len(v), a.per_kind) for k, v in cand.items()},
+    print(f"{len(picked)} functions picked:", {k: min(len(v), a.per_kind) for k, v in cand.items()},
           "Kandidaten:", {k: len(v) for k, v in cand.items()})
 
 

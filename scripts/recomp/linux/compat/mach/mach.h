@@ -1,7 +1,7 @@
-// Linux-Ersatz für den kleinen Teil der Mach-API, den scripts/recomp/rt-bdsp (kernel.c, main.c) benutzt.
-// Eigener Code, nur für die Linux-Ausführung (docs/recomp-linux.md): macht es möglich, die Laufzeit unverändert unter Linux zu
-// übersetzen (`-I scripts/recomp/linux/compat`), ohne ihre Dateien anzufassen. Kein Ersatz für die Mach-Semantik auf dem
-// Mac: Anhalten per Signal (SIGUSR2), Speicherbelegung aus /proc, Regionen per mincore.
+// Linux replacement for the small part of the Mach API that scripts/recomp/rt-bdsp (kernel.c, main.c) uses.
+// Own code, only for the Linux build (docs/recomp-linux.md): makes it possible to compile the runtime unchanged on Linux
+// (`-I scripts/recomp/linux/compat`) without touching its files. Not a replacement for the Mach semantics on the
+// Mac: suspending via signal (SIGUSR2), memory usage from /proc, regions via mincore.
 #pragma once
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -32,7 +32,7 @@ static inline uint64_t mach_absolute_time(void) {
     return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
 }
 
-// ---- Threads anhalten: Signal-Handler blockiert den Zielthread, bis thread_resume ihn freigibt
+// ---- Suspend threads: a signal handler blocks the target thread until thread_resume releases it
 #define COMPAT_MAX_THREADS 256
 static pthread_t compat_threads[COMPAT_MAX_THREADS];
 static volatile int compat_stopped[COMPAT_MAX_THREADS], compat_go[COMPAT_MAX_THREADS];
@@ -77,7 +77,7 @@ static inline kern_return_t thread_resume(mach_port_t p) {
     return KERN_SUCCESS;
 }
 
-// ---- Stackgröße/-adresse (Darwin-Aufrufe; stackaddr = obere Grenze wie auf macOS)
+// ---- Stack size/address (Darwin calls; stackaddr = upper bound as on macOS)
 static inline size_t pthread_get_stacksize_np(pthread_t t) {
     pthread_attr_t a; void *lo = NULL; size_t sz = 0;
     if (pthread_getattr_np(t, &a) != 0) return 0;

@@ -53,7 +53,7 @@ class Cli(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not BIN.exists():
-            raise unittest.SkipTest("build/maxwell2msl fehlt (make)")
+            raise unittest.SkipTest("build/maxwell2msl missing (make)")
         scratch = ROOT / "build"
         cls.tmp = tempfile.TemporaryDirectory(dir=scratch)
         cls.dir = Path(cls.tmp.name)

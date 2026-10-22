@@ -1,9 +1,9 @@
 #!/bin/bash
-# Baut die Vulkan-Fassung der NVN-Schicht (LAS-Quellen aus prepare_vk.sh + nvn_glue.c + vk_glue.c) zu Objekten in $RT/nvnvk. Inkrementell.
-# Aufruf: build_vk.sh [-DMakro ...]      Umgebung: RT=work/recomp/rt-bdsp-vk  NVN_SRC_VK=work/recomp/nvn-src-vk
+# Builds the Vulkan version of the NVN layer (LAS sources from prepare_vk.sh + nvn_glue.c + vk_glue.c) into objects in $RT/nvnvk. Incremental.
+# Usage: build_vk.sh [-Dmacro ...]      Environment: RT=work/recomp/rt-bdsp-vk  NVN_SRC_VK=work/recomp/nvn-src-vk
 #   Linux uses installed development packages through pkg-config; no copied headers.
 #   VK_INC explicitly adds an include prefix for manual/macOS syntax checks.
-#   VK_SYNTAX=1  nur Syntaxprüfung (clang -fsyntax-only), keine Objekte (Mac mit Homebrew-Headern)
+#   VK_SYNTAX=1  syntax check only (clang -fsyntax-only), no objects (Mac with Homebrew headers)
 # The runtime links against installed development libraries through pkg-config.
 set -euo pipefail
 cd "$(dirname "$0")/../../../../.."
@@ -12,7 +12,7 @@ SRC=${NVN_SRC_VK:-work/recomp/nvn-src-vk}
 HERE=scripts/recomp/rt-bdsp/nvn
 mkdir -p "$RT/nvnvk"
 if [ -z "${NVN_KEEP:-}" ]; then
-  NVN_SRC_VK="$SRC" "$HERE/vulkan/prepare_vk.sh" > /dev/null   # kopiert nur bei abweichendem Stempel
+  NVN_SRC_VK="$SRC" "$HERE/vulkan/prepare_vk.sh" > /dev/null   # copies only when the stamp differs
 fi
 . "$HERE/flags.inc.sh"
 INCV=""
@@ -42,7 +42,7 @@ for f in objects cmdbuf formats tegra astc; do build "$SRC/nvn/$f.c" "$O/$f.o" "
 build "$SRC/nvn/maxwell/translate.c" "$O/translate.o" "$@"
 for f in device exec shaders textures; do build "$SRC/nvn/vulkan/$f.c" "$O/vk_$f.o" "$@"; done
 build "$SRC/nvn/vulkan/vma.cpp" "$O/vk_vma.o" "$@"
-build "$HERE/nvn_glue.c" "$O/nvn_glue.o" -Dg_debug_frame=bdsp_glue_debug_frame -include SDL3/SDL.h -include stdatomic.h -include string.h -include strings.h "$@"  # (exec.c definiert g_debug_frame selbst; nvn_glue.c bindet SDL/stdatomic/string nur unter __APPLE__ ein, braucht sie aber auch hier für die Eingabeschicht)
+build "$HERE/nvn_glue.c" "$O/nvn_glue.o" -Dg_debug_frame=bdsp_glue_debug_frame -include SDL3/SDL.h -include stdatomic.h -include string.h -include strings.h "$@"  # (exec.c defines g_debug_frame itself; nvn_glue.c includes SDL/stdatomic/string only under __APPLE__, but needs them here too for the input layer)
 build "$HERE/vulkan/vk_glue.c" "$O/vk_glue.o" "$@"
 # Movie playback uses FFmpeg headers from the same installed development packages as the link step.
 if [ -z "${BDSP_NO_MOVIE:-}" ]; then

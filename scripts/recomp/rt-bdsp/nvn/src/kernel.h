@@ -1,3 +1,3 @@
-// Ersatz für runtime/kernel.h: die NVN-Schicht braucht von dort nur die Zeit (platform.h) und Gastaufrufe (rt.h).
+// Replacement for runtime/kernel.h: the NVN layer needs only the time (platform.h) and guest calls (rt.h) from it.
 #pragma once
 #include "rt.h"

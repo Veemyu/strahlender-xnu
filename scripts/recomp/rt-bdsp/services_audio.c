@@ -1,11 +1,11 @@
-// Audiodienste der BDSP-Laufzeit: audout:u spielt PCM16 auf dem Host, audren:u, hwopus und audin:u bleiben Stummel.
-// Pufferfreigabe nach Spieldauer, unabhängig vom Hostgerät. Eigener Code.
+// Audio services of the BDSP runtime: audout:u plays PCM16 on the host, audren:u, hwopus and audin:u stay stubs.
+// Buffers are released after their play time, independent of the host device. Own code.
 #include "bdsp.h"
 #include "audio_output.h"
 
-// Jeder angehängte Puffer „spielt“ in Echtzeit (Dauer aus der Datengröße) und wird erst danach zurückgegeben, wie bei echter Hardware. Ohne diese
-// Pacing sah die Wwise-Audioschleife immer freie Puffer, rechnete ohne Ende Bilder und hielt dabei die globale Wwise-Sperre: der Hauptthread hing
-// (QA: Stillstand beim Betreten des Pokécenters, AkGameObj::SetPosition).
+// Every appended buffer "plays" in real time (duration from the data size) and is only returned afterwards, as on real hardware. Without this
+// pacing the Wwise audio loop always saw free buffers, rendered frames endlessly and held the global Wwise lock meanwhile: the main thread hung
+// (QA: stall when entering the Pokémon Center, AkGameObj::SetPosition).
 typedef struct { KEvent *ev; uint32_t ev_handle; uint64_t tags[64], due[64], last_due, signaled_due; int ntags, started; uint64_t appended, released, empty_polls; pthread_mutex_t lk; uint32_t rate, channels; uint64_t probe_buffers, probe_samples, probe_nonzero; uint32_t probe_peak; AudioOutput *output; } AudOut;
 
 static int audout_pcm(IpcBuf *b, uint64_t desc[5]) {
@@ -53,7 +53,7 @@ static void signal_ev(KEvent *e) {
 static AudOut *g_audouts[8];
 static int g_audio_timer_started;
 static pthread_mutex_t g_audlock = PTHREAD_MUTEX_INITIALIZER;
-// Zeitgeber: meldet das Pufferereignis, sobald der vorderste Puffer fertig gespielt ist
+// Timer: signals the buffer event as soon as the foremost buffer has finished playing
 static void *audout_timer(void *arg) {
     (void)arg;
     for (;;) {
@@ -121,14 +121,14 @@ static void audout_obj(Service *s, IpcReq *req, IpcResp *resp) {
         else audio_output_stop(a->output);
         pthread_mutex_unlock(&a->lk);
         break;
-    case 3: case 7: {                                                          // AppendAudioOutBuffer(tag) mit AudioOutBuffer im A-Puffer
-        IpcBuf *b = in_buf(req, 0);   // AudioOutBuffer {next, buffer, capacity, dataSize, offset}: Spieldauer aus dataSize (16 Bit, 2 Kanäle, 48 kHz)
+    case 3: case 7: {                                                          // AppendAudioOutBuffer(tag) with AudioOutBuffer in the A buffer
+        IpcBuf *b = in_buf(req, 0);   // AudioOutBuffer {next, buffer, capacity, dataSize, offset}: play time from dataSize (16 bit, 2 channels, 48 kHz)
         uint64_t desc[5];
         if (!audout_pcm(b, desc) || desc[3] % (2 * a->channels)) { resp->result = R_INVALID_ADDRESS; break; }
         uint64_t bytes = desc[3];
         uint64_t frames = bytes / (2 * a->channels);
         uint64_t ns = frames ? frames * 1000000000ull / a->rate : 21333333ull;
-        if (ns < 5000000ull) ns = 5000000ull;   // mindestens 5 ms: das Gastsystem trägt den Puffer erst nach der Rückkehr der Anfrage in seine Warteschlange ein
+        if (ns < 5000000ull) ns = 5000000ull;   // at least 5 ms: the guest system enters the buffer into its queue only after the request returns
         if (ns > 200000000ull) ns = 200000000ull;
         uint64_t now = rt_now_ns();
         pthread_mutex_lock(&a->lk);
@@ -143,7 +143,7 @@ static void audout_obj(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     }
     case 4: resp->copy_handles[resp->ncopy++] = a->ev_handle; break;           // RegisterBufferEvent
-    case 5: case 8: {                                                          // GetReleasedAudioOutBuffer: fertig gespielte Tags (so viele, wie der Puffer fasst)
+    case 5: case 8: {                                                          // GetReleasedAudioOutBuffer: tags that have finished playing (as many as the buffer holds)
         IpcBuf *b = out_buf(req, 0);
         int cap = b && b->size ? (int)(b->size / 8) : 0;
         uint64_t now = rt_now_ns();
@@ -158,12 +158,12 @@ static void audout_obj(Service *s, IpcReq *req, IpcResp *resp) {
             a->ntags -= n;
         }
         pthread_mutex_unlock(&a->lk);
-        if (n && getenv("BDSP_TRACE_AUDIO")) LOG("[audio] Get: Puffer %llu Byte, n %d, Tag0 %llx\n", (unsigned long long)(b ? b->size : 0), n, (unsigned long long)G2H64(b->addr)[0]);
+        if (n && getenv("BDSP_TRACE_AUDIO")) LOG("[audio] Get: buffer %llu bytes, n %d, tag0 %llx\n", (unsigned long long)(b ? b->size : 0), n, (unsigned long long)G2H64(b->addr)[0]);
         if (!n) {
-            if (b && b->size >= 8) *G2H64(b->addr) = 0;   // das SDK liest den Tag ohne ihn vorzubelegen: ohne Nullen liefert die Schleife des Spiels den alten Tag endlos zurück
-            if ((++a->empty_polls % 4000) == 0) LOG("[audio] %llu leere Abfragen in Folge (angehängt %llu, zurückgegeben %llu, wartend %d)\n",
+            if (b && b->size >= 8) *G2H64(b->addr) = 0;   // the SDK reads the tag without pre-filling it: without zeros the game's loop returns the old tag endlessly
+            if ((++a->empty_polls % 4000) == 0) LOG("[audio] %llu empty polls in a row (appended %llu, returned %llu, waiting %d)\n",
                                                       (unsigned long long)a->empty_polls, (unsigned long long)a->appended, (unsigned long long)a->released, a->ntags);
-            struct timespec ts = {0, 2000000}; nanosleep(&ts, NULL);   // nichts zurückzugeben: Abfrageschleifen des Spiels bremsen
+            struct timespec ts = {0, 2000000}; nanosleep(&ts, NULL);   // nothing to return: slow down the game's polling loops
         } else { a->released += (uint64_t)n; a->empty_polls = 0; }
         OUT(uint32_t, 0) = (uint32_t)n;
         resp_size(resp, 4);
@@ -181,14 +181,14 @@ static void audout_obj(Service *s, IpcReq *req, IpcResp *resp) {
 static void audout_mgr(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
-    case 0: case 2: {  // ListAudioOuts: ein Gerät „DeviceOut“
+    case 0: case 2: {  // ListAudioOuts: one device "DeviceOut"
         IpcBuf *b = out_buf(req, 0);
         if (b && b->size >= 0x20) { memset(G2H(b->addr), 0, 0x20); strcpy((char *)G2H(b->addr), "DeviceOut"); }
         OUT(uint32_t, 0) = 1;
         resp_size(resp, 4);
         break;
     }
-    case 1: case 3: {  // OpenAudioOut(sample_rate, channels, aruid, handle): Ausgabe: Rate, Kanäle, Format (2 = PCM16), Zustand + Objekt + Name
+    case 1: case 3: {  // OpenAudioOut(sample_rate, channels, aruid, handle): output: rate, channels, format (2 = PCM16), state + object + name
         uint32_t rate = IN(uint32_t, 0);
         uint16_t ch = IN(uint16_t, 4);
         AudOut *a = calloc(1, sizeof *a);
@@ -219,7 +219,7 @@ static void audout_mgr(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
-// ---- IAudioRenderer: kein Rendering; RequestUpdate liefert einen Kopf ohne Abschnitte
+// ---- IAudioRenderer: no rendering; RequestUpdate returns a header without sections
 typedef struct { KEvent *ev; uint32_t ev_handle; uint32_t rate, count, mix; } AudRen;
 static void audren_obj(Service *s, IpcReq *req, IpcResp *resp) {
     AudRen *a = s->state;
@@ -229,13 +229,13 @@ static void audren_obj(Service *s, IpcReq *req, IpcResp *resp) {
     case 1: OUT(uint32_t, 0) = a->count; resp_size(resp, 4); break;  // GetSampleCount
     case 2: OUT(uint32_t, 0) = a->mix; resp_size(resp, 4); break;    // GetMixBufferCount
     case 3: OUT(uint32_t, 0) = 0; resp_size(resp, 4); break;         // GetState
-    case 4: case 10: {  // RequestUpdate(Eingabe, Ausgabe, Leistung): Kopf mit der Revision der Eingabe, sonst leer
+    case 4: case 10: {  // RequestUpdate(input, output, performance): header with the revision of the input, otherwise empty
         IpcBuf *in = in_buf(req, 0), *out = out_buf(req, 0);
         if (out && out->size >= 0x40) {
             uint32_t rev = in && in->size >= 4 ? *G2H32(in->addr) : 0;
             memset(G2H(out->addr), 0, 0x40);
             *G2H32(out->addr) = rev;
-            *(G2H32(out->addr) + 15) = 0x40;  // Gesamtgröße
+            *(G2H32(out->addr) + 15) = 0x40;  // total size
         }
         signal_ev(a->ev);
         break;
@@ -249,12 +249,12 @@ static void audren_obj(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
-// ---- IAudioDevice: ein Ausgabegerät „AudioStereoJackOutput“
+// ---- IAudioDevice: one output device "AudioStereoJackOutput"
 static void auddev_obj(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     ipc_note("IAudioDevice", req->cmd, 0);
     switch (req->cmd) {
-    case 0: case 6: {  // ListAudioDeviceName(Auto): ein Gerät, Name in den B-Puffer
+    case 0: case 6: {  // ListAudioDeviceName(Auto): one device, name in the B buffer
         IpcBuf *b = out_buf(req, 0);
         if (b && b->size >= 0x20) { memset(G2H(b->addr), 0, 0x20); strcpy((char *)G2H(b->addr), "AudioStereoJackOutput"); }
         OUT(int32_t, 0) = 1;
@@ -268,7 +268,7 @@ static void auddev_obj(Service *s, IpcReq *req, IpcResp *resp) {
     }
     case 1: case 7: break;                                                      // SetAudioDeviceOutputVolume(Auto)
     case 2: case 8: OUT(float, 0) = 1.0f; resp_size(resp, 4); break;            // GetAudioDeviceOutputVolume(Auto)
-    case 4: case 11: case 12: {                                                 // QueryAudioDeviceSystemEvent / InputEvent / OutputEvent: Ereignis-Handle
+    case 4: case 11: case 12: {                                                 // QueryAudioDeviceSystemEvent / InputEvent / OutputEvent: event handle
         uint32_t w, r;
         kernel_create_event_pair(&w, &r);
         resp->copy_handles[resp->ncopy++] = r;
@@ -294,7 +294,7 @@ static void audren_mgr(Service *s, IpcReq *req, IpcResp *resp) {
         ipc_return_object(resp, service_new("IAudioRenderer", audren_obj, a));
         break;
     }
-    case 1: {  // GetWorkBufferSize(AudioRendererParameter): großzügig nach der Zahl der Stimmen
+    case 1: {  // GetWorkBufferSize(AudioRendererParameter): generous, by the number of voices
         uint32_t voices = IN(uint32_t, 16), mix = IN(uint32_t, 8);
         OUT(uint64_t, 0) = 0x100000ull + (uint64_t)(voices + 1) * 0x2000 + (uint64_t)(mix + 1) * 0x1000;
         resp_size(resp, 8);
@@ -310,7 +310,7 @@ static void svc_err(Service *s, IpcReq *req, IpcResp *resp) {
     resp->result = MAKE_RESULT(204, 1);
 }
 
-// ---- hwopus (IHardwareOpusDecoderManager): Arbeitspuffergrößen; der Decoder liefert keine Samples
+// ---- hwopus (IHardwareOpusDecoderManager): work buffer sizes; the decoder returns no samples
 static void opus_decoder(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     ipc_note("IHardwareOpusDecoder", req->cmd, 0);

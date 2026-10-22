@@ -317,8 +317,8 @@ Never commit concrete session IDs or authentication paths.
 
 - **Player character missing, vertex explosions, window fill:** fixed in the last test run (field scene with
   player character, NPCs and water; window fully filled). Not yet verified across sessions.
-- **Texture outside the guest window:** the runtime logs `[vk] Textur außerhalb des Gastfensters`
-  (“texture outside the guest window”) and skips the upload (guard in `textures.c`). Effect on the picture not verified. Open.
+- **Texture outside the guest window:** the runtime logs `[vk] texture outside the guest window`
+  and skips the upload (guard in `textures.c`). Effect on the picture not verified. Open.
 - **Rare hangs on the loading screen:** open. Cause not known.
 - FFmpeg headers/libraries now come from matching installed development packages.
   A new package-only full build must still be verified after the prerequisites are installed.
@@ -376,13 +376,13 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 
 | Symptom | Cause and fix |
 |---|---|
-| `NVN-Stempel passt nicht` (“NVN stamp does not match”; from `prepare.sh --check`) | The copy in `work/recomp/nvn-src` is out of date. Run `scripts/recomp/rt-bdsp/nvn/prepare.sh`. Normal builds do this automatically. |
+| `NVN stamp does not match` (from `prepare.sh --check`) | The copy in `work/recomp/nvn-src` is out of date. Run `scripts/recomp/rt-bdsp/nvn/prepare.sh`. Normal builds do this automatically. |
 | Build uses old NVN code | `NVN_KEEP=1` is set, so `prepare.sh` was skipped. Unset it or run `prepare.sh`. |
-| `Marker passt, übersprungen` (“marker matches, skipped”) / stage skipped | Inputs did not change. Use `--force` to rebuild. |
-| `work/exefs/main fehlt` (“work/exefs/main is missing”; exit 10) | Run stage `extract` first. |
+| `marker matches` … `skipped` / stage skipped | Inputs did not change. Use `--force` to rebuild. |
+| `work/exefs/main missing` (exit 10) | Run stage `extract` first. |
 | Not enough disk space (exit 8) | Free space or lower the requirement with `--min-free-gb N`. The macOS build needs tens of GB. |
 | Compile fails (exit 4), memory error | Use `--recomp-jobs 2`. Check `work/logs/recomp-compile.log`. |
-| `Kein verbundenes, entsperrtes iPad gefunden.` (“No connected, unlocked iPad found.”) | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
+| `No connected, unlocked iPad found.` | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
 | Build fails in `xcodebuild` (signing) | Read `work/builds/ios-recomp-xcodebuild.log`. Set `TEAM_ID` and sign in with your account in Xcode. |
 | macOS app blocked on first start | Right-click the app, then Open. |
 

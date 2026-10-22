@@ -1,5 +1,5 @@
-"""Gemeinsame Hilfen des Differenzialtests (docs/recomp-diff.md): Assemblieren, Schleifen-Vorlage, Unicorn-Lauf,
-Eingabetypen, Laden der C-Bibliotheken. Eigener Code (nur Hilfsfunktionen, keine Spielbytes)."""
+"""Shared helpers of the differential test (docs/recomp-diff.md): assembling, loop template, Unicorn run,
+input types, loading the C libraries. Own code (helper functions only, no game bytes)."""
 import ctypes
 import re
 import struct
@@ -26,7 +26,7 @@ DF_FPCR, DF_AHP, DF_FMACANCEL, DF_MEM = 1, 2, 4, 8
 
 
 def elf_text(path):
-    """.text eines ELF64-Objekts (little endian) – ohne objcopy."""
+    """.text of an ELF64 object (little endian), without objcopy."""
     d = Path(path).read_bytes()
     shoff = struct.unpack_from("<Q", d, 0x28)[0]
     shentsize, shnum, shstrndx = struct.unpack_from("<HHH", d, 0x3A)
@@ -36,11 +36,11 @@ def elf_text(path):
         name = d[stro + s[0]:d.index(b"\0", stro + s[0])]
         if name == b".text":
             return d[s[4]:s[4] + s[5]]
-    raise RuntimeError("keine .text")
+    raise RuntimeError("no .text")
 
 
 def assemble(lines, cc="clang", workdir=None):
-    """Assembliert AArch64-Zeilen (Text) -> Liste von 32-Bit-Wörtern."""
+    """Assembles AArch64 lines (text) -> list of 32-bit words."""
     wd = Path(workdir or ROOT / "work" / "recomp" / "diff")
     wd.mkdir(parents=True, exist_ok=True)
     src, obj = wd / "asm_tmp.S", wd / "asm_tmp.o"
@@ -54,7 +54,7 @@ _TMPL = {}
 
 
 def template(cc="clang", workdir=None):
-    """Maschinencode der Referenzschleife (tmpl.S) und Lage der vier Befehlsplätze."""
+    """Machine code of the reference loop (tmpl.S) and the position of the four instruction slots."""
     if "code" not in _TMPL:
         wd = Path(workdir or ROOT / "work" / "recomp" / "diff")
         wd.mkdir(parents=True, exist_ok=True)
@@ -126,7 +126,7 @@ def make_cases(lib, seed, rt, flags, n):
     return arr
 
 
-# ---- Eingabetypen aus dem Befehlstext
+# ---- Input types from the instruction text
 FPISH = re.compile(r"^(f|scvtf|ucvtf)")
 TOK = re.compile(r"\b([vqdshb])(\d+)(?:\.(\d*)([bhsd]))?(\[\d+\])?")
 ARR_INT = {"b": T_I8, "h": T_I16, "s": T_I32, "d": T_I64}
@@ -134,7 +134,7 @@ ARR_FP = {"b": T_I8, "h": T_F16, "s": T_F32, "d": T_F64}
 
 
 def reg_types(texts):
-    """texts: Liste (Mnemonic, Operandentext). Typ je V-Register 0..7 (Erstnennung bestimmt, außer BITS)."""
+    """texts: list (mnemonic, operand text). Type per V register 0..7 (first mention decides, except BITS)."""
     rt = [T_BITS] * 8
     seen = set()
     for mn, ops in texts:

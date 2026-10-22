@@ -1,5 +1,5 @@
-// iOS-Ersatz für <SDL3/SDL.h>: nur die Typen und Konstanten, die nvn_glue.c (Tastenzuordnung) und das aus metal.m erzeugte metal_ios.m
-// noch nennen. Fenster und Eingabe liefert die App (scripts/recomp/ios/app); Tasten kommen über g_ext_buttons/g_ext_stick.
+// iOS replacement for <SDL3/SDL.h>: only the types and constants that nvn_glue.c (key mapping) and the metal_ios.m generated from metal.m
+// still mention. Window and input are provided by the app (scripts/recomp/ios/app); keys arrive through g_ext_buttons/g_ext_stick.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

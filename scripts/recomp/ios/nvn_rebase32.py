@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Speichermodell B (--rebase32) für die kopierten NVN-Quellen (work/recomp/nvn-src, von prepare.sh erzeugt).
+"""Memory model B (--rebase32) for the copied NVN sources (work/recomp/nvn-src, created by prepare.sh).
 
-Der Klon (LASRecomp) rechnet Gastadressen mit (uintptr_t) in Hostzeiger um (Gastadresse == Hostadresse, Variante A). In Variante B
-liegt der Gastspeicher bei g_base + 32-Bit-Offset: jede solche Stelle muss durch G2H() gehen (rt-bdsp/guestmem.h). Dieses Skript schreibt
-die Kopie nach OUT um (Eingabe bleibt unverändert, nichts davon liegt im Repo). Jede Regel muss mindestens einmal treffen, sonst bricht
-das Skript ab (die Quellen haben sich geändert und die Liste braucht eine Durchsicht).
+The clone (LASRecomp) converts guest addresses to host pointers with (uintptr_t) (guest address == host address, variant A). In variant B
+the guest memory lives at g_base + 32-bit offset: every such spot must go through G2H() (rt-bdsp/guestmem.h). This script rewrites
+the copy to OUT (the input stays unchanged, none of it is in the repo). Every rule must hit at least once, otherwise the script
+aborts (the sources have changed and the list needs a review).
 
-Hostzeiger, die als uint64_t in Befehlssätzen oder Gastobjekten stehen (NvnTexture*, NvnProgram*, NvnDescPool*, bridged Objective-C-
-Objekte), bleiben unberührt: nur Ausdrücke, die Gastadressen sind, werden von (uintptr_t)X zu GA(X) (= (uintptr_t)G2H(X)).
+Host pointers that appear as uint64_t in instruction sets or guest objects (NvnTexture*, NvnProgram*, NvnDescPool*, bridged Objective-C
+objects) stay untouched: only expressions that are guest addresses change from (uintptr_t)X to GA(X) (= (uintptr_t)G2H(X)).
 
-Aufruf: nvn_rebase32.py <nvn-src> <out>
+Usage: nvn_rebase32.py <nvn-src> <out>
 """
 import os
 import re
@@ -21,7 +21,7 @@ if os.path.exists(out):
     shutil.rmtree(out)
 shutil.copytree(src, out)
 
-# Ausdrücke, die Gastadressen sind (Argument von (uintptr_t))
+# Expressions that are guest addresses (argument of (uintptr_t))
 GUEST = {
     "nvn/cmdbuf.c": [r"at", r"s\.x\[(?:arg|2|3|4|5)\]", r"views\[i\]", r"view", r"region", r"fp", r"\(fp \+ 8\)"],
     "nvn/objects.c": [r"event_addr\(A\(0\)\)", r"\(b \+ 0x28\)", r"t->addr", r"\* \(uint64_t \*\)\(data \+ i \* stride \+ 8\)",
@@ -33,7 +33,7 @@ GUEST = {
                        r"\(r->x\[0\] \+ r->x\[2\]\)", r"r->x\[1\]", r"r->x\[0\]", r"t->addr"],
     "nvn/metal.m": [r"t->addr"],
 }
-# Ausnahmen innerhalb dieser Dateien: Ausdrücke, die Hostzeiger tragen, obwohl sie wie die obigen aussehen
+# Exceptions within these files: expressions that carry host pointers although they look like the ones above
 KEEP = {"nvn/renderer.m": [r"\(NvnProgram \*\)\(uintptr_t\)r->x\[0\]"]}
 
 
@@ -42,7 +42,7 @@ def rewrite(path, exprs):
     s = open(p, encoding="utf-8").read()
     total = 0
     for e in exprs:
-        # (uintptr_t)AUSDRUCK, danach kein Bezeichnerzeichen; nicht, wenn davor schon GA( steht
+        # (uintptr_t)EXPRESSION, followed by no identifier character; not if GA( already precedes it
         pat = re.compile(r"\(uintptr_t\)\s*(" + e + r")(?![\w\[\]>.])")
         s, n = pat.subn(lambda m: "GA(" + m.group(1) + ")", s)
         total += n
@@ -52,13 +52,13 @@ def rewrite(path, exprs):
 
 counts = {f: rewrite(f, ex) for f, ex in GUEST.items()}
 
-# renderer.m: Stellen, an denen derselbe Ausdruck einen Hostzeiger meint, zurücknehmen (Befehlssatz-Felder: Programm, Pools, Texturen)
+# renderer.m: undo the spots where the same expression means a host pointer (instruction set fields: program, pools, textures)
 p = os.path.join(out, "nvn/renderer.m")
 s = open(p, encoding="utf-8").read()
 for pat in (r"\(NvnProgram \*\)GA\(r->x\[0\]\)",):
     s, n = re.subn(pat, "(NvnProgram *)(uintptr_t)r->x[0]", s)
     counts["renderer.m:programm"] = n
-# Zeile 2519/2520: tpool/spool sind Hostzeiger
+# line 2519/2520: tpool/spool are host pointers
 s, n = re.subn(r"\(NvnDescPool \*\)GA\(r->x\[0\]\)", "(NvnDescPool *)(uintptr_t)r->x[0]", s)
 open(p, "w", encoding="utf-8").write(s)
 
@@ -78,7 +78,7 @@ for a, b in reps:
     s = s.replace(a, b)
 open(p, "w", encoding="utf-8").write(s)
 
-# metal.m: der Metal-Puffer umhüllt den Hostbereich des Gastspeichers
+# metal.m: the Metal buffer wraps the host range of the guest memory
 p = os.path.join(out, "nvn/metal.m")
 s = open(p, encoding="utf-8").read()
 s, n = re.subn(r"newBufferWithBytesNoCopy:\(void \*\)HEAP_BASE", "newBufferWithBytesNoCopy:G2H(HEAP_BASE)", s)
@@ -86,11 +86,11 @@ counts["metal.m:buffer"] = n
 open(p, "w", encoding="utf-8").write(s)
 
 bad = [k for k, v in counts.items() if v == 0]
-print("Ersetzungen:", counts)
+print("Replacements:", counts)
 if bad:
-    sys.exit("Regeln ohne Treffer: %s" % bad)
+    sys.exit("Rules without a hit: %s" % bad)
 
-# movie_glue.c (Repo, nicht verändert) -> out/movie_glue32.c: Gastzeiger über G2H, Hostzeiger, die der Gast liest, in den Gastspeicher legen
+# movie_glue.c (repo, unchanged) -> out/movie_glue32.c: guest pointers via G2H, host pointers that the guest reads placed into the guest memory
 mp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rt-bdsp", "nvn", "movie_glue.c")
 s = open(mp, encoding="utf-8").read()
 mreps = [
@@ -112,13 +112,13 @@ for pat, rep in mreps:
         sys.exit("movie_glue: Regel trifft nicht: " + pat)
 open(os.path.join(out, "movie_glue32.c"), "w", encoding="utf-8").write(s)
 rest = [l.strip() for l in s.splitlines() if "(uintptr_t)" in l and "GA(" not in l.replace("#define GA(a) ((uintptr_t)G2H(a))", "")]
-print("movie_glue32.c: übrige (uintptr_t)-Stellen:", len(rest))
+print("movie_glue32.c: remaining (uintptr_t) spots:", len(rest))
 for l in rest:
     print("   ", l[:150])
 
-# Zeiger-Reste: nach dem Umschreiben darf (uintptr_t) nur an den gelisteten Stellen stehen. Das sind Hostzeiger (Befehlsobjekte, Hashes,
-# Hostobjekte, Makro-Definitionen, undurchsichtige Griffe der Filmwiedergabe, die nur der Host liest). Eine neue Stelle kann ein
-# Gastzeiger sein, den keine Regel erreicht: dann bricht das Skript ab. Der Übersetzer (nvn/maxwell) ist Hostcode ohne Gastspeicher.
+# Pointer leftovers: after the rewrite (uintptr_t) may appear only at the listed spots. These are host pointers (command objects, hashes,
+# host objects, macro definitions, opaque handles of the movie playback that only the host reads). A new spot may be a
+# guest pointer that no rule reaches: then the script aborts. The translator (nvn/maxwell) is host code without guest memory.
 EXPECTED_CASTS = {"nvn/renderer.m": 16, "nvn/cmdbuf.c": 7, "nvn/metal.m": 4, "nvn/nvn.h": 4, "movie_glue32.c": 6}
 found = {}
 for dp, _, fn in os.walk(out):
@@ -135,5 +135,5 @@ for dp, _, fn in os.walk(out):
 unexpected = {f: (found.get(f, 0), EXPECTED_CASTS.get(f, 0)) for f in set(found) | set(EXPECTED_CASTS)
               if found.get(f, 0) != EXPECTED_CASTS.get(f, 0)}
 if unexpected:
-    sys.exit("Zeiger-Reste (uintptr_t) weichen von der Liste ab (gefunden, erwartet): %s" % unexpected)
-print("Zeiger-Reste wie erwartet:", found)
+    sys.exit("Pointer leftovers (uintptr_t) differ from the list (found, expected): %s" % unexpected)
+print("Pointer leftovers as expected:", found)

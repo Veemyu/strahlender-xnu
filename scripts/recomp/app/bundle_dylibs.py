@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Bündelt die Fremdbibliotheken (SDL3, FFmpeg mit allen Abhängigkeiten) einer Mach-O-Datei in <App>/Contents/Frameworks.
+"""Bundles the third-party libraries (SDL3, FFmpeg with all dependencies) of a Mach-O file into <App>/Contents/Frameworks.
 
-Kopiert jede Bibliothek, die nicht zum System gehört (/usr/lib, /System), nach <frameworks>, setzt ihre ID auf @rpath/<Name>,
-biegt alle Verweise darauf um und trägt @executable_path/../Frameworks als rpath der Hauptdatei ein. Die Signaturen der
-veränderten Dateien werden ungültig; der Aufrufer signiert danach neu (make_app.sh). Nur Standardbibliothek.
-Aufruf: bundle_dylibs.py <hauptdatei> <frameworks-ordner>
+Copies every library that is not part of the system (/usr/lib, /System) to <frameworks>, sets its ID to @rpath/<name>,
+repoints all references to it and adds @executable_path/../Frameworks as an rpath of the main binary. The signatures of the
+modified files become invalid; the caller re-signs afterwards (make_app.sh). Standard library only.
+Usage: bundle_dylibs.py <main-binary> <frameworks-folder>
 """
 import os
 import shutil
@@ -29,7 +29,7 @@ def main():
         return 2
     main_bin, fw = sys.argv[1], sys.argv[2]
     os.makedirs(fw, exist_ok=True)
-    done = {}   # Name -> Pfad in fw
+    done = {}   # name -> path in fw
     queue = [main_bin]
     while queue:
         cur = queue.pop()
@@ -45,17 +45,17 @@ def main():
                 subprocess.run(["install_name_tool", "-id", "@rpath/" + name, dst], check=True, capture_output=True)
                 done[name] = dst
                 queue.append(dst)
-            if os.path.basename(cur) != name:   # der eigene Eintrag (ID) ist schon umgesetzt
+            if os.path.basename(cur) != name:   # its own entry (ID) is already rewritten
                 subprocess.run(["install_name_tool", "-change", dep, "@rpath/" + name, cur], check=True, capture_output=True)
     rp = subprocess.run(["otool", "-l", main_bin], capture_output=True, text=True, check=True).stdout
     if "@executable_path/../Frameworks" not in rp:
         subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks", main_bin], check=True, capture_output=True)
     left = [d for f in [main_bin] + list(done.values()) for d in deps(f) if is_foreign(d)]
     if left:
-        print("FEHLER: nicht umgebogene Verweise: %s" % sorted(set(left)))
+        print("ERROR: references not repointed: %s" % sorted(set(left)))
         return 1
     total = sum(os.path.getsize(p) for p in done.values())
-    print("gebündelt: %d Bibliotheken, %.1f MB" % (len(done), total / 1e6))
+    print("bundled: %d libraries, %.1f MB" % (len(done), total / 1e6))
     return 0
 
 

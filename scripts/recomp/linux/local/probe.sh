@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs locally on Linux: Linux counterparts of the spike tests from scripts/recomp/test/ (x86 host, c mode, `weak_import` → `weak`).
-# Usage: probe.sh <test>   with test = eh | eh-real | rebase32 | gc | bench | boot | boot-las | alle
+# Usage: probe.sh <test>   with test = eh | eh-real | rebase32 | gc | bench | boot | boot-las | all
 #   eh        exception test (T0-T6) with the real SDK module          (Mac: run_eh_test.sh)
 #   eh-real   throw test with real LSDA functions from main (PER_KIND, default 60)   (run_eh_real.sh; after eh)
 #   rebase32  32-bit guest addresses (rt32)                               (run_eh_rebase32.sh)
@@ -17,7 +17,7 @@ CF="-fno-strict-aliasing -fvisibility=hidden -w -fPIC -march=x86-64-v3 -I script
 export CF
 mkdir -p "$P"
 
-# cc_all <objdir> <opt> <dateien...>: compile in parallel (object name <ordner>_<datei>.o), abort on error
+# cc_all <objdir> <opt> <files...>: compile in parallel (object name <folder>_<file>.o), abort on error
 cc_all() {
   local out=$1 opt=$2; shift 2
   rm -rf "$out"   # no leftovers from runs with a different chunk split (duplicate symbols)
@@ -28,14 +28,14 @@ cc_all() {
 }
 tm() { echo "--- $*"; "${TIMEV[@]}" "$@"; }
 sym() { python3 -c "import json,sys; print(hex(json.load(open('$1'))[sys.argv[1]]))" "$2"; }
-eh_list() {   # <json> <basis>: test_*=<Adresse> of the test module (EXCL=name excludes one test)
+eh_list() {   # <json> <basis>: test_*=<address> of the test module (EXCL=name excludes one test)
   python3 -c "
 import json, os, sys
 m = json.load(open(sys.argv[1]))['syms']
 print(' '.join(f'{k}={int(sys.argv[2], 16) + v:#x}' for k, v in m.items() if k.startswith('test_') and k != os.environ.get('EXCL')))" "$1" "$2"
 }
 
-guest_aarch64() {   # <quelle.cpp> <ausgabe.s>   (synthetic guest program, sdata4 EH like the Switch ABI)
+guest_aarch64() {   # <source.cpp> <output.s>   (synthetic guest program, sdata4 EH like the Switch ABI)
   clang --target=aarch64-linux-gnu -O1 -fexceptions -fno-rtti -fno-pic -fno-asynchronous-unwind-tables -nostdinc++ -S "$1" -o - | python3 $T/eh_sdata4.py > "$2"
 }
 
@@ -179,6 +179,6 @@ case "${1:-}" in
   boot) run boot boot;;
   boot-las) run boot-las boot_las;;
   bdsp) run bdsp bdsp;;
-  alle) for t in eh eh_real rebase32 gc bench boot boot_las; do run "$t" "$t" || true; done;;
-  *) die "Usage: probe.sh eh|eh-real|rebase32|gc|bench|boot|boot-las|bdsp|alle";;
+  all) for t in eh eh_real rebase32 gc bench boot boot_las; do run "$t" "$t" || true; done;;
+  *) die "Usage: probe.sh eh|eh-real|rebase32|gc|bench|boot|boot-las|bdsp|all";;
 esac

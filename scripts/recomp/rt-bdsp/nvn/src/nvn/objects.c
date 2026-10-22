@@ -539,7 +539,7 @@ static NvnDescPool *desc_pool_init(uint64_t guest, uint64_t pool, uint64_t off, 
     return d;
 }
 
-// Metal-Worker (BDSP_EXEC_WORKER=1, exec_worker.inc) setzt den Haken: Pool-Einträge laufen dann in Reihenfolge der Warteschlange
+// The Metal worker (BDSP_EXEC_WORKER=1, exec_worker.inc) sets the hook: pool entries then run in queue order
 bool (*g_nvn_ordered)(void (*fn)(void *), void *arg);
 typedef struct { NvnDescPool *d; int id; NvnTexEntry e; NvnSamplerDesc s; } PoolOp;
 static void pool_apply_tex(void *p) { PoolOp *o = p; ((NvnTexEntry *)o->d->entries)[o->id] = o->e; free(o); }
@@ -686,7 +686,7 @@ NVN(nvnWindowGetNumActiveTextures) { RET(WIN->active); }
 NVN(nvnWindowSetNumActiveTextures) { WIN->active = (int)A(1); }
 NVN(nvnWindowGetPresentInterval) { RET(WIN->interval); }
 NVN(nvnWindowSetPresentInterval) { WIN->interval = (int)A(1); }
-int g_win_crop[4];  // letzter nvnWindowSetCrop (Pixel x, y, Breite, Höhe): die Präsentation zeigt nur diesen Ausschnitt
+int g_win_crop[4];  // last nvnWindowSetCrop (pixels x, y, width, height): presentation shows only this region
 bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th) {
     if (!tw || !th || g_win_crop[2] <= 0 || g_win_crop[3] <= 0 || g_win_crop[0] < 0 || g_win_crop[1] < 0 ||
         (uint32_t)(g_win_crop[0] + g_win_crop[2]) > tw || (uint32_t)(g_win_crop[1] + g_win_crop[3]) > th) return false;

@@ -1,8 +1,8 @@
-// GC-Beweis für Linux/x86-64 (Gegenstück zu test/gc_prove.c, das Mach-APIs und ARM64-Zustand nutzt).
-// Eigener Code. Der Gastthread wird per Signal (SIGUSR1) an einer beliebigen Stelle angehalten; der Handler läuft auf dem
-// Gastthread, liest den x86-Registerzustand aus dem ucontext und wartet, bis der Hauptthread die Prüfung beendet hat.
-// Geprüft wird wie in gc_prove.c: Ist der Marker nur noch "im Register" (Slot leer), steht er dann in Cpu/Gast-Stack?
-// Gastcode: gc_guest.c, mit eh_gen.py im c-Modus erzeugt (Modul "gct").
+// GC proof for Linux/x86-64 (counterpart of test/gc_prove.c, which uses Mach APIs and ARM64 state).
+// Own code. The guest thread is stopped at an arbitrary point by a signal (SIGUSR1); the handler runs on the
+// guest thread, reads the x86 register state from the ucontext and waits until the main thread has finished the check.
+// The check is the same as in gc_prove.c: if the marker is only "in a register" (slot empty), is it then found in Cpu/guest stack?
+// Guest code: gc_guest.c, generated with eh_gen.py in c mode (module "gct").
 #define _GNU_SOURCE
 #include "cpu.h"
 #include <pthread.h>
@@ -82,7 +82,7 @@ int main(void) {
         stopped = 0; resumed = 0;
         pthread_kill(worker_th, SIGUSR1);
         while (!stopped) __asm__ volatile("pause");
-        if (*(volatile uint64_t *)SLOT == 0) {  // Objekt ist nur noch in Registern/Zwischenwerten erreichbar
+        if (*(volatile uint64_t *)SLOT == 0) {  // object is only reachable via registers/intermediate values
             windows++;
             uint64_t gx[33]; memcpy(gx, cpu->x, 31 * 8); gx[31] = cpu->sp;
             int in_cpu = has(gx, 32);
@@ -92,7 +92,7 @@ int main(void) {
             for (int r = 0; r < NGREG; r++) hx[nh++] = (uint64_t)saved[r];
             const uint64_t *hs = (const uint64_t *)(uintptr_t)(saved[REG_RSP] & ~7ull);
             int in_host = has(hx, nh);
-            for (int k = 0; k < 64 && !in_host; k++) if (hs[k] == MARKER) in_host = 1;  // oberes Stück des Host-Stacks (512 Byte)
+            for (int k = 0; k < 64 && !in_host; k++) if (hs[k] == MARKER) in_host = 1;  // top part of the host stack (512 bytes)
             hit_cpu += in_cpu;
             hit_all += in_cpu || in_host;
             hit_host_only += !in_cpu && in_host;
@@ -100,8 +100,8 @@ int main(void) {
         resume_go = 1;
         while (!resumed) __asm__ volatile("pause");
     }
-    printf("GC-Beweis (Linux/x86-64, Signal-Stopp): %d Anhaltepunkte, %d davon im Fenster (Zeiger nur in Registern/Zwischenwerten, Slot leer)\n", n, windows);
-    printf("  gefunden nur mit Gast-Zustand (Cpu + Gast-Stack):       %d von %d (%.1f %%)\n", hit_cpu, windows, windows ? 100.0 * hit_cpu / windows : 0);
-    printf("  gefunden mit zusaetzlichem Host-Register/Host-Stack:   %d von %d (%.1f %%); davon nur dort: %d\n", hit_all, windows, windows ? 100.0 * hit_all / windows : 0, hit_host_only);
+    printf("GC proof (Linux/x86-64, signal stop): %d suspension points, %d of them in the window (pointer only in registers/intermediate values, slot empty)\n", n, windows);
+    printf("  found with guest state only (Cpu + guest stack):        %d of %d (%.1f %%)\n", hit_cpu, windows, windows ? 100.0 * hit_cpu / windows : 0);
+    printf("  found with additional host register/host stack:        %d of %d (%.1f %%); of those only there: %d\n", hit_all, windows, windows ? 100.0 * hit_all / windows : 0, hit_host_only);
     return 0;
 }

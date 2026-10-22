@@ -1,7 +1,7 @@
 #!/bin/bash
-# Baut ein minimales FFmpeg (VP8/VP9-Decoder, Matroska/WebM-Demuxer, Datei-Protokoll) als statische Bibliotheken für iPhoneOS arm64
-# nach work/ios/ffmpeg-ios (Quelltext aus work/ios/ffmpeg-<Version>.tar.xz, von ffmpeg.org; nichts davon im Repo). Die Filmwiedergabe der
-# Laufzeit (nvn/movie_glue.c) braucht libavformat/libavcodec/libavutil. Aufruf: build_ffmpeg_ios.sh [VERSION] [JOBS]
+# Builds a minimal FFmpeg (VP8/VP9 decoder, Matroska/WebM demuxer, file protocol) as static libraries for iPhoneOS arm64
+# to work/ios/ffmpeg-ios (source from work/ios/ffmpeg-<version>.tar.xz, from ffmpeg.org; none of it in the repo). The movie playback of the
+# runtime (nvn/movie_glue.c) needs libavformat/libavcodec/libavutil. Usage: build_ffmpeg_ios.sh [VERSION] [JOBS]
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}

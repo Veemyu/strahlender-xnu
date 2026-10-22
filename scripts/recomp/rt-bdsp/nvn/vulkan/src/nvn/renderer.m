@@ -646,7 +646,7 @@ static void ring_reset(void) { ring_off = 0; }
 
 // Bind guest memory [addr, addr+size) as a buffer: zero-copy inside the heap, copied otherwise.
 static bool guest_heap_ok(uint64_t addr, uint64_t size) {
-    static int off = -1;  // Standard: Daten über den Ring kopieren; BDSP_GUEST_BUF=1 nutzt den umhüllten Gastspeicher (siehe docs/rendering.md: die GPU sah dort alte Seiten)
+    static int off = -1;  // default: copy data through the ring; BDSP_GUEST_BUF=1 uses the wrapped guest memory (see docs/rendering.md: the GPU saw stale pages there)
     if (off < 0) off = getenv("BDSP_GUEST_BUF") == NULL;
     return !off && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
 }
@@ -1113,7 +1113,7 @@ static uint64_t shader_handle(int stage, const ShaderTexture *st_) {
         int slot = ((int)st_->handle_offset - 0x20) / 8;  // 64-bit handles from offset 0x20
         return (slot >= 0 && slot < 32) ? st.tex[stage][slot] : 0;
     }
-    // Handles aus zwei Wörtern: die Textur steht in der Tabelle ab 0x168, der Sampler in der ab 0x568 (Fund des Vulkan-Strangs)
+    // Handles of two words: the texture is in the table at 0x168, the sampler in the one at 0x568 (finding of the Vulkan track)
     int ti = ((int)(st_->bindless_has_sampler ? st_->bindless_sampler_offset : st_->bindless_offset) - (st_->bindless_has_sampler ? 0x168 : 0x568)) / 8;
     uint64_t th = (ti >= 0 && ti < 32) ? st.tex[stage][ti] : 0;
     if (!th) return 0;

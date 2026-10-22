@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Referenzlauf des Exception-Tests unter Unicorn (echte ARM64-Semantik) für den Vergleich mit der Rekompilation.
+"""Reference run of the exception test under Unicorn (real ARM64 semantics) for comparison with the recompilation.
 
-Eigener Code. Lädt dieselben Bilder wie eh_harness.c (work/recomp/spike2/sdk.img, eht.img), ersetzt dieselben
-Importe/Funktionen durch Python-Hooks (malloc, __cxa_get_globals, GetExceptionInfo, nn::os-Mutex) und führt
-test_basic usw. aus. Stimmt dieser Lauf mit dem erwarteten Ergebnis überein, ist der Aufbau des Tests (Mini-Linker,
-Bilder, HLE-Semantik) richtig; Abweichungen der Rekompilation sind dann Lifter-/Generatorfehler.
+Own code. Loads the same images as eh_harness.c (work/recomp/spike2/sdk.img, eht.img), replaces the same
+imports/functions with Python hooks (malloc, __cxa_get_globals, GetExceptionInfo, nn::os mutex) and runs
+test_basic etc. If this run matches the expected result, the test setup (mini linker,
+images, HLE semantics) is correct; deviations of the recompilation are then lifter/generator errors.
 
-Aufruf: uc_ref.py [--trace]   (setzt voraus: run_eh_test.sh wurde einmal gelaufen)
+Usage: uc_ref.py [--trace]   (requires that run_eh_test.sh was run once)
 """
 import json
 import struct
@@ -102,7 +102,7 @@ def h_noop():
 
 
 by_name = {"malloc": h_malloc, "calloc": h_calloc, "free": h_free, "realloc": h_malloc, "aligned_alloc": h_malloc}
-override = {  # ersetzte SDK-Funktionen (Name -> Hook); Einsprung wird per Code-Hook erkannt
+override = {  # replaced SDK functions (name -> hook); entry is recognized by a code hook
     "__cxa_get_globals": h_globals, "__cxa_get_globals_fast": h_globals,
     "_ZN2nn2ro6detail16GetExceptionInfoEPNS1_13ExceptionInfoEm": h_getexc,
     "_ZN2nn2os9LockMutexEPNS0_9MutexTypeE": h_noop, "_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE": h_noop,
@@ -153,7 +153,7 @@ def call(addr, *args):
     try:
         mu.emu_start(addr, STOP, count=50_000_000)
     except uc.UcError as e:
-        print("Unicorn-Fehler:", e, "pc=", hex(mu.reg_read(A.UC_ARM64_REG_PC)))
+        print("Unicorn error:", e, "pc=", hex(mu.reg_read(A.UC_ARM64_REG_PC)))
         return None
     return reg(0)
 
@@ -169,22 +169,22 @@ def main():
     mu.mem_write(log, struct.pack("<i", 1))
     r = call(T["test_basic"], log, 7, 5, 3)
     exp = 7 + (5 * 7 + 1) + (3 * 5 + 2)
-    print(f"T1 (Unicorn) Rueckgabe {r} (erwartet {exp}), Log {rd32(log)} (erwartet 1234)")
+    print(f"T1 (Unicorn) return {r} (expected {exp}), log {rd32(log)} (expected 1234)")
     ok &= r == exp and rd32(log) == 1234
     mu.mem_write(log, struct.pack("<i", 1))
     r = call(T["test_rethrow"], log, 9)
-    print(f"T3 (Unicorn) Rueckgabe {r}, Log {rd32(log)} (erwartet 9 / 1256)")
+    print(f"T3 (Unicorn) return {r}, log {rd32(log)} (expected 9 / 1256)")
     ok &= r == 9 and rd32(log) == 1256
-    print(f"T2 (Unicorn) kein Wurf: Rueckgabe {call(T['test_nothrow'], log)}, Log {rd32(log)} (erwartet 1 / 999992)")
+    print(f"T2 (Unicorn) no throw: return {call(T['test_nothrow'], log)}, log {rd32(log)} (expected 1 / 999992)")
     r = call(T["test_deep"], log, 200, 5)
-    print(f"T4 (Unicorn) Rueckgabe {r} (erwartet 5201)")
+    print(f"T4 (Unicorn) return {r} (expected 5201)")
     ok &= r == 5201
     if "test_badalloc" in T:
         mu.mem_write(log, struct.pack("<i", 1))
         r = call(T["test_badalloc"], log)
-        print(f"T5 (Unicorn) Rueckgabe {r}, Log {rd32(log)} (erwartet 77 / 17)")
+        print(f"T5 (Unicorn) return {r}, log {rd32(log)} (expected 77 / 17)")
         ok &= r == 77 and rd32(log) == 17
-    print("ERGEBNIS Unicorn:", "alle Tests bestanden" if ok else "FEHLER")
+    print("RESULT Unicorn:", "all tests passed" if ok else "ERROR")
 
 
 if __name__ == "__main__":

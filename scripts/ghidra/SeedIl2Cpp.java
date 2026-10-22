@@ -1,5 +1,5 @@
-// Legt alle IL2CPP-ScriptMethod-Adressen als benannte Funktionen an und startet die Autoanalyse.
-// Optionale Skriptargumente: [script.json] [Reportdatei]
+// Creates all IL2CPP ScriptMethod addresses as named functions and starts the auto-analysis.
+// Optional script arguments: [script.json] [report-file]
 // @category IL2CPP
 
 import java.io.File;
@@ -134,7 +134,7 @@ public class SeedIl2Cpp extends GhidraScript {
 					}
 
 					if (total % 5000 == 0) {
-						println(String.format("SeedIl2Cpp: %d verarbeitet (neu %d, umbenannt %d, uebersprungen %d, Fehler %d), %d s",
+						println(String.format("SeedIl2Cpp: %d processed (new %d, renamed %d, skipped %d, errors %d), %d s",
 							total, created, renamed, skipped, failed, (System.currentTimeMillis() - t0) / 1000));
 					}
 				}
@@ -144,35 +144,35 @@ public class SeedIl2Cpp extends GhidraScript {
 		}
 
 		long t1 = System.currentTimeMillis();
-		println(String.format("SeedIl2Cpp: Seeding fertig: gesamt %d, neu %d, umbenannt %d, uebersprungen %d, Fehler %d (%d s)",
+		println(String.format("SeedIl2Cpp: seeding done: total %d, new %d, renamed %d, skipped %d, errors %d (%d s)",
 			total, created, renamed, skipped, failed, (t1 - t0) / 1000));
-		writeReport(reportFile, total, created, renamed, skipped, failed, errors, (t1 - t0) / 1000, -1, -1, "Seeding fertig, Analyse laeuft");
+		writeReport(reportFile, total, created, renamed, skipped, failed, errors, (t1 - t0) / 1000, -1, -1, "seeding done, analysis running");
 
-		println("SeedIl2Cpp: starte Autoanalyse (GCC Exception Handlers aus)");
+		println("SeedIl2Cpp: starting auto-analysis (GCC exception handlers off)");
 		analyzeAll(currentProgram);
 		long t2 = System.currentTimeMillis();
 		int funcs = currentProgram.getFunctionManager().getFunctionCount();
-		println("SeedIl2Cpp: Autoanalyse fertig nach " + (t2 - t1) / 1000 + " s, Funktionen gesamt: " + funcs);
-		writeReport(reportFile, total, created, renamed, skipped, failed, errors, (t1 - t0) / 1000, (t2 - t1) / 1000, funcs, "fertig");
+		println("SeedIl2Cpp: auto-analysis done after " + (t2 - t1) / 1000 + " s, functions total: " + funcs);
+		writeReport(reportFile, total, created, renamed, skipped, failed, errors, (t1 - t0) / 1000, (t2 - t1) / 1000, funcs, "done");
 	}
 
 	private void writeReport(File f, int total, int created, int renamed, int skipped, int failed,
 			List<String> errors, long seedSec, long analysisSec, int funcs, String phase) throws Exception {
 		try (PrintWriter w = new PrintWriter(f, "UTF-8")) {
 			w.println("SeedIl2Cpp Report (" + phase + ")");
-			w.println("Programm: " + currentProgram.getName());
-			w.println("ScriptMethod-Eintraege: " + total);
-			w.println("neu angelegt: " + created);
-			w.println("umbenannt (Default-Name): " + renamed);
-			w.println("uebersprungen (existierte): " + skipped);
-			w.println("Fehler: " + failed);
-			w.println("Seeding-Dauer s: " + seedSec);
+			w.println("Program: " + currentProgram.getName());
+			w.println("ScriptMethod entries: " + total);
+			w.println("newly created: " + created);
+			w.println("renamed (default name): " + renamed);
+			w.println("skipped (existed): " + skipped);
+			w.println("Errors: " + failed);
+			w.println("Seeding duration s: " + seedSec);
 			if (analysisSec >= 0) {
-				w.println("Analyse-Dauer s: " + analysisSec);
-				w.println("Funktionen gesamt: " + funcs);
+				w.println("Analysis duration s: " + analysisSec);
+				w.println("Functions total: " + funcs);
 			}
 			w.println();
-			w.println("Fehler (max. " + MAX_LOGGED_ERRORS + "):");
+			w.println("Errors (max. " + MAX_LOGGED_ERRORS + "):");
 			for (String e : errors) {
 				w.println(e);
 			}

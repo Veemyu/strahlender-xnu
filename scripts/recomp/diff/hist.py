@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Histogramm der FP-/SIMD-Befehle im Text der NSO-Module (docs/recomp-diff.md, Abschnitt 1).
+"""Histogram of the FP/SIMD instructions in the text of the NSO modules (docs/recomp-diff.md, section 1).
 
-Eigener Code. Liest work/exefs/{main,sdk,subsdk0,rtld} (lokal, nichts davon im Repo), zerlegt jedes
-32-Bit-Wort des Textsegments mit Capstone und zählt Mnemonics je Modul. Zusätzlich: MRS/MSR auf FPCR/FPSR
-(Wörter direkt per Maske) und die FPCR-Schreibwerte, soweit sie als `mov`-Konstante davor stehen.
-Ausgabe: work/recomp/diff/hist.json (Mnemonic -> Zähler je Modul) und eine Textzusammenfassung.
+Own code. Reads work/exefs/{main,sdk,subsdk0,rtld} (local, none of it in the repo), decodes every
+32-bit word of the text segment with Capstone and counts mnemonics per module. Additionally: MRS/MSR on FPCR/FPSR
+(words directly by mask) and the FPCR write values, as far as they appear as a `mov` constant before.
+Output: work/recomp/diff/hist.json (mnemonic -> counter per module) and a text summary.
 
-Aufruf: hist.py [--exefs work/exefs] [--out work/recomp/diff/hist.json]
+Usage: hist.py [--exefs work/exefs] [--out work/recomp/diff/hist.json]
 """
 import argparse
 import json
@@ -23,7 +23,7 @@ sys.dont_write_bytecode = True
 import capstone  # noqa: E402
 from nso import Nso  # noqa: E402
 
-# MSR/MRS (Register) mit o0=1 op1=3 CRn=4: FPCR = CRm 4 op2 0, FPSR = CRm 4 op2 1
+# MSR/MRS (register) with o0=1 op1=3 CRn=4: FPCR = CRm 4 op2 0, FPSR = CRm 4 op2 1
 MRS_FPCR, MRS_FPSR = 0xD53B4400, 0xD53B4420
 MSR_FPCR, MSR_FPSR = 0xD51B4400, 0xD51B4420
 
@@ -33,7 +33,7 @@ IMM = re.compile(r"#-?(0x[0-9a-f]+|\d+(\.\d+)?|[0-9.e+-]+)")
 
 
 def shape(mn, ops):
-    """Mnemonic + Operanden ohne Registernummern und Konstanten (Anordnung/Breite bleibt)."""
+    """Mnemonic + operands without register numbers and constants (arrangement/width stays)."""
     return mn + " " + IMM.sub("#", REG.sub(lambda m: m.group(1) + "N", ops))
 
 
@@ -66,7 +66,7 @@ def main():
                 sr["msr fpsr"] += 1
         pos = 0
         undec = 0
-        while pos < size:  # disasm_lite hält bei der ersten ungültigen Kodierung an
+        while pos < size:  # disasm_lite stops at the first invalid encoding
             chunk = text[pos:pos + (1 << 20)]
             k = 0
             for ins in md.disasm_lite(chunk, pos):
@@ -84,12 +84,12 @@ def main():
         res[mod] = cnt
         shapes[mod] = shp
         sysregs[mod] = sr
-        print(mod, len(words), "Wörter,", len(cnt), "Mnemonics", dict(sr), file=sys.stderr, flush=True)
+        print(mod, len(words), "words,", len(cnt), "mnemonics", dict(sr), file=sys.stderr, flush=True)
     out = {"words": total, "mnemonics": {m: dict(c) for m, c in res.items()}, "sysregs": {m: dict(c) for m, c in sysregs.items()},
            "shapes": {m: dict(c) for m, c in shapes.items()}}
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(out, sort_keys=True))
-    print("gesamt", sum(total.values()), "Wörter ->", a.out)
+    print("total", sum(total.values()), "words ->", a.out)
 
 
 if __name__ == "__main__":

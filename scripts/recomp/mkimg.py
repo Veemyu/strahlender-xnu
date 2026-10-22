@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Speicherbild eines NSO-Moduls für den Exception-Spike bauen (Relokationen angewandt, Importe -> HLE-Slots).
+"""Build the memory image of an NSO module for the exception spike (relocations applied, imports -> HLE slots).
 
-Eigener Code. Liest scripts/recomp/upstream/generator/nso.py. Schreibt unter --out (work/recomp/spike2):  <name>.img        flaches Bild, Modulbasis = --base (Relokationen RELATIVE/ABS64/GLOB_DAT/JUMP_SLOT angewandt)
-  <name>.syms.json  {Exportname: absolute Gastadresse}
-  hle.txt           Importnamen, Zeile i = HLE-Slot i (Adresse HLE_BASE + 16 * i); wird fortgeschrieben
+Own code. Reads scripts/recomp/upstream/generator/nso.py. Writes under --out (work/recomp/spike2):  <name>.img        flat image, module base = --base (relocations RELATIVE/ABS64/GLOB_DAT/JUMP_SLOT applied)
+  <name>.syms.json  {export name: absolute guest address}
+  hle.txt           import names, line i = HLE slot i (address HLE_BASE + 16 * i); is carried forward
 
-Aufruf: mkimg.py <nso> <name> --base 0x7004000000 --out work/recomp/spike2
+Usage: mkimg.py <nso> <name> --base 0x7004000000 --out work/recomp/spike2
 """
 import argparse
 import json
@@ -29,10 +29,10 @@ def main():
     ap.add_argument("--base", type=lambda s: int(s, 0), required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--hle-base", type=lambda s: int(s, 0), default=HLE_BASE)
-    ap.add_argument("--link", action="append", default=[], help="JSON {Exportname: Adresse} eines anderen Moduls (mehrfach)")
-    ap.add_argument("--hle-list", help="Textdatei mit Symbolnamen (eine je Zeile, '#' = Kommentar), die auch bei vorhandenem Export an einen HLE-Slot gebunden werden")
-    ap.add_argument("--interpose-from", help="JSON {Exportname: Adresse} des Hauptmoduls: passende Symbole der anderen Module werden an dessen Definition gebunden (ELF-Interposition: die Definition der ausführbaren Datei gewinnt, z. B. operator new/delete des Spiels gegenüber dem SDK)")
-    ap.add_argument("--interpose-regex", default=r"^(_Zn[wa]|_Zd[la]|_ZT[IS])", help="welche Symbole interponiert werden (Standard: operator new/delete und typeinfo)")
+    ap.add_argument("--link", action="append", default=[], help="JSON {export name: address} of another module (repeatable)")
+    ap.add_argument("--hle-list", help="text file with symbol names (one per line, '#' = comment) that are bound to an HLE slot even if an export exists")
+    ap.add_argument("--interpose-from", help="JSON {export name: address} of the main module: matching symbols of the other modules are bound to its definition (ELF interposition: the definition of the executable wins, e.g. the game's operator new/delete over the SDK's)")
+    ap.add_argument("--interpose-regex", default=r"^(_Zn[wa]|_Zd[la]|_ZT[IS])", help="which symbols are interposed (default: operator new/delete and typeinfo)")
     a = ap.parse_args()
     forced = set()
     if a.hle_list:
@@ -79,7 +79,7 @@ def main():
             elif s[0] in linked:
                 struct.pack_into("<Q", img, off, linked[s[0]] + (add if typ == 257 else 0))
                 stats["linked"] += 1
-            elif (s[1] >> 4) == 2:  # schwach und unaufgelöst: 0 (der Code prüft darauf, z. B. nnosGetDefaultUserExceptionStack...)
+            elif (s[1] >> 4) == 2:  # weak and unresolved: 0 (the code checks for it, e.g. nnosGetDefaultUserExceptionStack...)
                 struct.pack_into("<Q", img, off, 0)
                 stats["weak0"] = stats.get("weak0", 0) + 1
             else:
@@ -92,7 +92,7 @@ def main():
         f"{n.data[0]:#x} {n.data[0] + n.data[1]:#x} {n.size:#x} {d.get(12, 0):#x} {d.get(25, 0):#x} {d.get(27, 0):#x}\n")
     (out / f"{a.name}.syms.json").write_text(json.dumps(exports))
     hle_path.write_text("\n".join(hle) + "\n")
-    print(a.name, "Bild", len(img), "Relokationen", stats, "HLE-Slots gesamt", len(hle))
+    print(a.name, "image", len(img), "relocations", stats, "HLE slots total", len(hle))
 
 
 if __name__ == "__main__":

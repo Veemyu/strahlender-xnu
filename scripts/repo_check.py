@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Prüft das Git-Repo auf Dateien, die nie hineingehören (Spieldaten, Schlüssel, Dumps).
+"""Checks the git repo for files that must never be in it (game data, keys, dumps).
 
-Aufruf:  scripts/repo_check.py            prüft getrackte Dateien und den Index
-         scripts/repo_check.py --staged    prüft nur den Index (für einen Pre-Commit-Hook)
-Exit-Code 0 = sauber, 1 = Verstoß, 2 = Fehler.
-Eigener Code. Meldet nur Pfade, nie Dateiinhalte.
+Usage:   scripts/repo_check.py            checks tracked files and the index
+         scripts/repo_check.py --staged    checks only the index (for a pre-commit hook)
+Exit code 0 = clean, 1 = violation, 2 = error.
+Own code. Reports only paths, never file contents.
 """
 import argparse
 import re
 import subprocess
 import sys
 
-# Dateiendungen, die auf Spiel- oder Konsolendaten hindeuten.
+# File extensions that point to game or console data.
 FORBIDDEN_SUFFIXES = (
     ".nsp", ".xci", ".nca", ".nso", ".nro", ".nsz", ".xcz", ".ncz",
     ".keys", ".tik", ".cert", ".romfs",
@@ -19,20 +19,20 @@ FORBIDDEN_SUFFIXES = (
     ".p12", ".mobileprovision", ".cer", ".ipa",
 )
 
-# Pfadbestandteile, die lokale Daten markieren.
+# Path components that mark local data.
 FORBIDDEN_PARTS = (
     "nsp/", "Ryujinx/", "Ryujinx_", "work/", "tools/", "research/", "cache/shaders/",
     "StreamingAssets/AssetAssistant", "GameData/",
     "unity/Library/", "unity/Temp/", "unity/Assets/_Recovery/", "unity/Assets/XnuStubs/", "unity/Assets/XnuGenerated/",
 )
 
-# Dateinamen mit Schlüssel-Charakter (unabhängig vom Ordner).
+# File names that look like keys (independent of the folder).
 FORBIDDEN_NAMES = re.compile(r"(prod|title|dev|console)\.keys$|(^|/)\.env$|(^|/)local\.env$", re.IGNORECASE)
 
-# Größe, ab der eine getrackte Datei verdächtig ist (Byte).
+# Size from which a tracked file is suspicious (bytes).
 MAX_BYTES = 5 * 1024 * 1024
 
-# Erlaubte Ausnahmen (relative Pfade) – bewusst leer halten und begründen.
+# Allowed exceptions (relative paths): deliberately keep empty and justify each one.
 ALLOWED = set()
 
 
@@ -63,36 +63,36 @@ def check(paths, staged_only):
             continue
         low = p.lower()
         if low.endswith(FORBIDDEN_SUFFIXES):
-            problems.append((p, "verbotene Dateiendung"))
+            problems.append((p, "forbidden file extension"))
             continue
         if any(part in p for part in FORBIDDEN_PARTS):
-            problems.append((p, "lokaler Datenpfad"))
+            problems.append((p, "local data path"))
             continue
         if FORBIDDEN_NAMES.search(p):
-            problems.append((p, "Schlüssel-/Umgebungsdatei"))
+            problems.append((p, "key/environment file"))
             continue
         size = blob_size(p, staged_only)
         if size > MAX_BYTES:
-            problems.append((p, f"größer als {MAX_BYTES // (1024 * 1024)} MiB ({size} Byte)"))
+            problems.append((p, f"larger than {MAX_BYTES // (1024 * 1024)} MiB ({size} bytes)"))
     return problems
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--staged", action="store_true", help="nur den Index prüfen")
+    ap.add_argument("--staged", action="store_true", help="check only the index")
     args = ap.parse_args()
     try:
         paths = tracked_files(args.staged)
         problems = check(paths, args.staged)
     except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"Fehler: {exc}", file=sys.stderr)
+        print(f"Error: {exc}", file=sys.stderr)
         return 2
     for path, reason in problems:
-        print(f"VERSTOSS: {path}: {reason}")
+        print(f"VIOLATION: {path}: {reason}")
     if problems:
-        print(f"{len(problems)} Verstoß/Verstöße.")
+        print(f"{len(problems)} violation(s).")
         return 1
-    print(f"OK: {len(paths)} Dateien geprüft.")
+    print(f"OK: {len(paths)} files checked.")
     return 0
 
 

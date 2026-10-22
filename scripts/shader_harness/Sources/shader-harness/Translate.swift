@@ -16,7 +16,7 @@ func runProcess(_ exe: String, _ args: [String]) throws -> (status: Int32, out: 
     p.standardOutput = o
     p.standardError = e
     try p.run()
-    // stderr in eigenem Thread lesen, damit keine Pipe vollaeuft
+    // read stderr in its own thread so no pipe fills up
     var errData = Data()
     let g = DispatchGroup()
     g.enter()
@@ -33,25 +33,25 @@ func translateToMSL(_ stage: StageSource) throws -> String {
         guard let s = try? String(contentsOf: m, encoding: .utf8) else { throw HarnessError("MSL \(m.path) nicht lesbar") }
         return s
     }
-    guard let spv = stage.spirv else { throw HarnessError("keine Shader-Quelle") }
-    guard FileManager.default.fileExists(atPath: spv.path) else { throw HarnessError("SPIR-V \(spv.path) nicht gefunden") }
-    guard let exe = findSpirvCross() else { throw HarnessError("spirv-cross nicht gefunden (brew install spirv-cross oder SPIRV_CROSS=<Pfad>)") }
+    guard let spv = stage.spirv else { throw HarnessError("no shader source") }
+    guard FileManager.default.fileExists(atPath: spv.path) else { throw HarnessError("SPIR-V \(spv.path) not found") }
+    guard let exe = findSpirvCross() else { throw HarnessError("spirv-cross not found (brew install spirv-cross or SPIRV_CROSS=<path>)") }
     var args = [spv.path, "--msl", "--msl-version", "20300"]
     if stage.flipVertY { args.append("--flip-vert-y") }
     if stage.fixupClipspace { args.append("--fixup-clipspace") }
     args += stage.extraArgs
     let r = try runProcess(exe, args)
     guard r.status == 0 else {
-        throw HarnessError("spirv-cross Exit \(r.status) fuer \(spv.lastPathComponent): \(String(decoding: r.err, as: UTF8.self))")
+        throw HarnessError("spirv-cross exit \(r.status) for\(spv.lastPathComponent): \(String(decoding: r.err, as: UTF8.self))")
     }
     return String(decoding: r.out, as: UTF8.self)
 }
 
-/// Optionaler Offline-Check mit `xcrun metal` (nur sinnvoll, wenn die Metal-Toolchain installiert ist).
+/// Optional offline check with `xcrun metal` (only useful if the Metal toolchain is installed).
 func xcrunMetalCheck(file: URL) -> String {
     guard let r = try? runProcess("/usr/bin/xcrun", ["-sdk", "macosx", "metal", "-std=macos-metal2.3", "-c", file.path, "-o", file.path + ".air"]) else {
         return "xcrun nicht startbar"
     }
     if r.status == 0 { return "ok" }
-    return "nicht verfuegbar/fehlgeschlagen: " + String(decoding: r.err, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    return "not available/failed: " + String(decoding: r.err, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
 }

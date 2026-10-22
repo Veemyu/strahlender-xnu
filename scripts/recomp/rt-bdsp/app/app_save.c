@@ -226,7 +226,7 @@ int bdsp_save_import(const char *path, char *msg, size_t n) {
     uint8_t *sd = read_all(src_sd, &len);
     if (!sd) { snprintf(msg, n, "%s cannot be read", src_sd); return -1; }
     if (bdsp_save_validate(sd, len, why, sizeof why) != 0) {
-        snprintf(msg, n, "SaveData.bin abgelehnt: %s", why);
+        snprintf(msg, n, "SaveData.bin rejected: %s", why);
         free(sd);
         return -1;
     }

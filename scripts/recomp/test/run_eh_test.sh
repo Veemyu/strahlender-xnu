@@ -1,6 +1,6 @@
 #!/bin/bash
-# Baut und führt den Exception-Test aus (docs/architecture.md, Abschnitt Ausnahmen). Alles unter work/recomp/.
-# Voraussetzung: work/exefs (eigener Dump), scripts/recomp/upstream (vendort), tools/pydeps (capstone, unicorn, lz4).
+# Builds and runs the exception test (docs/architecture.md, section exceptions). Everything under work/recomp/.
+# Prerequisite: work/exefs (own dump), scripts/recomp/upstream (vendored), tools/pydeps (capstone, unicorn, lz4).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 S=work/recomp/spike2
@@ -13,7 +13,7 @@ mkdir -p $S $G
 rm -f $S/hle.txt
 python3 scripts/recomp/mkimg.py work/exefs/sdk sdk --base 0x7004000000 --out $S
 python3 scripts/recomp/eh_gen.py gen sdk work/exefs/sdk 0x7004000000 $G/sdk --simd asm --hle scripts/recomp/test/hle_symbols.txt
-# Die Gast-ABI der Switch nutzt 32-Bit-EH-Kodierungen (sdata4); dieser Clang schreibt sdata8. Umschreiben im Assembler.
+# The Switch guest ABI uses 32-bit EH encodings (sdata4); this Clang writes sdata8. Rewrite in the assembler.
 clang --target=aarch64-linux-gnu -O1 -fexceptions -fno-rtti -fno-pic -fno-asynchronous-unwind-tables -nostdinc++ -S scripts/recomp/test/eh_guest.cpp -o - \
   | python3 scripts/recomp/test/eh_sdata4.py > $S/eh_guest.s
 clang --target=aarch64-linux-gnu -c $S/eh_guest.s -o $S/eh_guest.o

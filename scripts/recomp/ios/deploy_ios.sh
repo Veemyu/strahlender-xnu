@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Baut die iPadOS-App der Rekompilation (Speichermodell B), installiert sie auf das gekoppelte iPad, startet sie und holt Dateien.
-# Eigener Code; Muster wie scripts/ios_push_save.sh. Die Team-ID kommt aus work/local.env (TEAM_ID=..., gitignoriert)
-# und wird nie ausgegeben oder gespeichert.
+# Builds the iPadOS app of the recompilation (memory model B), installs it on the paired iPad, starts it and fetches files.
+# Own code; pattern like scripts/ios_push_save.sh. The team ID comes from work/local.env (TEAM_ID=..., gitignored)
+# and is never printed or stored.
 #
-# Aufruf:  deploy_ios.sh build            Laufzeitbibliothek, libgame.a (aus work/recomp/obj32), Ressourcen und App bauen (xcodebuild)
-#          deploy_ios.sh install          App auf das iPad installieren
-#          deploy_ios.sh run [Sekunden]   starten (--console), Log nach work/builds/ipad-recomp-<Zeit>.log; ohne Zeitangabe bis Ctrl-C
-#          deploy_ios.sh data             RomFS (work/romfs) nach Documents/GameData/romfs kopieren (einmalig, ca. 4,7 GB)
-#          deploy_ios.sh save             SaveData.bin/Backup.bin/user_id.hex aus work/recomp/save nach Documents/ legen (die App importiert sie)
-#          deploy_ios.sh shots            Documents/Shots nach work/visual/ipad-recomp/ holen
-#          deploy_ios.sh files [Pfad]     Dateiliste des Containers (Standard Documents)
-# Umgebung: DEVICE_NAME (Teil des Gerätenamens), BUNDLE_ID (Standard dev.local.xnubdsp), RUN_ENV (JSON für --environment-variables)
+# Usage:   deploy_ios.sh build            build runtime library, libgame.a (from work/recomp/obj32), resources and app (xcodebuild)
+#          deploy_ios.sh install          install the app on the iPad
+#          deploy_ios.sh run [seconds]    start (--console), log to work/builds/ipad-recomp-<time>.log; without a time until Ctrl-C
+#          deploy_ios.sh data             copy RomFS (work/romfs) to Documents/GameData/romfs (once, about 4.7 GB)
+#          deploy_ios.sh save             put SaveData.bin/Backup.bin/user_id.hex from work/recomp/save into Documents/ (the app imports them)
+#          deploy_ios.sh shots            fetch Documents/Shots to work/visual/ipad-recomp/
+#          deploy_ios.sh files [path]     file list of the container (default Documents)
+# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables)
 set -euo pipefail
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -22,7 +22,7 @@ RT=work/recomp/ios-rt
 RES=work/ios/res
 mkdir -p work/builds work/visual/ipad-recomp work/ios
 
-# RomFS-Manifest (Dateianzahl und Gesamtgröße von work/romfs). Liegt es auf dem iPad, ist der Stand vollständig.
+# RomFS manifest (file count and total size of work/romfs). If it is on the iPad, the state is complete.
 romfs_manifest() {
   python3 - > work/ios/romfs.manifest <<'EOF'
 import os
@@ -34,7 +34,7 @@ for dp, _, fn in os.walk("work/romfs"):
 print(f"{c} {s}")
 EOF
 }
-# Kopiert RomFS komplett (ersetzt den Ordner, damit keine verwaisten Dateien bleiben) und das Manifest.
+# Copies RomFS completely (replaces the folder so no orphaned files remain) and the manifest.
 romfs_copy() {
   echo "Kopiere work/romfs nach Documents/GameData/romfs (dauert) ..."
   romfs_manifest
@@ -43,16 +43,16 @@ romfs_copy() {
   xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
     --source work/ios/romfs.manifest --destination Documents/GameData/romfs.manifest > /dev/null 2>&1
 }
-# Prüft das Manifest auf dem iPad und kopiert RomFS nur, wenn es fehlt oder nicht passt.
+# Checks the manifest on the iPad and copies RomFS only if it is missing or does not match.
 romfs_ensure() {
   romfs_manifest
   rm -f work/ios/romfs.device.manifest
   xcrun devicectl device copy from --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
     --source Documents/GameData/romfs.manifest --destination work/ios/romfs.device.manifest > /dev/null 2>&1 || true
   if [[ -f work/ios/romfs.device.manifest ]] && cmp -s work/ios/romfs.device.manifest work/ios/romfs.manifest; then
-    echo "RomFS auf dem iPad aktuell."
+    echo "RomFS on the iPad is up to date."
   else
-    echo "RomFS fehlt oder ist veraltet auf dem iPad."
+    echo "RomFS is missing or outdated on the iPad."
     romfs_copy
   fi
 }
@@ -71,7 +71,7 @@ for d in json.load(open(sys.argv[1]))["result"]["devices"]:
         break
 EOF
 ) || true
-  [[ -n "${UDID:-}" ]] || { echo "Kein verbundenes, entsperrtes iPad gefunden." >&2; exit 3; }
+  [[ -n "${UDID:-}" ]] || { echo "No connected, unlocked iPad found." >&2; exit 3; }
 }
 
 case "${1:-}" in
@@ -86,14 +86,14 @@ case "${1:-}" in
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
       -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
-    echo "gebaut: $(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
-    # Shader-Cache, Metallibs und pipelines.bin legt die Xcode-Build-Phase ins Bundle (app/copy_bundle_resources.sh)
+    echo "built:$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
+    # The Xcode build phase puts the shader cache, metallibs and pipelines.bin into the bundle (app/copy_bundle_resources.sh)
     APPB="$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' -path '*iphoneos*' | head -1)"
     python3 scripts/recomp/app/game_icons.py ios --source "${BDSP_ICON_SOURCE:-work/recomp/icons/source}" \
       --output work/ios/icons --bundle "$APPB"
     python3 scripts/recomp/app/game_icons.py sign-ios --bundle "$APPB"
     ;;
-  build-stub)   # Sondenbau ohne Laufzeit und Gastcode: Gerätedaten, 4-GiB-Fenster, Metal-Puffer (Container für die Datenkopie)
+  build-stub)   # probe build without runtime and guest code: device data, 4 GiB window, Metal buffer (container for the data copy)
     mkdir -p "$RES"
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
@@ -105,7 +105,7 @@ case "${1:-}" in
   install)
     device
     APP="$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' -path '*iphoneos*' | head -1)"
-    [[ -n "$APP" ]] || { echo "BDSP.app fehlt (deploy_ios.sh build)" >&2; exit 5; }
+    [[ -n "$APP" ]] || { echo "BDSP.app missing (deploy_ios.sh build)" >&2; exit 5; }
     xcrun devicectl device install app --device "$COREID" "$APP" 2>&1 | tail -n 4
     romfs_ensure
     ;;
@@ -116,7 +116,7 @@ case "${1:-}" in
     echo "Log: $LOG"
     ENVJ="${RUN_ENV:-}"
     [[ -n "$ENVJ" ]] || ENVJ='{"BDSP_TIMEOUT":"86400"}'
-    if [[ -n "${2:-}" ]]; then   # zeitbegrenzter Lauf: nach N Sekunden den Prozess auf dem Gerät beenden (devicectl bricht dann mit ab)
+    if [[ -n "${2:-}" ]]; then   # time-limited run: end the process on the device after N seconds (devicectl then aborts with it)
       (
         sleep "$2"
         P="$(xcrun devicectl device info processes --device "$COREID" --json-output "$ROOT/work/ios/procs.json" > /dev/null 2>&1; python3 - "$ROOT/work/ios/procs.json" <<'EOF'

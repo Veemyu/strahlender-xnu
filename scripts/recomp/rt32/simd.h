@@ -1,4 +1,4 @@
-// Speichermodell B für den C-SIMD-Pfad: 128-Bit-Zugriffe über die Gastbasis. Siehe rt32/cpu.h.
+// Memory model B for the C SIMD path: 128-bit accesses via the guest base. See rt32/cpu.h.
 #pragma once
 #include_next "simd.h"
 #undef LD128

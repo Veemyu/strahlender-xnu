@@ -1,5 +1,5 @@
-// Listet je Funktion (Namens-Regex) die aufrufenden Funktionen (Referenzen vom Typ Aufruf/Datenzeiger).
-// Skriptargumente: <Ausgabedatei> <Regex auf Funktionsnamen> [<Regex> ...]
+// Lists, per function (name regex), the calling functions (references of type call/data pointer).
+// Script arguments: <output-file> <regex on function names> [<regex> ...]
 // @category IL2CPP
 
 import java.io.File;

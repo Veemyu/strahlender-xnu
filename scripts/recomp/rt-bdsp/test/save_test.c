@@ -1,5 +1,5 @@
-// Test der Spielstand-Funktionen der App (rt-bdsp/app/app_save.c) mit synthetischen Spielständen (keine echten Daten).
-// Aufruf: run_save_test.sh   (baut und startet; Arbeitsordner work/recomp/save-test)
+// Test of the save functions of the app (rt-bdsp/app/app_save.c) with synthetic saves (no real data).
+// Usage: run_save_test.sh   (builds and starts; work folder work/recomp/save-test)
 #include <CommonCrypto/CommonDigest.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +14,7 @@ BdspApp g_app;
 volatile int g_bdsp_paused;
 
 static int fails;
-#define CHECK(c) do { if (!(c)) { printf("FEHLER Zeile %d: %s\n", __LINE__, #c); fails++; } } while (0)
+#define CHECK(c) do { if (!(c)) { printf("ERROR line %d: %s\n", __LINE__, #c); fails++; } } while (0)
 
 static void put(const char *path, const void *d, size_t n) {
     FILE *f = fopen(path, "wb");
@@ -24,7 +24,7 @@ static void put(const char *path, const void *d, size_t n) {
 }
 static size_t size_of(const char *path) { struct stat st; return stat(path, &st) == 0 ? (size_t)st.st_size : (size_t)-1; }
 
-// Version 0x34, 979108 Byte, gültiger MD5 bei 0xE9818 (Rest Zufallsmuster)
+// Version 0x34, 979108 bytes, valid MD5 at 0xE9818 (rest random pattern)
 static uint8_t *make_save(uint8_t seed, int valid_hash) {
     size_t n = 0xEF0A4;
     uint8_t *b = malloc(n);
@@ -51,12 +51,12 @@ int main(void) {
 
     uint8_t *a = make_save(1, 1), *bad = make_save(2, 0);
     CHECK(bdsp_save_validate(a, 0xEF0A4, msg, sizeof msg) == 0);
-    CHECK(bdsp_save_validate(bad, 0xEF0A4, msg, sizeof msg) != 0 && strstr(msg, "Prüfsumme"));
-    CHECK(bdsp_save_validate(a, 1000, msg, sizeof msg) != 0 && strstr(msg, "Größe"));
+    CHECK(bdsp_save_validate(bad, 0xEF0A4, msg, sizeof msg) != 0 && strstr(msg, "checksum"));
+    CHECK(bdsp_save_validate(a, 1000, msg, sizeof msg) != 0 && strstr(msg, "size"));
     uint8_t v2[8] = {0x99};
-    CHECK(bdsp_save_validate(v2, 8, msg, sizeof msg) != 0 && strstr(msg, "Version"));
+    CHECK(bdsp_save_validate(v2, 8, msg, sizeof msg) != 0 && strstr(msg, "version"));
 
-    // kein Spielstand: Sicherung beim Start meldet 0
+    // no save: the backup at startup reports 0
     CHECK(bdsp_save_backup_start(msg, sizeof msg) == 0);
 
     // Ryujinx-Layout: <id>/0/SaveData.bin, <id>/ExtraData0 (Benutzer-ID bei Byte 8..23)
@@ -80,17 +80,17 @@ int main(void) {
     if (f) { fread(hex, 1, 32, f); fclose(f); }
     CHECK(!strcmp(hex, "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"));
 
-    // zweiter Import (anderer Stand) sichert den ersten
+    // second import (different state) backs up the first
     uint8_t *c = make_save(3, 1);
     snprintf(p, sizeof p, "%s/0/SaveData.bin", src);
     put(p, c, 0xEF0A4);
-    CHECK(bdsp_save_import(p, msg, sizeof msg) == 0);   // Datei statt Ordner
-    CHECK(strstr(msg, "gesichert in") != NULL);
+    CHECK(bdsp_save_import(p, msg, sizeof msg) == 0);   // file instead of folder
+    CHECK(strstr(msg, "backed up in") != NULL);
 
-    // ungültige Stände werden abgelehnt und lassen den bisherigen Stand unberührt
+    // invalid states are rejected and leave the previous state untouched
     snprintf(p, sizeof p, "%s/0/SaveData.bin", src);
     put(p, bad, 0xEF0A4);
-    CHECK(bdsp_save_import(src, msg, sizeof msg) != 0 && strstr(msg, "abgelehnt"));
+    CHECK(bdsp_save_import(src, msg, sizeof msg) != 0 && strstr(msg, "rejected"));
     snprintf(p, sizeof p, "%s/save_1/SaveData.bin", g_app.save);
     size_t n;
     FILE *g = fopen(p, "rb");
@@ -98,12 +98,12 @@ int main(void) {
     n = g ? fread(cur, 1, 0xEF0A4, g) : 0;
     if (g) fclose(g);
     CHECK(n == 0xEF0A4 && !memcmp(cur, c, 0xEF0A4));
-    CHECK(bdsp_save_import("work/recomp/save-test/gibt-es-nicht", msg, sizeof msg) != 0);
+    CHECK(bdsp_save_import("work/recomp/save-test/does-not-exist", msg, sizeof msg) != 0);
     snprintf(p, sizeof p, "%s/0/ExtraData0", src);
     put(p, extra, 64);
-    CHECK(bdsp_save_import(p, msg, sizeof msg) != 0 || 1);   // ExtraData0 allein: Ordner enthält ungültige SaveData.bin -> abgelehnt
+    CHECK(bdsp_save_import(p, msg, sizeof msg) != 0 || 1);   // ExtraData0 alone: folder contains an invalid SaveData.bin -> rejected
 
-    // Sicherung beim Start: legt an, erkennt Unverändertes, beschneidet auf g_app.backups
+    // Backup at startup: creates one, recognizes unchanged state, trims to g_app.backups
     CHECK(bdsp_save_backup_start(msg, sizeof msg) == 1);
     CHECK(bdsp_save_backup_start(msg, sizeof msg) == 0);
     for (int i = 0; i < 5; i++) {
@@ -111,7 +111,7 @@ int main(void) {
         snprintf(p, sizeof p, "%s/save_1/SaveData.bin", g_app.save);
         put(p, d, 0xEF0A4);
         free(d);
-        sleep(1);   // Zeitstempel im Namen
+        sleep(1);   // timestamp in the name
         CHECK(bdsp_save_backup_start(msg, sizeof msg) == 1);
     }
     int starts = 0;
@@ -123,13 +123,13 @@ int main(void) {
     if (f) { fscanf(f, "%d", &starts); fclose(f); }
     CHECK(starts == 3);
 
-    // Zurücksetzen verschiebt den Stand nach backups/reset-*
-    CHECK(bdsp_save_reset(msg, sizeof msg) == 0 && strstr(msg, "zurückgesetzt"));
+    // Reset moves the state to backups/reset-*
+    CHECK(bdsp_save_reset(msg, sizeof msg) == 0 && strstr(msg, "Save reset"));
     snprintf(p, sizeof p, "%s/save_1/SaveData.bin", g_app.save);
     CHECK(access(p, F_OK) != 0);
-    CHECK(bdsp_save_reset(msg, sizeof msg) == 0 && strstr(msg, "kein Spielstand"));
+    CHECK(bdsp_save_reset(msg, sizeof msg) == 0 && strstr(msg, "no save"));
 
     free(a); free(bad); free(c); free(cur);
-    printf(fails ? "%d Fehler\n" : "alle Prüfungen bestanden\n", fails);
+    printf(fails ? "%d errors\n" : "all checks passed\n", fails);
     return fails ? 1 : 0;
 }

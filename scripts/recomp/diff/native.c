@@ -1,5 +1,5 @@
-// Nativer Referenzlauf auf Apple Silicon (docs/recomp-diff.md): kopiert den fertigen Maschinencode der Schleife
-// (tmpl.S, mit eingesetzten Befehlen) in einen JIT-Bereich und führt ihn aus. Nur macOS/arm64. Eigener Code.
+// Native reference run on Apple Silicon (docs/recomp-diff.md): copies the finished machine code of the loop
+// (tmpl.S, with the instructions inserted) into a JIT region and runs it. macOS/arm64 only. Own code.
 #include <libkern/OSCacheControl.h>
 #include <pthread.h>
 #include <stdint.h>

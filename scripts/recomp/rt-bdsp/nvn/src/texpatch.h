@@ -1,5 +1,5 @@
-// Ersatz für runtime/nvn/texpatch.h: texpatch (Textur-Änderungen für ein bestimmtes Spiel) wird nicht gebaut; die Funktionen
-// sind wirkungslose Stummel in nvn_glue.c.
+// Replacement for runtime/nvn/texpatch.h: texpatch (texture changes for a specific game) is not built; the functions
+// are no-op stubs in nvn_glue.c.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

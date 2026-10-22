@@ -1,6 +1,6 @@
-// Float-Benchmark-Beweis (docs/recomp-diff.md, Abschnitt 6): führt die Gleitkomma-Schleife aus bench_guest.c (1) als
-// erzeugtes C (c-Modus) und (2) nativ (x86, dieselbe Quelle) aus und gibt Ergebnis und Hash des Puffers aus.
-// Eigener Code, angelehnt an scripts/recomp/test/bench_prove.c. Aufruf: GIMG=<Bild> OFF_FLOAT=<Offset> bench_fp <n>
+// Float benchmark proof (docs/recomp-diff.md, section 6): runs the floating point loop from bench_guest.c (1) as
+// generated C (c mode) and (2) natively (x86, same source) and prints the result and the hash of the buffer.
+// Own code, modeled on scripts/recomp/test/bench_prove.c. Usage: GIMG=<image> OFF_FLOAT=<offset> bench_fp <n>
 #define _GNU_SOURCE
 #include "cpu.h"
 #include <stdio.h>

@@ -1,5 +1,5 @@
-// Sucht Instruktionen mit bestimmten Skalar-Operanden und zaehlt Treffer je Funktion.
-// Skriptargumente: <kommagetrennte Hexwerte> [Ausgabedatei]
+// Searches for instructions with certain scalar operands and counts hits per function.
+// Script arguments: <comma-separated hex values> [output-file]
 // @category IL2CPP
 
 import java.io.File;
@@ -51,6 +51,6 @@ public class ScanScalars extends GhidraScript {
 				w.println(sb);
 			}
 		}
-		println("ScanScalars: " + hits.size() + " Funktionen mit Treffern -> " + out);
+		println("ScanScalars: " + hits.size() + " functions with hits -> " + out);
 	}
 }

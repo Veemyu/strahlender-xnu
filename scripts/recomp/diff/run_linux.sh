@@ -1,7 +1,7 @@
 #!/bin/bash
-# Läuft lokal auf Linux (aus der Repo-Wurzel): baut die c-Varianten des Differenzialtests und führt ihn aus
-# (docs/recomp-diff.md). Aufruf: scripts/recomp/diff/run_linux.sh <Satz> [ids]   Satz = Name der Variantenliste unten.
-# Ergebnisse: work/recomp/diff/rep_<Satz>.json, Log work/recomp/diff/run_<Satz>.log. Höchstens 4 parallele Prozesse.
+# Runs locally on Linux (from the repo root): builds the c variants of the differential test and runs it
+# (docs/recomp-diff.md). Usage: scripts/recomp/diff/run_linux.sh <set> [ids]   set = name of the variant list below.
+# Results: work/recomp/diff/rep_<set>.json, log work/recomp/diff/run_<set>.log. At most 4 parallel processes.
 set -uo pipefail
 cd "$(dirname "$0")/../../.."
 D=work/recomp/diff
@@ -12,10 +12,10 @@ V3="-march=x86-64-v3"
 bash $B base
 declare -a VAR
 case "$SET" in
-  base)   # Ausgangslage: Flags wie der Gesamtbau (clang -O1, Standardvertrag), dazu die Vergleichsvarianten
+  base)   # baseline: flags like the full build (clang -O1, standard contract), plus the comparison variants
     VAR=("o1_v3_default:-O1 $V3" "o1_v3_off:-O1 $V3 -ffp-contract=off" "o2_v3_off:-O2 $V3 -ffp-contract=off"
          "o2_v3_default:-O2 $V3" "o1_x86_off:-O1 -ffp-contract=off");;
-  neg)    # Negativkontrolle: Laufzeit ohne FENV_ACCESS-Pragma (OVERLAY), -ffp-contract=fast
+  neg)    # negative control: runtime without the FENV_ACCESS pragma (OVERLAY), -ffp-contract=fast
     mkdir -p $D/neg
     for h in cpu.h simd.h simd_fp.h; do sed '/FENV_ACCESS/d' scripts/recomp/upstream/runtime/$h > $D/neg/$h; done
     export OVERLAY=$D/neg

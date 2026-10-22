@@ -18,5 +18,5 @@ for f in $RT/*.c $RT/hle/*.c $RT/services/*.c $RT/nvn/*.c $RT/nvn/maxwell/*.c $R
     bad=$((bad + 1)); echo "ERROR $rel: $(echo "$err" | grep -m1 'error' | cut -c1-150)" | tee -a "$ST"
   fi
 done
-echo "quellen_ok=$ok quellen_fehler=$bad" | tee -a "$ST"
+echo "sources_ok=$ok sources_failed=$bad" | tee -a "$ST"
 echo "linux.c: $([ -f "$OUT/platform_linux.c.o" ] && echo 'compiled' || echo 'not compiled')" | tee -a "$ST"

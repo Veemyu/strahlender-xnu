@@ -1,5 +1,5 @@
-// Gibt das Listing eines Adressbereichs aus (auch ausserhalb von Funktionen).
-// Skriptargumente: <Start-Hex> <Ende-Hex> [Ausgabedatei]
+// Prints the listing of an address range (also outside of functions).
+// Script arguments: <start-hex> <end-hex> [output-file]
 // @category IL2CPP
 
 import java.io.File;
@@ -28,7 +28,7 @@ public class DumpRange extends GhidraScript {
 				}
 				CodeUnit cu = currentProgram.getListing().getCodeUnitAt(a);
 				if (cu == null) {
-					w.println(a + "  <kein Code>");
+					w.println(a + "  <no code>");
 					a = a.add(4);
 					continue;
 				}

@@ -1,9 +1,9 @@
-// movie:: (nnMedia des SDK) mit FFmpeg: Android-artige Extractor-/Decoder-Schnittstelle für den Unity-SwitchVideoPlayer.
-// Entwurf und Teile nach scripts/recomp/upstream/runtime/hle/movie.c (MIT, siehe NOTICE.md), für BDSP angepasst:
-//  - Extractor-Aufrufe, die BDSP direkt (nicht über die Vtable) importiert: GetTrackCount, SetDataSource(const char*), GetTrackConfiguration;
-//  - nur die Videospur wird angeboten (kein Ton), Ausgabe NV12 im Puffer (Unity lädt Y und UV selbst);
-//  - Pfade „rom:/…“ liegen im RomFS-Ordner der Laufzeit (g_romfs_dir).
-// Die Objekte gehören dem Spiel (Vtable bei +0), Host-Zustand bei +8.
+// movie:: (nnMedia of the SDK) with FFmpeg: Android-style extractor/decoder interface for the Unity SwitchVideoPlayer.
+// Design and parts after scripts/recomp/upstream/runtime/hle/movie.c (MIT, see NOTICE.md), adapted for BDSP:
+//  - extractor calls that BDSP imports directly (not through the vtable): GetTrackCount, SetDataSource(const char*), GetTrackConfiguration;
+//  - only the video track is offered (no sound), output NV12 in the buffer (Unity loads Y and UV itself);
+//  - paths "rom:/…" live in the RomFS folder of the runtime (g_romfs_dir).
+// The objects belong to the game (vtable at +0), host state at +8.
 // Extractor-Slots: 4 GetTrackCount(int*), 5 GetTrackConfiguration(int, MediaData*), 6 SelectTrack(int), 8 SeekTo(us),
 //   9 GetSampleTrackIndex(size_t*), 10 Read(Buffer*), 11 Advance(), 12 GetSampleTime(int64*), 14 GetCachedDuration, 15 SetDataSource(DataSource*, path).
 // Decoder-Slots: 2 Configure(MediaData*), 3 RegisterClientEvents(EventType*[4]), 4 GetOutputFormat(MediaData*), 5 Start, 6 Stop,
@@ -25,9 +25,9 @@ uint64_t loader_find_symbol(const char *name);
 
 #define MOVIE_EOS 4u
 
-// Hänger-Diagnose, nur in einem Build mit -DBDSP_DEBUG_MOVIE (nicht im Standard-Build; sonst bleibt nichts davon im Code).
-// Dann schreibt BDSP_MOVIE_LOG=1 Eintritt/Austritt der Decoder-/Extractor-Aufrufe sofort ins Log; BDSP_MOVIE_LOG=ring merkt sie nur in
-// einem Ringpuffer (kaum Zeitverschiebung) und gibt die letzten Einträge beim Beenden aus. Ohne die Variable: ein Vergleich je Aufruf.
+// Hang diagnosis, only in a build with -DBDSP_DEBUG_MOVIE (not in the default build; otherwise none of it stays in the code).
+// Then BDSP_MOVIE_LOG=1 writes entry/exit of the decoder/extractor calls to the log immediately; BDSP_MOVIE_LOG=ring only keeps them in
+// a ring buffer (hardly any timing shift) and prints the last entries on exit. Without the variable: one comparison per call.
 #ifdef BDSP_DEBUG_MOVIE
 #include <stdatomic.h>
 #include <time.h>
@@ -51,13 +51,13 @@ static MvRec mv_ring[MV_RING];
 static atomic_uint mv_pos;
 static void mv_dump(void) {
     unsigned end = atomic_load(&mv_pos), n = end < 600 ? end : 600;
-    LOG("[mv] Ring: letzte %u von %u Einträgen (> Eintritt, < Austritt, w wartet auf Sperre, g Sperre erhalten nach extra ms)\n", n, end);
+    LOG("[mv] Ring: last %u of %u entries (> entry, < exit, w waits for lock, g lock acquired after extra ms)\n", n, end);
     for (unsigned i = end - n; i != end; i++) {
         const MvRec *r = &mv_ring[i % MV_RING];
         LOG("[mvr] %.1f T%05x %c %s %.1f\n", r->t, r->tid, r->kind, r->fn ? r->fn : "?", r->extra);
     }
 }
-static void *mv_watchdog(void *arg) {  // gibt den Ring kurz vor dem Zeitlimit des Laufs aus (die Laufzeit beendet sich mit _exit: kein atexit)
+static void *mv_watchdog(void *arg) {  // prints the ring shortly before the time limit of the run (the runtime ends with _exit: no atexit)
     (void)arg;
     extern uint64_t g_proc_start_ns;
     extern uint64_t rt_now_ns(void);
@@ -161,7 +161,7 @@ HLE_FUNC("_ZNK5movie9MediaData10FindStringEPKcPS2_", md_find_string) {
     if (e) *(uint64_t *)(uintptr_t)c->x[2] = (uint64_t)(uintptr_t)e->sval;
     c->x[0] = e != NULL;
 }
-// FindRect(key, left*, top*, right*, bottom*): das Zuschneiderechteck ist das ganze Bild
+// FindRect(key, left*, top*, right*, bottom*): the crop rectangle is the whole image
 HLE_FUNC("_ZNK5movie9MediaData8FindRectEPKcPiS3_S3_S3_", md_find_rect) {
     MediaData *m = md(c->x[0]);
     MdEntry *w = md_find(m, "width", false), *h = md_find(m, "height", false);
@@ -207,7 +207,7 @@ static uint64_t make_vtable(HostFn *fns, int n, const char *prefix) {
     return (uint64_t)(uintptr_t)t;
 }
 
-// Der Gast liest Spuren aus verschiedenen Threads; der FFmpeg-Demuxer ist nicht threadsicher.
+// The guest reads tracks from different threads; the FFmpeg demuxer is not thread-safe.
 static pthread_mutex_t ex_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void *self_state(Cpu *c) { return (void *)(uintptr_t)((uint64_t *)(uintptr_t)c->x[0])[1]; }
@@ -228,7 +228,7 @@ static void ok(Cpu *c) { c->x[0] = 0; }
 typedef struct {
     AVFormatContext *fmt;
     int map[16], ntracks;  // angebotene Spur -> Strom (nur Video)
-    uint64_t selected;     // Bitmaske der Ströme
+    uint64_t selected;     // bit mask of the streams
     AVPacket *pkt;
     bool have_pkt, eof;
 } Extractor;
@@ -245,9 +245,9 @@ static void ex_open(Extractor *e, const char *path, Cpu *c) {
     const char *rel = path && strstr(path, ":/") ? strstr(path, ":/") + 2 : path;
     char host[1024];
     snprintf(host, sizeof host, "%s/%s", g_romfs_dir, rel ? rel : "");
-    LOG("[movie] öffnen %s -> %s\n", path ? path : "(null)", host);
+    LOG("[movie] open %s -> %s\n", path ? path : "(null)", host);
     if (avformat_open_input(&e->fmt, host, NULL, NULL) < 0 || avformat_find_stream_info(e->fmt, NULL) < 0) {
-        LOG("[movie] Datei nicht lesbar: %s\n", host);
+        LOG("[movie] file not readable: %s\n", host);
         c->x[0] = 1;
         return;
     }
@@ -282,7 +282,7 @@ static void ex_get_track_config(Cpu *c) {
     int fps = s->avg_frame_rate.den ? s->avg_frame_rate.num / s->avg_frame_rate.den : 30;
     md_set_int(m, "frame-rate", fps ? fps : 30);
     if (e->fmt->duration > 0) md_set_int(m, "durationUs", e->fmt->duration);
-    LOG("[movie] Spur %d: %s %dx%d %d Bilder/s\n", i, avcodec_get_name(p->codec_id), p->width, p->height, fps);
+    LOG("[movie] track %d: %s %dx%d %d frames/s\n", i, avcodec_get_name(p->codec_id), p->width, p->height, fps);
     c->x[0] = 0;
 }
 
@@ -309,7 +309,7 @@ static void ex_read(Cpu *c) {
     ex_fill(e);
     if (!e->have_pkt) { c->x[0] = 1; return; }
     uint32_t n = (uint32_t)e->pkt->size;
-    if (n > b->capacity) { LOG("[movie] Paket %u > Puffer %llu\n", n, (unsigned long long)b->capacity); n = (uint32_t)b->capacity; }
+    if (n > b->capacity) { LOG("[movie] packet %u > buffer %llu\n", n, (unsigned long long)b->capacity); n = (uint32_t)b->capacity; }
     memcpy((void *)(uintptr_t)b->base, e->pkt->data, n);
     b->offset = 0;
     b->size = (int32_t)n;
@@ -341,7 +341,7 @@ static void ex_seek(Cpu *c) {
     c->x[0] = 0;
 }
 
-static void ex_cached_duration(Cpu *c) {  // lokale Dateien sind vollständig im Zwischenspeicher
+static void ex_cached_duration(Cpu *c) {  // local files are completely in the cache
     Extractor *e = self_state(c);
     int64_t dur = e->fmt && e->fmt->duration > 0 ? e->fmt->duration : INT64_MAX / 4;
     if (c->x[1]) *(int64_t *)(uintptr_t)c->x[1] = 1;
@@ -357,7 +357,7 @@ static void ex_dtor(Cpu *c) {
 
 static void movie_log_slot(Cpu *c) {
     static int n;
-    if (n++ < 20) LOG("[movie] nicht umgesetzter virtueller Aufruf (lr=%llx)\n", (unsigned long long)c->x[30]);
+    if (n++ < 20) LOG("[movie] unimplemented virtual call (lr=%llx)\n", (unsigned long long)c->x[30]);
     c->x[0] = 0;
 }
 
@@ -405,7 +405,7 @@ typedef struct {
     AVCodecContext *ctx;
     AVFrame *frame;
     AVPacket *pkt;
-    uint64_t events[4];  // Eingabe frei, Ausgabe bereit, Format geändert, Fehler
+    uint64_t events[4];  // input free, output ready, format changed, error
     uint8_t *in_mem[NIN];
     uint32_t in_cap;
     bool in_busy[NIN];
@@ -435,12 +435,12 @@ static void dec_configure(Cpu *c) {
     Decoder *d = self_state(c);
     MediaData *m = md(c->x[1]);
     AVCodecParameters *p = m->codecpar;
-    if (!p) { LOG("[movie] Configure ohne Codec-Parameter\n"); c->x[0] = 1; return; }
+    if (!p) { LOG("[movie] Configure without codec parameters\n"); c->x[0] = 1; return; }
     const AVCodec *codec = avcodec_find_decoder(p->codec_id);
     d->ctx = avcodec_alloc_context3(codec);
     avcodec_parameters_to_context(d->ctx, p);
     d->ctx->thread_count = 4;
-    if (avcodec_open2(d->ctx, codec, NULL) < 0) { LOG("[movie] Decoder lässt sich nicht öffnen\n"); c->x[0] = 1; return; }
+    if (avcodec_open2(d->ctx, codec, NULL) < 0) { LOG("[movie] decoder cannot be opened\n"); c->x[0] = 1; return; }
     d->frame = av_frame_alloc();
     d->pkt = av_packet_alloc();
     d->width = p->width;
@@ -479,12 +479,12 @@ static void dec_start(Cpu *c) {
     pthread_mutex_lock(&d->lock);
     d->stopped = false;
     pthread_mutex_unlock(&d->lock);
-    dec_signal(c, d, 0);  // alle Eingabepuffer sind frei
+    dec_signal(c, d, 0);  // all input buffers are free
     c->x[0] = 0;
 }
 
-// Stop: danach meldet der Decoder nichts mehr; noch gesetzte Ereignisse werden gelöscht (der Spieler löscht seine Decoder und
-// weckt dann einen Thread, der sonst über den Nullzeiger virtuell aufriefe).
+// Stop: afterwards the decoder reports nothing more; events still set are cleared (the player deletes its decoders and
+// then wakes a thread that would otherwise call virtually through the null pointer).
 static void dec_stop(Cpu *c) {
     MV_SCOPE();
     Decoder *d = self_state(c);
@@ -541,7 +541,7 @@ static bool emit_frame(Decoder *d, AVFrame *f, int64_t time, uint32_t flags) {
     if (!(flags & MOVIE_EOS)) {
         int h = d->height, w = d->width, uv_off = d->stride * ((h + 15) & ~15);
         for (int y = 0; y < h; y++) memcpy(o + y * d->stride, f->data[0] + y * f->linesize[0], w);
-        for (int y = 0; y < h / 2; y++) {  // U und V zu NV12 verschränken
+        for (int y = 0; y < h / 2; y++) {  // interleave U and V into NV12
             uint8_t *uv = o + uv_off + y * d->stride;
             const uint8_t *u = f->data[1] + y * f->linesize[1], *v = f->data[2] + y * f->linesize[2];
             for (int x = 0; x < w / 2; x++) { uv[2 * x] = u[x]; uv[2 * x + 1] = v[x]; }
@@ -626,7 +626,7 @@ static void dec_get_output_buffer(Cpu *c) {
     int i = (int)c->x[1];
     MBuffer *b = BUF(c->x[2]);
     if (i < 0 || i >= NOUT) { c->x[0] = 1; return; }
-    if (b->base && b->capacity >= d->out_size[i] && d->out_size[i]) {  // das Spiel hat den Puffer selbst bereitgestellt (SetDataAndCapacity): dorthin schreiben
+    if (b->base && b->capacity >= d->out_size[i] && d->out_size[i]) {  // the game provided the buffer itself (SetDataAndCapacity): write there
         memcpy((void *)(uintptr_t)b->base, d->out_mem[i], d->out_size[i]);
         b->offset = 0;
         b->size = (int32_t)d->out_size[i];
@@ -661,7 +661,7 @@ static void dec_dtor(Cpu *c) {
     pthread_mutex_lock(&d->lock);
     if (d->ctx) avcodec_free_context(&d->ctx);
     for (int i = 0; i < d->npending; i++) av_frame_free(&d->pending[i]);
-    d->npending = d->nready = 0;  // (die Puffer liegen im Host-Heap des Gastes und bleiben)
+    d->npending = d->nready = 0;  // (the buffers live in the guest's host heap and stay)
     av_frame_free(&d->frame);
     av_packet_free(&d->pkt);
     pthread_mutex_unlock(&d->lock);

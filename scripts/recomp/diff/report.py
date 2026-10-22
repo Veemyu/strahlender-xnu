@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Auswertung des Differenzialtests (docs/recomp-diff.md): Tabellen aus tests.json, hist.json und Berichten.
-Eigener Code. Aufruf: report.py <bericht.json> [...] [--top 45]   (Markdown auf stdout)"""
+"""Evaluation of the differential test (docs/recomp-diff.md): tables from tests.json, hist.json and reports.
+Own code. Usage: report.py <report.json> [...] [--top 45]   (Markdown on stdout)"""
 import json
 import sys
 from collections import Counter, defaultdict
@@ -16,7 +16,7 @@ def main():
     T = json.loads((D / "tests.json").read_text())
     tests = T["tests"]
     h = json.loads((D / "hist.json").read_text())
-    mn = Counter()  # nur FP-/SIMD-Formen (Daten-Verarbeitung und FP/SIMD-Laden/Speichern), keine Ganzzahl-Verwendung von mov/add/ldr
+    mn = Counter()  # FP/SIMD shapes only (data processing and FP/SIMD load/store), no integer use of mov/add/ldr
     for c in h["shapes"].values():
         for s, v in c.items():
             mn[s.split()[0]] += v
@@ -31,7 +31,7 @@ def main():
             fpsr = sum(x["cmp"][s]["fpsr"] for x in res)
             fo = sum(x["cmp"][s]["fpsr_only"] for x in res)
             tb = sum(1 for x in res if x["cmp"][s]["bad"])
-            print(f"- `{s}`: Tests {len(res)}, Fälle {cases:,}, Tests mit Abweichung {tb}, Fälle mit Abweichung {bad:,}, FPSR-Abweichungen {fpsr:,}")
+            print(f"- `{s}`: tests {len(res)}, cases {cases:,}, tests with deviation {tb}, cases with deviation {bad:,}, FPSR deviations {fpsr:,}")
         if len(reps) == 1 or rp == reps[0]:
             pass
     # Familientabelle (Bericht 1)
@@ -46,18 +46,18 @@ def main():
         fam[k]["cases"] += t["n"]
         for s in r["srcs"][1:]:
             fam[k]["bad"][s] += x["cmp"][s]["bad"]
-    print("\n| Befehl | Vorkommen im Spiel | Anteil an allen Wörtern | Tests | Fälle | Abweichungen |")
+    print("\n| Instruction | Occurrences in the game | Share of all words | Tests | Cases | Deviations |")
     print("|---|---:|---:|---:|---:|---:|")
     rows = sorted(fam.items(), key=lambda kv: -mn.get(kv[0], 0))
     for k, v in rows[:top]:
         n = mn.get(k, 0)
         print(f"| {k} | {n:,} | {100 * n / total_words:.3f} % | {v['tests']} | {v['cases']:,} | {sum(v['bad'].values()):,} |".replace(",", "."))
     rest = rows[top:]
-    print(f"| übrige {len(rest)} Befehle/Gruppen | {sum(mn.get(k, 0) for k, _ in rest):,} | | {sum(v['tests'] for _, v in rest)} | {sum(v['cases'] for _, v in rest):,} | {sum(sum(v['bad'].values()) for _, v in rest):,} |".replace(",", "."))
+    print(f"| remaining {len(rest)} instructions/groups | {sum(mn.get(k, 0) for k, _ in rest):,} | | {sum(v['tests'] for _, v in rest)} | {sum(v['cases'] for _, v in rest):,} | {sum(sum(v['bad'].values()) for _, v in rest):,} |".replace(",", "."))
     # Spielabdeckung
     gs = sum(t["freq"] for t in tests if t["shape"] not in ("SEQ", "CHAIN"))
     uns = T["unsupported"]
-    print(f"\nTests {len(tests)}; Formen ohne Lifter-Unterstützung: {len(uns)} (Spielvorkommen {sum(u['freq'] for u in uns)}); Spielformen ohne Vertreter: {len(T['game_shapes_not_found'])}")
+    print(f"\nTests {len(tests)}; shapes without lifter support: {len(uns)} (game occurrences {sum(u['freq'] for u in uns)}); game shapes without representative: {len(T['game_shapes_not_found'])}")
 
 
 if __name__ == "__main__":

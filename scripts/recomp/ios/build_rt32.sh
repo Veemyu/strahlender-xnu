@@ -1,9 +1,9 @@
 #!/bin/bash
-# Baut die Laufzeit in Speichermodell B (--rebase32) und bindet sie mit den Gastobjekten aus work/recomp/obj32 (gen32.sh):
-#   build_rt32.sh mac     -> work/recomp/bdsp_boot32 (macOS arm64, Metal + SDL3 + FFmpeg wie die Variante A; Testlauf für den Bildvergleich)
-#   build_rt32.sh ios     -> work/recomp/ios-rt/*.o und work/recomp/ios-rt/libbdsp_rt.a (iPhoneOS, ohne SDL/FFmpeg; Eingabe und Fenster
-#                            liefert die App, scripts/recomp/ios/app)
-# Die NVN-Quellen (work/recomp/nvn-src, prepare.sh) werden mit nvn_rebase32.py in eine Kopie nvn-src32 umgeschrieben.
+# Builds the runtime in memory model B (--rebase32) and links it with the guest objects from work/recomp/obj32 (gen32.sh):
+#   build_rt32.sh mac     -> work/recomp/bdsp_boot32 (macOS arm64, Metal + SDL3 + FFmpeg like variant A; test run for the image comparison)
+#   build_rt32.sh ios     -> work/recomp/ios-rt/*.o and work/recomp/ios-rt/libbdsp_rt.a (iPhoneOS, without SDL/FFmpeg; input and window
+#                            are provided by the app, scripts/recomp/ios/app)
+# The NVN sources (work/recomp/nvn-src, prepare.sh) are rewritten by nvn_rebase32.py into a copy nvn-src32.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -12,9 +12,9 @@ SRC=scripts/recomp/rt-bdsp
 NVN32=work/recomp/nvn-src32
 OBJ=${OBJ:-work/recomp/obj32}
 BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
-# Kopie neu anlegen, wenn sie fehlt oder die Repo-Quellen neuer sind (sonst läuft das iPad mit veraltetem Renderer)
-scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null   # kopiert nur bei abweichendem Stempel
-# nvn-src32: Stempel aus dem Quellstempel plus nvn_rebase32.py und movie_glue.c
+# Recreate the copy if it is missing or the repo sources are newer (otherwise the iPad runs with an outdated renderer)
+scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null   # copies only if the stamp differs
+# nvn-src32: stamp from the source stamp plus nvn_rebase32.py and movie_glue.c
 . scripts/recomp/rt-bdsp/nvn/hash.inc.sh
 want32=$({ cat work/recomp/nvn-src/.stamp; sha256 scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c"; } | sha256 | cut -d' ' -f1)
 if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
@@ -37,10 +37,10 @@ case "$TARGET" in
     NVINC="-I scripts/recomp/ios/shim -I $NVN32 -I $NVN32/nvn $BASEINC"
     FFINC=""; [ -d work/ios/ffmpeg-ios/include ] && FFINC="-I work/ios/ffmpeg-ios/include"
     ;;
-  *) echo "Aufruf: build_rt32.sh mac|ios" >&2; exit 2 ;;
+  *) echo "Usage: build_rt32.sh mac|ios" >&2; exit 2 ;;
 esac
 mkdir -p "$RT/nvn"
-# Toolchain-Stempel: Objekte nur mit dem Compiler und den SDKs wiederverwenden, mit denen sie entstanden sind
+# Toolchain stamp: reuse objects only with the compiler and SDKs they were built with
 TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; } | sha256 | cut -d' ' -f1)
 if [ "$(cat "$RT/.stamp" 2>/dev/null || true)" != "$TC_STAMP" ]; then rm -f "$RT"/*.o "$RT"/nvn/*.o; echo "$TC_STAMP" > "$RT/.stamp"; fi
 . scripts/recomp/rt-bdsp/nvn/flags.inc.sh
@@ -66,7 +66,7 @@ if [ "$TARGET" = mac ]; then
   compile "$NVN32/nvn/renderer.m" "$RT/nvn/renderer.o" "$MCC" $W $NVINC -fobjc-arc
   compile "$NVN32/nvn/metal.m" "$RT/nvn/metal.o" "$MCC" $W $NVINC -fobjc-arc
 else
-  # iOS: Fenster und Eingabe liefert die App; metal.m wird mit ui_ios.inc statt des SDL-Teils übersetzt (siehe scripts/recomp/ios/ui_ios.inc)
+  # iOS: window and input are provided by the app; metal.m is compiled with ui_ios.inc instead of the SDL part (see scripts/recomp/ios/ui_ios.inc)
   if [ ! -f "$NVN32/nvn/metal_ios.m" ] || [ "$NVN32/nvn/metal.m" -nt "$NVN32/nvn/metal_ios.m" ] || [ scripts/recomp/ios/ui_ios.inc -nt "$NVN32/nvn/metal_ios.m" ] || [ scripts/recomp/ios/nvn_ios.py -nt "$NVN32/nvn/metal_ios.m" ]; then
     python3 scripts/recomp/ios/nvn_ios.py "$NVN32" > /dev/null
   fi
@@ -80,16 +80,16 @@ if [ "$TARGET" = mac ] || [ -n "$FFINC" ]; then
 fi
 
 if [ "$TARGET" = mac ]; then
-  # Gastobjekte: plattformlose Kopien (die Objekte sind für iOS übersetzt; vtool entfernt die Plattform, dann bindet sie auch der Mac)
+  # Guest objects: platformless copies (the objects are compiled for iOS; vtool removes the platform, then the Mac can link them too)
   MOBJ=work/recomp/obj32m
   mkdir -p "$MOBJ"
   ls "$OBJ"/*.o | xargs -P 4 -n 20 bash -c 'for o in "$@"; do m='"$MOBJ"'/$(basename "$o"); [ "$m" -nt "$o" ] || xcrun vtool -remove-build-version ios -output "$m" "$o" 2>/dev/null; done' _
   objs=("$RT"/*.o "$RT"/nvn/*.o)
   if [ ! -x "$OUT" ] || [ -n "$(find "$RT" "$MOBJ" -name '*.o' -newer "$OUT" -print -quit)" ]; then
     clang -o "$OUT" "${objs[@]}" "$MOBJ"/*.o $FW
-    echo "gelinkt: $OUT"
+    echo "linked: $OUT"
   else
-    echo "aktuell: $OUT"
+    echo "up to date: $OUT"
   fi
 else
   rm -f "$RT/libbdsp_rt.a"

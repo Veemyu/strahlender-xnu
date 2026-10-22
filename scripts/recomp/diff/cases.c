@@ -1,6 +1,6 @@
-// Gemeinsame Testdaten-Erzeugung und Struktur-Definitionen des Differenzialtests (docs/recomp-diff.md).
-// Eigener Code. Deterministisch (splitmix64, fester Startwert je Test); läuft auf Mac und Linux identisch und wird
-// per ctypes aus difftest.py benutzt. Keine Spielbytes: alle Eingaben sind synthetisch.
+// Shared test data generation and structure definitions of the differential test (docs/recomp-diff.md).
+// Own code. Deterministic (splitmix64, fixed seed per test); runs identically on Mac and Linux and is used
+// via ctypes from difftest.py. No game bytes: all inputs are synthetic.
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -51,7 +51,7 @@ static uint32_t gen_f32(Rng *r) {
         return x;
     }
     if (m < 91) return (rnd & 0x807fffff) | (rbelow(r, 5) << 23);   // Denormale / kleinste Normale
-    if (m < 96) return (rnd & 0x807fffff) | ((250 + rbelow(r, 5)) << 23); // Überlauf-Nähe
+    if (m < 96) return (rnd & 0x807fffff) | ((250 + rbelow(r, 5)) << 23); // near overflow
     return (rnd & 0x807fffff) | ((126 + rbelow(r, 4)) << 23);
 }
 static uint64_t gen_f64(Rng *r) {
@@ -128,7 +128,7 @@ static uint64_t gen_gpr(Rng *r) {
     }
 }
 
-// Rundungsnahe Paare: Operand teilweise aus dem vorigen abgeleitet (gleich, negiert, +-1 ulp), FMA-Auslöschung.
+// Pairs near rounding: operand partly derived from the previous one (equal, negated, +-1 ulp), FMA cancellation.
 static void partner(Rng *r, uint8_t *dst, const uint8_t *prev, int type) {
     int sz = type == T_F32 ? 4 : type == T_F64 ? 8 : 2;
     for (int i = 0; i < 16; i += sz) {
@@ -151,7 +151,7 @@ void gen_cases(const Desc *d, Case *out, int n) {
             gen_reg(&r, c->v[k], d->rt[k]);
             if (k >= 1 && k <= 3 && (d->rt[k] == T_F32 || d->rt[k] == T_F64) && d->rt[k] == d->rt[k - 1]) partner(&r, c->v[k], c->v[k - 1], d->rt[k]);
         }
-        // FMA-Auslöschung: c = -(a*b) (auf Registern 1,2,3, gleiche Typen)
+        // FMA cancellation: c = -(a*b) (on registers 1,2,3, same types)
         if ((d->flags & DF_FMACANCEL) && rbelow(&r, 100) < 8) {
             if (d->rt[3] == T_F32) for (int l = 0; l < 4; l++) { float a, b, p; memcpy(&a, c->v[1] + 4 * l, 4); memcpy(&b, c->v[2] + 4 * l, 4); p = -(a * b); memcpy(c->v[3] + 4 * l, &p, 4); }
             else if (d->rt[3] == T_F64) for (int l = 0; l < 2; l++) { double a, b, p; memcpy(&a, c->v[1] + 8 * l, 8); memcpy(&b, c->v[2] + 8 * l, 8); p = -(a * b); memcpy(c->v[3] + 8 * l, &p, 8); }

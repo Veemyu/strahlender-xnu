@@ -10,7 +10,7 @@ ST=logs/incr.stats; : > "$ST"
 rm -rf "$W/gen4-incr" "$W/obj4-c-incr" "$W/incr"
 cp -a "$W/gen4-c" "$W/gen4-incr"; cp -a "$W/obj4-c" "$W/obj4-c-incr"
 rm -f "$W/obj4-c-incr/libgame.so"
-res() { echo "$1 | $(grep -E 'uebersetzt_dateien|^wall_s|^summe_user' logs/build-c-incr.stats | tr '\n' ' ')link: $(grep link_s logs/build-c-incr.stats)" | tee -a "$ST"; }
+res() { echo "$1 | $(grep -E 'compiled_files|^wall_s|^sum_user' logs/build-c-incr.stats | tr '\n' ' ')link: $(grep link_s logs/build-c-incr.stats)" | tee -a "$ST"; }
 
 echo "== A: no change"
 bash "$(dirname "$0")/compile.sh" c > /dev/null; res "A no change"

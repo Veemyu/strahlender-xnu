@@ -1,7 +1,7 @@
 #!/bin/bash
-# Speichermodell B (32-Bit-Gastadressen): derselbe Exception-Test wie run_eh_test.sh, aber mit dem echten SDK-Modul
-# im C-SIMD-Modus (--simd c) und allen Gastadressen < 4 GiB, Zugriff über g_base (scripts/recomp/rt32).
-# Alles unter work/recomp/ (gen32, spike2/r32). Voraussetzung: work/exefs.
+# Memory model B (32-bit guest addresses): the same exception test as run_eh_test.sh, but with the real SDK module
+# in C SIMD mode (--simd c) and all guest addresses < 4 GiB, access through g_base (scripts/recomp/rt32).
+# Everything under work/recomp/ (gen32, spike2/r32). Prerequisite: work/exefs.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 S=work/recomp/spike2/r32

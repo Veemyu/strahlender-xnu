@@ -1,6 +1,6 @@
-// Grafik-nahe Dienste der BDSP-Laufzeit für Gate 1: vi:u/vi:s/vi:m (Anzeigedienst) und nvdrv (Gerätetreiber) als protokollierende
-// Stubs ohne Grafikausgabe. Sie beantworten die Initialisierung des SDK (nn::vi::Initialize, nvdrv-Open/Ioctl) mit plausiblen
-// Werten, damit der Gast bis zum Aufruf von nvnBootstrapLoader läuft; die echte NVN-/Metal-Schicht ist Gate 2. Eigener Code.
+// Graphics-related services of the BDSP runtime for gate 1: vi:u/vi:s/vi:m (display service) and nvdrv (device driver) as logging
+// stubs without graphics output. They answer the SDK initialisation (nn::vi::Initialize, nvdrv open/ioctl) with plausible
+// values, so the guest runs up to the call of nvnBootstrapLoader; the real NVN/Metal layer is gate 2. Own code.
 #include <time.h>
 #include <unistd.h>
 
@@ -15,10 +15,10 @@ static uint32_t new_event_handle(KEvent **out) {
     return r;
 }
 
-// ---- Vsync-Ereignis ohne Anzeige (der Gast wartet auf dieses Ereignis, bevor er ein Bild beginnt)
+// ---- Vsync event without a display (the guest waits for this event before it starts a frame)
 static KEvent *g_vsync;
-volatile int g_bdsp_paused;   // von der App-Hülle (Pause, Fokusverlust) gesetzt: das Vsync-Ereignis bleibt aus, das Spiel wartet
-volatile int g_bdsp_fps = 60; // Bildrate: 30, 60 oder 120 (App-Einstellung, siehe bdsp_set_fps)
+volatile int g_bdsp_paused;   // set by the app shell (pause, focus loss): the vsync event stays off, the game waits
+volatile int g_bdsp_fps = 60; // frame rate: 30, 60 or 120 (app setting, see bdsp_set_fps)
 void bdsp_set_fps(int fps) {
     if (fps == 30 || fps == 60 || fps == 120) g_bdsp_fps = fps;
 }
@@ -27,8 +27,8 @@ static uint64_t mono_ns(void) {
     clock_gettime(CLOCK_MONOTONIC, &t);
     return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
 }
-// Absolute Zielzeiten statt relativem nanosleep: sonst driftet der Takt auf ~20 ms (≈50 Hz) und das Spiel bleibt bei 50 fps.
-uint64_t g_vsync_ticks;   // Hänger-Diagnose: Zahl der Vsync-Ereignisse; BDSP_VSYNC_LOG=1 gibt sie alle 2 s aus (lebt der Takt noch, wenn der Gast nicht mehr weiterläuft?)
+// Absolute target times instead of a relative nanosleep: otherwise the clock drifts to ~20 ms (≈50 Hz) and the game stays at 50 fps.
+uint64_t g_vsync_ticks;   // hang diagnosis: number of vsync events; BDSP_VSYNC_LOG=1 prints it every 2 s (is the clock still alive when the guest no longer progresses?)
 static void *vsync_thread(void *arg) {
     (void)arg;
     uint64_t next = mono_ns();
@@ -43,7 +43,7 @@ static void *vsync_thread(void *arg) {
             struct timespec ts = {(time_t)(d / 1000000000ull), (long)(d % 1000000000ull)};
             nanosleep(&ts, NULL);
         } else if (now > next + 4 * period) {
-            next = now;   // nach Stillstand (z. B. Laden) neu aufsetzen, kein Aufholen
+            next = now;   // restart after a standstill (e.g. loading), no catching up
         }
         while (g_bdsp_paused) {
             nanosleep(&(struct timespec){0, 10000000}, NULL);
@@ -75,7 +75,7 @@ uint32_t vi_vsync_handle(void) {
     return handle;
 }
 
-// ---- IHOSBinderDriver (Parcel-Transaktionen der Android-Pufferwarteschlange): nur protokolliert, Antwort leer
+// ---- IHOSBinderDriver (parcel transactions of the Android buffer queue): only logged, response empty
 static void hos_binder(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
@@ -99,7 +99,7 @@ static void vi_display_service(Service *s, IpcReq *req, IpcResp *resp) {
     switch (req->cmd) {
     case 100: ipc_return_object(resp, service_new("IHOSBinderDriver", hos_binder, NULL)); break;  // GetRelayService
     case 101: case 102: case 103: ipc_return_object(resp, service_new("IHOSBinderDriver", hos_binder, NULL)); break;
-    case 1000: {  // ListDisplays -> Anzahl; ein Eintrag „Default“ in den B-Puffer
+    case 1000: {  // ListDisplays -> count; one entry "Default" in the B buffer
         IpcBuf *b = out_buf(req, 0);
         if (b && b->size >= 0x60) {
             uint8_t *d = G2H8(b->addr);
@@ -116,7 +116,7 @@ static void vi_display_service(Service *s, IpcReq *req, IpcResp *resp) {
     case 1010: case 1011: OUT(uint64_t, 0) = 1; resp_size(resp, 8); break;   // OpenDisplay/OpenDefaultDisplay -> Anzeigen-Id
     case 1020: case 1101: break;                                             // CloseDisplay, SetDisplayEnabled
     case 1102: OUT(int64_t, 0) = 1920; OUT(int64_t, 8) = 1080; resp_size(resp, 16); break;  // GetDisplayResolution
-    case 2020: case 2030: {  // OpenLayer / CreateStrayLayer -> Layer-Id und Größe des Native-Window-Parcels (B-Puffer)
+    case 2020: case 2030: {  // OpenLayer / CreateStrayLayer -> layer ID and size of the native window parcel (B buffer)
         IpcBuf *b = out_buf(req, 0);
         if (b && b->size) memset(G2H(b->addr), 0, b->size < 0x400 ? b->size : 0x400);
         OUT(uint64_t, 0) = 1;
@@ -136,9 +136,9 @@ static void vi_root(Service *s, IpcReq *req, IpcResp *resp) {
     else UNHANDLED("vi");
 }
 
-// ---- nvdrv: Open liefert Dateideskriptoren, Ioctl „Erfolg“ mit Nullen (kein Treiber hinter dem Dienst)
+// ---- nvdrv: Open returns file descriptors, ioctl "success" with zeros (no driver behind the service)
 static int g_nv_fd = 1;
-// ---- „Null-GPU“: die Ioctls des nvgpu-Treibers werden mit plausiblen Werten beantwortet, es gibt keine Hardware dahinter
+// ---- "Null GPU": the ioctls of the nvgpu driver are answered with plausible values, there is no hardware behind them
 enum { DEV_UNKNOWN, DEV_NVMAP, DEV_CTRL, DEV_CTRL_GPU, DEV_AS_GPU, DEV_GPU };
 static uint8_t nv_dev[256];
 static uint32_t nv_next_handle = 0x1000;
@@ -147,12 +147,12 @@ static uint32_t nv_map_size[4096];
 
 static void nv_ioctl(int dev, uint32_t cmd, const uint8_t *in, uint32_t isz, uint8_t *out, uint32_t osz) {
     uint32_t nr = cmd & 0xFF, type = (cmd >> 8) & 0xFF;
-    if (out && in && osz) memcpy(out, in, isz < osz ? isz : osz);  // Ein-/Ausgabe-Ioctls: die Antwort beginnt mit der Eingabe
+    if (out && in && osz) memcpy(out, in, isz < osz ? isz : osz);  // input/output ioctls: the response starts with the input
     else if (out && osz) memset(out, 0, osz);
     if (!out) return;
     switch (dev) {
     case DEV_CTRL_GPU:
-        if (type == 0x47 && nr == 5 && osz >= 176) {  // GET_CHARACTERISTICS: {Puffergröße, Pufferadresse, Kennwerte (0xA0)}
+        if (type == 0x47 && nr == 5 && osz >= 176) {  // GET_CHARACTERISTICS: {buffer size, buffer address, characteristics (0xA0)}
             uint8_t *c = out + 16;
             memset(c, 0, 160);
             uint32_t *w = (uint32_t *)c;
@@ -197,7 +197,7 @@ static void nv_ioctl(int dev, uint32_t cmd, const uint8_t *in, uint32_t isz, uin
             nv_next_va += (sz + 0xFFFF) & ~(uint64_t)0xFFFF;
         } else if (nr == 8 && osz >= 64) {               // GET_VA_REGIONS: zwei Bereiche
             *(uint32_t *)(out + 8) = 2 * 24;
-            *(uint64_t *)(out + 16) = 0x20000;           // Bereich 0: Start, Seitengröße, Seiten
+            *(uint64_t *)(out + 16) = 0x20000;           // range 0: start, page size, pages
             *(uint32_t *)(out + 24) = 0x20000;
             *(uint64_t *)(out + 32) = 0x7FFFFF;
         }

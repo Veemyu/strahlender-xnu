@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests fuer survey_report.py mit synthetischen Eingaben (keine Spieldaten)."""
+"""Tests for survey_report.py with synthetic inputs (no game data)."""
 import json
 import sys
 import tempfile
@@ -29,7 +29,7 @@ class Report(unittest.TestCase):
             entry("a", "vs", "c1", 10),
             entry("b", "fs", "c2", 5),               # nur bindless
             entry("c", "fs", "c3", 3),               # bindless + HSETP2
-            entry("d", "fs", "c3", 2),               # gleicher Code wie c, anderer Blob (Konstanten)
+            entry("d", "fs", "c3", 2),               # same code as c, different blob (constants)
             entry("e", "fs", "c4", 1, ("fxparticle",)),  # nur HSETP2
         ]}
         rows = [row("a", True), row("b", False, forms=[("bindless tex", 2)]),

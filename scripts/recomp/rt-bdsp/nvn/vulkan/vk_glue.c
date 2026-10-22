@@ -1,6 +1,6 @@
-// Verbindung der Vulkan-Fassung der LAS-NVN-Schicht (nvn/vulkan/prepare_vk.sh → work/recomp/nvn-src-vk) mit der BDSP-Laufzeit:
-// die wenigen Plattformfunktionen, die der Vulkan-Teil des Klons braucht und die nvn_glue.c (backend-unabhängig) nicht liefert.
-// Eigener Code. Vorlage der Signaturen: runtime/platform.h und runtime/kernel.h des Klons (MIT, siehe ../NOTICE.md).
+// Connection of the Vulkan version of the LAS NVN layer (nvn/vulkan/prepare_vk.sh → work/recomp/nvn-src-vk) to the BDSP runtime:
+// the few platform functions that the Vulkan part of the clone needs and that nvn_glue.c (backend-independent) does not provide.
+// Own code. Template of the signatures: runtime/platform.h and runtime/kernel.h of the clone (MIT, see ../NOTICE.md).
 #define _GNU_SOURCE
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,17 +9,17 @@
 #include "kernel.h"
 #include "platform.h"
 
-// Keine Schreibverfolgung der Gast-Seiten: Der Vertex-Zwischenspeicher bleibt aus, Texturen werden bei jeder Verwendung neu geprüft
-// (textures.c: Hash-Vergleich). Eine Verfolgung über mprotect/userfaultfd wäre die spätere Optimierung (docs/recomp-linux.md).
+// No write tracking of the guest pages: the vertex cache stays off, textures are re-checked on every use
+// (textures.c: hash comparison). Tracking via mprotect/userfaultfd would be the later optimization (docs/recomp-linux.md).
 int plat_written_pages(uint64_t addr, uint64_t size, uint64_t *pages, int max, uint64_t *page) {
     (void)addr; (void)size; (void)pages; (void)max; (void)page;
     return -1;
 }
 
-// Prozess sofort beenden, ohne Abbau der Treiber-Threads (Gast-Threads laufen noch)
+// Terminate the process immediately, without tearing down the driver threads (guest threads are still running)
 void plat_terminate(void) { _exit(0); }
 
-// Zeit, die dieser Thread in Warte-/Schlaf-Aufrufen des Kernels blockiert war (exec.c: Bildtakt-Messung des Klons). Die BDSP-Laufzeit
-// führt sie nicht; der Bildtakt bleibt beim Spiel (Vsync-Ereignis aus services_gfx.c), die Takterkennung des Klons ist aus.
+// Time this thread was blocked in wait/sleep calls of the kernel (exec.c: frame pacing measurement of the clone). The BDSP runtime
+// does not track it; frame pacing stays with the game (vsync event from services_gfx.c), the clone's rate detection is off.
 __thread uint64_t g_blocked_ns;
 __attribute__((constructor)) static void vk_glue_defaults(void) { setenv("BDSP_PACE", "0", 0); }

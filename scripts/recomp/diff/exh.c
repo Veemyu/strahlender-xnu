@@ -1,9 +1,9 @@
-// Erschöpfender Einzelbefehlstest (docs/recomp-diff.md, Abschnitt 4). Eigener Code.
-// Läuft über alle 2^32 Eingaben (32-Bit-Formate vollständig; 64-Bit-Formate: obere 32 Bit vollständig, untere 32 Bit aus
-// einem Mischer) und bildet einen Hash über (V0 niedrige 64 Bit, X0). Zwei Übersetzungen derselben Quelle:
-//   -DREF_ASM : nativer Lauf auf Apple Silicon (Inline-asm, echte Befehle)  -> Referenz
-//   ohne      : erzeugtes C des Lifters (c-Modus), x86 oder arm64
-// Aufruf: exh <befehlsnummer|-1 für alle> <fpcr-hex> <schritt> ; Ausgabe: Nr|Name|FPCR|Schritt|Hash|Fälle
+// Exhaustive single-instruction test (docs/recomp-diff.md, section 4). Own code.
+// Runs over all 2^32 inputs (32-bit formats completely; 64-bit formats: upper 32 bits completely, lower 32 bits from
+// a mixer) and forms a hash over (V0 low 64 bits, X0). Two compilations of the same source:
+//   -DREF_ASM : native run on Apple Silicon (inline asm, real instructions)  -> reference
+//   without   : generated C of the lifter (c mode), x86 or arm64
+// Usage: exh <instruction number|-1 for all> <fpcr-hex> <step> ; output: no|name|FPCR|step|hash|cases
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

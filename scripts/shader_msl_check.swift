@@ -1,5 +1,5 @@
-// Kompiliert MSL-Dateien per Laufzeit-Compiler (MTLDevice.makeLibrary) und zaehlt Erfolge.
-// Aufruf: swiftc -O scripts/shader_msl_check.swift -o work/shader-test/msl_check && work/shader-test/msl_check <dir> [max]
+// Compiles MSL files with the runtime compiler (MTLDevice.makeLibrary) and counts successes.
+// Usage: swiftc -O scripts/shader_msl_check.swift -o work/shader-test/msl_check && work/shader-test/msl_check <dir> [max]
 import Foundation
 import Metal
 

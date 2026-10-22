@@ -1,4 +1,4 @@
-// Ersatz für runtime/settings.h beim Bau der Vulkan-Fassung: feste Einstellungen ohne FSR, SMAA und Vollbild.
+// Replacement for runtime/settings.h when building the Vulkan version: fixed settings without FSR, SMAA and fullscreen.
 #pragma once
 #include <stdbool.h>
 

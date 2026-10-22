@@ -1,7 +1,7 @@
-// GC-Beweis (Schritt 2): Zeigt an rekompiliertem Gastcode, dass ein asynchron angehaltener Thread Gastwerte nur im
-// Host-Registerzustand haben kann, und dass das Spiegeln des Mach-Registerzustands (plus oberes Stück des Host-Stacks)
-// in den gemeldeten Gast-Kontext genügt, damit ein konservativer GC kein Objekt verliert.
-// Eigener Code, macOS/iOS. Der Gastcode (gc_guest.c) wird mit eh_gen.py erzeugt (Modul "gct").
+// GC proof (step 2): Shows on recompiled guest code that an asynchronously suspended thread can hold guest values only in the
+// host register state, and that mirroring the Mach register state (plus the upper part of the host stack)
+// into the reported guest context suffices for a conservative GC to lose no object.
+// Own code, macOS/iOS. The guest code (gc_guest.c) is generated with eh_gen.py (module "gct").
 #define _GNU_SOURCE
 #include "cpu.h"
 #include <mach/mach.h>
@@ -69,7 +69,7 @@ int main(void) {
         arm_thread_state64_t st;
         mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
         thread_get_state(worker_port, ARM_THREAD_STATE64, (thread_state_t)&st, &cnt);
-        if (*(volatile uint64_t *)SLOT == 0) {  // Objekt ist nur noch in Registern/Zwischenwerten erreichbar
+        if (*(volatile uint64_t *)SLOT == 0) {  // the object is only reachable in registers/intermediate values
             windows++;
             uint64_t gx[33]; memcpy(gx, cpu->x, 31 * 8); gx[31] = cpu->sp;
             int in_cpu = has(gx, 32);
@@ -80,15 +80,15 @@ int main(void) {
             hx[nh++] = arm_thread_state64_get_fp(st); hx[nh++] = arm_thread_state64_get_lr(st);
             const uint64_t *hs = (const uint64_t *)(uintptr_t)arm_thread_state64_get_sp(st);
             int in_host = has(hx, nh);
-            for (int k = 0; k < 64 && !in_host; k++) if (hs[k] == MARKER) in_host = 1;  // oberes Stück des Host-Stacks (512 Byte)
+            for (int k = 0; k < 64 && !in_host; k++) if (hs[k] == MARKER) in_host = 1;  // upper part of the host stack (512 bytes)
             hit_cpu += in_cpu;
             hit_all += in_cpu || in_host;
             hit_host_only += !in_cpu && in_host;
         }
         thread_resume(worker_port);
     }
-    printf("GC-Beweis: %d Anhaltepunkte, %d davon im Fenster (Zeiger nur in Registern/Zwischenwerten, Slot leer)\n", n, windows);
-    printf("  gefunden nur mit Gast-Zustand (Cpu + Gast-Stack):       %d von %d (%.1f %%)\n", hit_cpu, windows, windows ? 100.0 * hit_cpu / windows : 0);
-    printf("  gefunden mit zusaetzlichem Host-Register/Host-Stack:   %d von %d (%.1f %%); davon nur dort: %d\n", hit_all, windows, windows ? 100.0 * hit_all / windows : 0, hit_host_only);
+    printf("GC proof: %d suspension points, %d of them in the window (pointer only in registers/intermediate values, slot empty)\n", n, windows);
+    printf("  found with guest state only (Cpu + guest stack):        %d of %d (%.1f %%)\n", hit_cpu, windows, windows ? 100.0 * hit_cpu / windows : 0);
+    printf("  found with additional host register/host stack:        %d of %d (%.1f %%); of those only there: %d\n", hit_all, windows, windows ? 100.0 * hit_all / windows : 0, hit_host_only);
     return 0;
 }

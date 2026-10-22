@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Mini-Linker für den Exception-Spike: ELF64-Relocatable (aarch64) -> synthetisches NSO + flaches Speicherbild.
+"""Mini linker for the exception spike: ELF64 relocatable (aarch64) -> synthetic NSO + flat memory image.
 
-Eigener Code, nur für synthetische Testprogramme (kein Spielcode). Es gibt keinen aarch64-Linker (kein lld)
-auf dem Mac; dieser Linker legt alle Abschnitte mit SHF_ALLOC hintereinander, wendet die Relokationen an,
-erzeugt `.eh_frame_hdr` samt Suchtabelle (wie `ld --eh-frame-hdr`) und schreibt:
+Own code, only for synthetic test programs (no game code). There is no aarch64 linker (no lld)
+on the Mac; this linker places all sections with SHF_ALLOC one after another, applies the relocations,
+generates `.eh_frame_hdr` including the search table (like `ld --eh-frame-hdr`) and writes:
 
-  <out>.nso   NSO0-Datei (unkomprimiert, MOD0 mit eh_frame_hdr), lesbar von scripts/recomp/upstream/generator/nso.py
-  <out>.img   flaches Speicherbild (Modulbasis 0), mit bereits angewandten Relokationen
-  <out>.json  Symbole (Name -> Offset), Abschnitte, Kopf-/Hdr-Lage
+  <out>.nso   NSO0 file (uncompressed, MOD0 with eh_frame_hdr), readable by scripts/recomp/upstream/generator/nso.py
+  <out>.img   flat memory image (module base 0), with the relocations already applied
+  <out>.json  symbols (name -> offset), sections, header/hdr location
 
-Externe Symbole werden gegen --syms (JSON {Name: absolute Adresse}) aufgelöst, z. B. gegen die Exporte des
-SDK-Moduls an seiner Gastbasis.
+External symbols are resolved against --syms (JSON {name: absolute address}), e.g. against the exports of the
+SDK module at its guest base.
 
-Aufruf: mini_link.py <objekt.o> <ausgabe-prefix> --base 0x7008000000 --syms syms.json
+Usage: mini_link.py <object.o> <output-prefix> --base 0x7008000000 --syms syms.json
 """
 import argparse
 import json
@@ -32,7 +32,7 @@ def align(v, a):
 class Elf:
     def __init__(self, path):
         d = self.d = Path(path).read_bytes()
-        assert d[:4] == b"\x7fELF" and d[4] == 2 and struct.unpack_from("<H", d, 0x12)[0] == 183, "kein aarch64-ELF64"
+        assert d[:4] == b"\x7fELF" and d[4] == 2 and struct.unpack_from("<H", d, 0x12)[0] == 183, "not an aarch64 ELF64"
         shoff = struct.unpack_from("<Q", d, 0x28)[0]
         shentsize, shnum, shstrndx = struct.unpack_from("<HHH", d, 0x3A)
         self.sec = []
@@ -86,10 +86,10 @@ def link(obj, base, ext):
         sy = e.syms[i]
         if sy["shndx"] == 0:
             if sy["name"] not in ext:
-                raise SystemExit(f"unaufgelöstes Symbol {sy['name']}")
+                raise SystemExit(f"unresolved symbol {sy['name']}")
             return ext[sy["name"]] - base  # relativ zur Modulbasis
         if sy["shndx"] >= 0xFF00:
-            raise SystemExit("Common/ABS-Symbole nicht unterstützt")
+            raise SystemExit("Common/ABS symbols not supported")
         s = e.sec[sy["shndx"]]
         return s["addr"] + sy["value"]
 
@@ -134,7 +134,7 @@ def link(obj, base, ext):
                 v = (S - P) >> 2
                 struct.pack_into("<I", image, P, (w & 0xFFF8001F) | ((v & 0x3FFF) << 5))
             else:
-                raise SystemExit(f"Relokationstyp {typ} nicht unterstützt")
+                raise SystemExit(f"relocation type {typ} not supported")
 
     fdes = []
     hdr_addr = pos

@@ -1,2 +1,2 @@
-// Ersatz für runtime/paths.h (Spielpfade des Klons): nicht gebraucht.
+// Replacement for runtime/paths.h (game paths of the clone): not needed.
 #pragma once

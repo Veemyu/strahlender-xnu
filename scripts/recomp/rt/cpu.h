@@ -1,17 +1,17 @@
-// Erweiterung von cpu.h für den Exception-Spike: Rahmeneinträge für Landing-Pads und setjmp-Rücksprünge.
-// Eigener Code. Liegt vor scripts/recomp/upstream/runtime im Include-Pfad (-I scripts/recomp/rt -I scripts/recomp/upstream/runtime)
-// und zieht per #include_next die Original-cpu.h nach.
+// Extension of cpu.h for the exception spike: frame entries for landing pads and setjmp return points.
+// Own code. Sits before scripts/recomp/upstream/runtime in the include path (-I scripts/recomp/rt -I scripts/recomp/upstream/runtime)
+// and pulls in the original cpu.h via #include_next.
 #pragma once
 #include_next "cpu.h"
 #include <setjmp.h>
 
-// Ein Eintrag pro aktiver Gastfunktion, die einen Wiedereinstiegspunkt enthält. Liegt auf dem Host-Stack
-// der erzeugten Funktion; die Kette hängt am Cpu (Offset 336, im Original ungenutzter Füllbereich).
+// One entry per active guest function that contains a re-entry point. Lives on the host stack
+// of the generated function; the chain hangs off the Cpu (offset 336, unused padding in the original).
 typedef struct EhRec {
     struct EhRec *prev;
-    uint64_t lo, hi;   // Gastadressbereich der Funktion
-    uint64_t sp;       // Gast-SP beim Eintritt (Rahmen liegen darunter)
-    jmp_buf jb;        // _setjmp-Puffer (ohne Signalmaske)
+    uint64_t lo, hi;   // guest address range of the function
+    uint64_t sp;       // guest SP at entry (frames lie below)
+    jmp_buf jb;        // _setjmp buffer (without signal mask)
 } EhRec;
 
 #define EH_TOP(c) (*(EhRec **)((char *)(c) + 336))
@@ -25,9 +25,9 @@ typedef struct EhRec {
 void rt_nle_enter(Cpu *c) __attribute__((noreturn));   // c->pc = Wiedereinstiegspunkt mitten in einer Funktion
 void rt_nle_fatal(Cpu *c) __attribute__((noreturn));
 
-// ---- Exklusiv-Paare (LDXP/LDAXP/STXP/STLXP), Gate 1: der Monitor des Originals (cpu.h) merkt sich nur einen 64-Bit-Wert.
-// Hier kommt der zweite Teil bei Cpu-Offset 344 dazu (liegt im ungenutzten Füllbereich, hinter EH_TOP bei 336). Der Speicher-
-// zugriff geschieht über GPTR(a); Speichermodell B (rt32/cpu.h) ersetzt GPTR. Erfolg von STXP wie auf der Hardware: 0.
+// ---- Exclusive pairs (LDXP/LDAXP/STXP/STLXP), gate 1: the monitor of the original (cpu.h) remembers only one 64-bit value.
+// The second part is added here at Cpu offset 344 (in the unused padding, behind EH_TOP at 336). Memory
+// access goes through GPTR(a); memory model B (rt32/cpu.h) replaces GPTR. Success of STXP as on the hardware: 0.
 #ifndef GPTR
 #define GPTR(a) ((void *)(uintptr_t)(a))
 #endif

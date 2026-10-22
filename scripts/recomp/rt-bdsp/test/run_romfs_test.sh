@@ -1,5 +1,5 @@
 #!/bin/bash
-# Übersetzt und führt den synthetischen Test des virtuellen RomFS-Abbildes aus (erfundene Dateien unter work/recomp/test).
+# Compiles and runs the synthetic test of the virtual RomFS image (invented files under work/recomp/test).
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 mkdir -p work/recomp/test

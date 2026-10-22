@@ -1,6 +1,6 @@
 #!/bin/bash
-# Schritt 5, Erweiterung: wie run_boot_probe.sh, aber IPC-/Dienstschicht (ipc.c, am/misc/acc/hid_set/time) aus scripts/recomp/upstream/runtime.
-# Voraussetzung: run_boot_probe.sh lief schon (Images und .syms.json unter work/recomp/spike2/boot).
+# Step 5, extension: like run_boot_probe.sh, but IPC/service layer (ipc.c, am/misc/acc/hid_set/time) from scripts/recomp/upstream/runtime.
+# Prerequisite: run_boot_probe.sh already ran (images and .syms.json under work/recomp/spike2/boot).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 S=work/recomp/spike2/boot

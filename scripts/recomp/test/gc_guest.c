@@ -1,13 +1,13 @@
-// Synthetisches Gastprogramm für den GC-Test (docs/architecture.md, Abschnitt Threads und GC). Kein Spielcode.
-// Ein "Zeiger" wird zeitweise nur noch in einem Register gehalten: er wird aus dem Slot genommen, der Slot geleert,
-// und erst nach einer längeren Rechnung ohne Aufruf zurückgelegt. Ein Stop-the-World-GC, der in diesem Fenster anhält,
-// findet das Objekt nur, wenn er den Registerzustand des angehaltenen Threads mit auswertet.
+// Synthetic guest program for the GC test (docs/architecture.md, section threads and GC). No game code.
+// A "pointer" is temporarily kept only in a register: it is taken out of the slot, the slot is cleared,
+// and it is put back only after a longer computation without a call. A stop-the-world GC that suspends in this window
+// finds the object only if it also evaluates the register state of the suspended thread.
 long churn(long *slot, long n) {
     long acc = 0;
     for (long i = 0; i < n; i++) {
         long p = *slot;
         *slot = 0;
-        __asm__ volatile("dmb ish" ::: "memory");  // verhindert, dass der Host-Compiler den toten Speicherzugriff entfernt
+        __asm__ volatile("dmb ish" ::: "memory");  // prevents the host compiler from removing the dead memory access
         for (long k = 0; k < 60; k++) acc = acc * 31 + (p >> (k & 7)) + k;
         *slot = p;
     }

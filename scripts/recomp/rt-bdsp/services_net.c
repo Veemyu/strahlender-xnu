@@ -1,20 +1,20 @@
-// Online-, Peripherie- und Plattformdienste der BDSP-Laufzeit: Fehlerstubs. Nach dem Plan aus docs/architecture.md
-// (Abschnitt Laufzeit): Netz/Online (nifm, bsd, ssl, friend, ldn, bcat, nim, …) und alles, was der Mac-Lauf nicht braucht, meldet
-// einen Fehler, der Rest (prepo, ldr:ro) wird mit „Erfolg, keine Daten“ beantwortet. Eigener Code.
+// Online, peripheral and platform services of the BDSP runtime: error stubs. As planned in docs/architecture.md
+// (runtime section): network/online (nifm, bsd, ssl, friend, ldn, bcat, nim, …) and everything the Mac run does not need reports
+// an error, the rest (prepo, ldr:ro) is answered with "success, no data". Own code.
 #include "bdsp.h"
 
 void ipc_note(const char *svc, uint32_t cmd, int unhandled);
 
-// Netz nicht verfügbar: jede Anfrage des Dienstes schlägt fehl (alle Befehle, alle Unterobjekte)
+// Network unavailable: every request to the service fails (all commands, all sub-objects)
 static void svc_error(Service *s, IpcReq *req, IpcResp *resp) {
     ipc_note(s->name, req->cmd, 0);
-    resp->result = MAKE_RESULT(110, 1);  // wie nn::nifm „Netzwerk nicht verfügbar“ (Platzhalter; die SDK-Aufrufer prüfen nur auf Misserfolg)
+    resp->result = MAKE_RESULT(110, 1);  // like nn::nifm "network unavailable" (placeholder; the SDK callers only check for failure)
 }
 static void svc_ok(Service *s, IpcReq *req, IpcResp *resp) {
     ipc_note(s->name, req->cmd, 0);
     resp_size(resp, 0x10);
 }
-// csrng: GetRandomBytes(B-Puffer)
+// csrng: GetRandomBytes(B buffer)
 static void csrng(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     if (req->cmd == 0) {
@@ -23,17 +23,17 @@ static void csrng(Service *s, IpcReq *req, IpcResp *resp) {
     } else resp_size(resp, 0x10);
 }
 
-// bsd:u (nn::socket): Anmeldung gelingt (sonst bricht nn::socket::Initialize ab), jeder Socket-Aufruf scheitert mit ENETDOWN
+// bsd:u (nn::socket): registration succeeds (otherwise nn::socket::Initialize aborts), every socket call fails with ENETDOWN
 static void bsd_service(Service *s, IpcReq *req, IpcResp *resp) {
     ipc_note(s->name, req->cmd, 0);
     switch (req->cmd) {
     case 0: OUT(uint64_t, 0) = 0; resp_size(resp, 8); break;  // RegisterClient
     case 1: break;                                             // StartMonitoring
-    default: OUT(int32_t, 0) = -1; OUT(int32_t, 4) = 100; resp_size(resp, 8);  // Rückgabe -1, errno ENETDOWN
+    default: OUT(int32_t, 0) = -1; OUT(int32_t, 4) = 100; resp_size(resp, 8);  // return -1, errno ENETDOWN
     }
 }
 
-// bcat:u: Sitzung und Unterobjekte antworten „Erfolg ohne Daten“ (die Anmeldung beim Dienst darf nicht scheitern, sonst bricht nn::bcat::Initialize ab)
+// bcat:u: session and sub-objects answer "success without data" (registering with the service must not fail, otherwise nn::bcat::Initialize aborts)
 static void bcat_obj(Service *s, IpcReq *req, IpcResp *resp) {
     ipc_note(s->name, req->cmd, 0);
     resp_size(resp, 0x10);

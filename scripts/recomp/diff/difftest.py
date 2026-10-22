@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Differenzialtest-Treiber (docs/recomp-diff.md, Abschnitt 2): Referenz(en) gegen erzeugtes C (c-Modus).
+"""Differential test driver (docs/recomp-diff.md, section 2): reference(s) against generated C (c mode).
 
-Eigener Code. Je Test: synthetische Eingaben (cases.c, fester Startwert) -> Quellen laufen lassen -> jede
-übrige Quelle gegen die erste vergleichen (v0 128 Bit, x0, NZCV, getrennt FPSR).
+Own code. Per test: synthetic inputs (cases.c, fixed seed) -> run the sources -> compare every
+other source against the first (v0 128 bit, x0, NZCV, FPSR separately).
 
-Quellen (--src, die erste ist die Vergleichsbasis):
-  m1            nativ auf dem Apple-M1 (JIT der Schleife, nur macOS/arm64)
-  uc            Unicorn, Cortex-A57-Modell (Switch-Kern)
-  c:<name>=<so> erzeugtes C als Bibliothek (ctest.c + lifted.c), von build_c.sh gebaut
+Sources (--src, the first is the comparison base):
+  m1            native on the Apple M1 (JIT of the loop, macOS/arm64 only)
+  uc            Unicorn, Cortex-A57 model (Switch core)
+  c:<name>=<so> generated C as a library (ctest.c + lifted.c), built by build_c.sh
 
-Aufruf: difftest.py --src uc,c:o1=work/recomp/diff/lib_o1.so [--tests tests.json] [--ids a-b] [--jobs 4] --out report.json
-Ausgabe: JSON mit Ergebnis je Test und Vergleich; Kurzfassung auf stdout.
+Usage: difftest.py --src uc,c:o1=work/recomp/diff/lib_o1.so [--tests tests.json] [--ids a-b] [--jobs 4] --out report.json
+Output: JSON with result per test and comparison; short summary on stdout.
 """
 import argparse
 import ctypes
@@ -64,7 +64,7 @@ def run_src(s, t, cases):
 
 
 def lane_flags(cases, rt, k):
-    """(nan, denormal, inf) je Fall für Register k nach seinem Typ."""
+    """(nan, denormal, inf) per case for register k according to its type."""
     raw = np.ascontiguousarray(cases["v"][:, k, :])
     t = rt[k]
     if t == T_F32:
@@ -113,7 +113,7 @@ def compare(t, cases, ref, got):
         fz = (cases["fpcr"] >> 24) & 1
         dnb = (cases["fpcr"] >> 25) & 1
         for name, m in (("nan_in", nan), ("denormal_in", den), ("inf_in", inf), ("RM!=0", rm != 0), ("FZ", fz == 1), ("DN", dnb == 1),
-                        ("RN,FZ0,DN0", (rm == 0) & (fz == 0) & (dnb == 0)), ("kein_nan_denormal_inf", ~(nan | den | inf))):
+                        ("RN,FZ0,DN0", (rm == 0) & (fz == 0) & (dnb == 0)), ("no_nan_denormal_inf", ~(nan | den | inf))):
             tags[name] = int((bad & m).sum())
         res["tags"] = tags
         ex = []
@@ -150,7 +150,7 @@ def main():
     ap.add_argument("--cases-lib", default=str(ROOT / "work/recomp/diff/libcases.so"))
     ap.add_argument("--native-lib", default=str(ROOT / "work/recomp/diff/libnative.dylib"))
     ap.add_argument("--ids", default="")
-    ap.add_argument("--mxcsr", type=lambda v: int(v, 0), default=0, help="Host-MXCSR während des C-Laufs (x86; Störversuch)")
+    ap.add_argument("--mxcsr", type=lambda v: int(v, 0), default=0, help="host MXCSR during the C run (x86; disturbance experiment)")
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
@@ -173,7 +173,7 @@ def main():
     for s in srcs[1:]:
         bad = [r for r in results if "cmp" in r and r["cmp"][s]["bad"]]
         err = [r for r in results if "error" in r]
-        print(f"{srcs[0]} gegen {s}: Tests {len(results)}, mit Abweichung {len(bad)}, Fehler {len(err)}, Fälle mit Abweichung {sum(r['cmp'][s]['bad'] for r in bad)}")
+        print(f"{srcs[0]} vs {s}: tests {len(results)}, with deviation {len(bad)}, errors {len(err)}, cases with deviation {sum(r['cmp'][s]['bad'] for r in bad)}")
     print(f"{time.time() - t0:.0f} s")
 
 

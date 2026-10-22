@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Testliste des Differenzialtests erzeugen (docs/recomp-diff.md, Abschnitt 2).
+"""Generate the test list of the differential test (docs/recomp-diff.md, section 2).
 
-Eigener Code. Durchsucht den FP-/SIMD-Kodierungsraum (Bits 27:25 = 111) mit Capstone, bildet je Befehlsform
-("Shape", wie in hist.py) Vertreter, lässt die Vertreter vom c-Modus-Lifter (scripts/recomp/upstream/generator, nur importiert)
-in C umsetzen und schreibt
-  work/recomp/diff/tests.json   Testliste (Befehlswörter, Form, Spielhäufigkeit, Eingabetypen, Fallzahl)
-  work/recomp/diff/lifted.c     eine Gastfunktion t_<id>(Cpu *) je Test + Tabelle test_fns[]
-Zusätzlich handgeschriebene Befehlsfolgen (FMUL+FADD usw.) für die Fusionsprüfung. Keine Spielbytes im Ergebnis;
-die Häufigkeiten stammen aus hist.json (nur Zähler).
+Own code. Scans the FP/SIMD encoding space (bits 27:25 = 111) with Capstone, forms representatives per instruction shape
+("shape", as in hist.py), lets the c mode lifter (scripts/recomp/upstream/generator, only imported)
+convert the representatives to C and writes
+  work/recomp/diff/tests.json   test list (instruction words, shape, game frequency, input types, case count)
+  work/recomp/diff/lifted.c     one guest function t_<id>(Cpu *) per test + table test_fns[]
+Additionally hand-written instruction sequences (FMUL+FADD etc.) for the fusion check. No game bytes in the result;
+the frequencies come from hist.json (counters only).
 
-Aufruf: mktests.py [--hist work/recomp/diff/hist.json] [--ncases 10240] [--reps 3] [--out work/recomp/diff]
+Usage: mktests.py [--hist work/recomp/diff/hist.json] [--ncases 10240] [--reps 3] [--out work/recomp/diff]
 """
 import argparse
 import json
@@ -35,7 +35,7 @@ C1S = ["fabs", "fneg", "fsqrt", "frintn", "frintz", "frintm", "frintp", "frinta"
 C1V = ["fabs", "fneg", "fsqrt", "frintn", "frintz", "frintm", "frintp", "frinta", "frintx", "frinti", "frecpe", "frsqrte"]
 BADREG = re.compile(r"\b(sp|wsp|xzr|wzr)\b")
 
-SEQS = [  # (Name, Zeilen)
+SEQS = [  # (name, lines)
     ("seq fmul+fadd s", ["fmul s0, s1, s2", "fadd s0, s0, s3"]),
     ("seq fmul+fadd s (Addend links)", ["fmul s0, s1, s2", "fadd s0, s3, s0"]),
     ("seq fmul+fsub s", ["fmul s0, s1, s2", "fsub s0, s0, s3"]),
@@ -61,7 +61,7 @@ SEQS = [  # (Name, Zeilen)
     ("seq fcvtzs+scvtf s", ["fcvtzs w0, s1", "scvtf s0, w0"]),
     ("seq fmla+fadd 4s", ["fmla v0.4s, v1.4s, v2.4s", "fadd v0.4s, v0.4s, v3.4s"]),
     ("seq faddp+faddp 4s", ["faddp v0.4s, v1.4s, v2.4s", "faddp v0.4s, v0.4s, v0.4s"]),
-    ("seq fadd+fadd s (Assoziativität)", ["fadd s4, s1, s2", "fadd s0, s4, s3"]),
+    ("seq fadd+fadd s (associativity)", ["fadd s4, s1, s2", "fadd s0, s4, s3"]),
     ("fcmp s #0.0", ["fcmp s1, #0.0"]),
     ("fcmp d #0.0", ["fcmp d1, #0.0"]),
     ("fcmpe s #0.0", ["fcmpe s1, #0.0"]),
@@ -89,14 +89,14 @@ MEMOP = re.compile(r"\[x1(?:, #(-?(?:0x[0-9a-f]+|\d+)))?\]")
 
 
 def mem_ok(ops):
-    """Nur Zugriffe auf [x1 (+ kleine Konstante)]: der Testspeicher ist 192 Byte, x1 zeigt auf Byte 64."""
+    """Only accesses to [x1 (+ small constant)]: the test memory is 192 bytes, x1 points to byte 64."""
     m = MEMOP.search(ops)
     return bool(m) and -48 <= int(m.group(1) or "0", 0) <= 32 and not re.search(r"\], x1$", ops)
 
 
 def enum_shapes(md, rns, rds, wanted_only=None, mem=False):
-    """Alle gültigen Wörter (Daten-Verarbeitung Bits 27:25 = 111 oder, mit mem, FP/SIMD-Laden/Speichern)
-    -> {shape: [(word, mn, ops)]} (Reservoir 64)."""
+    """All valid words (data processing bits 27:25 = 111 or, with mem, FP/SIMD load/store)
+    -> {shape: [(word, mn, ops)]} (reservoir 64)."""
     rnd = random.Random(1)
     out, seen = defaultdict(list), Counter()
     for hi in range(1 << 22):
@@ -146,7 +146,7 @@ def main():
     catm = enum_shapes(md, [1], [0], mem=True)
     memshapes = set(catm)
     cat.update(catm)
-    print("Pass 1:", len(cat), "Formen (davon Speicher", len(memshapes), "); Spielformen abgedeckt:", sum(1 for s in game if s in cat), "/", len(game), file=sys.stderr)
+    print("Pass 1:", len(cat), "shapes (of which memory", len(memshapes), "); game shapes covered:", sum(1 for s in game if s in cat), "/", len(game), file=sys.stderr)
     missing = {s for s in game if s not in cat}
     if missing:
         more = enum_shapes(md, [0, 1, 2, 3], [0, 1, 2, 3, 16, 17], missing)
@@ -187,7 +187,7 @@ def main():
         lst = cat[sh]
         inst = game.get(sh, 0) > 0
         k = a.reps * (2 if inst and ("#" in sh or "[" in sh) else 1)
-        # Vertreter: zuerst natürliche Registerwahl (Rm=2, Ra=3), dann zufällig
+        # representatives: first the natural register choice (Rm=2, Ra=3), then random
         lst = sorted(lst, key=lambda t: (sum(1 for m in TOK.finditer(t[2]) if int(m.group(2)) > 3), rnd.random()))
         for w, mn, ops in lst[:k]:
             add(f"{mn} {ops}", [w], [(mn, ops)], game.get(sh, 0), sh)
@@ -198,7 +198,7 @@ def main():
             mn, _, ops = l.partition(" ")
             texts.append((mn, ops))
         add(name, words, texts, 0, "SEQ")
-    # Zufallsketten: 2 bis 4 abhängige FP-Befehle auf V0..V3 (Fusions- und Zwischenwertprüfung über Befehlsgrenzen)
+    # Random chains: 2 to 4 dependent FP instructions on V0..V3 (fusion and intermediate value check across instruction boundaries)
     crnd = random.Random(7)
     chains = []
     for ci in range(a.chains):
@@ -228,7 +228,7 @@ def main():
         pos += len(lines)
         texts = [(l.partition(" ")[0], l.partition(" ")[2]) for l in lines]
         add(name, words, texts, 0, "CHAIN", rt=[ty] * 4 + [T_BITS] * 4)
-    # CRC32 (Ganzzahl-Klasse, im Spiel vereinzelt im SDK) und Verschlüsselungsbefehle mit Gast-Registerpaaren
+    # CRC32 (integer class, occasionally in the SDK in the game) and crypto instructions with guest register pairs
     crc = [f"crc32{k} w0, w1, {'x' if k in ('x', 'cx') else 'w'}2" for k in ("b", "h", "w", "x", "cb", "ch", "cw", "cx")]
     for l, w in zip(crc, assemble(crc)):
         add("crc " + l, [w], [(l.partition(" ")[0], l.partition(" ")[2])], 0, "SEQ")
@@ -241,7 +241,7 @@ def main():
         f.write("GuestFn test_fns[] = {\n" + ",\n".join(f"t_{t['id']}" for t in tests) + "};\n")
         f.write(f"const int test_count = {len(tests)};\n")
     ug = sum(u["freq"] for u in unsupported)
-    print(f"Tests {len(tests)}, nicht unterstützt {len(unsupported)} (Spielvorkommen {ug}), Spielformen ohne Vertreter {len(notfound)}", file=sys.stderr)
+    print(f"Tests {len(tests)}, unsupported {len(unsupported)} (game occurrences {ug}), game shapes without representative {len(notfound)}", file=sys.stderr)
     for u in unsupported[:30]:
         print("  unsupported:", u["name"], u["why"], u["freq"], file=sys.stderr)
 

@@ -21,7 +21,7 @@ static SDL_Window *window;
 static bool headless;  // BDSP: --headless renders into images of its own, no window, surface or swapchain (screenshots only)
 static VmaAllocation hl_mem[8];
 static atomic_bool ui_ready;
-// Host-Modus (Qt-Hülle, app/linux/qt_ui.cpp): Qt legt Fenster und VkSurfaceKHR an, die Laufzeit läuft im selben Prozess. Größe in Pixeln kommt vom Host.
+// Host mode (Qt shell, app/linux/qt_ui.cpp): Qt creates the window and VkSurfaceKHR, the runtime runs in the same process. The size in pixels comes from the host.
 static bool host_mode;
 static atomic_int host_w, host_h;
 static void window_pixel_size(int *w, int *h) {
@@ -386,8 +386,8 @@ bool vk_frame_begin(const float clear[4]) {
     int w, h;
     if (headless) { w = (int)g_vk.sc_extent.width; h = (int)g_vk.sc_extent.height; }
     else {
-        // Maßgeblich ist die Fenstergröße der Oberfläche (X11: currentExtent). SDL_GetWindowSizeInPixels bleibt bei einem in Qt eingebetteten
-        // Fenster auf der Startgröße stehen, dann wurde die Swapchain in jedem Bild neu angelegt (24 statt 60 fps).
+        // The window size of the surface is authoritative (X11: currentExtent). SDL_GetWindowSizeInPixels stays at the initial size
+        // for a window embedded in Qt, and the swapchain was then recreated in every frame (24 instead of 60 fps).
         VkSurfaceCapabilitiesKHR caps;
         if (g_vk.surface && vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vk.phys, g_vk.surface, &caps) == VK_SUCCESS && caps.currentExtent.width != UINT32_MAX) {
             w = (int)caps.currentExtent.width;
@@ -567,7 +567,7 @@ void backend_present(NvnTexture *t) {
         widescreen_present_crop(total_frames, shape, crop, &vx, &vy, &vw, &vh);
         extern bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th);
         float wc[4];
-        if (nvn_window_crop(wc, t->width, t->height)) memcpy(crop, wc, sizeof crop);  // vom Spiel gesetzter Ausschnitt (nvnWindowSetCrop), wie metal.m present_gpu
+        if (nvn_window_crop(wc, t->width, t->height)) memcpy(crop, wc, sizeof crop);  // crop region set by the game (nvnWindowSetCrop), as in metal.m present_gpu
         widescreen_set_factor((float)shape);
         renderer_set_scale((float)sx, (float)sy);
         VkCommandBuffer cb = vk_cmd();
@@ -697,8 +697,8 @@ static void quick_exit_handler(void) {
 #endif
 }
 
-// Qt-Hülle (scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.cpp): BDSP_EMBED=1 -> randloses X11-Fenster, die Kennung geht auf stdout, Befehle kommen auf stdin
-// ("fps 30|60|120", "pause 0|1"); dieselben Stellen wie die F-Tasten in ui_run.
+// Qt shell (scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.cpp): BDSP_EMBED=1 -> borderless X11 window, its id goes to stdout, commands arrive on stdin
+// ("fps 30|60|120", "pause 0|1"); the same places as the F keys in ui_run.
 static void *embed_commands(void *arg) {
     (void)arg;
     extern void bdsp_set_fps(int fps);
@@ -731,7 +731,7 @@ void ui_window_init(void) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) FATAL("SDL_Init: %s\n", SDL_GetError());
     int win_w = 1280, win_h = 720;
     if (getenv("BDSP_WINDOW")) sscanf(getenv("BDSP_WINDOW"), "%dx%d", &win_w, &win_h);
-    if (getenv("BDSP_FPS")) { extern void bdsp_set_fps(int fps); bdsp_set_fps(atoi(getenv("BDSP_FPS"))); }  // 30/60/120 wie am Mac
+    if (getenv("BDSP_FPS")) { extern void bdsp_set_fps(int fps); bdsp_set_fps(atoi(getenv("BDSP_FPS"))); }  // 30/60/120 as on the Mac
     SDL_WindowFlags wflags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     if (getenv("BDSP_HIDDEN")) wflags |= SDL_WINDOW_HIDDEN;
     bool embed = getenv("BDSP_EMBED") && atoi(getenv("BDSP_EMBED"));
@@ -757,7 +757,7 @@ void ui_window_init(void) {
     // the Fullscreen setting applies from the start screen on (not only once the game runs); test windows stay windows
     if (g_settings.fullscreen && !embed && !getenv("BDSP_WINDOW") && !getenv("BDSP_HIDDEN")) SDL_SetWindowFullscreen(window, true);
     if (getenv("BDSP_MANGOHUD") && atoi(getenv("BDSP_MANGOHUD"))) {  // Linux: MangoHud-Overlay (Vulkan-Layer, Paket mangohud) einblenden; Standard aus
-        setenv("MANGOHUD", "1", 1);   // schaltet den impliziten Layer; muss vor vkCreateInstance stehen
+        setenv("MANGOHUD", "1", 1);   // enables the implicit layer; must be set before vkCreateInstance
         if (!getenv("MANGOHUD_CONFIGFILE")) setenv("MANGOHUD_CONFIG", "fps,frametime,frame_timing=1,cpu_stats,gpu_stats,font_size=26,position=top-left", 0);
     }
     create_instance();
@@ -794,8 +794,8 @@ void backend_clear_window(void) {
     if (g_vk.dev && vk_frame_begin(black)) vk_frame_end(NULL);
 }
 
-// ---- Host-Modus (Qt-Hülle app/linux/qt_ui.cpp, Hauptthread des Hosts): Qt legt Instanz, Fenster und VkSurfaceKHR an (plattformneutral: nur Vulkan-Typen
-// und Pixelgrößen), ui_run() ruft den Host. Die Instanz braucht Vulkan 1.3 und die Flächenerweiterungen, die der Host für seine Plattform wählt.
+// ---- Host mode (Qt shell app/linux/qt_ui.cpp, main thread of the host): Qt creates the instance, window and VkSurfaceKHR (platform-neutral: only Vulkan types
+// and pixel sizes), ui_run() calls the host. The instance needs Vulkan 1.3 and the surface extensions that the host chooses for its platform.
 void vk_host_attach_instance(void *vk_instance) {
     host_mode = true;
     atexit(quick_exit_handler);
@@ -807,7 +807,7 @@ void vk_host_set_size(int w, int h) {
     atomic_store(&host_w, w);
     atomic_store(&host_h, h);
 }
-void vk_host_surface_ready(unsigned long long surface) {  // Gerät, Swapchain und Laufzeit-Zustand; danach darf das Spiel losrennen (backend_init)
+void vk_host_surface_ready(unsigned long long surface) {  // device, swapchain and runtime state; after this the game may start running (backend_init)
     g_vk.surface = (VkSurfaceKHR)surface;
     pick_device();
     create_device();
@@ -819,7 +819,7 @@ void vk_host_surface_ready(unsigned long long surface) {  // Gerät, Swapchain u
 }
 
 int ui_run(void) {
-    extern int bdsp_qt_ui_run(void) __attribute__((weak));  // nur im Qt-Bau gelinkt (app/linux/qt_ui.cpp)
+    extern int bdsp_qt_ui_run(void) __attribute__((weak));  // linked only in the Qt build (app/linux/qt_ui.cpp)
     if (bdsp_qt_ui_run && !getenv("BDSP_HIDDEN")) return bdsp_qt_ui_run();
     ui_window_init();
     atomic_store(&ui_ready, true);
@@ -835,7 +835,7 @@ int ui_run(void) {
             extern bool input_user_blocked(const SDL_Event *e);
             if (input_user_blocked(&e)) continue;  // scripted test runs: the real keyboard / mouse / pads do nothing (as metal.m)
             if (menu_handle_event(&e)) continue;
-            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {  // Linux: Tasten wie die Mac-Menüs Ansicht > Fenstergröße (Cmd+1..4) und Bildrate
+            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {  // Linux: keys like the Mac menus View > window size (Cmd+1..4) and frame rate
                 static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
                 extern void bdsp_set_fps(int fps);
                 SDL_Keycode k = e.key.key;

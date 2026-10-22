@@ -1966,7 +1966,7 @@ static uint64_t gmem_tried;  // heap size the import was last attempted for (gme
 static VkDescriptorBufferInfo gmem_info(void) {
     static int off = -1;
     if (off < 0) off = getenv("BDSP_VK_NO_GMEM") != NULL || !g_vk.host_import;
-    // BDSP legt den Spielspeicher per MapPhysicalMemory in die Alias-Region (SetHeapSize bleibt 0): dann gilt der ganze NVN-Speicherbereich
+    // BDSP places the game memory into the alias region via MapPhysicalMemory (SetHeapSize stays 0): then the whole NVN memory range applies
     uint64_t want = kernel_heap_size() ? (kernel_heap_size() + 0xFFFF) & ~0xFFFFull : HEAP_MAX & ~0xFFFFull;
     if (want > HEAP_MAX) want = HEAP_MAX;
     if (!off && want > gmem_size && !gmem_import(want)) {

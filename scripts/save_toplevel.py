@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Leitet aus der dekompilierten IL2CPP-Marshal-Funktion (work/decomp/save-spec/marshal_savedata.c)
-die nativen Offsets der Top-Level-Felder von PlayerWork.SaveData ab. Heuristik: je Feld
-der kleinste param_2-Offset zwischen der ersten param_1-Referenz des Felds und der des naechsten."""
+"""Derives the native offsets of the top-level fields of PlayerWork.SaveData from the decompiled
+IL2CPP marshal function (work/decomp/save-spec/marshal_savedata.c). Heuristic: per field,
+the smallest param_2 offset between the first param_1 reference of the field and that of the next."""
 import re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))

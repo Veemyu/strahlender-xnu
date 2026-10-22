@@ -1,5 +1,5 @@
 #!/bin/bash
-# Übersetzt und führt den Test der Exklusiv-Paar-Hilfen aus (synthetisch, ohne Spielcode).
+# Compiles and runs the test of the exclusive-pair helpers (synthetic, without game code).
 set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 mkdir -p work/recomp/test

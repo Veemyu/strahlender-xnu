@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Kostenmessung der c-Modus-Varianten (docs/recomp-diff.md, Abschnitt 5): Zeit je erzeugter Gastfunktion (ns) für
-häufige FP-/SIMD-Befehle, FPCR = 0 (Schnellpfad) und FZ bzw. RMode (langsamer Pfad). Eigener Code.
-Aufruf: perf_c.py <name>=<lib.so> ... [--n 20000000]"""
+"""Cost measurement of the c mode variants (docs/recomp-diff.md, section 5): time per generated guest function (ns) for
+frequent FP/SIMD instructions, FPCR = 0 (fast path) and FZ or RMode (slow path). Own code.
+Usage: perf_c.py <name>=<lib.so> ... [--n 20000000]"""
 import ctypes
 import json
 import sys

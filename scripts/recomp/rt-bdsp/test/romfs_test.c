@@ -1,7 +1,7 @@
-// Synthetischer Test des virtuellen RomFS-Abbildes (services_fs.c): baut ein kleines Verzeichnis aus erfundenen Dateien, lässt
-// das Abbild aufbauen und sucht darin wie das Spiel über Hash-Tabellen (Verzeichnis- und Dateihash, Metatabellen) jede Datei
-// nach Pfad; Inhalt und Größe werden gegen das Verzeichnis geprüft, ebenso Lesen über Dateigrenzen. Kein Spielinhalt.
-// Übersetzen und ausführen: scripts/recomp/rt-bdsp/test/run_romfs_test.sh
+// Synthetic test of the virtual RomFS image (services_fs.c): builds a small directory of invented files, lets
+// the image be built and looks up every file by path in it like the game does through hash tables (directory and file hash, meta tables);
+// content and size are checked against the directory, as is reading across file boundaries. No game content.
+// Build and run: scripts/recomp/rt-bdsp/test/run_romfs_test.sh
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -20,7 +20,7 @@ void kernel_report(FILE *f) { (void)f; }
 KThread *kernel_current_thread(void) { return NULL; }
 
 static int fails;
-#define CHECK(x) do { if (!(x)) { printf("FEHLER Zeile %d: %s\n", __LINE__, #x); fails++; } } while (0)
+#define CHECK(x) do { if (!(x)) { printf("ERROR line %d: %s\n", __LINE__, #x); fails++; } } while (0)
 
 static void put(const char *path, size_t size, uint8_t seed) {
     FILE *f = fopen(path, "wb");
@@ -34,7 +34,7 @@ static uint8_t *img(uint64_t off, uint64_t size) {
     return b;
 }
 
-// Suche wie die RomFS-Tabellen des Spiels: Verzeichnis über Hash(parent, name), Datei über Hash(parent dir, name)
+// Lookup like the game's RomFS tables: directory via hash(parent, name), file via hash(parent dir, name)
 static int64_t find_entry(const uint64_t *hdr, const uint8_t *htab, uint32_t hcount, const uint8_t *meta, uint32_t parent, const char *name, size_t nl, int is_dir) {
     uint32_t h = romfs_hash(parent, name, (uint32_t)nl) % hcount, off;
     memcpy(&off, htab + 4 * h, 4);
@@ -78,7 +78,7 @@ out:
     return ok;
 }
 
-// ---- Speicherstand-Ordner (IFileSystem/IFile/IDirectory über die Dienstfunktionen, ohne Gast)
+// ---- Save folder (IFileSystem/IFile/IDirectory through the service functions, without guest)
 typedef struct { uint8_t raw[64]; } Raw;
 static IpcResp call(Service *s, uint32_t cmd, const void *data, size_t dsz, const char *path, const char *path2, const void *abuf, size_t asz, void *bbuf, size_t bsz) {
     IpcReq req;
@@ -118,7 +118,7 @@ static void test_save(void) {
     for (int i = 0; i < 32; i++) wr[i] = (uint8_t)(i * 7);
     uint8_t wargs[24] = {0};
     *(int64_t *)(wargs + 8) = 10;   // Offset
-    *(int64_t *)(wargs + 16) = 32;  // Größe
+    *(int64_t *)(wargs + 16) = 32;  // size
     r = call(f, 1, wargs, sizeof wargs, NULL, NULL, wr, sizeof wr, NULL, 0);  // Write
     CHECK(r.result == 0);
     r = call(f, 4, NULL, 0, NULL, NULL, NULL, 0, NULL, 0);  // GetSize
@@ -143,7 +143,7 @@ static void test_save(void) {
     r = call(fs, 5, NULL, 0, "/data.bin", "/renamed.bin", NULL, 0, NULL, 0);  // RenameFile
     CHECK(r.result == 0);
     uint32_t dm = 3;
-    r = call(fs, 9, &dm, 4, "/", NULL, NULL, 0, NULL, 0);  // OpenDirectory (Dateien und Ordner)
+    r = call(fs, 9, &dm, 4, "/", NULL, NULL, 0, NULL, 0);  // OpenDirectory (files and folders)
     CHECK(r.result == 0 && r.nobjects == 1);
     Service *d = r.objects[0];
     r = call(d, 1, NULL, 0, NULL, NULL, NULL, 0, NULL, 0);  // GetEntryCount
@@ -173,7 +173,7 @@ int main(void) {
         snprintf(path, sizeof path, "%s/%s", root, files[i].p);
         put(path, files[i].sz, files[i].seed);
     }
-    snprintf(path, sizeof path, "%s/Data/.DS_Store", root);  // versteckte Dateien gehören nicht zum Abbild
+    snprintf(path, sizeof path, "%s/Data/.DS_Store", root);  // hidden files are not part of the image
     put(path, 10, 9);
     g_romfs_dir = root;
     romfs_build_index();
@@ -195,12 +195,12 @@ int main(void) {
     uint64_t o, s;
     CHECK(!lookup_file(hdr, "Data/missing.bin", &o, &s));
     CHECK(!lookup_file(hdr, "Data/.DS_Store", &o, &s));
-    // Lesen über Dateigrenzen: die ganze Datenregion auf einmal, danach Stichproben gegen Einzelzugriffe
+    // Reading across file boundaries: the whole data region at once, then samples against single accesses
     uint8_t *all = img(0, rom.tables_off + rom.tables_size);
     uint64_t co, cs;
     CHECK(lookup_file(hdr, "Data/Sub/c.dat", &co, &cs));
     CHECK(!memcmp(all + co, img(co, cs), cs));
     test_save();
-    printf(fails ? "RomFS-/Speicherstand-Test: %d Fehler\n" : "RomFS-/Speicherstand-Test: bestanden (8 Dateien, Hash-Suche wie im Spiel, Lesen über Dateigrenzen, Host-Ordner: anlegen, schreiben, lesen, Größe, umbenennen, auflisten, löschen)\n", fails);
+    printf(fails ? "RomFS/save test: %d errors\n" : "RomFS/save test: passed (8 files, hash lookup like in the game, reading across file boundaries, host folder: create, write, read, size, rename, list, delete)\n", fails);
     return fails != 0;
 }

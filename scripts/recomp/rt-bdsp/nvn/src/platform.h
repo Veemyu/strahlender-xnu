@@ -1,4 +1,4 @@
-// Ersatz für runtime/platform.h: nur die Zeitfunktionen.
+// Replacement for runtime/platform.h: only the time functions.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>

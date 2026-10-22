@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zaehlt Shader-Objekte in Unity-Bundles (nur Metadaten/Zahlen). Braucht UnityPy."""
+"""Counts shader objects in Unity bundles (metadata/numbers only). Needs UnityPy."""
 import sys
 from collections import Counter
 

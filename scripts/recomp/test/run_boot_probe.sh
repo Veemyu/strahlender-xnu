@@ -1,6 +1,6 @@
 #!/bin/bash
-# Schritt 5: main + sdk + subsdk0 (rekompiliert, work/recomp/obj4 aus build_all.sh) bis zum ersten Blocker starten.
-# Voraussetzung: gen_all.sh und build_all.sh sind gelaufen. Alles unter work/recomp/ (gitignoriert).
+# Step 5: start main + sdk + subsdk0 (recompiled, work/recomp/obj4 from build_all.sh) up to the first blocker.
+# Prerequisite: gen_all.sh and build_all.sh have run. Everything under work/recomp/ (gitignored).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 S=work/recomp/spike2/boot

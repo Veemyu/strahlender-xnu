@@ -1,8 +1,8 @@
 #!/bin/bash
-# Baut die Bibliotheken des Differenzialtests (docs/recomp-diff.md). Alles unter work/recomp/diff (nicht im Repo).
-# Aufruf: build_c.sh base            -> libcases.so (+ libnative.dylib auf dem Mac)
-#         build_c.sh c <name> [clang-Flags ...]   -> lib_<name>.so aus ctest.c + lifted.c
-# Umgebung: OVERLAY=<Ordner> setzt zusätzlich -I <Ordner> vor die Original-Laufzeit (c_exact-Fixes), CC=clang.
+# Builds the libraries of the differential test (docs/recomp-diff.md). Everything under work/recomp/diff (not in the repo).
+# Usage: build_c.sh base            -> libcases.so (+ libnative.dylib on the Mac)
+#        build_c.sh c <name> [clang flags ...]   -> lib_<name>.so from ctest.c + lifted.c
+# Environment: OVERLAY=<folder> additionally puts -I <folder> before the original runtime (c_exact fixes), CC=clang.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 D=${D:-work/recomp/diff}
@@ -20,5 +20,5 @@ case "${1:-}" in
     inc=""; [ -n "${OVERLAY:-}" ] && inc="-I $OVERLAY"
     $CC "$@" -fno-strict-aliasing -fvisibility=default -shared -fPIC -w $LINK $inc     -I scripts/recomp/upstream/runtime -I scripts/recomp/c_exact -I scripts/recomp/diff \      scripts/recomp/diff/ctest.c "${LIFTED:-$D/lifted.c}" -lm -o "$D/lib_$name.so"
     ;;
-  *) echo "Aufruf: build_c.sh base | c <name> [Flags]"; exit 2;;
+  *) echo "Usage: build_c.sh base | c <name> [flags]"; exit 2;;
 esac
