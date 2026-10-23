@@ -17,6 +17,7 @@
 #include "nvn.h"
 #include "renderer.h"
 #include "texpatch.h"
+#include "bctc.h"
 
 static id<MTLDevice> dev;
 static id<MTLCommandQueue> queue;
@@ -34,7 +35,21 @@ uint64_t g_guest_buffer_base;
 // ================================================================== formats
 typedef struct { MTLPixelFormat pf; uint8_t expand_rgb; uint8_t force_alpha_one; } MtlFormat;
 
+// GPU without BC textures (iPhone A13) or BDSP_TEST_NO_BC=1: BC formats become what bctc.c converts them to (set in backend_init)
+static bool g_no_bc;
+bool renderer_no_bc(void) { return g_no_bc; }
+
 static MtlFormat mtl_format(uint32_t f) {
+    if (g_no_bc)
+        switch (bctc_kind(f)) {
+        case BCTC_ASTC: return (MtlFormat){MTLPixelFormatASTC_4x4_LDR};
+        case BCTC_ASTC_SRGB: return (MtlFormat){MTLPixelFormatASTC_4x4_sRGB};
+        case BCTC_R8: return (MtlFormat){MTLPixelFormatR8Unorm};
+        case BCTC_R8S: return (MtlFormat){MTLPixelFormatR8Snorm};
+        case BCTC_RG8: return (MtlFormat){MTLPixelFormatRG8Unorm};
+        case BCTC_RG8S: return (MtlFormat){MTLPixelFormatRG8Snorm};
+        default: break;
+        }
     switch (f) {
     case 0x01: return (MtlFormat){MTLPixelFormatR8Unorm};
     case 0x02: return (MtlFormat){MTLPixelFormatR8Snorm};
@@ -619,7 +634,12 @@ static void upload_texture(NvnTexture *t, TexBackend *b, id<MTLBlitCommandEncode
             }
             if (b->tp > 0 && layer == 0) texpatch_apply(b->tp - 1, lv, lin, l.w, l.h, row);
             uint8_t *data = lin;
-            uint32_t out_row = row;
+            uint32_t out_row = row, out_rows = l.hb;
+            if (g_no_bc && bctc_kind(t->format)) {   // GPU without BC: convert the deswizzled blocks
+                data = bctc_convert(t->format, lin, l.wb, l.hb, l.d, &out_row, &out_rows);
+                free(lin);
+                lin = data;
+            }
             static int bc5log;  // BDSP_LOG_BC5: endpoint bytes of BC5 (0x4B/0x4C) textures (unorm ~128 vs snorm ~0)
             if ((t->format == 0x4B || t->format == 0x4C) && lv == 0 && bc5log < 12 && getenv("BDSP_LOG_BC5")) {
                 bc5log++;
@@ -639,7 +659,7 @@ static void upload_texture(NvnTexture *t, TexBackend *b, id<MTLBlitCommandEncode
                 free(lin);
                 lin = data;
             }
-            uint64_t out_sz = (uint64_t)out_row * l.hb * l.d;
+            uint64_t out_sz = (uint64_t)out_row * out_rows * l.d;
             id<MTLBuffer> staging = [dev newBufferWithBytes:data length:out_sz options:MTLResourceStorageModeShared];
             free(lin);
             // the copy stays inside the texture's level: one allocated at the internal resolution (16:9, render
@@ -649,7 +669,7 @@ static void upload_texture(NvnTexture *t, TexBackend *b, id<MTLBlitCommandEncode
             MTLSize size = MTLSizeMake(MIN((NSUInteger)l.w, lw), MIN((NSUInteger)l.h, lh), MIN((NSUInteger)l.d, ld));
             NSUInteger slice = layer;
             [blit copyFromBuffer:staging sourceOffset:0 sourceBytesPerRow:out_row
-                 sourceBytesPerImage:(NSUInteger)out_row * l.hb sourceSize:size toTexture:b->tex
+                 sourceBytesPerImage:(NSUInteger)out_row * out_rows sourceSize:size toTexture:b->tex
                     destinationSlice:slice destinationLevel:lv destinationOrigin:MTLOriginMake(0, 0, 0)];
         }
     }
@@ -698,6 +718,8 @@ static const char *present_src =
 
 void backend_init(void) {
     while (!atomic_load(&ui_ready)) usleep(1000);
+    g_no_bc = !dev.supportsBCTextureCompression || getenv("BDSP_TEST_NO_BC");
+    if (g_no_bc) LOG("[metal] BC textures are converted while uploading (bctc.c)\n");
     queue = [dev newCommandQueue];
     NSError *err = nil;
     id<MTLLibrary> lib = [dev newLibraryWithSource:@(present_src) options:nil error:&err];

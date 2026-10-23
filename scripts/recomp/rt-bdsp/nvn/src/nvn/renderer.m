@@ -20,6 +20,7 @@ extern int maxwell_dbg_reg;
 #define DBG_VS_BUFFER_INDEX 29
 #include "nvn.h"
 #include "renderer.h"
+#include "bctc.h"
 #include "exec_worker.inc"
 
 static id<MTLDevice> dev;
@@ -2614,7 +2615,7 @@ static void copy_buffer_to_texture(uint64_t src, const TexRefRec *dst) {
     uint64_t mtl_bpb = renderer_pixel_format_bytes(tex.pixelFormat, fi->bpb);
     for (int z = 0; z < (array ? rg[5] : 1); z++) {
         const uint8_t *s = (const uint8_t *)(uintptr_t)(src + (uint64_t)z * img);
-        uint64_t out_row = (uint64_t)wb * mtl_bpb;
+        uint64_t out_row = (uint64_t)wb * mtl_bpb, out_rows = hb;
         uint8_t *data = malloc(out_row * hb * (array ? 1 : rg[5]));
         for (int d = 0; d < (array ? 1 : rg[5]); d++)
             for (uint32_t y = 0; y < hb; y++) {
@@ -2625,10 +2626,19 @@ static void copy_buffer_to_texture(uint64_t src, const TexRefRec *dst) {
                     for (uint32_t x = 0; x < wb; x++) { memcpy(dr + x * 4, sr + x * 3, 3); dr[x * 4 + 3] = 255; }
                 else memset(dr, 0, out_row);
             }
-        id<MTLBuffer> staging = [dev newBufferWithBytes:data length:out_row * hb * (array ? 1 : rg[5])
+        extern bool renderer_no_bc(void);
+        if (renderer_no_bc() && bctc_kind(t->format)) {   // GPU without BC (metal.m): the packed blocks are converted
+            uint32_t crow, crows;
+            uint8_t *c = bctc_convert(t->format, data, wb, hb, array ? 1 : (uint32_t)rg[5], &crow, &crows);
+            free(data);
+            data = c;
+            out_row = crow;
+            out_rows = crows;
+        }
+        id<MTLBuffer> staging = [dev newBufferWithBytes:data length:out_row * out_rows * (array ? 1 : rg[5])
                                                 options:MTLResourceStorageModeShared];
         free(data);
-        [b copyFromBuffer:staging sourceOffset:0 sourceBytesPerRow:out_row sourceBytesPerImage:out_row * hb
+        [b copyFromBuffer:staging sourceOffset:0 sourceBytesPerRow:out_row sourceBytesPerImage:out_row * out_rows
                sourceSize:MTLSizeMake(rg[3], rg[4], array ? 1 : rg[5]) toTexture:tex
          destinationSlice:array ? rg[2] + z : 0 destinationLevel:level
         destinationOrigin:MTLOriginMake(rg[0], rg[1], array ? 0 : rg[2])];

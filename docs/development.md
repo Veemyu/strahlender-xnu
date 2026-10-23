@@ -46,7 +46,11 @@ Measuring (all off by default): `BDSP_PERF_LOG=1` logs once per second `frames`,
 `cal_us` (a fixed calibration loop: grows when the CPU is throttled); CPU ms per frame is the difference of `cpu_ms` over the difference of `frames`, which
 also works at a frame rate cap. `BDSP_COUNT_FN=<hex>[,<hex>...]` adds the entry counts of up to four guest functions (slows the guest). `BDSP_PROBE_FIXED=1`
 (iOS app) prints device data and tries a fixed 12.5 GiB window at several addresses, then ends. `BDSP_QOS=0` (iOS) switches off the QoS classes of the guest
-threads and the render worker. `BDSP_INPUT_SCRIPT="12:A:0.3,40:LEFT:5.8,..."` scripts the input in seconds since the process start. Comparisons need the
+threads and the render worker. `BDSP_INPUT_SCRIPT="12:A:0.3,40:LEFT:5.8,..."` scripts the input in seconds since the process start. `BDSP_TEX_INVENTORY=1` logs the live
+textures per NVN format every 600 frames; `BDSP_TEST_NO_BC=1` converts BC textures as on a GPU without BC. Crash statistics: `BDSP_CPU_STRESS=<n>` adds
+n busy host threads (makes rare startup races more likely); `BDSP_XW_SKIP=<mask>` leaves out what the render worker writes into guest memory (1 uniform
+update, 2 buffer copy, 4 counter report, 8 texture read-back, 16 compute dispatch); `BDSP_XW_GPU_LAG=<n>` lets the worker wait for the GPU frame n
+presentations back; `BDSP_NVN_MEM_BASE=<hex>` with `BDSP_NVN_MEM_MB` sets the Metal buffer over guest memory by hand. Comparisons need the
 same save, the same script and a cool device; check the screenshots (`BDSP_SCREENSHOT_EVERY`, `BDSP_SHOT_DIR`) before trusting the numbers.
 
 ## 3. Testing with saves

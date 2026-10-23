@@ -81,7 +81,7 @@ for f in "$SRC"/*.c; do
   compile "$f" "$RT/$b.o" "$CC" $BDSP_OPT $BDSP_WARN_GLUE -Wno-sign-compare -Wno-unused-function $DEFS $SDLINC $BASEINC $extra "${@:2}"
 done
 W="$BDSP_NOWARN $BDSP_OPT $DEFS"
-for f in objects cmdbuf formats tegra astc; do compile "$NVN32/nvn/$f.c" "$RT/nvn/$f.o" "$CC" $W $NVINC; done
+for f in objects cmdbuf formats tegra astc bctc; do compile "$NVN32/nvn/$f.c" "$RT/nvn/$f.o" "$CC" $W $NVINC; done
 compile "$NVN32/nvn/maxwell/translate.c" "$RT/nvn/translate.o" "$CC" $W $NVINC
 if [ "$TARGET" = mac ]; then
   compile "$NVN32/nvn/renderer.m" "$RT/nvn/renderer.o" "$MCC" $W $NVINC -fobjc-arc

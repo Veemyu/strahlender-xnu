@@ -21,7 +21,7 @@ build() {  # Quelle Objekt [Zusatzflags]
     $cc $BDSP_OPT $W $INC "$@" -c "$f" -o "$o"
   fi
 }
-for f in objects cmdbuf formats tegra astc; do build "$SRC/nvn/$f.c" "$RT/nvn/$f.o" "$@"; done
+for f in objects cmdbuf formats tegra astc bctc; do build "$SRC/nvn/$f.c" "$RT/nvn/$f.o" "$@"; done
 build "$SRC/nvn/maxwell/translate.c" "$RT/nvn/translate.o" "$@"
 build "$SRC/nvn/renderer.m" "$RT/nvn/renderer.o" -fobjc-arc "$@"
 build "$SRC/nvn/metal.m" "$RT/nvn/metal.o" -fobjc-arc "$@"

@@ -129,8 +129,12 @@ the touch overlay scales with the screen and the safe area. `DEVICE_NAME=<part o
 
 - A fixed `vm_allocate` window succeeds at `0x5_` to `0xC_0000_0000` (4 and 12.5 GiB), but `0x2_` and `0x4_0000_0000` are taken. The A-low base is therefore
   **`0x8_0000_0000`**, which is free on the iPad as well (`gen32.sh`/`build_rt32.sh` default `ORG`).
-- `supportsBCTextureCompression` is 0 (Apple6 family): the app stops with a clear message, `BDSP_ALLOW_NO_BC=1` starts anyway. The language screen and other UI are
-  drawn correctly without BC, 3D textures are not. The plan is an offline ASTC conversion of the BC textures.
+- `supportsBCTextureCompression` is 0 (Apple6 family). The renderer converts BC textures while uploading (`nvn/src/nvn/bctc.c`): BC1, BC2, BC3 and BC7 into
+  ASTC 4x4, BC4 and BC5 into R8/RG8 texels; BC6H is not converted (not seen in the game). In the field the game holds only 34.6 MiB of BC textures (BC3 25.2,
+  BC1 5.7, BC7 2.5, BC4/BC5 1.2; ASTC 6x6 18.7 MiB runs natively; measured with `BDSP_TEX_INVENTORY=1`), so the conversion costs about 6 MiB and, on an M1 Pro,
+  0.6 µs per BC1 block and 1 to 1.4 µs per BC3/BC7 block. `BDSP_TEST_NO_BC=1` forces the path on any GPU (iPad: same picture as with BC).
+  `scripts/recomp/rt-bdsp/test/run_bctc_test.sh` checks the decoders and the written ASTC blocks against Metal's own decoders.
+- The next limit on the phone is memory: with the save in the field the footprint reached 1.9 GiB while loading and iOS ended the app (signal 9) after 28 s.
 - `maxBufferLength` is 2 GiB. The envelope of all `MapPhysicalMemory` blocks is 3.5 GiB because small blocks lie far below the main one; all memory pools sit in the
   application chunk from `ORG + 0x8000_0000`, so `metal.m` wraps only that part when the envelope exceeds the limit (2047 MiB; a warning is logged for a pool outside).
 - With that the game runs 90 s (4761 frames, RSS 771 MiB) on the phone. RAM (2.3 GiB available to the app) and the two performance cores are not evaluated yet.
