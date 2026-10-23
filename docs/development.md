@@ -55,6 +55,8 @@ presentations back; `BDSP_MEM_REPORT=<s>` prints dirty and swapped memory per VM
 `BDSP_NVN_MEM_BASE=<hex>` with `BDSP_NVN_MEM_MB` sets the Metal buffer over guest memory by hand. `BDSP_MEM_REPORT` also prints the system's compressor activity
 (decompressions, compressions, page-ins per second) and its wired, active, inactive and compressed memory. `BDSP_APPMEM=<hex bytes>` sets the application memory the game is told
 (default 1.6 GiB on devices with less than 5 GiB of RAM in the compact models, otherwise the full figure); `BDSP_RING_MB`/`BDSP_RING_POOL` default to 16 and 4 on those devices.
+`BDSP_GMEM_ARENA=0/1` switches the GPU memory arena (storage buffers copied into a small buffer instead of the buffer over guest memory; default on with less than 5 GiB of RAM,
+see `docs/recomp-ios.md`), `BDSP_ARENA_LOG=<n>` logs the first n mappings and write-backs, and the `[metal]` line counts arena bytes, reuses, written-back bytes and flushes.
 `BDSP_NO_GUEST_BUFFER=1` keeps the GPU away from the Metal buffer over guest memory (experiment: skinned meshes and `gmem` shaders draw wrong, the GPU reports errors). Audio: `BDSP_AUDIO_PROBE=1`
 prints per stream the level, DC offset, sample-to-sample activity, whether the queue runs and the sample rate it really plays (no sample data is stored), and on iOS the session category;
 `BDSP_AUDIO_KICK=<s>` stops the audio queues once after s seconds and lets the next write restart them; `BDSP_FS_SLOW_MS=<ms>` logs RomFS reads that take longer. Comparisons need the

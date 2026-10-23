@@ -148,9 +148,16 @@ the touch overlay scales with the screen and the safe area. `DEVICE_NAME=<part o
   the system-wide wired memory jumps from about 1.07 to 2.6 GiB and decompressions rise from about 100 to 10000 to 30000 per second, with 30 to 50 MiB free. The first command
   buffer that binds the Metal buffer over guest memory (`gmem` shaders, vertex streams written by compute skinning) makes iOS wire the whole range, which the compressor cannot
   touch, so everything else is squeezed and the audio server of the system starves. With `BDSP_NO_GUEST_BUFFER=1` (the GPU never sees that buffer; the picture breaks as expected)
-  wired stays at 710 to 1060 MiB, decompressions drop to 0 to 300 per second and the sound stays. The GPU needs under 1 MiB of storage buffers in four 16 MiB areas, so the real fix
-  is a small shadow arena for those ranges instead of the whole window (planned, not done). Not the cause: the texture change check, heat or load (the cap of 30 fps does not help),
+  wired stays at 710 to 1060 MiB, decompressions drop to 0 to 300 per second and the sound stays. Not the cause: the texture change check, heat or load (the cap of 30 fps does not help),
   RomFS reads (none slower than 20 ms), the audio session (category `Playback`, no events).
+- **Fix: the GPU memory arena** (`renderer.m`, `BDSP_GMEM_ARENA`, on by default on devices with less than 5 GiB of RAM). Storage-buffer addresses reach the shaders only through
+  the driver constants the runtime builds, so each draw and dispatch gets copies of exactly the ranges it binds in a 16 MiB shared buffer, and the constants point there
+  (`maxwell_gmem_base` is the arena's address, far from guest memory). Ranges a shader may write are written back after the GPU ran them, only the words that changed;
+  a range the GPU wrote and that is not written back yet is reused by later work, so skinning output feeds the draws without a trip through guest memory. Texture read-back
+  goes through a staging buffer. Measured on the iPhone 11 Pro Max (beach save, 240 s at 30 fps): system wired stays at about 1.09 GiB, decompressions 0 to 40 per second,
+  the sound stays the whole run, footprint 1.96 to 2.06 GiB with about 300 to 400 MiB free, `thermalState` 0. Played by hand without any switches: 7 minutes in
+  Canalave City with scene changes (interiors, Pokémon Center, routes), stable, sound and Game Mode stay on, a steady 60 fps with vsync (0.1 % lows around 58). On the Mac (M1 Pro, 118 fps) the arena copies about 300 MB/s
+  and writes back about 125 MB/s, mostly skinned vertices; characters, NPCs and interiors draw as without it.
 - `maxBufferLength` is 2 GiB. The envelope of all `MapPhysicalMemory` blocks is 3.5 GiB because small blocks lie far below the main one; all memory pools sit in the
   application chunk from `ORG + 0x8000_0000`, so `metal.m` wraps only that part when the envelope exceeds the limit (2047 MiB; a warning is logged for a pool outside).
 - With that the game runs 90 s (4761 frames, RSS 771 MiB) on the phone. RAM (2.3 GiB available to the app) and the two performance cores are not evaluated yet.
