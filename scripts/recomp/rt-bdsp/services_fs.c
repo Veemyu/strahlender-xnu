@@ -268,7 +268,16 @@ static void storage_romfs(Service *s, IpcReq *req, IpcResp *resp) {
         IpcBuf *b = out_buf(req, 0);
         if (!b) { resp->result = MAKE_RESULT(2, 6001); break; }
         if (size > b->size) size = b->size;
+        static int slow_ms = -1;   // BDSP_FS_SLOW_MS=<ms> (diagnostics): log RomFS reads that take longer
+        if (slow_ms < 0) slow_ms = getenv("BDSP_FS_SLOW_MS") ? atoi(getenv("BDSP_FS_SLOW_MS")) : 0;
+        uint64_t t_read = slow_ms ? rt_now_ns() : 0;
         romfs_read(G2H8(b->addr), size, off);
+        if (slow_ms) {
+            uint64_t ms = (rt_now_ns() - t_read) / 1000000;
+            RFile *f = ms >= (uint64_t)slow_ms ? rom_file_at(off) : NULL;
+            if (ms >= (uint64_t)slow_ms)
+                LOG("[fs] slow read: %llu ms, %llu bytes, %s\n", (unsigned long long)ms, (unsigned long long)size, f ? f->path : "(tables)");
+        }
         rom.nreads++;
         rom.nbytes += size;
         if (getenv("BDSP_LOG_FILES")) {

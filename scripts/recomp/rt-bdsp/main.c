@@ -76,6 +76,21 @@ static long rss_now_mib(void) {
 // (diagnostics, BDSP_MEM_REPORT=1) dirty and swapped memory per VM tag; the guest window is listed apart. The footprint
 // (what iOS kills for) counts dirty + swapped pages and GPU allocations.
 static void mem_report(void) {
+    {   // system-wide compressor activity since the last report: a high decompression rate means threads wait for compressed pages
+        static uint64_t prev_dec, prev_comp, prev_pin, prev_ns;
+        vm_statistics64_data_t vs;
+        mach_msg_type_number_t vc = HOST_VM_INFO64_COUNT;
+        if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vs, &vc) == KERN_SUCCESS) {
+            uint64_t now = rt_now_ns(), dt = prev_ns ? (now - prev_ns) / 1000000 : 0;
+            if (dt)
+                fprintf(stderr, "[mem] compressor per second: decompressions %llu, compressions %llu, pageins %llu, free %llu MiB; system wired %llu, active %llu, inactive %llu, compressed %llu MiB\n",
+                        (unsigned long long)((vs.decompressions - prev_dec) * 1000 / dt), (unsigned long long)((vs.compressions - prev_comp) * 1000 / dt),
+                        (unsigned long long)((vs.pageins - prev_pin) * 1000 / dt), (unsigned long long)((uint64_t)vs.free_count * vm_page_size >> 20),
+                        (unsigned long long)((uint64_t)vs.wire_count * vm_page_size >> 20), (unsigned long long)((uint64_t)vs.active_count * vm_page_size >> 20),
+                        (unsigned long long)((uint64_t)vs.inactive_count * vm_page_size >> 20), (unsigned long long)((uint64_t)vs.compressor_page_count * vm_page_size >> 20));
+            prev_dec = vs.decompressions; prev_comp = vs.compressions; prev_pin = vs.pageins; prev_ns = now;
+        }
+    }
     uint64_t dirty[256] = {0}, swapped[256] = {0}, guest_dirty = 0, big_dirty = 0;
     vm_address_t addr = 0;
     natural_t depth = 0;
