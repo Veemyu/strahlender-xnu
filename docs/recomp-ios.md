@@ -135,6 +135,9 @@ the touch overlay scales with the screen and the safe area. `DEVICE_NAME=<part o
   0.6 µs per BC1 block and 1 to 1.4 µs per BC3/BC7 block. `BDSP_TEST_NO_BC=1` forces the path on any GPU (iPad: same picture as with BC).
   `scripts/recomp/rt-bdsp/test/run_bctc_test.sh` checks the decoders and the written ASTC blocks against Metal's own decoders.
 - The next limit on the phone is memory: with the save in the field the footprint reached 1.9 GiB while loading and iOS ended the app (signal 9) after 28 s.
+  Measured with `BDSP_MEM_REPORT=1`: the title screen sits at about 1.3 GiB; entering the game adds about 300 MiB of guest memory within a second (1.05 to
+  1.43 GiB), GPU resources are about 340 MiB, and the app is killed at roughly 1.8 to 2.0 GiB. The shader source text (330 MiB of malloc) is freed after compiling now,
+  and `BDSP_RING_MB=16 BDSP_RING_POOL=3` brings the ring buffers to about 50 MiB, but that is not enough yet. Guest memory and render targets are the next items.
 - `maxBufferLength` is 2 GiB. The envelope of all `MapPhysicalMemory` blocks is 3.5 GiB because small blocks lie far below the main one; all memory pools sit in the
   application chunk from `ORG + 0x8000_0000`, so `metal.m` wraps only that part when the envelope exceeds the limit (2047 MiB; a warning is logged for a pool outside).
 - With that the game runs 90 s (4761 frames, RSS 771 MiB) on the phone. RAM (2.3 GiB available to the app) and the two performance cores are not evaluated yet.
