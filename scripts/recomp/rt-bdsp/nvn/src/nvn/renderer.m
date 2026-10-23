@@ -32,7 +32,10 @@ static NSMutableDictionary<NSString *, id> *cache;
 // (stats) GPU wait time by cause: 0 = guest fence (nvnSyncWait), 1 = full flush (CPU reads GPU results / ring), 2 = sync all
 static uint64_t stat_wait_by[3], stat_wait_n[3];
 // (stats) full flushes by cause: compute-write hazard on a vertex stream, texture read-back, buffer copy, other
-enum { FL_OTHER, FL_HAZARD, FL_READBACK, FL_BUF2BUF, FL_N };
+enum { FL_OTHER, FL_HAZARD, FL_READBACK, FL_BUF2BUF, FL_ARENA, FL_N };
+// (stats) GPU memory arena (BDSP_GMEM_ARENA): bytes copied in, ranges reused from earlier GPU work, bytes written back
+static uint64_t stat_arena_bytes, stat_arena_n, stat_arena_reuse, stat_arena_wb, stat_arena_flushes;
+static bool arena_on(void);
 static uint64_t stat_flush_n[FL_N], stat_flush_ticks[FL_N];
 static uint64_t stat_draws, stat_skipped, stat_passes, stat_dispatches, stat_wait_ns, stat_flushes, stat_feedback_copies;
 static double stat_gpu_s;
@@ -146,6 +149,12 @@ const char *renderer_stats(void) {
                  stat_ring_bytes[2] / 1048576.0, (unsigned long long)stat_ring_n[2], stat_ring_bytes[3] / 1048576.0, (unsigned long long)stat_ring_n[3], stat_ring_bytes[0] / 1048576.0, (unsigned long long)stat_ring_n[0]);
         memset(stat_ring_bytes, 0, sizeof stat_ring_bytes); memset(stat_ring_n, 0, sizeof stat_ring_n);
     }
+    if (arena_on()) {
+        size_t n = strlen(stats_text);
+        snprintf(stats_text + n, sizeof stats_text - n, " | arena MB %.1f/%llu reused %llu written back KB %.0f flushes %llu", stat_arena_bytes / 1048576.0,
+                 (unsigned long long)stat_arena_n, (unsigned long long)stat_arena_reuse, stat_arena_wb / 1024.0, (unsigned long long)stat_arena_flushes);
+        stat_arena_bytes = stat_arena_n = stat_arena_reuse = stat_arena_wb = stat_arena_flushes = 0;
+    }
     pt_report();
     stat_compiles = 0;
     stat_feedback_copies = 0;
@@ -221,6 +230,8 @@ static void end_pass(void) {
 }
 
 static void ring_reset(void);
+static void arena_writeback_upto(uint64_t seq);
+static void arena_assign(uint64_t seq);
 // Submitted work runs asynchronously; last_cb is the most recently committed command buffer (the queue
 // executes in order, so waiting for it waits for everything before it). Other guest threads (nvnSyncWait)
 // read last_cb, so it is guarded by cb_lock; everything else here runs on the submitting thread.
@@ -277,7 +288,10 @@ void renderer_submit(void) {
     if (cmdbuf) {
         id<MTLCommandBuffer> c = cmdbuf;
         cmdbuf = nil;
+        uint64_t seq = submit_seq + 1;  // (submit_seq only changes on this thread)
+        arena_assign(seq);
         [c addCompletedHandler:^(id<MTLCommandBuffer> done) {
+            arena_writeback_upto(seq);
             stat_gpu_s += done.GPUEndTime - done.GPUStartTime;
             __atomic_add_fetch(&g_gpu_total_ns, (uint64_t)((done.GPUEndTime - done.GPUStartTime) * 1e9), __ATOMIC_RELAXED);
             if (done.error) LOG("[metal] command buffer error: %s\n", done.error.localizedDescription.UTF8String);
@@ -310,6 +324,7 @@ static void flush_why(int why) {
     g_wait_kind = 1;
     uint64_t t0 = mach_absolute_time();
     wait_cb(c);
+    arena_writeback_upto(submit_seq);
     stat_flush_n[why]++;
     stat_flush_ticks[why] += mach_absolute_time() - t0;
     g_wait_kind = 0;
@@ -326,9 +341,11 @@ void renderer_sync(void) {
     xw_drain();
     pthread_mutex_lock(&cb_lock);
     id<MTLCommandBuffer> c = last_cb;
+    uint64_t seq = submit_seq;
     pthread_mutex_unlock(&cb_lock);
     g_wait_kind = 2;
     wait_cb(c);
+    arena_writeback_upto(seq);   // the guest may read what the GPU wrote as soon as this returns
     g_wait_kind = 0;
 }
 
@@ -381,10 +398,12 @@ void renderer_wait_seq(uint64_t seq) {
     }
     pthread_mutex_lock(&cb_lock);
     id<MTLCommandBuffer> c = nil;
+    uint64_t upto = seq > submit_seq ? submit_seq : seq;
     if (seq > submit_seq) c = last_cb;  // not committed yet (other thread): wait for everything committed so far
     else if (submit_seq - seq < CB_HIST) c = cb_hist[seq % CB_HIST];
     pthread_mutex_unlock(&cb_lock);
     wait_cb(c);
+    arena_writeback_upto(upto);
 }
 
 // ------------------------------------------------------------------ textures with views
@@ -786,7 +805,242 @@ static id<MTLBuffer> gpu_guest_buffer(void) {
 static bool guest_heap_ok(uint64_t addr, uint64_t size) {
     static int off = -1;  // default: copy data through the ring; BDSP_GUEST_BUF=1 uses the wrapped guest memory (see docs/rendering.md: the GPU saw old pages there)
     if (off < 0) off = getenv("BDSP_GUEST_BUF") == NULL;
-    return !off && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
+    return !off && !arena_on() && addr >= HEAP_BASE && addr + size <= HEAP_BASE + HEAP_MAX;
+}
+
+// ------------------------------------------------------------------ GPU memory arena (BDSP_GMEM_ARENA=1)
+// Shaders reach storage buffers (and compute's extra uniform buffers) through global memory: an address from the driver
+// constants, minus maxwell_gmem_base, indexes the buffer bound at GMEM_BUFFER_INDEX. Without the arena that buffer is the
+// Metal buffer over the whole guest heap, which iOS wires on first use (about 1.5 GiB on the iPhone: the compressor can no
+// longer touch it and the system thrashes). With the arena each draw and dispatch gets copies of exactly the ranges it binds in
+// a small shared buffer, and the driver constants point there. Ranges a shader may write are written back once the GPU ran them,
+// only the words that differ from the copy taken before (CPU writes elsewhere in the range survive, as on the hardware). A range
+// the GPU wrote that is not written back yet is reused by later work, so GPU-to-GPU chains (skinning, then drawing the skinned
+// vertices) stay on the GPU.
+#define ARENA_SIZE (16ull << 20)
+#define ARENA_VA 0x7e0000000000ull   // where the arena sits in the shaders' address space (far from any guest memory)
+#define ARENA_POOL 8
+#define ARENA_ENT 2048
+#define ARENA_UNSUBMITTED UINT64_MAX
+// A written range awaiting write-back. seq: the submission that contains the work (ARENA_UNSUBMITTED until it is committed);
+// encoded: the work is in the open command buffer (begin_pass may commit the buffer between mapping and encoding).
+typedef struct { uint64_t guest, size, off, seq; bool encoded; id<MTLBuffer> buf; uint8_t *snap; } ArenaEnt;
+static pthread_mutex_t arena_lock = PTHREAD_MUTEX_INITIALIZER;
+static id<MTLBuffer> arena_cur;
+static uint64_t arena_off, arena_cur_last;   // fill level of arena_cur, newest submission that may use it
+static struct { id<MTLBuffer> buf; uint64_t last; } arena_old[ARENA_POOL];
+static int arena_nold;
+static ArenaEnt arena_ent[ARENA_ENT];
+static int arena_nent;
+static uint64_t arena_done;   // submissions up to this one have completed and are written back
+
+// BDSP_GMEM_ARENA=0/1; default on for devices with less than 5 GiB of RAM (the iPhone), off elsewhere
+static bool arena_on(void) {
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("BDSP_GMEM_ARENA"); on = e && *e ? atoi(e) > 0 : small_ram_device(); }
+    return on;
+}
+
+// (arena_lock held) Write back the ranges of submissions up to `seq`.
+static void arena_writeback_locked(uint64_t seq) {
+    int w = 0;
+    for (int i = 0; i < arena_nent; i++) {
+        ArenaEnt *e = &arena_ent[i];
+        if (e->seq > seq) { if (w != i) arena_ent[w] = *e; w++; continue; }
+        const uint8_t *a = (const uint8_t *)e->buf.contents + e->off, *s = e->snap;
+        uint8_t *g = (uint8_t *)GA(e->guest);
+        uint64_t k = 0;
+        if (!((uintptr_t)g & 3))
+            for (; k + 4 <= e->size; k += 4)
+                if (*(const uint32_t *)(a + k) != *(const uint32_t *)(s + k)) { *(uint32_t *)(g + k) = *(const uint32_t *)(a + k); stat_arena_wb += 4; }
+        for (; k < e->size; k++) if (a[k] != s[k]) { g[k] = a[k]; stat_arena_wb++; }
+        static int ndbg;
+        if (getenv("BDSP_ARENA_LOG") && ndbg++ < 40) {
+            uint64_t nz = 0;
+            for (uint64_t j = 0; j < e->size; j++) nz += a[j] != 0;
+            LOG("[arena] write-back %llx/%llu seq %llu: %llu nonzero bytes in the GPU result\n", (unsigned long long)e->guest,
+                (unsigned long long)e->size, (unsigned long long)e->seq, (unsigned long long)nz);
+        }
+        free(e->snap);
+        e->snap = NULL;
+    }
+    for (int i = w; i < arena_nent; i++) { arena_ent[i].buf = nil; arena_ent[i].snap = NULL; }
+    arena_nent = w;
+    if (seq > arena_done) arena_done = seq;
+}
+
+static void arena_writeback_upto(uint64_t seq) {
+    if (!arena_on()) return;
+    pthread_mutex_lock(&arena_lock);
+    arena_writeback_locked(seq);
+    pthread_mutex_unlock(&arena_lock);
+}
+
+// The open command buffer is committed as submission `seq`: the ranges encoded into it belong to it.
+static void arena_assign(uint64_t seq) {
+    if (!arena_on()) return;
+    pthread_mutex_lock(&arena_lock);
+    for (int i = 0; i < arena_nent; i++)
+        if (arena_ent[i].seq == ARENA_UNSUBMITTED && arena_ent[i].encoded) arena_ent[i].seq = seq;
+    pthread_mutex_unlock(&arena_lock);
+}
+
+// The draw or dispatch the last arena_map was for is now in the open command buffer.
+static void arena_mark_encoded(void) {
+    if (!arena_on()) return;
+    pthread_mutex_lock(&arena_lock);
+    for (int i = 0; i < arena_nent; i++) if (arena_ent[i].seq == ARENA_UNSUBMITTED) arena_ent[i].encoded = true;
+    pthread_mutex_unlock(&arena_lock);
+}
+
+// (arena_lock held) Index of the written range that contains [a, a+s); -2 if one overlaps without containing it, -1 if none.
+static int arena_find(uint64_t a, uint64_t s) {
+    for (int i = arena_nent - 1; i >= 0; i--) {
+        const ArenaEnt *e = &arena_ent[i];
+        if (a < e->guest + e->size && a + s > e->guest) return a >= e->guest && a + s <= e->guest + e->size ? i : -2;
+    }
+    return -1;
+}
+
+// True if the GPU may still write into [a, a+s): the CPU must not read or write it before a flush.
+static bool arena_pending(uint64_t a, uint64_t s) {
+    if (!arena_on()) return false;
+    pthread_mutex_lock(&arena_lock);
+    bool p = arena_find(a, s) != -1;
+    pthread_mutex_unlock(&arena_lock);
+    return p;
+}
+
+// (arena_lock held) Continue in a fresh arena buffer: a retired one the GPU is done with, or a new one.
+static void arena_rotate_locked(void) {
+    if (arena_cur) {
+        if (arena_nold == ARENA_POOL) {  // (pending ranges and command buffers keep their buffers alive)
+            for (int i = 1; i < arena_nold; i++) arena_old[i - 1] = arena_old[i];
+            arena_old[--arena_nold].buf = nil;
+        }
+        arena_old[arena_nold].buf = arena_cur; arena_old[arena_nold].last = arena_cur_last; arena_nold++;
+    }
+    id<MTLBuffer> b = nil;
+    for (int i = 0; i < arena_nold; i++)
+        if (arena_old[i].last <= arena_done) {
+            b = arena_old[i].buf;
+            for (int k = i + 1; k < arena_nold; k++) arena_old[k - 1] = arena_old[k];
+            arena_old[--arena_nold].buf = nil;
+            break;
+        }
+    arena_cur = b ?: [dev newBufferWithLength:ARENA_SIZE options:MTLResourceStorageModeShared];
+    arena_off = 0;
+}
+
+// Maps the ranges of ng binding tables (r[g][0..n[g]-1]; bit i of wmask[g]: the shader may write range i) into the arena and
+// returns their arena addresses in va[g][i] (0 for an empty range) and the buffer to bind for table g in buf[g]. May flush, so
+// call it before a render pass is opened.
+static void arena_map(int ng, const Range *const r[], const int n[], const uint32_t wmask[], uint64_t *const va[],
+                      __strong id<MTLBuffer> buf[]) {
+    for (int attempt = 0;; attempt++) {
+        pthread_mutex_lock(&arena_lock);
+        bool conflict = false, reuse = false;
+        uint64_t need = 0;
+        int nwrite = 0;
+        for (int g = 0; g < ng; g++)
+            for (int i = 0; i < n[g]; i++) {
+                uint64_t a = r[g][i].addr, s = r[g][i].size;
+                if (!a || !s) continue;
+                int f = arena_find(a, s);
+                if (f == -2 || (f >= 0 && arena_ent[f].buf != arena_cur)) conflict = true;
+                else if (f >= 0) reuse = true;
+                else { need += (s + 255) & ~255ull; nwrite += (wmask[g] >> i) & 1; }
+            }
+        bool full = !arena_cur || arena_off + need > ARENA_SIZE;
+        static int dbg = -1, ndbg;   // BDSP_ARENA_LOG=<n> (diagnostics): log the first n mappings
+        if (dbg < 0) dbg = getenv("BDSP_ARENA_LOG") ? atoi(getenv("BDSP_ARENA_LOG")) : 0;
+        if (attempt == 0 && ndbg < dbg) {
+            ndbg++;
+            LOG("[arena] map:");
+            for (int g = 0; g < ng; g++)
+                for (int i = 0; i < n[g]; i++)
+                    if (r[g][i].addr && r[g][i].size)
+                        LOG(" %d.%d=%llx/%llu%s%s", g, i, (unsigned long long)r[g][i].addr, (unsigned long long)r[g][i].size,
+                            (wmask[g] >> i) & 1 ? "w" : "", arena_find(r[g][i].addr, r[g][i].size) >= 0 ? "(reuse)" : "");
+            LOG(" | entries %d conflict %d\n", arena_nent, conflict);
+        }
+        if (attempt == 0 && (conflict || (reuse && full) || arena_nent + nwrite > ARENA_ENT)) {
+            // a range the GPU wrote lies in another arena buffer (or only partly matches): write everything back, then copy afresh
+            pthread_mutex_unlock(&arena_lock);
+            stat_arena_flushes++;
+            flush_why(FL_ARENA);
+            continue;
+        }
+        if (full) arena_rotate_locked();
+        for (int g = 0; g < ng; g++) {
+            buf[g] = arena_cur;
+            for (int i = 0; i < n[g]; i++) {
+                uint64_t a = r[g][i].addr, s = r[g][i].size;
+                va[g][i] = 0;
+                if (!a || !s) continue;
+                int f = arena_find(a, s);
+                if (f >= 0 && arena_ent[f].buf == arena_cur) {
+                    va[g][i] = ARENA_VA + arena_ent[f].off + (a - arena_ent[f].guest);
+                    stat_arena_reuse++;
+                    continue;
+                }
+                uint64_t off = (arena_off + 255) & ~255ull;
+                if (off + s > ARENA_SIZE) {  // (larger than the arena: the shader reads zeros)
+                    static int nlog;
+                    if (nlog++ < 10) LOG("[arena] no room for %llx + %llu\n", (unsigned long long)a, (unsigned long long)s);
+                    continue;
+                }
+                memcpy((uint8_t *)arena_cur.contents + off, (const void *)GA(a), s);
+                arena_off = off + s;
+                stat_arena_bytes += s;
+                stat_arena_n++;
+                va[g][i] = ARENA_VA + off;
+                if (((wmask[g] >> i) & 1) && arena_nent < ARENA_ENT) {
+                    ArenaEnt *e = &arena_ent[arena_nent++];
+                    e->guest = a; e->size = s; e->off = off; e->seq = ARENA_UNSUBMITTED; e->encoded = false; e->buf = arena_cur;
+                    e->snap = malloc(s);
+                    memcpy(e->snap, (uint8_t *)arena_cur.contents + off, s);
+                }
+            }
+        }
+        arena_cur_last = submit_seq + 2;  // (the work lands in the open command buffer or, after a chunked commit, the next one)
+        pthread_mutex_unlock(&arena_lock);
+        return;
+    }
+}
+
+// The draw being encoded: arena addresses of the vertex (0) and fragment (1) storage buffers and the buffers to bind for them.
+static uint64_t arena_va_draw[2][16];
+static id<MTLBuffer> arena_buf_draw[2];
+
+// Of the vertex streams in `mask` (they overlap ranges a pending dispatch uses): those the GPU wrote into the arena, with the
+// buffer and offset to bind them from. Streams the GPU did not write are current in guest memory and are copied as usual.
+// A stream that only partly matches a written range is flushed (written back) first, then all are copied.
+static uint32_t arena_streams(uint32_t mask, __strong id<MTLBuffer> buf[12], uint64_t off[12]) {
+    uint32_t out = 0;
+    bool conflict = false;
+    pthread_mutex_lock(&arena_lock);
+    for (int s = 0; s < 12; s++) {
+        if (!(mask & (1u << s)) || !st.vbuf[s].addr) continue;
+        uint64_t a = st.vbuf[s].addr, size = st.vbuf[s].size ? st.vbuf[s].size : 16;
+        int f = arena_find(a, size);
+        static int ndbg;
+        if (getenv("BDSP_ARENA_LOG") && ndbg++ < 40) LOG("[arena] stream %d %llx/%llu: %d\n", s, (unsigned long long)a, (unsigned long long)size, f);
+        if (f == -2) { conflict = true; break; }
+        if (f < 0) continue;
+        uint64_t o = arena_ent[f].off + (a - arena_ent[f].guest);
+        if (o & 3) { conflict = true; break; }
+        buf[s] = arena_ent[f].buf;
+        off[s] = o;
+        out |= 1u << s;
+    }
+    pthread_mutex_unlock(&arena_lock);
+    if (conflict) {
+        flush_why(FL_HAZARD);
+        for (int s = 0; s < 12; s++) buf[s] = nil;
+        return 0;
+    }
+    return out;
 }
 
 // The vertex range [*lo, *hi] (before the stream stride) a draw reads, so only that part of a stream is copied;
@@ -1097,8 +1351,8 @@ static Prog *get_program(NvnProgram *p, ShaderKey *vkey, ShaderKey *fkey) {
     prog_tab[slot].key = h;
     prog_tab[slot].prog = (__bridge void *)pr;  // retained by the cache dictionary
     dump_program(p);
-    maxwell_gmem_base = HEAP_BASE;
-    maxwell_gmem_size = HEAP_MAX;
+    maxwell_gmem_base = arena_on() ? ARENA_VA : HEAP_BASE;
+    maxwell_gmem_size = arena_on() ? ARENA_SIZE : HEAP_MAX;
     {
         // BDSP_DBG_FS=<fs code addr hex>:<pc hex>:<reg>
         static int parsed;
@@ -1492,8 +1746,9 @@ static void bind_cbufs(int stage, ShaderInfo *si) {
             uint32_t base = 0x110 + 0x100 * (stage == 1 ? 4 : 0);
             for (int i = 0; i < 16; i++) {
                 uint32_t *e = &drv[(base + 16 * i) / 4];
-                e[0] = (uint32_t)st.sbuf[stage][i].addr;
-                e[1] = (uint32_t)(st.sbuf[stage][i].addr >> 32);
+                uint64_t a = arena_on() && si->uses_gmem ? arena_va_draw[stage][i] : st.sbuf[stage][i].addr;
+                e[0] = (uint32_t)a;
+                e[1] = (uint32_t)(a >> 32);
                 e[2] = (uint32_t)st.sbuf[stage][i].size;
                 if (ENV("BDSP_LOG_SBUF") && st.sbuf[stage][i].addr && st.sbuf[stage][i].size >= 16) {  // (debug) storage buffer contents per frame, once per address
                     extern uint64_t renderer_present_count(void);
@@ -1585,8 +1840,8 @@ static CsProg *compute_program(NvnProgram *p) {
     if (v) { CsProg *cp = v.pointerValue; return cp->failed ? NULL : cp; }
     CsProg *cp = calloc(1, sizeof *cp);
     progs[key] = [NSValue valueWithPointer:cp];
-    maxwell_gmem_base = HEAP_BASE;
-    maxwell_gmem_size = HEAP_MAX;
+    maxwell_gmem_base = arena_on() ? ARENA_VA : HEAP_BASE;
+    maxwell_gmem_size = arena_on() ? ARENA_SIZE : HEAP_MAX;
     ShaderKey k = {0};
     cp->si = maxwell_translate((const uint8_t *)(uintptr_t)ss->code_addr, ss->const_offset ? ss->const_offset : 0x10000, STAGE_COMPUTE, &k);
     if (!cp->si->msl) { LOG("[compute] translate failed: %s (code %llx)\n", cp->si->error, ss->code_addr); cp->failed = true; return NULL; }
@@ -1625,10 +1880,22 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
     static int trace = -1;
     if (trace < 0) trace = getenv("BDSP_TRACE_CS") != NULL;
 #define CST(x) do { if (trace) { fprintf(stderr, "[cs] %s\n", x); fflush(stderr); } } while (0)
+    // arena: compute reads its extra uniform buffers and its storage buffers through global memory
+    uint64_t arena_u[16] = {0}, arena_s[16] = {0};
+    __strong id<MTLBuffer> arena_b[2] = {nil, nil};
+    bool use_arena = arena_on() && cp->si->uses_gmem;
+    if (use_arena) {
+        const Range *rr[2] = {st.ubuf[5], st.sbuf[5]};
+        const int nn[2] = {16, 16};
+        const uint32_t wm[2] = {0, cp->si->uses_gmem_store ? 0xFFFFu : 0};
+        uint64_t *const vv[2] = {arena_u, arena_s};
+        arena_map(2, rr, nn, wm, vv, arena_b);
+    }
     CST("end_pass");
     end_pass();
     CST("encoder");
     id<MTLComputeCommandEncoder> ce = pt_compute_encoder("compute");
+    arena_mark_encoded();
     CST("pipeline");
     [ce setComputePipelineState:cp->pipe];
     ShaderInfo *si = cp->si;
@@ -1640,9 +1907,10 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
             drv[0x200 / 4] = gx; drv[0x204 / 4] = gy; drv[0x208 / 4] = gz;
             for (int i = 0; i < 16; i++) {
                 uint32_t *u = &drv[(0x210 + 16 * i) / 4];
-                if (i < 18) { u[0] = (uint32_t)st.ubuf[5][i].addr; u[1] = (uint32_t)(st.ubuf[5][i].addr >> 32); u[2] = (uint32_t)st.ubuf[5][i].size; }
+                uint64_t ua = use_arena ? arena_u[i] : st.ubuf[5][i].addr, sa = use_arena ? arena_s[i] : st.sbuf[5][i].addr;
+                u[0] = (uint32_t)ua; u[1] = (uint32_t)(ua >> 32); u[2] = (uint32_t)st.ubuf[5][i].size;
                 uint32_t *e = &drv[(0x310 + 16 * i) / 4];
-                e[0] = (uint32_t)st.sbuf[5][i].addr; e[1] = (uint32_t)(st.sbuf[5][i].addr >> 32); e[2] = (uint32_t)st.sbuf[5][i].size;
+                e[0] = (uint32_t)sa; e[1] = (uint32_t)(sa >> 32); e[2] = (uint32_t)st.sbuf[5][i].size;
                 if (ENV("BDSP_LOG_SBUF") && st.sbuf[5][i].addr && st.sbuf[5][i].size >= 16) {  // (debug) compute storage buffers per frame, once per address (before the dispatch runs)
                     extern uint64_t renderer_present_count(void);
                     static uint64_t seen_frame[4096], seen_addr[4096];
@@ -1685,7 +1953,7 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
         [ce setBuffer:ring offset:off atIndex:k];
     }
     CST("gmem");
-    if (si->uses_gmem) [ce setBuffer:gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
+    if (si->uses_gmem) [ce setBuffer:use_arena ? arena_b[1] : gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
     CST("textures");
     for (int i = 0; i < si->ntex; i++) {
         ShaderTexture *st_ = &si->tex[i];
@@ -2229,7 +2497,22 @@ static void draw(CmdRec *r, bool indexed) {
     if (hz_flush < 0) hz_flush = getenv("BDSP_HZ_FLUSH") != NULL;
     uint32_t gpu_streams = hz_n ? streams_pending_compute(used_streams) : 0;
     if (hz_flush && gpu_streams) { flush_why(FL_HAZARD); gpu_streams = 0; }
+    // arena: copies of both stages' storage buffers, and the streams a dispatch wrote into the arena (both may flush, so before the pass)
+    id<MTLBuffer> stream_buf[12] = {nil};
+    uint64_t stream_off[12] = {0};
+    if (arena_on()) {
+        arena_buf_draw[0] = arena_buf_draw[1] = nil;
+        if (pr->vi->uses_gmem || pr->fi->uses_gmem) {
+            const Range *rr[2] = {st.sbuf[0], st.sbuf[1]};
+            const int nn[2] = {pr->vi->uses_gmem ? 16 : 0, pr->fi->uses_gmem ? 16 : 0};
+            const uint32_t wm[2] = {pr->vi->uses_gmem_store ? 0xFFFFu : 0, pr->fi->uses_gmem_store ? 0xFFFFu : 0};
+            uint64_t *const vv[2] = {arena_va_draw[0], arena_va_draw[1]};
+            arena_map(2, rr, nn, wm, vv, arena_buf_draw);
+        }
+        if (gpu_streams) gpu_streams = arena_streams(gpu_streams, stream_buf, stream_off);
+    }
     begin_pass();
+    arena_mark_encoded();
 
     // pipeline
     uint64_t phash = pipeline_state_hash(pr);
@@ -2321,7 +2604,7 @@ static void draw(CmdRec *r, bool indexed) {
     // resources
     bind_cbufs(0, pr->vi);
     bind_cbufs(1, pr->fi);
-    if (pr->vi->uses_gmem) [enc setVertexBuffer:gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
+    if (pr->vi->uses_gmem) [enc setVertexBuffer:arena_on() ? arena_buf_draw[0] : gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
     static id<MTLBuffer> dbgvs;
     bool dbg_this = maxwell_dbg_vs && (const uint8_t *)(uintptr_t)st.program->stages[0].code_addr == maxwell_dbg_vs;
     if (dbg_this) {
@@ -2329,7 +2612,7 @@ static void draw(CmdRec *r, bool indexed) {
         memset(dbgvs.contents, 0xff, 2 * 64 * 8 * 16);
         [enc setVertexBuffer:dbgvs offset:0 atIndex:DBG_VS_BUFFER_INDEX];
     }
-    if (pr->fi->uses_gmem) [enc setFragmentBuffer:gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
+    if (pr->fi->uses_gmem) [enc setFragmentBuffer:arena_on() ? arena_buf_draw[1] : gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
     id<MTLBuffer> geom_buf = vkey.dbg_pos ? geom_bind(enc, geom.scan) : nil;
     bind_textures(0, pr->vi);
     bind_textures(1, pr->fi);
@@ -2476,7 +2759,9 @@ static void draw(CmdRec *r, bool indexed) {
             skip = vlo * stride;
             if (skip > size) skip = 0;
         }
-        if (v.addr && (gpu_streams & (1u << s)) && v.addr >= HEAP_BASE && v.addr + (v.size ? v.size : 16) <= HEAP_BASE + HEAP_MAX && !(v.addr & 3))
+        if (v.addr && (gpu_streams & (1u << s)) && arena_on())
+            [enc setVertexBuffer:stream_buf[s] offset:stream_off[s] atIndex:18 + s];
+        else if (v.addr && (gpu_streams & (1u << s)) && v.addr >= HEAP_BASE && v.addr + (v.size ? v.size : 16) <= HEAP_BASE + HEAP_MAX && !(v.addr & 3))
             [enc setVertexBuffer:gpu_guest_buffer() offset:v.addr - HEAP_BASE atIndex:18 + s];
         else if (v.addr) bind_guest(enc, true, v.addr, size, 18 + s, skip);
         else { static const float zero[4]; [enc setVertexBytes:zero length:16 atIndex:18 + s]; }
@@ -2750,13 +3035,17 @@ static void copy_texture_to_buffer(const TexRefRec *src, uint64_t dst) {
     id<MTLBlitCommandEncoder> b = [cb() blitCommandEncoder];
     if (renderer_pixel_format_bytes(tex.pixelFormat, fi->bpb) != fi->bpb) { [b endEncoding]; return; }
     bool array = tex.textureType == MTLTextureType2DArray || tex.textureType == MTLTextureTypeCube;
+    // arena mode: through a staging buffer that starts as a copy of the guest bytes (the copy skips row padding), then back
+    uint64_t total = img * (uint64_t)(rg[5] > 0 ? rg[5] : 1);
+    id<MTLBuffer> staging = arena_on() ? [dev newBufferWithBytes:(const void *)GA(dst) length:total options:MTLResourceStorageModeShared] : nil;
     for (int z = 0; z < (array ? rg[5] : 1); z++)
         [b copyFromTexture:tex sourceSlice:array ? rg[2] + z : 0 sourceLevel:level
               sourceOrigin:MTLOriginMake(rg[0], rg[1], array ? 0 : rg[2])
-                sourceSize:MTLSizeMake(rg[3], rg[4], array ? 1 : rg[5]) toBuffer:g_guest_buffer
-         destinationOffset:dst - HEAP_BASE + (uint64_t)z * img destinationBytesPerRow:row destinationBytesPerImage:img];
+                sourceSize:MTLSizeMake(rg[3], rg[4], array ? 1 : rg[5]) toBuffer:staging ?: g_guest_buffer
+         destinationOffset:(staging ? 0 : dst - HEAP_BASE) + (uint64_t)z * img destinationBytesPerRow:row destinationBytesPerImage:img];
     [b endEncoding];
     flush_why(FL_READBACK);  // the CPU may read the result right after the fence
+    if (staging) memcpy((void *)GA(dst), staging.contents, total);
 }
 
 static void copy_texture(const TexRefRec *src, const TexRefRec *dst, uint64_t flags) {
@@ -3129,7 +3418,8 @@ static void exec_list(uint64_t handle, int depth) {
         case CMD_DRAW_ARRAYS: draw(r, false); break;
         case CMD_DRAW_ELEMENTS: draw(r, true); break;
         case CMD_UPDATE_UNIFORM_BUFFER:
-            // (buffer, size, offset, dataSize, data): apply the update in command order
+            // (buffer, size, offset, dataSize, data): apply the update in command order (after the GPU wrote the range back)
+            if (arena_pending(r->x[0] + r->x[2], r->x[3])) flush_why(FL_ARENA);
             if (!xw_skip(1)) memcpy((void *)(uintptr_t)(r->x[0] + r->x[2]), x, r->x[3]);
             break;
         case CMD_FENCE_SYNC: {
@@ -3166,7 +3456,9 @@ static void exec_list(uint64_t handle, int depth) {
             // The copy runs on the CPU, so the GPU must be done with what it touches: only a range a dispatch reads or writes
             // (hz_ranges) is. The game does this many times a frame (walking along the water: ~25), each flush stalled
             // the worker. BDSP_HZ_FLUSH=1: flush every time as before.
-            if (getenv_flag_hz_flush() || range_pending_compute(r->x[0], r->x[2]) || range_pending_compute(r->x[1], r->x[2])) flush_why(FL_BUF2BUF);
+            if (getenv_flag_hz_flush() || range_pending_compute(r->x[0], r->x[2]) || range_pending_compute(r->x[1], r->x[2]) ||
+                arena_pending(r->x[0], r->x[2]) || arena_pending(r->x[1], r->x[2]))
+                flush_why(FL_BUF2BUF);
             if (!xw_skip(2)) memmove((void *)(uintptr_t)r->x[1], (void *)(uintptr_t)r->x[0], r->x[2]);
             break;
         default: break;
@@ -3205,6 +3497,10 @@ void renderer_reset(void) {
     last_cb = nil;
     for (int i = 0; i < CB_HIST; i++) cb_hist[i] = nil;  // (they retain the old guest heap buffer)
     pthread_mutex_unlock(&cb_lock);
+    pthread_mutex_lock(&arena_lock);  // (the ranges belong to the old boot: dropped, not written back)
+    for (int i = 0; i < arena_nent; i++) { free(arena_ent[i].snap); arena_ent[i].snap = NULL; arena_ent[i].buf = nil; }
+    arena_nent = 0;
+    pthread_mutex_unlock(&arena_lock);
     st_defaults();
 }
 
