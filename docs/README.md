@@ -23,6 +23,7 @@ a built app is for personal use only. The game's own code runs, so logic, UI and
 | Topic | Document |
 |---|---|
 | macOS app: controls, saves, diagnostics, measurements | [recomp-macapp.md](recomp-macapp.md) |
+| On-screen keyboard, text entry, test hooks | [input.md](input.md) |
 | iPadOS: build, deployment, memory model and entitlements, known issues | [recomp-ios.md](recomp-ios.md) |
 | Linux: build host and Vulkan backend (work in progress) | [recomp-linux.md](recomp-linux.md) |
 | Audio output | [recomp-audio.md](recomp-audio.md) |
