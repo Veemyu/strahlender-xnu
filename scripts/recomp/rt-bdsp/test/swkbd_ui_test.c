@@ -39,6 +39,21 @@ int main(int argc, char **argv) {
     if (!getenv("BDSP_FIRMWARE_DATA") || !swkbd_ui_available()) { printf("firmware layouts not available, skipped\n"); return 0; }
     fb = malloc((size_t)W * H * 3);
     SwkbdParams p = {0};
+    if (getenv("SWKBD_TEST_SCREEN")) {   // look test: render the symbol or the numeric keyboard to argv[1]
+        const char *w = getenv("SWKBD_TEST_SCREEN");
+        p.minlen = 1; p.maxlen = 12; p.mode = !strcmp(w, "numeric");
+        snprintf(p.header, sizeof p.header, "Screen test");
+        SwkbdCallbacks cb0 = {on_submit, on_cancel};
+        swkbd_ui_open(&p, cb0, NULL);
+        if (!strcmp(w, "sign")) {
+            for (int i = 0; i < 4; i++) { swkbd_ui_pad(1ull << 15, 0, 0); swkbd_ui_pad(0, 0, 0); printf("down %d -> %s\n", i + 1, swkbd_ui_focus_name()); }
+            swkbd_ui_pad(1ull << 14, 0, 0); swkbd_ui_pad(0, 0, 0);
+            swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);
+        }
+        for (int i = 0; i < 40; i++) { float s, o[2]; if (swkbd_ui_scene(0.016, W, H, &s, o)) swkbd_ui_unlock(); }
+        draw(argc > 1 ? argv[1] : NULL);
+        return 0;
+    }
     p.minlen = 1; p.maxlen = 5;
     snprintf(p.header, sizeof p.header, "Enter your name");
     snprintf(p.guide, sizeof p.guide, "Name");

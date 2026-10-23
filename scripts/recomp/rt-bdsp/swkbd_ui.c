@@ -217,7 +217,8 @@ static int build_screen(int si) {
         else if (!strcmp(p->name, "L_BtnArray") && si == SCR_SIGN) kind = K_BACK;
         else if (!strncmp(p->name, "L_BtnSpace", 10)) kind = K_SPACE;
         if (kind < 0) {
-            if (!strcmp(p->name, "L_BtnArray")) lytinst_set_visible(s->kt, p->name, 0);
+            // the language switch and the symbol page tabs have no function here
+            if (!strcmp(p->name, "L_BtnArray") || !strncmp(p->name, "L_InputMode", 11)) lytinst_set_visible(s->kt, p->name, 0);
             continue;
         }
         LytInst *inst = lytinst_part(s->kt, p->name);
@@ -242,7 +243,7 @@ static int build_screen(int si) {
         Key *k = &s->keys[i];
         if (k->kind != K_CHAR) continue;
         if (si == SCR_NUMERIC && (!strcmp(k->name, "L_BtnNmlL") || !strcmp(k->name, "L_BtnNmlR"))) {
-            snprintf(k->normal, sizeof k->normal, "%s", !strcmp(k->name, "L_BtnNmlL") ? "0" : ".");
+            snprintf(k->normal, sizeof k->normal, "%s", !strcmp(k->name, "L_BtnNmlL") ? "-" : ".");
             snprintf(k->shifted, sizeof k->shifted, "%s", k->normal);
         } else {
             u8_nth(table, ci, k->normal);
@@ -457,6 +458,7 @@ void swkbd_ui_resolve(int accepted, const char *message) {
 
 int swkbd_ui_active(void) { return __atomic_load_n(&G.active, __ATOMIC_ACQUIRE); }
 const char *swkbd_ui_text_value(void) { return G.text; }
+const char *swkbd_ui_focus_name(void) { Screen *s = &G.scr[G.cur]; return G.focus >= 0 && G.focus < s->nkeys ? s->keys[G.focus].name : ""; }
 void swkbd_ui_set_measure(float (*fn)(const char *, float)) { G.measure = fn; }
 
 // ---- input
