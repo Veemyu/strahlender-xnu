@@ -21,6 +21,10 @@ struct AudioOutput {
     size_t frame_bytes, max_bytes;
     int started, running, failed;
     uint64_t submitted, dropped;
+    int peak;   // BDSP_AUDIO_PROBE: loudest PCM16 sample since the last report
+    int kicked; // BDSP_AUDIO_KICK: the one-time restart has happened
+    int64_t sum, activity, samples;   // BDSP_AUDIO_PROBE: DC offset and sample-to-sample change since the last report
+    double probe_sample, probe_t;     // BDSP_AUDIO_PROBE: device sample time at the last report (played rate)
     atomic_uint_fast64_t returned;
 };
 
@@ -104,6 +108,17 @@ static void output_stop(AudioOutput *out) {
 
 static void output_write(AudioOutput *out, const void *pcm, size_t bytes) {
     if (!outputs_active || !out || out->failed || !bytes || bytes % out->frame_bytes) return;
+    {   // BDSP_AUDIO_KICK=<s> (diagnostics): once, after s seconds, stop the queue and let the next write start it again
+        static double kick_at = -1, t0;
+        if (kick_at < 0) { const char *e = getenv("BDSP_AUDIO_KICK"); kick_at = e ? atof(e) : 0; t0 = CFAbsoluteTimeGetCurrent(); }
+        if (kick_at > 0 && !out->kicked && CFAbsoluteTimeGetCurrent() - t0 > kick_at) {
+            out->kicked = 1;
+            fprintf(stderr, "[audio-output] kick: restarting the queue\n");
+            AudioQueueStop(out->queue, true);
+            out->running = 0;
+            for (int i = 0; i < OUTPUT_SLOTS; i++) atomic_store(&out->slots[i].busy, 0);
+        }
+    }
     const uint8_t *src = pcm;
     while (bytes) {
         OutputSlot *slot = NULL;
@@ -124,6 +139,18 @@ static void output_write(AudioOutput *out, const void *pcm, size_t bytes) {
         size_t count = bytes < out->max_bytes ? bytes : out->max_bytes;
         memcpy(slot->buffer->mAudioData, src, count);
         slot->buffer->mAudioDataByteSize = (UInt32)count;
+        static int probe = -1;
+        if (probe < 0) probe = getenv("BDSP_AUDIO_PROBE") != NULL;
+        if (probe) {
+            const int16_t *s = slot->buffer->mAudioData;
+            for (size_t i = 0; i < count / 2; i++) {
+                int a = s[i] < 0 ? -s[i] : s[i];
+                if (a > out->peak) out->peak = a;
+                out->sum += s[i];
+                if (i >= 2) { int d = s[i] - s[i - 2]; out->activity += d < 0 ? -d : d; }
+                out->samples++;
+            }
+        }
         atomic_store_explicit(&slot->busy, 1, memory_order_release);
         OSStatus status = AudioQueueEnqueueBuffer(out->queue, slot->buffer, 0, NULL);
         if (status) {
@@ -133,10 +160,23 @@ static void output_write(AudioOutput *out, const void *pcm, size_t bytes) {
         }
         out->submitted++;
         output_resume(out);
-        if (getenv("BDSP_AUDIO_PROBE") && !(out->submitted % 512))
-            fprintf(stderr, "[audio-output] submitted=%llu returned=%llu dropped=%llu\n",
+        if (getenv("BDSP_AUDIO_PROBE") && !(out->submitted % 128)) {
+            UInt32 is_running = 0, size = sizeof is_running;
+            AudioQueueGetProperty(out->queue, kAudioQueueProperty_IsRunning, &is_running, &size);
+            {   // samples the device really played per wall-clock second (48000 expected)
+                AudioTimeStamp ts;
+                double now = CFAbsoluteTimeGetCurrent();
+                if (AudioQueueGetCurrentTime(out->queue, NULL, &ts, NULL) == 0 && out->probe_t > 0 && now > out->probe_t)
+                    fprintf(stderr, "[audio-output] played rate %.0f samples/s\n", (ts.mSampleTime - out->probe_sample) / (now - out->probe_t));
+                if (AudioQueueGetCurrentTime(out->queue, NULL, &ts, NULL) == 0) { out->probe_sample = ts.mSampleTime; out->probe_t = now; }
+            }
+            fprintf(stderr, "[audio-output] submitted=%llu returned=%llu dropped=%llu peak=%d queue_running=%u dc=%lld activity=%lld\n",
                 (unsigned long long)out->submitted, (unsigned long long)atomic_load(&out->returned),
-                (unsigned long long)out->dropped);
+                (unsigned long long)out->dropped, out->peak, (unsigned)is_running,
+                (long long)(out->samples ? out->sum / out->samples : 0), (long long)(out->samples ? out->activity / out->samples : 0));
+            out->peak = 0;
+            out->sum = out->activity = out->samples = 0;
+        }
         src += count;
         bytes -= count;
     }
