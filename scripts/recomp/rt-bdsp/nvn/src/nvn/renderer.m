@@ -1124,6 +1124,10 @@ static Prog *get_program(NvnProgram *p, ShaderKey *vkey, ShaderKey *fkey) {
     pr->vh = fnv64(pr->vi->msl);
     pr->fh = fnv64(pr->fi->msl);
     compile_program(pr);
+    // The sources are not needed after the libraries exist (~350 MB for the shaders of a session); keep them with BDSP_KEEP_MSL=1
+    static int keep_msl = -1;
+    if (keep_msl < 0) keep_msl = getenv("BDSP_KEEP_MSL") != NULL;
+    if (!keep_msl) { free(pr->vi->msl); pr->vi->msl = NULL; free(pr->fi->msl); pr->fi->msl = NULL; }
     return pr->failed ? nil : pr;
 }
 

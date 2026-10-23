@@ -50,7 +50,8 @@ threads and the render worker. `BDSP_INPUT_SCRIPT="12:A:0.3,40:LEFT:5.8,..."` sc
 textures per NVN format every 600 frames; `BDSP_TEST_NO_BC=1` converts BC textures as on a GPU without BC. Crash statistics: `BDSP_CPU_STRESS=<n>` adds
 n busy host threads (makes rare startup races more likely); `BDSP_XW_SKIP=<mask>` leaves out what the render worker writes into guest memory (1 uniform
 update, 2 buffer copy, 4 counter report, 8 texture read-back, 16 compute dispatch); `BDSP_XW_GPU_LAG=<n>` lets the worker wait for the GPU frame n
-presentations back; `BDSP_NVN_MEM_BASE=<hex>` with `BDSP_NVN_MEM_MB` sets the Metal buffer over guest memory by hand. Comparisons need the
+presentations back; `BDSP_KEEP_MSL=1` keeps the shader source text after compiling (freed by default, about 330 MiB per session);
+`BDSP_NVN_MEM_BASE=<hex>` with `BDSP_NVN_MEM_MB` sets the Metal buffer over guest memory by hand. Comparisons need the
 same save, the same script and a cool device; check the screenshots (`BDSP_SCREENSHOT_EVERY`, `BDSP_SHOT_DIR`) before trusting the numbers.
 
 ## 3. Testing with saves
