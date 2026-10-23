@@ -211,6 +211,11 @@ static void *StatsLoop(void *arg) {
         fprintf(stderr, "[ipad] t=%.0f s Footprint %.0f MiB, free per os_proc_available_memory %zu MiB, thermalState %ld, lowPower %d\n",
                 NSProcessInfo.processInfo.systemUptime - t0, FootprintMiB(), os_proc_available_memory() >> 20,
                 (long)NSProcessInfo.processInfo.thermalState, (int)NSProcessInfo.processInfo.lowPowerModeEnabled);
+        if (getenv("BDSP_AUDIO_PROBE")) {
+            AVAudioSession *s = AVAudioSession.sharedInstance;
+            fprintf(stderr, "[ipad-audio] category %s, other audio playing %d, volume %.2f\n", s.category.UTF8String,
+                    (int)s.isOtherAudioPlaying, s.outputVolume);
+        }
     }
     return NULL;
 }
@@ -481,10 +486,26 @@ static void *RuntimeThread(void *arg) {
     [NSNotificationCenter.defaultCenter addObserverForName:AVAudioSessionInterruptionNotification object:nil queue:NSOperationQueue.mainQueue
                                                 usingBlock:^(NSNotification *n) {
         AVAudioSessionInterruptionType type = [n.userInfo[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
+        fprintf(stderr, "[ipad-audio] interruption %s, options %lu, reason %lu, scene active %d\n", type == AVAudioSessionInterruptionTypeBegan ? "began" : "ended",
+                (unsigned long)[n.userInfo[AVAudioSessionInterruptionOptionKey] unsignedIntegerValue],
+                (unsigned long)[n.userInfo[AVAudioSessionInterruptionReasonKey] unsignedIntegerValue], (int)sceneActive);
         audioInterrupted = type == AVAudioSessionInterruptionTypeBegan;
         if (audioInterrupted) SetAudioActive(NO);
         else if (([n.userInfo[AVAudioSessionInterruptionOptionKey] unsignedIntegerValue] & AVAudioSessionInterruptionOptionShouldResume) &&
                  sceneActive) SetAudioActive(YES);
+    }];
+    [NSNotificationCenter.defaultCenter addObserverForName:AVAudioSessionRouteChangeNotification object:nil queue:NSOperationQueue.mainQueue
+                                                usingBlock:^(NSNotification *n) {
+        AVAudioSessionRouteDescription *route = AVAudioSession.sharedInstance.currentRoute;
+        NSString *outs = route.outputs.firstObject ? route.outputs.firstObject.portType : @"none";
+        fprintf(stderr, "[ipad-audio] route change, reason %lu, output %s, volume %.2f\n",
+                (unsigned long)[n.userInfo[AVAudioSessionRouteChangeReasonKey] unsignedIntegerValue], outs.UTF8String,
+                AVAudioSession.sharedInstance.outputVolume);
+    }];
+    [NSNotificationCenter.defaultCenter addObserverForName:AVAudioSessionMediaServicesWereResetNotification object:nil queue:NSOperationQueue.mainQueue
+                                                usingBlock:^(NSNotification *n) {
+        (void)n;
+        fprintf(stderr, "[ipad-audio] media services were reset\n");
     }];
     return YES;
 }
@@ -533,11 +554,13 @@ static void StartRuntime(void) {
 - (void)sceneWillResignActive:(UIScene *)scene {
     (void)scene;
     sceneActive = NO;
+    fprintf(stderr, "[ipad-audio] scene resigns active: audio off\n");
     SetAudioActive(NO);
 }
 - (void)sceneDidBecomeActive:(UIScene *)scene {
     (void)scene;
     sceneActive = YES;
+    fprintf(stderr, "[ipad-audio] scene became active: audio %s\n", audioInterrupted ? "stays off (interrupted)" : "on");
     if (!audioInterrupted) SetAudioActive(YES);
     ApplyAppIcon();
 }
