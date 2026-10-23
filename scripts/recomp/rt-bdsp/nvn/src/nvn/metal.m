@@ -692,6 +692,20 @@ void backend_init(void) {
     // Wrap the guest heap: memory pools live there, and GPU addresses are guest addresses.
     extern void nvn_glue_mem_range(void);
     nvn_glue_mem_range();
+#ifdef BDSP_COMPACT_BASE
+    if (HEAP_MAX > dev.maxBufferLength) {
+        // A single Metal buffer must cover the guest memory, but the envelope of all mappings (a few small blocks sit far below the
+        // main one) exceeds maxBufferLength on the iPhone (2 GiB). The SDK's application chunk starts at the next 2 GiB boundary of
+        // the window and holds all memory pools (checked on the A13): wrap only that part.
+        extern uint64_t g_nvn_mem_base, g_nvn_mem_size;
+        uint64_t lo = BDSP_COMPACT_BASE + 0x80000000ull, room = dev.maxBufferLength & ~0x3FFFull;
+        uint64_t hi = g_nvn_mem_base + g_nvn_mem_size;
+        g_nvn_mem_base = lo;
+        g_nvn_mem_size = hi - lo < room ? hi - lo : room;
+        LOG("[nvn] Metal buffer clipped to the application chunk: 0x%llx + %llu MiB (limit %llu MiB)\n", (unsigned long long)lo,
+            (unsigned long long)(g_nvn_mem_size >> 20), (unsigned long long)(dev.maxBufferLength >> 20));
+    }
+#endif
     g_guest_buffer_base = HEAP_BASE;
     g_guest_buffer = [dev newBufferWithBytesNoCopy:(void *)HEAP_BASE length:HEAP_MAX
                                            options:MTLResourceStorageModeShared deallocator:nil];
@@ -1171,6 +1185,19 @@ static void flicker_presented(NSMutableDictionary *rec, double pt) {
     }
 }
 
+// Experiment (BDSP_XW_GPU_LAG=<n>, off by default): the worker waits until the GPU has finished the frame presented n frames earlier,
+// so the guest cannot run more than n + BDSP_EXEC_FRAMES frames ahead of the GPU (the Switch GPU is at most 2 to 3 frames behind).
+static id<MTLCommandBuffer> g_present_cb;
+static void xw_gpu_lag(void) {
+    static int lag = -1;
+    static id<MTLCommandBuffer> hist[8];
+    static uint64_t n;
+    if (lag < 0) lag = getenv("BDSP_XW_GPU_LAG") ? atoi(getenv("BDSP_XW_GPU_LAG")) : 0;
+    if (lag <= 0 || lag > 7) return;
+    hist[n++ % 8] = g_present_cb;
+    if (n > (uint64_t)lag) [hist[(n - 1 - lag) % 8] waitUntilCompleted];
+}
+
 // GPU part of the presentation (commits the frame work, gets the drawable, encodes the present pass). Runs in the guest thread
 // or (BDSP_EXEC_WORKER=1) in the translation worker; therefore only with values that were captured when enqueueing.
 // false: no drawable, the frame is dropped.
@@ -1360,6 +1387,7 @@ static bool present_gpu(uint64_t frame, id<MTLTexture> tex, bool has_wc, const f
             }];
         }
         [cb commit];
+        g_present_cb = cb;
         if (shot_tex) {
             if (!dbg_thread_enabled()) [cb waitUntilCompleted];  // (debug thread: renderer_save_texture queues its copy behind this buffer)
             // BDSP_SHOT_PATH: where (parallel test runs each write their own; default build/window.png)
@@ -1392,6 +1420,7 @@ void backend_present(NvnTexture *t) {
     bool worker = renderer_worker_present(^{
         // runs in the worker; the counters that exec_list sees continue here with the frame
         present_gpu(frame, tex, has_wc, wcs.v);
+        xw_gpu_lag();
         wk_frames++;
         g_frame_counter++;
     });

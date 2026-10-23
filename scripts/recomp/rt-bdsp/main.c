@@ -37,8 +37,9 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
 // Variant A-low (iOS): the compact layout at a fixed address (guest address == host address). mach_vm_allocate does not exist on iOS.
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
     vm_address_t a = GUEST_LO;
-    if (vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) == KERN_SUCCESS) return;
-    fprintf(stderr, "FATAL: guest window %llx-%llx is not free\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI);
+    kern_return_t kr = vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED);
+    if (kr == KERN_SUCCESS && a == GUEST_LO) return;
+    fprintf(stderr, "FATAL: guest window %llx-%llx is not free (kr %d, got %llx)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI, kr, (unsigned long long)a);
     _exit(1);
 }
 #else
@@ -129,6 +130,20 @@ static void *suspend_stress(void *arg) {
             }
         }
         usleep(200);
+    }
+    return NULL;
+}
+
+// BDSP_CPU_STRESS=<n> (test only): n host threads that alternate between busy loops and short sleeps. They compete with the guest
+// threads for cores and shift the thread interleaving, which makes rare races (startup crashes) much more likely.
+static void *cpu_stress(void *arg) {
+    (void)arg;
+    uint64_t x = 88172645463325252ull;
+    for (;;) {
+        uint64_t t0 = rt_now_ns();
+        while (rt_now_ns() - t0 < 3000000) { x ^= x << 13; x ^= x >> 7; x ^= x << 17; }
+        __asm__ volatile("" : : "r"(x));
+        usleep(500 + (unsigned)(x % 1500));
     }
     return NULL;
 }
@@ -289,6 +304,11 @@ int main(int argc, char **argv) {
         pthread_t st;
         pthread_create(&st, NULL, suspend_stress, NULL);
         pthread_detach(st);
+    }
+    for (int i = 0, n = getenv("BDSP_CPU_STRESS") ? atoi(getenv("BDSP_CPU_STRESS")) : 0; i < n && i < 16; i++) {
+        pthread_t ct;
+        pthread_create(&ct, NULL, cpu_stress, NULL);
+        pthread_detach(ct);
     }
     if (no_window) { monitor_loop(NULL); return 0; }
     // The main thread belongs to the window (AppKit/SDL require it); the supervision runs in its own thread.

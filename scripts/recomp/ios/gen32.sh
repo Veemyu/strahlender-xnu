@@ -2,7 +2,7 @@
 # Memory model B (--rebase32): generates the C of all modules with base addresses below 4 GiB and C SIMD (--simd c) to
 # work/recomp/gen32/<module>, builds the module images (relocations to the new bases) to work/recomp/img32 and
 # compiles everything for iPhoneOS arm64 to work/recomp/obj32 (target iOS, afterwards platformless via vtool for the Mac test).
-# MODEL=a selects memory model A-low: the same compact layout shifted to the fixed host address ORG (default 0x400000000), guest address ==
+# MODEL=a selects memory model A-low: the same compact layout shifted to the fixed host address ORG (default 0x800000000, free on iPad and iPhone), guest address ==
 # host address, NEON inline assembler (--simd asm); folders gen4i, img4i, obj4i (the runtime is built with -DBDSP_COMPACT_BASE=ORG).
 # Everything under work/ (gitignored). The bases must match the compact layout in scripts/recomp/rt-bdsp/bdsp.h.
 # Usage: [MODEL=a] gen32.sh gen | img | build [JOBS] | hot | all [JOBS]   (hot: only the -O2 files of scripts/recomp/hot_o2.txt)
@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 MODEL=${MODEL:-b}
-if [ "$MODEL" = a ]; then ORG=${ORG:-0x400000000}; SIMD=asm; D=4i; else ORG=0; SIMD=c; D=32; fi
+if [ "$MODEL" = a ]; then ORG=${ORG:-0x800000000}; SIMD=asm; D=4i; else ORG=0; SIMD=c; D=32; fi
 export MODEL
 GEN=${GEN:-work/recomp/gen$D}
 IMG=${IMG:-work/recomp/img$D}

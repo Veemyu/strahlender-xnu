@@ -187,6 +187,13 @@ NVN(nvnMemoryPoolInitialize) {
     p->storage = G(uint64_t, A(1), 0x10);
     p->size = G(uint64_t, A(1), 0x18);
     p->flags = G(uint32_t, A(1), 8);
+    {   // a pool outside the wrapped guest buffer cannot be reached by the GPU (see backend_init in metal.m)
+        extern uint64_t g_nvn_mem_base, g_nvn_mem_size;
+        static int warned;
+        if (g_nvn_mem_size && (p->storage < g_nvn_mem_base || p->storage + p->size > g_nvn_mem_base + g_nvn_mem_size) && warned++ < 10)
+            LOG("[nvn] WARNING: memory pool %llx + %llx lies outside the Metal buffer\n", (unsigned long long)p->storage, (unsigned long long)p->size);
+    }
+    if (getenv("BDSP_TRACE_UNMAP")) LOG("[nvn] memory pool %llx + %llx flags %x\n", (unsigned long long)p->storage, (unsigned long long)p->size, p->flags);
     SET_HOST(A(0), p);
     RET(1);
 }

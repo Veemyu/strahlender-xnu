@@ -99,7 +99,7 @@ test with the real GC on a running game.
 | Why | simplest; no per-access cost | iOS allows far less address space, a fixed 448 GiB base fails, and the free-team profile has no Extended Virtual Addressing |
 | Cost | none | about 5 % in the exception test; FP/SIMD must be generated in `c` mode |
 
-**Variant A-low (iOS, `MODEL=a`).** The compact layout of variant B shifted to a fixed host address (`BDSP_COMPACT_BASE`, default `0x4_0000_0000`),
+**Variant A-low (iOS, `MODEL=a`).** The compact layout of variant B shifted to a fixed host address (`BDSP_COMPACT_BASE`, default `0x8_0000_0000`),
 so guest address == host address again: no `G2H`, NEON inline assembler (`--simd asm`), the same compile flags as the Mac build. A probe on the M2 iPad Pro
 showed that a fixed 12.5 GiB `vm_allocate` succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start (`0x1_` is invalid, `0x2_`/`0x3_` are taken by the system,
 everything from `0x10_0000_0000` up is invalid, which is why the Mac address could never work). Measured on the Mac with the beach scene (same game work per frame):

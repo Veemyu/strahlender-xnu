@@ -2875,6 +2875,13 @@ static void copy_texture(const TexRefRec *src, const TexRefRec *dst, uint64_t fl
 }
 
 // ------------------------------------------------------------------ executor
+// Experiment (BDSP_XW_SKIP=<mask>, off by default): leave out what the renderer writes into guest memory, to find which write
+// corrupts the guest. 1 uniform update, 2 buffer copy, 4 counter report, 8 texture read-back, 16 compute dispatch.
+static unsigned xw_skip(unsigned bit) {
+    static int mask = -1;
+    if (mask < 0) mask = getenv("BDSP_XW_SKIP") ? (int)strtol(getenv("BDSP_XW_SKIP"), NULL, 0) : 0;
+    return mask & bit;
+}
 static void exec_list(uint64_t handle, int depth) {
     uint64_t p = handle;
     for (int guard = 0; guard < 10000000; guard++) {
@@ -3047,6 +3054,7 @@ static void exec_list(uint64_t handle, int depth) {
             }
             break;
         case CMD_DISPATCH:
+            if (xw_skip(16)) break;
             dispatch_compute((uint32_t)r->x[0], (uint32_t)r->x[1], (uint32_t)r->x[2]);
             if (st.program) {
                 static uint64_t seen[16];
@@ -3090,7 +3098,7 @@ static void exec_list(uint64_t handle, int depth) {
         case CMD_DRAW_ELEMENTS: draw(r, true); break;
         case CMD_UPDATE_UNIFORM_BUFFER:
             // (buffer, size, offset, dataSize, data): apply the update in command order
-            memcpy((void *)(uintptr_t)(r->x[0] + r->x[2]), x, r->x[3]);
+            if (!xw_skip(1)) memcpy((void *)(uintptr_t)(r->x[0] + r->x[2]), x, r->x[3]);
             break;
         case CMD_FENCE_SYNC: {
             // The CPU may read GPU-written memory (compute results) once the fence is signaled.
@@ -3107,7 +3115,7 @@ static void exec_list(uint64_t handle, int depth) {
             uint32_t type = (uint32_t)r->x[0];
             if (type < 32 && !(seen & (1u << type))) { seen |= 1u << type; LOG("[nvn] ReportCounter type %u\n", type); }
             // (Switch GPU ticks, 614.4 MHz: the game converts the difference to ns itself - see the Vulkan exec.c)
-            if (out) { out[0] = 0; out[1] = (uint64_t)((unsigned __int128)plat_now_ns() * 384 / 625); }
+            if (out && !xw_skip(4)) { out[0] = 0; out[1] = (uint64_t)((unsigned __int128)plat_now_ns() * 384 / 625); }
             break;
         }
         case CMD_COPY_TEXTURE_TO_TEXTURE: {
@@ -3121,13 +3129,13 @@ static void exec_list(uint64_t handle, int depth) {
             break;
         }
         case CMD_COPY_BUFFER_TO_TEXTURE: copy_buffer_to_texture(r->x[0], x); break;
-        case CMD_COPY_TEXTURE_TO_BUFFER: copy_texture_to_buffer(x, r->x[3]); break;
+        case CMD_COPY_TEXTURE_TO_BUFFER: if (!xw_skip(8)) copy_texture_to_buffer(x, r->x[3]); break;
         case CMD_COPY_BUFFER_TO_BUFFER:
             // The copy runs on the CPU, so the GPU must be done with what it touches: only a range a dispatch reads or writes
             // (hz_ranges) is. The game does this many times a frame (walking along the water: ~25), each flush stalled
             // the worker. BDSP_HZ_FLUSH=1: flush every time as before.
             if (getenv_flag_hz_flush() || range_pending_compute(r->x[0], r->x[2]) || range_pending_compute(r->x[1], r->x[2])) flush_why(FL_BUF2BUF);
-            memmove((void *)(uintptr_t)r->x[1], (void *)(uintptr_t)r->x[0], r->x[2]);
+            if (!xw_skip(2)) memmove((void *)(uintptr_t)r->x[1], (void *)(uintptr_t)r->x[0], r->x[2]);
             break;
         default: break;
         }

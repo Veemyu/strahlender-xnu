@@ -766,6 +766,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x2A: case 0x2B: case 0x5F: x[0] = R_OK; break;  // Cache-Wartung: nichts zu tun
     case 0x2C:  // MapPhysicalMemory(addr, size): the window's pages are fresh (zero) and only committed on access
         kernel_region_add(x[0], x[1], 0x7, 3);
+        if (getenv("BDSP_TRACE_UNMAP")) LOG("[kernel] MapPhysicalMemory %llx + %llx\n", (unsigned long long)x[0], (unsigned long long)x[1]);
         if (!phys_lo || x[0] < phys_lo) phys_lo = x[0];
         if (x[0] + x[1] > phys_hi) phys_hi = x[0] + x[1];
         if ((phys_mapped += x[1]) > phys_peak) phys_peak = phys_mapped;

@@ -183,14 +183,15 @@ static void ProbeFixedWindows(void) {
             (int)d.supportsBCTextureCompression, (unsigned long long)(d.maxBufferLength >> 20),
             (unsigned long long)(d.recommendedMaxWorkingSetSize >> 20), (int)[d supportsFamily:MTLGPUFamilyApple7],
             (int)[d supportsFamily:MTLGPUFamilyApple8], (int)[d supportsFamily:MTLGPUFamilyApple9]);
-    static const vm_address_t cand[] = {0x100000000ull, 0x200000000ull, 0x300000000ull, 0x400000000ull, 0x800000000ull,
+    static const vm_address_t cand[] = {0x100000000ull, 0x200000000ull, 0x300000000ull, 0x400000000ull, 0x500000000ull, 0x600000000ull,
+                                        0x700000000ull, 0x800000000ull, 0x900000000ull, 0xA00000000ull, 0xC00000000ull,
                                         0x1000000000ull, 0x2000000000ull, 0x7000000000ull};
-    const vm_size_t size = 12800ull << 20;
     fprintf(stderr, "[probe-fixed] os_proc_available_memory %zu MiB\n", os_proc_available_memory() >> 20);
-    for (size_t i = 0; i < sizeof cand / sizeof *cand; i++) {
-        vm_address_t a = cand[i];
+    for (size_t i = 0; i < 2 * (sizeof cand / sizeof *cand); i++) {   // first the compact window of model A-low (4 GiB), then the Mac-sized one
+        const vm_size_t size = (i < sizeof cand / sizeof *cand ? 4096ull : 12800ull) << 20;
+        vm_address_t a = cand[i % (sizeof cand / sizeof *cand)];
         kern_return_t kr = vm_allocate(mach_task_self(), &a, size, VM_FLAGS_FIXED);
-        fprintf(stderr, "[probe-fixed] %#llx + %llu MiB: %s (kr %d)\n", (unsigned long long)cand[i], (unsigned long long)(size >> 20),
+        fprintf(stderr, "[probe-fixed] %#llx + %llu MiB: %s (kr %d)\n", (unsigned long long)cand[i % (sizeof cand / sizeof *cand)], (unsigned long long)(size >> 20),
                 kr == KERN_SUCCESS ? "ok" : "ERROR", kr);
         if (kr == KERN_SUCCESS) {
             memset((void *)a, 1, 64ull << 20);   // really touch some pages

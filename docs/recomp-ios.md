@@ -102,7 +102,7 @@ performance guarantees.
 
 ## Memory model A-low, iPhone target and the thermal limit (2026-10-23)
 
-**Model A-low** is the compact layout of model B shifted to a fixed host address (`0x4_0000_0000`), so guest address == host address again
+**Model A-low** is the compact layout of model B shifted to a fixed host address (`0x8_0000_0000`, free on iPad and iPhone), so guest address == host address again
 (see [architecture.md](architecture.md)). Build: `MODEL=a scripts/recomp/ios/gen32.sh all` (folders `gen4i`, `img4i`, `obj4i`, about 15 minutes cold),
 `IOS_MODEL=a scripts/recomp/ios/deploy_ios.sh build` and `install` (own runtime folder `ios-rt-a`, own build output). Model B stays the default
 (`deploy_ios.sh` without `IOS_MODEL`). A fixed 12.5 GiB `vm_allocate` on the M2 iPad Pro succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start
@@ -123,11 +123,17 @@ the same scene runs at a flat 22 to 23 ms per frame and `cal_us` stays at 7.4 ms
 whole per-frame logic at the display rate, the original ran it at 30), which the passively cooled iPad cannot sustain. Practical consequence: 60 fps
 is the sustainable setting on the iPad; 120 fps drops to about 90 after a minute.
 
-**iPhone target.** The Xcode project builds for iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`); the touch overlay scales with the screen and the
-safe area. Not verified on a device yet: `DEVICE_NAME=iPhone scripts/recomp/ios/deploy_ios.sh ...` selects the phone. Known blockers to check first with
-`BDSP_PROBE_FIXED=1` (prints RAM, cores, BC texture support, `maxBufferLength` and the fixed-window result): the game's textures are BC1 to BC7 and the
-iPhone GPUs are not known to support BC (the app stops with a clear message; `BDSP_ALLOW_NO_BC=1` starts anyway); the footprint is 2.6 to 2.9 GiB against 4 GB
-RAM on an iPhone 11 Pro Max; the Metal buffer over the guest memory is 3.5 GiB; the A13 has two performance cores.
+**iPhone target.** The Xcode project builds for iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`, model A-low by default through `BDSP_RT_DIR = ios-rt-a`);
+the touch overlay scales with the screen and the safe area. `DEVICE_NAME=<part of the device name> scripts/recomp/ios/deploy_ios.sh ...` selects the phone;
+`deploy_ios.sh data` copies the RomFS (Xcode does not). Measured on an iPhone 11 Pro Max (A13, iOS 26.6.1) with `BDSP_PROBE_FIXED=1`:
+
+- A fixed `vm_allocate` window succeeds at `0x5_` to `0xC_0000_0000` (4 and 12.5 GiB), but `0x2_` and `0x4_0000_0000` are taken. The A-low base is therefore
+  **`0x8_0000_0000`**, which is free on the iPad as well (`gen32.sh`/`build_rt32.sh` default `ORG`).
+- `supportsBCTextureCompression` is 0 (Apple6 family): the app stops with a clear message, `BDSP_ALLOW_NO_BC=1` starts anyway. The language screen and other UI are
+  drawn correctly without BC, 3D textures are not. The plan is an offline ASTC conversion of the BC textures.
+- `maxBufferLength` is 2 GiB. The envelope of all `MapPhysicalMemory` blocks is 3.5 GiB because small blocks lie far below the main one; all memory pools sit in the
+  application chunk from `ORG + 0x8000_0000`, so `metal.m` wraps only that part when the envelope exceeds the limit (2047 MiB; a warning is logged for a pool outside).
+- With that the game runs 90 s (4761 frames, RSS 771 MiB) on the phone. RAM (2.3 GiB available to the app) and the two performance cores are not evaluated yet.
 
 ## Memory entitlements and address space (research, 2026-10-18; sources are Apple's documentation)
 

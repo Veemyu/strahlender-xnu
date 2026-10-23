@@ -103,6 +103,7 @@ void nvn_glue_mem_range(void) {
     if (!lo) { lo = ALIAS_BASE; hi = ALIAS_BASE + ALIAS_SIZE; }
     lo &= ~0x3FFFull;
     hi = (hi + 0x3FFF) & ~0x3FFFull;
+    if (getenv("BDSP_NVN_MEM_BASE")) lo = strtoull(getenv("BDSP_NVN_MEM_BASE"), NULL, 16);
     if (getenv("BDSP_NVN_MEM_MB")) hi = lo + ((uint64_t)atol(getenv("BDSP_NVN_MEM_MB")) << 20);
     g_nvn_mem_base = lo;
     g_nvn_mem_size = hi - lo;

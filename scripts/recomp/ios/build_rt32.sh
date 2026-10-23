@@ -4,7 +4,7 @@
 #   build_rt32.sh ios     -> work/recomp/ios-rt/*.o and work/recomp/ios-rt/libbdsp_rt.a (iPhoneOS, without SDL/FFmpeg; input and window
 #                            are provided by the app, scripts/recomp/ios/app)
 # The NVN sources (work/recomp/nvn-src, prepare.sh) are rewritten by nvn_rebase32.py into a copy nvn-src32.
-# MODEL=a (ios only) builds memory model A-low instead: guest address == host address at the fixed window ORG (default 0x400000000, must match
+# MODEL=a (ios only) builds memory model A-low instead: guest address == host address at the fixed window ORG (default 0x800000000, must match
 # gen32.sh), the NVN sources are used unchanged (copy nvn-src-a, only the UI part is replaced), objects from work/recomp/obj4i, output
 # work/recomp/ios-rt-a.
 set -euo pipefail
@@ -13,7 +13,7 @@ export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer
 TARGET=${1:-mac}
 SRC=scripts/recomp/rt-bdsp
 MODEL=${MODEL:-b}
-ORG=${ORG:-0x400000000}
+ORG=${ORG:-0x800000000}
 if [ "$MODEL" = a ]; then
   [ "$TARGET" = ios ] || { echo "MODEL=a: only the ios target" >&2; exit 2; }
   NVN32=work/recomp/nvn-src-a
@@ -62,7 +62,7 @@ case "$TARGET" in
 esac
 mkdir -p "$RT/nvn"
 # Toolchain stamp: reuse objects only with the compiler and SDKs they were built with
-TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; } | sha256 | cut -d' ' -f1)
+TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; echo "model ${MODEL:-b} ${ORG:-}"; } | sha256 | cut -d' ' -f1)
 if [ "$(cat "$RT/.stamp" 2>/dev/null || true)" != "$TC_STAMP" ]; then rm -f "$RT"/*.o "$RT"/nvn/*.o; echo "$TC_STAMP" > "$RT/.stamp"; fi
 . scripts/recomp/rt-bdsp/nvn/flags.inc.sh
 DEFS="-DBDSP_REBASE32"; [ "$MODEL" = a ] && DEFS="-DBDSP_COMPACT_BASE=${ORG}ull"
