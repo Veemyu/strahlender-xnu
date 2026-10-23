@@ -12,6 +12,7 @@
 
 #include "app.h"
 #include "../mods.h"
+#include "../swkbd_ui.h"
 #import "../../app/icon_variants.h"
 
 #define L(s) NSLocalizedString(@s, nil)
@@ -56,6 +57,11 @@ static uint64_t g_pad_buttons;
 static int32_t g_pad_stick[4];
 
 static void publish(void) {
+    if (swkbd_ui_active()) {   // the on-screen keyboard has the input; the game sees nothing meanwhile
+        atomic_store(&g_ext_buttons, 0);
+        for (int i = 0; i < 4; i++) atomic_store(&g_ext_stick[i], 0);
+        return;
+    }
     uint64_t b = g_pad_buttons;
     int32_t s[4] = {0, 0, 0, 0};
     for (size_t i = 0; i < NKEYS; i++) {
@@ -423,7 +429,40 @@ static void install_menu(void) {
 }
 
 // ---- Hooks of the window loop (metal.m ui_run)
+// Events for the on-screen keyboard (swkbd_ui.c): typed text, editing keys, mouse and touch. Returns true when consumed.
+static bool swkbd_event(const SDL_Event *e) {
+    switch (e->type) {
+    case SDL_EVENT_TEXT_INPUT: swkbd_ui_text(e->text.text); return true;
+    case SDL_EVENT_KEY_DOWN:
+        if (e->key.mod & SDL_KMOD_GUI) return false;
+        switch (e->key.scancode) {
+        case SDL_SCANCODE_BACKSPACE: swkbd_ui_key(SWKBD_KEY_BACKSPACE); break;
+        case SDL_SCANCODE_DELETE: swkbd_ui_key(SWKBD_KEY_DELETE); break;
+        case SDL_SCANCODE_LEFT: swkbd_ui_key(SWKBD_KEY_LEFT); break;
+        case SDL_SCANCODE_RIGHT: swkbd_ui_key(SWKBD_KEY_RIGHT); break;
+        case SDL_SCANCODE_HOME: swkbd_ui_key(SWKBD_KEY_HOME); break;
+        case SDL_SCANCODE_END: swkbd_ui_key(SWKBD_KEY_END); break;
+        case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: swkbd_ui_key(SWKBD_KEY_ENTER); break;
+        case SDL_SCANCODE_ESCAPE: swkbd_ui_key(SWKBD_KEY_ESCAPE); break;
+        default: break;
+        }
+        return true;
+    case SDL_EVENT_KEY_UP: return !(e->key.mod & SDL_KMOD_GUI);
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+        SDL_Window *w = ui_window();
+        int ww = 0, wh = 0;
+        if (w) SDL_GetWindowSize(w, &ww, &wh);
+        if (e->button.button == SDL_BUTTON_LEFT && ww > 0 && wh > 0) swkbd_ui_touch(1, e->button.x / ww, e->button.y / wh);
+        return true;
+    }
+    case SDL_EVENT_MOUSE_BUTTON_UP: return true;
+    case SDL_EVENT_FINGER_DOWN: swkbd_ui_touch(1, e->tfinger.x, e->tfinger.y); return true;
+    default: return false;
+    }
+}
+
 bool menu_handle_event(const SDL_Event *e) {
+    if (swkbd_ui_active() && swkbd_event(e)) return true;
     switch (e->type) {
     case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP:
         if (e->key.mod & SDL_KMOD_GUI) return true;   // menu shortcuts (Cmd+…) belong to the menu
@@ -551,6 +590,17 @@ void menu_apply_window_requests(void *window) {
         }
     }
     @autoreleasepool { pad_poll(); }
+    {   // on-screen keyboard: input moves over to it while it is open (and back, with all held keys released)
+        static bool kb_was;
+        bool kb = swkbd_ui_active();
+        if (kb != kb_was) {
+            kb_was = kb;
+            memset(g_down, 0, sizeof g_down);
+            if (kb) SDL_StartTextInput(window); else SDL_StopTextInput(window);
+            publish();
+        }
+        if (kb) swkbd_ui_pad(g_pad_buttons, g_pad_stick[0], g_pad_stick[1]);
+    }
     key_script_tick();
     // Self-test of the pause (BDSP_PAUSE_SELFTEST="<from second>:<duration>"): stops the vsync event and releases it again
     static double t0, p0 = -1, plen;

@@ -2,6 +2,7 @@
 // Own code. Protocol after Switchbrew (Applet Manager services, Software Keyboard) and libnx applet.c command numbers; every command is
 // confirmed by the game's own SDK calls (BDSP_TRACE_APPLET=1 logs them).
 #include "applet.h"
+#include "swkbd_ui.h"
 
 #define AM_NO_DATA MAKE_RESULT(128, 2)
 #define AM_NOT_AVAILABLE MAKE_RESULT(128, 5)
@@ -68,7 +69,7 @@ enum { KC_MODE = 0x0, KC_HEADER = 0x24, KC_SUB = 0xA6, KC_GUIDE = 0x1A8, KC_MAXL
 #define SWKBD_OUT_SIZE 0x7D8
 #define SWKBD_INTER_OUT_SIZE 0x7D4
 
-typedef struct { char text[0x400]; bool utf8; } SwkbdState;
+typedef struct { char text[0x400]; bool utf8; bool ui; bool textcheck; LibApplet *applet; } SwkbdState;
 
 static int u16_to_u8(const uint16_t *s, int n, char *out, int cap) {
     int o = 0;
@@ -106,6 +107,29 @@ static void swkbd_finish(LibApplet *a, SwkbdState *st, uint32_t result) {
     applet_complete(a, 0);
 }
 
+// On-screen keyboard answers (any thread). Enter: the text goes through the game's own checker when there is one (interactive channel);
+// its verdict arrives in swkbd_interactive_in. Cancel: result 1 (the keyboard has already closed).
+static void swkbd_ui_submit(void *user, const char *text) {
+    SwkbdState *st = user;
+    snprintf(st->text, sizeof st->text, "%s", text);
+    if (st->textcheck) {
+        uint8_t inter[SWKBD_INTER_OUT_SIZE] = {0};
+        int n;
+        if (st->utf8) { n = (int)strlen(st->text) + 1; memcpy(inter + 8, st->text, n); }
+        else { n = 2 * (u8_to_u16(st->text, (uint16_t *)(inter + 8), (SWKBD_INTER_OUT_SIZE - 8) / 2) + 1); }
+        *(uint64_t *)inter = 8 + (uint64_t)n;
+        applet_push_out_interactive(st->applet, am_storage_new(inter, sizeof inter));
+        return;
+    }
+    swkbd_ui_resolve(1, NULL);
+    swkbd_finish(st->applet, st, 0);
+}
+static void swkbd_ui_cancel(void *user) {
+    SwkbdState *st = user;
+    st->text[0] = 0;
+    swkbd_finish(st->applet, st, 1);
+}
+
 static void swkbd_start(LibApplet *a) {
     SwkbdState *st = a->backend_state = calloc(1, sizeof *st);
     AmStorage *cfg = a->nin > 1 ? am_storage_get(a->in[1]) : NULL;
@@ -123,6 +147,23 @@ static void swkbd_start(LibApplet *a) {
         LOG("[am] swkbd: mode %u, header \"%s\", sub \"%s\", guide \"%s\", length %d..%d, password %u, utf8 %d, textcheck %d, initial \"%s\" (cfg %llu, work %llu bytes)\n",
             *(const uint32_t *)(c + KC_MODE), hdr, sub, guide, *(const int32_t *)(c + KC_MINLEN), *(const int32_t *)(c + KC_MAXLEN),
             *(const uint32_t *)(c + KC_PASSWORD), st->utf8, c[KC_TEXTCHECK], st->text, (unsigned long long)cfg->size, (unsigned long long)(work ? work->size : 0));
+    }
+    // On-screen keyboard (swkbd_ui.c) when the firmware layouts are available and nobody scripts the run; otherwise the automatic answer below.
+    st->applet = a;
+    st->textcheck = c[KC_TEXTCHECK] && fs_system_data_exists(0x0100000000000823ull);
+    bool scripted = getenv("BDSP_SWKBD_TEXT") || getenv("BDSP_SWKBD_AUTO") || getenv("BDSP_INPUT_SCRIPT") || getenv("BDSP_KEY_SCRIPT") || getenv("BDSP_NO_ALERT");
+    if ((!scripted || getenv("BDSP_SWKBD_UI")) && swkbd_ui_available()) {   // BDSP_SWKBD_UI=1: keyboard even in a scripted test run
+        SwkbdParams p = {0};
+        p.mode = *(const uint32_t *)(c + KC_MODE);
+        u16_to_u8((const uint16_t *)(c + KC_HEADER), 0x41, p.header, sizeof p.header);
+        u16_to_u8((const uint16_t *)(c + KC_SUB), 0x81, p.sub, sizeof p.sub);
+        u16_to_u8((const uint16_t *)(c + KC_GUIDE), 0x101, p.guide, sizeof p.guide);
+        snprintf(p.initial, sizeof p.initial, "%s", st->text);
+        p.minlen = *(const int32_t *)(c + KC_MINLEN);
+        p.maxlen = *(const int32_t *)(c + KC_MAXLEN);
+        p.password = *(const uint32_t *)(c + KC_PASSWORD) != 0;
+        SwkbdCallbacks cb = {swkbd_ui_submit, swkbd_ui_cancel};
+        if (swkbd_ui_open(&p, cb, st) == 0) { st->ui = true; LOG("[am] swkbd: on-screen keyboard open\n"); return; }
     }
     // Interim policy until a keyboard UI exists: BDSP_SWKBD_TEXT=<text> answers with that text; otherwise the initial text, otherwise "Player".
     // Cut to the length limit (ASCII only here); an answer shorter than the minimum is padded with the last character.
@@ -154,6 +195,13 @@ static void swkbd_interactive_in(LibApplet *a) {
     AmStorage *r = a->ninter ? am_storage_get(a->in_inter[a->ninter - 1]) : NULL;
     uint32_t check = r && r->size >= 4 ? *(const uint32_t *)r->data : 0;
     if (trace_applet()) LOG("[am] swkbd: text check result %u\n", check);
+    if (st->ui && swkbd_ui_active()) {   // the keyboard stays open on a rejected text and shows the checker's message
+        if (check == 0) { swkbd_ui_resolve(1, NULL); swkbd_finish(a, st, 0); return; }
+        char msg[256] = "This text cannot be used.";
+        if (r && r->size > 6 && ((const uint16_t *)(r->data + 4))[0]) u16_to_u8((const uint16_t *)(r->data + 4), (int)((r->size - 4) / 2), msg, sizeof msg);
+        swkbd_ui_resolve(0, msg);
+        return;
+    }
     swkbd_finish(a, st, check == 0 ? 0 : 1);
 }
 
