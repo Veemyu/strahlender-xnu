@@ -212,6 +212,27 @@ static void dump_largest_textures(const char *why) {
     }
 }
 
+// BDSP_TEX_INVENTORY=1 (diagnostics): every 600 presented frames, live textures per NVN format (count, MiB of the Metal allocations);
+// basis for the BC -> ASTC decision on GPUs without BC. Runs where the renderer runs (worker), so the registry is not changed meanwhile.
+static void tex_inventory_tick(uint64_t frame) {
+    static int on = -1;
+    if (on < 0) on = getenv("BDSP_TEX_INVENTORY") != NULL;
+    if (!on || frame % 600 != 0) return;
+    uint64_t bytes[256] = {0}, total = 0;
+    uint32_t count[256] = {0};
+    for (int i = 0; i < g_reg_n; i++) {
+        TexBackend *b = g_reg[i] ? (TexBackend *)g_reg[i]->backend : NULL;
+        if (!b || !b->tex) continue;
+        uint32_t f = g_reg[i]->format & 0xFF;
+        count[f]++;
+        bytes[f] += b->tex.allocatedSize;
+        total += b->tex.allocatedSize;
+    }
+    LOG("[texinv] frame %llu: %d textures, %.1f MiB\n", (unsigned long long)frame, g_reg_n, total / 1048576.0);
+    for (int f = 0; f < 256; f++)
+        if (count[f]) LOG("[texinv]   f%#04x %5u textures %8.1f MiB\n", f, count[f], bytes[f] / 1048576.0);
+}
+
 // Start gate display (renderer.m startup_gate): "Shader compilation n / N" as text. The presentation thread
 // calls this at 60 Hz; during the gate it is the only presenter.
 static const char GATE_MSL[] =
@@ -1422,6 +1443,7 @@ void backend_present(NvnTexture *t) {
         present_gpu(frame, tex, has_wc, wcs.v);
         xw_gpu_lag();
         wk_frames++;
+        tex_inventory_tick(wk_frames);
         g_frame_counter++;
     });
     if (!worker && !present_gpu(frame, tex, has_wc, wc)) return;
