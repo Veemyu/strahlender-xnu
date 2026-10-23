@@ -472,7 +472,7 @@ out:
     return r;
 }
 
-// ------------------------------------------------------------------ Anhalten fremder Threads (Boehm-GC)
+// ------------------------------------------------------------------ Suspending other threads (Boehm GC)
 // SetThreadActivity(handle, paused) -> thread_suspend; GetThreadContext3 returns the guest register set from Cpu.
 // The guest keeps its registers only in Cpu and on the guest stack (spike measurement: 100 % of the windows).
 uint64_t g_suspends, g_resumes;
@@ -517,7 +517,7 @@ static uint32_t svc_get_thread_context3(uint64_t out, uint32_t h) {
     return R_OK;
 }
 
-// ------------------------------------------------------------------ SVC-Verteiler
+// ------------------------------------------------------------------ SVC dispatcher
 static int trace_svc = -1;
 static _Atomic uint64_t svc_count[256];
 static _Atomic uint64_t svc_first_seen[256];
@@ -780,7 +780,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         x[0] = R_OK;
         break;
     case 0x2F: x[0] = R_NOT_IMPLEMENTED; break;  // GetLastThreadInfo
-    case 0x30: case 0x31: case 0x37: x[0] = R_OK; x[1] = 0; break;  // Ressourcenlimits: unbegrenzt/0
+    case 0x30: case 0x31: case 0x37: x[0] = R_OK; x[1] = 0; break;  // resource limits: unlimited/0
     case 0x32: x[0] = svc_set_thread_activity((uint32_t)x[0], (uint32_t)x[1]); break;
     case 0x33: x[0] = svc_get_thread_context3(x[0], (uint32_t)x[1]); break;
     case 0x34: x[0] = svc_wait_for_address(x[0], (uint32_t)x[1], (int32_t)x[2], (int64_t)x[3]); break;

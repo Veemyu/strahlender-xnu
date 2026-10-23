@@ -72,7 +72,10 @@ Also outside the repository and never touched by cleanups: `nsp/`, `Ryujinx/`, `
 ## 5. Known limits and assumptions (do not repeat as facts)
 
 - A rare startup hang or early crash (signal 11 within seconds) exists independently of rendering changes; retrying works. It is a
-  low-priority edge case (decision: no repetition test loops).
+  low-priority edge case (decision: no repetition test loops). Measured on 2026-10-23 with short starts: the M2 iPad Pro crashed in about
+  10 to 15 % of the starts (guest code, usually in the garbage collector's mark routine with a small integer as an object pointer, 7 to 17 s
+  after the start, both memory models); 0 of 20 starts with `BDSP_EXEC_WORKER=0` (synchronous renderer) and 0 of 20 on the Mac. That points at the
+  asynchronous render worker racing with the guest, as already suspected in [recomp-ios.md](recomp-ios.md); not proven. Benchmark scripts retry a failed start.
 - Metal validation reports one known start-up message: a 1D texture used as a render attachment (21 times). Nothing else should appear.
 - FPSR/QC floating-point flags are not modeled ([recomp-diff.md](recomp-diff.md)).
 - The 32-bit memory model on the iPad works with about 1.98 GiB of guest memory instead of 3.14 GiB; long sessions and battles are

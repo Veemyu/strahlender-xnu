@@ -106,7 +106,7 @@ static void report(const char *why) {
     ipc_stats(stdout);
     fs_report(stdout);
     printf("RSS now %ld MiB, peak %ld MiB\n", rss_now_mib(), rss_peak_mib());
-    if (g_stress_cycles) printf("Anhalte-Stresstest (BDSP_SUSPEND_STRESS): %llu Anhalten/Kontext/Fortsetzen-Zyklen an laufenden Gastthreads\n", (unsigned long long)g_stress_cycles);
+    if (g_stress_cycles) printf("Suspend stress test (BDSP_SUSPEND_STRESS): %llu suspend/context/resume cycles on running guest threads\n", (unsigned long long)g_stress_cycles);
     fflush(NULL);
 }
 
@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--headless")) setenv("BDSP_HIDDEN", "1", 1);   // window never visible, rendering stays Metal
         else if (!strcmp(argv[i], "--window") && i + 1 < argc) setenv("BDSP_WINDOW", argv[++i], 1);
         else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // no graphics (gate 1 measurement only): NVN functions stay unused
-        else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) setenv("BDSP_INPUT_SCRIPT", argv[++i], 1);   // "Sekunde:TASTE[+TASTE]:Dauer,..." (nvn_glue.c)
+        else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) setenv("BDSP_INPUT_SCRIPT", argv[++i], 1);   // "second:KEY[+KEY]:duration,..." (nvn_glue.c)
         else if (!strcmp(argv[i], "--save") && i + 1 < argc) setenv("BDSP_SAVE", argv[++i], 1);   // save folder (default work/recomp/save, see install_save.sh)
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) setenv("BDSP_TIMEOUT", argv[++i], 1);
         else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }

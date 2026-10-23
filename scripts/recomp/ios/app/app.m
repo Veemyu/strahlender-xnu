@@ -157,7 +157,7 @@ static void ImportSave(void) {
     }
 }
 
-#pragma mark - Messzeilen
+#pragma mark - Measurement lines
 
 static double FootprintMiB(void) {
     task_vm_info_data_t v;

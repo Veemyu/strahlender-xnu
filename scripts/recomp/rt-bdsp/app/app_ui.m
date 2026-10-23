@@ -449,7 +449,7 @@ static void key_script_load(void) {
         char name[32] = "";
         if (sscanf(tok, "%lf:%31[^:]:%lf", &at, name, &len) < 2) continue;
         SDL_Scancode sc = SDL_GetScancodeFromName(name);
-        if (sc == SDL_SCANCODE_UNKNOWN) { fprintf(stderr, "[app] Tastenskript: unbekannte Taste %s\n", name); continue; }
+        if (sc == SDL_SCANCODE_UNKNOWN) { fprintf(stderr, "[app] Key script: unknown key %s\n", name); continue; }
         g_ks[g_nks++] = (KeyStep){at, len, sc, false};
     }
     fprintf(stderr, "[app] Key script with %d steps\n", g_nks);

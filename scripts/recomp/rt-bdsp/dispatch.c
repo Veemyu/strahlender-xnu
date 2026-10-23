@@ -17,7 +17,7 @@ typedef struct { const uint64_t *addrs; const GuestFn *fns; uint64_t count, lo, 
 static FnTable tables[4];
 volatile int g_fnprof;
 
-// ---- HLE-Slots: Scheinadressen HLE_BASE + 16 * i
+// ---- HLE slots: fake addresses HLE_BASE + 16 * i
 #define MAX_HLE 4096
 static struct { char *name; HostFn fn; uint64_t calls, ncall; } hle_slots[MAX_HLE];
 static int hle_count;
@@ -368,13 +368,13 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     (void)ctx;
     static volatile int once;
     if (sig != SIGTRAP && __atomic_exchange_n(&once, 1, __ATOMIC_SEQ_CST)) { for (;;) pause(); }
-    LOG("\n*** Signal %d bei Hostadresse %p\n", sig, si->si_addr);
+    LOG("\n*** Signal %d at host address %p\n", sig, si->si_addr);
     void *bt[48];
     int n = backtrace(bt, 48);
     char **syms = backtrace_symbols(bt, n);
     for (int i = 0; i < n; i++) LOG("  %s\n", syms ? syms[i] : "?");
     rt_fatal_trace();
-    bdsp_fatal_report("Absturz im Gastcode (Signal)", 139);
+    bdsp_fatal_report("Crash in guest code (signal)", 139);
     for (;;) pause();
 }
 

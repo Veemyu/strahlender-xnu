@@ -206,7 +206,7 @@ int maxwell_dbg_reg;
 // ---- Input (nn::hid): keyboard from the window and a test script feed the Npad state (pattern: runtime/hle/input.c of the clone).
 // The SDK functions GetNpadState(s)/GetNpadStyleSet are replaced by host functions; the hid service stays responsible for connection/activation.
 // Keys: Enter/Space/K = A, Backspace/J = B, X, Y, arrow keys and WASD = D-pad, Q/E = L/R, P = Plus, O = Minus.
-// Testskript (--input-script / BDSP_INPUT_SCRIPT): "Sekunde:TASTE[+TASTE]:Dauer, ..." ab Prozessstart, z. B. "30:A:0.3,34:A+DOWN:0.2".
+// Test script (--input-script / BDSP_INPUT_SCRIPT): "second:KEY[+KEY]:duration, ..." from the process start, e.g. "30:A:0.3,34:A+DOWN:0.2".
 enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
 static const char *const pad_names[16] = {"A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS", "MINUS", "LEFT", "UP", "RIGHT", "DOWN"};
 static _Atomic uint64_t key_buttons;

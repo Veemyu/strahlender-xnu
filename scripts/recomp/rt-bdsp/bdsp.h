@@ -14,7 +14,7 @@
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #define MAKE_RESULT(module, desc) ((uint32_t)(((module) & 0x1FF) | ((desc) << 9)))
 
-// ---- Ergebniscodes des Kernels (Horizon)
+// ---- Result codes of the kernel (Horizon)
 #undef R_OK  // collides with <unistd.h> (access mode); here it is the Horizon success code
 #define R_OK 0
 #define R_TIMEOUT 0xEA01
@@ -46,7 +46,7 @@
 #define STACK_SIZE   0x0020000000ull   // 512 MiB guest stack region
 #define HEAP_BASE    0x70C0000000ull
 #define HEAP_MAX     0x00D0000000ull   // 3.25 GiB for SetHeapSize
-#define ALIAS_BASE   0x7190000000ull   // Alias-Region: Ziel von MapPhysicalMemory/MapMemory
+#define ALIAS_BASE   0x7190000000ull   // alias region: target of MapPhysicalMemory/MapMemory
 #define ALIAS_SIZE   0x0190000000ull   // 6,25 GiB
 #define APP_MEMORY   0xCD500000ull
 #define HEAP_REPORT  HEAP_MAX
@@ -131,7 +131,7 @@ uint32_t kernel_new_handle(KObject *o);
 void kernel_signal(KObject *o);   // caller holds g_klock
 KEvent *kernel_create_event_pair(uint32_t *writable, uint32_t *readable);
 KSharedMem *kernel_create_shared_memory(uint64_t size, void (*on_map)(KSharedMem *), uint32_t *handle);
-void hid_idle_tick(void);   // services.c: leerer Touch-Sample je Vsync im HID-Gemeinsamspeicher
+void hid_idle_tick(void);   // services.c: empty touch sample per vsync in the HID shared memory
 void hid_shmem_unmapped(uint64_t addr);   // services.c: the guest unmaps the shared memory (UnmapSharedMemory): no more samples written there
 KThread *kernel_current_thread(void);
 Cpu *kernel_current_cpu(void);
@@ -236,7 +236,7 @@ void watch_add(uint64_t addr, const char *name);
 void gate_report(FILE *f);
 extern volatile uint64_t g_watch_hits;
 
-// Dienste
+// Services
 int hle_current_slot(void);
 const char *hle_slot_name(int i);
 int hle_unimpl_report(FILE *f);
