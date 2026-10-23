@@ -5,6 +5,7 @@
 #include <TargetConditionals.h>
 #endif
 #include <errno.h>
+#include <malloc/malloc.h>
 #include <mach/mach.h>
 #include <signal.h>
 #include <sys/mman.h>
@@ -72,6 +73,38 @@ static long rss_now_mib(void) {
     if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &cnt) != KERN_SUCCESS) return -1;
     return (long)(info.resident_size >> 20);
 }
+// (diagnostics, BDSP_MEM_REPORT=1) dirty and swapped memory per VM tag; the guest window is listed apart. The footprint
+// (what iOS kills for) counts dirty + swapped pages and GPU allocations.
+static void mem_report(void) {
+    uint64_t dirty[256] = {0}, swapped[256] = {0}, guest_dirty = 0, big_dirty = 0;
+    vm_address_t addr = 0;
+    natural_t depth = 0;
+    for (;;) {
+        vm_size_t size = 0;
+        struct vm_region_submap_info_64 info;
+        mach_msg_type_number_t cnt = VM_REGION_SUBMAP_INFO_COUNT_64;
+        if (vm_region_recurse_64(mach_task_self(), &addr, &size, &depth, (vm_region_recurse_info_t)&info, &cnt) != KERN_SUCCESS) break;
+        if (info.is_submap) { depth++; continue; }
+        uint64_t d = (uint64_t)info.pages_dirtied * vm_page_size, s = (uint64_t)info.pages_swapped_out * vm_page_size;
+        dirty[info.user_tag & 255] += d; swapped[info.user_tag & 255] += s;
+#ifdef BDSP_COMPACT_BASE
+        if (addr >= BDSP_COMPACT_BASE && addr < BDSP_COMPACT_BASE + (6ull << 30)) guest_dirty += d + s;
+#endif
+        if (d >= (64ull << 20)) { big_dirty += d; printf("[mem]   region %llx +%llu MiB tag %u dirty %llu MiB\n", (unsigned long long)addr, (unsigned long long)(size >> 20), info.user_tag, (unsigned long long)(d >> 20)); }
+        addr += size;
+    }
+    struct task_vm_info vmi; mach_msg_type_number_t vn = TASK_VM_INFO_COUNT;
+    task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmi, &vn);
+    printf("[mem] footprint %llu MiB, internal %llu, compressed %llu, guest window dirty %llu MiB, regions >= 64 MiB %llu MiB; by tag (MiB dirty+swapped):",
+           (unsigned long long)(vmi.phys_footprint >> 20), (unsigned long long)(vmi.internal >> 20), (unsigned long long)(vmi.compressed >> 20),
+           (unsigned long long)(guest_dirty >> 20), (unsigned long long)(big_dirty >> 20));
+    for (int t = 0; t < 256; t++) if ((dirty[t] + swapped[t]) >> 20) printf(" %d=%llu", t, (unsigned long long)((dirty[t] + swapped[t]) >> 20));
+    printf("\n");
+    malloc_statistics_t ms;
+    malloc_zone_statistics(NULL, &ms);
+    printf("[mem] malloc in use %zu MiB (%u blocks), reserved %zu MiB\n", ms.size_in_use >> 20, ms.blocks_in_use, ms.size_allocated >> 20);
+}
+
 static long rss_peak_mib(void) { struct rusage ru; getrusage(RUSAGE_SELF, &ru); return (long)(ru.ru_maxrss >> 20); }
 
 // ---- rtld replacement: nn::init::Start calls x2 after nnosInitialize (initialisation of the SDK module) and x3 before nnMain (main)
@@ -187,7 +220,8 @@ static uint64_t cpu_cal_us(void) {
 // Supervision: time limit, guest end, crash report, progress lines
 static void *monitor_loop(void *arg) {
     (void)arg;
-    uint64_t last_progress = 0, last_perf = 0;
+    uint64_t last_progress = 0, last_perf = 0, last_mem = 0;
+    const int mem_rep = getenv("BDSP_MEM_REPORT") != NULL;
     const char *why = "time limit";
     const int perf_log = getenv("BDSP_PERF_LOG") != NULL || g_count_n > 0;
     if (perf_log) pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);   // stay on a performance core: the calibration must see the clock
@@ -208,6 +242,7 @@ static void *monitor_loop(void *arg) {
             LOG("[perf] %.0f s frames %llu cpu_ms %lld gc_suspends %llu gc_resumes %llu rss %ld MiB cal_us %llu fn%s\n", secs, (unsigned long long)renderer_present_count(),
                 cpu_ms, (unsigned long long)g_suspends, (unsigned long long)g_resumes, rss_now_mib(), (unsigned long long)cpu_cal_us(), fns);
         }
+        if (mem_rep && (uint64_t)secs >= last_mem + (uint64_t)(atoi(getenv("BDSP_MEM_REPORT")) > 0 ? atoi(getenv("BDSP_MEM_REPORT")) : 4)) { last_mem = (uint64_t)secs; mem_report(); }
         if ((uint64_t)secs >= last_progress + 10) {
             last_progress = (uint64_t)secs;
             LOG("[progress] %.0f s, Threads %d, RSS %ld MiB\n", secs, kernel_thread_count(), rss_now_mib());

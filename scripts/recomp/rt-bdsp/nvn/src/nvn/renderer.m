@@ -717,9 +717,13 @@ static int cbuf_base = 3, tex_base = 8;
 
 static id<MTLBuffer> ring;
 static uint64_t ring_off;
-#define RING_SIZE (64u << 20)
-#define RING_POOL_MAX 12
-static struct { id<MTLBuffer> buf; uint64_t seq; } ring_retired[RING_POOL_MAX];  // seq: last command buffer that may read it
+#define RING_POOL_CAP 12
+// BDSP_RING_MB (default 64) sizes a ring, BDSP_RING_POOL (default 12, 0 = no reuse) bounds the retired ones kept for reuse
+static uint64_t ring_size_mb(void) { static uint64_t v; if (!v) { const char *e = getenv("BDSP_RING_MB"); v = e && atoi(e) > 0 ? (uint64_t)atoi(e) : 64; } return v; }
+static int ring_pool_max(void) { static int v = -1; if (v < 0) { const char *e = getenv("BDSP_RING_POOL"); v = e && atoi(e) > 0 ? (atoi(e) < RING_POOL_CAP ? atoi(e) : RING_POOL_CAP) : RING_POOL_CAP; } return v; }
+#define RING_SIZE (ring_size_mb() << 20)
+#define RING_POOL_MAX ring_pool_max()
+static struct { id<MTLBuffer> buf; uint64_t seq; } ring_retired[RING_POOL_CAP];  // seq: last command buffer that may read it
 static int ring_nretired;
 
 static uint64_t ring_alloc_skip(const void *data, uint64_t size, uint64_t skip);
