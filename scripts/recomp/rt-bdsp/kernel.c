@@ -9,6 +9,7 @@
 #endif
 #include <sched.h>
 #include <sys/mman.h>
+#include <sys/sysctl.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -123,6 +124,19 @@ static Region regions[2048];
 static int nregions;
 static uint64_t heap_size;
 static uint64_t phys_mapped, phys_peak;  // bytes mapped by MapPhysicalMemory (current, peak)
+
+// Application memory reported to the SDK (GetInfo 6/21). The game sizes its own heaps and caches from it, so on a phone with 4 GiB
+// of RAM a smaller figure is what keeps the field load below the system's page shortage (iPhone 11 Pro Max: killed at 1.98 GiB, stable
+// at 1.6 GiB; measured only on that phone). BDSP_APPMEM (hex bytes) overrides; devices with 5 GiB or more keep the full figure.
+static uint64_t app_memory(void) {
+    if (getenv("BDSP_APPMEM")) return strtoull(getenv("BDSP_APPMEM"), NULL, 16);
+#ifdef BDSP_COMPACT_BASE
+    uint64_t ram = 0;
+    size_t len = sizeof ram;
+    if (sysctlbyname("hw.memsize", &ram, &len, NULL, 0) == 0 && ram < (5ull << 30)) return 0x66000000ull;
+#endif
+    return APP_MEMORY;
+}
 static uint64_t phys_lo, phys_hi;        // bounding range of all MapPhysicalMemory mappings (for the Metal buffer of the NVN layer)
 uint64_t g_phys_unmaps;                  // number of UnmapPhysicalMemory calls: afterwards wrapped pages (Metal) point at discarded pages
 void kernel_phys_range(uint64_t *lo, uint64_t *hi) { *lo = phys_lo; *hi = phys_hi; }
@@ -746,7 +760,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         case 3: v = getenv("BDSP_ALIAS_SIZE") ? strtoull(getenv("BDSP_ALIAS_SIZE"), NULL, 16) : ALIAS_SIZE; break;
         case 4: v = HEAP_BASE; break;
         case 5: v = HEAP_REPORT; break;
-        case 6: case 21: v = getenv("BDSP_APPMEM") ? strtoull(getenv("BDSP_APPMEM"), NULL, 16) : APP_MEMORY; break;  // application memory (A: about 3.2 GB as on the console; B: whatever fits in the alias region)
+        case 6: case 21: v = app_memory(); break;
         case 7: case 22: v = heap_size + 0x4000000; break;
         case 8: case 9: v = 0; break;
         case 11: v = ((uint64_t)arc4random() << 32) | arc4random(); break;
