@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "app.h"
+#include "../mods.h"
 #import "../../app/icon_variants.h"
 
 #define L(s) NSLocalizedString(@s, nil)
@@ -135,6 +136,28 @@ void bdsp_app_alert(const char *title, const char *msg) {
         a.informativeText = [NSString stringWithUTF8String:msg];
         [a addButtonWithTitle:@"OK"];
         [a runModal];
+    }
+}
+
+int bdsp_app_pick_game(const char *const *names, int n, int preselect, int *ask_again) {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        front();
+        NSAlert *a = [NSAlert new];
+        a.messageText = @"Choose a game";
+        a.informativeText = @"A mod runs with a save of its own. The save of Brilliant Diamond is not touched while a mod is active.";
+        NSPopUpButton *pop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 320, 26) pullsDown:NO];
+        [pop addItemWithTitle:@"Brilliant Diamond"];
+        for (int i = 0; i < n; i++) [pop addItemWithTitle:@(names[i])];
+        [pop selectItemAtIndex:preselect >= 0 && preselect <= n ? preselect : 0];
+        a.accessoryView = pop;
+        [a addButtonWithTitle:@"Start"];
+        [a addButtonWithTitle:@"Quit"];
+        a.showsSuppressionButton = YES;
+        a.suppressionButton.title = @"Don't ask again (hold Option at launch to choose)";
+        NSModalResponse r = [a runModal];
+        if (ask_again) *ask_again = a.suppressionButton.state != NSControlStateValueOn;
+        return r == NSAlertFirstButtonReturn ? (int)pop.indexOfSelectedItem : -1;
     }
 }
 
@@ -516,7 +539,9 @@ void menu_apply_window_requests(void *window) {
         @autoreleasepool {
             install_menu();
             SDL_Window *w = window;
-            SDL_SetWindowTitle(w, "BDSP");
+            char title[300] = "BDSP";
+            if (mods_active()) snprintf(title, sizeof title, "BDSP - %s", mods_active()->name);
+            SDL_SetWindowTitle(w, title);
             SDL_SetWindowMinimumSize(w, 640, 360);
             if (g_app.fullscreen && !g_app.headless) SDL_SetWindowFullscreen(w, true);
             if (!g_app.headless) {

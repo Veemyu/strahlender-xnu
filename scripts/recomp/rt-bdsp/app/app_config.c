@@ -1,12 +1,15 @@
 // Paths, configuration and start of the app shell (see app.h, docs/recomp-macapp.md). Plain C, no AppKit.
 #include "app.h"
+#include "../mods.h"
 
+#include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -80,6 +83,79 @@ static void redirect_log_if_gui(void) {
     dup2(fileno(stdout), 2);
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
+}
+
+// ---- Mods: <home>/mods (BDSP_MODS_DIR, "mods =" in config.ini) holds mod folders (<name>/romfs, <name>/exefs). BDSP_MOD or --mod <name|none>
+// chooses without a dialog. Otherwise, with at least one mod, a dialog at launch asks what to start; "don't ask again" keeps the last choice
+// (Option held at launch asks again). The active mod gets a save folder of its own (<save>/mods/<name>) and g_app.save points there from then
+// on, so backups, import and reset only ever touch the mod's save.
+static int pref_string(const char *key, char *out, size_t n) {
+    CFStringRef k = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    CFPropertyListRef v = CFPreferencesCopyAppValue(k, kCFPreferencesCurrentApplication);
+    CFRelease(k);
+    int ok = v && CFGetTypeID(v) == CFStringGetTypeID() && CFStringGetCString(v, out, (CFIndex)n, kCFStringEncodingUTF8);
+    if (v) CFRelease(v);
+    return ok;
+}
+
+static void pref_set(const char *key, CFTypeRef value) {
+    CFStringRef k = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    CFPreferencesSetAppValue(k, value, kCFPreferencesCurrentApplication);
+    CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
+    CFRelease(k);
+}
+
+static void choose_mod(const char *mods_cfg, int argc, char **argv) {
+    char def[1200], dir[1100];
+    snprintf(def, sizeof def, "%s/mods", g_app.home);
+    pick_path(dir, sizeof dir, "BDSP_MODS_DIR", mods_cfg, def);
+    mkdir_p(dir);
+    setenv("BDSP_MODS_DIR", dir, 1);
+    ModInfo list[MODS_MAX];
+    int n = mods_scan(dir, list, MODS_MAX);
+    const char *want = getenv("BDSP_MOD");
+    for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--mod")) want = argv[i + 1];
+    int pick = -1;   // index in list; -1: the game
+    if (want && *want) {
+        if (strcasecmp(want, "none") && strcasecmp(want, "diamond")) {
+            for (int i = 0; i < n && pick < 0; i++) if (!strcasecmp(list[i].name, want)) pick = i;
+            if (pick < 0) {
+                char msg[2048];
+                snprintf(msg, sizeof msg, "There is no mod \"%s\" in %s (%d found).", want, dir, n);
+                bdsp_app_alert("BDSP: mod not found", msg);
+                exit(2);
+            }
+        }
+    } else if (n > 0 && !g_app.headless) {
+        char last[256] = "";
+        pref_string("bdsp_mod", last, sizeof last);
+        int preselect = 0;   // 0: the game, i + 1: list[i]
+        for (int i = 0; i < n; i++) if (!strcmp(list[i].name, last)) preselect = i + 1;
+        CFPropertyListRef ask_pref = CFPreferencesCopyAppValue(CFSTR("bdsp_mod_ask"), kCFPreferencesCurrentApplication);
+        int ask = !(ask_pref && CFGetTypeID(ask_pref) == CFBooleanGetTypeID() && !CFBooleanGetValue(ask_pref));
+        if (ask_pref) CFRelease(ask_pref);
+        if (!ask && (CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState) & kCGEventFlagMaskAlternate)) ask = 1;
+        int choice = preselect;
+        if (ask) {
+            const char *names[MODS_MAX];
+            for (int i = 0; i < n; i++) names[i] = list[i].name;
+            int again = 1;
+            choice = bdsp_app_pick_game(names, n, preselect, &again);
+            if (choice < 0) exit(0);
+            pref_set("bdsp_mod_ask", again ? kCFBooleanTrue : kCFBooleanFalse);
+        }
+        pick = choice - 1;
+        CFStringRef v = CFStringCreateWithCString(NULL, pick >= 0 ? list[pick].name : "", kCFStringEncodingUTF8);
+        pref_set("bdsp_mod", v);
+        CFRelease(v);
+    }
+    if (pick >= 0) {
+        if (mods_activate(&list[pick], g_app.save) != 0) {
+            bdsp_app_alert("BDSP: mod", "The save folder of the mod could not be created.");
+            exit(2);
+        }
+        snprintf(g_app.save, sizeof g_app.save, "%s", mods_active_save());
+    }
 }
 
 void bdsp_app_init(int argc, char **argv) {
@@ -178,6 +254,7 @@ void bdsp_app_init(int argc, char **argv) {
         fprintf(r == 0 ? stdout : stderr, "%s\n", msg);
         exit(r == 0 ? 0 : 1);
     }
+    choose_mod(cfg_get(keys, vals, n, "mods"), argc, argv);   // may point g_app.save at the save folder of a mod
     // Environment of the runtime (the command-line options override it later)
     setenv("BDSP_ROMFS", g_app.romfs, 1);
     setenv("BDSP_SAVE", g_app.save, 1);

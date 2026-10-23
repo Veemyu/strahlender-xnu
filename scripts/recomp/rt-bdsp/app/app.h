@@ -40,6 +40,9 @@ void bdsp_save_dir(char *out, size_t n);                               // <save>
 void bdsp_app_restart(void) __attribute__((noreturn));
 // Message as a window (only if not headless), otherwise stderr only
 void bdsp_app_alert(const char *title, const char *msg);
+// Dialog "Choose a game" (app_ui.m): the game or one of n mods. Returns 0 for the game, i + 1 for names[i], -1 for quit.
+// preselect is an index in the same numbering; *ask_again is set from the "don't ask again" box.
+int bdsp_app_pick_game(const char *const *names, int n, int preselect, int *ask_again);
 
 extern volatile int g_bdsp_paused;   // services_gfx.c: stops the vsync event
 extern volatile int g_bdsp_fps;      // services_gfx.c: frame rate 30/60/120
