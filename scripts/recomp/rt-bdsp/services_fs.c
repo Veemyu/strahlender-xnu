@@ -8,7 +8,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <strings.h>
+
 #include "bdsp.h"
+#include "mods.h"
 
 void ipc_note(const char *svc, uint32_t cmd, int unhandled);
 
@@ -83,6 +86,85 @@ static RDir *scan(const char *path, const char *name, RDir *parent, int depth, i
     if (dir->ndirs) qsort(dir->dirs, dir->ndirs, sizeof *dir->dirs, by_name_dir);
     if (dir->nfiles) qsort(dir->files, dir->nfiles, sizeof *dir->files, by_name_file);
     return dir;
+}
+
+// ------------------------------------------------------------------ Mod overlay (layered over the game's RomFS)
+// The tree of the active mod's romfs/ replaces files of the same path and adds new ones, like Atmosphere's layeredfs and the
+// mod loaders of Ryujinx and yuzu. Names match ignoring case (Switch mods are unpacked on case-insensitive file systems); the
+// game's own spelling is kept, because the game looks files up by exactly that.
+static RDir *g_rom_root;   // the merged tree, kept for fs_resolve_rom_path
+static int mod_replaced, mod_added, mod_case;
+
+static RDir *find_dir_ci(RDir *d, const char *name) {
+    for (int i = 0; i < d->ndirs; i++) if (!strcasecmp(d->dirs[i]->name, name)) return d->dirs[i];
+    return NULL;
+}
+static RFile *find_file_ci(RDir *d, const char *name) {
+    for (int i = 0; i < d->nfiles; i++) if (!strcasecmp(d->files[i]->name, name)) return d->files[i];
+    return NULL;
+}
+static int count_files(const RDir *d) {
+    int n = d->nfiles;
+    for (int i = 0; i < d->ndirs; i++) n += count_files(d->dirs[i]);
+    return n;
+}
+
+static void merge_dir(RDir *base, RDir *mod, int top) {
+    for (int i = 0; i < mod->nfiles; i++) {
+        RFile *f = mod->files[i];
+        RFile *b = top ? NULL : find_file_ci(base, f->name);
+        if (top) {   // README, LICENSE and the like next to Data/ are not part of the RomFS
+            free(f->name); free(f->path); free(f);
+        } else if (b) {
+            if (strcmp(b->name, f->name)) mod_case++;
+            free(b->path);
+            b->path = f->path;
+            b->size = f->size;
+            free(f->name); free(f);
+            mod_replaced++;
+        } else {
+            f->parent = base;
+            base->files = realloc(base->files, sizeof *base->files * (size_t)(base->nfiles + 1));
+            base->files[base->nfiles++] = f;
+            mod_added++;
+        }
+    }
+    for (int i = 0; i < mod->ndirs; i++) {
+        RDir *c = mod->dirs[i], *b = find_dir_ci(base, c->name);
+        if (b) {
+            if (strcmp(b->name, c->name)) mod_case++;
+            merge_dir(b, c, 0);
+        } else {
+            c->parent = base;
+            base->dirs = realloc(base->dirs, sizeof *base->dirs * (size_t)(base->ndirs + 1));
+            base->dirs[base->ndirs++] = c;
+            mod_added += count_files(c);
+        }
+    }
+    if (base->ndirs) qsort(base->dirs, base->ndirs, sizeof *base->dirs, by_name_dir);
+    if (base->nfiles) qsort(base->files, base->nfiles, sizeof *base->files, by_name_file);
+    free(mod->files); free(mod->dirs); free(mod->name); free(mod->path); free(mod);   // its entries moved to base or were freed
+}
+
+int fs_resolve_rom_path(const char *rel, char *out, size_t n) {
+    RDir *d = __atomic_load_n(&g_rom_root, __ATOMIC_ACQUIRE);
+    if (!d || !rel) return 0;
+    char buf[1024];
+    if (snprintf(buf, sizeof buf, "%s", rel) >= (int)sizeof buf) return 0;
+    for (char *tok = buf, *next; tok && *tok; tok = next) {
+        next = strchr(tok, '/');
+        if (next) *next++ = 0;
+        if (!*tok) continue;
+        if (next && *next) {
+            if (!(d = find_dir_ci(d, tok))) return 0;
+        } else {
+            RFile *f = find_file_ci(d, tok);
+            if (!f) return 0;
+            snprintf(out, n, "%s", f->path);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static uint32_t romfs_hash(uint32_t parent, const char *name, uint32_t len) {
@@ -164,6 +246,16 @@ static void romfs_build_index(void) {
     int total = 0;
     RDir *root = scan(g_romfs_dir, "", NULL, 0, &total);
     if (!root) rt_fatal("RomFS folder %s not readable (BDSP_ROMFS)\n", g_romfs_dir);
+    const ModInfo *mod = mods_active();
+    if (mod && mod->romfs[0]) {
+        int mod_total = 0;
+        RDir *over = scan(mod->romfs, "", NULL, 0, &mod_total);
+        if (!over) rt_fatal("RomFS folder %s of the mod \"%s\" not readable\n", mod->romfs, mod->name);
+        merge_dir(root, over, 1);
+        total += mod_added;
+        LOG("[fs] mod \"%s\": %d game files replaced, %d files added (%d files in the mod)%s\n", mod->name, mod_replaced, mod_added,
+            mod_total, mod_case ? ", some names matched ignoring case" : "");
+    }
     nfiles_total = total;
     count_dirs(root);
     dcount = hash_count((uint32_t)ndirs_total);
@@ -197,6 +289,7 @@ static void romfs_build_index(void) {
     rom.sorted = filelist;
     rom.nfiles = nfilelist;
     qsort(rom.sorted, rom.nfiles, sizeof *rom.sorted, by_off);
+    __atomic_store_n(&g_rom_root, root, __ATOMIC_RELEASE);
     LOG("[fs] RomFS index: %d files, %d folders, data %llu MiB, tables %llu KiB (virtual, no image)\n", nfiles_total, ndirs_total,
         (unsigned long long)(data_end >> 20), (unsigned long long)(rom.tables_size >> 10));
     pthread_mutex_unlock(&rom_lock);

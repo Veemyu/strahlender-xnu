@@ -16,6 +16,7 @@
 #endif
 
 #include "bdsp.h"
+#include "mods.h"
 #ifdef BDSP_APP
 #include "app/app.h"
 #endif
@@ -316,6 +317,7 @@ int main(int argc, char **argv) {
     int prio = 44;
     FILE *f = fopen(npdm, "rb");
     if (f) {
+        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) setenv("BDSP_MOD", argv[++i], 1);   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
         uint8_t meta[0x80];
         if (fread(meta, 1, sizeof meta, f) == sizeof meta && !memcmp(meta, "META", 4)) {
             prio = meta[0xE];
@@ -323,6 +325,11 @@ int main(int argc, char **argv) {
             stack_size = *(uint32_t *)(meta + 0x1C);
             uint32_t aci0 = *(uint32_t *)(meta + 0x70);
             uint8_t aci[0x20];
+    if (!mods_active()) {   // BDSP_MODS_DIR + BDSP_MOD (tests, Linux); the app shells choose the mod with a dialog before this point
+        int sel = mods_select_from_env(getenv("BDSP_SAVE") ? getenv("BDSP_SAVE") : g_save_dir);
+        if (sel < 0) return 2;
+        if (sel > 0) setenv("BDSP_SAVE", mods_active_save(), 1);   // the unmodified game's save folder stays untouched
+    }
             if (!fseek(f, aci0, SEEK_SET) && fread(aci, 1, sizeof aci, f) == sizeof aci && !memcmp(aci, "ACI0", 4)) memcpy(&g_program_id, aci + 0x10, 8);
         }
         fclose(f);

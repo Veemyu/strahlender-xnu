@@ -18,6 +18,8 @@ void ipc_return_object(IpcResp *resp, Service *s) { resp->objects[resp->nobjects
 void rt_fatal(const char *fmt, ...) { fprintf(stderr, "FATAL: %s", fmt); exit(3); }
 void kernel_report(FILE *f) { (void)f; }
 KThread *kernel_current_thread(void) { return NULL; }
+uint64_t rt_now_ns(void) { return 0; }
+void user_id_load(const char *save_dir) { (void)save_dir; }
 
 static int fails;
 #define CHECK(x) do { if (!(x)) { printf("ERROR line %d: %s\n", __LINE__, #x); fails++; } } while (0)

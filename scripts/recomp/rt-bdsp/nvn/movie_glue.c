@@ -20,6 +20,7 @@
 #include "hle.h"
 
 extern const char *g_romfs_dir;
+int fs_resolve_rom_path(const char *rel, char *out, size_t n);   // services_fs.c: host path in the merged tree (active mod first)
 uint64_t loader_find_symbol(const char *name);
 #define guest_sym loader_find_symbol
 
@@ -244,7 +245,7 @@ static void ex_fill(Extractor *e) {
 static void ex_open(Extractor *e, const char *path, Cpu *c) {
     const char *rel = path && strstr(path, ":/") ? strstr(path, ":/") + 2 : path;
     char host[1024];
-    snprintf(host, sizeof host, "%s/%s", g_romfs_dir, rel ? rel : "");
+    if (!rel || !fs_resolve_rom_path(rel, host, sizeof host)) snprintf(host, sizeof host, "%s/%s", g_romfs_dir, rel ? rel : "");
     LOG("[movie] open %s -> %s\n", path ? path : "(null)", host);
     if (avformat_open_input(&e->fmt, host, NULL, NULL) < 0 || avformat_find_stream_info(e->fmt, NULL) < 0) {
         LOG("[movie] file not readable: %s\n", host);
