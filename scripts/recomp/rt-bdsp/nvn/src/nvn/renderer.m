@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <sys/sysctl.h>
 #include <TargetConditionals.h>
 #import <Metal/Metal.h>
 #include <mach/mach_time.h>
@@ -718,9 +719,15 @@ static int cbuf_base = 3, tex_base = 8;
 static id<MTLBuffer> ring;
 static uint64_t ring_off;
 #define RING_POOL_CAP 12
-// BDSP_RING_MB (default 64) sizes a ring, BDSP_RING_POOL (default 12, 0 = no reuse) bounds the retired ones kept for reuse
-static uint64_t ring_size_mb(void) { static uint64_t v; if (!v) { const char *e = getenv("BDSP_RING_MB"); v = e && atoi(e) > 0 ? (uint64_t)atoi(e) : 64; } return v; }
-static int ring_pool_max(void) { static int v = -1; if (v < 0) { const char *e = getenv("BDSP_RING_POOL"); v = e && atoi(e) > 0 ? (atoi(e) < RING_POOL_CAP ? atoi(e) : RING_POOL_CAP) : RING_POOL_CAP; } return v; }
+// BDSP_RING_MB (default 64, 16 on devices with less than 5 GiB of RAM) sizes a ring, BDSP_RING_POOL (default 12, 4 on those devices,
+// 0 = no reuse) bounds the retired ones kept for reuse
+static bool small_ram_device(void) {
+    static int v = -1;
+    if (v < 0) { uint64_t ram = 0; size_t len = sizeof ram; v = sysctlbyname("hw.memsize", &ram, &len, NULL, 0) == 0 && ram < (5ull << 30); }
+    return v;
+}
+static uint64_t ring_size_mb(void) { static uint64_t v; if (!v) { const char *e = getenv("BDSP_RING_MB"); v = e && atoi(e) > 0 ? (uint64_t)atoi(e) : small_ram_device() ? 16 : 64; } return v; }
+static int ring_pool_max(void) { static int v = -1; if (v < 0) { const char *e = getenv("BDSP_RING_POOL"); v = e && atoi(e) > 0 ? (atoi(e) < RING_POOL_CAP ? atoi(e) : RING_POOL_CAP) : small_ram_device() ? 4 : RING_POOL_CAP; } return v; }
 #define RING_SIZE (ring_size_mb() << 20)
 #define RING_POOL_MAX ring_pool_max()
 static struct { id<MTLBuffer> buf; uint64_t seq; } ring_retired[RING_POOL_CAP];  // seq: last command buffer that may read it
@@ -769,6 +776,13 @@ static uint64_t ring_alloc_skip(const void *data, uint64_t size, uint64_t skip) 
 static void ring_reset(void) { ring_off = 0; }
 
 // Bind guest memory [addr, addr+size) as a buffer: zero-copy inside the heap, copied otherwise.
+// BDSP_NO_GUEST_BUFFER=1 (experiment): the GPU never sees the buffer over guest memory. On the iPhone the first command buffer that
+// uses it wires the whole range (about 1.5 GiB), which the system cannot compress; skinned meshes and gmem shaders then draw wrong.
+static id<MTLBuffer> gpu_guest_buffer(void) {
+    static int off = -1;
+    if (off < 0) off = getenv("BDSP_NO_GUEST_BUFFER") != NULL;
+    return off ? nil : g_guest_buffer;
+}
 static bool guest_heap_ok(uint64_t addr, uint64_t size) {
     static int off = -1;  // default: copy data through the ring; BDSP_GUEST_BUF=1 uses the wrapped guest memory (see docs/rendering.md: the GPU saw old pages there)
     if (off < 0) off = getenv("BDSP_GUEST_BUF") == NULL;
@@ -1671,7 +1685,7 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
         [ce setBuffer:ring offset:off atIndex:k];
     }
     CST("gmem");
-    if (si->uses_gmem) [ce setBuffer:g_guest_buffer offset:0 atIndex:GMEM_BUFFER_INDEX];
+    if (si->uses_gmem) [ce setBuffer:gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
     CST("textures");
     for (int i = 0; i < si->ntex; i++) {
         ShaderTexture *st_ = &si->tex[i];
@@ -2307,7 +2321,7 @@ static void draw(CmdRec *r, bool indexed) {
     // resources
     bind_cbufs(0, pr->vi);
     bind_cbufs(1, pr->fi);
-    if (pr->vi->uses_gmem) [enc setVertexBuffer:g_guest_buffer offset:0 atIndex:GMEM_BUFFER_INDEX];
+    if (pr->vi->uses_gmem) [enc setVertexBuffer:gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
     static id<MTLBuffer> dbgvs;
     bool dbg_this = maxwell_dbg_vs && (const uint8_t *)(uintptr_t)st.program->stages[0].code_addr == maxwell_dbg_vs;
     if (dbg_this) {
@@ -2315,7 +2329,7 @@ static void draw(CmdRec *r, bool indexed) {
         memset(dbgvs.contents, 0xff, 2 * 64 * 8 * 16);
         [enc setVertexBuffer:dbgvs offset:0 atIndex:DBG_VS_BUFFER_INDEX];
     }
-    if (pr->fi->uses_gmem) [enc setFragmentBuffer:g_guest_buffer offset:0 atIndex:GMEM_BUFFER_INDEX];
+    if (pr->fi->uses_gmem) [enc setFragmentBuffer:gpu_guest_buffer() offset:0 atIndex:GMEM_BUFFER_INDEX];
     id<MTLBuffer> geom_buf = vkey.dbg_pos ? geom_bind(enc, geom.scan) : nil;
     bind_textures(0, pr->vi);
     bind_textures(1, pr->fi);
@@ -2463,7 +2477,7 @@ static void draw(CmdRec *r, bool indexed) {
             if (skip > size) skip = 0;
         }
         if (v.addr && (gpu_streams & (1u << s)) && v.addr >= HEAP_BASE && v.addr + (v.size ? v.size : 16) <= HEAP_BASE + HEAP_MAX && !(v.addr & 3))
-            [enc setVertexBuffer:g_guest_buffer offset:v.addr - HEAP_BASE atIndex:18 + s];
+            [enc setVertexBuffer:gpu_guest_buffer() offset:v.addr - HEAP_BASE atIndex:18 + s];
         else if (v.addr) bind_guest(enc, true, v.addr, size, 18 + s, skip);
         else { static const float zero[4]; [enc setVertexBytes:zero length:16 atIndex:18 + s]; }
     }
