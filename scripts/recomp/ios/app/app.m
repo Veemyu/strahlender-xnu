@@ -15,6 +15,8 @@
 #include <sys/sysctl.h>
 #import <Metal/Metal.h>
 #import "../../app/icon_variants.h"
+#include <strings.h>
+#include "../../rt-bdsp/mods.h"
 
 static BOOL sceneActive;   // state of the scene, set by SceneDelegate
 
@@ -512,13 +514,23 @@ static void *RuntimeThread(void *arg) {
 
 @end
 
-// Called from SceneDelegate as soon as the game view appears: then the CAMetalLayer exists with its size
-static void StartRuntime(void) {
+// Starts the runtime with the game (mod == NULL) or with a mod: the mod's RomFS is merged over the game's and the mod gets a save folder of
+// its own (Saves/mods/<name>). The save of the game is not touched while a mod is active, so a dropped-in SaveData.bin waits (ImportSave)
+// for the next start of the game.
+static void LaunchRuntime(const ModInfo *mod) {
     if (getenv("BDSP_PROBE_FIXED")) ProbeFixedWindows();
     NSString *docs = Documents(), *res = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res"];
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:[docs stringByAppendingPathComponent:@"Shots"] withIntermediateDirectories:YES attributes:nil error:nil];
-    ImportSave();
+    if (mod) {
+        if (mods_activate(mod, [docs stringByAppendingPathComponent:@"Saves"].UTF8String) != 0) {
+            fprintf(stderr, "[mods] cannot start \"%s\"\n", mod->name);
+            return;
+        }
+        setenv("BDSP_SAVE", mods_active_save(), 1);
+    } else {
+        ImportSave();
+    }
     setenv("BDSP_IMG", [res stringByAppendingPathComponent:@"img32"].UTF8String, 0);
     setenv("BDSP_NPDM", [res stringByAppendingPathComponent:@"main.npdm"].UTF8String, 0);
     setenv("BDSP_ROMFS", [docs stringByAppendingPathComponent:@"GameData/romfs"].UTF8String, 0);
@@ -541,6 +553,54 @@ static void StartRuntime(void) {
     pthread_detach(t);
     pthread_create(&st, NULL, StatsLoop, NULL);
     pthread_detach(st);
+}
+
+// Documents/Mods holds mods in the layout of Ryujinx and yuzu (<name>/romfs, <name>/exefs), copied there with the Files app. With at least one
+// mod the app asks at launch what to start; the last choice is preselected. BDSP_MOD=<name|none> (devicectl --environment-variables) skips
+// the dialog for automated runs.
+static ModInfo gMods[MODS_MAX];
+
+// Called from SceneDelegate as soon as the game view appears: then the CAMetalLayer exists with its size
+static void StartRuntime(void) {
+    NSString *modsDir = [Documents() stringByAppendingPathComponent:@"Mods"];
+    [NSFileManager.defaultManager createDirectoryAtPath:modsDir withIntermediateDirectories:YES attributes:nil error:nil];   // visible in the Files app
+    int n = mods_scan(modsDir.UTF8String, gMods, MODS_MAX);
+    const char *want = getenv("BDSP_MOD");
+    if (want && *want) {
+        for (int i = 0; i < n; i++) if (!strcasecmp(gMods[i].name, want)) { LaunchRuntime(&gMods[i]); return; }
+        if (strcasecmp(want, "none") && strcasecmp(want, "diamond")) {
+            fprintf(stderr, "[mods] BDSP_MOD=%s: no such mod in Documents/Mods (%d found)\n", want, n);
+            exit(2);
+        }
+        LaunchRuntime(NULL);
+        return;
+    }
+    if (n == 0) { LaunchRuntime(NULL); return; }
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSString *last = [ud stringForKey:@"bdsp_mod"] ?: @"";
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Choose a game"
+        message:@"A mod runs with a save of its own. The save of Brilliant Diamond is not touched while a mod is active."
+        preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *game = [UIAlertAction actionWithTitle:@"Brilliant Diamond" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+        (void)x;
+        [ud setObject:@"" forKey:@"bdsp_mod"];
+        LaunchRuntime(NULL);
+    }];
+    [a addAction:game];
+    UIAlertAction *preferred = last.length ? nil : game;
+    for (int i = 0; i < n; i++) {
+        const ModInfo *m = &gMods[i];
+        NSString *name = @(m->name);
+        UIAlertAction *act = [UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+            (void)x;
+            [ud setObject:name forKey:@"bdsp_mod"];
+            LaunchRuntime(m);
+        }];
+        [a addAction:act];
+        if ([name isEqualToString:last]) preferred = act;
+    }
+    if (preferred) a.preferredAction = preferred;
+    [gView.window.rootViewController presentViewController:a animated:YES completion:nil];
 }
 
 @implementation SceneDelegate
