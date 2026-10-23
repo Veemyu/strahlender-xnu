@@ -137,7 +137,20 @@ the touch overlay scales with the screen and the safe area. `DEVICE_NAME=<part o
 - The next limit on the phone is memory: with the save in the field the footprint reached 1.9 GiB while loading and iOS ended the app (signal 9) after 28 s.
   Measured with `BDSP_MEM_REPORT=1`: the title screen sits at about 1.3 GiB; entering the game adds about 300 MiB of guest memory within a second (1.05 to
   1.43 GiB), GPU resources are about 340 MiB, and the app is killed at roughly 1.8 to 2.0 GiB. The shader source text (330 MiB of malloc) is freed after compiling now,
-  and `BDSP_RING_MB=16 BDSP_RING_POOL=3` brings the ring buffers to about 50 MiB, but that is not enough yet. Guest memory and render targets are the next items.
+  and the ring buffers default to 16 MiB x 4 on devices with less than 5 GiB of RAM (about 50 MiB instead of 180). The jetsam report says `vm-pageshortage`, i.e. system-wide
+  pressure, not the per-process limit (`os_proc_available_memory` still showed 600 MiB free at the kill, limit about 2.3 GiB with the increased-memory-limit entitlement,
+  which the provisioning profile contains). What made the field load survive is the **application memory the game is told** (`GetInfo` 6/21): 1.6 GiB (`0x66000000`) on
+  devices with less than 5 GiB of RAM instead of 1.98 GiB (measured only on the iPhone 11 Pro Max; `BDSP_APPMEM` overrides); 1.4 GiB is too little (null pointer in the game's allocator after 33 s). With 1.6 GiB the phone stays in
+  the field for more than five minutes; the picture has no regressions, 30 fps hold, and 55 to 60 fps without a cap until the A13 throttles (`thermalState` 2, the calibration loop
+  `cal_us` doubles from about 9300 to 14000 to 25000).
+- **Audio drops out in the field, and the cause is found.** The game keeps delivering sound (the output is fed in real time, about 48 buffers per second, the queue plays 48000
+  samples per second, no interruption or route change is reported), but the sound is gone 5 to 20 s after the field starts. `BDSP_MEM_REPORT=2` shows why: on entering the field
+  the system-wide wired memory jumps from about 1.07 to 2.6 GiB and decompressions rise from about 100 to 10000 to 30000 per second, with 30 to 50 MiB free. The first command
+  buffer that binds the Metal buffer over guest memory (`gmem` shaders, vertex streams written by compute skinning) makes iOS wire the whole range, which the compressor cannot
+  touch, so everything else is squeezed and the audio server of the system starves. With `BDSP_NO_GUEST_BUFFER=1` (the GPU never sees that buffer; the picture breaks as expected)
+  wired stays at 710 to 1060 MiB, decompressions drop to 0 to 300 per second and the sound stays. The GPU needs under 1 MiB of storage buffers in four 16 MiB areas, so the real fix
+  is a small shadow arena for those ranges instead of the whole window (planned, not done). Not the cause: the texture change check, heat or load (the cap of 30 fps does not help),
+  RomFS reads (none slower than 20 ms), the audio session (category `Playback`, no events).
 - `maxBufferLength` is 2 GiB. The envelope of all `MapPhysicalMemory` blocks is 3.5 GiB because small blocks lie far below the main one; all memory pools sit in the
   application chunk from `ORG + 0x8000_0000`, so `metal.m` wraps only that part when the envelope exceeds the limit (2047 MiB; a warning is logged for a pool outside).
 - With that the game runs 90 s (4761 frames, RSS 771 MiB) on the phone. RAM (2.3 GiB available to the app) and the two performance cores are not evaluated yet.

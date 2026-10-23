@@ -52,7 +52,12 @@ n busy host threads (makes rare startup races more likely); `BDSP_XW_SKIP=<mask>
 update, 2 buffer copy, 4 counter report, 8 texture read-back, 16 compute dispatch); `BDSP_XW_GPU_LAG=<n>` lets the worker wait for the GPU frame n
 presentations back; `BDSP_MEM_REPORT=<s>` prints dirty and swapped memory per VM tag, the guest window and malloc every s seconds (default 4); `BDSP_RING_MB=<n>` and
 `BDSP_RING_POOL=<n>` size the vertex/uniform ring buffers (default 64 MiB, up to 12 kept for reuse); `BDSP_KEEP_MSL=1` keeps the shader source text after compiling (freed by default, about 330 MiB per session);
-`BDSP_NVN_MEM_BASE=<hex>` with `BDSP_NVN_MEM_MB` sets the Metal buffer over guest memory by hand. Comparisons need the
+`BDSP_NVN_MEM_BASE=<hex>` with `BDSP_NVN_MEM_MB` sets the Metal buffer over guest memory by hand. `BDSP_MEM_REPORT` also prints the system's compressor activity
+(decompressions, compressions, page-ins per second) and its wired, active, inactive and compressed memory. `BDSP_APPMEM=<hex bytes>` sets the application memory the game is told
+(default 1.6 GiB on devices with less than 5 GiB of RAM in the compact models, otherwise the full figure); `BDSP_RING_MB`/`BDSP_RING_POOL` default to 16 and 4 on those devices.
+`BDSP_NO_GUEST_BUFFER=1` keeps the GPU away from the Metal buffer over guest memory (experiment: skinned meshes and `gmem` shaders draw wrong, the GPU reports errors). Audio: `BDSP_AUDIO_PROBE=1`
+prints per stream the level, DC offset, sample-to-sample activity, whether the queue runs and the sample rate it really plays (no sample data is stored), and on iOS the session category;
+`BDSP_AUDIO_KICK=<s>` stops the audio queues once after s seconds and lets the next write restart them; `BDSP_FS_SLOW_MS=<ms>` logs RomFS reads that take longer. Comparisons need the
 same save, the same script and a cool device; check the screenshots (`BDSP_SCREENSHOT_EVERY`, `BDSP_SHOT_DIR`) before trusting the numbers.
 
 ## 3. Testing with saves
