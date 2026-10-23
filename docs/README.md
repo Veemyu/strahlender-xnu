@@ -35,6 +35,7 @@ a built app is for personal use only. The game's own code runs, so logic, UI and
 | Metal renderer: fidelity, debugging method, performance, frame rate, water | [rendering.md](rendering.md) |
 | Shader translator and offscreen harness | [shaders.md](shaders.md) |
 | Save format, validator, where saves live | [saves.md](saves.md) |
+| Mods (RomFS overlay, a save of their own, what is not supported yet) | [mods.md](mods.md) |
 | QA harness and scenarios | [recomp-qa.md](recomp-qa.md) |
 | Bit-exactness test of the generated C against ARM64 | [recomp-diff.md](recomp-diff.md) |
 | Changes over time | [changelog.md](changelog.md) |
