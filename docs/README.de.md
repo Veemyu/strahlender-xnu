@@ -24,6 +24,7 @@ Saves verhalten sich also wie im Original.
 | Thema | Dokument (englisch) |
 |---|---|
 | macOS-App | [recomp-macapp.md](recomp-macapp.md) |
+| Bildschirmtastatur, Texteingabe, Test-Schalter | [input.md](input.md) (englisch) |
 | iPadOS | [recomp-ios.md](recomp-ios.md) |
 | Linux (Bau und Vulkan, in Arbeit) | [recomp-linux.md](recomp-linux.md) |
 | Ton, App-Symbole | [recomp-audio.md](recomp-audio.md), [recomp-icons.md](recomp-icons.md) |
