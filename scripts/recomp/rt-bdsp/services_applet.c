@@ -165,11 +165,11 @@ static void swkbd_start(LibApplet *a) {
         SwkbdCallbacks cb = {swkbd_ui_submit, swkbd_ui_cancel};
         if (swkbd_ui_open(&p, cb, st) == 0) { st->ui = true; LOG("[am] swkbd: on-screen keyboard open\n"); return; }
     }
-    // Interim policy until a keyboard UI exists: BDSP_SWKBD_TEXT=<text> answers with that text; otherwise the initial text, otherwise "Player".
+    // Automatic answer (scripted runs, no firmware layouts): BDSP_SWKBD_TEXT=<text> answers with that text, otherwise the initial text;
+    // with neither the keyboard is cancelled (no invented default name).
     // Cut to the length limit (ASCII only here); an answer shorter than the minimum is padded with the last character.
     const char *forced = getenv("BDSP_SWKBD_TEXT");
     if (forced) snprintf(st->text, sizeof st->text, "%s", forced);
-    else if (!st->text[0]) snprintf(st->text, sizeof st->text, "Player");
     int maxlen = *(const int32_t *)(c + KC_MAXLEN), minlen = *(const int32_t *)(c + KC_MINLEN);
     if (maxlen > 0 && (int)strlen(st->text) > maxlen) st->text[maxlen] = 0;
     for (int n = (int)strlen(st->text); n > 0 && n < minlen && n < (int)sizeof st->text - 1; n++) st->text[n] = st->text[n - 1], st->text[n + 1] = 0;

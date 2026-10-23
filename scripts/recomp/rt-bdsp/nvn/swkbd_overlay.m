@@ -177,7 +177,6 @@ static void preview_check(void) {
         snprintf(p.header, sizeof p.header, "Enter your name");
         snprintf(p.sub, sizeof p.sub, "Up to 12 characters");
         snprintf(p.guide, sizeof p.guide, "Name");
-        snprintf(p.initial, sizeof p.initial, "Lucas");
         SwkbdCallbacks cb = {0};
         swkbd_ui_open(&p, cb, NULL);
     }
