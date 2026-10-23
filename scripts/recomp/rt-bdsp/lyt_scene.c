@@ -178,9 +178,10 @@ void lytinst_free(LytInst *in) {
     free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->pose); free(in);
 }
 
-const LytLayout *lytinst_layout(const LytInst *in) { return in->lay; }
+const LytLayout *lytinst_layout(const LytInst *in) { return in ? in->lay : NULL; }
 
 LytInst *lytinst_part(LytInst *in, const char *path) {
+    if (!in) return NULL;
     char buf[256];
     snprintf(buf, sizeof buf, "%s", path);
     for (char *tok = strtok(buf, "/"); tok && in; tok = strtok(NULL, "/")) {
@@ -200,6 +201,7 @@ static void drop_play(LytInst *in, const char *tag) {
 }
 
 int lytinst_set_anim(LytInst *in, const char *tag, float frame) {
+    if (!in) return 0;
     const LytAnim *a = lytbank_anim(in->bank, in->lay, tag);
     if (!a) return 0;
     drop_play(in, tag);
@@ -210,14 +212,16 @@ int lytinst_set_anim(LytInst *in, const char *tag, float frame) {
     return 1;
 }
 
-void lytinst_clear_anims(LytInst *in) { in->nplay = 0; }
+void lytinst_clear_anims(LytInst *in) { if (in) in->nplay = 0; }
 
 float lytinst_anim_frames(LytInst *in, const char *tag) {
+    if (!in) return 0;
     const LytAnim *a = lytbank_anim(in->bank, in->lay, tag);
     return a ? (float)a->frames : 0;
 }
 
 void lytinst_default_state(LytInst *in) {
+    if (!in) return;
     static const struct { const char *tag; float frame; } st[] = {{"UnFocusKey", -1}, {"UnFocusTouch", -1}, {"Alpha", 10}, {"Wait", -1}};
     for (unsigned i = 0; i < sizeof st / sizeof *st; i++) {
         float f = st[i].frame < 0 ? lytinst_anim_frames(in, st[i].tag) : st[i].frame;
@@ -228,6 +232,7 @@ void lytinst_default_state(LytInst *in) {
 }
 
 void lytinst_set_text(LytInst *in, const char *pane, const char *utf8) {
+    if (!in) return;
     int i = lyt_layout_find_pane(in->lay, pane);
     if (i < 0) return;
     free(in->text[i]);
@@ -235,17 +240,19 @@ void lytinst_set_text(LytInst *in, const char *pane, const char *utf8) {
 }
 
 void lytinst_set_visible(LytInst *in, const char *pane, int visible) {
+    if (!in) return;
     int i = lyt_layout_find_pane(in->lay, pane);
     if (i >= 0) in->vis_ov[i] = visible ? 2 : 1;
 }
 
 void lytinst_set_color(LytInst *in, const char *pane, uint8_t r, uint8_t g, uint8_t b) {
+    if (!in) return;
     int i = lyt_layout_find_pane(in->lay, pane);
     if (i < 0) return;
     in->col[i][0] = r; in->col[i][1] = g; in->col[i][2] = b; in->col[i][3] = 255;
 }
 
-void lytinst_set_alpha(LytInst *in, float alpha) { in->alpha = alpha; }
+void lytinst_set_alpha(LytInst *in, float alpha) { if (in) in->alpha = alpha; }
 
 // ---- scene ----------------------------------------------------------------------------------------------------
 

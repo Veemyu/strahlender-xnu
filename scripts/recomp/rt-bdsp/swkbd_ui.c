@@ -30,6 +30,7 @@ typedef struct {
     Key keys[MAX_KEYS];
     int nkeys;
     int ok;
+    int fallback;                    // no layout files: keys and plates are our own simple drawing
 } Screen;
 
 static const char *const k_archives[SCR_COUNT] = {"Qwerty", "Sign", "Numeric"};
@@ -53,7 +54,7 @@ static const char *const k_numeric = "1234567890";
 
 static struct {
     pthread_mutex_t lock;
-    int inited, active, screen_built;
+    int inited, active, screen_built, display;
     char root[1024];
     Screen scr[SCR_COUNT];
     SwkbdParams p;
@@ -257,21 +258,33 @@ static int build_screen(int si) {
     return 0;
 }
 
+static int fb_build_screen(int si);
+
 static int ensure_built(void) {
     if (G.inited) return G.screen_built ? 0 : -1;
     G.inited = 1;
+    snprintf(G.ok_label, sizeof G.ok_label, "OK");
+    snprintf(G.space_label, sizeof G.space_label, "Space");
     const char *root = getenv("BDSP_FIRMWARE_DATA");
-    if (!root || !*root) return -1;
-    snprintf(G.root, sizeof G.root, "%s", root);
-    load_labels();
-    for (int i = 0; i < SCR_COUNT; i++) build_screen(i);
+    if (root && *root && !getenv("BDSP_SWKBD_SIMPLE")) {
+        snprintf(G.root, sizeof G.root, "%s", root);
+        load_labels();
+        for (int i = 0; i < SCR_COUNT; i++) build_screen(i);
+    }
+    if (!G.scr[SCR_QWERTY].ok) {     // no (readable) firmware layouts: simple keyboard of our own
+        for (int i = 0; i < SCR_COUNT; i++) fb_build_screen(i);
+        trace("simple keyboard", "no firmware layouts");
+    }
     G.screen_built = G.scr[SCR_QWERTY].ok;
     return G.screen_built ? 0 : -1;
 }
 
+// A renderer announces itself (the Metal overlay does); without one an open keyboard would be invisible and block the game.
+void swkbd_ui_set_display(int on) { LOCK(); G.display = on; pthread_mutex_unlock(&G.lock); }
+
 int swkbd_ui_available(void) {
     LOCK();
-    int r = ensure_built() == 0;
+    int r = G.display && ensure_built() == 0;
     pthread_mutex_unlock(&G.lock);
     return r;
 }
@@ -544,6 +557,140 @@ void swkbd_ui_key(int key) {
     pthread_mutex_unlock(&G.lock);
 }
 
+
+// ---- simple keyboard without layout files (same logic, own drawing)
+static void fb_key(Screen *s, int kind, const char *name, float cx, float cy, float w, float h) {
+    if (s->nkeys >= MAX_KEYS) return;
+    Key *k = &s->keys[s->nkeys++];
+    memset(k, 0, sizeof *k);
+    k->kind = kind;
+    snprintf(k->name, sizeof k->name, "%s", name);
+    k->r[0] = cx - w / 2; k->r[1] = cy - h / 2; k->r[2] = cx + w / 2; k->r[3] = cy + h / 2;
+    snprintf(k->tag, sizeof k->tag, "UnFocusKey");
+    k->t = 1e9f;
+}
+
+static int fb_build_screen(int si) {
+    Screen *s = &G.scr[si];
+    memset(s, 0, sizeof *s);
+    s->fallback = 1;
+    const char *lay = getenv("BDSP_SWKBD_LAYOUT");
+    int li = 0;
+    for (unsigned q = 0; q < sizeof k_layouts / sizeof *k_layouts; q++) if (lay && !strcmp(lay, k_layouts[q].id)) li = (int)q;
+    if (si == SCR_NUMERIC) {
+        static const char *const nm[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "-", "0", "."};
+        for (int i = 0; i < 12; i++) {
+            fb_key(s, K_CHAR, "num", 452 + 188 * (i % 3), 382 + 64 * (i / 3), 184, 60);
+            snprintf(s->keys[s->nkeys - 1].normal, 8, "%s", nm[i]);
+            snprintf(s->keys[s->nkeys - 1].shifted, 8, "%s", nm[i]);
+        }
+        fb_key(s, K_BS, "bs", 982, 382, 116, 60);
+        fb_key(s, K_ENTER, "enter", 982, 510, 116, 188);
+    } else {
+        const char *table = si == SCR_QWERTY ? k_layouts[li].normal : k_sign;
+        for (int i = 0; i < 44; i++) {
+            Key tmp;
+            memset(&tmp, 0, sizeof tmp);
+            u8_nth(table, i, tmp.normal);
+            if (tmp.normal[0] == 1 || !tmp.normal[0]) continue;
+            fb_key(s, K_CHAR, "key", 100 + 96 * (i % 11), 328 + 64 * (i / 11), 92, 60);
+            Key *k = &s->keys[s->nkeys - 1];
+            memcpy(k->normal, tmp.normal, sizeof k->normal);
+            if (si == SCR_QWERTY) u8_nth(k_layouts[li].shifted, i, k->shifted); else memcpy(k->shifted, k->normal, sizeof k->shifted);
+        }
+        fb_key(s, K_BS, "bs", 1168, 328, 116, 60);
+        fb_key(s, K_ENTER, "enter", 1168, 552, 116, 124);
+        if (si == SCR_QWERTY) { fb_key(s, K_SHIFT, "shift", 196, 584, 92, 60); fb_key(s, K_SYMBOL, "symbol", 292, 584, 92, 60); }
+        else fb_key(s, K_BACK, "back", 196, 584, 92, 60);
+        fb_key(s, K_SPACE, "space", 724, 584, 764, 60);
+    }
+    s->ok = 1;
+    return 0;
+}
+
+static void fb_quad(LytScene *sc, float x, float y, float w, float h, int r, int g, int b, float a) {
+    if (sc->n == sc->cap) {
+        int nc = sc->cap ? sc->cap * 2 : 256;
+        LytItem *ni = realloc(sc->items, (size_t)nc * sizeof *ni);
+        if (!ni) return;
+        sc->items = ni; sc->cap = nc;
+    }
+    LytItem *it = &sc->items[sc->n++];
+    memset(it, 0, sizeof *it);
+    it->type = LYT_ITEM_QUAD;
+    it->x[0] = it->x[2] = x; it->x[1] = it->x[3] = x + w;
+    it->y[0] = it->y[1] = y; it->y[2] = it->y[3] = y + h;
+    it->alpha = a;
+    static const float uv[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
+    memcpy(it->uv, uv, sizeof uv);
+    for (int k = 0; k < 4; k++) { it->col[k][0] = (uint8_t)r; it->col[k][1] = (uint8_t)g; it->col[k][2] = (uint8_t)b; it->col[k][3] = 255; }
+}
+
+// text in a box; origin like a pane base position (0 centre, 1 left/top, 2 right/bottom) in x and y bits
+static void fb_text(LytScene *sc, const char *str, float x, float y, float w, float h, float px, int origin, int gray, float a) {
+    if (!str || !*str) return;
+    if (sc->n == sc->cap) {
+        int nc = sc->cap ? sc->cap * 2 : 256;
+        LytItem *ni = realloc(sc->items, (size_t)nc * sizeof *ni);
+        if (!ni) return;
+        sc->items = ni; sc->cap = nc;
+    }
+    LytItem *it = &sc->items[sc->n++];
+    memset(it, 0, sizeof *it);
+    it->type = LYT_ITEM_TEXT;
+    it->x[0] = it->x[2] = x; it->x[1] = it->x[3] = x + w;
+    it->y[0] = it->y[1] = y; it->y[2] = it->y[3] = y + h;
+    it->alpha = a;
+    it->str = str;
+    it->font_size[0] = it->font_size[1] = px;
+    it->origin = (uint8_t)origin;
+    memset(it->top_color, gray, 3); it->top_color[3] = 255;
+    memcpy(it->bottom_color, it->top_color, 4);
+}
+
+static void fb_scene(Screen *s, const char *shown) {
+    LytScene *sc = &G.scene;
+    sc->n = 0;
+    int n = u8_count(G.text), len_ok = n >= G.p.minlen && !G.busy;
+    fb_quad(sc, 0, 0, SWKBD_CANVAS_W, SWKBD_CANVAS_H, 10, 20, 30, 180 / 255.0f);          // dims the game
+    fb_quad(sc, 0, 296, SWKBD_CANVAS_W, SWKBD_CANVAS_H - 296, 38, 41, 48, 1.0f);           // keyboard base
+    fb_text(sc, G.p.header, 129, 45, 1022, 42, 36, 0x01, 255, 1);
+    fb_text(sc, G.msg[0] ? G.msg : G.p.sub, 131, 87, 1018, 30, 26, 0x01, 215, 0.67f);
+    fb_text(sc, G.text[0] ? shown : G.p.guide, 134, 154, 1020, 62, 45, 0x05, G.text[0] ? 255 : 180, G.text[0] ? 1.0f : 0.5f);
+    fb_quad(sc, 130, 215, 1020, 3, 255, 255, 255, 1);
+    char cnt[32];
+    if (G.p.maxlen > 0) snprintf(cnt, sizeof cnt, "%d/%d", n, G.p.maxlen); else snprintf(cnt, sizeof cnt, "%d", n);
+    fb_text(sc, cnt, 950, 226, 200, 32, 28, 0x02, 200, 0.6f);
+    for (int i = 0; i < s->nkeys; i++) {
+        Key *k = &s->keys[i];
+        float w = k->r[2] - k->r[0], h = k->r[3] - k->r[1];
+        int focus = i == G.focus;
+        int pressed = !strncmp(k->tag, "Decide", 6) && k->t < 9;
+        int r = 58, g = 62, b = 68;
+        if (k->kind == K_BS || k->kind == K_SHIFT || k->kind == K_SYMBOL || k->kind == K_BACK || k->kind == K_SPACE) { r = 78; g = 82; b = 90; }
+        if (k->kind == K_ENTER) { if (len_ok) { r = 0; g = 140; b = 180; } else { r = 66; g = 70; b = 78; } }
+        if (focus) { r = 0; g = 140; b = 180; }
+        if (pressed) { r = 0; g = 193; b = 242; }
+        fb_quad(sc, k->r[0], k->r[1], w, h, r, g, b, 1);
+        if (focus) {   // frame of the cursor
+            fb_quad(sc, k->r[0] - 3, k->r[1] - 3, w + 6, 3, 0, 193, 242, 1); fb_quad(sc, k->r[0] - 3, k->r[3], w + 6, 3, 0, 193, 242, 1);
+            fb_quad(sc, k->r[0] - 3, k->r[1], 3, h, 0, 193, 242, 1); fb_quad(sc, k->r[2], k->r[1], 3, h, 0, 193, 242, 1);
+        }
+        const char *t = NULL;
+        switch (k->kind) {
+        case K_CHAR: t = G.shift ? k->shifted : k->normal; break;
+        case K_ENTER: t = G.ok_label; break;
+        case K_SPACE: t = G.space_label; break;
+        case K_SYMBOL: t = "#+="; break;
+        case K_BACK: t = "ABC"; break;
+        case K_SHIFT: t = G.shift == 2 ? "\xE2\x87\xAA" : G.shift == 1 ? "\xE2\x87\xA7" : "\xE2\x87\xA7"; break;
+        case K_BS: t = "\xE2\x8C\xAB"; break;
+        default: break;
+        }
+        fb_text(sc, t, k->r[0], k->r[1], w, h, k->kind == K_CHAR ? 36 : 28, 0x00, 255, 1);
+    }
+}
+
 // ---- scene
 static float text_width(const char *s, float px) {
     if (G.measure) return G.measure(s, px);
@@ -560,7 +707,7 @@ static void tick(double dt) {
     for (int i = 0; i < s->nkeys; i++) {
         Key *k = &s->keys[i];
         k->t += (float)(dt * 60);
-        float fr = lytinst_anim_frames(k->inst, k->tag);
+        float fr = k->inst ? lytinst_anim_frames(k->inst, k->tag) : (!strncmp(k->tag, "Decide", 6) ? 9.0f : 0.0f);
         if (k->t >= fr) {
             // a finished press falls back to the resting state of the key
             if (!strncmp(k->tag, "Decide", 6)) {
@@ -590,6 +737,19 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     G.off[0] = (tw - SWKBD_CANVAS_W * sc) / 2;
     G.off[1] = (th - SWKBD_CANVAS_H * sc) / 2;
     *scale = sc; off[0] = G.off[0]; off[1] = G.off[1];
+    if (s->fallback) {
+        char shown[1100];
+        int n0 = u8_count(G.text);
+        if (G.p.password) { int k = n0 < (int)sizeof shown - 1 ? n0 : (int)sizeof shown - 1; memset(shown, '*', (size_t)k); shown[k] = 0; }
+        else snprintf(shown, sizeof shown, "%s", G.text);
+        fb_scene(s, shown);
+        if (fmod(G.clock, 1.0) < 0.6) {   // caret
+            char pre[1100];
+            snprintf(pre, sizeof pre, "%.*s", G.caret, G.p.password ? shown : G.text);
+            fb_quad(&G.scene, 134 + text_width(pre, 45), 158, 4, 58, 230, 230, 230, 1);
+        }
+        return &G.scene;
+    }
     // text area: header, explanation / message, typed text or guide, counter
     lytinst_set_text(s->area, "T_Header", G.p.header[0] ? G.p.header : NULL);
     lytinst_set_text(s->area, "T_Explanation_00", G.msg[0] ? G.msg : G.p.sub[0] ? G.p.sub : NULL);

@@ -1,5 +1,6 @@
 // Test of the on-screen keyboard logic (swkbd_ui.c) with the user's firmware layouts: typing, limits, focus moves, submit / resolve / cancel,
-// and a software rendering of the result to a PPM. Needs BDSP_FIRMWARE_DATA (folder with swkbd/lyt/*.szs); skipped without.
+// and a software rendering of the result to a PPM. With BDSP_FIRMWARE_DATA (folder with swkbd/lyt/*.szs) it uses the firmware layouts, otherwise
+// (or with BDSP_SWKBD_SIMPLE=1) the simple keyboard; the text items are listed, the rendering shows only quads.
 // Build and run: scripts/recomp/rt-bdsp/test/run_swkbd_ui_test.sh [out.ppm]
 #define LYT_RENDER_NO_MAIN
 #include "lyt_render.c"
@@ -36,7 +37,9 @@ static void draw(const char *out) {
 }
 
 int main(int argc, char **argv) {
-    if (!getenv("BDSP_FIRMWARE_DATA") || !swkbd_ui_available()) { printf("firmware layouts not available, skipped\n"); return 0; }
+    swkbd_ui_set_display(1);
+    if (!swkbd_ui_available()) { printf("keyboard not available\n"); return 1; }
+    printf("keyboard mode: %s\n", getenv("BDSP_SWKBD_SIMPLE") || !getenv("BDSP_FIRMWARE_DATA") ? "simple (no firmware layouts)" : "firmware layouts");
     fb = malloc((size_t)W * H * 3);
     SwkbdParams p = {0};
     if (getenv("SWKBD_TEST_SCREEN")) {   // look test: render the symbol or the numeric keyboard to argv[1]

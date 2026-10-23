@@ -27,7 +27,11 @@ typedef struct {
     void (*cancel)(void *user);
 } SwkbdCallbacks;
 
-// True when the firmware layouts can be read, so that swkbd_ui_open can work.
+// A renderer calls this once (swkbd_overlay.m does); without one swkbd_ui_available stays 0, because an open keyboard would be
+// invisible and block the game.
+void swkbd_ui_set_display(int on);
+// True when the keyboard can be shown: with the firmware layouts (BDSP_FIRMWARE_DATA), otherwise as a simple keyboard of our own
+// (BDSP_SWKBD_SIMPLE=1 forces the simple one).
 int swkbd_ui_available(void);
 int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user);   // 0 = open; nonzero = not possible (fall back to automatic answer)
 // accepted = 1 closes the keyboard; 0 keeps it open and shows `message` (may be NULL) as the explanation line for a few seconds.

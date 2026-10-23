@@ -269,6 +269,7 @@ static void *keepalive(void *arg) {
 
 __attribute__((constructor)) static void swkbd_overlay_register(void) {
     g_overlay_render = render;
+    swkbd_ui_set_display(1);
     pthread_t th;
     if (!pthread_create(&th, NULL, keepalive, NULL)) pthread_detach(th);
 }

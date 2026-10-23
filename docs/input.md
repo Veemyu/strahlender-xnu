@@ -2,14 +2,15 @@
 
 Updated: 2026-10-24. When the game asks for text (player name, rival name, nicknames, codes) it calls the system's software keyboard,
 a library applet. This project answers that call with its own keyboard, drawn from the keyboard layout files of the Switch **firmware you
-provide**; the repository contains none of those files. Without them, text is answered automatically (see below).
+provide**; the repository contains none of those files. Without them the game still gets a simple keyboard of our own (same keys and
+controls, plain colours and shapes, no Switch look). Both need a normal, not scripted, run (see below).
 
 ## What you need
 
 - The firmware's keyboard applet data, as a folder with `swkbd/lyt/*.szs` (Qwerty, Sign, Numeric, 50on, Swkbd, common).
   Point `BDSP_FIRMWARE_DATA` at the folder that contains `swkbd/`. The text check of the game (NG words) additionally uses
   `0100000000000823.romfs` from the same folder; without it the check is skipped.
-- A normal (not scripted) run on macOS. iOS/iPadOS is not connected yet.
+- A normal (not scripted) run on macOS. iOS/iPadOS is not connected yet. `BDSP_SWKBD_SIMPLE=1` forces the simple keyboard even with firmware files.
 
 ## Using it (macOS)
 
