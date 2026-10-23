@@ -386,6 +386,48 @@ static void storage_romfs(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
+// ---- System data archives of the firmware (OpenDataStorageByDataId): <BDSP_FIRMWARE_DATA>/<16 hex digits of the data id>.romfs, the RomFS image
+// of the data title extracted from the user's own firmware (scripts/applets/). Without the file the open fails like a console without that title.
+typedef struct { int fd; uint64_t size; } DataFile;
+static void storage_datafile(Service *s, IpcReq *req, IpcResp *resp) {
+    DataFile *d = s->state;
+    switch (req->cmd) {
+    case 0: {  // Read(offset, size) -> B
+        uint64_t off = IN(uint64_t, 0), size = IN(uint64_t, 8);
+        IpcBuf *b = out_buf(req, 0);
+        if (!b) { resp->result = MAKE_RESULT(2, 6001); break; }
+        if (size > b->size) size = b->size;
+        if (off > d->size || size > d->size - off) { resp->result = MAKE_RESULT(2, 4001); break; }
+        if (pread(d->fd, G2H8(b->addr), size, (off_t)off) != (ssize_t)size) resp->result = MAKE_RESULT(2, 4001);
+        break;
+    }
+    case 4: OUT(uint64_t, 0) = d->size; resp_size(resp, 8); break;  // GetSize
+    case 2: case 5: resp_size(resp, 0x10); break;                    // Flush, OperateRange
+    default: ipc_note("IStorage(data)", req->cmd, 1);
+    }
+}
+static bool data_path(uint64_t data_id, char *path, size_t n) {
+    const char *dir = getenv("BDSP_FIRMWARE_DATA");
+    if (!dir) return false;
+    snprintf(path, n, "%s/%016llx.romfs", dir, (unsigned long long)data_id);
+    return true;
+}
+bool fs_system_data_exists(uint64_t data_id) {
+    char path[1200];
+    return data_path(data_id, path, sizeof path) && access(path, R_OK) == 0;
+}
+static Service *open_data_storage(uint64_t data_id) {
+    char path[1200];
+    if (!data_path(data_id, path, sizeof path)) return NULL;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return NULL;
+    DataFile *d = calloc(1, sizeof *d);
+    d->fd = fd;
+    d->size = (uint64_t)lseek(fd, 0, SEEK_END);
+    LOG("[fs] system data %016llx from %s (%llu bytes)\n", (unsigned long long)data_id, path, (unsigned long long)d->size);
+    return service_new("IStorage(data)", storage_datafile, d);
+}
+
 void fs_report(FILE *f) { fprintf(f, "RomFS reads: %llu (%llu MiB)\n", (unsigned long long)rom.nreads, (unsigned long long)(rom.nbytes >> 20)); }
 
 // ------------------------------------------------------------------ Host folder as IFileSystem
@@ -630,7 +672,12 @@ static void fsp_srv(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     }
     case 200: romfs_build_index(); ipc_return_object(resp, service_new("IStorage(romfs)", storage_romfs, NULL)); break;  // OpenDataStorageByCurrentProcess
-    case 202: LOG("[fs] OpenDataStorageByDataId %llx (not available)\n", (unsigned long long)IN(uint64_t, 8)); resp->result = MAKE_RESULT(2, 1001); break;
+    case 202: {  // OpenDataStorageByDataId(storage id, data id)
+        Service *d = open_data_storage(IN(uint64_t, 8));
+        if (d) ipc_return_object(resp, d);
+        else { LOG("[fs] OpenDataStorageByDataId %llx (not available)\n", (unsigned long long)IN(uint64_t, 8)); resp->result = MAKE_RESULT(2, 1001); }
+        break;
+    }
     case 203: resp->result = MAKE_RESULT(2, 1001); break;  // OpenPatchDataStorageByCurrentProcess: no update image
     case 601: OUT(int64_t, 0) = 0x10000000; resp_size(resp, 8); break;  // QuerySaveDataTotalSize
     case 1005: OUT(uint32_t, 0) = 0; resp_size(resp, 4); break;  // GetGlobalAccessLogMode

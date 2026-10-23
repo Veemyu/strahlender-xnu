@@ -6,7 +6,7 @@
 #include <sys/time.h>
 #include <time.h>
 
-#include "bdsp.h"
+#include "applet.h"
 
 void ipc_note(const char *svc, uint32_t cmd, int unhandled);
 void guest_log(const char *line);
@@ -129,7 +129,16 @@ static void self_controller(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
     case 0: LOG("[am] Anwendung verlangt Beenden (Exit)\n"); g_stop = 3; break;
-    case 9: case 91: EVENT_OUT(); break;                                  // LaunchableEvent, AccumulatedSuspendedTickChangedEvent
+    case 9: {                                                             // GetLibraryAppletLaunchableEvent: signaled, the SDK waits for it before creating a library applet
+        uint32_t w, r;
+        KEvent *ev = kernel_create_event_pair(&w, &r);
+        pthread_mutex_lock(&g_klock);
+        kernel_signal(ev);
+        pthread_mutex_unlock(&g_klock);
+        resp->copy_handles[resp->ncopy++] = r;
+        break;
+    }
+    case 91: EVENT_OUT(); break;                                          // AccumulatedSuspendedTickChangedEvent
     case 40: OUT(uint64_t, 0) = 1; resp_size(resp, 8); break;           // CreateManagedDisplayLayer
     case 41: case 69: OUT(uint8_t, 0) = 0; resp_size(resp, 1); break;   // IsSystemBufferSharingEnabled, IsAutoSleepDisabled
     case 63: OUT(uint32_t, 0) = 0; resp_size(resp, 4); break;           // GetIdleTimeDetectionExtension
@@ -154,7 +163,6 @@ static void generic_ok(Service *s, IpcReq *req, IpcResp *resp) {
     resp_size(resp, 0x10);
 }
 
-typedef struct { uint8_t *data; uint64_t size; } AmStorage;
 static void storage_accessor(Service *s, IpcReq *req, IpcResp *resp) {
     AmStorage *st = s->state;
     switch (req->cmd) {
@@ -182,13 +190,15 @@ static void am_storage(Service *s, IpcReq *req, IpcResp *resp) {
     if (req->cmd == 0) ipc_return_object(resp, service_new("IStorageAccessor", storage_accessor, s->state));
     else ipc_note("IStorage", req->cmd, 1);
 }
-static Service *new_am_storage(const void *data, uint64_t size) {
+Service *am_storage_new(const void *data, uint64_t size) {
     AmStorage *st = calloc(1, sizeof *st);
-    st->data = calloc(1, size);
+    st->data = calloc(1, size ? size : 1);
     st->size = size;
     if (data) memcpy(st->data, data, size);
     return service_new("IStorage", am_storage, st);
 }
+AmStorage *am_storage_get(Service *s) { return s && s->handler == am_storage ? s->state : NULL; }
+#define new_am_storage am_storage_new
 
 static void application_functions(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
@@ -228,7 +238,7 @@ static void application_proxy(Service *s, IpcReq *req, IpcResp *resp) {
     static const struct { int cmd; const char *name; ServiceHandler h; } subs[] = {
         {0, "ICommonStateGetter", common_state_getter}, {1, "ISelfController", self_controller}, {2, "IWindowController", window_controller},
         {3, "IAudioController", generic_ok}, {4, "IDisplayController", generic_ok}, {10, "IProcessWindingController", generic_ok},
-        {11, "ILibraryAppletCreator", generic_ok}, {20, "IApplicationFunctions", application_functions}, {1000, "IDebugFunctions", generic_ok},
+        {11, "ILibraryAppletCreator", am_library_applet_creator},{20, "IApplicationFunctions", application_functions}, {1000, "IDebugFunctions", generic_ok},
     };
     for (unsigned i = 0; i < sizeof subs / sizeof *subs; i++)
         if (subs[i].cmd == (int)req->cmd) { ipc_return_object(resp, service_new(subs[i].name, subs[i].h, NULL)); return; }

@@ -162,6 +162,7 @@ typedef struct IpcReq {
     int nx, na, nb, nc;
     uint32_t domain_obj;
     uint32_t domain_in_objs[8];
+    Service *domain_in_svc[8];   // the objects behind domain_in_objs (NULL = unknown id); interface objects passed in a domain arrive here
     int ndomain_in;
 } IpcReq;
 typedef struct IpcResp {
@@ -268,4 +269,5 @@ extern const char *g_romfs_dir;
 extern const char *g_save_dir;
 void user_id_load(const char *save_dir);
 void fs_set_dirs(const char *romfs_dir, const char *save_dir);
+bool fs_system_data_exists(uint64_t data_id);   // services_fs.c: a firmware data archive extracted into BDSP_FIRMWARE_DATA (e.g. 0x0100000000000823, NG words)
 void fs_report(FILE *f);

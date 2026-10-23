@@ -192,7 +192,10 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
                 goto write_response;
             }
             req.ndomain_in = nin;
-            for (int i = 0; i < nin && i < 8; i++) req.domain_in_objs[i] = *(uint32_t *)(payload + 16 + dsize + 4 * i);
+            for (int i = 0; i < nin && i < 8; i++) {
+                req.domain_in_objs[i] = *(uint32_t *)(payload + 16 + dsize + 4 * i);
+                req.domain_in_svc[i] = req.domain_in_objs[i] < 256 ? sess->domain->objs[req.domain_in_objs[i]] : NULL;
+            }
             payload += 16;
         }
         if (memcmp(payload, "SFCI", 4)) LOG("[ipc] invalid SFCI magic at %s\n", sess->svc->name);
