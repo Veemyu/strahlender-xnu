@@ -61,6 +61,7 @@ static void tri(const LytItem *it, const uint8_t *px, int a, int b, int c, int s
         }
 }
 
+#ifndef LYT_RENDER_NO_MAIN
 int main(int argc, char **argv) {
     if (argc < 5) { fprintf(stderr, "usage: lyt_render <dir> <out.ppm> <archive[,archive]> <layout>...\n"); return 2; }
     const char *names[8];
@@ -96,3 +97,4 @@ int main(int argc, char **argv) {
     lytbank_free(b);
     return 0;
 }
+#endif

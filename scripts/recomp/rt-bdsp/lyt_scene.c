@@ -144,6 +144,7 @@ struct LytInst {
     int nplay;
     char **text;                    // per pane
     uint8_t *vis_ov;               // per pane: 0 none, 1 hide, 2 show
+    uint8_t (*col)[4];             // per pane colour override (a != 0: set)
     Pose *pose;                     // per pane, scratch of the scene builder
     float alpha;
 };
@@ -157,8 +158,9 @@ static LytInst *inst_new(LytBank *b, const char *layout, int depth) {
     in->sub = calloc(l->npanes, sizeof *in->sub);
     in->text = calloc(l->npanes, sizeof *in->text);
     in->vis_ov = calloc(l->npanes, 1);
+    in->col = calloc(l->npanes, sizeof *in->col);
     in->pose = calloc(l->npanes, sizeof *in->pose);
-    if (!in->sub || !in->text || !in->vis_ov || !in->pose) { lytinst_free(in); return NULL; }
+    if (!in->sub || !in->text || !in->vis_ov || !in->col || !in->pose) { lytinst_free(in); return NULL; }
     if (depth < MAX_DEPTH)
         for (uint32_t i = 0; i < l->npanes; i++)
             if (l->panes[i].kind == LYT_PRT && l->panes[i].part[0]) in->sub[i] = inst_new(b, l->panes[i].part, depth + 1);
@@ -173,7 +175,7 @@ void lytinst_free(LytInst *in) {
         if (in->sub) lytinst_free(in->sub[i]);
         if (in->text) free(in->text[i]);
     }
-    free(in->sub); free(in->text); free(in->vis_ov); free(in->pose); free(in);
+    free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->pose); free(in);
 }
 
 const LytLayout *lytinst_layout(const LytInst *in) { return in->lay; }
@@ -235,6 +237,12 @@ void lytinst_set_text(LytInst *in, const char *pane, const char *utf8) {
 void lytinst_set_visible(LytInst *in, const char *pane, int visible) {
     int i = lyt_layout_find_pane(in->lay, pane);
     if (i >= 0) in->vis_ov[i] = visible ? 2 : 1;
+}
+
+void lytinst_set_color(LytInst *in, const char *pane, uint8_t r, uint8_t g, uint8_t b) {
+    int i = lyt_layout_find_pane(in->lay, pane);
+    if (i < 0) return;
+    in->col[i][0] = r; in->col[i][1] = g; in->col[i][2] = b; in->col[i][3] = 255;
 }
 
 void lytinst_set_alpha(LytInst *in, float alpha) { in->alpha = alpha; }
@@ -312,6 +320,7 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
     if (po->has_alpha) al = po->alpha;
     if (p->mag & 1) { t[0] *= mx; t[1] *= my; }
     if (p->mag & 4) { sz[0] *= mx; sz[1] *= my; }
+    if (p->mag & 2) { s[0] *= mx; s[1] *= my; }   // bit 1: the pane's scale follows the part magnification (BgMask, cursor)
     float a = alpha * al / 255.0f;
     int ox = p->base & 3, oy = (p->base >> 2) & 3, qx = (p->base >> 4) & 3, qy = (p->base >> 6) & 3;
     float px = anchor_x(qx, pw) + t[0], py = anchor_y(qy, ph) + t[1];
@@ -345,6 +354,9 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
                 if (mt && mt->ntex > 0 && mt->tex[0].idx < l->ntex) it->tex = lytbank_tex(in->bank, l->tex[mt->tex[0].idx]);
                 for (int k = 0; k < 4; k++)
                     for (int c = 0; c < 4; c++) it->col[k][c] = (uint8_t)((p->vcol[k][c] * (mt ? mt->white[c] : 255) + 127) / 255);
+                if (in->col[idx][3])
+                    for (int k = 0; k < 4; k++)
+                        for (int c = 0; c < 3; c++) it->col[k][c] = (uint8_t)((it->col[k][c] * in->col[idx][c] + 127) / 255);
             } else {
                 it->type = LYT_ITEM_TEXT;
                 it->str = in->text[idx];
@@ -352,6 +364,8 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
                 it->font_size[1] = p->font_size[1] * hypotf(m.c, m.d);
                 it->char_space = p->char_space; it->line_space = p->line_space;
                 memcpy(it->top_color, p->top_color, 4); memcpy(it->bottom_color, p->bottom_color, 4);
+                if (in->col[idx][3])
+                    for (int c = 0; c < 3; c++) it->top_color[c] = it->bottom_color[c] = in->col[idx][c];
                 it->origin = p->halign; it->align = p->valign;
                 it->rot = atan2f(-m.b, m.a);
             }

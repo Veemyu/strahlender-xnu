@@ -26,6 +26,8 @@ build "$SRC/nvn/maxwell/translate.c" "$RT/nvn/translate.o" "$@"
 build "$SRC/nvn/renderer.m" "$RT/nvn/renderer.o" -fobjc-arc "$@"
 build "$SRC/nvn/metal.m" "$RT/nvn/metal.o" -fobjc-arc "$@"
 build "$HERE/nvn_glue.c" "$RT/nvn/nvn_glue.o" $BDSP_WARN_GLUE "$@"
+# On-screen keyboard (Metal overlay); the layout code it draws lives in rt-bdsp/ and is built with the runtime
+build "$HERE/swkbd_overlay.m" "$RT/nvn/swkbd_overlay.o" -fobjc-arc -Wall -Wno-unused-parameter "$@"
 build "$HERE/debug_thread.c" "$RT/nvn/debug_thread.o" -Wall -Wextra "$@"
 # Movie playback (movie:: of the SDK with FFmpeg); without FFmpeg: BDSP_NO_MOVIE=1 (the SDK path then stays, which aborts without a decoder)
 if [ -z "${BDSP_NO_MOVIE:-}" ]; then

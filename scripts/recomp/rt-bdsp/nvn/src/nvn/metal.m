@@ -1244,9 +1244,35 @@ static void xw_gpu_lag(void) {
 // GPU part of the presentation (commits the frame work, gets the drawable, encodes the present pass). Runs in the guest thread
 // or (BDSP_EXEC_WORKER=1) in the translation worker; therefore only with values that were captured when enqueueing.
 // false: no drawable, the frame is dropped.
+static bool present_gpu_locked(uint64_t frame, id<MTLTexture> tex, bool has_wc, const float wc[4], bool repeat);
+// Last presented game image, kept so that the on-screen keyboard can keep the window alive while the game itself is stopped in the
+// keyboard call (the guest thread does not present then). metal_repeat_present draws that image again, with the overlay on top.
+static pthread_mutex_t g_present_lock = PTHREAD_MUTEX_INITIALIZER;
+static id<MTLTexture> g_rep_tex;
+static bool g_rep_has_wc;
+static float g_rep_wc[4];
+static uint64_t g_rep_frame;
+static _Atomic uint64_t g_last_present_ns;
+uint64_t metal_last_present_ns(void) { return atomic_load(&g_last_present_ns); }
 static bool present_gpu(uint64_t frame, id<MTLTexture> tex, bool has_wc, const float wc[4]) {
+    pthread_mutex_lock(&g_present_lock);
+    bool ok = present_gpu_locked(frame, tex, has_wc, wc, false);
+    if (ok) {
+        g_rep_tex = tex; g_rep_has_wc = has_wc; g_rep_frame = frame;
+        if (has_wc) memcpy(g_rep_wc, wc, sizeof g_rep_wc);
+        atomic_store(&g_last_present_ns, SDL_GetTicksNS());
+    }
+    pthread_mutex_unlock(&g_present_lock);
+    return ok;
+}
+void metal_repeat_present(void) {
+    pthread_mutex_lock(&g_present_lock);
+    if (g_rep_tex) present_gpu_locked(g_rep_frame, g_rep_tex, g_rep_has_wc, g_rep_wc, true);
+    pthread_mutex_unlock(&g_present_lock);
+}
+static bool present_gpu_locked(uint64_t frame, id<MTLTexture> tex, bool has_wc, const float wc[4], bool repeat) {
     extern void renderer_submit(void);
-    renderer_submit();  // same queue: the present pass runs after the frame's work
+    if (!repeat) renderer_submit();  // same queue: the present pass runs after the frame's work
     @autoreleasepool {
         uint64_t nd0 = SDL_GetTicksNS();
         id<CAMetalDrawable> drawable = [layer nextDrawable];

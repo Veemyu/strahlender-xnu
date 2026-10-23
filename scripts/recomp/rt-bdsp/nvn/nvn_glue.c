@@ -325,7 +325,9 @@ __attribute__((weak)) bool menu_handle_event(const void *e) { (void)e; return fa
 bool menu_is_open(void) { return false; }
 __attribute__((weak)) void menu_apply_window_requests(void *w) { (void)w; }
 void menu_test_open(void) {}
-void menu_render(void *dev, void *cb, void *target) { (void)dev; (void)cb; (void)target; }
+// Overlay drawn over the finished frame (the on-screen keyboard, swkbd_overlay.m registers itself here when it is linked in)
+void (*g_overlay_render)(void *dev, void *cb, void *target);
+void menu_render(void *dev, void *cb, void *target) { if (g_overlay_render) g_overlay_render(dev, cb, target); }
 // Frame rate limiter on g_bdsp_fps (30/60/120, services_gfx.c). Runs per presented frame (metal.m calls input_frame
 // after the present) and waits until the next target time. Game ticks only (waiting), no change to the renderer.
 extern volatile int g_bdsp_fps;
