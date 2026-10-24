@@ -326,7 +326,7 @@ static int build_screen(int si) {
         if (kind == K_ENTER) lytinst_set_offset(inst, "N_Key", 22, 38);   // badges sit 16 px from the right edge and 15 px from the top of their key, as on the console
         if (kind == K_BS) lytinst_set_offset(inst, "N_Key", 5, 8);
         if (kind == K_SPACE) { lytinst_set_font_size(inst, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f); lytinst_set_font_size(inst, "T_01", FN_LABEL_EM, FN_LABEL_EM * 1.5f); }   // the labels of the function keys are smaller than the layouts say
-        if (kind == K_SPACE) { float kw = k->r[2] - k->r[0]; lytinst_set_offset(inst, "N_Key", kw / 2 - 16 - 34 * kw / 100, 4.4f); }
+        if (kind == K_SPACE) { float kw = k->r[2] - k->r[0]; lytinst_set_offset(inst, "N_Key", kw / 2 - 16 - 34 * kw / 100 - 0.8f, 5.6f); lytinst_set_offset(inst, "T_00", 0, 1.0f); lytinst_set_offset(inst, "T_01", 0, 1.0f); }
         if (kind == K_SHIFT) { lytinst_set_visible(inst, "P_GlowOff", 0); lytinst_set_visible(inst, "P_GlowOn", 0); }   // the caps lock dot is drawn by tick (a round one)
         s->nkeys++;
     }
