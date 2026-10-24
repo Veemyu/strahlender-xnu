@@ -872,7 +872,6 @@ static void footer_items(LytScene *sc) {
     const Theme *t = g_theme;
     int gray = t->text[0];
     float y = 664, h = 40;
-    fb_quad(sc, 0, 652, SWKBD_CANVAS_W, 2, t->plate[0] - 30, t->plate[1] - 30, t->plate[2] - 30, 1);   // line above the footer row
     fb_text(sc, "\uE12C", 70, y, 60, h, 38, 0x01, gray, 1);
     for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 655, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
     // the hints are laid out from the right edge with the width of each text (the labels differ in length between languages)
@@ -1017,8 +1016,8 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     for (int i = 0; i < s->nkeys; i++) {   // caps lock dot in the top left corner of the shift key
         const Key *sk = &s->keys[i];
         if (sk->kind != K_SHIFT || sk->hidden) continue;
-        const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){160, 172, 190};
-        fb_dot(&G.scene, sk->r[0] + 14, sk->r[1] + 14, 4.5f, dc[0], dc[1], dc[2]);
+        const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){175, 181, 186};
+        fb_dot(&G.scene, sk->r[0] + 13.5f, sk->r[1] + 13.5f, 3.3f, dc[0], dc[1], dc[2]);
     }
     if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
         const Key *fk = &s->keys[G.focus];
