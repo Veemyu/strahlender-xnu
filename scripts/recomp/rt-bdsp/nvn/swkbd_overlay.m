@@ -27,6 +27,25 @@ static NSString *const kMsl =
     "fragment float4 fs(O in [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]]) {\n"
     "  return t.sample(s, in.uv) * in.col; }\n";
 
+// Background blur: the game image behind the keyboard is blurred ONCE when the keyboard opens (the game stands still then) and kept in a
+// texture; every following frame only draws that texture. Two passes (horizontal, vertical) of a 13 tap gaussian at a quarter of the
+// window resolution, where one tap is 4 window pixels wide.
+static NSString *const kMslBlur =
+    @"#include <metal_stdlib>\n"
+    "using namespace metal;\n"
+    "struct B { float4 p [[position]]; float2 uv; };\n"
+    "vertex B bvs(uint i [[vertex_id]]) { float2 uv = float2((i << 1) & 2, i & 2); B o; o.p = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0, 1); o.uv = uv; return o; }\n"
+    "fragment float4 bfs(B in [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]], constant float2 &step [[buffer(0)]]) {\n"
+    "  float3 c = 0; float ws = 0;\n"
+    "  for (int k = -6; k <= 6; k++) { float w = exp(-float(k * k) / 12.5); c += w * t.sample(s, in.uv + step * float(k)).rgb; ws += w; }\n"
+    "  return float4(c / ws, 1); }\n";
+
+static id<MTLRenderPipelineState> g_blur_pipe;
+static id<MTLTexture> g_blur_a, g_blur_b;      // b holds the result
+static NSUInteger g_blur_w, g_blur_h;           // window size the result belongs to
+static BOOL g_blur_ready, g_was_active;
+static float g_blur_t;
+
 typedef struct { float pos[2], uv[2], col[4]; } Vtx;
 
 static id<MTLRenderPipelineState> g_pipe;
@@ -224,6 +243,52 @@ static void quad(id<MTLRenderCommandEncoder> enc, const float X[4], const float 
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 }
 
+extern void metal_set_sampleable(int on);
+
+static void blur_drop(void) { g_blur_ready = NO; g_blur_a = g_blur_b = nil; g_blur_t = 0; }
+
+// Blurs `src` (the drawable with the game image, sampleable) into g_blur_b. Returns 0 when it cannot be done yet.
+static int blur_capture(id<MTLDevice> dev, id<MTLCommandBuffer> cb, id<MTLTexture> src) {
+    if (!(src.usage & MTLTextureUsageShaderRead)) return 0;
+    if (!g_blur_pipe) {
+        NSError *err = nil;
+        id<MTLLibrary> lib = [dev newLibraryWithSource:kMslBlur options:nil error:&err];
+        if (!lib) { fprintf(stderr, "[swkbd] blur shader: %s\n", err.localizedDescription.UTF8String); return 0; }
+        MTLRenderPipelineDescriptor *pd = [MTLRenderPipelineDescriptor new];
+        pd.vertexFunction = [lib newFunctionWithName:@"bvs"];
+        pd.fragmentFunction = [lib newFunctionWithName:@"bfs"];
+        pd.colorAttachments[0].pixelFormat = src.pixelFormat;
+        g_blur_pipe = [dev newRenderPipelineStateWithDescriptor:pd error:&err];
+        if (!g_blur_pipe) { fprintf(stderr, "[swkbd] blur pipeline: %s\n", err.localizedDescription.UTF8String); return 0; }
+    }
+    NSUInteger qw = src.width / 4 > 1 ? src.width / 4 : 1, qh = src.height / 4 > 1 ? src.height / 4 : 1;
+    MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:src.pixelFormat width:qw height:qh mipmapped:NO];
+    td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    td.storageMode = MTLStorageModePrivate;
+    g_blur_a = [dev newTextureWithDescriptor:td];
+    g_blur_b = [dev newTextureWithDescriptor:td];
+    if (!g_blur_a || !g_blur_b) { blur_drop(); return 0; }
+    id<MTLTexture> in[2] = {src, g_blur_a}, out[2] = {g_blur_a, g_blur_b};
+    float step[2][2] = {{4.0f / src.width, 0}, {0, 1.0f / qh}};
+    for (int i = 0; i < 2; i++) {
+        MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+        rp.colorAttachments[0].texture = out[i];
+        rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+        rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+        id<MTLRenderCommandEncoder> e = [cb renderCommandEncoderWithDescriptor:rp];
+        [e setRenderPipelineState:g_blur_pipe];
+        [e setFragmentTexture:in[i] atIndex:0];
+        [e setFragmentSamplerState:g_samp atIndex:0];
+        [e setFragmentBytes:step[i] length:sizeof step[i] atIndex:0];
+        [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+        [e endEncoding];
+    }
+    g_blur_a = nil;
+    g_blur_w = src.width; g_blur_h = src.height;
+    g_blur_ready = YES;
+    return 1;
+}
+
 static void preview_check(void) {
     static long at = -1, frame;
     if (at < 0) at = getenv("BDSP_SWKBD_PREVIEW") ? atol(getenv("BDSP_SWKBD_PREVIEW")) : 0;
@@ -267,7 +332,13 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
     id<MTLCommandBuffer> cb = (__bridge id<MTLCommandBuffer>)cb_;
     id<MTLTexture> target = (__bridge id<MTLTexture>)target_;
     preview_check();
-    if (!swkbd_ui_active()) return;
+    int active = swkbd_ui_active();
+    if (active != g_was_active) {   // the drawables must be readable while the keyboard is open (the blur is made from one of them)
+        g_was_active = active;
+        metal_set_sampleable(active);
+        if (!active) blur_drop();
+    }
+    if (!active) return;
     static int calls;
     if (getenv("BDSP_TRACE_APPLET") && calls++ % 60 == 0) fprintf(stderr, "[swkbd_overlay] render while active, target %lux%lu fmt %lu\n", (unsigned long)((__bridge id<MTLTexture>)target_).width, (unsigned long)((__bridge id<MTLTexture>)target_).height, (unsigned long)((__bridge id<MTLTexture>)target_).pixelFormat);
     @autoreleasepool {
@@ -276,6 +347,9 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
         double dt = last ? fmin(now - last, 0.1) : 0.016;
         last = now;
         if (!setup(dev, target.pixelFormat)) return;
+        if (g_blur_ready && (g_blur_w != target.width || g_blur_h != target.height)) blur_drop();   // window resized: blur again
+        if (!g_blur_ready) blur_capture(dev, cb, target);
+        else g_blur_t += (float)dt;
         float scale, off[2];
         int tw = (int)target.width, th = (int)target.height;
         const LytScene *sc = swkbd_ui_scene(dt, tw, th, &scale, off);
@@ -289,6 +363,14 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
         float vp[2] = {(float)tw, (float)th};
         [enc setVertexBytes:vp length:sizeof vp atIndex:1];
         [enc setFragmentSamplerState:g_samp atIndex:0];
+        if (g_blur_ready) {   // the stored blur instead of the sharp game image, fading in like the dimming layer
+            float bx[4] = {0, (float)tw, 0, (float)tw}, by[4] = {0, 0, (float)th, (float)th};
+            float buv[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}}, bc[4][4];
+            float fa = g_blur_t >= 0.1f ? 1.0f : g_blur_t / 0.1f;
+            for (int k = 0; k < 4; k++) { bc[k][0] = bc[k][1] = bc[k][2] = 1; bc[k][3] = fa; }
+            [enc setFragmentTexture:g_blur_b atIndex:0];
+            quad(enc, bx, by, buv, bc);
+        }
         for (int i = 0; i < sc->n; i++) {
             const LytItem *it = &sc->items[i];
             float X[4], Y[4];
