@@ -37,18 +37,74 @@ static id<MTLTexture> g_white;
 static NSMapTable *g_tex;       // LytTex* -> id<MTLTexture>
 static NSMutableDictionary<NSString *, NSDictionary *> *g_text;   // "px|str" -> {tex, w, h}
 
+// Fonts: the system's own (from the user's firmware: fonts/nintendo_udsg-r_std_003.bfttf for text, fonts/nintendo_ext_003.bfttf for the button
+// glyphs in the private use area), found under the firmware folder; without them the Mac's fonts. The .bfttf files are TrueType with every
+// 32-bit word XORed with a key taken from the first word (first word ^ 0x18029A7F), after an 8 byte header.
+static CGFontRef load_bfttf(const char *root, const char *name, const char *title) {
+    char path[1200];
+    NSData *raw = nil;
+    for (int i = 0; i < 2 && !raw; i++) {
+        snprintf(path, sizeof path, i ? "%s/fonts/%s/%s" : "%s/fonts/%s", root, i ? title : name, name);
+        if (!i) snprintf(path, sizeof path, "%s/fonts/%s", root, name);
+        raw = [NSData dataWithContentsOfFile:@(path)];
+    }
+    if (!raw || raw.length < 16) return NULL;
+    NSMutableData *out = [NSMutableData dataWithLength:raw.length - 8];
+    const uint32_t *in = (const uint32_t *)raw.bytes;
+    uint32_t key = in[0] ^ 0x18029A7Fu;
+    uint32_t *o = (uint32_t *)out.mutableBytes;
+    for (NSUInteger i = 2; i < raw.length / 4; i++) o[i - 2] = in[i] ^ key;
+    CGDataProviderRef dp = CGDataProviderCreateWithCFData((__bridge CFDataRef)out);
+    CGFontRef f = CGFontCreateWithDataProvider(dp);
+    CGDataProviderRelease(dp);
+    return f;
+}
+
+static CGFontRef g_font_std, g_font_ext;
+static BOOL g_fonts_tried;
+
+static void fonts_init(void) {
+    if (g_fonts_tried) return;
+    g_fonts_tried = YES;
+    const char *root = swkbd_ui_root();
+    if (!root || !*root) return;
+    g_font_std = load_bfttf(root, "nintendo_udsg-r_std_003.bfttf", "0100000000000811");
+    g_font_ext = load_bfttf(root, "nintendo_ext_003.bfttf", "0100000000000810");
+}
+
 static CTFontRef font_at(float px) {
+    fonts_init();
+    if (g_font_std) return CTFontCreateWithGraphicsFont(g_font_std, px, NULL, NULL);
     return CTFontCreateWithName(CFSTR("HelveticaNeue"), px, NULL);
+}
+
+static CTFontRef ext_at(float px) {
+    fonts_init();
+    return g_font_ext ? CTFontCreateWithGraphicsFont(g_font_ext, px, NULL, NULL) : NULL;
+}
+
+// Attributed string: button glyphs (private use area) from the button font, everything else from the text font
+static NSAttributedString *make_attr(NSString *str, float px) {
+    CTFontRef f = font_at(px), e = ext_at(px);
+    NSMutableAttributedString *as = [[NSMutableAttributedString alloc] initWithString:str attributes:@{(__bridge id)kCTFontAttributeName: (__bridge id)f,
+        (__bridge id)kCTForegroundColorFromContextAttributeName: @YES}];
+    if (e) {
+        for (NSUInteger i = 0; i < str.length; i++) {
+            unichar c = [str characterAtIndex:i];
+            if (c >= 0xE000 && c <= 0xF8FF) [as addAttribute:(__bridge id)kCTFontAttributeName value:(__bridge id)e range:NSMakeRange(i, 1)];
+        }
+        CFRelease(e);
+    }
+    CFRelease(f);
+    return as;
 }
 
 static float measure(const char *utf8, float px) {
     @autoreleasepool {
-        CTFontRef f = font_at(px > 1 ? px : 1);
-        NSDictionary *a = @{(__bridge id)kCTFontAttributeName: (__bridge id)f};
-        NSAttributedString *s = [[NSAttributedString alloc] initWithString:@(utf8) attributes:a];
+        NSAttributedString *s = make_attr(@(utf8), px > 1 ? px : 1);
         CTLineRef l = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)s);
         float w = (float)CTLineGetTypographicBounds(l, NULL, NULL, NULL);
-        CFRelease(l); CFRelease(f);
+        CFRelease(l);
         return w;
     }
 }
@@ -103,10 +159,7 @@ static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px) {
     if (hit) return hit;
     NSDictionary *res = nil;
     @autoreleasepool {
-        CTFontRef f = font_at(px);
-        NSDictionary *a = @{(__bridge id)kCTFontAttributeName: (__bridge id)f,
-                            (__bridge id)kCTForegroundColorFromContextAttributeName: @YES};
-        NSAttributedString *s = [[NSAttributedString alloc] initWithString:@(utf8) attributes:a];
+        NSAttributedString *s = make_attr(@(utf8), px);
         CTLineRef l = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)s);
         CGFloat asc, desc, lead;
         double w = CTLineGetTypographicBounds(l, &asc, &desc, &lead);
@@ -121,7 +174,7 @@ static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px) {
             CGContextRelease(cg); CGColorSpaceRelease(cs);
             res = @{@"tex": t, @"w": @(tw), @"h": @(th), @"asc": @(asc)};
         }
-        CFRelease(l); CFRelease(f);
+        CFRelease(l);
     }
     if (!res) res = @{};
     g_text[key] = res;

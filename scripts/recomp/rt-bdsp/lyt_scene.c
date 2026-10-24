@@ -145,6 +145,7 @@ struct LytInst {
     char **text;                    // per pane
     uint8_t *vis_ov;               // per pane: 0 none, 1 hide, 2 show
     uint8_t (*col)[4];             // per pane colour override (a != 0: set)
+    int16_t *aov;                  // per pane alpha override (-1: none)
     Pose *pose;                     // per pane, scratch of the scene builder
     float alpha;
 };
@@ -159,8 +160,10 @@ static LytInst *inst_new(LytBank *b, const char *layout, int depth) {
     in->text = calloc(l->npanes, sizeof *in->text);
     in->vis_ov = calloc(l->npanes, 1);
     in->col = calloc(l->npanes, sizeof *in->col);
+    in->aov = malloc(l->npanes * sizeof *in->aov);
+    if (in->aov) for (uint32_t i = 0; i < l->npanes; i++) in->aov[i] = -1;
     in->pose = calloc(l->npanes, sizeof *in->pose);
-    if (!in->sub || !in->text || !in->vis_ov || !in->col || !in->pose) { lytinst_free(in); return NULL; }
+    if (!in->sub || !in->text || !in->vis_ov || !in->col || !in->aov || !in->pose) { lytinst_free(in); return NULL; }
     if (depth < MAX_DEPTH)
         for (uint32_t i = 0; i < l->npanes; i++)
             if (l->panes[i].kind == LYT_PRT && l->panes[i].part[0]) in->sub[i] = inst_new(b, l->panes[i].part, depth + 1);
@@ -175,7 +178,7 @@ void lytinst_free(LytInst *in) {
         if (in->sub) lytinst_free(in->sub[i]);
         if (in->text) free(in->text[i]);
     }
-    free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->pose); free(in);
+    free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->aov); free(in->pose); free(in);
 }
 
 const LytLayout *lytinst_layout(const LytInst *in) { return in ? in->lay : NULL; }
@@ -252,6 +255,12 @@ void lytinst_set_color(LytInst *in, const char *pane, uint8_t r, uint8_t g, uint
     in->col[i][0] = r; in->col[i][1] = g; in->col[i][2] = b; in->col[i][3] = 255;
 }
 
+void lytinst_set_pane_alpha(LytInst *in, const char *pane, int a) {
+    if (!in) return;
+    int i = lyt_layout_find_pane(in->lay, pane);
+    if (i >= 0) in->aov[i] = (int16_t)a;
+}
+
 void lytinst_set_alpha(LytInst *in, float alpha) { if (in) in->alpha = alpha; }
 
 // ---- scene ----------------------------------------------------------------------------------------------------
@@ -316,7 +325,7 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
     if (po->has_vis) vis = po->vis != 0;
     if (!vis) return;
     float t[3] = {p->t[0], p->t[1], p->t[2]}, r[3] = {p->r[0], p->r[1], p->r[2]}, s[2] = {p->s[0], p->s[1]}, sz[2] = {p->size[0], p->size[1]};
-    float al = p->alpha;
+    float al = in->aov[idx] >= 0 ? (float)in->aov[idx] : p->alpha;
     for (int k = 0; k < 10; k++) {
         if (!(po->mask & (1u << k))) continue;
         if (k < 3) t[k] = po->v[k];
@@ -361,9 +370,9 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
                 if (mt && mt->ntex > 0 && mt->tex[0].idx < l->ntex) it->tex = lytbank_tex(in->bank, l->tex[mt->tex[0].idx]);
                 for (int k = 0; k < 4; k++)
                     for (int c = 0; c < 4; c++) it->col[k][c] = (uint8_t)((p->vcol[k][c] * (mt ? mt->white[c] : 255) + 127) / 255);
-                if (in->col[idx][3])
+                if (in->col[idx][3])   // colour override replaces the material colour (the corner colours still shade it)
                     for (int k = 0; k < 4; k++)
-                        for (int c = 0; c < 3; c++) it->col[k][c] = (uint8_t)((it->col[k][c] * in->col[idx][c] + 127) / 255);
+                        for (int c = 0; c < 3; c++) it->col[k][c] = (uint8_t)((p->vcol[k][c] * in->col[idx][c] + 127) / 255);
             } else {
                 it->type = LYT_ITEM_TEXT;
                 it->str = in->text[idx];

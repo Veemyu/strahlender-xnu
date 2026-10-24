@@ -94,6 +94,19 @@ int main(int argc, char **argv) {
     CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
     swkbd_ui_pad(1ull << 2, 0, 0);                         // X: cancel
     CHECK(!swkbd_ui_active() && cancels == 1);
+    p.initial[0] = 0;
+    // pages: from the bottom row to the symbol tab (or key), press it, then a key of the fourth row types a symbol
+    swkbd_ui_resolve(1, NULL);
+    CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
+    for (int i = 0; i < 4; i++) { swkbd_ui_pad(1ull << 15, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    for (int i = 0; i < 6 && !strstr(swkbd_ui_focus_name(), "InputMode_01") && strcmp(swkbd_ui_focus_name(), "symbol") && strcmp(swkbd_ui_focus_name(), "L_BtnSymbol"); i++) { swkbd_ui_pad(1ull << 14, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);               // opens the symbol page
+    int layouts = !strncmp(swkbd_ui_focus_name(), "L_", 2);
+    if (layouts) { swkbd_ui_pad(1ull << 14, 0, 0); swkbd_ui_pad(0, 0, 0); }   // the tab column is left of the keys: right into the second row
+    swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);
+    printf("symbol page: focus %s, text \"%s\"\n", swkbd_ui_focus_name(), swkbd_ui_text_value());
+    CHECK(strlen(swkbd_ui_text_value()) == 1 && strchr(layouts ? "!@#$%^&*()_" : "1", swkbd_ui_text_value()[0]));
+    swkbd_ui_resolve(1, NULL);
     // a second opening fades in again to full opacity
     CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
     float maxa = 0;

@@ -10,7 +10,7 @@
 
 static void trace(const char *what, const char *arg) { if (getenv("BDSP_TRACE_APPLET")) fprintf(stderr, "[swkbd_ui] %s %s\n", what, arg ? arg : ""); }
 
-enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE };
+enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE, K_TAB };
 enum { SCR_QWERTY, SCR_SIGN, SCR_NUMERIC, SCR_COUNT };
 #define MAX_KEYS 80
 
@@ -20,13 +20,15 @@ typedef struct {
     char name[25];
     char normal[8], shifted[8];
     float r[4];                      // left, top, right, bottom in canvas pixels
+    int page;                        // K_TAB: the keyboard page it opens
+    int hidden;                      // no character on this page
     char tag[24];                    // running animation
     float t;
 } Key;
 
 typedef struct {
     LytBank *bank;
-    LytInst *area, *bg, *kt, *caret;
+    LytInst *area, *bg, *kt, *caret, *mask;
     Key keys[MAX_KEYS];
     int nkeys;
     int ok;
@@ -51,6 +53,10 @@ static const struct { const char *id, *normal, *shifted; } k_layouts[] = {
 // Symbol keyboard: rows of 11 from the top left; \1 = no key (hidden)
 static const char *const k_sign = "1234567890-" "!@#$%^&*()_" "~`=\\+{}|[]\1" "<>;:\"',.?/\1" "\1\1\1\1\1\1\1\1\1\1\1";
 static const char *const k_numeric = "1234567890";
+// Accent pages (tabs "ÀÁÂ" and "ÑŃŅ"): lower case, and upper case with Shift
+static const char *const k_acc_lo[2] = {"àáâãäåæāăąçćċčðďǆǳèéêëēęěğġģħìíîïīįıĳķĺļľł", "ñńņňòóôõöøœőōŕřšßśşþťțùúûüūůűųýÿźżž"};
+static const char *const k_acc_up[2] = {"ÀÁÂÃÄÅÆĀĂĄÇĆĊČÐĎǅǲÈÉÊËĒĘĚĞĠĢĦÌÍÎÏĪĮİĲĶĹĻĽŁ", "ÑŃŅŇÒÓÔÕÖØŒŐŌŔŘŠßŚŞÞŤȚÙÚÛÜŪŮŰŲÝŸŹŻŽ"};
+static const char *const k_tab_label[4] = {"ABC", "#+=", "ÀÁÂ", "ÑŃŅ"};
 
 static struct {
     pthread_mutex_t lock;
@@ -79,6 +85,11 @@ static struct {
     float (*measure)(const char *, float);
     LytScene scene;
     char ok_label[64], space_label[64];
+    int page;                        // 0 letters, 1 symbols, 2 and 3 accents
+    int li;                          // index in k_layouts
+    struct { char name[56], text[96]; } labels[48];
+    int nlabels;
+    char lang[16];
 } G;
 
 // Recursive: the backend's callbacks may call swkbd_ui_resolve from inside submit
@@ -101,10 +112,13 @@ static void u8_nth(const char *s, int idx, char out[8]) {
 }
 
 // ---- messages (MSBT labels of the firmware, optional)
+static const char *lbl(const char *name, const char *dflt) {
+    for (int i = 0; i < G.nlabels; i++) if (!strcmp(G.labels[i].name, name)) return G.labels[i].text;
+    return dflt;
+}
+
 static void load_labels(void) {
-    snprintf(G.ok_label, sizeof G.ok_label, "OK");
-    snprintf(G.space_label, sizeof G.space_label, "Space");
-    const char *lang = getenv("BDSP_SWKBD_LANG");
+    const char *lang = G.lang;
     static const char *const dirs[] = {"%s/swkbd/romfs/message/%s/swkbd.msbt.szs", "%s/swkbd/message/%s/swkbd.msbt.szs"};
     for (unsigned di = 0; di < 2; di++) {
         char path[1100];
@@ -140,11 +154,13 @@ static void load_labels(void) {
                         memcpy(name, lbl + q + 1, l < 127 ? l : 127);
                         uint32_t idx; memcpy(&idx, lbl + q + 1 + l, 4);
                         q += 5 + l;
-                        char *dst = !strcmp(name, "SwkbdCommon_Enter_Confirm") ? G.ok_label : !strcmp(name, "SwkbdCommon_Space_Space") ? G.space_label : NULL;
-                        if (!dst || idx >= nt) continue;
+                        if (idx >= nt || G.nlabels >= 48 || strncmp(name, "Swkbd", 5)) continue;
+                        char *dst = G.labels[G.nlabels].text;
+                        snprintf(G.labels[G.nlabels].name, sizeof G.labels[0].name, "%s", name);
+                        G.nlabels++;
                         uint32_t so; memcpy(&so, txt + 4 + idx * 4, 4);
                         int w = 0;
-                        for (size_t k = so; k + 1 < tsz && w < 60; k += 2) {   // UTF-16 -> utf-8 (BMP)
+                        for (size_t k = so; k + 1 < tsz && w < 90; k += 2) {   // UTF-16 -> utf-8 (BMP)
                             unsigned c = txt[k] | txt[k + 1] << 8;
                             if (!c) break;
                             if (c < 0x80) dst[w++] = (char)c;
@@ -159,6 +175,8 @@ static void load_labels(void) {
         free(d);
         break;
     }
+    snprintf(G.ok_label, sizeof G.ok_label, "%s", lbl("SwkbdCommon_Enter_Confirm", "OK"));
+    snprintf(G.space_label, sizeof G.space_label, "%s", lbl("SwkbdCommon_Space_Space", "Space"));
 }
 
 // ---- screens
@@ -170,23 +188,69 @@ static int cmp_keys(const void *a, const void *b) {
     return cx < cy ? -1 : cx > cy ? 1 : 0;
 }
 
-// The layouts are white; the Switch's colour scheme is set by the program. This is our dark scheme: dark key plates, cyan focus.
+// The layouts are white; the Switch's colour scheme is set by the program and is not in the layout files, so the two schemes below are ours,
+// matched by eye to the original (light is the Switch's default; BDSP_SWKBD_THEME=dark selects the other).
+typedef struct {
+    uint8_t bg[3], plate[3], fn[3], dis[3], text[3], text_dis[3], icon[3], badge[3], focus[3], accent[3], accent_text[3], tab_on[3], cursor[3];
+} Theme;
+static const Theme k_theme_light = {{241, 241, 241}, {234, 234, 234}, {224, 224, 224}, {224, 224, 224}, {45, 45, 45}, {178, 178, 178}, {45, 45, 45},
+                                    {150, 150, 150}, {255, 255, 255}, {0, 170, 230}, {255, 255, 255}, {52, 64, 232}, {86, 214, 208}};
+static const Theme k_theme_dark = {{38, 41, 48}, {58, 62, 68}, {78, 82, 90}, {66, 70, 78}, {255, 255, 255}, {140, 144, 150}, {255, 255, 255},
+                                   {190, 190, 190}, {0, 140, 180}, {0, 140, 180}, {255, 255, 255}, {0, 193, 242}, {0, 193, 242}};
+static const Theme *g_theme = &k_theme_light;
+
+#define COL(c) (c)[0], (c)[1], (c)[2]
+
+static void style_key(LytInst *k, int plain) {
+    const Theme *t = g_theme;
+    const uint8_t *plate = plain ? t->plate : t->fn;
+    static const char *const bases[] = {"P_BtnBase", "P_BtnBase_00", "P_BtnBase_01"};
+    for (unsigned i = 0; i < 3; i++) { lytinst_set_color(k, bases[i], COL(plate)); lytinst_set_pane_alpha(k, bases[i], 255); }
+    lytinst_set_color(k, "P_BtnFocus", COL(t->focus));
+    lytinst_set_color(k, "P_BtnDecideKey", COL(t->cursor));
+    lytinst_set_color(k, "P_BtnTouch", COL(t->cursor));
+    static const char *const texts[] = {"T_00", "T_01", "T_02"};
+    for (unsigned i = 0; i < 3; i++) lytinst_set_color(k, texts[i], COL(t->text));
+    static const char *const badges[] = {"T_Key", "T_Key_00", "T_Key_01"};
+    for (unsigned i = 0; i < 3; i++) lytinst_set_color(k, badges[i], COL(t->badge));
+    static const char *const icons[] = {"P_00", "P_Image", "P_ShiftOn", "P_ShiftOff", "P_Key", "P_GlowOff"};
+    for (unsigned i = 0; i < sizeof icons / sizeof *icons; i++) lytinst_set_color(k, icons[i], COL(t->icon));
+    lytinst_set_color(k, "P_GlowOn", COL(t->accent));
+    lytinst_set_color(k, "P_Active_00", COL(t->tab_on));
+    lytinst_set_visible(k, "N_BtnFocusKey", 0);   // the focus frame is drawn by the keyboard itself (see swkbd_ui_scene)
+}
+
 static void apply_theme(Screen *s) {
+    const Theme *t = g_theme;
     static const char *const bases[] = {"P_BaseD", "P_BaseU", "P_BaseF", "P_InlineMarginBtm", "P_BaseDMargin"};
-    for (unsigned i = 0; i < sizeof bases / sizeof *bases; i++) lytinst_set_color(s->bg, bases[i], 0x26, 0x29, 0x30);
-    static const char *const shadows[] = {"P_ShdwD", "P_ShdwU", "P_ShdwLD", "P_ShdwLU", "P_ShdwRD", "P_ShdwRU", "P_FShdwL", "P_FShdwR", "P_FShdwD", "P_FShdwU"};
-    for (unsigned i = 0; i < sizeof shadows / sizeof *shadows; i++) lytinst_set_color(s->bg, shadows[i], 0, 0, 0);
+    for (unsigned i = 0; i < sizeof bases / sizeof *bases; i++) lytinst_set_color(s->bg, bases[i], COL(t->bg));
     const LytLayout *kl = lytinst_layout(s->kt);
     for (uint32_t i = 0; i < kl->npanes; i++) {
-        LytInst *k = kl->panes[i].kind == LYT_PRT ? lytinst_part(s->kt, kl->panes[i].name) : NULL;
-        if (!k) continue;
-        lytinst_set_color(k, "P_BtnFocus", 0x00, 0x8C, 0xB4);
-        lytinst_set_color(k, "P_BtnBase_00", 0x00, 0x8C, 0xB4);
-        lytinst_set_color(k, "P_BtnBase_01", 0x00, 0x8C, 0xB4);
-        lytinst_set_color(k, "P_BtnDecideKey", 0x00, 0xC1, 0xF2);
-        lytinst_set_color(k, "P_BtnTouch", 0x00, 0xC1, 0xF2);
+        if (kl->panes[i].kind != LYT_PRT) continue;
+        LytInst *k = lytinst_part(s->kt, kl->panes[i].name);
+        if (k) style_key(k, !strncmp(kl->panes[i].name, "L_BtnNml", 8));
     }
-    lytinst_set_color(s->caret, "P_Cursor", 0xE6, 0xE6, 0xE6);
+    lytinst_set_color(s->caret, "P_Cursor", COL(t->cursor));
+}
+
+// Characters of a page: 4 rows of 11 in reading order over the ordinary keys; keys without a character are hidden
+static void assign_chars(Screen *s, int page) {
+    const char *nt, *st;
+    if (page == 0) { nt = k_layouts[G.li].normal; st = k_layouts[G.li].shifted; }
+    else if (page == 1) { nt = st = k_sign; }
+    else { nt = k_acc_lo[page - 2]; st = k_acc_up[page - 2]; }
+    int ci = 0;
+    for (int i = 0; i < s->nkeys; i++) {
+        Key *k = &s->keys[i];
+        if (k->kind != K_CHAR) continue;
+        u8_nth(nt, ci, k->normal);
+        u8_nth(st, ci, k->shifted);
+        ci++;
+        k->hidden = k->normal[0] == 1 || !k->normal[0];
+        if (!k->shifted[0] || k->shifted[0] == 1) memcpy(k->shifted, k->normal, sizeof k->shifted);
+        if (s->kt) lytinst_set_visible(s->kt, k->name, !k->hidden);
+        lytinst_set_text(k->inst, "T_00", k->normal);
+    }
 }
 
 static int build_screen(int si) {
@@ -198,61 +262,78 @@ static int build_screen(int si) {
     s->bg = lytinst_new(s->bank, "SwkbdBgKeytop");
     s->area = lytinst_new(s->bank, "SwkbdBaseTextAreaLine");
     s->caret = lytinst_new(s->bank, "SwkbdCaret");
-    if (!s->kt || !s->bg || !s->area || !s->caret) return -1;
+    s->mask = lytinst_new(s->bank, "BgMask");       // dims the game picture (colour and alpha are in the file)
+    if (!s->kt || !s->bg || !s->area || !s->caret || !s->mask) return -1;
     lytinst_default_state(s->kt); lytinst_default_state(s->bg); lytinst_default_state(s->area); lytinst_default_state(s->caret);
+    lytinst_set_visible(s->area, "L_BgMask", 0);           // its own mask would dim the text area
     lytinst_set_anim(s->area, "TextAreaType", 1);          // frame 1: the long single-line text field
     lytinst_set_visible(s->area, "T_TextBox_Long", 1);
     lytinst_set_visible(s->area, "N_UnFixed", 0);          // composition markers of the input methods we do not have
-    lytinst_set_visible(s->kt, "L_BtnLineBreak", 0);
     apply_theme(s);
     const LytLayout *kl = lytinst_layout(s->kt);
     for (uint32_t i = 0; i < kl->npanes && s->nkeys < MAX_KEYS; i++) {
         const LytPane *p = &kl->panes[i];
-        if (p->kind != LYT_PRT || !(p->flags & 1)) continue;
-        int kind = -1;
+        if (p->kind != LYT_PRT) continue;
+        int kind = -1, page = 0;
         if (!strncmp(p->name, "L_BtnNml", 8)) kind = K_CHAR;
         else if (!strcmp(p->name, "L_BtnBS")) kind = K_BS;
         else if (!strncmp(p->name, "L_BtnEnter", 10)) kind = K_ENTER;
         else if (!strcmp(p->name, "L_BtnShift")) kind = K_SHIFT;
-        else if (!strcmp(p->name, "L_BtnSymbol")) kind = K_SYMBOL;
-        else if (!strcmp(p->name, "L_BtnArray") && si == SCR_SIGN) kind = K_BACK;
-        else if (!strncmp(p->name, "L_BtnSpace", 10)) kind = K_SPACE;
-        if (kind < 0) {
-            // the language switch and the symbol page tabs have no function here
-            if (!strcmp(p->name, "L_BtnArray") || !strncmp(p->name, "L_InputMode", 11)) lytinst_set_visible(s->kt, p->name, 0);
+        else if (!strcmp(p->name, "L_BtnSpace_00")) kind = si == SCR_QWERTY ? -2 : K_SPACE;   // the letter keyboard uses the narrower one next to the tabs
+        else if (!strcmp(p->name, "L_BtnSpace_01") && si == SCR_QWERTY) kind = K_SPACE;
+        else if (!strncmp(p->name, "L_InputMode_0", 13) && p->name[13] >= '0' && p->name[13] <= '3' && si != SCR_NUMERIC) { kind = K_TAB; page = p->name[13] - '0'; }
+        if (kind == -1 || kind == -2) {
+            // not a key: hidden (symbol key and unused widths) or decoration (language globe, Return)
+            if (!strcmp(p->name, "L_BtnSymbol") || kind == -2 || !strncmp(p->name, "L_BtnSpace", 10) || !strncmp(p->name, "L_InputMode", 11)) lytinst_set_visible(s->kt, p->name, 0);
+            if (!strcmp(p->name, "L_BtnArray")) {   // the language key: a globe, no function here
+                LytInst *g = lytinst_part(s->kt, p->name);
+                lytinst_set_visible(g, "N_Image", 1); lytinst_set_visible(g, "N_Text", 0);
+            }
+            if (!strcmp(p->name, "L_BtnLineBreak")) {   // Return: only for several-line fields, shown disabled
+                LytInst *g = lytinst_part(s->kt, p->name);
+                lytinst_set_text(g, "T_00", lbl("SwkbdCommon_Enter_LineBreak", "Return"));
+                lytinst_set_color(g, "T_00", COL(g_theme->text_dis));
+                lytinst_set_visible(g, "N_Key", 0);
+            }
             continue;
         }
         LytInst *inst = lytinst_part(s->kt, p->name);
         if (!inst) continue;
+        if (kind == K_TAB) lytinst_set_visible(s->kt, p->name, 1);
+        if (kind == K_SPACE) lytinst_set_visible(s->kt, p->name, 1);
         Key *k = &s->keys[s->nkeys];
         memset(k, 0, sizeof *k);
-        k->inst = inst; k->kind = kind;
+        k->inst = inst; k->kind = kind; k->page = page;
         snprintf(k->name, sizeof k->name, "%s", p->name);
         if (!lyt_pane_bounds(s->kt, s->kt, p->name, 0, 0, 1, k->r)) continue;
         snprintf(k->tag, sizeof k->tag, "UnFocusKey");
         k->t = 1e9f;
+        if (kind == K_BS) lytinst_set_text(inst, "T_Key", "");           // button badges: B, Y, +
+        if (kind == K_SPACE) lytinst_set_text(inst, "T_Key", "");
+        if (kind == K_ENTER) lytinst_set_text(inst, "T_Key_00", "");
         s->nkeys++;
     }
     qsort(s->keys, s->nkeys, sizeof s->keys[0], cmp_keys);
-    // characters in reading order over the ordinary keys (the wide numeric keys L/R last)
-    const char *lay = getenv("BDSP_SWKBD_LAYOUT");
-    int li = 0;
-    for (unsigned q = 0; q < sizeof k_layouts / sizeof *k_layouts; q++) if (lay && !strcmp(lay, k_layouts[q].id)) li = (int)q;
-    const char *table = si == SCR_QWERTY ? k_layouts[li].normal : si == SCR_SIGN ? k_sign : k_numeric;
-    int ci = 0;
-    for (int i = 0; i < s->nkeys; i++) {
-        Key *k = &s->keys[i];
-        if (k->kind != K_CHAR) continue;
-        if (si == SCR_NUMERIC && (!strcmp(k->name, "L_BtnNmlL") || !strcmp(k->name, "L_BtnNmlR"))) {
-            snprintf(k->normal, sizeof k->normal, "%s", !strcmp(k->name, "L_BtnNmlL") ? "-" : ".");
+    if (si == SCR_NUMERIC) {
+        static const char *const nm[] = {"-", "."};
+        for (int i = 0; i < s->nkeys; i++) {
+            Key *k = &s->keys[i];
+            if (k->kind != K_CHAR) continue;
+            if (!strcmp(k->name, "L_BtnNmlL") || !strcmp(k->name, "L_BtnNmlR")) snprintf(k->normal, sizeof k->normal, "%s", nm[!strcmp(k->name, "L_BtnNmlR")]);
+            else u8_nth(k_numeric, 0, k->normal);
             snprintf(k->shifted, sizeof k->shifted, "%s", k->normal);
-        } else {
-            u8_nth(table, ci, k->normal);
-            if (si == SCR_QWERTY) u8_nth(k_layouts[li].shifted, ci, k->shifted); else snprintf(k->shifted, sizeof k->shifted, "%s", k->normal);
-            ci++;
+            lytinst_set_text(k->inst, "T_00", k->normal);
         }
-        if (k->normal[0] == 1 || !k->normal[0]) { k->kind = K_NONE; lytinst_set_visible(s->kt, k->name, 0); continue; }   // no key at this place
-        lytinst_set_text(k->inst, "T_00", k->normal);
+        int ci = 0;
+        for (int i = 0; i < s->nkeys; i++) {
+            Key *k = &s->keys[i];
+            if (k->kind != K_CHAR || !strncmp(k->name, "L_BtnNmlL", 9) || !strncmp(k->name, "L_BtnNmlR", 9)) continue;
+            u8_nth(k_numeric, ci++, k->normal);
+            snprintf(k->shifted, sizeof k->shifted, "%s", k->normal);
+            lytinst_set_text(k->inst, "T_00", k->normal);
+        }
+    } else {
+        assign_chars(s, si == SCR_QWERTY ? 0 : 1);
     }
     s->ok = 1;
     return 0;
@@ -265,6 +346,18 @@ static int ensure_built(void) {
     G.inited = 1;
     snprintf(G.ok_label, sizeof G.ok_label, "OK");
     snprintf(G.space_label, sizeof G.space_label, "Space");
+    const char *th = getenv("BDSP_SWKBD_THEME");
+    g_theme = th && !strcmp(th, "dark") ? &k_theme_dark : &k_theme_light;
+    const char *lg = getenv("BDSP_SWKBD_LANG");
+    snprintf(G.lang, sizeof G.lang, "%s", lg && *lg ? lg : "USen");
+    {   // keyboard layout: BDSP_SWKBD_LAYOUT, else from the language
+        static const struct { const char *lang, *id; } map[] = {{"EUde", "de"}, {"EUfr", "fr"}, {"USfr", "fr"}, {"EUes", "es"}, {"USes", "es"}, {"EUit", "it"},
+                                                                  {"EUpt", "pt"}, {"USpt", "pt"}, {"EUru", "ru"}, {"EUen", "uk"}, {"USen", "us"}};
+        const char *want = getenv("BDSP_SWKBD_LAYOUT");
+        for (unsigned q = 0; q < sizeof map / sizeof *map && !want; q++) if (!strcmp(G.lang, map[q].lang)) want = map[q].id;
+        G.li = 0;
+        for (unsigned q = 0; q < sizeof k_layouts / sizeof *k_layouts; q++) if (want && !strcmp(want, k_layouts[q].id)) G.li = (int)q;
+    }
     const char *root = getenv("BDSP_FIRMWARE_DATA");
     if (root && *root && !getenv("BDSP_SWKBD_SIMPLE")) {
         snprintf(G.root, sizeof G.root, "%s", root);
@@ -317,9 +410,15 @@ static void refresh_labels(void) {
         case K_SPACE: t = G.space_label; break;
         case K_SYMBOL: t = "#+="; break;
         case K_BACK: t = "ABC"; break;
+        case K_TAB: t = k_tab_label[k->page]; break;
         default: break;
         }
         if (t) lytinst_set_text(k->inst, "T_00", t);
+        if (k->kind == K_TAB) {
+            int on = k->page == G.page;
+            lytinst_set_visible(k->inst, "P_Active_00", on);
+            lytinst_set_color(k->inst, "T_00", COL(on ? g_theme->tab_on : g_theme->text));
+        }
         if (k->kind == K_SHIFT) {
             lytinst_set_visible(k->inst, "P_ShiftOn", G.shift != 0);
             lytinst_set_visible(k->inst, "P_ShiftOff", G.shift == 0);
@@ -376,13 +475,18 @@ static void caret_move(int dir) {
     if (dir > 0 && G.text[G.caret]) G.caret += u8_len((unsigned char)G.text[G.caret]);
 }
 
-static void switch_screen(int si) {
+static void switch_page(int page) {
+    if (G.cur == SCR_NUMERIC) return;
+    int si = page == 0 ? SCR_QWERTY : SCR_SIGN;
     if (!G.scr[si].ok) return;
-    G.cur = si;
-    G.focus = -1;
-    G.shift = 0;
+    G.page = page; G.cur = si; G.shift = 0;
+    Screen *s = cur();
+    assign_chars(s, page);
     refresh_labels();
-    set_focus(0);
+    int f = 0;
+    for (int i = 0; i < s->nkeys; i++) if (s->keys[i].kind == K_TAB && s->keys[i].page == page) f = i;
+    G.focus = -1;
+    set_focus(f);
 }
 
 static void press_key(int i) {
@@ -399,10 +503,11 @@ static void press_key(int i) {
     case K_BS: backspace(); break;
     case K_ENTER: do_submit(); break;
     case K_SHIFT:
-        if (G.cur == SCR_QWERTY) { G.shift = (G.shift + 1) % 3; refresh_labels(); }
+        if (G.cur != SCR_NUMERIC) { G.shift = (G.shift + 1) % 3; refresh_labels(); }
         break;
-    case K_SYMBOL: switch_screen(SCR_SIGN); break;
-    case K_BACK: switch_screen(SCR_QWERTY); break;
+    case K_TAB: if (k->page != G.page) switch_page(k->page); break;
+    case K_SYMBOL: switch_page(1); break;
+    case K_BACK: switch_page(0); break;
     }
 }
 
@@ -421,7 +526,7 @@ static void move_focus(int dx, int dy) {
     int best = -1;
     float bs = 1e30f;
     for (int i = 0; i < s->nkeys; i++) {
-        if (i == G.focus || s->keys[i].kind == K_NONE) continue;
+        if (i == G.focus || s->keys[i].kind == K_NONE || s->keys[i].hidden) continue;
         const Key *k = &s->keys[i];
         float kx = (k->r[0] + k->r[2]) / 2, ky = (k->r[1] + k->r[3]) / 2;
         float along = dx ? (kx - fx) * dx : (ky - fy) * dy, across = dx ? fabsf(ky - fy) : fabsf(kx - fx);
@@ -449,7 +554,8 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
     int si = p->mode == 1 && G.scr[SCR_NUMERIC].ok ? SCR_NUMERIC : SCR_QWERTY;
-    G.cur = si; G.focus = -1; G.shift = 0;
+    G.cur = si; G.focus = -1; G.shift = 0; G.page = 0;
+    if (si == SCR_QWERTY) assign_chars(&G.scr[SCR_QWERTY], 0);
     refresh_labels();
     set_focus(0);
     trace("open", p->header);
@@ -473,6 +579,7 @@ int swkbd_ui_active(void) { return __atomic_load_n(&G.active, __ATOMIC_ACQUIRE);
 const char *swkbd_ui_text_value(void) { return G.text; }
 const char *swkbd_ui_focus_name(void) { Screen *s = &G.scr[G.cur]; return G.focus >= 0 && G.focus < s->nkeys ? s->keys[G.focus].name : ""; }
 void swkbd_ui_set_measure(float (*fn)(const char *, float)) { G.measure = fn; }
+const char *swkbd_ui_root(void) { return G.root; }
 
 // ---- input
 enum { B_A, B_B, B_X, B_Y, B_LSTICK, B_RSTICK, B_L, B_R, B_ZL, B_ZR, B_PLUS, B_MINUS, B_LEFT, B_UP, B_RIGHT, B_DOWN };
@@ -523,7 +630,7 @@ void swkbd_ui_touch(int down, float nx, float ny) {
         Screen *s = cur();
         for (int i = 0; i < s->nkeys; i++) {
             const Key *k = &s->keys[i];
-            if (k->kind != K_NONE && x >= k->r[0] && x < k->r[2] && y >= k->r[1] && y < k->r[3]) {
+            if (k->kind != K_NONE && !k->hidden && x >= k->r[0] && x < k->r[2] && y >= k->r[1] && y < k->r[3]) {
                 G.touch_mode = 1;
                 set_focus(i);
                 press_key(i);
@@ -574,9 +681,6 @@ static int fb_build_screen(int si) {
     Screen *s = &G.scr[si];
     memset(s, 0, sizeof *s);
     s->fallback = 1;
-    const char *lay = getenv("BDSP_SWKBD_LAYOUT");
-    int li = 0;
-    for (unsigned q = 0; q < sizeof k_layouts / sizeof *k_layouts; q++) if (lay && !strcmp(lay, k_layouts[q].id)) li = (int)q;
     if (si == SCR_NUMERIC) {
         static const char *const nm[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "-", "0", "."};
         for (int i = 0; i < 12; i++) {
@@ -587,16 +691,16 @@ static int fb_build_screen(int si) {
         fb_key(s, K_BS, "bs", 982, 382, 116, 60);
         fb_key(s, K_ENTER, "enter", 982, 510, 116, 188);
     } else {
-        const char *table = si == SCR_QWERTY ? k_layouts[li].normal : k_sign;
+        const char *table = si == SCR_QWERTY ? k_layouts[G.li].normal : k_sign;
         for (int i = 0; i < 44; i++) {
             Key tmp;
             memset(&tmp, 0, sizeof tmp);
             u8_nth(table, i, tmp.normal);
-            if (tmp.normal[0] == 1 || !tmp.normal[0]) continue;
             fb_key(s, K_CHAR, "key", 100 + 96 * (i % 11), 328 + 64 * (i / 11), 92, 60);
             Key *k = &s->keys[s->nkeys - 1];
+            k->hidden = tmp.normal[0] == 1 || !tmp.normal[0];
             memcpy(k->normal, tmp.normal, sizeof k->normal);
-            if (si == SCR_QWERTY) u8_nth(k_layouts[li].shifted, i, k->shifted); else memcpy(k->shifted, k->normal, sizeof k->shifted);
+            if (si == SCR_QWERTY) u8_nth(k_layouts[G.li].shifted, i, k->shifted); else memcpy(k->shifted, k->normal, sizeof k->shifted);
         }
         fb_key(s, K_BS, "bs", 1168, 328, 116, 60);
         fb_key(s, K_ENTER, "enter", 1168, 552, 116, 124);
@@ -663,6 +767,7 @@ static void fb_scene(Screen *s, const char *shown) {
     fb_text(sc, cnt, 950, 226, 200, 32, 28, 0x02, 200, 0.6f);
     for (int i = 0; i < s->nkeys; i++) {
         Key *k = &s->keys[i];
+        if (k->hidden) continue;
         float w = k->r[2] - k->r[0], h = k->r[3] - k->r[1];
         int focus = i == G.focus;
         int pressed = !strncmp(k->tag, "Decide", 6) && k->t < 9;
@@ -689,6 +794,24 @@ static void fb_scene(Screen *s, const char *shown) {
         }
         fb_text(sc, t, k->r[0], k->r[1], w, h, k->kind == K_CHAR ? 36 : 28, 0x00, 255, 1);
     }
+}
+
+
+// Footer with the button hints (glyphs of the system's button font): controller, caret keys, shift, cancel, select
+static void footer_items(LytScene *sc) {
+    const Theme *t = g_theme;
+    int gray = t->text[0];
+    float y = 664, h = 40;
+    fb_text(sc, "\uE12C", 70, y, 60, h, 38, 0x01, gray, 1);
+    for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 653, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
+    fb_text(sc, "\uE0E4\uE145", 632, y, 110, h, 30, 0x01, gray, 1);
+    fb_text(sc, "\uE0E5\uE146", 733, y, 110, h, 30, 0x01, gray, 1);
+    fb_text(sc, "\uE104", 830, y, 44, h, 32, 0x01, gray, 1);
+    fb_text(sc, G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 876, y, 90, h, 30, 0x01, gray, 1);
+    fb_text(sc, "\uE0E2", 960, y, 40, h, 32, 0x01, gray, 1);
+    fb_text(sc, lbl("SwkbdFooter_Close", "Cancel"), 1000, y, 110, h, 30, 0x01, gray, 1);
+    fb_text(sc, "\uE0E0", 1115, y, 40, h, 32, 0x01, gray, 1);
+    fb_text(sc, lbl("SwkbdFooter_Decide", "Select"), 1154, y, 90, h, 30, 0x01, gray, 1);
 }
 
 // ---- scene
@@ -718,7 +841,12 @@ static void tick(double dt) {
             k->t = fr;
         }
         lytinst_set_anim(k->inst, k->tag, k->t);
-        if (k->kind == K_ENTER) lytinst_set_anim(k->inst, "Alpha", len >= G.p.minlen && !G.busy ? 100 : 10);
+        lytinst_set_anim(k->inst, "Alpha", 100);   // full plate (the layouts start dimmed at frame 10)
+        if (k->kind == K_ENTER) {
+            int en = len >= G.p.minlen && !G.busy;
+            lytinst_set_color(k->inst, "P_BtnBase_00", COL(en ? g_theme->accent : g_theme->dis));
+            lytinst_set_color(k->inst, "T_00", COL(en ? g_theme->accent_text : g_theme->text_dis));
+        }
         
         if (i == G.focus) {
             LytInst *c = lytinst_part(k->inst, "UF_Cursor");
@@ -743,6 +871,7 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         if (G.p.password) { int k = n0 < (int)sizeof shown - 1 ? n0 : (int)sizeof shown - 1; memset(shown, '*', (size_t)k); shown[k] = 0; }
         else snprintf(shown, sizeof shown, "%s", G.text);
         fb_scene(s, shown);
+        footer_items(&G.scene);
         if (fmod(G.clock, 1.0) < 0.6) {   // caret
             char pre[1100];
             snprintf(pre, sizeof pre, "%.*s", G.caret, G.p.password ? shown : G.text);
@@ -768,8 +897,25 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     float a = (float)G.fade;
     lytinst_set_alpha(s->bg, a); lytinst_set_alpha(s->kt, a); lytinst_set_alpha(s->area, a);
     if (getenv("BDSP_TRACE_APPLET") && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] t=%.1f fade=%.2f scale=%.2f target %dx%d screen %d\n", G.clock, G.fade, sc, tw, th, G.cur);
-    lyt_scene_build(&G.scene, s->bg, 0, 0, 1);
+    // entrance: the layouts' own In animations (the keytop slides up and fades in, the text area fades in); the mask fades over 6 frames
+    float tf = (float)(G.clock * 60);
+    float fr = lytinst_anim_frames(s->bg, "In");
+    lytinst_set_anim(s->bg, "In", tf < fr ? tf : fr);
+    fr = lytinst_anim_frames(s->area, "In");
+    lytinst_set_anim(s->area, "In", tf < fr ? tf : fr);
+    lytinst_set_alpha(s->mask, tf < 6 ? tf / 6 : 1);
+    lyt_scene_build(&G.scene, s->mask, 0, 0, 1);
+    fb_quad(&G.scene, 0, 288, SWKBD_CANVAS_W, SWKBD_CANVAS_H - 288, COL(g_theme->bg), 1.0f);   // keyboard base (its pane is hidden in the file)
+    lyt_scene_append(&G.scene, s->bg, 0, 0, 1);
     lyt_scene_append(&G.scene, s->kt, 0, 0, 1);
+    if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
+        const Key *fk = &s->keys[G.focus];
+        const uint8_t *cc = g_theme->cursor;
+        float x0 = fk->r[0] - 2, y0 = fk->r[1] - 2, w = fk->r[2] - fk->r[0] + 4, h = fk->r[3] - fk->r[1] + 4, b = 4;
+        fb_quad(&G.scene, x0, y0, w, b, COL(cc), 1); fb_quad(&G.scene, x0, y0 + h - b, w, b, COL(cc), 1);
+        fb_quad(&G.scene, x0, y0, b, h, COL(cc), 1); fb_quad(&G.scene, x0 + w - b, y0, b, h, COL(cc), 1);
+    }
+    footer_items(&G.scene);
     lyt_scene_append(&G.scene, s->area, 0, 0, 1);
     // caret: left edge of the text box plus the width of the text before it, blinking
     float b[4];
