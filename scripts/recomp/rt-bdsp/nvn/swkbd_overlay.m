@@ -16,6 +16,7 @@
 
 #include "../swkbd_ui.h"
 #include "../swkbd_text.h"
+#include "../swkbd_draw.h"
 
 
 static NSString *const kMsl =
@@ -161,41 +162,6 @@ static MTLTextureSwizzle swz(uint32_t c) {
     }
 }
 
-// The icon textures are 64 px (the backspace one a single BC4 channel with visible 4x4 blocks) and are drawn at about 75 device pixels. They are
-// scaled to twice the size with a Catmull-Rom filter and their alpha edge is sharpened, so the shape stays crisp instead of soft and blocky.
-static float cubic(float p0, float p1, float p2, float p3, float t) {
-    return p1 + 0.5f * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
-}
-static uint8_t *upscale2_sharp(const uint8_t *px, int w, int h) {
-    int W = w * 2, H = h * 2;
-    uint8_t *out = malloc((size_t)W * H * 4);
-    if (!out) return NULL;
-    for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++) {
-            float sx = (x + 0.5f) / 2 - 0.5f, sy = (y + 0.5f) / 2 - 0.5f;
-            int ix = (int)floorf(sx), iy = (int)floorf(sy);
-            float fx = sx - ix, fy = sy - iy;
-            for (int c = 0; c < 4; c++) {
-                float col[4];
-                for (int j = 0; j < 4; j++) {
-                    int yy = iy - 1 + j; yy = yy < 0 ? 0 : yy >= h ? h - 1 : yy;
-                    float v[4];
-                    for (int i = 0; i < 4; i++) { int xx = ix - 1 + i; xx = xx < 0 ? 0 : xx >= w ? w - 1 : xx; v[i] = px[((size_t)yy * w + xx) * 4 + c]; }
-                    col[j] = cubic(v[0], v[1], v[2], v[3], fx);
-                }
-                float r = cubic(col[0], col[1], col[2], col[3], fy);
-                r = r < 0 ? 0 : r > 255 ? 255 : r;
-                if (c == 3) {   // sharpen the edge of the shape
-                    float a = r / 255, u = (a - 0.3f) / 0.4f;
-                    u = u < 0 ? 0 : u > 1 ? 1 : u;
-                    r = 255 * u * u * (3 - 2 * u);
-                }
-                out[((size_t)y * W + x) * 4 + c] = (uint8_t)(r + 0.5f);
-            }
-        }
-    return out;
-}
-
 static id<MTLTexture> gpu_tex(id<MTLDevice> dev, const LytTex *t) {
     NSValue *key = [NSValue valueWithPointer:t];
     id<MTLTexture> r = [g_tex objectForKey:key];
@@ -212,12 +178,9 @@ static id<MTLTexture> gpu_tex(id<MTLDevice> dev, const LytTex *t) {
             }
         }
     } else {
-        uint8_t *px = malloc((size_t)t->w * t->h * 4);
-        if (px && lyt_tex_decode(t, px)) {
-            uint8_t *big = !strncmp(t->name, "Ico", 3) ? upscale2_sharp(px, (int)t->w, (int)t->h) : NULL;
-            r = big ? make_rgba(dev, (int)t->w * 2, (int)t->h * 2, big) : make_rgba(dev, (int)t->w, (int)t->h, px);
-            free(big);
-        }
+        int w, h;
+        uint8_t *px = lyt_tex_to_rgba(t, NULL, &w, &h);
+        if (px) r = make_rgba(dev, w, h, px);
         free(px);
     }
     [g_tex setObject:r ?: (id)[NSNull null] forKey:key];
@@ -321,6 +284,7 @@ static BOOL use_atlas(void) {
     return !off && g_atlas_ready;
 }
 static id<MTLTexture> g_atlas;
+static SwkbdBatch g_batch;   // the scene as draw lists (swkbd_draw.c)
 static unsigned g_atlas_ver;
 
 // The atlas as an R8 texture that reads as white with the coverage in alpha; uploaded again when glyphs were added.
@@ -465,6 +429,7 @@ static void keepalive_wake(void) {
 static void overlay_release(void) {
     g_tex = nil; g_text = nil; g_white = nil; g_samp = nil; g_atlas = nil;
     swkbd_text_close(); g_atlas_ready = NO;
+    swkbd_draw_free(&g_batch);
     g_pipe = nil; g_pipe_frame = nil; g_pipe_fmt = (MTLPixelFormat)0; g_blur_pipe = nil;
     if (g_font_std) { CGFontRelease(g_font_std); g_font_std = NULL; }
     if (g_font_ext) { CGFontRelease(g_font_ext); g_font_ext = NULL; }
@@ -529,72 +494,79 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
             [enc setFragmentTexture:g_blur_b atIndex:0];
             quad(enc, bx, by, buv, bc);
         }
-        for (int i = 0; i < sc->n; i++) {
-            const LytItem *it = &sc->items[i];
-            float X[4], Y[4];
-            for (int k = 0; k < 4; k++) { X[k] = off[0] + it->x[k] * scale; Y[k] = off[1] + it->y[k] * scale; }
-            if (it->type == LYT_ITEM_FRAME) {   // focus frame around the key rectangle (items x[0], y[0] .. x[3], y[3]); the faint outer 1.9 px do not count, so the radius of the outer shape is 2.5 + 1.9
-                float kx0 = X[0], ky0 = Y[0], kx1 = X[3], ky1 = Y[3], m = 8 * scale;
-                float cx = (kx0 + kx1) / 2, cy = (ky0 + ky1) / 2, hw = (kx1 - kx0) / 2 / scale + 7, hh = (ky1 - ky0) / 2 / scale + 7;
-                struct { float half[2]; float rad, px; float col[4]; } fu = {{hw, hh}, 4.4f, 1.0f / scale, {it->col[0][0] / 255.0f, it->col[0][1] / 255.0f, it->col[0][2] / 255.0f, it->alpha}};
-                float fx[4] = {cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale, cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale};
-                float fy[4] = {cy - hh * scale - m + 7 * scale, cy - hh * scale - m + 7 * scale, cy + hh * scale + m - 7 * scale, cy + hh * scale + m - 7 * scale};
-                float fuv[4][2], fcol[4][4] = {{1,1,1,1},{1,1,1,1},{1,1,1,1},{1,1,1,1}};
-                for (int k = 0; k < 4; k++) { fuv[k][0] = (fx[k] - cx) / scale; fuv[k][1] = (fy[k] - cy) / scale; }
-                [enc setRenderPipelineState:g_pipe_frame];
-                [enc setFragmentBytes:&fu length:sizeof fu atIndex:0];
-                quad(enc, fx, fy, fuv, fcol);
-                [enc setRenderPipelineState:g_pipe];
-                continue;
-            }
-            if (it->type == LYT_ITEM_QUAD) {
-                id<MTLTexture> t = g_white;
-                if (it->tex) { t = gpu_tex(dev, it->tex); if (!t) continue; }
-                float col[4][4];
-                for (int k = 0; k < 4; k++) { for (int c = 0; c < 3; c++) col[k][c] = it->col[k][c] / 255.0f; col[k][3] = it->col[k][3] / 255.0f * it->alpha; }
-                [enc setFragmentTexture:t atIndex:0];
-                quad(enc, X, Y, (const float (*)[2])it->uv, col);
-            } else if (it->str && it->str[0] && use_atlas()) {
-                SwkbdGlyph gl[96];
-                int ng = swkbd_text_place(it, scale, X, Y, gl, 96);
-                id<MTLTexture> at = ng ? atlas_tex(dev) : nil;
-                if (!at) continue;
-                [enc setFragmentTexture:at atIndex:0];
-                for (int q = 0; q < ng; q++) {
-                    float gx[4] = {gl[q].x0, gl[q].x1, gl[q].x0, gl[q].x1}, gy[4] = {gl[q].y0, gl[q].y0, gl[q].y1, gl[q].y1};
-                    float uv[4][2] = {{gl[q].u0, gl[q].v0}, {gl[q].u1, gl[q].v0}, {gl[q].u0, gl[q].v1}, {gl[q].u1, gl[q].v1}}, col[4][4];
-                    for (int k = 0; k < 4; k++) {
-                        float t = k < 2 ? gl[q].g0 : gl[q].g1;
-                        for (int c = 0; c < 3; c++) col[k][c] = (it->top_color[c] + (it->bottom_color[c] - it->top_color[c]) * t) / 255.0f;
-                        col[k][3] = (it->top_color[3] + (it->bottom_color[3] - it->top_color[3]) * t) / 255.0f * it->alpha;
+        if (use_atlas()) {   // the shared draw lists: one vertex buffer, a run of vertices per texture
+            swkbd_draw_build(&g_batch, sc, scale, off);
+            if (g_batch.nv) {
+                id<MTLBuffer> vb = [dev newBufferWithBytes:g_batch.v length:(NSUInteger)g_batch.nv * sizeof(SwkbdVtx) options:MTLResourceStorageModeShared];
+                [enc setVertexBuffer:vb offset:0 atIndex:0];
+                for (int i = 0; i < g_batch.nd; i++) {
+                    const SwkbdDraw *d = &g_batch.d[i];
+                    if (d->kind == SWKBD_DRAW_FRAME) {
+                        struct { float half[2]; float rad, px; float col[4]; } fu = {{d->half[0], d->half[1]}, d->rad, d->px, {d->col[0], d->col[1], d->col[2], d->col[3]}};
+                        [enc setRenderPipelineState:g_pipe_frame];
+                        [enc setFragmentBytes:&fu length:sizeof fu atIndex:0];
+                        [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:(NSUInteger)d->first vertexCount:(NSUInteger)d->count];
+                        [enc setRenderPipelineState:g_pipe];
+                        continue;
                     }
+                    id<MTLTexture> t = d->tex == SWKBD_TEX_WHITE ? g_white : d->tex == SWKBD_TEX_ATLAS ? atlas_tex(dev) : gpu_tex(dev, d->tex);
+                    if (!t) continue;
+                    [enc setFragmentTexture:t atIndex:0];
+                    [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:(NSUInteger)d->first vertexCount:(NSUInteger)d->count];
+                }
+            }
+        } else {   // (CoreText strings: without the firmware's fonts)
+            for (int i = 0; i < sc->n; i++) {
+                const LytItem *it = &sc->items[i];
+                float X[4], Y[4];
+                for (int k = 0; k < 4; k++) { X[k] = off[0] + it->x[k] * scale; Y[k] = off[1] + it->y[k] * scale; }
+                if (it->type == LYT_ITEM_FRAME) {   // focus frame around the key rectangle (items x[0], y[0] .. x[3], y[3]); the faint outer 1.9 px do not count, so the radius of the outer shape is 2.5 + 1.9
+                    float kx0 = X[0], ky0 = Y[0], kx1 = X[3], ky1 = Y[3], m = 8 * scale;
+                    float cx = (kx0 + kx1) / 2, cy = (ky0 + ky1) / 2, hw = (kx1 - kx0) / 2 / scale + 7, hh = (ky1 - ky0) / 2 / scale + 7;
+                    struct { float half[2]; float rad, px; float col[4]; } fu = {{hw, hh}, 4.4f, 1.0f / scale, {it->col[0][0] / 255.0f, it->col[0][1] / 255.0f, it->col[0][2] / 255.0f, it->alpha}};
+                    float fx[4] = {cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale, cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale};
+                    float fy[4] = {cy - hh * scale - m + 7 * scale, cy - hh * scale - m + 7 * scale, cy + hh * scale + m - 7 * scale, cy + hh * scale + m - 7 * scale};
+                    float fuv[4][2], fcol[4][4] = {{1,1,1,1},{1,1,1,1},{1,1,1,1},{1,1,1,1}};
+                    for (int k = 0; k < 4; k++) { fuv[k][0] = (fx[k] - cx) / scale; fuv[k][1] = (fy[k] - cy) / scale; }
+                    [enc setRenderPipelineState:g_pipe_frame];
+                    [enc setFragmentBytes:&fu length:sizeof fu atIndex:0];
+                    quad(enc, fx, fy, fuv, fcol);
+                    [enc setRenderPipelineState:g_pipe];
+                    continue;
+                }
+                if (it->type == LYT_ITEM_QUAD) {
+                    id<MTLTexture> t = g_white;
+                    if (it->tex) { t = gpu_tex(dev, it->tex); if (!t) continue; }
+                    float col[4][4];
+                    for (int k = 0; k < 4; k++) { for (int c = 0; c < 3; c++) col[k][c] = it->col[k][c] / 255.0f; col[k][3] = it->col[k][3] / 255.0f * it->alpha; }
+                    [enc setFragmentTexture:t atIndex:0];
+                    quad(enc, X, Y, (const float (*)[2])it->uv, col);
+                } else if (it->str && it->str[0]) {
+                    float bw = X[3] - X[0], bh = Y[3] - Y[0];
+                    float px = it->font_size[0] * scale;   // the layouts' glyph width is the em size; the height is 1.5x of it (the font is drawn at its own proportions)
+                    if (px < 4 || bw <= 0 || bh <= 0) continue;
+                    NSDictionary *d = text_tex(dev, it->str, px, it->char_space * scale);
+                    id<MTLTexture> t = d[@"tex"];
+                    if (!t) continue;
+                    float w = [d[@"w"] floatValue] - 4, h = [d[@"h"] floatValue];
+                    BOOL glyph = NO;                                  // button glyphs are never squeezed
+                    for (const unsigned char *u = (const unsigned char *)it->str; *u; u++) if (*u == 0xEE) glyph = YES;   // utf-8 lead byte of U+E000..EFFF
+                    float sx = (w > bw && !glyph) ? bw / w : 1;       // squeeze text to fit the box
+                    float drawW = w * sx, drawH = h * sx;                // too long for its box: smaller, in proportion (a squeezed label looks tall and thin)
+                    int ox = it->origin & 3, oy = (it->origin >> 2) & 3;
+                    float left = X[0] + (ox == 1 ? 0 : ox == 2 ? bw - drawW : (bw - drawW) / 2);
+                    float padd = [d[@"pad"] floatValue] * sx;   // the texture has that much room above and below the font's own ascent and descent
+                    float top = Y[0] + (oy == 1 ? -padd : oy == 2 ? bh - drawH + padd : (bh - drawH) / 2);
+                    float gx[4] = {left - 2 * sx, left + drawW + 2 * sx, left - 2 * sx, left + drawW + 2 * sx};
+                    float gy[4] = {top, top, top + drawH, top + drawH};
+                    float uv[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}}, col[4][4];
+                    for (int k = 0; k < 4; k++) {
+                        const uint8_t *c = k < 2 ? it->top_color : it->bottom_color;
+                        col[k][0] = c[0] / 255.0f; col[k][1] = c[1] / 255.0f; col[k][2] = c[2] / 255.0f; col[k][3] = c[3] / 255.0f * it->alpha;
+                    }
+                    [enc setFragmentTexture:t atIndex:0];
                     quad(enc, gx, gy, uv, col);
                 }
-            } else if (it->str && it->str[0]) {
-                float bw = X[3] - X[0], bh = Y[3] - Y[0];
-                float px = it->font_size[0] * scale;   // the layouts' glyph width is the em size; the height is 1.5x of it (the font is drawn at its own proportions)
-                if (px < 4 || bw <= 0 || bh <= 0) continue;
-                NSDictionary *d = text_tex(dev, it->str, px, it->char_space * scale);
-                id<MTLTexture> t = d[@"tex"];
-                if (!t) continue;
-                float w = [d[@"w"] floatValue] - 4, h = [d[@"h"] floatValue];
-                BOOL glyph = NO;                                  // button glyphs are never squeezed
-                for (const unsigned char *u = (const unsigned char *)it->str; *u; u++) if (*u == 0xEE) glyph = YES;   // utf-8 lead byte of U+E000..EFFF
-                float sx = (w > bw && !glyph) ? bw / w : 1;       // squeeze text to fit the box
-                float drawW = w * sx, drawH = h * sx;                // too long for its box: smaller, in proportion (a squeezed label looks tall and thin)
-                int ox = it->origin & 3, oy = (it->origin >> 2) & 3;
-                float left = X[0] + (ox == 1 ? 0 : ox == 2 ? bw - drawW : (bw - drawW) / 2);
-                float padd = [d[@"pad"] floatValue] * sx;   // the texture has that much room above and below the font's own ascent and descent
-                float top = Y[0] + (oy == 1 ? -padd : oy == 2 ? bh - drawH + padd : (bh - drawH) / 2);
-                float gx[4] = {left - 2 * sx, left + drawW + 2 * sx, left - 2 * sx, left + drawW + 2 * sx};
-                float gy[4] = {top, top, top + drawH, top + drawH};
-                float uv[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}}, col[4][4];
-                for (int k = 0; k < 4; k++) {
-                    const uint8_t *c = k < 2 ? it->top_color : it->bottom_color;
-                    col[k][0] = c[0] / 255.0f; col[k][1] = c[1] / 255.0f; col[k][2] = c[2] / 255.0f; col[k][3] = c[3] / 255.0f * it->alpha;
-                }
-                [enc setFragmentTexture:t atIndex:0];
-                quad(enc, gx, gy, uv, col);
             }
         }
         swkbd_ui_unlock();

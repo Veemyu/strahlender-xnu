@@ -164,5 +164,12 @@ int lyt_tex_is_astc(const LytTex *t);
 int lyt_tex_decode_raw(const LytTex *t, uint8_t *out);
 // Same, then applies the channel mapping from the texture header.
 int lyt_tex_decode(const LytTex *t, uint8_t *out);
+// Applies the channel mapping of the texture header to w*h RGBA8 pixels in place.
+void lyt_tex_apply_chan(const LytTex *t, uint8_t *rgba);
+// The texture as straight RGBA8 ready to upload (malloc, free it): BC4 / BC5 are decoded here, other formats (ASTC) come as `raw_astc`, w*h*4 bytes
+// the caller decoded (the channel mapping is applied here). The icon textures ("Ico...", 64 px, drawn at about 75 device pixels) are scaled to twice
+// the size with a Catmull-Rom filter and their alpha edge is sharpened, so the shape stays crisp instead of soft and blocky; *w and *h tell the size.
+// NULL when the texture cannot be decoded.
+uint8_t *lyt_tex_to_rgba(const LytTex *t, const uint8_t *raw_astc, int *w, int *h);
 
 #endif

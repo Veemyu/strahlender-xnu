@@ -2,6 +2,7 @@
 // ASTC textures are only deswizzled; the renderer hands the blocks to Metal (MTLPixelFormatASTC_4x4_LDR).
 #include "lyt.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -131,10 +132,9 @@ int lyt_tex_decode_raw(const LytTex *t, uint8_t *out) {
     return 1;
 }
 
-int lyt_tex_decode(const LytTex *t, uint8_t *out) {
-    if (!lyt_tex_decode_raw(t, out)) return 0;
+void lyt_tex_apply_chan(const LytTex *t, uint8_t *rgba) {
     for (size_t i = 0; i < (size_t)t->w * t->h; i++) {
-        uint8_t in[4], *px = out + i * 4;
+        uint8_t in[4], *px = rgba + i * 4;
         memcpy(in, px, 4);
         for (int k = 0; k < 4; k++) {
             switch ((t->chan >> (8 * k)) & 0xFF) {
@@ -148,5 +148,58 @@ int lyt_tex_decode(const LytTex *t, uint8_t *out) {
             }
         }
     }
+}
+
+int lyt_tex_decode(const LytTex *t, uint8_t *out) {
+    if (!lyt_tex_decode_raw(t, out)) return 0;
+    lyt_tex_apply_chan(t, out);
     return 1;
+}
+
+// The icon textures are 64 px (the backspace one a single BC4 channel with visible 4x4 blocks) and are drawn at about 75 device pixels. They are
+// scaled to twice the size with a Catmull-Rom filter and their alpha edge is sharpened, so the shape stays crisp instead of soft and blocky.
+static float cubic(float p0, float p1, float p2, float p3, float t) {
+    return p1 + 0.5f * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+}
+static uint8_t *upscale2_sharp(const uint8_t *px, int w, int h) {
+    int W = w * 2, H = h * 2;
+    uint8_t *out = malloc((size_t)W * H * 4);
+    if (!out) return NULL;
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            float sx = (x + 0.5f) / 2 - 0.5f, sy = (y + 0.5f) / 2 - 0.5f;
+            int ix = (int)floorf(sx), iy = (int)floorf(sy);
+            float fx = sx - ix, fy = sy - iy;
+            for (int c = 0; c < 4; c++) {
+                float col[4];
+                for (int j = 0; j < 4; j++) {
+                    int yy = iy - 1 + j; yy = yy < 0 ? 0 : yy >= h ? h - 1 : yy;
+                    float v[4];
+                    for (int i = 0; i < 4; i++) { int xx = ix - 1 + i; xx = xx < 0 ? 0 : xx >= w ? w - 1 : xx; v[i] = px[((size_t)yy * w + xx) * 4 + c]; }
+                    col[j] = cubic(v[0], v[1], v[2], v[3], fx);
+                }
+                float r = cubic(col[0], col[1], col[2], col[3], fy);
+                r = r < 0 ? 0 : r > 255 ? 255 : r;
+                if (c == 3) {   // sharpen the edge of the shape
+                    float a = r / 255, u = (a - 0.3f) / 0.4f;
+                    u = u < 0 ? 0 : u > 1 ? 1 : u;
+                    r = 255 * u * u * (3 - 2 * u);
+                }
+                out[((size_t)y * W + x) * 4 + c] = (uint8_t)(r + 0.5f);
+            }
+        }
+    return out;
+}
+
+uint8_t *lyt_tex_to_rgba(const LytTex *t, const uint8_t *raw_astc, int *w, int *h) {
+    uint8_t *px = malloc((size_t)t->w * t->h * 4);
+    if (!px) return NULL;
+    if (raw_astc) { memcpy(px, raw_astc, (size_t)t->w * t->h * 4); lyt_tex_apply_chan(t, px); }
+    else if (!lyt_tex_decode(t, px)) { free(px); return NULL; }
+    *w = (int)t->w; *h = (int)t->h;
+    if (!strncmp(t->name, "Ico", 3)) {
+        uint8_t *big = upscale2_sharp(px, *w, *h);
+        if (big) { free(px); px = big; *w *= 2; *h *= 2; }
+    }
+    return px;
 }
