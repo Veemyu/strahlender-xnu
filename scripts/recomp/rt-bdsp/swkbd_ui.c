@@ -451,7 +451,7 @@ static Screen *cur(void) { return &G.scr[G.cur]; }
 
 // The console's sounds of the keyboard (swkbd_snd.c); nothing plays without the firmware data.
 static int g_quiet;   // set while the keyboard moves the focus by itself (page change)
-static void snd(const char *name) { swkbd_snd_play(name); }
+static void snd(const char *name) { if (!g_quiet) swkbd_snd_play(name); }
 static const char *focus_sound(int kind) {
     switch (kind) {
     case K_CHAR: return "SeSwkbdGlyphFocus";
@@ -512,6 +512,11 @@ static void refresh_labels(void) {
             lytinst_set_visible(k->inst, "P_Active_00", 0);   // the underline of the open tab is drawn by tick (it follows the label width)
             (void)on;
             lytinst_set_color(k->inst, "T_00", COL(on ? g_theme->tab_on : g_theme->text));
+        }
+        if (k->kind == K_MODE) {   // tabs of the kana grid: no underline of the layout, the label of the active mode in the tab colour
+            lytinst_set_visible(k->inst, "P_Active_00", 0);
+            lytinst_set_font_size(k->inst, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f);
+            lytinst_set_color(k->inst, "T_00", COL(k->page == 0 ? g_theme->tab_on : g_theme->text));
         }
         if (k->kind == K_SHIFT) {
             lytinst_set_visible(k->inst, "P_ShiftOn", G.shift != 0);
@@ -767,7 +772,11 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     if (si == SCR_50ON) assign_kana(&G.scr[SCR_50ON]);
     refresh_labels();
     if (getenv("BDSP_SWKBD_GLOBE") && si != SCR_NUMERIC)   // test hook: presses the globe key this many times, the toast stays
-        for (int n = atoi(getenv("BDSP_SWKBD_GLOBE")), gi = find_key(K_GLOBE); gi >= 0 && n > 0; n--) press_key(gi);
+    {   // (silent: ten sounds at once are no test of anything)
+        g_quiet = 1;
+        for (int n = atoi(getenv("BDSP_SWKBD_GLOBE")), gi = find_key(K_GLOBE); gi >= 0 && n > 0; n--) { press_key(gi); gi = find_key(K_GLOBE); }
+        g_quiet = 0;
+    }
     if (getenv("BDSP_SWKBD_GLOBE") && getenv("BDSP_SWKBD_HOLD")) G.toast_left = 1e6;
     set_focus(0);
     trace("open", p->header);

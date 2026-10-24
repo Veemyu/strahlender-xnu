@@ -32,7 +32,11 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
 Key characters follow the standard national layouts (US, UK, DE, FR, ES, IT, PT, RU) and the tabs below the keys switch between letters,
 symbols and two pages of accented letters. The label language follows the runtime's console language (`BDSP_LANG`, e.g. `de-DE`), or `BDSP_SWKBD_LANG` (e.g. `EUde`, default `USen`), and, unless
 `BDSP_SWKBD_LAYOUT=us|uk|de|fr|es|it|pt|ru` says otherwise, the key layout. The globe key (bottom left) switches to the next
-layout; the space bar shows its name, taken from the firmware's message file, for a moment. The colour scheme is light like the console's default;
+layout; the space bar shows its name, taken from the firmware's message file, for a moment. The globe cycles US, UK, DE, FR, ES, IT, PT, RU, Korean, Japanese romaji and the Japanese kana grid
+(the 50 sound table). Korean keys are jamo that form syllables (final consonants, double vowels, backspace per jamo); romaji forms hiragana;
+the kana grid has a hiragana / katakana toggle and the small-kana / dakuten key (left stick). There is no kanji or hanzi conversion
+(that needs a dictionary), and Chinese keeps the US letters. The kana grid's column order and tab labels are our reading of the layout file,
+not checked against a console. The colour scheme is light like the console's default;
 `BDSP_SWKBD_THEME=dark` selects a dark one (the layout files do not contain the colours, both schemes are ours).
 
 The keyboard plays the console's animations (layouts' own: focus, press, open, close, counter shake) and sounds (focus tick, key press,

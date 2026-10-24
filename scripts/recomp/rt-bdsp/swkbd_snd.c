@@ -10,6 +10,8 @@
 #include "swkbd_snd.h"
 
 #include <pthread.h>
+#include <stdatomic.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -228,6 +230,11 @@ int swkbd_snd_info(const char *name, size_t *frames, uint32_t *rate, int *volume
 #if defined(__APPLE__)
 typedef struct { const int16_t *pcm; size_t frames; double rate; float gain; } Play;
 
+// Many sounds at once (a burst of key events) would open as many audio queues side by side and disturb the game's own audio output:
+// at most 3 play together, and the same sound is not started again within 40 ms.
+#define MAX_PLAYING 3
+static atomic_int g_playing;
+
 static void queue_done(void *user, AudioQueueRef q, AudioQueueBufferRef buf) { (void)user; (void)q; (void)buf; }
 
 // One queue per sound, disposed after it has played; the sounds are a few milliseconds to 130 ms long.
@@ -256,6 +263,7 @@ static void *play_thread(void *arg) {
         AudioQueueDispose(q, true);
     }
     free(p);
+    atomic_fetch_sub(&g_playing, 1);
     return NULL;
 }
 #endif
@@ -274,11 +282,16 @@ void swkbd_snd_play(const char *name) {
     }
     pthread_mutex_unlock(&g_lock);
     if (!p) return;
+    static const int16_t *last_pcm; static uint64_t last_ns;
+    uint64_t now = clock_gettime_nsec_np(CLOCK_MONOTONIC);
+    if ((p->pcm == last_pcm && now - last_ns < 40000000ull) || atomic_load(&g_playing) >= MAX_PLAYING) { free(p); return; }
+    last_pcm = p->pcm; last_ns = now;
+    atomic_fetch_add(&g_playing, 1);
     pthread_t th;
     pthread_attr_t at;
     pthread_attr_init(&at);
     pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
-    if (pthread_create(&th, &at, play_thread, p)) free(p);
+    if (pthread_create(&th, &at, play_thread, p)) { free(p); atomic_fetch_sub(&g_playing, 1); }
     pthread_attr_destroy(&at);
 #else
     (void)name;
