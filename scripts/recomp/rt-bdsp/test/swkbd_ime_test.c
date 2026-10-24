@@ -48,6 +48,15 @@ int main(void) {
     EXPECT(0, "xtu", "っ");
     EXPECT(0, "n", "n");
     EXPECT(0, "Ab", "Ab");               // capitals and unknown letters stay
+    {   // kana keys
+        char o[16];
+        const struct { const char *in, *want; } rot[] = {{"か", "が"}, {"が", "か"}, {"は", "ば"}, {"ば", "ぱ"}, {"ぱ", "は"}, {"つ", "っ"}, {"っ", "づ"}, {"づ", "つ"}, {"あ", "ぁ"}, {"カ", "ガ"}, {"ハ", "バ"}, {"ツ", "ッ"}};
+        for (unsigned i = 0; i < sizeof rot / sizeof *rot; i++)
+            if (!swkbd_ime_rotate_kana(rot[i].in, o, sizeof o) || strcmp(o, rot[i].want)) { printf("FAIL rotate %s -> %s, wanted %s\n", rot[i].in, o, rot[i].want); fails++; }
+        if (swkbd_ime_rotate_kana("ん", o, sizeof o) || swkbd_ime_rotate_kana("a", o, sizeof o)) { printf("FAIL rotate of a kana without other form\n"); fails++; }
+        swkbd_ime_to_katakana("あいう、ー", o, sizeof o);
+        if (strcmp(o, "アイウ、ー")) { printf("FAIL katakana: %s\n", o); fails++; }
+    }
     if (!fails) printf("swkbd_ime_test: ok\n");
     return fails != 0;
 }

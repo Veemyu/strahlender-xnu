@@ -23,4 +23,10 @@ int swkbd_ime_backspace(SwkbdIme *m);
 // Ends the composition: what is composed becomes final and is returned in commit.
 void swkbd_ime_flush(SwkbdIme *m, char *commit, size_t cap);
 
+// Kana keys: the same kana in hiragana or katakana (hiragana in, kana of the other script out; anything else is copied)
+void swkbd_ime_to_katakana(const char *hira, char *out, size_t cap);
+// The small-kana / dakuten key: the next form of one kana (か -> が -> か, は -> ば -> ぱ -> は, つ -> っ -> づ, や -> ゃ ...), in hiragana or katakana.
+// Returns 1 and the next form in out, 0 when the kana has no other form.
+int swkbd_ime_rotate_kana(const char *kana, char *out, size_t cap);
+
 #endif

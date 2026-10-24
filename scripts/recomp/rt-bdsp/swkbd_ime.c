@@ -169,3 +169,35 @@ void swkbd_ime_flush(SwkbdIme *m, char *commit, size_t cap) {
     }
     hangul_commit(m, commit, cap);
 }
+
+// ---- kana keys
+void swkbd_ime_to_katakana(const char *hira, char *out, size_t cap) {
+    out[0] = 0;
+    for (const char *p = hira; *p;) {
+        uint32_t c = get_cp(p);
+        p += (unsigned char)*p >= 0xE0 ? 3 : (unsigned char)*p >= 0xC0 ? 2 : 1;
+        put_cp(out, cap, c >= 0x3041 && c <= 0x3096 ? c + 0x60 : c);
+    }
+}
+
+// each word is a cycle: the next character of the word follows, the first one follows the last
+static const char k_rotate[] = "かが きぎ くぐ けげ こご さざ しじ すず せぜ そぞ ただ ちぢ てで とど つっづ はばぱ ひびぴ ふぶぷ へべぺ ほぼぽ やゃ ゆゅ よょ あぁ いぃ うぅ えぇ おぉ わゎ";
+
+int swkbd_ime_rotate_kana(const char *kana, char *out, size_t cap) {
+    out[0] = 0;
+    uint32_t c = get_cp(kana);
+    int kata = c >= 0x30A1 && c <= 0x30F6;
+    if (kata) c -= 0x60;
+    for (const char *w = k_rotate; *w;) {
+        const char *e = strchr(w, ' ');
+        size_t n = e ? (size_t)(e - w) : strlen(w);
+        for (size_t i = 0; i < n; i += 3) {
+            if (get_cp(w + i) != c) continue;
+            uint32_t next = get_cp(w + (i + 3 < n ? i + 3 : 0));
+            put_cp(out, cap, kata ? next + 0x60 : next);
+            return 1;
+        }
+        w += n + (e ? 1 : 0);
+    }
+    return 0;
+}

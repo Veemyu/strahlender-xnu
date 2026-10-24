@@ -135,6 +135,23 @@ int main(int argc, char **argv) {
     swkbd_ui_key(SWKBD_KEY_BACKSPACE);
     CHECK(!strcmp(swkbd_ui_text_value(), "한ㄱ"));
     swkbd_ui_resolve(1, NULL);
+    // Japanese: two more presses of the globe (ko -> ja romaji -> 50on grid); typed letters become kana; a key of the grid, the dakuten key (left stick)
+    CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
+    for (int i = 0; i < 4; i++) { swkbd_ui_pad(1ull << 15, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    for (int i = 0; i < 1; i++) { swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0); }   // ko -> ja
+    swkbd_ui_text("nihon");
+    CHECK(!strcmp(swkbd_ui_text_value(), "にほn"));          // 5 letters: the last n is still composing
+    swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);    // ja -> 50on: the focus is on the globe of the grid
+    CHECK(strstr(swkbd_ui_focus_name(), "BtnArray") != NULL);
+    swkbd_ui_pad(1ull << 14, 0, 0); swkbd_ui_pad(0, 0, 0);   // right: the first key of the bottom row
+    for (int i = 0; i < 4; i++) { swkbd_ui_pad(1ull << 13, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    for (int i = 0; i < 9; i++) { swkbd_ui_pad(1ull << 14, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    swkbd_ui_key(SWKBD_KEY_HOME); swkbd_ui_key(SWKBD_KEY_DELETE); swkbd_ui_key(SWKBD_KEY_DELETE); swkbd_ui_key(SWKBD_KEY_DELETE);
+    swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);    // the key in the top row, ninth to the right of the sign column
+    CHECK(!strcmp(swkbd_ui_text_value(), "か"));
+    swkbd_ui_pad(1ull << 4, 0, 0); swkbd_ui_pad(0, 0, 0);    // left stick: next form of the kana before the caret
+    CHECK(!strcmp(swkbd_ui_text_value(), "が"));
+    swkbd_ui_resolve(1, NULL);
     // a second opening fades in again to full opacity
     CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
     float maxa = 0;

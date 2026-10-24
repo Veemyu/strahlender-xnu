@@ -12,8 +12,8 @@
 
 static void trace(const char *what, const char *arg) { if (getenv("BDSP_TRACE_APPLET")) fprintf(stderr, "[swkbd_ui] %s %s\n", what, arg ? arg : ""); }
 
-enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE, K_TAB, K_GLOBE };
-enum { SCR_QWERTY, SCR_SIGN, SCR_NUMERIC, SCR_COUNT };
+enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE, K_TAB, K_GLOBE, K_MARK, K_MODE };
+enum { SCR_QWERTY, SCR_SIGN, SCR_NUMERIC, SCR_50ON, SCR_COUNT };
 #define MAX_KEYS 80
 #define FN_LABEL_EM 22.2f   // em size of the labels on the function keys (tabs, space, return); the layouts give each of them its own size, the console draws them alike
 
@@ -38,12 +38,13 @@ typedef struct {
     int fallback;                    // no layout files: keys and plates are our own simple drawing
 } Screen;
 
-static const char *const k_archives[SCR_COUNT] = {"Qwerty", "Sign", "Numeric"};
-static const char *const k_keytop[SCR_COUNT] = {"SwkbdBaseKeytopQwerty", "SwkbdBaseKeytopSign", "SwkbdBaseKeytopNumeric"};
+static const char *const k_archives[SCR_COUNT] = {"Qwerty", "Sign", "Numeric", "50on"};
+static const char *const k_keytop[SCR_COUNT] = {"SwkbdBaseKeytopQwerty", "SwkbdBaseKeytopSign", "SwkbdBaseKeytopNumeric", "SwkbdBaseKeytop50on"};
 
 // Korean (two-set layout, jamo keys) and Japanese (romaji keys, composed to hiragana): the last two entries of k_layouts
 #define LAYOUT_KO 8
 #define LAYOUT_JA 9
+#define LAYOUT_50ON 10   // the kana grid (its own screen, k_kana_cols)
 // Key characters: 4 rows of 11 from the top left, normal and with Shift, per layout (the standard national keyboard layouts as the
 // Switch's keyboard has them). BDSP_SWKBD_LAYOUT selects one; default "us".
 static const struct { const char *id, *normal, *shifted; } k_layouts[] = {
@@ -57,7 +58,11 @@ static const struct { const char *id, *normal, *shifted; } k_layouts[] = {
     {"ru", "1234567890\xD1\x8A""\xD0\xB9""\xD1\x86""\xD1\x83""\xD0\xBA""\xD0\xB5""\xD0\xBD""\xD0\xB3""\xD1\x88""\xD1\x89""\xD0\xB7""\xD1\x85""\xD1\x84""\xD1\x8B""\xD0\xB2""\xD0\xB0""\xD0\xBF""\xD1\x80""\xD0\xBE""\xD0\xBB""\xD0\xB4""\xD0\xB6""\xD1\x8D""\xD1\x8F""\xD1\x87""\xD1\x81""\xD0\xBC""\xD0\xB8""\xD1\x82""\xD1\x8C""\xD0\xB1""\xD1\x8E""\xD1\x91"".", "!?\":;()-_@\xD0\xAA""\xD0\x99""\xD0\xA6""\xD0\xA3""\xD0\x9A""\xD0\x95""\xD0\x9D""\xD0\x93""\xD0\xA8""\xD0\xA9""\xD0\x97""\xD0\xA5""\xD0\xA4""\xD0\xAB""\xD0\x92""\xD0\x90""\xD0\x9F""\xD0\xA0""\xD0\x9E""\xD0\x9B""\xD0\x94""\xD0\x96""\xD0\xAD""\xD0\xAF""\xD0\xA7""\xD0\xA1""\xD0\x9C""\xD0\x98""\xD0\xA2""\xD0\xAC""\xD0\x91""\xD0\xAE""\xD0\x81"","},
     {"ko", "1234567890-ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔ/ㅁㄴㅇㄹㅎㅗㅓㅏㅣ:'ㅋㅌㅊㅍㅠㅜㅡ,.?!", "#[]$%^&*()_ㅃㅉㄸㄲㅆㅛㅕㅑㅒㅖ@ㅁㄴㅇㄹㅎㅗㅓㅏㅣ;\"ㅋㅌㅊㅍㅠㅜㅡ<>+="},
     {"ja", "1234567890-qwertyuiop/asdfghjkl:'zxcvbnm,.?!", "#[]$%^&*()_QWERTYUIOP@ASDFGHJKL;\"ZXCVBNM<>+="},
+    {"50on", "", ""},
 };
+// The kana grid (right to left like the Japanese 50 sound table): 11 columns of 5 keys, from the left: signs, wa, ra, ya, ma, ha, na, ta, sa, ka, a. \1 = no key
+static const char *const k_kana_cols[11] = {"ー、。？！", "わを\1ん\1", "らりるれろ", "や\1ゆ\1よ", "まみむめも", "はひふへほ", "なにぬねの", "たちつてと", "さしすせそ", "かきくけこ", "あいうえお"};
+static const char *const k_mode_label[4] = {"ひらがな", "カタカナ", "ABC", "#+="};
 // Symbol keyboard: rows of 11 from the top left; \1 = no key (hidden)
 static const char *const k_sign = "1234567890-" "!@#$%^&*()_" "~`=\\+{}|[]\1" "<>;:\"',.?/\1" "\1\1\1\1\1\1\1\1\1\1\1";
 static const char *const k_numeric = "1234567890";
@@ -65,7 +70,7 @@ static const char *const k_numeric = "1234567890";
 static const char *const k_acc_lo[2] = {"àáâãäåæāăąçćċčðďǆǳèéêëēęěğġģħìíîïīįıĳķĺļľł", "ñńņňòóôõöøœőōŕřšßśşþťțùúûüūůűųýÿźżž"};
 static const char *const k_acc_up[2] = {"ÀÁÂÃÄÅÆĀĂĄÇĆĊČÐĎǅǲÈÉÊËĒĘĚĞĠĢĦÌÍÎÏĪĮİĲĶĹĻĽŁ", "ÑŃŅŇÒÓÔÕÖØŒŐŌŔŘŠßŚŞÞŤȚÙÚÛÜŪŮŰŲÝŸŹŻŽ"};
 // Label (in the firmware's message file) that names each layout of k_layouts, shown on the space bar when the globe key switches to it
-static const char *const k_layout_label[] = {"SwkbdAddKeytop_USEnglish", "SwkbdAddKeytop_EUEnglish", "SwkbdAddKeytop_EUGerman", "SwkbdAddKeytop_EUFrench", "SwkbdAddKeytop_EUSpanish", "SwkbdAddKeytop_EUItalianQwerty", "SwkbdAddKeytop_EUPortuguese", "SwkbdAddKeytop_EURussian", "SwkbdAddKeytop_KOKorean", "SwkbdAddKeytop_JPQwerty"};
+static const char *const k_layout_label[] = {"SwkbdAddKeytop_USEnglish", "SwkbdAddKeytop_EUEnglish", "SwkbdAddKeytop_EUGerman", "SwkbdAddKeytop_EUFrench", "SwkbdAddKeytop_EUSpanish", "SwkbdAddKeytop_EUItalianQwerty", "SwkbdAddKeytop_EUPortuguese", "SwkbdAddKeytop_EURussian", "SwkbdAddKeytop_KOKorean", "SwkbdAddKeytop_JPQwerty", "SwkbdAddKeytop_JP50onVR"};
 static const char *const k_tab_label[4] = {"ABC", "#+=", "ÀÁÂ", "ÑŃŅ"};
 
 static struct {
@@ -100,6 +105,7 @@ static struct {
     char ok_label[64], space_label[64];
     float field[4];                  // text field, canvas pixels (left, top, right, bottom)
     int page;                        // 0 letters, 1 symbols, 2 and 3 accents
+    int kata;                        // kana grid: 0 hiragana, 1 katakana
     int li;                          // index in k_layouts
     struct { char name[56], text[96]; } labels[64];
     SwkbdIme ime;                    // composition of the Korean / Japanese layouts
@@ -255,7 +261,7 @@ static void apply_theme(Screen *s) {
 // Characters of a page: 4 rows of 11 in reading order over the ordinary keys; keys without a character are hidden
 static void assign_chars(Screen *s, int page) {
     const char *nt, *st;
-    if (page == 0) { nt = k_layouts[G.li].normal; st = k_layouts[G.li].shifted; }
+    if (page == 0) { int li = G.li == LAYOUT_50ON ? LAYOUT_JA : G.li; nt = k_layouts[li].normal; st = k_layouts[li].shifted; }
     else if (page == 1) { nt = st = k_sign; }
     else { nt = k_acc_lo[page - 2]; st = k_acc_up[page - 2]; }
     int ci = 0;
@@ -269,6 +275,24 @@ static void assign_chars(Screen *s, int page) {
         if (!k->shifted[0] || k->shifted[0] == 1) memcpy(k->shifted, k->normal, sizeof k->shifted);
         if (s->kt) lytinst_set_visible(s->kt, k->name, !k->hidden);
         lytinst_set_text(k->inst, "T_00", k->normal);
+    }
+}
+
+// Kana of the grid: key L_BtnNml_NN stands in row NN / 11, column NN % 11 (the columns are listed from the left)
+static void assign_kana(Screen *s) {
+    for (int i = 0; i < s->nkeys; i++) {
+        Key *k = &s->keys[i];
+        if (k->kind != K_CHAR) continue;
+        int n = atoi(k->name + strlen("L_BtnNml_"));
+        char one[8];
+        u8_nth(k_kana_cols[n % 11], n / 11, one);
+        snprintf(k->normal, sizeof k->normal, "%s", one);
+        snprintf(k->shifted, sizeof k->shifted, "%s", one);
+        k->hidden = one[0] == 1 || !one[0];
+        lytinst_set_visible(s->kt, k->name, !k->hidden);
+        char shown[16];
+        if (G.kata) swkbd_ime_to_katakana(one, shown, sizeof shown); else snprintf(shown, sizeof shown, "%s", one);
+        lytinst_set_text(k->inst, "T_00", shown);
     }
 }
 
@@ -302,10 +326,12 @@ static int build_screen(int si) {
         else if (!strcmp(p->name, "L_BtnBS")) kind = K_BS;
         else if (!strncmp(p->name, "L_BtnEnter", 10)) kind = K_ENTER;
         else if (!strcmp(p->name, "L_BtnShift")) kind = K_SHIFT;
-        else if (!strcmp(p->name, "L_BtnArray")) kind = K_GLOBE;   // the language key: switches between the keyboard layouts
+        else if (!strcmp(p->name, "L_BtnArray")) kind = K_GLOBE;
+        else if (si == SCR_50ON && !strcmp(p->name, "L_BtnMark")) kind = K_MARK;
+        else if (si == SCR_50ON && (!strcmp(p->name, "L_InputMode_00") || !strcmp(p->name, "L_InputMode_02") || !strcmp(p->name, "L_InputMode_03"))) { kind = K_MODE; page = p->name[13] == '0' ? 0 : p->name[13] - '0'; }   // the language key: switches between the keyboard layouts
         else if (!strcmp(p->name, "L_BtnSpace_00")) kind = si == SCR_QWERTY ? -2 : K_SPACE;   // the letter keyboard uses the narrower one next to the tabs
         else if (!strcmp(p->name, "L_BtnSpace_01") && si == SCR_QWERTY) kind = K_SPACE;
-        else if (!strncmp(p->name, "L_InputMode_0", 13) && p->name[13] >= '0' && p->name[13] <= '3' && si != SCR_NUMERIC) { kind = K_TAB; page = p->name[13] - '0'; }
+        else if (!strncmp(p->name, "L_InputMode_0", 13) && p->name[13] >= '0' && p->name[13] <= '3' && si != SCR_NUMERIC && si != SCR_50ON) { kind = K_TAB; page = p->name[13] - '0'; }
         if (kind == -1 || kind == -2) {
             // not a key: hidden (symbol key and unused widths) or decoration (language globe, Return)
             if (!strcmp(p->name, "L_BtnSymbol") || kind == -2 || !strncmp(p->name, "L_BtnSpace", 10) || !strncmp(p->name, "L_InputMode", 11)) lytinst_set_visible(s->kt, p->name, 0);
@@ -320,7 +346,7 @@ static int build_screen(int si) {
         }
         LytInst *inst = lytinst_part(s->kt, p->name);
         if (!inst) continue;
-        if (kind == K_TAB) lytinst_set_visible(s->kt, p->name, 1);
+        if (kind == K_TAB || kind == K_MODE) lytinst_set_visible(s->kt, p->name, 1);
         if (kind == K_SPACE) lytinst_set_visible(s->kt, p->name, 1);
         Key *k = &s->keys[s->nkeys];
         memset(k, 0, sizeof *k);
@@ -359,6 +385,8 @@ static int build_screen(int si) {
             snprintf(k->shifted, sizeof k->shifted, "%s", k->normal);
             lytinst_set_text(k->inst, "T_00", k->normal);
         }
+    } else if (si == SCR_50ON) {
+        assign_kana(s);
     } else {
         assign_chars(s, si == SCR_QWERTY ? 0 : 1);
     }
@@ -466,6 +494,8 @@ static void refresh_labels(void) {
         const char *t = NULL;
         switch (k->kind) {
         case K_CHAR: t = G.shift ? k->shifted : k->normal; break;
+        case K_MARK: t = "小゛゜"; break;
+        case K_MODE: t = k_mode_label[k->page == 0 && G.kata ? 1 : k->page]; break;
         case K_ENTER: t = G.ok_label; break;
         case K_SPACE: t = G.toast_left > 0 ? G.toast : G.space_label; break;
         case K_SYMBOL: t = "#+="; break;
@@ -473,6 +503,8 @@ static void refresh_labels(void) {
         case K_TAB: t = k_tab_label[k->page]; break;
         default: break;
         }
+        char kb[16];
+        if (t && k->kind == K_CHAR && G.cur == SCR_50ON && G.kata) { swkbd_ime_to_katakana(t, kb, sizeof kb); t = kb; }   // the kana grid in katakana
         if (t) lytinst_set_text(k->inst, "T_00", t);
         if (k->kind == K_TAB) {
             int on = k->page == G.page;
@@ -602,14 +634,15 @@ static void caret_move(int dir) {
     if (dir > 0 && G.text[G.caret]) G.caret += u8_len((unsigned char)G.text[G.caret]);
 }
 
+static int find_key(int kind);
 static void switch_page(int page) {
     if (G.cur == SCR_NUMERIC) return;
-    int si = page == 0 ? SCR_QWERTY : SCR_SIGN;
+    int si = page == 0 ? (G.li == LAYOUT_50ON && G.scr[SCR_50ON].ok ? SCR_50ON : SCR_QWERTY) : SCR_SIGN;   // back from the symbols to the kana grid
     if (!G.scr[si].ok) return;
     ime_end();
     G.page = page; G.cur = si; G.shift = 0;
     Screen *s = cur();
-    assign_chars(s, page);
+    if (si == SCR_50ON) assign_kana(s); else assign_chars(s, page);
     refresh_labels();
     int f = 0;
     for (int i = 0; i < s->nkeys; i++) if (s->keys[i].kind == K_TAB && s->keys[i].page == page) f = i;
@@ -631,6 +664,12 @@ static void press_key(int i) {
     }
     switch (k->kind) {
     case K_CHAR:
+        if (G.cur == SCR_50ON) {   // a kana of the grid
+            char kn[16];
+            if (G.kata) swkbd_ime_to_katakana(k->normal, kn, sizeof kn); else snprintf(kn, sizeof kn, "%s", k->normal);
+            ime_end(); insert_text(kn);
+            break;
+        }
         type_key(G.shift ? k->shifted : k->normal);
         if (G.shift == 1) { G.shift = 0; refresh_labels(); }
         break;
@@ -641,9 +680,31 @@ static void press_key(int i) {
         if (G.cur != SCR_NUMERIC) { G.shift = (G.shift + 1) % 3; refresh_labels(); snd(G.shift == 1 ? "SeSwkbdOptShiftOn" : G.shift == 2 ? "SeSwkbdOptCapsLock" : "SeSwkbdOptShiftOff"); }
         break;
     case K_TAB: if (k->page != G.page) switch_page(k->page); break;
+    case K_MARK: {   // small kana / dakuten / handakuten of the kana before the caret
+        char prev[8] = {0}, next[8];
+        int p0 = G.caret;
+        if (p0 > 0) { p0--; while (p0 > 0 && ((unsigned char)G.text[p0] & 0xC0) == 0x80) p0--; memcpy(prev, G.text + p0, (size_t)(G.caret - p0)); }
+        if (prev[0] && swkbd_ime_rotate_kana(prev, next, sizeof next)) { memmove(G.text + p0, G.text + G.caret, strlen(G.text + G.caret) + 1); G.caret = p0; insert_text(next); }
+        else snd("SeKeyErrorCursor");
+        break;
+    }
+    case K_MODE:
+        if (k->page == 0) { G.kata = !G.kata; assign_kana(s); refresh_labels(); }
+        else if (k->page == 2) { G.li = LAYOUT_JA; switch_page(0); }   // the letters, as romaji
+        else switch_page(1);
+        break;
     case K_GLOBE: {
         ime_end();
         G.li = (G.li + 1) % (int)(sizeof k_layouts / sizeof *k_layouts);
+        int want = G.li == LAYOUT_50ON && G.scr[SCR_50ON].ok ? SCR_50ON : SCR_QWERTY;
+        if (G.li == LAYOUT_50ON && want != SCR_50ON) G.li = 0;   // no kana layout files: skip it
+        if (G.cur == SCR_50ON || want == SCR_50ON) {   // the kana grid is a screen of its own
+            G.cur = want; G.page = 0; G.shift = 0;
+            s = cur();
+            if (want == SCR_QWERTY) assign_chars(s, 0); else assign_kana(s);
+            G.focus = -1;
+            g_quiet = 1; set_focus(find_key(K_GLOBE) >= 0 ? find_key(K_GLOBE) : 0); g_quiet = 0;
+        }
         if (G.cur == SCR_QWERTY && G.page == 0) assign_chars(s, 0);   // the other pages take the layout when they are opened
         snprintf(G.toast, sizeof G.toast, "%s", lbl(k_layout_label[G.li], k_layouts[G.li].id));
         G.toast_left = 1.5;
@@ -699,12 +760,13 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
-    int si = p->mode == 1 && G.scr[SCR_NUMERIC].ok ? SCR_NUMERIC : SCR_QWERTY;
+    int si = p->mode == 1 && G.scr[SCR_NUMERIC].ok ? SCR_NUMERIC : G.li == LAYOUT_50ON && G.scr[SCR_50ON].ok ? SCR_50ON : SCR_QWERTY;
     G.cur = si; G.focus = -1; G.shift = 0; G.page = 0;
     for (int ki = 0; ki < G.scr[si].nkeys; ki++) { Key *rk = &G.scr[si].keys[ki]; finish_oneshots(rk); snprintf(rk->tag, sizeof rk->tag, "UnFocusKey"); rk->t = 1e9f; }   // keys start at rest (the focus and press states of the last session are gone)
     if (si == SCR_QWERTY) assign_chars(&G.scr[SCR_QWERTY], 0);
+    if (si == SCR_50ON) assign_kana(&G.scr[SCR_50ON]);
     refresh_labels();
-    if (getenv("BDSP_SWKBD_GLOBE") && si == SCR_QWERTY)   // test hook: presses the globe key this many times, the toast stays
+    if (getenv("BDSP_SWKBD_GLOBE") && si != SCR_NUMERIC)   // test hook: presses the globe key this many times, the toast stays
         for (int n = atoi(getenv("BDSP_SWKBD_GLOBE")), gi = find_key(K_GLOBE); gi >= 0 && n > 0; n--) press_key(gi);
     if (getenv("BDSP_SWKBD_GLOBE") && getenv("BDSP_SWKBD_HOLD")) G.toast_left = 1e6;
     set_focus(0);
@@ -762,7 +824,7 @@ static void pad_edge(int b) {
     case B_Y: snd("SeSwkbdOptDecide"); ime_end(); insert_text(" "); break;
     case B_L: snd("SeSwkbdTextAreaMove"); caret_move(-1); break;
     case B_R: snd("SeSwkbdTextAreaMove"); caret_move(1); break;
-    case B_LSTICK: { int i = find_key(K_SHIFT); if (i >= 0) press_key(i); } break;
+    case B_LSTICK: { int i = find_key(G.cur == SCR_50ON ? K_MARK : K_SHIFT); if (i >= 0) press_key(i); } break;
     case B_PLUS: do_submit(); break;
     default: break;
     }
@@ -843,6 +905,7 @@ static void fb_key(Screen *s, int kind, const char *name, float cx, float cy, fl
 }
 
 static int fb_build_screen(int si) {
+    if (si == SCR_50ON) return -1;   // no firmware layout files: no kana grid
     Screen *s = &G.scr[si];
     memset(s, 0, sizeof *s);
     s->fallback = 1;
@@ -989,7 +1052,7 @@ static void footer_items(LytScene *sc) {
     // glyph or label, its em size and the gap that follows it: 9 px between a key badge and its arrow, 10 px between a glyph and its label, 41 px between the hints
     struct { const char *s; float px; float gap; } it[] = {
         {"\uE0E4", 26.2f, 10.1f}, {"\uE145", 22, 41.9f}, {"\uE0E5", 26.2f, 10.1f}, {"\uE146", 22, 41.4f}, {"\uE103", 25.2f, 11.6f},
-        {G.li == LAYOUT_KO ? (G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn_Korean", "Shift") : lbl("SwkbdFooter_Shift_Korean", "Shift")) : G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 22.2f, 40}, {"\uE0E2", 26.2f, 10.7f},
+        {G.cur == SCR_50ON ? lbl("SwkbdFooter_KanaRotate", "Shift") : G.li == LAYOUT_KO ? (G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn_Korean", "Shift") : lbl("SwkbdFooter_Shift_Korean", "Shift")) : G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 22.2f, 40}, {"\uE0E2", 26.2f, 10.7f},
         {lbl("SwkbdFooter_Close", "Cancel"), 22.2f, 41.3f}, {"\uE0E0", 26.2f, 11}, {lbl("SwkbdFooter_Decide", "Select"), 22.2f, 0}};
     enum { N = sizeof it / sizeof *it };
     float w[N], total = 0;
