@@ -6,7 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 VER=${1:-9.0.2}
-JOBS=${2:-3}
+JOBS=${2:-$(python3 scripts/recomp/parallel_jobs.py)}
+case "$JOBS" in ''|*[!0-9]*) echo "JOBS must be a positive integer" >&2; exit 2;; esac
+[ "$JOBS" -ge 1 ] || { echo "JOBS must be at least 1" >&2; exit 2; }
 W=work/ios
 SDKP=$(xcrun --sdk iphoneos --show-sdk-path)
 [ -d "$W/ffmpeg-$VER" ] || tar -xf "$W/ffmpeg-$VER.tar.xz" -C "$W"

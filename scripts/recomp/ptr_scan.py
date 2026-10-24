@@ -13,13 +13,15 @@ are printed. Heuristic over 64-bit instructions (counting only, no statement abo
   ldr_sxtw      LDRSW (hint at 32-bit values that are extended to 64 bits)
 """
 import json
+import os
 import struct
 import sys
 from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
+if os.environ.get("BDSP_INSTALLER_PRIVATE_RUNTIME") != "1":
+    sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
 sys.path.insert(0, str(ROOT / "research" / "LASRecomp" / "tools"))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.dont_write_bytecode = True

@@ -42,7 +42,8 @@ one() {
 }
 export -f one
 
-# Parallel (Metal compiler, like the time limit: at most 8 at once)
+# Match the CPU/RAM-based compiler concurrency used by the C build.
+JOBS=$(python3 scripts/recomp/parallel_jobs.py)
 find "$SRC" -maxdepth 1 -name '[vf]_*.metal' -print0 \
-  | xargs -0 -P 8 -I{} bash -c 'one "$@"' _ {} "$SDK" "$OUT" "$TMP"
+  | xargs -0 -P "$JOBS" -I{} bash -c 'one "$@"' _ {} "$SDK" "$OUT" "$TMP"
 echo "Shader libraries ($SDK):$(ls "$OUT"/*.metallib 2>/dev/null | wc -l | tr -d ' ') in $OUT"

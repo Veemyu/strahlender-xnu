@@ -40,8 +40,18 @@ BUNDLE_DIR="$ROMFS/Data/StreamingAssets/AssetAssistant"
 [ "$ROMFS" = "$ROOT/work/romfs" ] || die 2 "--romfs: the helper scripts read work/romfs hard-coded (output of build_all.sh extract); link the folder there"
 [ -f "$BUNDLE_DIR/Dpr/shaders" ] || die 3 "Shader bundle missing: $BUNDLE_DIR/Dpr/shaders (first: scripts/build_all.sh extract ...)"
 [ -f "$BUNDLE_DIR/Effects/fxparticle" ] || die 3 "Shader bundle missing: $BUNDLE_DIR/Effects/fxparticle"
-[ -d "$PYDEPS" ] || die 4 "Python dependencies missing ($PYDEPS: UnityPy, lz4); scripts/build_all.sh tools"
+if [ "${BDSP_INSTALLER_PRIVATE_RUNTIME:-0}" != 1 ]; then
+  [ -d "$PYDEPS" ] || die 4 "Python dependencies missing ($PYDEPS: UnityPy, lz4); scripts/build_all.sh tools"
+fi
 mkdir -p "$SH"
+
+shader_python() {
+  if [ "${BDSP_INSTALLER_PRIVATE_RUNTIME:-0}" = 1 ]; then
+    python3 -I -B "$@"
+  else
+    PYTHONPATH="$PYDEPS${PYTHONPATH:+:$PYTHONPATH}" python3 "$@"
+  fi
+}
 
 # 1. Translator
 if [ "$FORCE" = 1 ] || [ ! -x "$ROOT/shader_translator/build/maxwell2msl" ]; then
@@ -53,15 +63,15 @@ cd "$ROOT"
 # 2. Blobs (unique Maxwell programs)  3. Inventory (properties, state, layouts)  4. Program -> blob hash
 if [ "$FORCE" = 1 ] || [ ! -f "$SH/blobs/index.json" ]; then
   log "extracting blobs"
-  PYTHONPATH="$PYDEPS" python3 scripts/shader_extract_blobs.py --out work/shaders/blobs --extra >/dev/null
+  shader_python scripts/shader_extract_blobs.py --out work/shaders/blobs --extra >/dev/null
 fi
 if [ "$FORCE" = 1 ] || [ ! -f "$SH/inventory.json" ]; then
   log "generating inventory"
-  PYTHONPATH="$PYDEPS" python3 scripts/shader_inventory.py --out work/shaders/inventory.json >/dev/null
+  shader_python scripts/shader_inventory.py --out work/shaders/inventory.json >/dev/null
 fi
 if [ "$FORCE" = 1 ] || [ ! -f "$SH/prog_blob.json" ]; then
   log "mapping programs to blobs"
-  PYTHONPATH="$PYDEPS" python3 scripts/shader_fidelity.py index >/dev/null
+  shader_python scripts/shader_fidelity.py index >/dev/null
 fi
 
 # 5. Wrapper: one .shader per shader/pass/keyword set (output gitignored)

@@ -9,12 +9,14 @@ Usage: mkimg.py <nso> <name> --base 0x7004000000 --out work/recomp/spike2
 """
 import argparse
 import json
+import os
 import struct
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
+if os.environ.get("BDSP_INSTALLER_PRIVATE_RUNTIME") != "1":
+    sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
 sys.path.insert(0, str(ROOT / "scripts" / "recomp" / "upstream" / "generator"))
 sys.dont_write_bytecode = True
 from nso import Nso  # noqa: E402

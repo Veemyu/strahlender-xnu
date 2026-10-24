@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "sources": {
+    "capstone": {
+      "version": "5.0.9",
+      "archive": "capstone-5.0.9.tar.gz",
+      "sha256": "0429af292ddc604d3c9344696807e281d5e728db029f00e6a4ea9e3bff1aac9e"
+    },
+    "unicorn": {
+      "version": "2.1.4",
+      "archive": "unicorn-2.1.4.tar.gz",
+      "sha256": "00567a70e323f749b419cd86bee4f9115beab7ebba32194581c090cbb7c59cff"
+    },
+    "UnityPy": {
+      "version": "1.25.4",
+      "archive": "unitypy-1.25.4.tar.gz",
+      "sha256": "91d6169d73db8eb5f11fd6531b4e5e980f53dae00d5e3cbab827bbf4765de6d3"
+    },
+    "tpk_ar": {
+      "version": "0.2.4",
+      "archive": "tpk_ar-0.2.4.tar.gz",
+      "sha256": "d64897e5a0bcddd58e8a7d4dd922f372da984a0f98bc3b460ec869aab906ee78"
+    }
+  }
+}

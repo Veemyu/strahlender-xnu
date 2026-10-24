@@ -1,7 +1,7 @@
 #!/bin/bash
 # Incremental regeneration: regenerates the C into work/recomp/gen4.new and transfers only files with changed content
 # to work/recomp/gen4 (timestamps of unchanged chunks stay, build_all.sh then compiles only the changed ones).
-# Usage: regen_inc.sh [module ...]     (default: all four modules). Afterwards: build_all.sh 4
+# Usage: regen_inc.sh [module ...]     (default: all four modules). Afterwards: build_all.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 NEW=work/recomp/gen4.new

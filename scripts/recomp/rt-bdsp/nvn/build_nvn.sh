@@ -18,7 +18,7 @@ build() {  # Quelle Objekt [Zusatzflags]
   if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/src" \( -name '*.h' -o -name '*.inc' \) -newer "$o" -print -quit)" ]; then
     # Objective-C with the Apple compiler: the Homebrew LLVM generates class stubs that the Apple linker does not resolve
     local cc=clang; case "$f" in *.m) cc=/usr/bin/clang;; esac
-    $cc $BDSP_OPT $W $INC "$@" -c "$f" -o "$o"
+    $cc $BDSP_OPT "$BDSP_PATHMAP" $W $INC "$@" -c "$f" -o "$o"
   fi
 }
 for f in objects cmdbuf formats tegra astc bctc; do build "$SRC/nvn/$f.c" "$RT/nvn/$f.o" "$@"; done

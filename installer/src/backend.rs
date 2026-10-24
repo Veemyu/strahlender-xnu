@@ -1,0 +1,538 @@
+use iced::futures::SinkExt;
+use serde::Deserialize;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+};
+
+const PROTOCOL_VERSION: u32 = 2;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Event {
+    Log {
+        level: String,
+        message: String,
+    },
+    Step {
+        id: String,
+        status: String,
+    },
+    Progress {
+        id: String,
+        completed: u64,
+        total: u64,
+    },
+    Artifact {
+        kind: String,
+        path: PathBuf,
+    },
+    PythonMissing,
+    RuntimeMissing,
+    Finished {
+        ok: bool,
+        code: i32,
+    },
+    Stopped,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+enum ProtocolEvent {
+    Hello {
+        protocol: u32,
+    },
+    Step {
+        id: String,
+        status: String,
+    },
+    Progress {
+        id: String,
+        completed: u64,
+        total: u64,
+    },
+    Log {
+        level: String,
+        message: String,
+    },
+    Result {
+        ok: bool,
+        code: i32,
+    },
+    Error {
+        message: String,
+        code: i32,
+    },
+    Artifact {
+        kind: String,
+        path: PathBuf,
+    },
+}
+
+pub struct BuildRequest {
+    pub target: &'static str,
+    pub base: PathBuf,
+    pub prod_keys: PathBuf,
+    pub update: Option<PathBuf>,
+    pub mod_root: Option<PathBuf>,
+    pub mod_name: Option<String>,
+}
+
+fn ips_helper() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let sibling = executable.with_file_name(if cfg!(windows) {
+        "ips_patch.exe"
+    } else {
+        "ips_patch"
+    });
+    if sibling.is_file() {
+        return Some(sibling);
+    }
+    if cfg!(debug_assertions) {
+        let root = project_root()?;
+        let debug = root.join("installer/target/debug/ips_patch");
+        if debug.is_file() {
+            return Some(debug);
+        }
+    }
+    None
+}
+
+enum Action {
+    Build(BuildRequest),
+}
+
+pub fn project_root() -> Option<PathBuf> {
+    let mut starts = vec![std::env::current_dir().ok()?, std::env::current_exe().ok()?];
+    if let Some(manifest) = option_env!("CARGO_MANIFEST_DIR") {
+        starts.push(PathBuf::from(manifest));
+    }
+    starts.into_iter().find_map(|start| find_root_from(&start))
+}
+
+fn host_target() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("macos-aarch64"),
+        ("macos", "x86_64") => Some("macos-x86_64"),
+        ("linux", "aarch64") => Some("linux-aarch64"),
+        ("linux", "x86_64") => Some("linux-x86_64"),
+        ("windows", "aarch64") => Some("windows-aarch64"),
+        ("windows", "x86_64") => Some("windows-x86_64"),
+        _ => None,
+    }
+}
+
+fn verified_runtime_python(runtime: &Path) -> Option<PathBuf> {
+    let marker: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(runtime.join("runtime.json")).ok()?).ok()?;
+    if marker.get("schema")?.as_u64()? != 1
+        || marker.get("target")?.as_str()? != host_target()?
+        || marker.get("python")?.as_str()? != "3.13.15"
+    {
+        return None;
+    }
+    let executable = if cfg!(windows) {
+        runtime.join("python/python.exe")
+    } else {
+        runtime.join("python/bin/python3")
+    };
+    executable.is_file().then_some(executable)
+}
+
+fn bundled_runtime() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let contents = executable.parent()?.parent()?;
+    let runtime = contents.join("Resources/runtime");
+    verified_runtime_python(&runtime)
+}
+
+fn backend_python() -> Option<(PathBuf, bool)> {
+    if let Some(runtime) = std::env::var_os("BDSP_INSTALLER_RUNTIME") {
+        return verified_runtime_python(Path::new(&runtime)).map(|python| (python, true));
+    }
+    if let Some(python) = bundled_runtime() {
+        return Some((python, true));
+    }
+    if let Some(dirs) = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
+        && let Some(target) = host_target()
+        && let Some(python) =
+            verified_runtime_python(&dirs.data_dir().join("runtimes/3.13.15").join(target))
+    {
+        return Some((python, true));
+    }
+    cfg!(debug_assertions).then(|| (PathBuf::from("python3"), false))
+}
+
+fn find_root_from(start: &Path) -> Option<PathBuf> {
+    let mut current = if start.is_file() {
+        start.parent()?.to_path_buf()
+    } else {
+        start.to_path_buf()
+    };
+    loop {
+        if current.join("scripts/install/driver.py").is_file()
+            && current.join("scripts/build_stages.py").is_file()
+        {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+pub fn build(
+    root: PathBuf,
+    run_id: u64,
+    cancelled: Arc<AtomicBool>,
+    mods_folder: Option<PathBuf>,
+    selected_mod: Option<String>,
+    request: BuildRequest,
+) -> impl iced::futures::Stream<Item = (u64, Event)> + 'static {
+    run_driver(
+        root,
+        run_id,
+        cancelled,
+        mods_folder,
+        selected_mod,
+        Action::Build(request),
+    )
+}
+
+fn run_driver(
+    root: PathBuf,
+    run_id: u64,
+    cancelled: Arc<AtomicBool>,
+    mods_folder: Option<PathBuf>,
+    selected_mod: Option<String>,
+    action: Action,
+) -> impl iced::futures::Stream<Item = (u64, Event)> + 'static {
+    iced::stream::channel(32, async move |mut output| {
+        let driver = root.join("scripts/install/driver.py");
+        let Some((python, private)) = backend_python() else {
+            let _ = output.send((run_id, Event::RuntimeMissing)).await;
+            let _ = output
+                .send((
+                    run_id,
+                    Event::Finished {
+                        ok: false,
+                        code: -1,
+                    },
+                ))
+                .await;
+            return;
+        };
+        let mut command = Command::new(&python);
+        command.env("BDSP_MOD", selected_mod.unwrap_or_else(|| "none".into()));
+        if let Some(folder) = &mods_folder {
+            command.env("BDSP_MODS_DIR", folder);
+        }
+        if private {
+            command.arg("-I").env("BDSP_INSTALLER_PRIVATE_RUNTIME", "1");
+            if let Some(directory) = python.parent() {
+                let inherited = std::env::var_os("PATH").unwrap_or_default();
+                let paths = std::iter::once(directory.to_path_buf())
+                    .chain(std::env::split_paths(&inherited));
+                if let Ok(path) = std::env::join_paths(paths) {
+                    command.env("PATH", path);
+                }
+            }
+        } else {
+            command.env_remove("BDSP_INSTALLER_PRIVATE_RUNTIME");
+        }
+        command.arg("-B").arg(&driver);
+        match action {
+            Action::Build(BuildRequest {
+                target,
+                base,
+                prod_keys,
+                update,
+                mod_root,
+                mod_name,
+            }) => {
+                command
+                    .arg("build")
+                    .arg("--root")
+                    .arg(&root)
+                    .arg("--work")
+                    .arg(root.join("work"))
+                    .arg("--target")
+                    .arg(target)
+                    .arg("--base")
+                    .arg(base)
+                    .arg("--prod-keys")
+                    .arg(prod_keys);
+                if let Some(update) = update {
+                    command.arg("--update").arg(update);
+                }
+                if let Some(mod_root) = mod_root {
+                    command.arg("--mod-root").arg(mod_root);
+                }
+                if let Some(mod_name) = mod_name {
+                    command.arg("--mod-name").arg(mod_name);
+                }
+                if let Some(mods_dir) = mods_folder.as_ref() {
+                    command.arg("--mods-dir").arg(mods_dir);
+                }
+                if let Some(helper) = ips_helper() {
+                    command.arg("--ips-helper").arg(helper);
+                }
+            }
+        }
+        command
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .env("PYTHONUNBUFFERED", "1")
+            .env_remove("PYTHONPATH")
+            .env_remove("PYTHONHOME")
+            .current_dir(&root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        #[cfg(unix)]
+        command.as_std_mut().process_group(0);
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                let event = if error.kind() == std::io::ErrorKind::NotFound {
+                    Event::PythonMissing
+                } else {
+                    Event::Log {
+                        level: "error".into(),
+                        message: format!("Could not start local Python backend: {error}"),
+                    }
+                };
+                let _ = output.send((run_id, event)).await;
+                let _ = output
+                    .send((
+                        run_id,
+                        Event::Finished {
+                            ok: false,
+                            code: -1,
+                        },
+                    ))
+                    .await;
+                return;
+            }
+        };
+
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
+        let mut stdout = BufReader::new(stdout).lines();
+        let mut stderr = BufReader::new(stderr).lines();
+        let mut stdout_open = true;
+        let mut stderr_open = true;
+        let mut protocol_seen = false;
+        let mut result_seen = false;
+        let mut result_ok = false;
+        let mut result_code = -1;
+
+        while stdout_open || stderr_open {
+            if cancelled.load(Ordering::Acquire) {
+                #[cfg(unix)]
+                if let Some(pid) = child.id() {
+                    unsafe { libc::kill(-(pid as i32), libc::SIGTERM) };
+                }
+                if tokio::time::timeout(Duration::from_secs(5), child.wait())
+                    .await
+                    .is_err()
+                {
+                    let _ = child.kill().await;
+                }
+                let _ = child.wait().await;
+                let _ = output.send((run_id, Event::Stopped)).await;
+                return;
+            }
+
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {},
+                line = stdout.next_line(), if stdout_open => match line {
+                    Ok(Some(line)) => {
+                        match serde_json::from_str::<ProtocolEvent>(&line) {
+                            Ok(ProtocolEvent::Hello { protocol }) => {
+                                if protocol != PROTOCOL_VERSION {
+                                    let _ = output.send((run_id, Event::Log {
+                                        level: "error".into(),
+                                        message: format!("Backend protocol mismatch: expected {PROTOCOL_VERSION}, received {protocol}."),
+                                    })).await;
+                                    let _ = child.kill().await;
+                                    let _ = child.wait().await;
+                                    let _ = output.send((run_id, Event::Finished { ok: false, code: -2 })).await;
+                                    return;
+                                }
+                                protocol_seen = true;
+                            }
+                            Ok(ProtocolEvent::Step { id, status }) => {
+                                let _ = output.send((run_id, Event::Step { id, status })).await;
+                            }
+                            Ok(ProtocolEvent::Progress { id, completed, total }) => {
+                                let _ = output.send((run_id, Event::Progress { id, completed, total })).await;
+                            }
+                            Ok(ProtocolEvent::Log { level, message }) => {
+                                let _ = output.send((run_id, Event::Log { level, message })).await;
+                            }
+                            Ok(ProtocolEvent::Result { ok, code }) => {
+                                result_seen = true;
+                                result_ok = ok;
+                                result_code = code;
+                            }
+                            Ok(ProtocolEvent::Error { message, code }) => {
+                                let _ = output.send((run_id, Event::Log { level: "error".into(), message })).await;
+                                result_seen = true;
+                                result_ok = false;
+                                result_code = code;
+                            }
+                            Ok(ProtocolEvent::Artifact { kind, path }) => {
+                                let _ = output.send((run_id, Event::Artifact { kind, path })).await;
+                            }
+                            Err(error) => {
+                                let _ = output.send((run_id, Event::Log {
+                                    level: "error".into(),
+                                    message: format!("Invalid backend protocol event: {error}"),
+                                })).await;
+                                let _ = child.kill().await;
+                                let _ = child.wait().await;
+                                let _ = output.send((run_id, Event::Finished { ok: false, code: -3 })).await;
+                                return;
+                            }
+                        }
+                    }
+                    Ok(None) => stdout_open = false,
+                    Err(error) => {
+                        let _ = output.send((run_id, Event::Log {
+                            level: "error".into(),
+                            message: format!("Could not read backend output: {error}"),
+                        })).await;
+                        let _ = child.kill().await;
+                        let _ = child.wait().await;
+                        let _ = output.send((run_id, Event::Finished { ok: false, code: -4 })).await;
+                        return;
+                    }
+                },
+                line = stderr.next_line(), if stderr_open => match line {
+                    Ok(Some(line)) if !line.trim().is_empty() => {
+                        let line = line.replace(root.to_string_lossy().as_ref(), "<project>");
+                        let _ = output.send((run_id, Event::Log { level: "diagnostic".into(), message: line })).await;
+                    }
+                    Ok(Some(_)) => {},
+                    Ok(None) => stderr_open = false,
+                    Err(error) => {
+                        let _ = output.send((run_id, Event::Log {
+                            level: "diagnostic".into(),
+                            message: format!("Could not read backend diagnostics: {error}"),
+                        })).await;
+                        stderr_open = false;
+                    }
+                },
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+            }
+        }
+
+        let status = child.wait().await;
+        let process_ok = status.as_ref().is_ok_and(|status| status.success());
+        if !protocol_seen {
+            let _ = output
+                .send((
+                    run_id,
+                    Event::Log {
+                        level: "error".into(),
+                        message: "Backend exited without a protocol handshake.".into(),
+                    },
+                ))
+                .await;
+        }
+        if !result_seen {
+            let code = status.ok().and_then(|status| status.code()).unwrap_or(-1);
+            let _ = output
+                .send((run_id, Event::Finished { ok: false, code }))
+                .await;
+        } else {
+            let ok = protocol_seen && process_ok && result_ok;
+            let _ = output
+                .send((
+                    run_id,
+                    Event::Finished {
+                        ok,
+                        code: result_code,
+                    },
+                ))
+                .await;
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProtocolEvent;
+
+    #[test]
+    fn private_runtime_requires_matching_host_and_python_marker() {
+        let Some(host) = super::host_target() else {
+            return;
+        };
+        let runtime = std::env::temp_dir().join(format!(
+            "strahlender-runtime-marker-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let executable = if cfg!(windows) {
+            runtime.join("python/python.exe")
+        } else {
+            runtime.join("python/bin/python3")
+        };
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable, b"test").unwrap();
+        std::fs::write(
+            runtime.join("runtime.json"),
+            format!(r#"{{"schema":1,"target":"{host}","python":"3.13.15"}}"#),
+        )
+        .unwrap();
+        assert_eq!(super::verified_runtime_python(&runtime), Some(executable));
+        std::fs::write(
+            runtime.join("runtime.json"),
+            r#"{"schema":1,"target":"wrong-host","python":"3.13.15"}"#,
+        )
+        .unwrap();
+        assert_eq!(super::verified_runtime_python(&runtime), None);
+        std::fs::remove_dir_all(runtime).unwrap();
+    }
+
+    #[test]
+    fn backend_protocol_accepts_versioned_preflight_events() {
+        let hello: ProtocolEvent =
+            serde_json::from_str(r#"{"event":"hello","protocol":2}"#).unwrap();
+        assert!(matches!(hello, ProtocolEvent::Hello { protocol: 2 }));
+
+        let log: ProtocolEvent =
+            serde_json::from_str(r#"{"event":"log","level":"info","message":"clang available"}"#)
+                .unwrap();
+        assert!(matches!(log, ProtocolEvent::Log { .. }));
+    }
+
+    #[test]
+    fn finds_the_source_checkout_from_a_nested_installer_path() {
+        let root = std::env::temp_dir().join(format!(
+            "strahlender-root-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let scripts = root.join("scripts");
+        std::fs::create_dir_all(scripts.join("install")).unwrap();
+        std::fs::write(scripts.join("install/driver.py"), b"").unwrap();
+        std::fs::write(scripts.join("build_stages.py"), b"").unwrap();
+        let nested = root.join("installer/target/debug");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert_eq!(super::find_root_from(&nested), Some(root.clone()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

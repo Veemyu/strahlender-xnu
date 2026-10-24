@@ -42,7 +42,7 @@ M_start_ask='Iniciar agora?'
 
 # --- macOS
 M_mac_intro1='Este script cria um BDSP.app pronto a jogar neste Mac a partir do teu próprio ficheiro de Pokémon Brilliant Diamond (.xci).'
-M_mac_intro3='Espaço: cerca de 60 GB livres. Tempo: aproximadamente uma hora. Tudo fica neste Mac e os teus ficheiros só são lidos.'
+M_mac_intro3='Espaço: pelo menos 40 GB livres. Tempo: aproximadamente uma hora. Tudo fica neste Mac e os teus ficheiros só são lidos.'
 M_st_mac='Mac e Xcode'
 M_mac_need_arm='É preciso um Mac com Apple Silicon (M1 ou mais recente).'
 M_mac_arm_ok='Mac com Apple Silicon'
@@ -84,7 +84,7 @@ M_tip_fps='Dica: ao iniciar a partir de um terminal, define a taxa de fotogramas
 # --- Linux
 M_lx_intro1='Este script cria a versão para Linux (Vulkan, Qt) a partir do teu próprio ficheiro de Pokémon Brilliant Diamond (.xci).'
 M_lx_intro2='Nota: a versão para Linux ainda está em desenvolvimento e ainda não é jogável (docs/BUILD.md, secção 6.4).'
-M_lx_intro3='Espaço: cerca de 60 GB livres. Tempo: várias horas. Tudo fica neste computador e os teus ficheiros só são lidos.'
+M_lx_intro3='Espaço: pelo menos 40 GB livres. Tempo: várias horas. Tudo fica neste computador e os teus ficheiros só são lidos.'
 M_lx_st_system='A verificar o sistema'
 M_lx_not_linux='Este script é para Linux. Num Mac usa ./install.command'
 M_lx_not_x86='A versão para Linux precisa de um computador x86-64 (AVX2).'

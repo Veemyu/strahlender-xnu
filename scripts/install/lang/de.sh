@@ -41,7 +41,7 @@ M_start_ask='Jetzt starten?'
 
 # --- macOS
 M_mac_intro1='Dieses Skript baut aus deiner eigenen Pokémon-Brilliant-Diamond-Datei (.xci) eine fertige BDSP.app für diesen Mac.'
-M_mac_intro3='Platz: etwa 60 GB frei. Dauer: rund eine Stunde. Alles bleibt auf diesem Mac, die Dateien werden nur gelesen.'
+M_mac_intro3='Platz: mindestens 40 GB frei. Dauer: rund eine Stunde. Alles bleibt auf diesem Mac, die Dateien werden nur gelesen.'
 M_st_mac='Mac und Xcode'
 M_mac_need_arm='Dieser Weg braucht einen Mac mit Apple Silicon (M1 oder neuer).'
 M_mac_arm_ok='Mac mit Apple Silicon'
@@ -83,7 +83,7 @@ M_tip_fps='Tipp: Mit BDSP_FPS=60 (oder 30/120) vor dem Start im Terminal stellst
 # --- Linux
 M_lx_intro1='Dieses Skript baut aus deiner eigenen Pokémon-Brilliant-Diamond-Datei (.xci) die Linux-Version (Vulkan, Qt).'
 M_lx_intro2='Hinweis: Die Linux-Version ist noch in Arbeit und noch nicht spielbar (docs/BUILD.md, Abschnitt 6.4).'
-M_lx_intro3='Platz: etwa 60 GB frei. Dauer: mehrere Stunden. Alles bleibt auf diesem Rechner, die Dateien werden nur gelesen.'
+M_lx_intro3='Platz: mindestens 40 GB frei. Dauer: mehrere Stunden. Alles bleibt auf diesem Rechner, die Dateien werden nur gelesen.'
 M_lx_st_system='System prüfen'
 M_lx_not_linux='Dieses Skript ist für Linux. Auf dem Mac: ./install.command'
 M_lx_not_x86='Der Linux-Weg braucht einen x86-64-Rechner (AVX2).'

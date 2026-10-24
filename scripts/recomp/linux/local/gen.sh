@@ -9,14 +9,15 @@ MODE=${1:-c}; shift
 case "$MODE" in c|asm) ;; *) die "Mode must be c or asm, not '$MODE'.";; esac
 mods=("$@"); [ ${#mods[@]} -eq 0 ] && mods=(rtld main sdk subsdk0)
 OUT=$W/gen4-$MODE
+EXEFS_DIR=${BDSP_EXEFS_DIR:-work/exefs}
 ST=logs/gen-$MODE.stats
 mkdir -p "$OUT" logs
-for m in "${mods[@]}"; do [ -f "work/exefs/$m" ] || die "work/exefs/$m is missing (extract it first, see docs/BUILD.md section 4.1)."; done
+for m in "${mods[@]}"; do [ -f "$EXEFS_DIR/$m" ] || die "$EXEFS_DIR/$m is missing (extract it first, see docs/BUILD.md section 4.1)."; done
 : > "$ST"
 tot0=$(date +%s.%N)
 for m in "${mods[@]}"; do
   glog=logs/gen-$MODE-$m.log
-  /usr/bin/time -f "TIME %e %U %S %M" python3 scripts/recomp/eh_gen.py gen "$m" "work/exefs/$m" "$(base_of "$m")" "$OUT/$m" --simd "$MODE" > "$glog" 2>&1 \
+  /usr/bin/time -f "TIME %e %U %S %M" python3 scripts/recomp/eh_gen.py gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$OUT/$m" --simd "$MODE" > "$glog" 2>&1 \
     || { tail -20 "$glog"; die "Generator for $m failed (log: $glog)."; }
   tm=$(grep '^TIME' "$glog" | tail -1)
   fn=$(grep -o "[0-9]* functions" "$glog" | head -1 | cut -d' ' -f1)

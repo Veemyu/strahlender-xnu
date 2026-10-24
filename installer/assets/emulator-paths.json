@@ -1,0 +1,199 @@
+{
+  "schema": 1,
+  "profiles": [
+    {
+      "id": "ryujinx-ryubing",
+      "name": "Ryujinx / Ryubing",
+      "windows": [
+        {
+          "base": "roaming",
+          "path": "Ryujinx/system"
+        }
+      ],
+      "macos": [
+        {
+          "base": "home",
+          "path": "Library/Application Support/Ryujinx/system"
+        },
+        {
+          "base": "home",
+          "path": ".config/Ryujinx/system"
+        }
+      ],
+      "linux": [
+        {
+          "base": "config",
+          "path": "Ryujinx/system"
+        }
+      ]
+    },
+    {
+      "id": "yuzu",
+      "name": "Yuzu",
+      "windows": [
+        {
+          "base": "roaming",
+          "path": "yuzu/keys"
+        }
+      ],
+      "macos": [
+        {
+          "base": "data",
+          "path": "yuzu/keys"
+        }
+      ],
+      "linux": [
+        {
+          "base": "data",
+          "path": "yuzu/keys"
+        }
+      ]
+    },
+    {
+      "id": "suyu",
+      "name": "suyu",
+      "windows": [
+        {
+          "base": "roaming",
+          "path": "suyu/keys"
+        }
+      ],
+      "macos": [
+        {
+          "base": "data",
+          "path": "suyu/keys"
+        }
+      ],
+      "linux": [
+        {
+          "base": "data",
+          "path": "suyu/keys"
+        }
+      ]
+    },
+    {
+      "id": "sudachi",
+      "name": "Sudachi",
+      "windows": [
+        {
+          "base": "roaming",
+          "path": "sudachi/keys"
+        }
+      ],
+      "macos": [
+        {
+          "base": "data",
+          "path": "sudachi/keys"
+        }
+      ],
+      "linux": [
+        {
+          "base": "data",
+          "path": "sudachi/keys"
+        }
+      ]
+    },
+    {
+      "id": "eden",
+      "name": "Eden",
+      "windows": [
+        {
+          "base": "roaming",
+          "path": "eden/keys"
+        }
+      ],
+      "macos": [
+        {
+          "base": "data",
+          "path": "eden/keys"
+        }
+      ],
+      "linux": [
+        {
+          "base": "data",
+          "path": "eden/keys"
+        }
+      ]
+    },
+    {
+      "id": "citron",
+      "name": "Citron NEO",
+      "windows": [
+        {
+          "base": "roaming",
+          "path": "citron/keys"
+        }
+      ],
+      "macos": [
+        {
+          "base": "data",
+          "path": "citron/keys"
+        }
+      ],
+      "linux": [
+        {
+          "base": "data",
+          "path": "citron/keys"
+        }
+      ]
+    },
+    {
+      "id": "yuzu-flatpak",
+      "name": "Yuzu (Flatpak)",
+      "windows": [],
+      "macos": [],
+      "linux": [
+        {
+          "base": "home",
+          "path": ".var/app/org.yuzu_emu.yuzu/data/yuzu/keys"
+        }
+      ]
+    },
+    {
+      "id": "ryujinx-flatpak",
+      "name": "Ryujinx (Flatpak)",
+      "windows": [],
+      "macos": [],
+      "linux": [
+        {
+          "base": "home",
+          "path": ".var/app/org.ryujinx.Ryujinx/config/Ryujinx/system"
+        }
+      ]
+    },
+    {
+      "id": "legacy",
+      "name": "Legacy keys directory",
+      "windows": [
+        {
+          "base": "home",
+          "path": ".switch"
+        }
+      ],
+      "macos": [
+        {
+          "base": "home",
+          "path": ".switch"
+        },
+        {
+          "base": "home",
+          "path": "Library/Application Support/yuzu/keys"
+        },
+        {
+          "base": "home",
+          "path": ".local/share/yuzu-emu/keys"
+        }
+      ],
+      "linux": [
+        {
+          "base": "home",
+          "path": ".switch"
+        },
+        {
+          "base": "data",
+          "path": "yuzu-emu/keys"
+        }
+      ]
+    }
+  ]
+}

@@ -147,12 +147,12 @@ venv_pip() {
   run python3 -m pip install --quiet --disable-pip-version-check "$pkg" || return 1
 }
 
-free_gb() { df -k "$1" | awk 'NR==2 {print int($4 / 1048576)}'; }
+free_gb() { df -k "$1" | awk 'NR==2 {print int($4 * 1024 / 1000000000)}'; }
 
 # Free space check against the recommended minimum. Sets MINFREE (what to pass to build_all.sh --min-free-gb).
 check_space() {
   local free
-  free="$(free_gb "$ROOT")"; MINFREE="${1:-60}"
+  free="$(free_gb "$ROOT")"; MINFREE="${1:-40}"
   if [ "$free" -ge "$MINFREE" ]; then ok space_ok "$free"; return; fi
   warn space_low "$free" "$MINFREE"
   ask_yn continue_anyway || die free_space_die

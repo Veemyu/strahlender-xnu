@@ -1,0 +1,214 @@
+# strahlender · Installer
+
+Rust/Iced UI prototype. Flat dark theme by default, manually selectable light
+theme, bundled Fira Sans, a compact 440 × 480 desktop window, rounded grayscale surfaces and separate keys → game → update views. All hosts start with target selection. Mac offers Mac and a combined iPad / iPhone target; Windows and Linux additionally offer their native desktop target. Android is visible as a disabled future placeholder. Native Mac → iPhone/iPad build and device deployment are connected; Apple builds from non-Mac hosts remain planned backend work.
+A pinned, segmented step strip shows the current phase without tabs. Longer phases have wider slots and simulated progress in this preview.
+Progress uses a damped spring at the display refresh rate; it never runs ahead
+of the reported value.
+All Cargo files and build artifacts stay in this directory.
+
+Details can be expanded on every view, including after failure or completion.
+Normal views keep the same window size. Only opening the log extends the window,
+to at most 630 logical pixels. On Mac the complete window is additionally capped
+at 85% of the usable screen height, excluding the menu bar and Dock. File details and their compact actions share a row. Main actions
+stay visible below the content and use compact buttons. Summary and setup
+explanation are separate views to avoid overloading a page.
+The two mod views are optional; “Skip mods” jumps to the review and removes
+both views from the step bar. They open a local mods folder and discover Ryujinx/yuzu-style
+`<name>/romfs` and `<name>/exefs` folders. On macOS and Linux, discovery calls
+the runtime's `mods_scan()` without activating a mod or touching saves. A
+portable scanner follows the same folder rules on Windows. Pure RomFS mods can
+be copied with a file manager and need no rebuild. The installer marks ExeFS
+mods as needing a code build. IPS/IPS32-only mods can build a separate Mac or
+iPhone/iPad app from a Mac, including one additional `subsdk1` module. Unsupported ExeFS files block
+advancement. Choose a whole downloaded mod folder, including common wrapper
+folders. The compiled app fixes the selected mod and keeps its own save.
+On iOS the installer deploys versioned base and mod data to the app's own
+container; `Documents/Mods` also accepts pure RomFS mods through Files.
+Mod-provided icons and localized names feed directly into the existing game-icon
+pipeline before platform icon generation and signing. Embedded artwork is
+extracted from the mod's known RomFS title-logo bundles through the existing UnityPy
+reader; Lumi's actual localized logos are extracted there. Explicit icon files
+take priority. Only mods with no usable artwork get a visible MOD badge on the
+base icon, without host fonts or network assets. The existing shader profile is
+needed for embedded Unity logos and is checked before compiling.
+All language variants ship.
+
+
+The session log can be copied; it records file checks, automatic key searches,
+concrete validation errors and clearly labelled preview phases. Key contents are never logged. Real backend subprocess output can include local
+paths; the expandable log reports commands, diagnostics and exit codes.
+
+The file/folder pickers and basic filesystem validation are real. On a local
+macOS checkout, the setup view now runs the existing read-only prerequisite
+checks through a versioned JSONL backend protocol and streams the output into the
+session log. This development connection uses `python3`; it does not install
+Python or change files. Native Mac and Linux builds, plus Mac-hosted iPhone/iPad builds, stream real
+extract, generator, compile, packaging and installation phases. Other host/target
+combinations remain previews until their backend support is added.
+The released installer will use its own verified Python runtime instead of
+requiring system Python.
+The first private runtime assembly and its tested host matrix are documented
+in [runtime/README.md](runtime/README.md). A development build uses that runtime
+when `BDSP_INSTALLER_RUNTIME` points to its verified directory. Release builds
+will require it; automatic first-run provisioning is still pending.
+
+## Build and open
+
+Requires Rust 1.88 or later and the platform's development tools. From the repo root:
+
+```sh
+cargo run --locked --manifest-path installer/Cargo.toml
+```
+
+Use `cargo run --locked --manifest-path installer/Cargo.toml -- --demo` to
+explore the UI with clearly labelled synthetic files. Every input step can be
+continued without real files, and examples can be restored after removal.
+Automatic key discovery is disabled in this demo mode.
+
+Build a locally signed macOS `.app` for visual and startup checks with
+`installer/scripts/package_macos_app.sh`. It writes the bundle to
+`work/installer-packages/macos/Strahlender Installer.app` and includes both the
+GUI, native `ips_patch` helper and the verified private Python runtime for the
+current Mac architecture. The bundle finds that runtime beside its executable.
+This remains a development bundle: the build backend still needs the source
+checkout, so end-to-end builds must be started from the checkout.
+
+Simulate host-specific target choices locally:
+
+```sh
+installer/target/debug/strahlender-xnu-installer --demo --platform mac
+installer/target/debug/strahlender-xnu-installer --demo --platform windows
+installer/target/debug/strahlender-xnu-installer --demo --platform linux
+```
+
+`--platform` is restricted to demo/capture mode. It changes presentation and target
+choices, not native OS APIs or actual emulator-key search paths. The demo banner
+identifies the simulated host. Apple targets on Windows/Linux explain the need
+for a future Mac/Xcode build connection; selecting them does not implement it.
+
+Theme preferences live in the user's application configuration directory. The
+app does not follow the system theme. It stores the appearance preference and
+the paths to previously selected prod.keys, game, update and mod folders so a
+repeat build can reuse still-valid selections. It never stores key contents.
+Each saved path is checked again at startup; missing or invalid files need to be
+selected again. The keys view searches known emulator directories when no saved
+keys file is available. Missing keys produce an informational hint, not an error.
+
+The `rfd` dependency uses Linux desktop portals instead of its GTK dialog backend.
+Linux still needs a functioning desktop portal service for file selection and the
+usual windowing/graphics system libraries. This is not a dependency-free binary.
+
+## Automatic screenshots
+
+```sh
+python3 installer/scripts/capture.py
+python3 installer/scripts/capture.py --backend tiny-skia
+python3 installer/scripts/capture.py work/installer-ui/windows --platform windows
+python3 installer/scripts/capture.py work/installer-ui/target --platform windows --scenes target,target-ios,demo-target-ios
+```
+
+Each command builds and opens the real application, captures the requested states in dark mode, writes PNGs plus a linked review report under `work/installer-ui/`, and
+exits automatically. Fixtures are synthetic and saved preferences are untouched.
+By default only the target view is captured. Use `--scenes` to select the views
+actively changed, including their relevant states. Do not routinely re-capture
+unaffected pages. The registry includes dark-mode mod-folder, empty, selected,
+ExeFS-only and review scenarios; `--scenes all`
+is an explicit full-matrix run and should be reserved for a requested broad review.
+Actual main-content
+overflow is measured from the Iced widget tree; overflow above half a logical
+pixel fails the capture run. The intentionally scrollable log is excluded.
+The long-name state exercises a long Unicode filename at the same window width. Use `--language de` or `--language en` to select the capture language. The PNGs capture the
+application content, not the operating system's window decorations.
+
+The binary also supports `--capture-dir DIRECTORY` for capture without the Python
+wrapper. `ICED_BACKEND=tiny-skia` selects software rendering. Screenshot automation
+requires a graphical desktop session; it is not a headless rendering test.
+
+## Verification
+
+```sh
+cargo test --locked --manifest-path installer/Cargo.toml
+cargo clippy --locked --manifest-path installer/Cargo.toml -- -D warnings
+cargo fmt --manifest-path installer/Cargo.toml --check
+```
+
+The current development GUI can start a native build for macOS ARM64 and Linux
+x86_64 from a base XCI, base NSP or NCA folder, with an optional update NSP.
+The backend performs prerequisite checks, builds through the existing local
+scripts, reports live stages and installs the resulting desktop app. Linux's
+launcher and desktop entry use the XDG data directory and keep saves outside
+the replaceable app folder. These paths have synthetic tests; an end-to-end
+build through the GUI with actual game inputs is still required. Windows,
+Linux ARM64 and macOS x86_64 remain planned build ports. Native Mac-hosted
+iPhone/iPad builds and deployment are connected, with device evidence below.
+
+For ExeFS development, `cargo run --locked --manifest-path installer/Cargo.toml --bin ips_patch -- inspect <patch.ips> [--nso <original.nso>]` checks IPS/IPS32 framing and the NSO build ID. `apply <original.nso> <staged.nso> <patch.ips>...` decompresses the NSO with native Rust/LZ4 code, applies matching IPS/IPS32 records to backed segments and writes a separate uncompressed NSO for the existing generator. `stage <base-exefs> <mod-exefs> <output>` inventories a mod's top-level IPS/IPS32 files and optional `subsdk1`, matches patches to exactly one NSO and creates a complete isolated ExeFS folder. The Rust helper also validates the extra module's memory slot including BSS and writes cross-module branch entry points for the generator. Unknown entries, mismatched updates, `rtld` patches and records in gaps or BSS are rejected. Source NSOs are never overwritten. For a native Mac or Mac-hosted iPhone/iPad code mod, build the `ips_patch` binary alongside the GUI (`cargo build --locked --manifest-path installer/Cargo.toml --bins`); the GUI stages, compiles and packages a separate signed mod app. It detects a complete downloaded mod folder, including wrapper folders, and gives mod-provided icons and names priority. Linux code builds, more added modules and in-app code switching remain unavailable. A full code-mod playthrough is not validated. The offset rule follows
+[Atmosphere's loader](https://github.com/Atmosphere-NX/Atmosphere/blob/master/stratosphere/loader/source/ldr_patcher.cpp)
+and its [patch documentation](https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/components/modules/loader.md#nso-patching).
+
+The local Apple Silicon Mac and a Nobara 44 KDE Wayland x86_64 desktop now pass
+their native Cargo builds, tests and Clippy checks. Nobara also assembled and
+executed the private Linux x86_64 runtime and captured the native Linux target
+view in dark mode without content overflow. Its desktop portal exposes the file
+chooser, but real picker interaction and drag-and-drop still need manual
+acceptance. Windows, other Linux desktops, X11, OS permission flows and packaged
+releases still need their own runs. The prototype does not claim a tested
+six-platform release matrix.
+
+On macOS, winit's external file-drop events do not carry pointer coordinates.
+A small main-thread AppKit adapter queries the existing content view's pointer
+position; hit testing uses actual Iced widget bounds and scroll offset. This does
+not introduce native controls or a separate macOS interface. The Linux/Windows
+hover-event path must be verified on real desktops before release.
+
+The current UI uses German or English (system locale, optionally `BDSP_LANG`).
+Spanish and Portuguese/Brazilian support are deliberately deferred until the final
+localization pass. Regional locales will share language catalogs.
+The complete separation of installer language, game preview language and universal
+application resources is specified in [docs/localization.md](docs/localization.md).
+The GitHub mark in the header opens the project repository in the system browser.
+Appearance uses bundled sun/moon SVGs; device choices use bundled monitor, tablet
+and phone SVGs alongside their labels. All icons are compiled into the binary,
+and Fira Sans is embedded by Iced. No CDN, system icon theme or emoji is required.
+See [asset sources and licenses](assets/README.md); `--licenses` prints the bundled
+asset license texts offline.
+
+The planned `Installer native build matrix` workflow will run formatting, Rust
+tests and native GUI/helper builds on macOS, Linux and Windows for both x86_64
+and aarch64. Development smoke artifacts will not include the private Python
+runtime or platform installer packaging and will not be end-user releases.
+Release packaging will follow after all runtime targets and the Linux/Windows
+package formats have native verification.
+
+The released GUI will bundle its matching UI/backend bridge, native helpers,
+assets and hash-verified private Python runtime. When the user starts a build,
+it will fetch the current `main` branch source into the app's managed cache and
+show the resolved commit in the build log. The installer itself will check
+GitHub Releases for updates and offer the latest installer release. Source
+updates always follow `main`; they are separate from installer self-updates.
+The current development prototype still runs from a local source checkout, so
+remote source fetching and release self-updates remain to be implemented.
+
+End users will download packaged installers from GitHub Releases once the full
+native packaging and signing matrix is verified.
+
+Game region metadata is not wired to the prototype yet. Original icons are
+extracted during a real build through `scripts/recomp/app/game_icons.py`, including its existing
+locale recommendation. No cartridge region is guessed from a filename or locale.
+The shared icon manifest now also retains all original NACP titles and the display
+version; Apple builders include every localized display name alongside every icon.
+No finished app is filtered by the installer/system language.
+
+The iPadOS backend has passed an isolated signed-device startup test on an M2
+iPad Pro with a no-op IPS, separate bundle/container, mod icon and no imported
+saves (2026-10-24). It reached language selection and captured frame 600.
+This is not yet a real code-mod gameplay test or a complete fresh-input GUI run.
+Xcode signing and iOS FFmpeg libraries must already be configured locally;
+a GUI device/signing flow remains pending. See `docs/mods.md` for exact limits.
+
+The full Lumi 2.2F combination (155 IPS32 records, `subsdk1`, RomFS and actual
+localized Lumi artwork) also passed a 90-second M2 iPad run, reaching the player
+house and exiting normally at the test time limit. Lumi and the original BDSP
+app remain installed side by side with separate identities and containers.
+Battle and extended gameplay validation, plus a fresh-input GUI run, remain open.

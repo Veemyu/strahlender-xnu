@@ -3,8 +3,8 @@ R=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 cd "$R" || exit 1
 export PATH="$HOME/.local/bin:$PATH"
 LAS=scripts/recomp/upstream
-W=work/recomp
-JOBS=${JOBS:-10}                    # parallel compilers (override with JOBS=n)
+W=${RECOMP_DIR:-work/recomp}
+JOBS=${JOBS:-$(python3 scripts/recomp/parallel_jobs.py)}  # override with JOBS=n
 TIMEV=(/usr/bin/time -f "%e s wall  %U s user  %S s sys  %M KB maxrss")
 
 # Module bases as in the spike's gen_all.sh

@@ -1,0 +1,35 @@
+[package]
+name = "strahlender-xnu-installer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT"
+description = "Minimal cross-platform setup helper for strahlender-xnu"
+
+[dependencies]
+iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "x11", "wayland", "crisp", "fira-sans", "advanced", "svg", "image-without-codecs"] }
+image = { version = "=0.25.9", default-features = false, features = ["tiff"] }
+rfd = { version = "0.16", default-features = false, features = ["xdg-portal", "tokio"] }
+directories = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "process", "io-util", "macros"] }
+png = "0.18"
+sys-locale = "0.3"
+lz4_flex = { version = "0.11", default-features = false }
+
+[build-dependencies]
+cc = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSView", "NSWindow", "NSResponder", "NSScreen", "NSImage", "NSColor", "NSFontDescriptor"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSData", "NSDictionary", "NSGeometry", "NSProcessInfo", "NSString"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

@@ -1,0 +1,96 @@
+{
+  "python": "3.13.15",
+  "schema": 1,
+  "targets": {
+    "linux-aarch64": {
+      "Pillow==13.0.0": {
+        "sha256": "19b66ca0a4d25cc0200b381ce824c7ea090db61427315e73cfb05dbf1b35c369",
+        "wheel": "pillow-13.0.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+      },
+      "capstone==5.0.9": {
+        "sha256": "41772ad0c71aa5d3e97d541e802593c2e71fb94ac7e20d4202f97ce2a3eb8ed5",
+        "wheel": "capstone-5.0.9-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+      },
+      "lz4==4.4.5": {
+        "sha256": "533298d208b58b651662dd972f52d807d48915176e5b032fb4f8c3b6f5fe535c",
+        "wheel": "lz4-4.4.5-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+      },
+      "unicorn==2.1.4": {
+        "sha256": "bd1fb0c9af5f57e356d8a96928b4fe045b2e18f308ef23b481d5f970008aa722",
+        "wheel": "unicorn-2.1.4-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+      }
+    },
+    "linux-x86_64": {
+      "Pillow==13.0.0": {
+        "sha256": "5f56499c1a74d2b862beb0c33b8016f99d095858455df9d21583bbbc1c15b582",
+        "wheel": "pillow-13.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+      },
+      "capstone==5.0.9": {
+        "sha256": "273fd8d747d2e35c88f91450be51a603ecfaafb00d96d9f315dcb8689c86193e",
+        "wheel": "capstone-5.0.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+      },
+      "lz4==4.4.5": {
+        "sha256": "451039b609b9a88a934800b5fc6ee401c89ad9c175abf2f4d9f8b2e4ef1afc64",
+        "wheel": "lz4-4.4.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+      },
+      "unicorn==2.1.4": {
+        "sha256": "9d6e6dea140560de4ebd8446661f7ef84a357d428c14a3ef09dacd306ec8c239",
+        "wheel": "unicorn-2.1.4-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+      }
+    },
+    "macos-aarch64": {
+      "Pillow==13.0.0": {
+        "sha256": "f11a3c1358bb3c68012a7b1f41b223c3db9f7bfde90b481df028cfe1c3363313",
+        "wheel": "pillow-13.0.0-cp313-cp313-macosx_11_0_arm64.whl"
+      },
+      "capstone==5.0.9": {
+        "sha256": "fc269c5082e17d7f9f265cd6980e2fdc6ab572df913951d76db0357e06b8001d",
+        "wheel": "capstone-5.0.9-py3-none-macosx_11_0_arm64.whl"
+      },
+      "lz4==4.4.5": {
+        "sha256": "b424df1076e40d4e884cfcc4c77d815368b7fb9ebcd7e634f937725cd9a8a72a",
+        "wheel": "lz4-4.4.5-cp313-cp313-macosx_11_0_arm64.whl"
+      },
+      "unicorn==2.1.4": {
+        "sha256": "d6c93e0f60328d8f4a1792af3f834137a28050fcc2305f2ec01efe8558a9844e",
+        "wheel": "unicorn-2.1.4-cp37-abi3-macosx_11_0_arm64.whl"
+      }
+    },
+    "macos-x86_64": {
+      "Pillow==13.0.0": {
+        "sha256": "ef5fe6b7db3f501c56000ba8fe7c7e1a35ca1d45824fbeb95a67daa85cff4dbe",
+        "wheel": "pillow-13.0.0-cp313-cp313-macosx_10_13_x86_64.whl"
+      },
+      "capstone==5.0.9": {
+        "sha256": "8c4a1d7134d7d5290e5d77066500385f2c7a4bf66835ccbfde5180042d508b3c",
+        "wheel": "capstone-5.0.9-py3-none-macosx_10_9_x86_64.whl"
+      },
+      "lz4==4.4.5": {
+        "sha256": "6bb05416444fafea170b07181bc70640975ecc2a8c92b3b658c554119519716c",
+        "wheel": "lz4-4.4.5-cp313-cp313-macosx_10_13_x86_64.whl"
+      },
+      "unicorn==2.1.4": {
+        "sha256": "2a6f738fab5fabffa56af1e7bbf16ea1e91466c342f8dc64f125bd70f36c6b80",
+        "wheel": "unicorn-2.1.4-cp37-abi3-macosx_10_9_x86_64.whl"
+      }
+    },
+    "windows-x86_64": {
+      "Pillow==13.0.0": {
+        "sha256": "9dda0788a9932776a75d8bcc020076edc308ce2508b51f6739a45e3158b3fc42",
+        "wheel": "pillow-13.0.0-cp313-cp313-win_amd64.whl"
+      },
+      "capstone==5.0.9": {
+        "sha256": "732cedbbb56d42e723f14d7af6387f1454194a820b4b96b56d1e53f865ef85d0",
+        "wheel": "capstone-5.0.9-py3-none-win_amd64.whl"
+      },
+      "lz4==4.4.5": {
+        "sha256": "da68497f78953017deb20edff0dba95641cc86e7423dfadf7c0264e1ac60dc22",
+        "wheel": "lz4-4.4.5-cp313-cp313-win_amd64.whl"
+      },
+      "unicorn==2.1.4": {
+        "sha256": "d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5",
+        "wheel": "unicorn-2.1.4-cp37-abi3-win_amd64.whl"
+      }
+    }
+  }
+}

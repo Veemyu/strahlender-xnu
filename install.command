@@ -83,12 +83,9 @@ else
   fi
 fi
 use_venv || die venv_failed
-venv_pip PIL Pillow || die pip_failed
-if [ -d tools/pydeps/capstone ] && [ -d tools/pydeps/unicorn ] && ! fake_missing pip; then ok pip_ok "capstone, unicorn"
-else
-  warn pip_missing "capstone, unicorn"
-  run python3 -m pip install --quiet --disable-pip-version-check --target tools/pydeps capstone unicorn || die pip_failed
-fi
+for pair in lz4:lz4 capstone:capstone unicorn:unicorn PIL:Pillow; do
+  venv_pip "${pair%%:*}" "${pair##*:}" || die pip_failed
+done
 check_space 60
 printf '\n'; say gate_start
 GATE_LOG="$(mktemp "${TMPDIR:-/tmp}/bdsp-preflight.XXXXXX")"

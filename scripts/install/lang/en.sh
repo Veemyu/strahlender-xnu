@@ -44,7 +44,7 @@ M_py_ok='Python %s'
 
 # --- macOS
 M_mac_intro1='This script builds a ready-to-play BDSP.app for this Mac from your own Pokémon Brilliant Diamond file (.xci).'
-M_mac_intro3='Space: about 60 GB free. Time: roughly an hour. Everything stays on this Mac, your files are only read.'
+M_mac_intro3='Space: at least 40 GB free. Time: roughly an hour. Everything stays on this Mac, your files are only read.'
 M_st_mac='Mac and Xcode'
 M_mac_need_arm='This needs a Mac with Apple Silicon (M1 or newer).'
 M_mac_arm_ok='Apple Silicon Mac'
@@ -89,7 +89,7 @@ M_tip_fps='Tip: set the frame rate with BDSP_FPS=60 (or 30/120) when starting fr
 # --- Linux
 M_lx_intro1='This script builds the Linux version (Vulkan, Qt) from your own Pokémon Brilliant Diamond file (.xci).'
 M_lx_intro2='Note: the Linux version is still work in progress and not playable yet (docs/BUILD.md, section 6.4).'
-M_lx_intro3='Space: about 60 GB free. Time: several hours. Everything stays on this machine, your files are only read.'
+M_lx_intro3='Space: at least 40 GB free. Time: several hours. Everything stays on this machine, your files are only read.'
 M_lx_st_system='Checking the system'
 M_lx_not_linux='This script is for Linux. On a Mac use ./install.command'
 M_lx_not_x86='The Linux build needs an x86-64 machine (AVX2).'
