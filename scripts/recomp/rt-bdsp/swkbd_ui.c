@@ -314,7 +314,10 @@ static int build_screen(int si) {
         if (kind == K_BS) lytinst_set_text(inst, "T_Key", "");           // button badges: B, Y, +
         if (kind == K_SPACE) lytinst_set_text(inst, "T_Key", "");
         if (kind == K_ENTER) lytinst_set_text(inst, "T_Key_00", "");
-        if (kind == K_ENTER) lytinst_set_offset(inst, "N_Key", 10, 4);   // the badge is placed for the longer label; "OK" is short, so it moves out of the K
+        if (kind == K_ENTER) lytinst_set_offset(inst, "N_Key", 22, 38);   // badges sit 16 px from the right edge and 15 px from the top of their key, as on the console
+        if (kind == K_BS) lytinst_set_offset(inst, "N_Key", 5, 8);
+        if (kind == K_SPACE) { float kw = k->r[2] - k->r[0]; lytinst_set_offset(inst, "N_Key", kw / 2 - 16 - 34 * kw / 100, 4.4f); }
+        if (kind == K_SHIFT) { lytinst_set_visible(inst, "P_GlowOff", 0); lytinst_set_visible(inst, "P_GlowOn", 0); }   // the caps lock dot is drawn by tick (a round one)
         s->nkeys++;
     }
     qsort(s->keys, s->nkeys, sizeof s->keys[0], cmp_keys);
@@ -436,8 +439,8 @@ static void refresh_labels(void) {
         if (k->kind == K_SHIFT) {
             lytinst_set_visible(k->inst, "P_ShiftOn", G.shift != 0);
             lytinst_set_visible(k->inst, "P_ShiftOff", G.shift == 0);
-            lytinst_set_visible(k->inst, "P_GlowOn", G.shift == 2);
-            lytinst_set_visible(k->inst, "P_GlowOff", G.shift != 2);
+            lytinst_set_visible(k->inst, "P_GlowOn", 0);   // (the dot is drawn by tick)
+            lytinst_set_visible(k->inst, "P_GlowOff", 0);
         }
     }
 }
@@ -824,6 +827,13 @@ static void fb_scene(Screen *s, const char *shown) {
 
 
 // Footer with the button hints (glyphs of the system's button font): controller, caret keys, shift, cancel, select
+// round dot (a black circle glyph), centre and radius in canvas pixels
+static void fb_dot(LytScene *sc, float cx, float cy, float r, int cr, int cg, int cb) {
+    fb_text(sc, "\xE2\x97\x8F", cx - 16, cy - 16, 32, 32, r * 2.7f, 0x00, 255, 1);
+    LytItem *it = &sc->items[sc->n - 1];
+    it->top_color[0] = it->bottom_color[0] = (uint8_t)cr; it->top_color[1] = it->bottom_color[1] = (uint8_t)cg; it->top_color[2] = it->bottom_color[2] = (uint8_t)cb;
+}
+
 static float text_width(const char *s, float px);
 static void footer_items(LytScene *sc) {
     const Theme *t = g_theme;
@@ -958,6 +968,12 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         if (tk->kind != K_TAB || tk->hidden || tk->page != G.page) continue;
         float tw = text_width(k_tab_label[tk->page], 26), cx = (tk->r[0] + tk->r[2]) / 2, cy = (tk->r[1] + tk->r[3]) / 2;
         fb_quad(&G.scene, cx - tw / 2 - 2, cy + 17, tw + 4, 3, COL(g_theme->tab_on), 1);
+    }
+    for (int i = 0; i < s->nkeys; i++) {   // caps lock dot in the top left corner of the shift key
+        const Key *sk = &s->keys[i];
+        if (sk->kind != K_SHIFT || sk->hidden) continue;
+        const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){160, 172, 190};
+        fb_dot(&G.scene, sk->r[0] + 14, sk->r[1] + 14, 4.5f, dc[0], dc[1], dc[2]);
     }
     if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
         const Key *fk = &s->keys[G.focus];

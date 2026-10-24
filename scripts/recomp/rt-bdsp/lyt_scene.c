@@ -356,7 +356,7 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
         float kx = mx, ky = my;
         if (p->kind == LYT_PIC && p->mat < l->nmats && l->mats[p->mat].ntex > 0 && l->mats[p->mat].tex[0].idx < l->ntex
             && strncmp(l->tex[l->mats[p->mat].tex[0].idx], "White", 5))   // icons keep their proportions when the part is not square
-            kx = ky = fminf(mx, my);
+            kx = ky = 1;   // icons keep the size they are drawn at
         sz[0] *= kx; sz[1] *= ky;
     }
     if (p->mag & 2) { s[0] *= mx; s[1] *= my; }   // bit 1: the pane's scale follows the part magnification (BgMask, cursor)
