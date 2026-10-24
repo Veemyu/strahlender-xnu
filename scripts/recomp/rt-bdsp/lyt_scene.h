@@ -42,6 +42,8 @@ void lytinst_set_visible(LytInst *in, const char *pane, int visible);   // overr
 void lytinst_set_color(LytInst *in, const char *pane, uint8_t r, uint8_t g, uint8_t b);
 // Alpha (0..255) of a pane instead of the one in the layout; an animation that drives the pane's alpha still wins.
 void lytinst_set_pane_alpha(LytInst *in, const char *pane, int a);
+// Moves a pane by (dx, dy) in its parent's units (y up), after the part magnification.
+void lytinst_set_offset(LytInst *in, const char *pane, float dx, float dy);
 void lytinst_set_alpha(LytInst *in, float alpha);                        // multiplies the whole instance (0..1)
 
 enum { LYT_ITEM_QUAD, LYT_ITEM_TEXT };

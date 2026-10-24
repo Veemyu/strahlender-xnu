@@ -393,7 +393,7 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
                 BOOL glyph = NO;                                  // button glyphs are never squeezed
                 for (const unsigned char *u = (const unsigned char *)it->str; *u; u++) if (*u == 0xEE) glyph = YES;   // utf-8 lead byte of U+E000..EFFF
                 float sx = (w > bw && !glyph) ? bw / w : 1;       // squeeze text to fit the box
-                float drawW = w * sx, drawH = h;
+                float drawW = w * sx, drawH = h * sx;                // too long for its box: smaller, in proportion (a squeezed label looks tall and thin)
                 int ox = it->origin & 3, oy = (it->origin >> 2) & 3;
                 float left = X[0] + (ox == 1 ? 0 : ox == 2 ? bw - drawW : (bw - drawW) / 2);
                 float top = Y[0] + (oy == 1 ? 0 : oy == 2 ? bh - drawH : (bh - drawH) / 2);

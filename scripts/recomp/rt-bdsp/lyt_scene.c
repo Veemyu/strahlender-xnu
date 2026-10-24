@@ -146,6 +146,7 @@ struct LytInst {
     uint8_t *vis_ov;               // per pane: 0 none, 1 hide, 2 show
     uint8_t (*col)[4];             // per pane colour override (a != 0: set)
     int16_t *aov;                  // per pane alpha override (-1: none)
+    float (*off)[2];               // per pane position offset (parent's units, y up)
     Pose *pose;                     // per pane, scratch of the scene builder
     float alpha;
 };
@@ -162,8 +163,9 @@ static LytInst *inst_new(LytBank *b, const char *layout, int depth) {
     in->col = calloc(l->npanes, sizeof *in->col);
     in->aov = malloc(l->npanes * sizeof *in->aov);
     if (in->aov) for (uint32_t i = 0; i < l->npanes; i++) in->aov[i] = -1;
+    in->off = calloc(l->npanes, sizeof *in->off);
     in->pose = calloc(l->npanes, sizeof *in->pose);
-    if (!in->sub || !in->text || !in->vis_ov || !in->col || !in->aov || !in->pose) { lytinst_free(in); return NULL; }
+    if (!in->sub || !in->text || !in->vis_ov || !in->col || !in->aov || !in->off || !in->pose) { lytinst_free(in); return NULL; }
     if (depth < MAX_DEPTH)
         for (uint32_t i = 0; i < l->npanes; i++)
             if (l->panes[i].kind == LYT_PRT && l->panes[i].part[0]) in->sub[i] = inst_new(b, l->panes[i].part, depth + 1);
@@ -178,7 +180,7 @@ void lytinst_free(LytInst *in) {
         if (in->sub) lytinst_free(in->sub[i]);
         if (in->text) free(in->text[i]);
     }
-    free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->aov); free(in->pose); free(in);
+    free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->aov); free(in->off); free(in->pose); free(in);
 }
 
 const LytLayout *lytinst_layout(const LytInst *in) { return in ? in->lay : NULL; }
@@ -261,6 +263,12 @@ void lytinst_set_pane_alpha(LytInst *in, const char *pane, int a) {
     if (i >= 0) in->aov[i] = (int16_t)a;
 }
 
+void lytinst_set_offset(LytInst *in, const char *pane, float dx, float dy) {
+    if (!in) return;
+    int i = lyt_layout_find_pane(in->lay, pane);
+    if (i >= 0) { in->off[i][0] = dx; in->off[i][1] = dy; }
+}
+
 void lytinst_set_alpha(LytInst *in, float alpha) { if (in) in->alpha = alpha; }
 
 // ---- scene ----------------------------------------------------------------------------------------------------
@@ -335,6 +343,7 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
     }
     if (po->has_alpha) al = po->alpha;
     if (p->mag & 1) { t[0] *= mx; t[1] *= my; }
+    t[0] += in->off[idx][0]; t[1] += in->off[idx][1];
     if (p->mag & 4) {
         float kx = mx, ky = my;
         if (p->kind == LYT_PIC && p->mat < l->nmats && l->mats[p->mat].ntex > 0 && l->mats[p->mat].tex[0].idx < l->ntex

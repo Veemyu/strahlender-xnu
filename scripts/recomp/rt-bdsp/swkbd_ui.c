@@ -313,6 +313,7 @@ static int build_screen(int si) {
         if (kind == K_BS) lytinst_set_text(inst, "T_Key", "");           // button badges: B, Y, +
         if (kind == K_SPACE) lytinst_set_text(inst, "T_Key", "");
         if (kind == K_ENTER) lytinst_set_text(inst, "T_Key_00", "");
+        if (kind == K_ENTER) lytinst_set_offset(inst, "N_Key", 10, 4);   // the badge is placed for the longer label; "OK" is short, so it moves out of the K
         s->nkeys++;
     }
     qsort(s->keys, s->nkeys, sizeof s->keys[0], cmp_keys);
@@ -826,7 +827,7 @@ static void footer_items(LytScene *sc) {
     const Theme *t = g_theme;
     int gray = t->text[0];
     float y = 664, h = 40;
-    fb_quad(sc, 0, 646, SWKBD_CANVAS_W, 2, t->plate[0] - 30, t->plate[1] - 30, t->plate[2] - 30, 1);   // line above the footer row
+    fb_quad(sc, 0, 650, SWKBD_CANVAS_W, 2, t->plate[0] - 30, t->plate[1] - 30, t->plate[2] - 30, 1);   // line above the footer row
     fb_text(sc, "\uE12C", 70, y, 60, h, 38, 0x01, gray, 1);
     for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 655, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
     // the hints are laid out from the right edge with the width of each text (the labels differ in length between languages)
@@ -880,6 +881,7 @@ static void tick(double dt) {
             int en = len >= G.p.minlen && !G.busy;
             lytinst_set_color(k->inst, "P_BtnBase_00", COL(en ? g_theme->accent : g_theme->dis));
             lytinst_set_color(k->inst, "T_00", COL(en ? g_theme->accent_text : g_theme->text_dis));
+            lytinst_set_color(k->inst, "T_Key_00", COL(en ? g_theme->accent_text : g_theme->badge));   // the + badge is white on the blue key
         }
         
         if (i == G.focus) {
