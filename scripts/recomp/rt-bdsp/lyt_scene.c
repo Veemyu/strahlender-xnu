@@ -360,6 +360,11 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
         sz[0] *= kx; sz[1] *= ky;
     }
     if (p->mag & 2) { s[0] *= mx; s[1] *= my; }   // bit 1: the pane's scale follows the part magnification (BgMask, cursor)
+    if (p->kind == LYT_PRT && in->sub[idx] && p->pscale[0] > 0 && p->pscale[1] > 0) {   // a part is drawn at its parts size times its scale; its pane size can be a little off (66 instead of 60 high)
+        const LytLayout *pl = in->sub[idx]->lay;
+        float ex = pl->parts_size[0] * p->pscale[0], ey = pl->parts_size[1] * p->pscale[1];
+        if (ex > 0 && ey > 0 && fabsf(ex - sz[0]) <= 0.15f * ex && fabsf(ey - sz[1]) <= 0.15f * ey) { sz[0] = ex; sz[1] = ey; }
+    }
     float a = alpha * al / 255.0f;
     int ox = p->base & 3, oy = (p->base >> 2) & 3, qx = (p->base >> 4) & 3, qy = (p->base >> 6) & 3;
     float px = anchor_x(qx, pw) + t[0], py = anchor_y(qy, ph) + t[1];

@@ -872,25 +872,22 @@ static void footer_items(LytScene *sc) {
     const Theme *t = g_theme;
     int gray = t->text[0];
     float y = 664, h = 40;
-    fb_quad(sc, 0, 650, SWKBD_CANVAS_W, 2, t->plate[0] - 30, t->plate[1] - 30, t->plate[2] - 30, 1);   // line above the footer row
+    fb_quad(sc, 0, 652, SWKBD_CANVAS_W, 2, t->plate[0] - 30, t->plate[1] - 30, t->plate[2] - 30, 1);   // line above the footer row
     fb_text(sc, "\uE12C", 70, y, 60, h, 38, 0x01, gray, 1);
     for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 655, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
     // the hints are laid out from the right edge with the width of each text (the labels differ in length between languages)
-    struct { const char *s; float px; } it[] = {
-        {"\uE0E4\uE145", 24}, {"\uE0E5\uE146", 24}, {"\uE104", 26},
-        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 24}, {"\uE0E2", 26},
-        {lbl("SwkbdFooter_Close", "Cancel"), 24}, {"\uE0E0", 26}, {lbl("SwkbdFooter_Decide", "Select"), 24}};
+    // glyph or label, its em size and the gap that follows it: 9 px between a key badge and its arrow, 10 px between a glyph and its label, 41 px between the hints
+    struct { const char *s; float px; float gap; } it[] = {
+        {"\uE0E4", 25, 9}, {"\uE145", 25, 41}, {"\uE0E5", 25, 9}, {"\uE146", 25, 40}, {"\uE104", 25, 11},
+        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 22.5f, 41}, {"\uE0E2", 25, 11},
+        {lbl("SwkbdFooter_Close", "Cancel"), 22.5f, 41}, {"\uE0E0", 25, 10}, {lbl("SwkbdFooter_Decide", "Select"), 22.5f, 0}};
     enum { N = sizeof it / sizeof *it };
     float w[N], total = 0;
+    for (int i = 0; i < N; i++) { w[i] = text_width(it[i].s, it[i].px); total += w[i] + (i < N - 1 ? it[i].gap : 0); }
+    float x = 1219 - total;   // the right end of the last label is 61 px from the screen edge on the console
     for (int i = 0; i < N; i++) {
-        w[i] = text_width(it[i].s, it[i].px) + 4;
-        total += w[i] + (i ? (i == 4 || i == 6 ? 8 : 22) : 0);   // a glyph sits close to its label
-    }
-    float x = 1244 - total;
-    for (int i = 0; i < N; i++) {
-        if (i) x += (i == 4 || i == 6 ? 8 : 22);
-        fb_text(sc, it[i].s, x, y, w[i], h, it[i].px, 0x01, gray, 1);
-        x += w[i];
+        fb_text(sc, it[i].s, x, y, w[i] + 2, h, it[i].px, 0x01, gray, 1);
+        x += w[i] + it[i].gap;
     }
 }
 
