@@ -8,5 +8,5 @@ R=scripts/recomp/rt-bdsp
 FW=""
 [ "$(uname -s)" != Darwin ] || FW="-framework AudioToolbox"
 export BDSP_SWKBD_SOUND=0   # the test must not make noise
-clang -O1 -g -Wall -Wextra -Wno-unused-function -I $R $R/test/swkbd_ui_test.c $R/swkbd_ui.c $R/lyt.c $R/lyt_tex.c $R/lyt_scene.c $R/swkbd_snd.c -lm -lpthread $FW -o work/recomp/test/swkbd_ui_test
+clang -O1 -g -Wall -Wextra -Wno-unused-function -I $R $R/test/swkbd_ui_test.c $R/swkbd_ui.c $R/lyt.c $R/lyt_tex.c $R/lyt_scene.c $R/swkbd_snd.c $R/swkbd_ime.c -lm -lpthread $FW -o work/recomp/test/swkbd_ui_test
 work/recomp/test/swkbd_ui_test "$@"

@@ -124,6 +124,17 @@ int main(int argc, char **argv) {
     swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);
     CHECK(!strcmp(swkbd_ui_text_value(), "a"));
     swkbd_ui_resolve(1, NULL);
+    // Korean: five more presses of the globe (fr -> es, it, pt, ru, ko); typed letters become jamo and syllables, backspace takes one jamo
+    CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
+    for (int i = 0; i < 4; i++) { swkbd_ui_pad(1ull << 15, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    for (int i = 0; i < 5; i++) { swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    swkbd_ui_text("gksrmf");
+    CHECK(!strcmp(swkbd_ui_text_value(), "한글"));
+    swkbd_ui_key(SWKBD_KEY_BACKSPACE);
+    CHECK(!strcmp(swkbd_ui_text_value(), "한그"));
+    swkbd_ui_key(SWKBD_KEY_BACKSPACE);
+    CHECK(!strcmp(swkbd_ui_text_value(), "한ㄱ"));
+    swkbd_ui_resolve(1, NULL);
     // a second opening fades in again to full opacity
     CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
     float maxa = 0;

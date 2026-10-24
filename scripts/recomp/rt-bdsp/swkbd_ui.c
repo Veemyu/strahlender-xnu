@@ -1,6 +1,7 @@
 // On-screen software keyboard: state, key logic, input and scene (see swkbd_ui.h). Own code.
 // The layouts are the user's firmware files (BDSP_FIRMWARE_DATA); the key characters below are our own table.
 #include "swkbd_ui.h"
+#include "swkbd_ime.h"
 #include "swkbd_snd.h"
 
 #include <math.h>
@@ -40,6 +41,9 @@ typedef struct {
 static const char *const k_archives[SCR_COUNT] = {"Qwerty", "Sign", "Numeric"};
 static const char *const k_keytop[SCR_COUNT] = {"SwkbdBaseKeytopQwerty", "SwkbdBaseKeytopSign", "SwkbdBaseKeytopNumeric"};
 
+// Korean (two-set layout, jamo keys) and Japanese (romaji keys, composed to hiragana): the last two entries of k_layouts
+#define LAYOUT_KO 8
+#define LAYOUT_JA 9
 // Key characters: 4 rows of 11 from the top left, normal and with Shift, per layout (the standard national keyboard layouts as the
 // Switch's keyboard has them). BDSP_SWKBD_LAYOUT selects one; default "us".
 static const struct { const char *id, *normal, *shifted; } k_layouts[] = {
@@ -51,6 +55,8 @@ static const struct { const char *id, *normal, *shifted; } k_layouts[] = {
     {"it", "1234567890'qwertyuiop\xC2\xB0""asdfghjkl@#zxcvbnm,.[]", "!\"\xC2\xA3""$%&/()=?QWERTYUIOP*ASDFGHJKL\xE2\x82\xAC""_ZXCVBNM;:+-"},
     {"pt", "1234567890=qwertyuiop\xC2\xBA""asdfghjkl\xC3\xA7""\xC2\xAA""zxcvbnm,.-+", "!\"#\xE2\x82\xAC""%&()?[]QWERTYUIOP@ASDFGHJKL\xC3\x87""*ZXCVBNM;:_\xC2\xA3"""},
     {"ru", "1234567890\xD1\x8A""\xD0\xB9""\xD1\x86""\xD1\x83""\xD0\xBA""\xD0\xB5""\xD0\xBD""\xD0\xB3""\xD1\x88""\xD1\x89""\xD0\xB7""\xD1\x85""\xD1\x84""\xD1\x8B""\xD0\xB2""\xD0\xB0""\xD0\xBF""\xD1\x80""\xD0\xBE""\xD0\xBB""\xD0\xB4""\xD0\xB6""\xD1\x8D""\xD1\x8F""\xD1\x87""\xD1\x81""\xD0\xBC""\xD0\xB8""\xD1\x82""\xD1\x8C""\xD0\xB1""\xD1\x8E""\xD1\x91"".", "!?\":;()-_@\xD0\xAA""\xD0\x99""\xD0\xA6""\xD0\xA3""\xD0\x9A""\xD0\x95""\xD0\x9D""\xD0\x93""\xD0\xA8""\xD0\xA9""\xD0\x97""\xD0\xA5""\xD0\xA4""\xD0\xAB""\xD0\x92""\xD0\x90""\xD0\x9F""\xD0\xA0""\xD0\x9E""\xD0\x9B""\xD0\x94""\xD0\x96""\xD0\xAD""\xD0\xAF""\xD0\xA7""\xD0\xA1""\xD0\x9C""\xD0\x98""\xD0\xA2""\xD0\xAC""\xD0\x91""\xD0\xAE""\xD0\x81"","},
+    {"ko", "1234567890-ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔ/ㅁㄴㅇㄹㅎㅗㅓㅏㅣ:'ㅋㅌㅊㅍㅠㅜㅡ,.?!", "#[]$%^&*()_ㅃㅉㄸㄲㅆㅛㅕㅑㅒㅖ@ㅁㄴㅇㄹㅎㅗㅓㅏㅣ;\"ㅋㅌㅊㅍㅠㅜㅡ<>+="},
+    {"ja", "1234567890-qwertyuiop/asdfghjkl:'zxcvbnm,.?!", "#[]$%^&*()_QWERTYUIOP@ASDFGHJKL;\"ZXCVBNM<>+="},
 };
 // Symbol keyboard: rows of 11 from the top left; \1 = no key (hidden)
 static const char *const k_sign = "1234567890-" "!@#$%^&*()_" "~`=\\+{}|[]\1" "<>;:\"',.?/\1" "\1\1\1\1\1\1\1\1\1\1\1";
@@ -59,7 +65,7 @@ static const char *const k_numeric = "1234567890";
 static const char *const k_acc_lo[2] = {"àáâãäåæāăąçćċčðďǆǳèéêëēęěğġģħìíîïīįıĳķĺļľł", "ñńņňòóôõöøœőōŕřšßśşþťțùúûüūůűųýÿźżž"};
 static const char *const k_acc_up[2] = {"ÀÁÂÃÄÅÆĀĂĄÇĆĊČÐĎǅǲÈÉÊËĒĘĚĞĠĢĦÌÍÎÏĪĮİĲĶĹĻĽŁ", "ÑŃŅŇÒÓÔÕÖØŒŐŌŔŘŠßŚŞÞŤȚÙÚÛÜŪŮŰŲÝŸŹŻŽ"};
 // Label (in the firmware's message file) that names each layout of k_layouts, shown on the space bar when the globe key switches to it
-static const char *const k_layout_label[] = {"SwkbdAddKeytop_USEnglish", "SwkbdAddKeytop_EUEnglish", "SwkbdAddKeytop_EUGerman", "SwkbdAddKeytop_EUFrench", "SwkbdAddKeytop_EUSpanish", "SwkbdAddKeytop_EUItalianQwerty", "SwkbdAddKeytop_EUPortuguese", "SwkbdAddKeytop_EURussian"};
+static const char *const k_layout_label[] = {"SwkbdAddKeytop_USEnglish", "SwkbdAddKeytop_EUEnglish", "SwkbdAddKeytop_EUGerman", "SwkbdAddKeytop_EUFrench", "SwkbdAddKeytop_EUSpanish", "SwkbdAddKeytop_EUItalianQwerty", "SwkbdAddKeytop_EUPortuguese", "SwkbdAddKeytop_EURussian", "SwkbdAddKeytop_KOKorean", "SwkbdAddKeytop_JPQwerty"};
 static const char *const k_tab_label[4] = {"ABC", "#+=", "ÀÁÂ", "ÑŃŅ"};
 
 static struct {
@@ -96,6 +102,8 @@ static struct {
     int page;                        // 0 letters, 1 symbols, 2 and 3 accents
     int li;                          // index in k_layouts
     struct { char name[56], text[96]; } labels[64];
+    SwkbdIme ime;                    // composition of the Korean / Japanese layouts
+    int comp_len, comp_end;          // bytes of the composing text in G.text, and where they end (the caret must be there)
     char toast[96];                  // text on the space bar for a moment (name of the layout after the globe key)
     double toast_left;
     int nlabels;
@@ -379,7 +387,7 @@ static int ensure_built(void) {
     }
     {   // keyboard layout: BDSP_SWKBD_LAYOUT, else from the language
         static const struct { const char *lang, *id; } map[] = {{"EUde", "de"}, {"EUfr", "fr"}, {"USfr", "fr"}, {"EUes", "es"}, {"USes", "es"}, {"EUit", "it"},
-                                                                  {"EUpt", "pt"}, {"USpt", "pt"}, {"EUru", "ru"}, {"EUen", "uk"}, {"USen", "us"}, {"EUnl", "us"}};   // (Dutch, Japanese, Korean and Chinese: the letters of the US layout for now)
+                                                                  {"EUpt", "pt"}, {"USpt", "pt"}, {"EUru", "ru"}, {"EUen", "uk"}, {"USen", "us"}, {"EUnl", "us"}, {"KRko", "ko"}, {"JPja", "ja"}};   // (Dutch and Chinese: the letters of the US layout; there is no dictionary for pinyin / zhuyin)
         const char *want = getenv("BDSP_SWKBD_LAYOUT");
         for (unsigned q = 0; q < sizeof map / sizeof *map && !want; q++) if (!strcmp(G.lang, map[q].lang)) want = map[q].id;
         G.li = 0;
@@ -496,7 +504,9 @@ static void do_cancel(void) {
     if (G.cb.cancel) G.cb.cancel(G.user);
 }
 
+static void ime_end(void);
 static void do_submit(void) {
+    ime_end();
     if (!G.active || G.busy) return;
     if (u8_count(G.text) < G.p.minlen) { snd("SeSwkbdLengthError"); return; }
     snd("SeSwkbdEnterDecide");
@@ -519,7 +529,66 @@ static void insert_text(const char *s) {
     }
 }
 
+// ---- composition (Korean jamo, Japanese romaji): the composing text stands in G.text just before the caret and is replaced with each key
+static int ime_mode(void) { return G.cur == SCR_QWERTY && G.page == 0 ? (G.li == LAYOUT_KO ? 1 : G.li == LAYOUT_JA ? 2 : 0) : 0; }
+static void comp_remove(void) {   // takes the composing text out of G.text again
+    if (G.comp_len > 0 && G.caret == G.comp_end && G.caret >= G.comp_len) {
+        memmove(G.text + G.caret - G.comp_len, G.text + G.caret, strlen(G.text + G.caret) + 1);
+        G.caret -= G.comp_len;
+    } else swkbd_ime_reset(&G.ime);   // the caret was moved or the text changed in between: what stands there is final
+    G.comp_len = 0;
+}
+static void comp_show(void) {
+    char t[32];
+    swkbd_ime_text(&G.ime, t, sizeof t);
+    int before = G.caret;
+    insert_text(t);
+    G.comp_len = G.caret - before; G.comp_end = G.caret;
+    if (G.comp_len != (int)strlen(t)) swkbd_ime_reset(&G.ime), G.comp_len = 0;   // the length limit did not let it in
+}
+static void ime_end(void) {   // the composition is final (caret moved, space, enter, other page ...)
+    if (!swkbd_ime_active(&G.ime)) { G.comp_len = 0; return; }
+    char c[32];
+    comp_remove();
+    swkbd_ime_flush(&G.ime, c, sizeof c);
+    insert_text(c);
+    G.comp_len = 0;
+}
+// A key of the letter page (or a typed character): composed in the Korean and Japanese layouts, else inserted
+static void type_key(const char *s) {
+    int mode = ime_mode();
+    if (!mode) { ime_end(); insert_text(s); return; }
+    char c[32];
+    comp_remove();
+    if (mode == 1) swkbd_ime_hangul(&G.ime, s, c, sizeof c); else swkbd_ime_romaji(&G.ime, s, c, sizeof c);
+    insert_text(c);
+    comp_show();
+}
+
+// Characters from a hardware keyboard or the native one: latin letters go through the key table of the Korean layout (the jamo on those keys)
+static void type_text(const char *s) {
+    while (*s) {
+        int l = u8_len((unsigned char)*s);
+        char one[8] = {0};
+        memcpy(one, s, (size_t)l);
+        s += l;
+        if (ime_mode() == 1 && l == 1) {
+            const char *us[2] = {k_layouts[0].normal, k_layouts[0].shifted}, *ko[2] = {k_layouts[LAYOUT_KO].normal, k_layouts[LAYOUT_KO].shifted};
+            for (int sh = 0; sh < 2; sh++) for (int i = 0; i < u8_count(us[sh]); i++) {
+                char u[8]; u8_nth(us[sh], i, u);
+                if (u[0] == one[0] && !u[1] && (u[0] < '0' || u[0] > '9') && !strchr("-/:'.,?!#[]$%^&*()_@;\"<>+=", u[0])) { u8_nth(ko[sh], i, one); sh = 2; break; }
+            }
+        }
+        type_key(one);
+    }
+}
+
 static void backspace(void) {
+    if (G.comp_len > 0 && G.caret == G.comp_end) {
+        comp_remove();
+        if (swkbd_ime_backspace(&G.ime)) { comp_show(); return; }
+    }
+    ime_end();
     if (G.caret <= 0) return;
     int p = G.caret - 1;
     while (p > 0 && ((unsigned char)G.text[p] & 0xC0) == 0x80) p--;
@@ -528,6 +597,7 @@ static void backspace(void) {
 }
 
 static void caret_move(int dir) {
+    ime_end();
     if (dir < 0 && G.caret > 0) { int p = G.caret - 1; while (p > 0 && ((unsigned char)G.text[p] & 0xC0) == 0x80) p--; G.caret = p; }
     if (dir > 0 && G.text[G.caret]) G.caret += u8_len((unsigned char)G.text[G.caret]);
 }
@@ -536,6 +606,7 @@ static void switch_page(int page) {
     if (G.cur == SCR_NUMERIC) return;
     int si = page == 0 ? SCR_QWERTY : SCR_SIGN;
     if (!G.scr[si].ok) return;
+    ime_end();
     G.page = page; G.cur = si; G.shift = 0;
     Screen *s = cur();
     assign_chars(s, page);
@@ -560,10 +631,10 @@ static void press_key(int i) {
     }
     switch (k->kind) {
     case K_CHAR:
-        insert_text(G.shift ? k->shifted : k->normal);
+        type_key(G.shift ? k->shifted : k->normal);
         if (G.shift == 1) { G.shift = 0; refresh_labels(); }
         break;
-    case K_SPACE: insert_text(" "); break;
+    case K_SPACE: ime_end(); insert_text(" "); break;
     case K_BS: backspace(); break;
     case K_ENTER: do_submit(); break;
     case K_SHIFT:
@@ -571,6 +642,7 @@ static void press_key(int i) {
         break;
     case K_TAB: if (k->page != G.page) switch_page(k->page); break;
     case K_GLOBE: {
+        ime_end();
         G.li = (G.li + 1) % (int)(sizeof k_layouts / sizeof *k_layouts);
         if (G.cur == SCR_QWERTY && G.page == 0) assign_chars(s, 0);   // the other pages take the layout when they are opened
         snprintf(G.toast, sizeof G.toast, "%s", lbl(k_layout_label[G.li], k_layouts[G.li].id));
@@ -623,6 +695,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
         G.text[n] = 0;
     }
     G.caret = (int)strlen(G.text);
+    swkbd_ime_reset(&G.ime); G.comp_len = 0;
     G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
@@ -636,7 +709,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     if (getenv("BDSP_SWKBD_GLOBE") && getenv("BDSP_SWKBD_HOLD")) G.toast_left = 1e6;
     set_focus(0);
     trace("open", p->header);
-    if (getenv("BDSP_SWKBD_TYPE")) insert_text(getenv("BDSP_SWKBD_TYPE"));   // test hook: types this text on opening
+    if (getenv("BDSP_SWKBD_TYPE")) type_text(getenv("BDSP_SWKBD_TYPE"));   // test hook: types this text on opening
     G.active = 1;
     pthread_mutex_unlock(&G.lock);
     return 0;
@@ -686,7 +759,7 @@ static void pad_edge(int b) {
     case B_A: press_key(G.focus); break;
     case B_B: { int i = find_key(K_BS); if (i >= 0) set_key_anim(&cur()->keys[i], "DecideKey"); snd(g_rep ? "SeSwkbdBsRepeat" : "SeSwkbdBsDecide"); backspace(); } break;
     case B_X: do_cancel(); break;
-    case B_Y: snd("SeSwkbdOptDecide"); insert_text(" "); break;
+    case B_Y: snd("SeSwkbdOptDecide"); ime_end(); insert_text(" "); break;
     case B_L: snd("SeSwkbdTextAreaMove"); caret_move(-1); break;
     case B_R: snd("SeSwkbdTextAreaMove"); caret_move(1); break;
     case B_LSTICK: { int i = find_key(K_SHIFT); if (i >= 0) press_key(i); } break;
@@ -735,7 +808,7 @@ void swkbd_ui_touch(int down, float nx, float ny) {
 
 void swkbd_ui_text(const char *utf8) {
     LOCK();
-    if (G.active && !G.busy) insert_text(utf8);
+    if (G.active && !G.busy) type_text(utf8);
     pthread_mutex_unlock(&G.lock);
 }
 
@@ -747,8 +820,8 @@ void swkbd_ui_key(int key) {
         case SWKBD_KEY_DELETE: if (G.text[G.caret]) { caret_move(1); backspace(); } break;
         case SWKBD_KEY_LEFT: caret_move(-1); break;
         case SWKBD_KEY_RIGHT: caret_move(1); break;
-        case SWKBD_KEY_HOME: G.caret = 0; break;
-        case SWKBD_KEY_END: G.caret = (int)strlen(G.text); break;
+        case SWKBD_KEY_HOME: ime_end(); G.caret = 0; break;
+        case SWKBD_KEY_END: ime_end(); G.caret = (int)strlen(G.text); break;
         case SWKBD_KEY_ENTER: do_submit(); break;
         case SWKBD_KEY_ESCAPE: do_cancel(); break;
         }
@@ -916,7 +989,7 @@ static void footer_items(LytScene *sc) {
     // glyph or label, its em size and the gap that follows it: 9 px between a key badge and its arrow, 10 px between a glyph and its label, 41 px between the hints
     struct { const char *s; float px; float gap; } it[] = {
         {"\uE0E4", 26.2f, 10.1f}, {"\uE145", 22, 41.9f}, {"\uE0E5", 26.2f, 10.1f}, {"\uE146", 22, 41.4f}, {"\uE103", 25.2f, 11.6f},
-        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 22.2f, 40}, {"\uE0E2", 26.2f, 10.7f},
+        {G.li == LAYOUT_KO ? (G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn_Korean", "Shift") : lbl("SwkbdFooter_Shift_Korean", "Shift")) : G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 22.2f, 40}, {"\uE0E2", 26.2f, 10.7f},
         {lbl("SwkbdFooter_Close", "Cancel"), 22.2f, 41.3f}, {"\uE0E0", 26.2f, 11}, {lbl("SwkbdFooter_Decide", "Select"), 22.2f, 0}};
     enum { N = sizeof it / sizeof *it };
     float w[N], total = 0;
