@@ -1,13 +1,14 @@
 #!/bin/bash
-# Compiles the generated C of all four modules (work/recomp/gen4) with limited parallelism and measures time/memory per file.
+# Compiles the generated C of all four modules (work/recomp/gen4) in parallel and measures time/memory per file.
 # Single functions with more than 1 MB of C are compiled with -O0 (outliers), everything else with -O1.
 # Output: work/recomp/obj4/*.o, work/recomp/obj4/compile_times.txt ("<file> <s> <MB RSS>"), total time on stdout.
-# Usage: build_all.sh [JOBS]   (default 3; the machine is shared, at most 4)
+# Usage: build_all.sh [JOBS]   (default: host CPU/RAM-based; explicit JOBS overrides it)
 # O0_BYTES: files with exactly one function and more than this many bytes of C count as outliers and are compiled with -O0 (default 1000000)
-set -u
+set -euo pipefail
 cd "$(dirname "$0")/../.."
-JOBS=${1:-3}
-[ "$JOBS" -gt 4 ] && JOBS=4
+JOBS=${1:-$(python3 scripts/recomp/parallel_jobs.py)}
+case "$JOBS" in ''|*[!0-9]*) echo "JOBS must be a positive integer" >&2; exit 2;; esac
+[ "$JOBS" -ge 1 ] || { echo "JOBS must be at least 1" >&2; exit 2; }
 GEN=${GEN:-work/recomp/gen4}
 OBJ=${OBJ:-work/recomp/obj4}
 mkdir -p "$OBJ"
