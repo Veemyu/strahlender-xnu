@@ -267,6 +267,7 @@ static int build_screen(int si) {
     if (!s->kt || !s->bg || !s->area || !s->caret || !s->mask) return -1;
     lytinst_default_state(s->kt); lytinst_default_state(s->bg); lytinst_default_state(s->area); lytinst_default_state(s->caret);
     lytinst_set_visible(s->area, "L_BgMask", 0);           // its own mask would dim the text area
+    lytinst_set_visible(s->bg, "P_FShdwD", 0);             // the shadow under the key area would run through the footer row (the footer has its own line)
     lytinst_set_anim(s->area, "TextAreaType", 1);          // frame 1: the long single-line text field
     lytinst_set_visible(s->area, "T_TextBox_Long", 1);
     lytinst_set_visible(s->area, "N_UnFixed", 0);          // composition markers of the input methods we do not have
@@ -824,8 +825,9 @@ static void footer_items(LytScene *sc) {
     const Theme *t = g_theme;
     int gray = t->text[0];
     float y = 664, h = 40;
+    fb_quad(sc, 0, 646, SWKBD_CANVAS_W, 2, t->plate[0] - 30, t->plate[1] - 30, t->plate[2] - 30, 1);   // line above the footer row
     fb_text(sc, "\uE12C", 70, y, 60, h, 38, 0x01, gray, 1);
-    for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 653, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
+    for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 655, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
     // the hints are laid out from the right edge with the width of each text (the labels differ in length between languages)
     struct { const char *s; float px; } it[] = {
         {"\uE0E4\uE145", 30}, {"\uE0E5\uE146", 30}, {"\uE104", 32},
