@@ -62,7 +62,7 @@ static const struct { const char *id, *normal, *shifted; } k_layouts[] = {
 };
 // The kana grid (right to left like the Japanese 50 sound table): 11 columns of 5 keys, from the left: signs, wa, ra, ya, ma, ha, na, ta, sa, ka, a. \1 = no key
 static const char *const k_kana_cols[11] = {"ー、。？！", "わを\1ん\1", "らりるれろ", "や\1ゆ\1よ", "まみむめも", "はひふへほ", "なにぬねの", "たちつてと", "さしすせそ", "かきくけこ", "あいうえお"};
-static const char *const k_mode_label[4] = {"ひらがな", "カタカナ", "ABC", "#+="};
+static const char *const k_mode_label[5] = {"あ", "ア", "ABC", "#+=", "123"};   // the tabs of the kana grid: hiragana, katakana, letters, symbols, symbols with the digits
 // Symbol keyboard: rows of 11 from the top left; \1 = no key (hidden)
 static const char *const k_sign = "1234567890-" "!@#$%^&*()_" "~`=\\+{}|[]\1" "<>;:\"',.?/\1" "\1\1\1\1\1\1\1\1\1\1\1";
 static const char *const k_numeric = "1234567890";
@@ -331,7 +331,7 @@ static int build_screen(int si) {
         else if (!strcmp(p->name, "L_BtnShift")) kind = K_SHIFT;
         else if (!strcmp(p->name, "L_BtnArray")) kind = K_GLOBE;
         else if (si == SCR_50ON && !strcmp(p->name, "L_BtnMark")) kind = K_MARK;
-        else if (si == SCR_50ON && (!strcmp(p->name, "L_InputMode_00") || !strcmp(p->name, "L_InputMode_02") || !strcmp(p->name, "L_InputMode_03"))) { kind = K_MODE; page = p->name[13] == '0' ? 0 : p->name[13] - '0'; }   // the language key: switches between the keyboard layouts
+        else if (si == SCR_50ON && !strncmp(p->name, "L_InputMode_0", 13) && p->name[13] >= '0' && p->name[13] <= '4') { kind = K_MODE; page = p->name[13] - '0'; }   // the language key: switches between the keyboard layouts
         else if (!strcmp(p->name, "L_BtnSpace_00")) kind = si == SCR_QWERTY ? -2 : K_SPACE;   // the letter keyboard uses the narrower one next to the tabs
         else if (!strcmp(p->name, "L_BtnSpace_01") && si == SCR_QWERTY) kind = K_SPACE;
         else if (!strncmp(p->name, "L_InputMode_0", 13) && p->name[13] >= '0' && p->name[13] <= '3' && si != SCR_NUMERIC && si != SCR_50ON) { kind = K_TAB; page = p->name[13] - '0'; }
@@ -350,6 +350,10 @@ static int build_screen(int si) {
         LytInst *inst = lytinst_part(s->kt, p->name);
         if (!inst) continue;
         if (kind == K_TAB || kind == K_MODE) lytinst_set_visible(s->kt, p->name, 1);
+        if (kind == K_MODE && page != 3) {   // the tab column is 106 px wide over three rows: two half tabs (53 px each, a seam between them) in the first two, one whole tab in the third
+            lytinst_set_size(s->kt, p->name, 53, 60);
+            lytinst_set_offset(s->kt, p->name, page == 0 || page == 2 ? 0.5f : -0.5f, 0);
+        }
         if (kind == K_SPACE) lytinst_set_visible(s->kt, p->name, 1);
         Key *k = &s->keys[s->nkeys];
         memset(k, 0, sizeof *k);
@@ -498,7 +502,7 @@ static void refresh_labels(void) {
         switch (k->kind) {
         case K_CHAR: t = G.shift ? k->shifted : k->normal; break;
         case K_MARK: t = "小゛゜"; break;
-        case K_MODE: t = k_mode_label[k->page == 0 && G.kata ? 1 : k->page]; break;
+        case K_MODE: t = k_mode_label[k->page]; break;
         case K_ENTER: t = G.ok_label; break;
         case K_SPACE: t = G.toast_left > 0 ? G.toast : G.space_label; break;
         case K_SYMBOL: t = "#+="; break;
@@ -519,7 +523,7 @@ static void refresh_labels(void) {
         if (k->kind == K_MODE) {   // tabs of the kana grid: no underline of the layout, the label of the active mode in the tab colour
             lytinst_set_visible(k->inst, "P_Active_00", 0);
             lytinst_set_font_size(k->inst, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f);
-            lytinst_set_color(k->inst, "T_00", COL(k->page == 0 ? g_theme->tab_on : g_theme->text));
+            lytinst_set_color(k->inst, "T_00", COL((k->page == 0 && !G.kata) || (k->page == 1 && G.kata) ? g_theme->tab_on : g_theme->text));
         }
         if (k->kind == K_SHIFT) {
             lytinst_set_visible(k->inst, "P_ShiftOn", G.shift != 0);
@@ -700,7 +704,7 @@ static void press_key(int i) {
         break;
     }
     case K_MODE:
-        if (k->page == 0) { G.kata = !G.kata; assign_kana(s); refresh_labels(); }
+        if (k->page <= 1) { G.kata = k->page; assign_kana(s); refresh_labels(); }
         else if (k->page == 2) { G.li = LAYOUT_JA; switch_page(0); }   // the letters, as romaji
         else switch_page(1);
         break;

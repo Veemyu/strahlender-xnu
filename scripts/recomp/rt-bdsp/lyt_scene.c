@@ -147,6 +147,7 @@ struct LytInst {
     uint8_t (*col)[4];             // per pane colour override (a != 0: set)
     int16_t *aov;                  // per pane alpha override (-1: none)
     float (*off)[2];               // per pane position offset (parent's units, y up)
+    float (*szo)[2];              // per pane size set by the program (0 = the layout's)
     float (*fs)[2];                // per text pane glyph size override (0: none)
     Pose *pose;                     // per pane, scratch of the scene builder
     float alpha;
@@ -165,9 +166,10 @@ static LytInst *inst_new(LytBank *b, const char *layout, int depth) {
     in->aov = malloc(l->npanes * sizeof *in->aov);
     if (in->aov) for (uint32_t i = 0; i < l->npanes; i++) in->aov[i] = -1;
     in->off = calloc(l->npanes, sizeof *in->off);
+    in->szo = calloc(l->npanes, sizeof *in->szo);
     in->fs = calloc(l->npanes, sizeof *in->fs);
     in->pose = calloc(l->npanes, sizeof *in->pose);
-    if (!in->sub || !in->text || !in->vis_ov || !in->col || !in->aov || !in->off || !in->fs || !in->pose) { lytinst_free(in); return NULL; }
+    if (!in->sub || !in->text || !in->vis_ov || !in->col || !in->aov || !in->off || !in->szo || !in->fs || !in->pose) { lytinst_free(in); return NULL; }
     if (depth < MAX_DEPTH)
         for (uint32_t i = 0; i < l->npanes; i++)
             if (l->panes[i].kind == LYT_PRT && l->panes[i].part[0]) in->sub[i] = inst_new(b, l->panes[i].part, depth + 1);
@@ -182,7 +184,7 @@ void lytinst_free(LytInst *in) {
         if (in->sub) lytinst_free(in->sub[i]);
         if (in->text) free(in->text[i]);
     }
-    free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->aov); free(in->off); free(in->fs); free(in->pose); free(in);
+    free(in->sub); free(in->text); free(in->vis_ov); free(in->col); free(in->aov); free(in->off); free(in->szo); free(in->fs); free(in->pose); free(in);
 }
 
 const LytLayout *lytinst_layout(const LytInst *in) { return in ? in->lay : NULL; }
@@ -269,6 +271,12 @@ void lytinst_set_offset(LytInst *in, const char *pane, float dx, float dy) {
     if (!in) return;
     int i = lyt_layout_find_pane(in->lay, pane);
     if (i >= 0) { in->off[i][0] = dx; in->off[i][1] = dy; }
+}
+
+void lytinst_set_size(LytInst *in, const char *pane, float w, float h) {
+    if (!in) return;
+    int i = lyt_layout_find_pane(in->lay, pane);
+    if (i >= 0) { in->szo[i][0] = w; in->szo[i][1] = h; }
 }
 
 void lytinst_set_font_size(LytInst *in, const char *pane, float w, float h) {
@@ -365,6 +373,7 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
         float ex = pl->parts_size[0] * p->pscale[0], ey = pl->parts_size[1] * p->pscale[1];
         if (ex > 0 && ey > 0 && fabsf(ex - sz[0]) <= 0.15f * ex && fabsf(ey - sz[1]) <= 0.15f * ey) { sz[0] = ex; sz[1] = ey; }
     }
+    if (in->szo[idx][0] > 0 && in->szo[idx][1] > 0) { sz[0] = in->szo[idx][0]; sz[1] = in->szo[idx][1]; }
     float a = alpha * al / 255.0f;
     int ox = p->base & 3, oy = (p->base >> 2) & 3, qx = (p->base >> 4) & 3, qy = (p->base >> 6) & 3;
     float px = anchor_x(qx, pw) + t[0], py = anchor_y(qy, ph) + t[1];
