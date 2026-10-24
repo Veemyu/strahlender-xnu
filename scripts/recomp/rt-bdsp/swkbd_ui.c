@@ -14,6 +14,7 @@ static void trace(const char *what, const char *arg) { if (getenv("BDSP_TRACE_AP
 enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE, K_TAB };
 enum { SCR_QWERTY, SCR_SIGN, SCR_NUMERIC, SCR_COUNT };
 #define MAX_KEYS 80
+#define FN_LABEL_EM 22.2f   // em size of the labels on the function keys (tabs, space, return); the layouts give each of them its own size, the console draws them alike
 
 typedef struct {
     LytInst *inst;
@@ -303,7 +304,7 @@ static int build_screen(int si) {
                 LytInst *g = lytinst_part(s->kt, p->name);
                 lytinst_set_text(g, "T_00", lbl("SwkbdCommon_Enter_LineBreak", "Return"));
                 lytinst_set_color(g, "T_00", COL(g_theme->text_dis));
-                lytinst_set_font_size(g, "T_00", 22, 33);   // the layout gives the key 30 px, the console draws it like the OK label
+                lytinst_set_font_size(g, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f);   // the layout gives the key 30 px, the console draws it like the other function keys
                 lytinst_set_visible(g, "N_Key", 0);
             }
             continue;
@@ -324,7 +325,7 @@ static int build_screen(int si) {
         if (kind == K_ENTER) lytinst_set_text(inst, "T_Key_00", "");
         if (kind == K_ENTER) lytinst_set_offset(inst, "N_Key", 22, 38);   // badges sit 16 px from the right edge and 15 px from the top of their key, as on the console
         if (kind == K_BS) lytinst_set_offset(inst, "N_Key", 5, 8);
-        if (kind == K_SPACE) { lytinst_set_font_size(inst, "T_00", 22, 33); lytinst_set_font_size(inst, "T_01", 22, 33); }   // the labels of the function keys are smaller than the layouts say
+        if (kind == K_SPACE) { lytinst_set_font_size(inst, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f); lytinst_set_font_size(inst, "T_01", FN_LABEL_EM, FN_LABEL_EM * 1.5f); }   // the labels of the function keys are smaller than the layouts say
         if (kind == K_SPACE) { float kw = k->r[2] - k->r[0]; lytinst_set_offset(inst, "N_Key", kw / 2 - 16 - 34 * kw / 100, 4.4f); }
         if (kind == K_SHIFT) { lytinst_set_visible(inst, "P_GlowOff", 0); lytinst_set_visible(inst, "P_GlowOn", 0); }   // the caps lock dot is drawn by tick (a round one)
         s->nkeys++;
@@ -465,7 +466,7 @@ static void refresh_labels(void) {
         if (t) lytinst_set_text(k->inst, "T_00", t);
         if (k->kind == K_TAB) {
             int on = k->page == G.page;
-            lytinst_set_font_size(k->inst, "T_00", 22.2f, 33); lytinst_set_offset(k->inst, "T_00", 0, on ? 2.4f : -1.8f);   // the label of the open tab stands 4 px higher, over its underline   // the layouts give each tab its own size; all four look the same
+            lytinst_set_font_size(k->inst, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f); lytinst_set_offset(k->inst, "T_00", 0, on ? 2.4f : -1.8f);   // the label of the open tab stands 4 px higher, over its underline   // the layouts give each tab its own size; all four look the same
             lytinst_set_visible(k->inst, "P_Active_00", 0);   // the underline of the open tab is drawn by tick (it follows the label width)
             (void)on;
             lytinst_set_color(k->inst, "T_00", COL(on ? g_theme->tab_on : g_theme->text));
@@ -1060,7 +1061,7 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         const Key *sk = &s->keys[i];
         if (sk->kind != K_SHIFT || sk->hidden) continue;
         const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){193, 194, 198};
-        fb_dot(&G.scene, sk->r[0] + 13.5f, sk->r[1] + 13.8f, 2.75f, dc[0], dc[1], dc[2]);
+        fb_dot(&G.scene, sk->r[0] + 13.96f, sk->r[1] + 13.67f, 3.75f, dc[0], dc[1], dc[2]);
     }
     if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
         const Key *fk = &s->keys[G.focus];

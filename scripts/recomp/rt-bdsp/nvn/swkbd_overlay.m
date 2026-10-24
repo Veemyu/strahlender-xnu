@@ -29,11 +29,13 @@ static NSString *const kMsl =
     "  float2 q = abs(in.uv) - (u.hsz - u.rad);\n"
     "  float depth = -(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - u.rad);\n"   // distance inside the outer, rounded rectangle
     "  float aa = u.px;\n"
-    "  float f = mix(0.12, 1.0, smoothstep(1.9 - aa, 1.9 + aa, depth));\n"     // soft outer edge, core
+    "  float halo = 0.36 * exp((depth - 1.9) / 2.0);\n"   // soft glow outside the core, fading over about 4 px (measured on the console)\n"
+    "  float f = mix(halo, 1.0, smoothstep(1.9 - aa, 1.9 + aa, depth));\n"     // core
     "  f = mix(f, 0.5, smoothstep(6.4 - aa, 6.4 + aa, depth));\n"            // soft inner edge
     "  f = mix(f, 0.0, smoothstep(7.0 - aa, 7.0 + aa, depth));\n"            // the key itself
-    "  float cov = smoothstep(-aa, aa, depth);\n"
-    "  return float4(u.col.rgb, u.col.a * f * cov); }\n"
+    "  float t = clamp(in.uv.y / u.hsz.y * 0.5 + 0.5, 0.0, 1.0);\n"   // the console's frame runs from a greener top to a bluer bottom (about 8 / 16 / -1 of 255 in r / g / b)
+    "  float3 c = u.col.rgb + (0.5 - t) * float3(8.0, 16.0, -1.0) / 255.0;\n"
+    "  return float4(c, u.col.a * f); }\n"
     "fragment float4 fs(O in [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]]) {\n"
     "  return t.sample(s, in.uv) * in.col; }\n";
 
