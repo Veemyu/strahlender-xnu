@@ -16,7 +16,6 @@
 
 #include "../swkbd_ui.h"
 
-extern void (*g_overlay_render)(void *dev, void *cb, void *target);
 
 static NSString *const kMsl =
     @"#include <metal_stdlib>\n"
@@ -235,7 +234,31 @@ static void preview_check(void) {
     }
 }
 
-static void render(void *dev_, void *cb_, void *target_) {
+// While the keyboard is open the game thread is stopped inside the keyboard call and presents nothing; this thread then shows the last
+// game image again (metal.m metal_repeat_present), which draws the keyboard over it through render().
+extern uint64_t metal_last_present_ns(void);
+extern void metal_repeat_present(void);
+
+extern uint64_t SDL_GetTicksNS(void);
+
+static void *keepalive(void *arg) {
+    pthread_setname_np("swkbd-present");
+    for (;;) {
+        usleep(16000);
+        if (!swkbd_ui_active()) continue;
+        if (SDL_GetTicksNS() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
+        metal_repeat_present();
+    }
+    return NULL;
+}
+
+void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{   // first frame: tell the keyboard logic that something can draw it, and start the thread that keeps the picture alive
+        swkbd_ui_set_display(1);
+        pthread_t th;
+        if (!pthread_create(&th, NULL, keepalive, NULL)) pthread_detach(th);
+    });
     id<MTLDevice> dev = (__bridge id<MTLDevice>)dev_;
     id<MTLCommandBuffer> cb = (__bridge id<MTLCommandBuffer>)cb_;
     id<MTLTexture> target = (__bridge id<MTLTexture>)target_;
@@ -300,29 +323,4 @@ static void render(void *dev_, void *cb_, void *target_) {
         swkbd_ui_unlock();
         [enc endEncoding];
     }
-}
-
-// While the keyboard is open the game thread is stopped inside the keyboard call and presents nothing; this thread then shows the last
-// game image again (metal.m metal_repeat_present), which draws the keyboard over it through render().
-extern uint64_t metal_last_present_ns(void);
-extern void metal_repeat_present(void);
-
-extern uint64_t SDL_GetTicksNS(void);
-
-static void *keepalive(void *arg) {
-    pthread_setname_np("swkbd-present");
-    for (;;) {
-        usleep(16000);
-        if (!swkbd_ui_active()) continue;
-        if (SDL_GetTicksNS() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
-        metal_repeat_present();
-    }
-    return NULL;
-}
-
-__attribute__((constructor)) static void swkbd_overlay_register(void) {
-    g_overlay_render = render;
-    swkbd_ui_set_display(1);
-    pthread_t th;
-    if (!pthread_create(&th, NULL, keepalive, NULL)) pthread_detach(th);
 }

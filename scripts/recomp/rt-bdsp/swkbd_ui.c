@@ -85,6 +85,7 @@ static struct {
     float (*measure)(const char *, float);
     LytScene scene;
     char ok_label[64], space_label[64];
+    float field[4];                  // text field, canvas pixels (left, top, right, bottom)
     int page;                        // 0 letters, 1 symbols, 2 and 3 accents
     int li;                          // index in k_layouts
     struct { char name[56], text[96]; } labels[48];
@@ -581,6 +582,18 @@ const char *swkbd_ui_focus_name(void) { Screen *s = &G.scr[G.cur]; return G.focu
 void swkbd_ui_set_measure(float (*fn)(const char *, float)) { G.measure = fn; }
 const char *swkbd_ui_root(void) { return G.root; }
 
+// The text field (for tapping it to bring up the system keyboard), canvas pixels, set by the last scene
+int swkbd_ui_field_hit(float nx, float ny) {
+    LOCK();
+    int hit = 0;
+    if (G.active && G.scale > 0) {
+        float x = (nx * G.tw - G.off[0]) / G.scale, y = (ny * G.th - G.off[1]) / G.scale;
+        hit = x >= G.field[0] && x < G.field[2] && y >= G.field[1] && y < G.field[3];
+    }
+    pthread_mutex_unlock(&G.lock);
+    return hit;
+}
+
 // ---- input
 enum { B_A, B_B, B_X, B_Y, B_LSTICK, B_RSTICK, B_L, B_R, B_ZL, B_ZR, B_PLUS, B_MINUS, B_LEFT, B_UP, B_RIGHT, B_DOWN };
 
@@ -872,6 +885,7 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         else snprintf(shown, sizeof shown, "%s", G.text);
         fb_scene(s, shown);
         footer_items(&G.scene);
+        G.field[0] = 134; G.field[1] = 130; G.field[2] = 1154; G.field[3] = 236;
         if (fmod(G.clock, 1.0) < 0.6) {   // caret
             char pre[1100];
             snprintf(pre, sizeof pre, "%.*s", G.caret, G.p.password ? shown : G.text);
@@ -917,6 +931,10 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     }
     footer_items(&G.scene);
     lyt_scene_append(&G.scene, s->area, 0, 0, 1);
+    {
+        float fb[4];
+        if (lyt_pane_bounds(s->area, s->area, "T_TextBox_Long", 0, 0, 1, fb)) { G.field[0] = fb[0]; G.field[1] = fb[1] - 20; G.field[2] = fb[2]; G.field[3] = fb[3] + 40; }
+    }
     // caret: left edge of the text box plus the width of the text before it, blinking
     float b[4];
     if (fmod(G.clock, 1.0) < 0.6 && lyt_pane_bounds(s->area, s->area, "T_TextBox_Long", 0, 0, 1, b)) {

@@ -44,6 +44,8 @@ void swkbd_ui_touch(int down, float nx, float ny);                   // normalis
 void swkbd_ui_text(const char *utf8);                                // typed characters (hardware keyboard, native keyboard)
 enum { SWKBD_KEY_BACKSPACE = 1, SWKBD_KEY_DELETE, SWKBD_KEY_LEFT, SWKBD_KEY_RIGHT, SWKBD_KEY_HOME, SWKBD_KEY_END, SWKBD_KEY_ENTER, SWKBD_KEY_ESCAPE };
 void swkbd_ui_key(int key);
+// True when the point (normalised window position) is on the text field: the shell then brings up the system keyboard (iOS).
+int swkbd_ui_field_hit(float nx, float ny);
 
 // Text measurement from the renderer (width in canvas pixels of a utf-8 string at a font size in canvas pixels); optional.
 void swkbd_ui_set_measure(float (*fn)(const char *utf8, float font_px));
