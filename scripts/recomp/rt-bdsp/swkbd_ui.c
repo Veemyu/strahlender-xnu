@@ -195,7 +195,7 @@ typedef struct {
     uint8_t bg[3], plate[3], fn[3], dis[3], text[3], text_dis[3], icon[3], badge[3], focus[3], accent[3], accent_text[3], tab_on[3], cursor[3];
 } Theme;
 static const Theme k_theme_light = {{241, 241, 241}, {234, 234, 234}, {224, 224, 224}, {224, 224, 224}, {45, 45, 45}, {178, 178, 178}, {45, 45, 45},
-                                    {150, 150, 150}, {255, 255, 255}, {0, 170, 230}, {255, 255, 255}, {52, 64, 232}, {86, 214, 208}};
+                                    {45, 45, 45}, {255, 255, 255}, {52, 80, 240}, {255, 255, 255}, {52, 64, 232}, {78, 240, 216}};
 static const Theme k_theme_dark = {{38, 41, 48}, {58, 62, 68}, {78, 82, 90}, {66, 70, 78}, {255, 255, 255}, {140, 144, 150}, {255, 255, 255},
                                    {190, 190, 190}, {0, 140, 180}, {0, 140, 180}, {255, 255, 255}, {0, 193, 242}, {0, 193, 242}};
 static const Theme *g_theme = &k_theme_light;
@@ -231,7 +231,8 @@ static void apply_theme(Screen *s) {
         LytInst *k = lytinst_part(s->kt, kl->panes[i].name);
         if (k) style_key(k, !strncmp(kl->panes[i].name, "L_BtnNml", 8));
     }
-    lytinst_set_color(s->caret, "P_Cursor", COL(t->cursor));
+    if (t == &k_theme_light) lytinst_set_color(s->caret, "P_Cursor", 0, 176, 236);   // the text caret is blue, the key frame turquoise
+    else lytinst_set_color(s->caret, "P_Cursor", COL(t->cursor));
 }
 
 // Characters of a page: 4 rows of 11 in reading order over the ordinary keys; keys without a character are hidden
@@ -832,9 +833,9 @@ static void footer_items(LytScene *sc) {
     for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 655, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
     // the hints are laid out from the right edge with the width of each text (the labels differ in length between languages)
     struct { const char *s; float px; } it[] = {
-        {"\uE0E4\uE145", 30}, {"\uE0E5\uE146", 30}, {"\uE104", 32},
-        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 30}, {"\uE0E2", 32},
-        {lbl("SwkbdFooter_Close", "Cancel"), 30}, {"\uE0E0", 32}, {lbl("SwkbdFooter_Decide", "Select"), 30}};
+        {"\uE0E4\uE145", 24}, {"\uE0E5\uE146", 24}, {"\uE104", 26},
+        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 24}, {"\uE0E2", 26},
+        {lbl("SwkbdFooter_Close", "Cancel"), 24}, {"\uE0E0", 26}, {lbl("SwkbdFooter_Decide", "Select"), 24}};
     enum { N = sizeof it / sizeof *it };
     float w[N], total = 0;
     for (int i = 0; i < N; i++) {
@@ -877,6 +878,12 @@ static void tick(double dt) {
         }
         lytinst_set_anim(k->inst, k->tag, k->t);
         lytinst_set_anim(k->inst, "Alpha", 100);   // full plate (the layouts start dimmed at frame 10)
+        if (k->kind == K_BS && g_theme == &k_theme_light) {   // dark with a white icon as soon as there is something to delete
+            int on = len > 0;
+            lytinst_set_color(k->inst, "P_BtnBase", on ? 40 : g_theme->fn[0], on ? 40 : g_theme->fn[1], on ? 40 : g_theme->fn[2]);
+            lytinst_set_color(k->inst, "P_00", on ? 255 : g_theme->icon[0], on ? 255 : g_theme->icon[1], on ? 255 : g_theme->icon[2]);
+            lytinst_set_color(k->inst, "T_Key", on ? 255 : g_theme->badge[0], on ? 255 : g_theme->badge[1], on ? 255 : g_theme->badge[2]);
+        }
         if (k->kind == K_ENTER) {
             int en = len >= G.p.minlen && !G.busy;
             lytinst_set_color(k->inst, "P_BtnBase_00", COL(en ? g_theme->accent : g_theme->dis));
