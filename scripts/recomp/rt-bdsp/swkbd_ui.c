@@ -76,6 +76,8 @@ static const char *const k_tab_label[4] = {"ABC", "#+=", "ÀÁÂ", "ÑŃŅ"};
 static struct {
     pthread_mutex_t lock;
     int inited, active, display;
+    unsigned rev;                    // counts the inputs (a renderer that only repeats the last picture draws again when it changed)
+    int animating;                   // something on screen moves (animations, the focus cursor, the caret fade ...); else only the caret blinks
     int fw, li_set;                  // firmware layouts are used (else the simple keyboard) / the layout was chosen once (the globe key's choice outlives a close)
     char root[1024];
     Screen scr[SCR_COUNT];
@@ -834,7 +836,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
 }
 
 void swkbd_ui_resolve(int accepted, const char *message) {
-    LOCK();
+    LOCK(); G.rev++;
     if (G.active) {
         G.busy = 0;
         if (accepted) close_ui();
@@ -843,6 +845,8 @@ void swkbd_ui_resolve(int accepted, const char *message) {
     pthread_mutex_unlock(&G.lock);
 }
 
+unsigned swkbd_ui_revision(void) { return __atomic_load_n(&G.rev, __ATOMIC_RELAXED); }
+int swkbd_ui_animating(void) { return __atomic_load_n(&G.animating, __ATOMIC_RELAXED); }
 int swkbd_ui_active(void) { return __atomic_load_n(&G.active, __ATOMIC_ACQUIRE); }
 int swkbd_ui_visible(void) { return __atomic_load_n(&G.active, __ATOMIC_ACQUIRE) || __atomic_load_n(&G.closing, __ATOMIC_ACQUIRE); }
 float swkbd_ui_backdrop(void) { return G.closing ? fmaxf(0, 1 - (float)(G.close_t * 60) / 6) : 1; }
@@ -888,7 +892,7 @@ static void pad_edge(int b) {
 }
 
 void swkbd_ui_pad(uint64_t buttons, int lx, int ly) {
-    LOCK();
+    LOCK(); G.rev++;
     if (G.active) {
         int st[4] = {lx < -16000, lx > 16000, ly > 16000, ly < -16000};   // left, right, up, down (stick y is up-positive)
         uint64_t eff = buttons;
@@ -921,7 +925,7 @@ static int key_at(float nx, float ny) {
 }
 
 void swkbd_ui_touch(int down, float nx, float ny) {
-    LOCK();
+    LOCK(); G.rev++;
     if (G.active && !G.closing) {
         Screen *s = cur();
         if (down > 0) {
@@ -949,13 +953,13 @@ void swkbd_ui_touch(int down, float nx, float ny) {
 }
 
 void swkbd_ui_text(const char *utf8) {
-    LOCK();
+    LOCK(); G.rev++;
     if (G.active && !G.busy) type_text(utf8);
     pthread_mutex_unlock(&G.lock);
 }
 
 void swkbd_ui_key(int key) {
-    LOCK();
+    LOCK(); G.rev++;
     if (G.active && !G.busy) {
         switch (key) {
         case SWKBD_KEY_BACKSPACE: backspace(); break;
@@ -1168,6 +1172,7 @@ static void tick(double dt) {
     }
     if (G.repeat_dir && G.clock >= G.repeat_at) { g_rep = 1; pad_edge(G.repeat_dir); g_rep = 0; G.repeat_at = G.clock + 0.07; }
     int len = u8_count(G.text);
+    int anim = G.closing || G.clock < 0.7 || G.msg_left > 0 || G.toast_left > 0 || G.cnt_err < 99 || G.touch_key >= 0 || G.repeat_dir;
     for (int i = 0; i < s->nkeys; i++) {
         Key *k = &s->keys[i];
         k->t += (float)(dt * 60);
@@ -1184,6 +1189,7 @@ static void tick(double dt) {
                 if (k->t > 1e8f) k->t = fr;
             } else k->t = fr;
         }
+        if (k->t < fr) anim = 1;
         lytinst_set_anim(k->inst, k->tag, k->t);
         if (!strncmp(k->tag, "UnFocus", 7)) {   // the two unfocus animations (key / touch) each undo only their own focus animation: run both
             const char *other = !strcmp(k->tag, "UnFocusKey") ? "UnFocusTouch" : "UnFocusKey";
@@ -1206,9 +1212,10 @@ static void tick(double dt) {
         
         if (i == G.focus) {
             LytInst *c = lytinst_part(k->inst, "UF_Cursor");
-            if (c) { float cf = lytinst_anim_frames(c, "Wait"); if (cf > 0) lytinst_set_anim(c, "Wait", fmodf((float)G.clock * 60, cf)); }
+            if (c) { float cf = lytinst_anim_frames(c, "Wait"); if (cf > 0) { lytinst_set_anim(c, "Wait", fmodf((float)G.clock * 60, cf)); anim = 1; } }
         }
     }
+    G.animating = anim;
 }
 
 const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float off[2]) {

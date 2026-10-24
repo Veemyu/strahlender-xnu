@@ -1323,7 +1323,8 @@ static bool present_gpu_locked(uint64_t frame, id<MTLTexture> tex, bool has_wc, 
             psx = sx, psy = sy, pdw = dw, pdh = dh;
         }
         renderer_set_scale((float)sx, (float)sy);
-        if (tex) {
+        extern int swkbd_overlay_backdrop_opaque(unsigned long w, unsigned long h);
+        if (tex && !(repeat && swkbd_overlay_backdrop_opaque((unsigned long)dw, (unsigned long)dh))) {   // (a repeated picture under an opaque keyboard backdrop is not drawn: the blur holds it)
             id<MTLTexture> src = raw_view(tex);
             // SMAA (Video tab "Anti-aliasing"): first, at the game image's size (MetalFX then upscales its result)
             if (g_settings.antialias == AA_SMAA) {

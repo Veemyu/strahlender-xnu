@@ -56,6 +56,7 @@ static id<MTLRenderPipelineState> g_blur_pipe;
 static id<MTLTexture> g_blur_a, g_blur_b;      // b holds the result
 static NSUInteger g_blur_w, g_blur_h;           // window size the result belongs to
 static BOOL g_blur_ready, g_was_active;
+static unsigned long g_stat_blurs, g_stat_frames;   // (BDSP_SWKBD_STATS)
 static float g_blur_t;
 
 typedef struct { float pos[2], uv[2], col[4]; } Vtx;
@@ -346,21 +347,43 @@ static int blur_capture(id<MTLDevice> dev, id<MTLCommandBuffer> cb, id<MTLTextur
     g_blur_a = nil;
     g_blur_w = src.width; g_blur_h = src.height;
     g_blur_ready = YES;
+    g_stat_blurs++;
     return 1;
 }
 
+// BDSP_SWKBD_STATS=1: memory of the process and of the GPU device, and how often the blur and the overlay were drawn (checks that a closed keyboard holds nothing)
+#include <mach/mach.h>
+static void stats_log(const char *what, id<MTLDevice> dev) {
+    static int on = -1;
+    if (on < 0) on = getenv("BDSP_SWKBD_STATS") != NULL;
+    if (!on) return;
+    task_vm_info_data_t vi; mach_msg_type_number_t n = TASK_VM_INFO_COUNT;
+    unsigned long fp = task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vi, &n) == KERN_SUCCESS ? (unsigned long)(vi.phys_footprint >> 10) : 0;
+    fprintf(stderr, "[swkbd_stats] %s: footprint %lu KB, gpu %lu KB, blurs %lu, overlay frames %lu\n", what, fp, (unsigned long)(dev.currentAllocatedSize >> 10), g_stat_blurs, g_stat_frames);
+}
+
+static void preview_open(void) {
+    SwkbdParams p = {0};
+    p.minlen = 1; p.maxlen = 12;
+    snprintf(p.header, sizeof p.header, "%s", getenv("BDSP_SWKBD_HEADER") ? getenv("BDSP_SWKBD_HEADER") : "Enter your name");   // (BDSP_SWKBD_HEADER: for comparing with a screenshot)
+    snprintf(p.sub, sizeof p.sub, "Up to 12 characters");
+    snprintf(p.guide, sizeof p.guide, "Name");
+    SwkbdCallbacks cb = {0};
+    swkbd_ui_open(&p, cb, NULL);
+}
+
+// Test hooks (frame counts of the presented frames): BDSP_SWKBD_PREVIEW opens the keyboard, BDSP_SWKBD_PREVIEW_CLOSE closes it, BDSP_SWKBD_PREVIEW_AGAIN opens it a second time
 static void preview_check(void) {
-    static long at = -1, frame;
-    if (at < 0) at = getenv("BDSP_SWKBD_PREVIEW") ? atol(getenv("BDSP_SWKBD_PREVIEW")) : 0;
-    if (at && ++frame == at) {
-        SwkbdParams p = {0};
-        p.minlen = 1; p.maxlen = 12;
-        snprintf(p.header, sizeof p.header, "%s", getenv("BDSP_SWKBD_HEADER") ? getenv("BDSP_SWKBD_HEADER") : "Enter your name");   // (BDSP_SWKBD_HEADER: for comparing with a screenshot)
-        snprintf(p.sub, sizeof p.sub, "Up to 12 characters");
-        snprintf(p.guide, sizeof p.guide, "Name");
-        SwkbdCallbacks cb = {0};
-        swkbd_ui_open(&p, cb, NULL);
+    static long at = -1, close_at, again, frame;
+    if (at < 0) {
+        at = getenv("BDSP_SWKBD_PREVIEW") ? atol(getenv("BDSP_SWKBD_PREVIEW")) : 0;
+        close_at = getenv("BDSP_SWKBD_PREVIEW_CLOSE") ? atol(getenv("BDSP_SWKBD_PREVIEW_CLOSE")) : 0;
+        again = getenv("BDSP_SWKBD_PREVIEW_AGAIN") ? atol(getenv("BDSP_SWKBD_PREVIEW_AGAIN")) : 0;
     }
+    if (!at) return;
+    frame++;
+    if (frame == at || (again && frame == again)) preview_open();
+    if (close_at && frame == close_at) swkbd_ui_resolve(1, NULL);
 }
 
 // While the keyboard is open the game thread is stopped inside the keyboard call and presents nothing; this thread then shows the last
@@ -376,18 +399,26 @@ static BOOL g_ka_running;
 
 static void *keepalive(void *arg) {
     pthread_setname_np("swkbd-present");
+    unsigned seen = swkbd_ui_revision() - 1;
+    uint64_t last = 0;
     for (;;) {
         usleep(16000);
         pthread_mutex_lock(&g_ka_lock);
         if (!swkbd_ui_visible()) { g_ka_running = NO; pthread_mutex_unlock(&g_ka_lock); return NULL; }
         pthread_mutex_unlock(&g_ka_lock);
         if (metal_now_ns() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
+        // The picture behind the keyboard is frozen: draw again when something was entered or moves, else only for the blinking caret
+        unsigned rev = swkbd_ui_revision();
+        uint64_t now = metal_now_ns();
+        if (rev == seen && !swkbd_ui_animating() && now - last < 100000000ull) continue;
+        seen = rev; last = now;
         metal_repeat_present();
     }
     return NULL;
 }
 
 static void keepalive_wake(void) {
+    metal_set_sampleable(1);   // the first picture the thread draws is the one the blur is made from: the drawables must be readable by then
     pthread_mutex_lock(&g_ka_lock);
     if (!g_ka_running) {
         pthread_t th;
@@ -406,6 +437,12 @@ static void overlay_release(void) {
     g_fonts_tried = NO;
 }
 
+// True while the stored blur covers the whole window at full opacity: a repeated picture then needs no game image underneath (no SMAA, no
+// upscaler, no present pass), the picture behind the keyboard is frozen and the blur already holds it.
+int swkbd_overlay_backdrop_opaque(unsigned long w, unsigned long h) {
+    return swkbd_ui_visible() && g_blur_ready && g_blur_w == w && g_blur_h == h && g_blur_t >= 0.1f && swkbd_ui_backdrop() >= 1.0f;
+}
+
 void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{   // first frame: tell the keyboard logic that something can draw it, and how to wake the thread that keeps the picture alive
@@ -419,8 +456,9 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
     int active = swkbd_ui_visible();
     if (active != g_was_active) {   // the drawables must be readable while the keyboard is open (the blur is made from one of them)
         g_was_active = active;
+        stats_log(active ? "opened" : "closing done", (__bridge id<MTLDevice>)dev_);
         metal_set_sampleable(active);
-        if (!active) { blur_drop(); overlay_release(); }
+        if (!active) { blur_drop(); overlay_release(); stats_log("released", (__bridge id<MTLDevice>)dev_); }
     }
     if (!active) return;
     static int calls;
@@ -438,6 +476,7 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
         int tw = (int)target.width, th = (int)target.height;
         const LytScene *sc = swkbd_ui_scene(dt, tw, th, &scale, off);
         if (!sc) { last = 0; return; }
+        if (++g_stat_frames % 120 == 0) stats_log("open", dev);
         MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
         rp.colorAttachments[0].texture = target;
         rp.colorAttachments[0].loadAction = MTLLoadActionLoad;

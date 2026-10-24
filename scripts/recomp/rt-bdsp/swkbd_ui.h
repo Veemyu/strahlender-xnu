@@ -32,6 +32,10 @@ typedef struct {
 void swkbd_ui_set_display(int on);
 // The renderer's wake-up: called (without the lock held) each time the keyboard opens, so it can start what keeps the picture alive while the game is stopped in the keyboard call.
 void swkbd_ui_set_wake(void (*fn)(void));
+// For a renderer that repeats the last game picture: the number of inputs so far, and whether anything moves on screen. With no change and
+// nothing moving, the picture only needs redrawing for the blinking caret (a few times a second).
+unsigned swkbd_ui_revision(void);
+int swkbd_ui_animating(void);
 // True when the keyboard can be shown: with the firmware layouts (BDSP_FIRMWARE_DATA), otherwise as a simple keyboard of our own
 // (BDSP_SWKBD_SIMPLE=1 forces the simple one).
 int swkbd_ui_available(void);
