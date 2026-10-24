@@ -17,6 +17,7 @@
 #include "../swkbd_ui.h"
 #include "../swkbd_text.h"
 #include "../swkbd_draw.h"
+#include "../swkbd_keepalive.h"
 
 
 static NSString *const kMsl =
@@ -226,8 +227,6 @@ static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px, flo
 
 static BOOL g_atlas_ready;   // the firmware's fonts were read for the atlas
 static BOOL use_atlas(void);
-static float atlas_measure(const char *utf8, float px) { return swkbd_text_measure(utf8, px > 1 ? px : 1, 0); }
-
 static int setup(id<MTLDevice> dev, MTLPixelFormat fmt) {
     if (g_pipe && g_pipe_fmt == fmt) return 1;
     NSError *err = nil;
@@ -259,7 +258,7 @@ static int setup(id<MTLDevice> dev, MTLPixelFormat fmt) {
         g_tex = [NSMapTable strongToStrongObjectsMapTable];
         g_text = [NSMutableDictionary new];
         g_atlas_ready = swkbd_text_open(swkbd_ui_root());
-        swkbd_ui_set_measure(use_atlas() ? atlas_measure : measure);
+        swkbd_ui_set_measure(use_atlas() ? swkbd_text_measure_px : measure);
     }
     return 1;
 }
@@ -390,38 +389,11 @@ extern void metal_repeat_present(void);
 
 extern uint64_t metal_now_ns(void);
 
-// The thread only lives while the keyboard is visible: it is started by the keyboard's wake-up when it opens and ends after it has closed.
-static pthread_mutex_t g_ka_lock = PTHREAD_MUTEX_INITIALIZER;
-static BOOL g_ka_running;
-
-static void *keepalive(void *arg) {
-    pthread_setname_np("swkbd-present");
-    unsigned seen = swkbd_ui_revision() - 1;
-    uint64_t last = 0;
-    for (;;) {
-        usleep(16000);
-        pthread_mutex_lock(&g_ka_lock);
-        if (!swkbd_ui_visible()) { g_ka_running = NO; pthread_mutex_unlock(&g_ka_lock); return NULL; }
-        pthread_mutex_unlock(&g_ka_lock);
-        if (metal_now_ns() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
-        // The picture behind the keyboard is frozen: draw again when something was entered or moves, else only for the blinking caret
-        unsigned rev = swkbd_ui_revision();
-        uint64_t now = metal_now_ns();
-        if (rev == seen && !swkbd_ui_animating() && now - last < 100000000ull) continue;
-        seen = rev; last = now;
-        metal_repeat_present();
-    }
-    return NULL;
-}
+static const SwkbdKeepalive k_keepalive = {metal_now_ns, metal_last_present_ns, metal_repeat_present};
 
 static void keepalive_wake(void) {
     metal_set_sampleable(1);   // the first picture the thread draws is the one the blur is made from: the drawables must be readable by then
-    pthread_mutex_lock(&g_ka_lock);
-    if (!g_ka_running) {
-        pthread_t th;
-        if (!pthread_create(&th, NULL, keepalive, NULL)) { pthread_detach(th); g_ka_running = YES; }
-    }
-    pthread_mutex_unlock(&g_ka_lock);
+    swkbd_keepalive_wake(&k_keepalive);
 }
 
 // Everything the keyboard made on the GPU or in memory goes when it closes (its screens and sounds are freed by swkbd_ui; the command buffers

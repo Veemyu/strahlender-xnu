@@ -434,7 +434,7 @@ int lyt_anim_open(LytAnim *a, const uint8_t *src, size_t size) {
 
 void lyt_anim_free(LytAnim *a) {
     for (uint32_t i = 0; i < a->nentries; i++) free(a->entries[i].keys);
-    free(a->entries); free(a->groups); free(a->buf);
+    free(a->entries); free(a->groups); free(a->buf); free(a->pane_idx);
     memset(a, 0, sizeof *a);
 }
 

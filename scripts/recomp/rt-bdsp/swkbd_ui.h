@@ -72,6 +72,6 @@ void swkbd_ui_unlock(void);
 const char *swkbd_ui_text_value(void);
 const char *swkbd_ui_focus_name(void);
 // Folder given by BDSP_FIRMWARE_DATA ("" if none): the renderer finds the fonts under fonts/ there.
-const char *swkbd_ui_root(void);   // layout name of the focused key
+const char *swkbd_ui_root(void);
 
 #endif

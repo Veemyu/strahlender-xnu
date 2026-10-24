@@ -10,9 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void trace(const char *what, const char *arg) { if (getenv("BDSP_TRACE_APPLET")) fprintf(stderr, "[swkbd_ui] %s %s\n", what, arg ? arg : ""); }
+static int trace_on(void) { static int on = -1; if (on < 0) on = getenv("BDSP_TRACE_APPLET") != NULL; return on; }
+static void trace(const char *what, const char *arg) { if (trace_on()) fprintf(stderr, "[swkbd_ui] %s %s\n", what, arg ? arg : ""); }
 
-enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE, K_TAB, K_GLOBE, K_MARK, K_MODE };
+enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_TAB, K_GLOBE, K_MARK, K_MODE };
 enum { SCR_QWERTY, SCR_SIGN, SCR_NUMERIC, SCR_50ON, SCR_COUNT };
 #define MAX_KEYS 80
 #define FN_LABEL_EM 22.2f   // em size of the labels on the function keys (tabs, space, return); the layouts give each of them its own size, the console draws them alike
@@ -99,9 +100,8 @@ static struct {
     double cnt_err;                  // frames since the counter's error shake started (>= 9: none)
     char msg[256];
     double msg_left;
-    double fade, clock;
+    double clock;
     uint64_t pad_prev;
-    int stick_prev[4];               // left, right, up, down as digital
     double repeat_at;
     int repeat_dir;                  // 0 none, else button bit
     float scale, off[2];
@@ -134,6 +134,7 @@ static void LOCK(void) { pthread_once(&g_once, lock_init); pthread_mutex_lock(&G
 
 // ---- utf-8 helpers
 static int u8_len(unsigned char c) { return c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1; }
+static int u8_prev(const char *s, int p) { while (p > 0 && ((unsigned char)s[p] & 0xC0) == 0x80) p--; return p; }   // start of the character that contains byte p
 static int u8_count(const char *s) { int n = 0; for (; *s; s += u8_len((unsigned char)*s)) n++; return n; }
 static void u8_nth(const char *s, int idx, char out[8]) {
     out[0] = 0;
@@ -378,20 +379,12 @@ static int build_screen(int si) {
     }
     qsort(s->keys, s->nkeys, sizeof s->keys[0], cmp_keys);
     if (si == SCR_NUMERIC) {
-        static const char *const nm[] = {"-", "."};
-        for (int i = 0; i < s->nkeys; i++) {
-            Key *k = &s->keys[i];
-            if (k->kind != K_CHAR) continue;
-            if (!strcmp(k->name, "L_BtnNmlL") || !strcmp(k->name, "L_BtnNmlR")) snprintf(k->normal, sizeof k->normal, "%s", nm[!strcmp(k->name, "L_BtnNmlR")]);
-            else u8_nth(k_numeric, 0, k->normal);
-            snprintf(k->shifted, sizeof k->shifted, "%s", k->normal);
-            lytinst_set_text(k->inst, "T_00", k->normal);
-        }
         int ci = 0;
         for (int i = 0; i < s->nkeys; i++) {
             Key *k = &s->keys[i];
-            if (k->kind != K_CHAR || !strncmp(k->name, "L_BtnNmlL", 9) || !strncmp(k->name, "L_BtnNmlR", 9)) continue;
-            u8_nth(k_numeric, ci++, k->normal);
+            if (k->kind != K_CHAR) continue;
+            if (!strncmp(k->name, "L_BtnNmlL", 9) || !strncmp(k->name, "L_BtnNmlR", 9)) snprintf(k->normal, sizeof k->normal, "%s", k->name[8] == 'R' ? "." : "-");   // the keys at the sides of the zero
+            else u8_nth(k_numeric, ci++, k->normal);
             snprintf(k->shifted, sizeof k->shifted, "%s", k->normal);
             lytinst_set_text(k->inst, "T_00", k->normal);
         }
@@ -552,9 +545,8 @@ static void refresh_labels(void) {
         if (t) lytinst_set_text(k->inst, "T_00", t);
         if (k->kind == K_TAB) {
             int on = k->page == G.page;
-            lytinst_set_font_size(k->inst, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f); lytinst_set_offset(k->inst, "T_00", 0, on ? 2.4f : -1.8f);   // the label of the open tab stands 4 px higher, over its underline   // the layouts give each tab its own size; all four look the same
+            lytinst_set_font_size(k->inst, "T_00", FN_LABEL_EM, FN_LABEL_EM * 1.5f); lytinst_set_offset(k->inst, "T_00", 0, on ? 2.4f : -1.8f);   // the layouts give each tab its own size, all four look the same; the label of the open tab stands 4 px higher, over its underline
             lytinst_set_visible(k->inst, "P_Active_00", 0);   // the underline of the open tab is drawn by tick (it follows the label width)
-            (void)on;
             lytinst_set_color(k->inst, "T_00", COL(on ? g_theme->tab_on : g_theme->text));
         }
         if (k->kind == K_MODE) {   // tabs of the kana grid: no underline of the layout, the label of the active mode in the tab colour
@@ -671,15 +663,14 @@ static void backspace(void) {
     }
     ime_end();
     if (G.caret <= 0) return;
-    int p = G.caret - 1;
-    while (p > 0 && ((unsigned char)G.text[p] & 0xC0) == 0x80) p--;
+    int p = u8_prev(G.text, G.caret - 1);
     memmove(G.text + p, G.text + G.caret, strlen(G.text + G.caret) + 1);
     G.caret = p;
 }
 
 static void caret_move(int dir) {
     ime_end();
-    if (dir < 0 && G.caret > 0) { int p = G.caret - 1; while (p > 0 && ((unsigned char)G.text[p] & 0xC0) == 0x80) p--; G.caret = p; }
+    if (dir < 0 && G.caret > 0) G.caret = u8_prev(G.text, G.caret - 1);
     if (dir > 0 && G.text[G.caret]) G.caret += u8_len((unsigned char)G.text[G.caret]);
 }
 
@@ -735,7 +726,7 @@ static void press_key(int i) {
     case K_MARK: {   // small kana / dakuten / handakuten of the kana before the caret
         char prev[8] = {0}, next[8];
         int p0 = G.caret;
-        if (p0 > 0) { p0--; while (p0 > 0 && ((unsigned char)G.text[p0] & 0xC0) == 0x80) p0--; memcpy(prev, G.text + p0, (size_t)(G.caret - p0)); }
+        if (p0 > 0) { p0 = u8_prev(G.text, p0 - 1); memcpy(prev, G.text + p0, (size_t)(G.caret - p0)); }
         if (prev[0] && swkbd_ime_rotate_kana(prev, next, sizeof next)) { memmove(G.text + p0, G.text + G.caret, strlen(G.text + G.caret) + 1); G.caret = p0; insert_text(next); }
         else snd("SeKeyErrorCursor");
         break;
@@ -755,7 +746,7 @@ static void press_key(int i) {
             s = cur();
             if (want == SCR_QWERTY) assign_chars(s, 0); else assign_kana(s);
             G.focus = -1;
-            g_quiet = 1; set_focus(find_key(K_GLOBE) >= 0 ? find_key(K_GLOBE) : 0); g_quiet = 0;
+            { int gk = find_key(K_GLOBE); g_quiet = 1; set_focus(gk >= 0 ? gk : 0); g_quiet = 0; }
         }
         if (G.cur == SCR_QWERTY && G.page == 0) assign_chars(s, 0);   // the other pages take the layout when they are opened
         snprintf(G.toast, sizeof G.toast, "%s", lbl(k_layout_label[G.li], k_layouts[G.li].id));
@@ -783,7 +774,7 @@ static void move_focus(int dx, int dy) {
     int best = -1;
     float bs = 1e30f;
     for (int i = 0; i < s->nkeys; i++) {
-        if (i == G.focus || s->keys[i].kind == K_NONE || s->keys[i].hidden) continue;
+        if (i == G.focus || s->keys[i].hidden) continue;
         const Key *k = &s->keys[i];
         float kx = (k->r[0] + k->r[2]) / 2, ky = (k->r[1] + k->r[3]) / 2;
         float along = dx ? (kx - fx) * dx : (ky - fy) * dy, across = dx ? fabsf(ky - fy) : fabsf(kx - fx);
@@ -803,14 +794,13 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     G.cb = cb; G.user = user;
     snprintf(G.text, sizeof G.text, "%s", p->initial);
     while (G.p.maxlen > 0 && u8_count(G.text) > G.p.maxlen) {
-        int n = (int)strlen(G.text) - 1;
-        while (n > 0 && ((unsigned char)G.text[n] & 0xC0) == 0x80) n--;
+        int n = u8_prev(G.text, (int)strlen(G.text) - 1);
         G.text[n] = 0;
     }
     G.caret = (int)strlen(G.text);
     swkbd_ime_reset(&G.ime); G.comp_len = 0; G.touch_key = -1; G.touch_rep_at = 0;
-    G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
-    G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
+    G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
+    G.pad_prev = 0; G.repeat_dir = 0;
     G.touch_mode = 0;
     int si = p->mode == 1 && screen_ready(SCR_NUMERIC) ? SCR_NUMERIC : G.li == LAYOUT_50ON && screen_ready(SCR_50ON) ? SCR_50ON : SCR_QWERTY;
     G.cur = si; G.focus = -1; G.shift = 0; G.page = 0;
@@ -919,7 +909,7 @@ static int key_at(float nx, float ny) {
     Screen *s = cur();
     for (int i = 0; i < s->nkeys; i++) {
         const Key *k = &s->keys[i];
-        if (k->kind != K_NONE && !k->hidden && x >= k->r[0] && x < k->r[2] && y >= k->r[1] && y < k->r[3]) return i;
+        if (!k->hidden && x >= k->r[0] && x < k->r[2] && y >= k->r[1] && y < k->r[3]) return i;
     }
     return -1;
 }
@@ -1107,7 +1097,7 @@ static void fb_scene(Screen *s, const char *shown) {
         case K_SPACE: t = G.toast_left > 0 ? G.toast : G.space_label; break;
         case K_SYMBOL: t = "#+="; break;
         case K_BACK: t = "ABC"; break;
-        case K_SHIFT: t = G.shift == 2 ? "\xE2\x87\xAA" : G.shift == 1 ? "\xE2\x87\xA7" : "\xE2\x87\xA7"; break;
+        case K_SHIFT: t = G.shift == 2 ? "\xE2\x87\xAA" : "\xE2\x87\xA7"; break;
         case K_BS: t = "\xE2\x8C\xAB"; break;
         default: break;
         }
@@ -1157,7 +1147,6 @@ static float text_width(const char *s, float px) {
 static void tick(double dt) {
     Screen *s = cur();
     G.clock += dt;
-    G.fade = 1.0;
     if (G.cnt_err < 99) G.cnt_err += dt * 60;
     if (G.closing) { G.close_t += dt; if (G.close_t * 60 >= 14) G.closing = 0; }
     if (G.msg_left > 0) { G.msg_left -= dt; if (G.msg_left <= 0) G.msg[0] = 0; }
@@ -1263,9 +1252,8 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         if (G.cnt_err < 9) lytinst_set_anim(cnt, "Err", (float)G.cnt_err);   // typing past the limit: the counter shakes
         else if (G.p.maxlen > 0 && n >= G.p.maxlen) lytinst_set_anim(cnt, "Limit", 1);   // and shows its limit colour at the maximum
     }
-    float a = (float)G.fade;
-    lytinst_set_alpha(s->bg, a); lytinst_set_alpha(s->kt, a * g_sa); lytinst_set_alpha(s->area, a);
-    if (getenv("BDSP_TRACE_APPLET") && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] t=%.1f fade=%.2f scale=%.2f target %dx%d screen %d\n", G.clock, G.fade, sc, tw, th, G.cur);
+    lytinst_set_alpha(s->bg, 1); lytinst_set_alpha(s->kt, g_sa); lytinst_set_alpha(s->area, 1);
+    if (trace_on() && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] t=%.1f scale=%.2f target %dx%d screen %d\n", G.clock, sc, tw, th, G.cur);
     // entrance: the layouts' own In animations (the keytop slides up and fades in, the text area fades in); the mask fades over 6 frames
     float tf = (float)(G.clock * 60);
     float fr = lytinst_anim_frames(s->bg, "In");
@@ -1310,20 +1298,18 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){193, 194, 198};
         fb_dot(&G.scene, sk->r[0] + 13.96f, sk->r[1] + 13.67f, 3.75f, dc[0], dc[1], dc[2]);
     }
-    if (!G.touch_mode && G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame (not while the keyboard is used by touch: there the pressed key is tinted by the layout)
+    if (!G.touch_mode && G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden ) {   // focus frame (not while the keyboard is used by touch: there the pressed key is tinted by the layout)
         const Key *fk = &s->keys[G.focus];
         const uint8_t *cc = g_theme->cursor;
         fb_frame(&G.scene, fk->r[0], fk->r[1], fk->r[2], fk->r[3], COL(cc));   // the console's frame lies outside the key: 7 px, soft outer edge, 4.5 px core, rounded outer corners
     }
     footer_items(&G.scene);
     lyt_scene_append(&G.scene, s->area, 0, 0, 1);
-    {
-        float fb[4];
-        if (lyt_pane_bounds(s->area, s->area, "T_TextBox_Long", 0, 0, 1, fb)) { G.field[0] = fb[0]; G.field[1] = fb[1] - 20; G.field[2] = fb[2]; G.field[3] = fb[3] + 40; }
-    }
-    // caret: left edge of the text box plus the width of the text before it, blinking
     float b[4];
-    if (fmod(G.clock, 1.0) < 0.6 && lyt_pane_bounds(s->area, s->area, "T_TextBox_Long", 0, 0, 1, b)) {
+    int have_box = lyt_pane_bounds(s->area, s->area, "T_TextBox_Long", 0, 0, 1, b);
+    if (have_box) { G.field[0] = b[0]; G.field[1] = b[1] - 20; G.field[2] = b[2]; G.field[3] = b[3] + 40; }
+    // caret: left edge of the text box plus the width of the text before it, blinking
+    if (fmod(G.clock, 1.0) < 0.6 && have_box) {
         const LytLayout *al = lytinst_layout(s->area);
         int ti = lyt_layout_find_pane(al, "T_TextBox_Long");
         float fpx = ti >= 0 ? al->panes[ti].font_size[0] : 26;   // the renderer draws a glyph with the layout's glyph width as its em size
@@ -1336,7 +1322,7 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         const LytLayout *cl = lytinst_layout(s->caret);
         lyt_scene_append(&G.scene, s->caret, x - cl->size_xy[0] / 2, y - cl->size_xy[1] / 2, lh / 58.0f);   // the layout's caret is 58 high
     }
-    if (getenv("BDSP_TRACE_APPLET") && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] items %d\n", G.scene.n);
+    if (trace_on() && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] items %d\n", G.scene.n);
     return &G.scene;
 }
 

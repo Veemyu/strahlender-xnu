@@ -17,9 +17,9 @@
 #define SUBPIXEL 4               // horizontal positions per pixel a glyph is rasterized for
 
 enum { F_STD, F_EXT, F_KO, F_ZHCN, F_ZHTW, F_COUNT };
-static const struct { const char *file; } k_fonts[F_COUNT] = {
-    {"nintendo_udsg-r_std_003.bfttf"}, {"nintendo_ext_003.bfttf"}, {"nintendo_udsg-r_ko_003.bfttf"},
-    {"nintendo_udsg-r_org_zh-cn_003.bfttf"}, {"nintendo_udjxh-db_zh-tw_003.bfttf"},
+static const char *const k_fonts[F_COUNT] = {
+    "nintendo_udsg-r_std_003.bfttf", "nintendo_ext_003.bfttf", "nintendo_udsg-r_ko_003.bfttf",
+    "nintendo_udsg-r_org_zh-cn_003.bfttf", "nintendo_udjxh-db_zh-tw_003.bfttf",
 };
 
 typedef struct { unsigned char *data; stbtt_fontinfo info; int tried, ok; } Font;
@@ -42,7 +42,7 @@ static void font_load(int i) {
     if (f->tried) return;
     f->tried = 1;
     char path[1200];
-    snprintf(path, sizeof path, "%s/fonts/%s", T.root, k_fonts[i].file);
+    snprintf(path, sizeof path, "%s/fonts/%s", T.root, k_fonts[i]);
     FILE *fp = fopen(path, "rb");
     if (!fp) return;
     fseek(fp, 0, SEEK_END);
@@ -104,7 +104,7 @@ static void atlas_clear(void) {
 
 int swkbd_text_available(const char *root) {
     char path[1200];
-    snprintf(path, sizeof path, "%s/fonts/%s", root ? root : "", k_fonts[F_STD].file);
+    snprintf(path, sizeof path, "%s/fonts/%s", root ? root : "", k_fonts[F_STD]);
     FILE *fp = fopen(path, "rb");
     if (fp) fclose(fp);
     return fp != NULL;
@@ -128,10 +128,9 @@ int swkbd_text_open(const char *root) {
 void swkbd_text_close(void) {
     pthread_mutex_lock(&T.lock);
     fonts_free();
+    atlas_clear();
     free(T.atlas); free(T.cache);
     T.atlas = NULL; T.cache = NULL;
-    T.count = T.cx = T.cy = T.row_h = T.full = 0;
-    T.version++;
     pthread_mutex_unlock(&T.lock);
 }
 
@@ -179,8 +178,6 @@ static const Entry *glyph_entry(int fi, int glyph, float px, int sub) {
 }
 
 // ---- layout
-typedef struct { int font, glyph; float adv; } Run;
-
 // Measures and (when out is given) places a string with its pen starting at (x0, baseline). Returns the width.
 static float lay_string(const char *utf8, float px, float kern, float x0, float baseline, float gtop, float gh, SwkbdGlyph *out, int max, int *n_out) {
     float x = 0;
@@ -206,14 +203,16 @@ static float lay_string(const char *utf8, float px, float kern, float x0, float 
                 if (q->g1 > 1) q->g1 = 1;
             }
         }
-        int adv, lsb;
-        stbtt_GetGlyphHMetrics(info, g, &adv, &lsb);
+        int adv;
+        stbtt_GetGlyphHMetrics(info, g, &adv, NULL);
         x += adv * s + kern;
         prev_font = fi; prev_glyph = g;
     }
     if (n_out) *n_out = n;
     return x;
 }
+
+float swkbd_text_measure_px(const char *utf8, float px) { return swkbd_text_measure(utf8, px > 1 ? px : 1, 0); }
 
 float swkbd_text_measure(const char *utf8, float px, float kern) {
     pthread_mutex_lock(&T.lock);

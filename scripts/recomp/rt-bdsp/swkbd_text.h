@@ -22,6 +22,9 @@ void swkbd_text_close(void);
 // Width of a string in pixels at an em size, with `kern` added after every character.
 float swkbd_text_measure(const char *utf8, float px, float kern);
 
+// The callback for swkbd_ui_set_measure: the width of a string at an em size (at least 1 px), no extra spacing.
+float swkbd_text_measure_px(const char *utf8, float px);
+
 // Places the text of a scene item (box corners X/Y in target pixels, em size, character spacing, origin flags, squeeze to fit) as glyph quads.
 // Returns the number of glyphs written to out (at most max). `scale` is the canvas-to-target factor.
 int swkbd_text_place(const LytItem *it, float scale, const float X[4], const float Y[4], SwkbdGlyph *out, int max);

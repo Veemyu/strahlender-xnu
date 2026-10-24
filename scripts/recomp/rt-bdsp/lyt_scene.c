@@ -317,16 +317,31 @@ static LytItem *scene_add(LytScene *sc) {
     return it;
 }
 
+// The pane of every entry of an animation in a layout, looked up by name once (an animation belongs to one layout).
+static const int *anim_panes(const LytAnim *a, const LytLayout *l) {
+    LytAnim *m = (LytAnim *)a;
+    if (m->idx_for != l || !m->pane_idx) {
+        free(m->pane_idx);
+        m->pane_idx = malloc((m->nentries ? m->nentries : 1) * sizeof *m->pane_idx);
+        if (!m->pane_idx) { m->idx_for = NULL; return NULL; }
+        for (uint32_t i = 0; i < m->nentries; i++) m->pane_idx[i] = lyt_layout_find_pane(l, m->entries[i].pane);
+        m->idx_for = l;
+    }
+    return m->pane_idx;
+}
+
 static void compute_pose(LytInst *in) {
     const LytLayout *l = in->lay;
     memset(in->pose, 0, l->npanes * sizeof *in->pose);
     for (int k = 0; k < in->nplay; k++) {
         const LytAnim *a = in->play[k].a;
+        const int *panes = anim_panes(a, l);
+        if (!panes) continue;
         float t = in->play[k].frame;
         for (uint32_t i = 0; i < a->nentries; i++) {
             const LytAnimEntry *e = &a->entries[i];
             if (e->kind != 0 || e->nkeys == 0) continue;
-            int pi = lyt_layout_find_pane(l, e->pane);
+            int pi = panes[i];
             if (pi < 0) continue;
             Pose *p = &in->pose[pi];
             float v = lyt_curve_eval((const float (*)[3])e->keys, e->nkeys, e->curve, t);

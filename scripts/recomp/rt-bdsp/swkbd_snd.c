@@ -255,7 +255,6 @@ static void *play_thread(void *arg) {
     f.mBitsPerChannel = 16; f.mChannelsPerFrame = 1; f.mFramesPerPacket = 1; f.mBytesPerFrame = 2; f.mBytesPerPacket = 2;
     AudioQueueRef q = NULL;
     OSStatus st = AudioQueueNewOutput(&f, queue_done, NULL, NULL, NULL, 0, &q);
-    if (getenv("BDSP_TRACE_APPLET")) fprintf(stderr, "[swkbd_snd] queue %d (%zu frames at %.0f Hz, gain %.2f)\n", (int)st, p->frames, p->rate, p->gain);
     if (st == 0) {
         AudioQueueBufferRef buf = NULL;
         UInt32 bytes = (UInt32)(p->frames * 2);
@@ -264,7 +263,6 @@ static void *play_thread(void *arg) {
             buf->mAudioDataByteSize = bytes;
             AudioQueueSetParameter(q, kAudioQueueParam_Volume, p->gain);
             OSStatus se = AudioQueueEnqueueBuffer(q, buf, 0, NULL), ss = se == 0 ? AudioQueueStart(q, NULL) : se;
-            if (getenv("BDSP_TRACE_APPLET")) fprintf(stderr, "[swkbd_snd] start %d\n", (int)ss);
             if (ss == 0) usleep((useconds_t)(p->frames * 1000000.0 / p->rate) + 150000);
         }
         AudioQueueStop(q, true);
@@ -295,10 +293,10 @@ void swkbd_snd_play(const char *name) {
     }
     pthread_mutex_unlock(&g_lock);
     if (!p) return;
-    static int last_id = -1; static uint64_t last_ns;
+    static _Atomic int last_id = -1; static _Atomic uint64_t last_ns;   // (sounds start from several threads)
     uint64_t now = clock_gettime_nsec_np(CLOCK_MONOTONIC);
-    if ((p->id == last_id && now - last_ns < 40000000ull) || atomic_load(&g_playing) >= MAX_PLAYING) { free(p->pcm); free(p); return; }
-    last_id = p->id; last_ns = now;
+    if ((p->id == atomic_load(&last_id) && now - atomic_load(&last_ns) < 40000000ull) || atomic_load(&g_playing) >= MAX_PLAYING) { free(p->pcm); free(p); return; }
+    atomic_store(&last_id, p->id); atomic_store(&last_ns, now);
     atomic_fetch_add(&g_playing, 1);
     pthread_t th;
     pthread_attr_t at;

@@ -62,23 +62,12 @@ void swkbd_draw_build(SwkbdBatch *b, const LytScene *sc, float scale, const floa
             float fy[4] = {cy - hh * scale - m + 7 * scale, cy - hh * scale - m + 7 * scale, cy + hh * scale + m - 7 * scale, cy + hh * scale + m - 7 * scale};
             float fuv[4][2], fcol[4][4] = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}};
             for (int k = 0; k < 4; k++) { fuv[k][0] = (fx[k] - cx) / scale; fuv[k][1] = (fy[k] - cy) / scale; }
-            SwkbdDraw *d;   // (a frame is always a draw of its own)
-            if (b->nd == b->capd) { int nc = b->capd ? b->capd * 2 : 64; SwkbdDraw *p = realloc(b->d, (size_t)nc * sizeof *p); if (!p) continue; b->d = p; b->capd = nc; }
-            d = &b->d[b->nd++];
-            memset(d, 0, sizeof *d);
-            d->kind = SWKBD_DRAW_FRAME; d->first = b->nv;
+            SwkbdDraw *d = NULL;
+            quad(b, SWKBD_DRAW_FRAME, SWKBD_TEX_WHITE, fx, fy, fuv, fcol, &d);   // (a frame is always a draw of its own)
+            if (!d) continue;
             d->half[0] = hw; d->half[1] = hh; d->rad = 4.4f; d->px = 1.0f / scale;
             for (int c = 0; c < 3; c++) d->col[c] = it->col[0][c] / 255.0f;
             d->col[3] = it->alpha;
-            SwkbdVtx *v = vtx_room(b, 6);
-            if (!v) { b->nd--; continue; }
-            static const int idx[6] = {0, 1, 2, 1, 3, 2};
-            for (int k = 0; k < 6; k++) {
-                v[k].pos[0] = fx[idx[k]]; v[k].pos[1] = fy[idx[k]];
-                v[k].uv[0] = fuv[idx[k]][0]; v[k].uv[1] = fuv[idx[k]][1];
-                memcpy(v[k].col, fcol[idx[k]], sizeof v[k].col);
-            }
-            b->nv += 6; d->count = 6;
         } else if (it->type == LYT_ITEM_QUAD) {
             float col[4][4];
             for (int k = 0; k < 4; k++) { for (int c = 0; c < 3; c++) col[k][c] = it->col[k][c] / 255.0f; col[k][3] = it->col[k][3] / 255.0f * it->alpha; }

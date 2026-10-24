@@ -19,6 +19,7 @@
 #include "astc.h"
 #include "lyt.h"
 #include "swkbd_draw.h"
+#include "swkbd_keepalive.h"
 #include "swkbd_text.h"
 #include "swkbd_ui.h"
 
@@ -321,38 +322,9 @@ static void quad_verts(SwkbdVtx *v, float w, float h, float a) {
     }
 }
 
-// The keepalive thread (see the top of the file): lives only while the keyboard is visible, started by the keyboard's wake-up when it opens.
-static pthread_mutex_t g_ka_lock = PTHREAD_MUTEX_INITIALIZER;
-static int g_ka_running;
-
-static void *keepalive(void *arg) {
-    (void)arg;
-    unsigned seen = swkbd_ui_revision() - 1;
-    uint64_t last = 0;
-    for (;;) {
-        usleep(16000);
-        pthread_mutex_lock(&g_ka_lock);
-        if (!swkbd_ui_visible()) { g_ka_running = 0; pthread_mutex_unlock(&g_ka_lock); return NULL; }
-        pthread_mutex_unlock(&g_ka_lock);
-        uint64_t now = SDL_GetTicksNS();
-        if (now - vk_last_game_present_ns() < 50000000ull) continue;   // the game is presenting itself
-        unsigned rev = swkbd_ui_revision();
-        if (rev == seen && !swkbd_ui_animating() && now - last < 100000000ull) continue;   // frozen picture: redraw for the caret only
-        seen = rev; last = now;
-        backend_represent();
-    }
-}
-
-static void keepalive_wake(void) {
-    pthread_mutex_lock(&g_ka_lock);
-    if (!g_ka_running) {
-        pthread_t th;
-        if (!pthread_create(&th, NULL, keepalive, NULL)) { pthread_detach(th); g_ka_running = 1; }
-    }
-    pthread_mutex_unlock(&g_ka_lock);
-}
-
-static float atlas_measure(const char *utf8, float px) { return swkbd_text_measure(utf8, px > 1 ? px : 1, 0); }
+static uint64_t clock_ns(void) { return SDL_GetTicksNS(); }
+static const SwkbdKeepalive k_keepalive = {clock_ns, vk_last_game_present_ns, backend_represent};
+static void keepalive_wake(void) { swkbd_keepalive_wake(&k_keepalive); }
 
 void menu_render(void *cmd, uint32_t w, uint32_t h) {
     static int once;
@@ -366,7 +338,7 @@ void menu_render(void *cmd, uint32_t w, uint32_t h) {
         V.was_active = active;
         if (!active) { release(); return; }
         swkbd_text_open(swkbd_ui_root());
-        swkbd_ui_set_measure(atlas_measure);
+        swkbd_ui_set_measure(swkbd_text_measure_px);
     }
     if (!active || !w || !h) return;
     VkCommandBuffer cb = (VkCommandBuffer)cmd;

@@ -130,6 +130,8 @@ typedef struct {
     uint32_t ngroups;
     char (*groups)[29];
     uint8_t *buf;
+    int *pane_idx;                 // scene builder's cache: pane index of every entry in the layout idx_for (-1: none); filled on first use
+    const void *idx_for;
 } LytAnim;
 
 int lyt_anim_open(LytAnim *a, const uint8_t *src, size_t size);       // takes a copy
