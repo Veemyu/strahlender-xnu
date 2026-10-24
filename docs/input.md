@@ -7,9 +7,12 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
 
 ## What you need
 
-- The firmware's keyboard applet data, as a folder with `swkbd/lyt/*.szs` (Qwerty, Sign, Numeric, 50on, Swkbd, common).
-  Point `BDSP_FIRMWARE_DATA` at the folder that contains `swkbd/`. The text check of the game (NG words) additionally uses
-  `0100000000000823.romfs` from the same folder; without it the check is skipped.
+- The firmware's keyboard applet data in one folder (`BDSP_FIRMWARE_DATA`):
+  `swkbd/lyt/*.szs` (layouts and animations), `swkbd/message/<language>/swkbd.msbt.szs` (button labels),
+  `fonts/nintendo_udsg-r_std_003.bfttf` and `fonts/nintendo_ext_003.bfttf` (text font and button glyphs; without them a Mac font is used),
+  and `0100000000000823.romfs` (word list of the game's name check; without it the check is skipped).
+  `scripts/swkbd_firmware_extract.py --nca-dir <registered NCAs> --keys <prod.keys> --hactool <hactool> --out <folder>` writes exactly this
+  folder from your own firmware dump (it uses hactool and your keys locally and prints no key material).
 - A normal (not scripted) run on macOS. iOS/iPadOS is not connected yet. `BDSP_SWKBD_SIMPLE=1` forces the simple keyboard even with firmware files.
 
 ## Using it (macOS)
@@ -21,8 +24,10 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
 - While the keyboard is open the game sees no input.
 - The game stops inside the keyboard call; the window keeps showing the last game image behind the keyboard.
 
-Key characters follow the standard national layouts (US, UK, DE, FR, ES, IT, PT, RU). Choose one with `BDSP_SWKBD_LAYOUT=us|uk|de|fr|es|it|pt|ru`
-(default `us`); `BDSP_SWKBD_LANG` selects the language of the button labels (default `USen`).
+Key characters follow the standard national layouts (US, UK, DE, FR, ES, IT, PT, RU) and the tabs below the keys switch between letters,
+symbols and two pages of accented letters. `BDSP_SWKBD_LANG` selects the language of the labels (default `USen`, e.g. `EUde`) and, unless
+`BDSP_SWKBD_LAYOUT=us|uk|de|fr|es|it|pt|ru` says otherwise, the key layout. The colour scheme is light like the console's default;
+`BDSP_SWKBD_THEME=dark` selects a dark one (the layout files do not contain the colours, both schemes are ours).
 
 ## Scripted and test runs
 
