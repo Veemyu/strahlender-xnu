@@ -10,6 +10,7 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
 - The firmware's keyboard applet data in one folder (`BDSP_FIRMWARE_DATA`):
   `swkbd/lyt/*.szs` (layouts and animations), `swkbd/message/<language>/swkbd.msbt.szs` (button labels),
   `fonts/nintendo_udsg-r_std_003.bfttf` and `fonts/nintendo_ext_003.bfttf` (text font and button glyphs; without them a Mac font is used),
+  optionally the Korean and Chinese fonts `fonts/nintendo_udsg-r_ko_003.bfttf`, `nintendo_udsg-r_org_zh-cn_003.bfttf`, `nintendo_udjxh-db_zh-tw_003.bfttf` (characters the text font lacks, e.g. Hangul),
   `swkbd/sound/swkbd.bfsar` (the keyboard's sounds; without it the keyboard is silent),
   and `0100000000000823.romfs` (word list of the game's name check; without it the check is skipped).
   `scripts/swkbd_firmware_extract.py --nca-dir <registered NCAs> --keys <prod.keys> --hactool <hactool> --out <folder>` writes exactly this
@@ -43,6 +44,15 @@ The keyboard plays the console's animations (layouts' own: focus, press, open, c
 backspace and repeat, shift / caps lock, length error, error when the focus cannot move). The game behind it is blurred once when the
 keyboard opens and dimmed. `BDSP_SWKBD_SOUND=0` switches the sounds off.
 
+## Memory and cost
+
+Nothing of the keyboard is kept while it is closed: its layouts, textures, sounds, GPU textures, glyph atlas, fonts and the thread that repeats the
+game picture are built when it opens and freed when it closes. While it is open the picture behind it is frozen, so the blur is made once per
+opening and the repeated game image is not drawn under it; the keyboard is redrawn when something is entered or moves, otherwise only for the caret.
+Text is drawn from one small glyph atlas (`swkbd_text.c`, the firmware's own fonts rasterized with stb_truetype in `third_party/`) instead of one
+texture per string. `BDSP_SWKBD_STATS=1` logs the process and GPU memory and the number of blurs and frames; `BDSP_SWKBD_PREVIEW_CLOSE=<frame>` and
+`BDSP_SWKBD_PREVIEW_AGAIN=<frame>` close and reopen the preview keyboard. `BDSP_SWKBD_ATLAS=0` draws the text with CoreText again (macOS, iPadOS).
+
 ## Scripted and test runs
 
 A run with any of `BDSP_INPUT_SCRIPT`, `BDSP_KEY_SCRIPT`, `BDSP_SWKBD_TEXT`, `BDSP_SWKBD_AUTO` or `BDSP_NO_ALERT` does not open the keyboard;
@@ -60,4 +70,5 @@ the answer is automatic:
 
 - `scripts/recomp/rt-bdsp/test/run_lyt_test.sh`: readers for Yaz0, SARC, BFLYT, BFLAN, BNTX (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
 - `scripts/recomp/rt-bdsp/test/run_swkbd_ui_test.sh`: keyboard logic and a software rendering to a PPM.
+- `scripts/recomp/rt-bdsp/test/run_swkbd_text_test.sh`: glyph atlas text (measure, placement, atlas reuse and clearing; with `BDSP_FIRMWARE_DATA`, the firmware fonts).
 - `scripts/recomp/rt-bdsp/test/run_swkbd_snd_test.sh`: reader of the sound archive (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).

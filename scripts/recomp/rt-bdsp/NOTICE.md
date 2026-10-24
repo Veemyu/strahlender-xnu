@@ -41,3 +41,7 @@ Locally authored components include `nvn/shim/*`, `nvn/nvn_glue.c`, `nvn/build_n
 **Video layer (`nvn/movie_glue.c`):** Independently written based on the clone's `runtime/hle/movie.c`: `MediaData` layout, extractor, decoder, output queue, and events. BDSP adaptations: vtable slot 2, directly imported calls, video-only track, and writes into the player's buffer. Links FFmpeg (LGPL/GPL depending on build configuration), which is not distributed here.
 
 **Vulkan version (Linux/Windows):** Also adopts the clone's `runtime/nvn/vulkan/*`. This originally used build-time copying and a local patch; the current source layout is described above. Details, dependencies, and licenses: [`nvn/vulkan/NOTICE.md`](nvn/vulkan/NOTICE.md).
+
+## Other third-party code
+
+`third_party/stb_truetype.h` is stb_truetype v1.26 (Sean Barrett, public domain or MIT, your choice; the license text is at the end of the file) in the slightly modified form that Dear ImGui ships. The on-screen keyboard uses it to rasterize the fonts of the user's own firmware (`swkbd_text.c`). The library is not meant for untrusted font files; it only reads the firmware's fonts.

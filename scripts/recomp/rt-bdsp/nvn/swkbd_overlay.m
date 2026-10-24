@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "../swkbd_ui.h"
+#include "../swkbd_text.h"
 
 
 static NSString *const kMsl =
@@ -260,6 +261,10 @@ static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px, flo
     return res;
 }
 
+static BOOL g_atlas_ready;   // the firmware's fonts were read for the atlas
+static BOOL use_atlas(void);
+static float atlas_measure(const char *utf8, float px) { return swkbd_text_measure(utf8, px > 1 ? px : 1, 0); }
+
 static int setup(id<MTLDevice> dev, MTLPixelFormat fmt) {
     if (g_pipe && g_pipe_fmt == fmt) return 1;
     NSError *err = nil;
@@ -290,7 +295,8 @@ static int setup(id<MTLDevice> dev, MTLPixelFormat fmt) {
         g_white = make_rgba(dev, 1, 1, white);
         g_tex = [NSMapTable strongToStrongObjectsMapTable];
         g_text = [NSMutableDictionary new];
-        swkbd_ui_set_measure(measure);
+        g_atlas_ready = swkbd_text_open(swkbd_ui_root());
+        swkbd_ui_set_measure(use_atlas() ? atlas_measure : measure);
     }
     return 1;
 }
@@ -306,6 +312,33 @@ static void quad(id<MTLRenderCommandEncoder> enc, const float X[4], const float 
 extern void metal_set_sampleable(int on);
 
 static void overlay_release(void);
+
+// Text comes from the shared glyph atlas (swkbd_text.c, the firmware's fonts); BDSP_SWKBD_ATLAS=0 draws it with CoreText strings instead (also used
+// when the firmware fonts are missing)
+static BOOL use_atlas(void) {
+    static int off = -1;
+    if (off < 0) off = getenv("BDSP_SWKBD_ATLAS") != NULL && getenv("BDSP_SWKBD_ATLAS")[0] == '0';
+    return !off && g_atlas_ready;
+}
+static id<MTLTexture> g_atlas;
+static unsigned g_atlas_ver;
+
+// The atlas as an R8 texture that reads as white with the coverage in alpha; uploaded again when glyphs were added.
+static id<MTLTexture> atlas_tex(id<MTLDevice> dev) {
+    int w, h;
+    unsigned ver;
+    const uint8_t *px = swkbd_text_atlas(&w, &h, &ver);
+    if (!px) return nil;
+    if (!g_atlas) {
+        MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm width:(NSUInteger)w height:(NSUInteger)h mipmapped:NO];
+        td.usage = MTLTextureUsageShaderRead;
+        td.swizzle = MTLTextureSwizzleChannelsMake(MTLTextureSwizzleOne, MTLTextureSwizzleOne, MTLTextureSwizzleOne, MTLTextureSwizzleRed);
+        g_atlas = [dev newTextureWithDescriptor:td];
+        g_atlas_ver = ver - 1;
+    }
+    if (ver != g_atlas_ver) { [g_atlas replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h) mipmapLevel:0 withBytes:px bytesPerRow:(NSUInteger)w]; g_atlas_ver = ver; }
+    return g_atlas;
+}
 static void blur_drop(void) { g_blur_ready = NO; g_blur_a = g_blur_b = nil; g_blur_t = 0; }
 
 // Blurs `src` (the drawable with the game image, sampleable) into g_blur_b. Returns 0 when it cannot be done yet.
@@ -430,7 +463,8 @@ static void keepalive_wake(void) {
 // Everything the keyboard made on the GPU or in memory goes when it closes (its screens and sounds are freed by swkbd_ui; the command buffers
 // still in flight keep the resources they use alive). The next opening builds them again.
 static void overlay_release(void) {
-    g_tex = nil; g_text = nil; g_white = nil; g_samp = nil;
+    g_tex = nil; g_text = nil; g_white = nil; g_samp = nil; g_atlas = nil;
+    swkbd_text_close(); g_atlas_ready = NO;
     g_pipe = nil; g_pipe_frame = nil; g_pipe_fmt = (MTLPixelFormat)0; g_blur_pipe = nil;
     if (g_font_std) { CGFontRelease(g_font_std); g_font_std = NULL; }
     if (g_font_ext) { CGFontRelease(g_font_ext); g_font_ext = NULL; }
@@ -469,6 +503,7 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
         double dt = last ? fmin(now - last, 0.1) : 0.016;
         last = now;
         if (!setup(dev, target.pixelFormat)) return;
+        if (use_atlas()) swkbd_text_frame_begin();
         if (g_blur_ready && (g_blur_w != target.width || g_blur_h != target.height)) blur_drop();   // window resized: blur again
         if (!g_blur_ready) blur_capture(dev, cb, target);
         else g_blur_t += (float)dt;
@@ -519,6 +554,22 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
                 for (int k = 0; k < 4; k++) { for (int c = 0; c < 3; c++) col[k][c] = it->col[k][c] / 255.0f; col[k][3] = it->col[k][3] / 255.0f * it->alpha; }
                 [enc setFragmentTexture:t atIndex:0];
                 quad(enc, X, Y, (const float (*)[2])it->uv, col);
+            } else if (it->str && it->str[0] && use_atlas()) {
+                SwkbdGlyph gl[96];
+                int ng = swkbd_text_place(it, scale, X, Y, gl, 96);
+                id<MTLTexture> at = ng ? atlas_tex(dev) : nil;
+                if (!at) continue;
+                [enc setFragmentTexture:at atIndex:0];
+                for (int q = 0; q < ng; q++) {
+                    float gx[4] = {gl[q].x0, gl[q].x1, gl[q].x0, gl[q].x1}, gy[4] = {gl[q].y0, gl[q].y0, gl[q].y1, gl[q].y1};
+                    float uv[4][2] = {{gl[q].u0, gl[q].v0}, {gl[q].u1, gl[q].v0}, {gl[q].u0, gl[q].v1}, {gl[q].u1, gl[q].v1}}, col[4][4];
+                    for (int k = 0; k < 4; k++) {
+                        float t = k < 2 ? gl[q].g0 : gl[q].g1;
+                        for (int c = 0; c < 3; c++) col[k][c] = (it->top_color[c] + (it->bottom_color[c] - it->top_color[c]) * t) / 255.0f;
+                        col[k][3] = (it->top_color[3] + (it->bottom_color[3] - it->top_color[3]) * t) / 255.0f * it->alpha;
+                    }
+                    quad(enc, gx, gy, uv, col);
+                }
             } else if (it->str && it->str[0]) {
                 float bw = X[3] - X[0], bh = Y[3] - Y[0];
                 float px = it->font_size[0] * scale;   // the layouts' glyph width is the em size; the height is 1.5x of it (the font is drawn at its own proportions)

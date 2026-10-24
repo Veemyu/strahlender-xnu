@@ -9,6 +9,7 @@ Output (nothing of it belongs in the repository):
   swkbd/sound/swkbd.bfsar                      sound archive of the keyboard (key, cursor, enter sounds)
   fonts/nintendo_udsg-r_std_003.bfttf          text font (title 0100000000000811)
   fonts/nintendo_ext_003.bfttf                 button glyphs (title 0100000000000810)
+  fonts/nintendo_ud*.bfttf                       Chinese and Korean text fonts, for characters the text font lacks (titles 0100000000000812 to 14; optional)
   0100000000000823.romfs                       word list of the name check (title 0100000000000823)
 
 hactool prints key material in some warnings; its output is never shown, only the Title ID / Content Type / Content Size lines are read.
@@ -21,6 +22,7 @@ import sys
 import tempfile
 
 SWKBD, FONT_STD, FONT_EXT, NGWORDS = "0100000000001008", "0100000000000811", "0100000000000810", "0100000000000823"
+FONTS_CJK = ("0100000000000812", "0100000000000813", "0100000000000814")   # Chinese simplified / traditional, Korean
 
 
 def hactool(tool, keys, args):
@@ -69,7 +71,7 @@ def main():
     ap.add_argument("--hactool", required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    ncas = find_ncas(a.nca_dir, a.hactool, a.keys, {SWKBD, FONT_STD, FONT_EXT, NGWORDS})
+    ncas = find_ncas(a.nca_dir, a.hactool, a.keys, {SWKBD, FONT_STD, FONT_EXT, NGWORDS, *FONTS_CJK})
     missing = [t for t in (SWKBD, FONT_STD, FONT_EXT, NGWORDS) if t not in ncas]
     if missing:
         print("not found in the firmware folder: " + ", ".join(missing), file=sys.stderr)
@@ -99,6 +101,14 @@ def main():
                 os.makedirs(os.path.join(a.out, "fonts"), exist_ok=True)
                 for n in names:
                     if os.path.isfile(os.path.join(d, n)):
+                        shutil.copy2(os.path.join(d, n), os.path.join(a.out, "fonts", n))
+        for tid in FONTS_CJK:   # optional: every bfttf the title holds
+            if tid in ncas:
+                d = os.path.join(tmp, tid)
+                hactool(a.hactool, a.keys, ["--romfsdir=" + d, ncas[tid]])
+                os.makedirs(os.path.join(a.out, "fonts"), exist_ok=True)
+                for n in os.listdir(d) if os.path.isdir(d) else []:
+                    if n.endswith(".bfttf"):
                         shutil.copy2(os.path.join(d, n), os.path.join(a.out, "fonts", n))
         if NGWORDS in ncas:
             hactool(a.hactool, a.keys, ["--romfs=" + os.path.join(a.out, NGWORDS + ".romfs"), ncas[NGWORDS]])
