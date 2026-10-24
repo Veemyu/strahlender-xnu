@@ -188,7 +188,28 @@ def file_hashes(path):
     return sha256.hexdigest(), sha1.hexdigest()
 
 
-def build_manifest(work, title_id, title_version, display_version, update_applied, xci_size, nsp_size):
+def input_fingerprint(path):
+    """Content identity of one container or a folder of NCAs, without recording its path."""
+    if not path:
+        return ""
+    if os.path.isfile(path):
+        return file_hashes(path)[0]
+    digest = hashlib.sha256()
+    for parent, dirs, files in os.walk(path):
+        dirs.sort()
+        for name in sorted(files):
+            if not name.lower().endswith((".nca", ".tik")):
+                continue
+            full = os.path.join(parent, name)
+            relative = os.path.relpath(full, path).replace(os.sep, "/")
+            digest.update(relative.encode("utf-8", "surrogateescape"))
+            digest.update(b"\0")
+            digest.update(bytes.fromhex(file_hashes(full)[0]))
+    return digest.hexdigest()
+
+
+def build_manifest(work, title_id, title_version, display_version, update_applied, xci_size, nsp_size,
+                   base_kind=None, base_path=None, update_path=None):
     """Only hashes, title ID, version and sizes, no key material."""
     exefs_dir = os.path.join(work, "exefs")
     main_sha256, main_sha1 = file_hashes(os.path.join(exefs_dir, "main"))
@@ -206,13 +227,15 @@ def build_manifest(work, title_id, title_version, display_version, update_applie
         "title_version": title_version,
         "display_version": display_version,
         "update_applied": bool(update_applied),
-        "inputs": {"xci_size": xci_size, "nsp_size": nsp_size},
+        "inputs": {"xci_size": xci_size, "nsp_size": nsp_size,
+                   "base_kind": base_kind, "base_sha256": input_fingerprint(base_path),
+                   "update_sha256": input_fingerprint(update_path)},
         "exefs": {"main": {"sha256": main_sha256, "sha1": main_sha1}, "files_sha256": exefs_files},
         "romfs": {"files": count, "bytes": total},
     }
 
 
-def manifest_matches(work, xci_size, nsp_size):
+def manifest_matches(work, xci_size, nsp_size, base_kind=None, base_path=None, update_path=None):
     """True if manifest.json matches the inputs and the existing results."""
     try:
         with open(os.path.join(work, "manifest.json")) as f:
@@ -220,6 +243,10 @@ def manifest_matches(work, xci_size, nsp_size):
         if m.get("schema") != MANIFEST_SCHEMA or m.get("stage") != "extract":
             return False
         if m["inputs"]["xci_size"] != xci_size or m["inputs"]["nsp_size"] != nsp_size:
+            return False
+        if base_path and (m["inputs"].get("base_kind") != base_kind or
+                          m["inputs"].get("base_sha256") != input_fingerprint(base_path) or
+                          m["inputs"].get("update_sha256") != input_fingerprint(update_path)):
             return False
         main = os.path.join(work, "exefs", "main")
         if file_hashes(main)[0] != m["exefs"]["main"]["sha256"]:
@@ -259,6 +286,9 @@ def main(argv=None):
         p.add_argument("--work", required=True)
         p.add_argument("--xci-size", type=int, default=0)
         p.add_argument("--nsp-size", type=int, default=0)
+        p.add_argument("--base-kind", choices=("xci", "nsp", "nca"))
+        p.add_argument("--base-path")
+        p.add_argument("--update-path")
         if name == "write-manifest":
             p.add_argument("--title-id", required=True)
             p.add_argument("--title-version", type=int, default=0)
@@ -309,7 +339,8 @@ def main(argv=None):
         return 0
     if a.cmd == "write-manifest":
         m = build_manifest(a.work, a.title_id, a.title_version, a.display_version,
-                           a.update_applied, a.xci_size, a.nsp_size)
+                           a.update_applied, a.xci_size, a.nsp_size,
+                           a.base_kind, a.base_path, a.update_path)
         tmp = os.path.join(a.work, "manifest.json.tmp")
         with open(tmp, "w") as f:
             json.dump(m, f, indent=2)
@@ -317,7 +348,8 @@ def main(argv=None):
         os.replace(tmp, os.path.join(a.work, "manifest.json"))
         return 0
     if a.cmd == "check-manifest":
-        return 0 if manifest_matches(a.work, a.xci_size, a.nsp_size) else 1
+        return 0 if manifest_matches(a.work, a.xci_size, a.nsp_size,
+                                     a.base_kind, a.base_path, a.update_path) else 1
     return 2
 
 

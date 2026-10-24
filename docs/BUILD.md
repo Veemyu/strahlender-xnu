@@ -23,7 +23,7 @@ Two guided installers do everything in this guide for you. Run `--dry-run` first
   the official Homebrew installer if it is missing), the Homebrew packages, Python, and a private Python environment
   `work/venv` (Pillow, capstone, unicorn). Then you drag your `.xci`, optionally the update `.nsp`, and your `prod.keys`
   into the window, and it runs the stages `tools`, `extract` and `recomp` of `scripts/build_all.sh` (section 4).
-  About an hour and 60 GB of free space.
+  Plan for at least 40 GB of free space; a measured run on a prepared 8-thread Mac took about 8 minutes (section 4.2).
 - **Linux:** run `./install-linux.sh`. It detects `apt`, `dnf` or `pacman`, lists the missing development packages and installs
   them after you agree (the package manager asks for your administrator password through `sudo`; the script never sees it).
   The Vulkan Memory Allocator is not in the official Arch packages: the script asks you to install it from the AUR yourself.
@@ -87,6 +87,23 @@ scripts/build_all.sh --only tools,extract --xci <path/to/game.xci> --keys <folde
 
 Use `--prod-keys <file>` and `--title-keys <file>` instead of `--keys` if your keys are in separate files.
 Add `--nsp <update.nsp>` if you have the update.
+The base source may instead be `--base-nsp <base.nsp>` or `--base-nca-dir <folder>`.
+Use exactly one base source. The NCA folder must contain the original `.nca` files
+and, when required, its `.tik` tickets. Extraction identifies the base Program NCA
+and applies the optional update to that base. The cache records content hashes of
+the selected sources; editing a file without changing its size still invalidates it.
+
+The development GUI now sends these three source forms through the same extraction
+stage, then builds the native macOS or Linux desktop target and installs it. On macOS,
+the default destination is `/Applications/BDSP.app`; the installer updates only
+an app identified by its own receipt and unchanged executable. A different app
+at that path is left untouched and reported as a conflict. On Linux, the package lives under
+`$XDG_DATA_HOME/strahlender-xnu/app` (or `~/.local/share/strahlender-xnu/app`),
+with a launcher at `~/.local/bin/strahlender-xnu` and a desktop entry under the
+user's `applications/` directory. Saves live beside the Linux package in `saves/`,
+outside its replaceable `app/` folder. Runtime libraries still come from the
+documented system packages. The GUI connection is under development and has only
+been exercised with synthetic installation fixtures, not an end-to-end game build.
 
 ### 4.2 Build the app
 
@@ -101,14 +118,23 @@ Original icons and their language variants are generated only from user-provided
 game data. Artwork and generated assets remain under ignored `work/`.
 See [recomp-icons.md](recomp-icons.md) for extraction, selection, and platform styling.
 
-The first build takes about 28 minutes under load (measured, see `docs/recomp-macapp.md`). Later builds
-reuse the markers and are much faster (section 7).
+On 2026-10-23, a clean GitHub clone plus the current local source changes took **7 min 42 s**
+from the start of `scripts/build_all.sh --only tools,extract,recomp --target macos` to a signed
+`BDSP.app` on an 8-thread/16-GiB Apple Silicon Mac. This used a base XCI without an update NSP,
+8 parallel Clang jobs, and fresh project `work/` and app-data directories. The GitHub clone took
+1 s; creating a Python venv and installing four packages took another 3 s with locally cached
+package downloads. Xcode 27.1 and the Homebrew libraries were already installed. The measured
+build stages were: hactool setup 5 s, XCI extraction 23 s, C generation 68 s, C compilation
+about 5 min 25 s (312 s reported inside the compile script), then module images, runtime/Metal,
+app assembly, signing and RomFS setup. The result was a 361-MiB arm64 app whose signature passed
+`codesign --verify --deep --strict`. Historical slower runs under load are in
+`docs/recomp-macapp.md`. Later builds reuse the markers and are much faster (section 7).
 
 Useful options:
 
 | Option | Meaning |
 |---|---|
-| `--recomp-jobs N` | number of compiler jobs, 1 to 4 (default 4) |
+| `--recomp-jobs N` | override the CPU/RAM-based number of parallel compiler jobs |
 | `--recomp-o0-kb N` | functions from N KB upward are compiled with `-O0` (default 300) |
 | `--force` | rebuild the stage even if the marker matches |
 | `--hardened` | sign with the Hardened Runtime (default: ad hoc only) |
@@ -263,6 +289,17 @@ That fallback embeds the SDL X11 window; it needs Xwayland on a Wayland desktop.
 The in-process host creates its own Vulkan surface and supports native Wayland
 or X11 without embedding a foreign window.
 
+On 2026-10-23, a fresh Nobara 44 x86_64 clone was built with only a base XCI
+and update NSP supplied as game files, using the installed Fedora development
+packages. `eh_gen` took 52.9 s; 12 parallel Clang processes compiled all
+2,369 generated C files in 351.3 s (57 with `-O0`, 2,312 with `-O1`). The
+initial guided run exposed macOS-only includes and a QoS call in the runtime;
+after platform guards were added, `install-linux.sh` completed and the Qt/Vulkan
+binary ran for 10 seconds on native Wayland, presenting 306 frames. A warm
+rerun of the guided script regenerated C and linked the guest library in 68 s;
+no source objects needed recompilation. The executable dynamically uses the
+installed system libraries. More detail: [clang-optimierungsstufen.md](../todo/clang-optimierungsstufen.md).
+
 For headless renderer checks use `bash scripts/recomp/linux/local/vk_build.sh`,
 then `bash scripts/recomp/linux/local/vk_run.sh --headless --timeout 40 --screenshot-after 300`.
 Captures are written to `work/recomp/shots/`; the run prints its log to the terminal. The runtime reads its
@@ -320,8 +357,8 @@ Never commit concrete session IDs or authentication paths.
 - **Texture outside the guest window:** the runtime logs `[vk] texture outside the guest window`
   and skips the upload (guard in `textures.c`). Effect on the picture not verified. Open.
 - **Rare hangs on the loading screen:** open. Cause not known.
-- FFmpeg headers/libraries now come from matching installed development packages.
-  A new package-only full build must still be verified after the prerequisites are installed.
+- FFmpeg headers/libraries come from matching installed development packages;
+  the Nobara 44 package-only build and short native Wayland run passed on 2026-10-23.
 - **Frame rate:** `BDSP_FPS` caps the frame rate (30, 60, 120). Measured in a window only; not verified across sessions.
 - No sound. Input state is not reported. Compute workloads are not supported.
 - Windows is not supported. X11 and full screen (F11) are not tested.
@@ -348,7 +385,7 @@ The Unity-era stages `il2cpp`, `masterdata`, `video` and `audio` were removed (t
 `scripts/recomp/app/recomp_build.sh` runs six steps:
 
 1. **Generator:** `work/exefs` modules → C in `work/recomp/gen4` (about 1 GB). Marker `recomp-gen`.
-2. **Compile:** C → objects in `work/recomp/obj4`, at most 4 jobs. Functions above `--recomp-o0-kb` use `-O0`.
+2. **Compile:** C → objects in `work/recomp/obj4`. The default number of parallel Clang processes is based on available CPUs and total RAM (2 GiB system reserve, about 1.5 GiB per compiler); `--recomp-jobs N` overrides it. Functions above `--recomp-o0-kb` use `-O0`.
    Marker `recomp-obj`.
 3. **Module images:** `mkimages.sh` with `hle_nvn.txt` → `work/recomp/img_app`.
 4. **Runtime:** `rt-bdsp/build.sh` with `BDSP_APP=1` → `work/recomp/bdsp_app`.
@@ -380,7 +417,7 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 | Build uses old NVN code | `NVN_KEEP=1` is set, so `prepare.sh` was skipped. Unset it or run `prepare.sh`. |
 | `marker matches` … `skipped` / stage skipped | Inputs did not change. Use `--force` to rebuild. |
 | `work/exefs/main missing` (exit 10) | Run stage `extract` first. |
-| Not enough disk space (exit 8) | Free space or lower the requirement with `--min-free-gb N`. The macOS build needs tens of GB. |
+| Not enough disk space (exit 8) | Free space or deliberately lower the requirement with `--min-free-gb N`. The macOS build needs tens of GB. |
 | Compile fails (exit 4), memory error | Use `--recomp-jobs 2`. Check `work/logs/recomp-compile.log`. |
 | `No connected, unlocked iPad found.` | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
 | Build fails in `xcodebuild` (signing) | Read `work/builds/ios-recomp-xcodebuild.log`. Set `TEAM_ID` and sign in with your account in Xcode. |

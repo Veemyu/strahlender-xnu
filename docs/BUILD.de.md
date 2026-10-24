@@ -22,8 +22,8 @@ Zwei geführte Installer erledigen alles aus dieser Anleitung für dich. Mit `--
 - **macOS:** Doppelklick auf `install.command` im Finder oder `./install.command`. Er prüft Xcode, Homebrew (und bietet den
   offiziellen Homebrew-Installer an, falls es fehlt), die Homebrew-Pakete, Python und eine private Python-Umgebung `work/venv`
   (Pillow, capstone, unicorn). Danach ziehst du deine `.xci`, optional das Update `.nsp` und deine `prod.keys` in das Fenster,
-  und er führt die Stufen `tools`, `extract` und `recomp` von `scripts/build_all.sh` aus (Abschnitt 4). Etwa eine Stunde und
-  60 GB freier Platz.
+  und er führt die Stufen `tools`, `extract` und `recomp` von `scripts/build_all.sh` aus (Abschnitt 4). Plane mindestens 40 GB freien
+  Platz ein; ein gemessener Lauf auf einem vorbereiteten Mac mit acht CPU-Threads dauerte etwa acht Minuten (Abschnitt 4.2).
 - **Linux:** `./install-linux.sh` starten. Er erkennt `apt`, `dnf` oder `pacman`, listet die fehlenden Entwicklungspakete und
   installiert sie nach deiner Zustimmung (der Paketmanager fragt per `sudo` nach deinem Administrator-Passwort, das Skript sieht
   es nie). Der Vulkan Memory Allocator steckt auf Arch nicht in den offiziellen Paketen: Das Skript bittet dich, ihn selbst aus dem
@@ -99,14 +99,13 @@ scripts/build_all.sh --only recomp --target macos
 
 Ergebnis: `work/builds/macos-recomp/BDSP.app` (arm64, Metal, ad hoc signiert).
 
-Der erste Bau dauert unter Last rund 28 Minuten (gemessen, siehe `docs/recomp-macapp.md`). Spätere Bauten
-nutzen die Marker wieder und sind deutlich schneller (Abschnitt 7).
+Am 23.10.2026 benötigten die Stufen `tools,extract,recomp` aus einem frischen GitHub-Clone mit den aktuellen lokalen Quelländerungen **7 Minuten 42 Sekunden** bis zur signierten `BDSP.app`. Gemessen wurde auf einem Apple-Silicon-Mac mit 8 CPU-Threads und 16 GiB RAM, mit einer Basis-XCI ohne Update-NSP und leeren Projekt-Builddaten. Davon entfielen 5 Sekunden auf Hactool, 23 Sekunden auf die Extraktion, 68 Sekunden auf die C-Generierung und etwa 5 Minuten 25 Sekunden auf den C-Compile mit acht Jobs. Danach folgten Modulbilder, Runtime/Metal, Bundle, Signatur und RomFS. Die 361 MiB große arm64-App bestand `codesign --verify --deep --strict`. Der GitHub-Clone dauerte zusätzlich etwa eine Sekunde; Python-Venv und vier Pakete etwa drei Sekunden mit vorhandenem Pip-Downloadcache. Xcode 27.1 und Homebrew-Bibliotheken waren bereits installiert. Historische langsamere Messungen unter Last stehen in `docs/recomp-macapp.md`. Spätere Bauten nutzen die Marker wieder und sind deutlich schneller (Abschnitt 7).
 
 Nützliche Optionen:
 
 | Option | Bedeutung |
 |---|---|
-| `--recomp-jobs N` | Anzahl der Compiler-Jobs, 1 bis 4 (Standard 4) |
+| `--recomp-jobs N` | überschreibt die aus CPU und RAM berechnete Anzahl paralleler Compiler |
 | `--recomp-o0-kb N` | Funktionen ab N KB werden mit `-O0` übersetzt (Standard 300) |
 | `--force` | Stufe neu bauen, auch wenn der Marker passt |
 | `--hardened` | mit Hardened Runtime signieren (Standard: nur ad hoc) |
@@ -207,9 +206,18 @@ Wayland und X11. Die getrennte X11-Hülle bleibt mit `BDSP_QT_PROCESS=1` verfüg
 Modulbilder für `vk_qt.sh` und `vk_run.sh` liegen unter `work/recomp/img_gfx`. Einmal erzeugen: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh` (wie bei der macOS-App, `scripts/recomp/app/recomp_build.sh`).
 Konkrete Sitzungs-IDs und Authentifizierungspfade committe nie.
 
-Die frühere Variante mit kopierten Headern wurde gebaut und kurz gestartet.
-Ein neuer vollständiger Paket-Build muss nach Installation der noch fehlenden
-Devel-Pakete geprüft werden. Linux-Ton und längere Spiel-/Darstellungstests bleiben offen.
+Am 23.10.2026 wurde ein frischer Nobara-44-x86_64-Checkout mit Basis-XCI und
+Update-NSP als einzigen Spieldaten und den installierten Fedora-Entwicklungspaketen
+gebaut. `eh_gen` dauerte 52,9 s; zwölf parallele Clang-Prozesse übersetzten
+2.369 C-Dateien in 351,3 s (57 mit `-O0`, 2.312 mit `-O1`). Beim ersten
+geführten Lauf zeigten sich macOS-spezifische Includes und ein QoS-Aufruf in
+der Runtime; nach Plattform-Guards lief `install-linux.sh` bis zum Ergebnis.
+Ein zehnsekündiger Start der Qt-/Vulkan-App unter nativem Wayland zeigte 306
+Frames. Der erneute geführte Lauf erzeugte C und linkte die Bibliothek in 68 s;
+keine C-Objekte mussten erneut kompiliert werden. Die Binärdatei nutzt dynamisch
+die installierten Systembibliotheken. Die vollständigen Optimierungslisten
+stehen in [clang-optimierungsstufen.md](../todo/clang-optimierungsstufen.md).
+Linux-Ton und längere Spiel-/Darstellungstests bleiben offen.
 Messungen und Vulkan-Stand: [recomp-linux.md](recomp-linux.md) (englisch).
 
 ## 7. Überblick über die Bau-Stufen
@@ -233,7 +241,7 @@ Die Unity-Stufen `il2cpp`, `masterdata`, `video` und `audio` wurden entfernt (si
 `scripts/recomp/app/recomp_build.sh` führt sechs Schritte aus:
 
 1. **Generator:** Module aus `work/exefs` → C in `work/recomp/gen4` (rund 1 GB). Marker `recomp-gen`.
-2. **Übersetzen:** C → Objekte in `work/recomp/obj4`, höchstens 4 Jobs. Funktionen ab `--recomp-o0-kb` werden mit `-O0` übersetzt. Marker `recomp-obj`.
+2. **Übersetzen:** C → Objekte in `work/recomp/obj4`. Die Zahl paralleler Clang-Prozesse wird aus verfügbaren CPUs und RAM bestimmt (2 GiB Systemreserve, etwa 1,5 GiB pro Compiler); `--recomp-jobs N` überschreibt sie. Funktionen ab `--recomp-o0-kb` werden mit `-O0` übersetzt. Marker `recomp-obj`.
 3. **Modulbilder:** `mkimages.sh` mit `hle_nvn.txt` → `work/recomp/img_app`.
 4. **Laufzeit:** `rt-bdsp/build.sh` mit `BDSP_APP=1` → `work/recomp/bdsp_app`.
 5. **App:** Bundle, `Info.plist`, Symbol, Bibliotheken, ad hoc Signatur.

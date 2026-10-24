@@ -192,6 +192,31 @@ class ManifestTests(unittest.TestCase):
             f.write(b"changed")
         self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # main changed
 
+    def test_source_content_changes_invalidate_cache_even_at_same_size(self):
+        base = os.path.join(self.work, "base.nsp")
+        update = os.path.join(self.work, "update.nsp")
+        for path in (base, update):
+            with open(path, "wb") as file:
+                file.write(b"old")
+        manifest = bh.build_manifest(self.work, "0100000011d90000", 0, "", True, 3, 3,
+                                     "nsp", base, update)
+        with open(os.path.join(self.work, "manifest.json"), "w") as file:
+            json.dump(manifest, file)
+        self.assertTrue(bh.manifest_matches(self.work, 3, 3, "nsp", base, update))
+        with open(update, "wb") as file:
+            file.write(b"new")
+        self.assertFalse(bh.manifest_matches(self.work, 3, 3, "nsp", base, update))
+
+    def test_nca_folder_fingerprint_covers_nested_nca_and_tickets(self):
+        folder = os.path.join(self.work, "nca")
+        os.mkdir(folder)
+        with open(os.path.join(folder, "main.NCA"), "wb") as file:
+            file.write(b"nca")
+        original = bh.input_fingerprint(folder)
+        with open(os.path.join(folder, "rights.tik"), "wb") as file:
+            file.write(b"ticket")
+        self.assertNotEqual(original, bh.input_fingerprint(folder))
+
 
 if __name__ == "__main__":
     unittest.main()

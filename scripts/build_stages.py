@@ -32,7 +32,7 @@ EX_DISK = 8
 STAGES = ["tools", "extract", "recomp", "shaders"]
 ALIASES = {"shader": "shaders", "macapp": "recomp"}
 MARKER_SCHEMA = 1
-MIN_FREE_GB = 60
+MIN_FREE_GB = 40
 RECOMP_MIN_FREE_GB = 25   # generator C, objects, binary, app, intermediate copies (measured about 3 GB; the rest is reserve for the compiler and swapping)
 HEAVY_STAGES = {"extract", "shaders"}
 TARGETS = ("macos", "ios", "all")
@@ -260,7 +260,9 @@ def free_gb(path):
     probe = path
     while not os.path.exists(probe):
         probe = os.path.dirname(probe) or "."
-    return shutil.disk_usage(probe).free / (1 << 30)
+    # Display and thresholds use decimal GB (1 GB = 1,000,000,000 bytes),
+    # matching macOS System Settings and APFS capacity reporting.
+    return shutil.disk_usage(probe).free / 1_000_000_000
 
 
 def _run_ok(cmd, env=None, timeout=60):
@@ -282,13 +284,32 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
     def add(name, ok, detail="", hint="", level="missing"):
         items.append({"name": name, "ok": bool(ok), "detail": detail, "hint": hint, "level": level})
 
+    def python_imports(modules, pydeps=None):
+        """Use the same import paths as the build, including an existing CLI venv."""
+        private_runtime = os.environ.get("BDSP_INSTALLER_PRIVATE_RUNTIME") == "1"
+        candidates = ([sys.executable] if private_runtime else [
+            os.path.join(work, "venv", "Scripts", "python.exe") if os.name == "nt"
+            else os.path.join(work, "venv", "bin", "python3"), sys.executable])
+        env = os.environ.copy()
+        if pydeps and not private_runtime:
+            env["PYTHONPATH"] = os.pathsep.join(filter(None, (pydeps, env.get("PYTHONPATH"))))
+        code = "; ".join("import " + module for module in modules)
+        for python in candidates:
+            if python != sys.executable and not os.access(python, os.X_OK):
+                continue
+            ok, _ = run([python, "-I" if private_runtime else "-B", "-c", code], env=env)
+            if ok:
+                return True
+        return False
+
     major = sys.version_info
     add("python3 >= 3.9", major >= (3, 9), "%d.%d.%d" % major[:3], "brew install python")
     if s & HEAVY_STAGES:
         gb = free(work)
-        add("Disk space >= %d GB free" % min_free_gb, gb >= min_free_gb, "%.0f GB free under %s" % (gb, work),
-            "Free up space (caches, old work/ subfolders) or deliberately ask for less: --min-free-gb N "
-            "(total need with bundles, copies and builds roughly 60 GB)")
+        add("Disk space >= %d GB free" % min_free_gb, gb >= min_free_gb, "%.1f GB free under %s" % (gb, work),
+            "Free up disk space before continuing. This run requires at least %d GB for input copies, "
+            "extracted data and build output. Lowering the check can make the build run out of disk space."
+            % min_free_gb)
 
     hactool = os.path.join(tools_dir, "hactool", "hactool")
     if "tools" in s:
@@ -301,8 +322,9 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         add("hactool", True, "built by stage tools", level="note")
 
     if "shaders" in s:
-        add("Python packages (UnityPy, lz4) in tools/pydeps", os.path.isdir(os.path.join(tools_dir, "pydeps", "UnityPy")),
-            os.path.join(tools_dir, "pydeps"), "python3 -m pip install --target tools/pydeps UnityPy lz4")
+        pyd = os.path.join(tools_dir, "pydeps")
+        add("Python packages (UnityPy, lz4) for shaders", python_imports(("UnityPy", "lz4.block"), pyd),
+            "", "python3 -m pip install --target tools/pydeps UnityPy lz4")
         for c in ("make", "cc"):
             add(c + " (for shader_translator)", which(c), "", "xcode-select --install (Command Line Tools)")
 
@@ -310,24 +332,23 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         if not (s & HEAVY_STAGES):   # otherwise the general space check (stricter) already covers it
             need = min(RECOMP_MIN_FREE_GB, min_free_gb)
             gb = free(work)
-            add("Disk space >= %d GB free (stage recomp)" % need, gb >= need, "%.0f GB free under %s" % (gb, work),
+            add("Disk space >= %d GB free (stage recomp)" % need, gb >= need, "%.1f GB free under %s" % (gb, work),
                 "Free up space (delete old work/recomp subfolders such as img*, gen, obj*, spike2) or deliberately ask for less: --min-free-gb N")
         add("clang (Homebrew LLVM in PATH)", which("clang"), which("clang") or "", "brew install llvm and put /opt/homebrew/opt/llvm/bin before /usr/bin in the PATH")
         ok, _ = run(["/usr/bin/xcrun", "--find", "clang"])
         add("Apple clang (Objective-C, Command Line Tools)", ok, "", "xcode-select --install")
-        for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync is part of macOS"), ("codesign", "xcode-select --install"),
+        for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync is part of macOS"), ("strip", "xcode-select --install"), ("codesign", "xcode-select --install"),
                         ("install_name_tool", "xcode-select --install"), ("otool", "xcode-select --install"),
                         ("iconutil", "xcode-select --install"), ("plutil", "plutil is part of macOS")):
             add(c + " (for the app)", which(c), "", hint)
         pc = which("pkg-config")
         ok, _ = run([pc, "--exists", "sdl3", "libavcodec", "libavformat", "libavutil"]) if pc else (False, "")
         add("SDL3 and FFmpeg libraries (pkg-config)", ok, "", "brew install sdl3 ffmpeg")
-        ok, _ = run([sys.executable, "-c", "from PIL import Image"])
-        add("Pillow (app icons)", ok, "", "python3 -m pip install Pillow")
+        add("Pillow (app icons)", python_imports(("PIL.Image",)), "", "python3 -m pip install Pillow")
         pyd = os.path.join(tools_dir, "pydeps")
-        add("Python packages capstone, unicorn in tools/pydeps (generator)",
-            os.path.isdir(os.path.join(pyd, "capstone")) and os.path.isdir(os.path.join(pyd, "unicorn")), pyd,
-            "python3 -m pip install --target tools/pydeps capstone unicorn")
+        add("Python packages capstone, unicorn, lz4 (generator)",
+            python_imports(("capstone", "unicorn", "lz4.block"), pyd), "",
+            "python3 -m pip install --target tools/pydeps capstone unicorn lz4")
         up = os.path.join(root, "scripts", "recomp", "upstream")
         add("Vendored LASRecomp parts (generator, headers; MIT)",
             os.path.isfile(os.path.join(up, "generator", "gen.py")) and os.path.isfile(os.path.join(up, "runtime", "cpu.h")), up,

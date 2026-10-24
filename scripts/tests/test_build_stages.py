@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import build_stages as bs  # noqa: E402
@@ -148,6 +149,8 @@ class PreflightTests(unittest.TestCase):
         write(os.path.join(self.tools, "hactool", "hactool"))
         os.chmod(os.path.join(self.tools, "hactool", "hactool"), 0o755)
         os.makedirs(os.path.join(self.tools, "pydeps", "UnityPy"))
+        write(os.path.join(self.tools, "pydeps", "lz4", "__init__.py"), "")
+        write(os.path.join(self.tools, "pydeps", "lz4", "block.py"), "")
         os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
         os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
         write(os.path.join(self.root, "scripts", "recomp", "upstream", "generator", "gen.py"))
@@ -159,7 +162,7 @@ class PreflightTests(unittest.TestCase):
     def run_pf(self, stages, target="all", which=None, run=None, free=lambda p: 200.0):
         which = which or (lambda c: "/usr/bin/" + c)
         run = run or (lambda cmd, env=None, timeout=60: (True, "ok"))
-        return bs.preflight(stages, target, self.root, self.work, self.tools, 60,
+        return bs.preflight(stages, target, self.root, self.work, self.tools, bs.MIN_FREE_GB,
                             which=which, run=run, free=free)
 
     def names(self, items, ok):
@@ -170,14 +173,18 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(self.names(items, False), [])
 
     def test_disk_requirement(self):
-        items = self.run_pf(["shaders"], free=lambda p: 42.0)
-        self.assertEqual(self.names(items, False), ["Disk space >= 60 GB free"])
+        items = self.run_pf(["shaders"], free=lambda p: 32.0)
+        self.assertEqual(self.names(items, False), ["Disk space >= 40 GB free"])
         lines, missing, disk = bs.format_preflight(items)
         self.assertTrue(disk)
         with contextlib.redirect_stdout(io.StringIO()):
             rc = bs.main(["preflight", "--stages", "shaders", "--root", self.root, "--work", self.work,
                           "--tools-dir", self.tools, "--min-free-gb", "100000000"])
         self.assertEqual(rc, bs.EX_DISK)
+
+    def test_free_space_uses_decimal_gigabytes(self):
+        with patch.object(bs.shutil, "disk_usage", return_value=type("Usage", (), {"free": 50_000_000_000})()):
+            self.assertEqual(bs.free_gb(self.work), 50.0)
 
     def test_only_selected_stages_are_checked(self):
         items = self.run_pf(["extract"], which=lambda c: None)
@@ -186,9 +193,11 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(self.names(items, False), ["make (for shader_translator)", "cc (for shader_translator)"])
 
     def test_shaders_need_unitypy(self):
-        os.rmdir(os.path.join(self.tools, "pydeps", "UnityPy"))
-        items = self.run_pf(["shaders"])
-        self.assertEqual(self.names(items, False), ["Python packages (UnityPy, lz4) in tools/pydeps"])
+        def run(cmd, env=None, timeout=60):
+            return ("import UnityPy" not in cmd[-1], "")
+
+        items = self.run_pf(["shaders"], run=run)
+        self.assertEqual(self.names(items, False), ["Python packages (UnityPy, lz4) for shaders"])
 
     def test_missing_hactool_is_reported_for_extract(self):
         os.remove(os.path.join(self.tools, "hactool", "hactool"))
@@ -260,14 +269,42 @@ class RecompStageTests(unittest.TestCase):
 
     def test_missing_clone_and_packages_get_hints(self):
         os.remove(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
-        os.rmdir(os.path.join(self.tools, "pydeps", "unicorn"))
-        items = self.pf()
-        self.assertEqual(sorted(self.missing(items)), ["Python packages capstone, unicorn in tools/pydeps (generator)",
+        def run(cmd, env=None, timeout=60):
+            return ("import unicorn" not in cmd[-1], "")
+
+        items = self.pf(run=run)
+        self.assertEqual(sorted(self.missing(items)), ["Python packages capstone, unicorn, lz4 (generator)",
                                                        "Vendored LASRecomp parts (generator, headers; MIT)"])
         _, missing, _ = bs.format_preflight(items)
         text = "\n".join(bs.install_list(missing))
         self.assertIn("git checkout -- scripts/recomp/upstream", text)
         self.assertNotIn("sudo ", text)
+
+    def test_generator_packages_are_imported_with_pydeps_on_pythonpath(self):
+        commands = []
+
+        def run(cmd, env=None, timeout=60):
+            commands.append((cmd, env))
+            return ("import lz4.block" not in cmd[-1], "")
+
+        items = self.pf(run=run)
+        self.assertIn("Python packages capstone, unicorn, lz4 (generator)", self.missing(items))
+        generator = next(env for cmd, env in commands if "import capstone" in cmd[-1])
+        self.assertEqual(generator["PYTHONPATH"].split(os.pathsep)[0], os.path.join(self.tools, "pydeps"))
+
+    def test_private_runtime_checks_only_its_isolated_interpreter(self):
+        commands = []
+
+        def run(cmd, env=None, timeout=60):
+            commands.append((cmd, env))
+            return True, ""
+
+        with patch.dict(os.environ, {"BDSP_INSTALLER_PRIVATE_RUNTIME": "1"}):
+            self.pf(run=run)
+        imports = [(cmd, env) for cmd, env in commands if cmd[-1].startswith("import ")]
+        self.assertTrue(imports)
+        self.assertTrue(all(cmd[0] == sys.executable and cmd[1] == "-I" for cmd, _ in imports))
+        self.assertTrue(all(env.get("PYTHONPATH") == os.environ.get("PYTHONPATH") for _, env in imports))
 
     def test_ios_target_does_not_check_mac_app_tools(self):
         names = [i["name"] for i in self.pf(which=lambda c: None, target="ios")]

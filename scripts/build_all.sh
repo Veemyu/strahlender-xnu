@@ -11,18 +11,19 @@
 #   scripts/build_all.sh --from extract --to recomp            only a range of the order
 #   scripts/build_all.sh --only tools,extract                   exactly these stages
 #   scripts/build_all.sh preflight                              only check the prerequisites
-# Inputs (extract only): --xci FILE, --nsp FILE (optional), --keys FOLDER | --prod-keys FILE [--title-keys FILE]
+# Inputs (extract only): --xci FILE | --base-nsp FILE | --base-nca-dir FOLDER, --nsp FILE (optional update),
+#   --keys FOLDER | --prod-keys FILE [--title-keys FILE]
 # Control:
 #   --work FOLDER       working folder (default: work/, gitignored)
 #   --target T          macos, ios or all (default: all) for recomp
 #   --dry-run           run nothing, only show plan, marker status and commands
 #   --from S / --to S   range of the stage order;  --only S[,S]  exactly these stages
 #   --force             regenerate the selected stages even if the marker matches
-#   --no-preflight      skip the preflight;  --min-free-gb N  minimum free space in the preflight (default 60)
+#   --no-preflight      skip the preflight;  --min-free-gb N  minimum free space in the preflight (default 40)
 #   --keep-nca          keep the unpacked NCAs (several GB)
 #   --shader-only NAME  only one shader (test, stage shaders)
 #   Stage recomp (macOS app from the recompilation, work/builds/macos-recomp/BDSP.app; only for --target macos|all):
-#   --recomp-jobs N     number of compilers (default 4, at most 4);  --recomp-o0-kb N  outliers from N KB compiled with -O0 (default 300)
+#   --recomp-jobs N     override CPU/RAM-based compiler count;  --recomp-o0-kb N  outliers from N KB compiled with -O0 (default 300)
 #   --hardened          sign the app with the hardened runtime (default: ad hoc only);  --no-install-data  do not clone the RomFS to Application Support
 # Environment: TOOLS_DIR, MIN_FREE_GB (reserve in extract, default 25), DEVELOPER_DIR,
 #   SHADER_USED
@@ -42,15 +43,15 @@ HACTOOL="$HACTOOL_DIR/hactool"
 HACTOOL_REPO="https://github.com/SciresM/hactool"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 MIN_FREE_GB="${MIN_FREE_GB:-25}"
-PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-60}"
+PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-40}"
 ALL_STAGES="tools extract recomp shaders"
 
-XCI="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
+XCI="" BASE_NSP="" BASE_NCA_DIR="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
 DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all
 SHADER_ONLY=""
 EXTRACT_ACTIVE=0
-RECOMP_JOBS=4 RECOMP_O0_KB=300 RECOMP_HARDENED=0 RECOMP_DATA=1
+RECOMP_JOBS=auto RECOMP_O0_KB=300 RECOMP_HARDENED=0 RECOMP_DATA=1
 SELECTED="" RESULTS="" UPSTREAM_DIRTY=0
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -140,14 +141,16 @@ stage_tools() {
 # ---------- Stage extract ----------
 abspath() { local d; d="$(cd "$(dirname "$1")" && pwd)" && echo "$d/$(basename "$1")"; }
 file_size() { wc -c < "$1" | tr -d ' '; }   # (portable: stat -f %z is BSD only)
-free_gb() { df -k "$1" | awk 'NR==2 {print int($4 / 1048576)}'; }
+free_gb() { df -k "$1" | awk 'NR==2 {print int($4 * 1024 / 1000000000)}'; }
 
 # Classify all NCAs of a folder: one TSV line per NCA (non-critical fields only)
 classify_dir() {
   local dir="$1" out="$2" f line
   : >"$out"
-  for f in "$dir"/*.nca; do
+  for f in "$dir"/*.nca "$dir"/*.NCA; do
     [ -e "$f" ] || continue
+    # Case-insensitive macOS volumes may match the same file twice.
+    [ -z "$(awk -F'\t' -v p="$f" '$1 == p {print 1; exit}' "$out")" ] || continue
     line="$("$HACTOOL" -k "$PROD_KEYS" -i "$f" 2>/dev/null | python3 "$HELPERS" nca-info --path "$f" 2>/dev/null)" || {
       echo "  Note: $(basename "$f") not readable (skipped)" >&2; continue; }
     echo "$line" >>"$out"
@@ -170,12 +173,17 @@ hq() { "$HACTOOL" -k "$PROD_KEYS" "$@" >/dev/null 2>&1; }
 
 stage_extract() {
   log "Stage extract"
-  if [ -z "$XCI" ] && [ "$FORCE" -eq 0 ] && [ -s "$WORK/manifest.json" ] && [ -s "$WORK/exefs/main" ] && [ -d "$WORK/romfs" ]; then
-    log "extract: no --xci given, using the existing result in $WORK"
+  if [ -z "$XCI$BASE_NSP$BASE_NCA_DIR" ] && [ "$FORCE" -eq 0 ] && [ -s "$WORK/manifest.json" ] && [ -s "$WORK/exefs/main" ] && [ -d "$WORK/romfs" ]; then
+    log "extract: no base source given, using the existing result in $WORK"
     stage_result extract "present"; return 0
   fi
-  [ -n "$XCI" ] || die 2 "--xci missing (the extract stage needs your own XCI; usage see docs/BUILD.md)"
-  [ -f "$XCI" ] || die 3 "XCI not found: $XCI"
+  local base_kind base_path base_dir base_size
+  if [ -n "$XCI" ]; then base_kind=xci; base_path="$XCI"
+  elif [ -n "$BASE_NSP" ]; then base_kind=nsp; base_path="$BASE_NSP"
+  elif [ -n "$BASE_NCA_DIR" ]; then base_kind=nca; base_path="$BASE_NCA_DIR"
+  else die 2 "Base game missing: use --xci, --base-nsp or --base-nca-dir"; fi
+  if [ "$base_kind" = nca ]; then [ -d "$base_path" ] || die 3 "NCA folder not found: $base_path"
+  else [ -f "$base_path" ] || die 3 "Base game not found: $base_path"; fi
   [ -z "$NSP" ] || [ -f "$NSP" ] || die 3 "NSP not found: $NSP"
   if [ -n "$KEYS_DIR" ]; then
     [ -n "$PROD_KEYS" ] || PROD_KEYS="$KEYS_DIR/prod.keys"
@@ -186,17 +194,21 @@ stage_extract() {
   [ -z "$TITLE_KEYS" ] || [ -f "$TITLE_KEYS" ] || TITLE_KEYS=""
   PROD_KEYS="$(abspath "$PROD_KEYS")"
   [ -z "$TITLE_KEYS" ] || TITLE_KEYS="$(abspath "$TITLE_KEYS")"
-  XCI="$(abspath "$XCI")"
+  base_path="$(abspath "$base_path")"
   [ -z "$NSP" ] || NSP="$(abspath "$NSP")"
+  if [ "$base_kind" = nca ]; then base_size=$(( $(du -sk "$base_path" | awk '{print $1}') * 1024 ))
+  else base_size="$(file_size "$base_path")"; fi
+  local input_flags=(--base-kind "$base_kind" --base-path "$base_path")
+  [ -z "$NSP" ] || input_flags+=(--update-path "$NSP")
 
   if [ "$DRY" -eq 1 ]; then
     local dxs dns=0
-    dxs="$(file_size "$XCI")"; [ -z "$NSP" ] || dns="$(file_size "$NSP")"
-    if [ "$FORCE" -eq 0 ] && [ -d "$WORK" ] && python3 "$HELPERS" check-manifest --work "$WORK" --xci-size "$dxs" --nsp-size "$dns"; then
+    dxs="$base_size"; [ -z "$NSP" ] || dns="$(file_size "$NSP")"
+    if [ "$FORCE" -eq 0 ] && [ -d "$WORK" ] && python3 "$HELPERS" check-manifest --work "$WORK" --xci-size "$dxs" --nsp-size "$dns" "${input_flags[@]}"; then
       echo "    [dry-run] manifest.json matches: would be skipped"
       stage_result extract "skipped (plan)"
     else
-      echo "    [dry-run] would extract: hactool -t xci/pfs0, classify NCAs, apply update -> $WORK/exefs, $WORK/romfs (keys are never printed)"
+      echo "    [dry-run] would extract $base_kind: classify NCAs, apply update -> $WORK/exefs, $WORK/romfs (keys are never printed)"
       UPSTREAM_DIRTY=1; stage_result extract "would run"
     fi
     return 0
@@ -205,11 +217,17 @@ stage_extract() {
 
   mkdir -p "$WORK"
   WORK="$(cd "$WORK" && pwd)"
+  if [ "$base_kind" = nca ]; then
+    case "$base_path/" in
+      "$WORK/nca-base/"*|"$WORK/nca-update/"*|"$WORK/.stage/"*)
+        die 3 "The selected NCA folder is inside a temporary extraction folder; choose your original folder instead" ;;
+    esac
+  fi
   local xci_size nsp_size=0
-  xci_size="$(file_size "$XCI")"
+  xci_size="$base_size"
   [ -z "$NSP" ] || nsp_size="$(file_size "$NSP")"
 
-  if [ "$FORCE" -eq 0 ] && python3 "$HELPERS" check-manifest --work "$WORK" --xci-size "$xci_size" --nsp-size "$nsp_size"; then
+  if [ "$FORCE" -eq 0 ] && python3 "$HELPERS" check-manifest --work "$WORK" --xci-size "$xci_size" --nsp-size "$nsp_size" "${input_flags[@]}"; then
     log "extract: manifest.json matches, skipped (--force to regenerate)"
     stage_result extract "skipped"
     return 0
@@ -217,7 +235,7 @@ stage_extract() {
 
   # Space needed: XCI + NSP + RomFS (roughly as large as the XCI) plus reserve
   local need free
-  need=$(( MIN_FREE_GB + (xci_size * 2 + nsp_size) / 1073741824 + 1 ))
+  need=$(( MIN_FREE_GB + (xci_size * 2 + nsp_size + 999999999) / 1000000000 + 1 ))
   free="$(free_gb "$WORK")"
   [ "$free" -ge "$need" ] || die 8 "Not enough space: ${free} GB free, about ${need} GB needed (incl. ${MIN_FREE_GB} GB reserve)"
 
@@ -227,8 +245,19 @@ stage_extract() {
   mkdir -p "$WORK/.stage"
   local stage="$WORK/.stage" t0=$SECONDS
 
-  log "1/6 XCI: unpack the secure partition"
-  hq -t xci --securedir="$WORK/nca-base" "$XCI" || die 5 "XCI cannot be unpacked (file damaged or keys missing)"
+  case "$base_kind" in
+    xci)
+      log "1/6 XCI: unpack the secure partition"
+      hq -t xci --securedir="$WORK/nca-base" "$base_path" || die 5 "XCI cannot be unpacked (file damaged or keys missing)"
+      base_dir="$WORK/nca-base" ;;
+    nsp)
+      log "1/6 NSP: unpack the base game"
+      hq -t pfs0 --pfs0dir="$WORK/nca-base" "$base_path" || die 5 "Base NSP cannot be unpacked"
+      base_dir="$WORK/nca-base" ;;
+    nca)
+      log "1/6 NCA folder: read the selected files"
+      base_dir="$base_path" ;;
+  esac
   if [ -n "$NSP" ]; then
     log "2/6 unpack NSP"
     hq -t pfs0 --pfs0dir="$WORK/nca-update" "$NSP" || die 5 "NSP cannot be unpacked"
@@ -237,11 +266,16 @@ stage_extract() {
   fi
 
   log "3/6 classify NCAs (hactool -i: content type, title ID)"
-  classify_dir "$WORK/nca-base" "$stage/base.tsv"
-  local base_nca base_tid upd_nca="" upd_rights="" tk=""
+  classify_dir "$base_dir" "$stage/base.tsv"
+  local base_nca base_tid base_rights base_key="" upd_nca="" upd_rights="" tk=""
   base_nca="$(pick "$stage/base.tsv" Program)"
-  [ -n "$base_nca" ] || die 7 "No Program NCA found in the XCI"
+  [ -n "$base_nca" ] || die 7 "No Program NCA found in the base game"
   base_tid="$(tsv_field "$stage/base.tsv" "$base_nca" 2)"
+  base_rights="$(tsv_field "$stage/base.tsv" "$base_nca" 6)"
+  if [ -n "$base_rights" ]; then
+    base_key="$(python3 "$HELPERS" titlekey --rights-id "$base_rights" --tik-dir "$base_dir" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"})" \
+      || die 6 "No titlekey found for the base game"
+  fi
   log "    base game: title ID $base_tid"
   if [ -n "$NSP" ]; then
     classify_dir "$WORK/nca-update" "$stage/update.tsv"
@@ -264,9 +298,9 @@ stage_extract() {
     hq ${tk:+--titlekey="$tk"} --basenca="$base_nca" --exefsdir="$stage/exefs" --romfsdir="$stage/romfs" "$upd_nca" \
       || die 5 "Update NCA cannot be applied (master key revision of the update in prod.keys?)"
   else
-    hq --exefsdir="$stage/exefs" --romfsdir="$stage/romfs" "$base_nca" || die 5 "Base NCA cannot be extracted"
+    hq ${base_key:+--titlekey="$base_key"} --exefsdir="$stage/exefs" --romfsdir="$stage/romfs" "$base_nca" || die 5 "Base NCA cannot be extracted"
   fi
-  tk=""
+  tk=""; base_key=""
   [ -s "$stage/exefs/main" ] || die 9 "exefs/main missing after the extraction"
   [ -n "$(find "$stage/romfs" -type f -print -quit 2>/dev/null)" ] || die 9 "romfs is empty after the extraction"
 
@@ -282,7 +316,8 @@ stage_extract() {
   if [ -n "$ctl_nca" ]; then
     ctl_rights="$(tsv_field "$vtsv" "$ctl_nca" 6)"
     if [ -n "$ctl_rights" ]; then
-      tkc="$(python3 "$HELPERS" titlekey --rights-id "$ctl_rights" --tik-dir "$WORK/nca-update" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"} 2>/dev/null || true)"
+      if [ -n "$NSP" ]; then local ctl_dir="$WORK/nca-update"; else local ctl_dir="$base_dir"; fi
+      tkc="$(python3 "$HELPERS" titlekey --rights-id "$ctl_rights" --tik-dir "$ctl_dir" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"} 2>/dev/null || true)"
     fi
     if hq ${tkc:+--titlekey="$tkc"} --romfsdir="$stage/control" "$ctl_nca"; then
       dver="$(python3 "$HELPERS" nacp-version "$stage/control" 2>/dev/null || true)"
@@ -296,7 +331,7 @@ stage_extract() {
   if [ -n "$base_ctl" ]; then
     base_ctl_rights="$(tsv_field "$stage/base.tsv" "$base_ctl" 6)"
     if [ -n "$base_ctl_rights" ]; then
-      base_ctl_key="$(python3 "$HELPERS" titlekey --rights-id "$base_ctl_rights" --tik-dir "$WORK/nca-base" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"} 2>/dev/null || true)"
+      base_ctl_key="$(python3 "$HELPERS" titlekey --rights-id "$base_ctl_rights" --tik-dir "$base_dir" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"} 2>/dev/null || true)"
     fi
     hq ${base_ctl_key:+--titlekey="$base_ctl_key"} --romfsdir="$stage/control-base" "$base_ctl" || true
   fi
@@ -309,7 +344,7 @@ stage_extract() {
   mv "$stage/romfs" "$WORK/romfs"
   python3 "$HELPERS" write-manifest --work "$WORK" --title-id "$base_tid" --title-version "$ver" \
     --display-version "$dver" --update-applied "$([ -n "$upd_nca" ] && echo 1 || echo 0)" \
-    --xci-size "$xci_size" --nsp-size "$nsp_size" || die 9 "manifest.json could not be written"
+    --xci-size "$xci_size" --nsp-size "$nsp_size" "${input_flags[@]}" || die 9 "manifest.json could not be written"
   extract_cleanup
   EXTRACT_ACTIVE=0
   log "Stage extract done in $((SECONDS - t0)) s: $WORK/exefs, $WORK/romfs, $WORK/manifest.json"
@@ -318,7 +353,7 @@ stage_extract() {
 
 # ---------- Shared helpers of the further stages ----------
 stage_result() { RESULTS="$RESULTS$1|$2"$'\n'; }
-human() { awk -v b="$1" 'BEGIN { printf "%.1f GB", b / 1073741824 }'; }
+human() { awk -v b="$1" 'BEGIN { printf "%.1f GB", b / 1000000000 }'; }
 sp() { python3 "$STAGEPY" "$@"; }
 want_target() { [ "$TARGET" = all ] || [ "$TARGET" = "$1" ]; }
 
@@ -374,7 +409,13 @@ need_extract() {
 
 need_pydeps() {
   [ "$DRY" -eq 1 ] && return 0
-  [ -d "$TOOLS_DIR/pydeps/UnityPy" ] || die 4 "Python packages missing (UnityPy, lz4): python3 -m pip install --target tools/pydeps UnityPy lz4"
+  if [ "${BDSP_INSTALLER_PRIVATE_RUNTIME:-0}" = 1 ]; then
+    python3 -I -B -c 'import UnityPy, lz4.block' >/dev/null 2>&1 ||
+      die 4 "Private installer runtime is missing UnityPy or lz4"
+  else
+    PYTHONPATH="$TOOLS_DIR/pydeps${PYTHONPATH:+:$PYTHONPATH}" python3 -B -c 'import UnityPy, lz4.block' >/dev/null 2>&1 ||
+      die 4 "Python packages missing (UnityPy, lz4): python3 -m pip install --target tools/pydeps UnityPy lz4"
+  fi
 }
 
 # ---------- Stage recomp ----------
@@ -389,7 +430,9 @@ stage_recomp() {
     stage_result recomp "skipped (target $TARGET)"; return 0
   fi
   need_extract
+  if [ "$RECOMP_JOBS" = auto ]; then RECOMP_JOBS=$(python3 "$ROOT/scripts/recomp/parallel_jobs.py"); fi
   case "$RECOMP_JOBS$RECOMP_O0_KB" in ''|*[!0-9]*) die 2 "--recomp-jobs and --recomp-o0-kb need whole numbers" ;; esac
+  [ "$RECOMP_JOBS" -ge 1 ] || die 2 "--recomp-jobs needs a number >= 1"
   local out; out="$(recomp_out)"
   export XNU_RECOMP_OPTS="o0kb=$RECOMP_O0_KB hardened=$RECOMP_HARDENED data=$RECOMP_DATA"
   stage_cached recomp "$out/Contents/MacOS/BDSP" && return 0
@@ -402,7 +445,7 @@ stage_recomp() {
       ensure_legacy_links
       WORK="$WORK" "$ROOT/scripts/recomp/app/recomp_build.sh" --dry-run "${args[@]}"
     else
-      echo "    [dry-run] would run: generator -> C (work/recomp/gen4, about 1 GB) -> compile (4 jobs, -O0 from ${RECOMP_O0_KB} KB) -> module images -> runtime/NVN-Metal -> $out (ad hoc signed)$([ "$RECOMP_DATA" -eq 1 ] && echo ' -> RomFS into Application Support')"
+      echo "    [dry-run] would run: generator -> C (work/recomp/gen4, about 1 GB) -> compile ($RECOMP_JOBS jobs, -O0 from ${RECOMP_O0_KB} KB) -> module images -> runtime/NVN-Metal -> $out (ad hoc signed)$([ "$RECOMP_DATA" -eq 1 ] && echo ' -> RomFS into Application Support')"
     fi
     stage_done recomp; return 0
   fi
@@ -485,6 +528,8 @@ while [ $# -gt 0 ]; do
     --min-free-gb) need_val $# "$1"; PREFLIGHT_FREE_GB="$2"; shift 2 ;;
     --shader-only) need_val $# "$1"; SHADER_ONLY="$2"; shift 2 ;;
     --xci) need_val $# "$1"; XCI="$2"; shift 2 ;;
+    --base-nsp) need_val $# "$1"; BASE_NSP="$2"; shift 2 ;;
+    --base-nca-dir) need_val $# "$1"; BASE_NCA_DIR="$2"; shift 2 ;;
     --nsp) need_val $# "$1"; NSP="$2"; shift 2 ;;
     --keys) need_val $# "$1"; KEYS_DIR="$2"; shift 2 ;;
     --prod-keys) need_val $# "$1"; PROD_KEYS="$2"; shift 2 ;;
@@ -501,6 +546,11 @@ while [ $# -gt 0 ]; do
     *) STAGES="$STAGES $1"; shift ;;
   esac
 done
+base_sources=0
+[ -z "$XCI" ] || base_sources=$((base_sources + 1))
+[ -z "$BASE_NSP" ] || base_sources=$((base_sources + 1))
+[ -z "$BASE_NCA_DIR" ] || base_sources=$((base_sources + 1))
+[ "$base_sources" -le 1 ] || die 2 "Choose only one base source: --xci, --base-nsp or --base-nca-dir"
 case "$TARGET" in macos|ios|all) ;; *) die 2 "--target: macos, ios or all expected (not '$TARGET')" ;; esac
 case "$PREFLIGHT_FREE_GB" in ''|*[!0-9]*) die 2 "--min-free-gb needs a whole number" ;; esac
 if [ -z "${STAGES// /}" ] && [ -z "$FROM" ] && [ -z "$TO" ] && [ -z "${ONLY// /}" ] && [ "$PREFLIGHT_ONLY" -eq 0 ]; then usage; exit 2; fi
