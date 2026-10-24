@@ -9,6 +9,8 @@
 
 // Folder that contains swkbd/sound/swkbd.bfsar (the firmware data folder). Without it, or when the file is missing, nothing is played.
 void swkbd_snd_set_root(const char *root);
+// Frees the decoded sounds (they load again with the next sound). Sounds still playing are not affected.
+void swkbd_snd_release(void);
 // Plays the sound with this name (e.g. "SeSwkbdGlyph") once, in the background. Safe from any thread. BDSP_SWKBD_SOUND=0 switches the sounds off.
 void swkbd_snd_play(const char *name);
 // For tests: sample count, sample rate, volume (0..127) and peak of a decoded sound; 0 when the name is unknown, 1 when found.

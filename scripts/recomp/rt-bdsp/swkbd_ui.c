@@ -75,7 +75,8 @@ static const char *const k_tab_label[4] = {"ABC", "#+=", "ÀÁÂ", "ÑŃŅ"};
 
 static struct {
     pthread_mutex_t lock;
-    int inited, active, screen_built, display;
+    int inited, active, display;
+    int fw, li_set;                  // firmware layouts are used (else the simple keyboard) / the layout was chosen once (the globe key's choice outlives a close)
     char root[1024];
     Screen scr[SCR_COUNT];
     SwkbdParams p;
@@ -403,8 +404,37 @@ static int build_screen(int si) {
 
 static int fb_build_screen(int si);
 
+// Frees what the keyboard built (screens, layout archives and textures, scene, sounds): nothing is kept while it is closed, the next open builds again.
+static void free_screen(int si) {
+    Screen *s = &G.scr[si];
+    if (!s->fallback) {
+        lytinst_free(s->kt); lytinst_free(s->bg); lytinst_free(s->area); lytinst_free(s->caret); lytinst_free(s->mask);   // (the keys' instances are parts of kt)
+        lytbank_free(s->bank);
+    }
+    memset(s, 0, sizeof *s);
+}
+
+static void release_all(void) {
+    if (!G.inited) return;
+    for (int i = 0; i < SCR_COUNT; i++) free_screen(i);
+    free(G.scene.items);
+    memset(&G.scene, 0, sizeof G.scene);
+    G.nlabels = 0;
+    G.inited = 0;
+    swkbd_snd_release();
+    trace("release", NULL);
+}
+
+// A screen is built when it is first needed (the keyboard opens with one, the symbol and kana pages follow on demand).
+static int screen_ready(int si) {
+    Screen *s = &G.scr[si];
+    if (s->ok) return 1;
+    if (G.fw) { if (build_screen(si) == 0) return 1; free_screen(si); return 0; }
+    return fb_build_screen(si) == 0 && s->ok;
+}
+
 static int ensure_built(void) {
-    if (G.inited) return G.screen_built ? 0 : -1;
+    if (G.inited) return 0;
     G.inited = 1;
     snprintf(G.ok_label, sizeof G.ok_label, "OK");
     snprintf(G.space_label, sizeof G.space_label, "Space");
@@ -420,35 +450,40 @@ static int ensure_built(void) {
         for (unsigned q = 0; q < sizeof lm / sizeof *lm; q++)
             if (!strncmp(bl, lm[q].prefix, strlen(lm[q].prefix))) { snprintf(G.lang, sizeof G.lang, "%s", lm[q].dir); break; }
     }
-    {   // keyboard layout: BDSP_SWKBD_LAYOUT, else from the language
+    if (!G.li_set) {   // keyboard layout: BDSP_SWKBD_LAYOUT, else from the language; afterwards the globe key's choice stays
         static const struct { const char *lang, *id; } map[] = {{"EUde", "de"}, {"EUfr", "fr"}, {"USfr", "fr"}, {"EUes", "es"}, {"USes", "es"}, {"EUit", "it"},
                                                                   {"EUpt", "pt"}, {"USpt", "pt"}, {"EUru", "ru"}, {"EUen", "uk"}, {"USen", "us"}, {"EUnl", "us"}, {"KRko", "ko"}, {"JPja", "ja"}};   // (Dutch and Chinese: the letters of the US layout; there is no dictionary for pinyin / zhuyin)
         const char *want = getenv("BDSP_SWKBD_LAYOUT");
         for (unsigned q = 0; q < sizeof map / sizeof *map && !want; q++) if (!strcmp(G.lang, map[q].lang)) want = map[q].id;
         G.li = 0;
         for (unsigned q = 0; q < sizeof k_layouts / sizeof *k_layouts; q++) if (want && !strcmp(want, k_layouts[q].id)) G.li = (int)q;
+        G.li_set = 1;
     }
     const char *root = getenv("BDSP_FIRMWARE_DATA");
+    G.fw = 0;
     if (root && *root && !getenv("BDSP_SWKBD_SIMPLE")) {
         snprintf(G.root, sizeof G.root, "%s", root);
         swkbd_snd_set_root(root);
         load_labels();
-        for (int i = 0; i < SCR_COUNT; i++) build_screen(i);
+        G.fw = 1;
+        if (!screen_ready(SCR_QWERTY)) { G.fw = 0; swkbd_snd_set_root(""); }   // (not readable: the simple keyboard)
     }
-    if (!G.scr[SCR_QWERTY].ok) {     // no (readable) firmware layouts: simple keyboard of our own
-        for (int i = 0; i < SCR_COUNT; i++) fb_build_screen(i);
+    if (!G.fw) {     // no (readable) firmware layouts: simple keyboard of our own
+        screen_ready(SCR_QWERTY);
         trace("simple keyboard", "no firmware layouts");
     }
-    G.screen_built = G.scr[SCR_QWERTY].ok;
-    return G.screen_built ? 0 : -1;
+    if (!G.scr[SCR_QWERTY].ok) { G.inited = 0; return -1; }
+    return 0;
 }
 
 // A renderer announces itself (the Metal overlay does); without one an open keyboard would be invisible and block the game.
 void swkbd_ui_set_display(int on) { LOCK(); G.display = on; pthread_mutex_unlock(&G.lock); }
+static void (*g_wake)(void);
+void swkbd_ui_set_wake(void (*fn)(void)) { LOCK(); g_wake = fn; pthread_mutex_unlock(&G.lock); }
 
 int swkbd_ui_available(void) {
     LOCK();
-    int r = G.display && ensure_built() == 0;
+    int r = G.display;   // (nothing is built before the keyboard opens)
     pthread_mutex_unlock(&G.lock);
     return r;
 }
@@ -649,8 +684,8 @@ static void caret_move(int dir) {
 static int find_key(int kind);
 static void switch_page(int page) {
     if (G.cur == SCR_NUMERIC) return;
-    int si = page == 0 ? (G.li == LAYOUT_50ON && G.scr[SCR_50ON].ok ? SCR_50ON : SCR_QWERTY) : SCR_SIGN;   // back from the symbols to the kana grid
-    if (!G.scr[si].ok) return;
+    int si = page == 0 ? (G.li == LAYOUT_50ON && screen_ready(SCR_50ON) ? SCR_50ON : SCR_QWERTY) : SCR_SIGN;   // back from the symbols to the kana grid
+    if (!screen_ready(si)) return;
     ime_end();
     G.page = page; G.cur = si; G.shift = 0;
     Screen *s = cur();
@@ -711,7 +746,7 @@ static void press_key(int i) {
     case K_GLOBE: {
         ime_end();
         G.li = (G.li + 1) % (int)(sizeof k_layouts / sizeof *k_layouts);
-        int want = G.li == LAYOUT_50ON && G.scr[SCR_50ON].ok ? SCR_50ON : SCR_QWERTY;
+        int want = G.li == LAYOUT_50ON && screen_ready(SCR_50ON) ? SCR_50ON : SCR_QWERTY;
         if (G.li == LAYOUT_50ON && want != SCR_50ON) G.li = 0;   // no kana layout files: skip it
         if (G.cur == SCR_50ON || want == SCR_50ON) {   // the kana grid is a screen of its own
             G.cur = want; G.page = 0; G.shift = 0;
@@ -775,7 +810,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
-    int si = p->mode == 1 && G.scr[SCR_NUMERIC].ok ? SCR_NUMERIC : G.li == LAYOUT_50ON && G.scr[SCR_50ON].ok ? SCR_50ON : SCR_QWERTY;
+    int si = p->mode == 1 && screen_ready(SCR_NUMERIC) ? SCR_NUMERIC : G.li == LAYOUT_50ON && screen_ready(SCR_50ON) ? SCR_50ON : SCR_QWERTY;
     G.cur = si; G.focus = -1; G.shift = 0; G.page = 0;
     for (int ki = 0; ki < G.scr[si].nkeys; ki++) { Key *rk = &G.scr[si].keys[ki]; finish_oneshots(rk); snprintf(rk->tag, sizeof rk->tag, "UnFocusKey"); rk->t = 1e9f; }   // keys start at rest (the focus and press states of the last session are gone)
     if (si == SCR_QWERTY) assign_chars(&G.scr[SCR_QWERTY], 0);
@@ -792,7 +827,9 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     trace("open", p->header);
     if (getenv("BDSP_SWKBD_TYPE")) type_text(getenv("BDSP_SWKBD_TYPE"));   // test hook: types this text on opening
     G.active = 1;
+    void (*wake)(void) = g_wake;
     pthread_mutex_unlock(&G.lock);
+    if (wake) wake();
     return 0;
 }
 
@@ -1178,7 +1215,7 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     LOCK();
     if (!G.active && !G.closing) { pthread_mutex_unlock(&G.lock); return NULL; }
     tick(dt);
-    if (!G.active && !G.closing) { pthread_mutex_unlock(&G.lock); return NULL; }   // the closing animation has just finished
+    if (!G.active && !G.closing) { release_all(); pthread_mutex_unlock(&G.lock); return NULL; }   // the closing animation has just finished: free everything
     float cf = G.closing ? (float)(G.close_t * 60) : 0;   // frames of the closing animation
     g_sa = G.closing ? fmaxf(0, 1 - cf / 6) : 1;
     Screen *s = cur();

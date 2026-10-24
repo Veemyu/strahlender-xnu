@@ -304,6 +304,7 @@ static void quad(id<MTLRenderCommandEncoder> enc, const float X[4], const float 
 
 extern void metal_set_sampleable(int on);
 
+static void overlay_release(void);
 static void blur_drop(void) { g_blur_ready = NO; g_blur_a = g_blur_b = nil; g_blur_t = 0; }
 
 // Blurs `src` (the drawable with the game image, sampleable) into g_blur_b. Returns 0 when it cannot be done yet.
@@ -369,23 +370,47 @@ extern void metal_repeat_present(void);
 
 extern uint64_t metal_now_ns(void);
 
+// The thread only lives while the keyboard is visible: it is started by the keyboard's wake-up when it opens and ends after it has closed.
+static pthread_mutex_t g_ka_lock = PTHREAD_MUTEX_INITIALIZER;
+static BOOL g_ka_running;
+
 static void *keepalive(void *arg) {
     pthread_setname_np("swkbd-present");
     for (;;) {
         usleep(16000);
-        if (!swkbd_ui_visible()) continue;
+        pthread_mutex_lock(&g_ka_lock);
+        if (!swkbd_ui_visible()) { g_ka_running = NO; pthread_mutex_unlock(&g_ka_lock); return NULL; }
+        pthread_mutex_unlock(&g_ka_lock);
         if (metal_now_ns() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
         metal_repeat_present();
     }
     return NULL;
 }
 
+static void keepalive_wake(void) {
+    pthread_mutex_lock(&g_ka_lock);
+    if (!g_ka_running) {
+        pthread_t th;
+        if (!pthread_create(&th, NULL, keepalive, NULL)) { pthread_detach(th); g_ka_running = YES; }
+    }
+    pthread_mutex_unlock(&g_ka_lock);
+}
+
+// Everything the keyboard made on the GPU or in memory goes when it closes (its screens and sounds are freed by swkbd_ui; the command buffers
+// still in flight keep the resources they use alive). The next opening builds them again.
+static void overlay_release(void) {
+    g_tex = nil; g_text = nil; g_white = nil; g_samp = nil;
+    g_pipe = nil; g_pipe_frame = nil; g_pipe_fmt = (MTLPixelFormat)0; g_blur_pipe = nil;
+    if (g_font_std) { CGFontRelease(g_font_std); g_font_std = NULL; }
+    if (g_font_ext) { CGFontRelease(g_font_ext); g_font_ext = NULL; }
+    g_fonts_tried = NO;
+}
+
 void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
     static dispatch_once_t once;
-    dispatch_once(&once, ^{   // first frame: tell the keyboard logic that something can draw it, and start the thread that keeps the picture alive
+    dispatch_once(&once, ^{   // first frame: tell the keyboard logic that something can draw it, and how to wake the thread that keeps the picture alive
         swkbd_ui_set_display(1);
-        pthread_t th;
-        if (!pthread_create(&th, NULL, keepalive, NULL)) pthread_detach(th);
+        swkbd_ui_set_wake(keepalive_wake);
     });
     id<MTLDevice> dev = (__bridge id<MTLDevice>)dev_;
     id<MTLCommandBuffer> cb = (__bridge id<MTLCommandBuffer>)cb_;
@@ -395,7 +420,7 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
     if (active != g_was_active) {   // the drawables must be readable while the keyboard is open (the blur is made from one of them)
         g_was_active = active;
         metal_set_sampleable(active);
-        if (!active) blur_drop();
+        if (!active) { blur_drop(); overlay_release(); }
     }
     if (!active) return;
     static int calls;

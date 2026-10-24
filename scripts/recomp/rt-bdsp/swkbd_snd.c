@@ -197,6 +197,14 @@ void swkbd_snd_set_root(const char *root) {
     pthread_mutex_unlock(&g_lock);
 }
 
+// The decoded sounds are only needed while the keyboard is open: the next sound loads them again.
+void swkbd_snd_release(void) {
+    pthread_mutex_lock(&g_lock);
+    free_all();
+    g_state = 0;
+    pthread_mutex_unlock(&g_lock);
+}
+
 int swkbd_snd_load_memory(const uint8_t *data, size_t size) {
     pthread_mutex_lock(&g_lock);
     int n = parse(data, size);
@@ -228,7 +236,7 @@ int swkbd_snd_info(const char *name, size_t *frames, uint32_t *rate, int *volume
 }
 
 #if defined(__APPLE__)
-typedef struct { const int16_t *pcm; size_t frames; double rate; float gain; } Play;
+typedef struct { int16_t *pcm; size_t frames; double rate; float gain; int id; } Play;   // (pcm: a copy of its own, the decoded sounds may be freed meanwhile)
 
 // Many sounds at once (a burst of key events) would open as many audio queues side by side and disturb the game's own audio output:
 // at most 3 play together, and the same sound is not started again within 40 ms.
@@ -262,6 +270,7 @@ static void *play_thread(void *arg) {
         AudioQueueStop(q, true);
         AudioQueueDispose(q, true);
     }
+    free(p->pcm);
     free(p);
     atomic_fetch_sub(&g_playing, 1);
     return NULL;
@@ -278,20 +287,24 @@ void swkbd_snd_play(const char *name) {
     Play *p = NULL;
     if (s && s->volume > 0) {
         p = malloc(sizeof *p);
-        if (p) { p->pcm = s->pcm; p->frames = s->frames; p->rate = s->rate * s->pitch; p->gain = s->volume / 127.0f; }
+        if (p) {
+            p->pcm = malloc(s->frames * 2);
+            if (p->pcm) { memcpy(p->pcm, s->pcm, s->frames * 2); p->frames = s->frames; p->rate = s->rate * s->pitch; p->gain = s->volume / 127.0f; p->id = (int)(s - g_snd); }
+            else { free(p); p = NULL; }
+        }
     }
     pthread_mutex_unlock(&g_lock);
     if (!p) return;
-    static const int16_t *last_pcm; static uint64_t last_ns;
+    static int last_id = -1; static uint64_t last_ns;
     uint64_t now = clock_gettime_nsec_np(CLOCK_MONOTONIC);
-    if ((p->pcm == last_pcm && now - last_ns < 40000000ull) || atomic_load(&g_playing) >= MAX_PLAYING) { free(p); return; }
-    last_pcm = p->pcm; last_ns = now;
+    if ((p->id == last_id && now - last_ns < 40000000ull) || atomic_load(&g_playing) >= MAX_PLAYING) { free(p->pcm); free(p); return; }
+    last_id = p->id; last_ns = now;
     atomic_fetch_add(&g_playing, 1);
     pthread_t th;
     pthread_attr_t at;
     pthread_attr_init(&at);
     pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
-    if (pthread_create(&th, &at, play_thread, p)) { free(p); atomic_fetch_sub(&g_playing, 1); }
+    if (pthread_create(&th, &at, play_thread, p)) { free(p->pcm); free(p); atomic_fetch_sub(&g_playing, 1); }
     pthread_attr_destroy(&at);
 #else
     (void)name;

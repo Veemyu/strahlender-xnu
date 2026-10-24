@@ -6,6 +6,14 @@
 #include "lyt_render.c"
 #include "../swkbd_ui.h"
 
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+static size_t heap_in_use(void) { malloc_statistics_t st; malloc_zone_statistics(NULL, &st); return st.size_in_use; }
+#else
+#include <malloc.h>
+static size_t heap_in_use(void) { struct mallinfo2 m = mallinfo2(); return (size_t)m.uordblks; }
+#endif
+static size_t base_heap;
 static int fails, submits, cancels;
 static char last[256];
 #define CHECK(x) do { if (!(x)) { printf("ERROR line %d: %s\n", __LINE__, #x); fails++; } } while (0)
@@ -41,6 +49,7 @@ int main(int argc, char **argv) {
     if (!swkbd_ui_available()) { printf("keyboard not available\n"); return 1; }
     printf("keyboard mode: %s\n", getenv("BDSP_SWKBD_SIMPLE") || !getenv("BDSP_FIRMWARE_DATA") ? "simple (no firmware layouts)" : "firmware layouts");
     fb = malloc((size_t)W * H * 3);
+    base_heap = heap_in_use();
     SwkbdParams p = {0};
     if (getenv("SWKBD_TEST_SCREEN")) {   // look test: render the symbol or the numeric keyboard to argv[1]
         const char *w = getenv("SWKBD_TEST_SCREEN");
@@ -192,6 +201,24 @@ int main(int argc, char **argv) {
         swkbd_ui_unlock();
     }
     CHECK(maxa > 0.9f);
+    // lifecycle: a closed keyboard holds nothing, repeated open / close does not grow
+    swkbd_ui_resolve(1, NULL);
+    for (int i = 0; i < 30; i++) { float sc, o[2]; if (swkbd_ui_scene(0.016, W, H, &sc, o)) swkbd_ui_unlock(); }
+    CHECK(!swkbd_ui_visible());
+    size_t closed0 = heap_in_use();
+    for (int n = 0; n < 20; n++) {
+        CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
+        for (int i = 0; i < 5; i++) { float sc, o[2]; if (swkbd_ui_scene(0.016, W, H, &sc, o)) swkbd_ui_unlock(); }
+        size_t open_now = heap_in_use();
+        if (n == 0) printf("heap: closed %zu KB, open %zu KB (built on open)\n", closed0 / 1024, open_now / 1024);
+        CHECK(open_now > closed0);
+        swkbd_ui_resolve(1, NULL);
+        for (int i = 0; i < 20; i++) { float sc, o[2]; if (swkbd_ui_scene(0.016, W, H, &sc, o)) swkbd_ui_unlock(); }
+    }
+    size_t closed1 = heap_in_use();
+    printf("heap after 20 open/close cycles: %zu KB (was %zu KB)\n", closed1 / 1024, closed0 / 1024);
+    CHECK(closed1 < closed0 + 256 * 1024);
+    CHECK(closed1 < base_heap + 1024 * 1024);
     if (fails) { printf("%d errors\n", fails); return 1; }
     printf("swkbd_ui_test: ok\n");
     return 0;

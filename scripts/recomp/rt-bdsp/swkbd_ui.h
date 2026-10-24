@@ -30,6 +30,8 @@ typedef struct {
 // A renderer calls this once (swkbd_overlay.m does); without one swkbd_ui_available stays 0, because an open keyboard would be
 // invisible and block the game.
 void swkbd_ui_set_display(int on);
+// The renderer's wake-up: called (without the lock held) each time the keyboard opens, so it can start what keeps the picture alive while the game is stopped in the keyboard call.
+void swkbd_ui_set_wake(void (*fn)(void));
 // True when the keyboard can be shown: with the firmware layouts (BDSP_FIRMWARE_DATA), otherwise as a simple keyboard of our own
 // (BDSP_SWKBD_SIMPLE=1 forces the simple one).
 int swkbd_ui_available(void);
