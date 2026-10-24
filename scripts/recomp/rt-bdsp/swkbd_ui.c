@@ -1,6 +1,7 @@
 // On-screen software keyboard: state, key logic, input and scene (see swkbd_ui.h). Own code.
 // The layouts are the user's firmware files (BDSP_FIRMWARE_DATA); the key characters below are our own table.
 #include "swkbd_ui.h"
+#include "swkbd_snd.h"
 
 #include <math.h>
 #include <pthread.h>
@@ -379,6 +380,7 @@ static int ensure_built(void) {
     const char *root = getenv("BDSP_FIRMWARE_DATA");
     if (root && *root && !getenv("BDSP_SWKBD_SIMPLE")) {
         snprintf(G.root, sizeof G.root, "%s", root);
+        swkbd_snd_set_root(root);
         load_labels();
         for (int i = 0; i < SCR_COUNT; i++) build_screen(i);
     }
@@ -403,6 +405,18 @@ int swkbd_ui_available(void) {
 // ---- state
 static Screen *cur(void) { return &G.scr[G.cur]; }
 
+// The console's sounds of the keyboard (swkbd_snd.c); nothing plays without the firmware data.
+static int g_quiet;   // set while the keyboard moves the focus by itself (page change)
+static void snd(const char *name) { swkbd_snd_play(name); }
+static const char *focus_sound(int kind) {
+    switch (kind) {
+    case K_CHAR: return "SeSwkbdGlyphFocus";
+    case K_BS: return "SeSwkbdBsFocus";
+    case K_ENTER: return "SeSwkbdEnterFocus";
+    default: return "SeSwkbdOptFocus";   // shift, tabs, symbols, space, globe
+    }
+}
+
 static void set_key_anim(Key *k, const char *tag) {
     if (!strcmp(k->tag, tag) && k->t < 1e8f) return;
     snprintf(k->tag, sizeof k->tag, "%s", tag);
@@ -413,6 +427,7 @@ static void set_focus(int i) {
     Screen *s = cur();
     if (i < 0 || i >= s->nkeys) return;
     if (G.focus >= 0 && G.focus < s->nkeys && G.focus != i) set_key_anim(&s->keys[G.focus], G.touch_mode ? "UnFocusTouch" : "UnFocusKey");
+    if (G.active && !G.touch_mode && !g_quiet && G.focus != i) snd(focus_sound(s->keys[i].kind));
     G.focus = i;
     set_key_anim(&s->keys[i], G.touch_mode ? "FocusTouch" : "FocusKey");
 }
@@ -457,13 +472,15 @@ static void close_ui(void) {
 
 static void do_cancel(void) {
     if (!G.active) return;
+    snd("SeFooterDecideBack");
     close_ui();
     if (G.cb.cancel) G.cb.cancel(G.user);
 }
 
 static void do_submit(void) {
     if (!G.active || G.busy) return;
-    if (u8_count(G.text) < G.p.minlen) return;
+    if (u8_count(G.text) < G.p.minlen) { snd("SeSwkbdLengthError"); return; }
+    snd("SeSwkbdEnterDecide");
     trace("submit", G.text);
     G.busy = 1;
     if (G.cb.submit) G.cb.submit(G.user, G.text);
@@ -474,7 +491,7 @@ static void insert_text(const char *s) {
         int l = u8_len((unsigned char)*s);
         unsigned char c = (unsigned char)*s;
         if (c < 0x20 || c == 0x7F) { if (!(c == '\n' && G.p.multiline)) continue; }
-        if (G.p.maxlen > 0 && u8_count(G.text) >= G.p.maxlen) { G.cnt_err = 0; return; }   // the counter shakes
+        if (G.p.maxlen > 0 && u8_count(G.text) >= G.p.maxlen) { G.cnt_err = 0; snd("SeSwkbdLengthError"); return; }   // the counter shakes
         int n = (int)strlen(G.text);
         if (n + l >= (int)sizeof G.text) return;
         memmove(G.text + G.caret + l, G.text + G.caret, (size_t)(n - G.caret + 1));
@@ -507,7 +524,7 @@ static void switch_page(int page) {
     int f = 0;
     for (int i = 0; i < s->nkeys; i++) if (s->keys[i].kind == K_TAB && s->keys[i].page == page) f = i;
     G.focus = -1;
-    set_focus(f);
+    g_quiet = 1; set_focus(f); g_quiet = 0;
 }
 
 static void press_key(int i) {
@@ -515,6 +532,13 @@ static void press_key(int i) {
     if (i < 0 || i >= s->nkeys) return;
     Key *k = &s->keys[i];
     set_key_anim(k, G.touch_mode ? "DecideTouch" : "DecideKey");
+    switch (k->kind) {
+    case K_CHAR: snd(G.touch_mode ? "SeSwkbdGlyphDown" : "SeSwkbdGlyph"); break;
+    case K_BS: snd("SeSwkbdBsDecide"); break;
+    case K_ENTER: break;   // do_submit plays its own
+    case K_SHIFT: break;   // plays after the state changed
+    default: snd("SeSwkbdOptDecide"); break;   // space, tabs, symbols, globe
+    }
     switch (k->kind) {
     case K_CHAR:
         insert_text(G.shift ? k->shifted : k->normal);
@@ -524,7 +548,7 @@ static void press_key(int i) {
     case K_BS: backspace(); break;
     case K_ENTER: do_submit(); break;
     case K_SHIFT:
-        if (G.cur != SCR_NUMERIC) { G.shift = (G.shift + 1) % 3; refresh_labels(); }
+        if (G.cur != SCR_NUMERIC) { G.shift = (G.shift + 1) % 3; refresh_labels(); snd(G.shift == 1 ? "SeSwkbdOptShiftOn" : G.shift == 2 ? "SeSwkbdOptCapsLock" : "SeSwkbdOptShiftOff"); }
         break;
     case K_TAB: if (k->page != G.page) switch_page(k->page); break;
     case K_SYMBOL: switch_page(1); break;
@@ -556,6 +580,7 @@ static void move_focus(int dx, int dy) {
         if (sc < bs) { bs = sc; best = i; }
     }
     if (best >= 0) { G.touch_mode = 0; set_focus(best); }
+    else snd("SeKeyErrorCursor");   // nothing in that direction
 }
 
 // ---- open / resolve
@@ -619,6 +644,7 @@ int swkbd_ui_field_hit(float nx, float ny) {
 // ---- input
 enum { B_A, B_B, B_X, B_Y, B_LSTICK, B_RSTICK, B_L, B_R, B_ZL, B_ZR, B_PLUS, B_MINUS, B_LEFT, B_UP, B_RIGHT, B_DOWN };
 
+static int g_rep;   // the edge is a repeat of a held button
 static void pad_edge(int b) {
     G.touch_mode = 0;
     switch (b) {
@@ -627,11 +653,11 @@ static void pad_edge(int b) {
     case B_UP: move_focus(0, -1); break;
     case B_DOWN: move_focus(0, 1); break;
     case B_A: press_key(G.focus); break;
-    case B_B: { int i = find_key(K_BS); if (i >= 0) set_key_anim(&cur()->keys[i], "DecideKey"); backspace(); } break;
+    case B_B: { int i = find_key(K_BS); if (i >= 0) set_key_anim(&cur()->keys[i], "DecideKey"); snd(g_rep ? "SeSwkbdBsRepeat" : "SeSwkbdBsDecide"); backspace(); } break;
     case B_X: do_cancel(); break;
-    case B_Y: insert_text(" "); break;
-    case B_L: caret_move(-1); break;
-    case B_R: caret_move(1); break;
+    case B_Y: snd("SeSwkbdOptDecide"); insert_text(" "); break;
+    case B_L: snd("SeSwkbdTextAreaMove"); caret_move(-1); break;
+    case B_R: snd("SeSwkbdTextAreaMove"); caret_move(1); break;
     case B_LSTICK: { int i = find_key(K_SHIFT); if (i >= 0) press_key(i); } break;
     case B_PLUS: do_submit(); break;
     default: break;
@@ -881,7 +907,7 @@ static void tick(double dt) {
     if (G.cnt_err < 99) G.cnt_err += dt * 60;
     if (G.closing) { G.close_t += dt; if (G.close_t * 60 >= 14) G.closing = 0; }
     if (G.msg_left > 0) { G.msg_left -= dt; if (G.msg_left <= 0) G.msg[0] = 0; }
-    if (G.repeat_dir && G.clock >= G.repeat_at) { pad_edge(G.repeat_dir); G.repeat_at = G.clock + 0.07; }
+    if (G.repeat_dir && G.clock >= G.repeat_at) { g_rep = 1; pad_edge(G.repeat_dir); g_rep = 0; G.repeat_at = G.clock + 0.07; }
     int len = u8_count(G.text);
     for (int i = 0; i < s->nkeys; i++) {
         Key *k = &s->keys[i];
