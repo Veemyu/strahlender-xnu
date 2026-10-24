@@ -99,6 +99,7 @@ compile "$SRC/nvn/debug_thread.c" "$RT/nvn/debug_thread.o" "$CC" $BDSP_OPT $BDSP
 if [ "$TARGET" = mac ] || [ -n "$FFINC" ]; then
   MG="$NVN32/movie_glue32.c"; [ "$MODEL" = a ] && MG="$SRC/nvn/movie_glue.c"
   compile "$MG" "$RT/nvn/movie_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC $FFINC
+compile "$SRC/nvn/swkbd_overlay.m" "$RT/nvn/swkbd_overlay.o" "$MCC" $W $NVINC -fobjc-arc   # on-screen keyboard (drawn over the frame, Metal)
 fi
 
 if [ "$TARGET" = mac ]; then

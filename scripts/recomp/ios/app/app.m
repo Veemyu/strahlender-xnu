@@ -17,6 +17,7 @@
 #import "../../app/icon_variants.h"
 #include <strings.h>
 #include "../../rt-bdsp/mods.h"
+#include "../../rt-bdsp/swkbd_ui.h"
 
 static BOOL sceneActive;   // state of the scene, set by SceneDelegate
 
@@ -113,7 +114,15 @@ enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, P
 #define BIT(b) (1ull << (b))
 
 static _Atomic uint64_t g_touch_mask, g_pad_mask, g_key_mask;
-static void publish_buttons(void) { atomic_store(&g_ext_buttons, g_touch_mask | g_pad_mask | g_key_mask); }
+static void publish_buttons(void) {
+    if (swkbd_ui_active()) {   // the on-screen keyboard has the input; the game sees no buttons meanwhile
+        swkbd_ui_pad(atomic_load(&g_pad_mask), atomic_load(&g_ext_stick[0]), atomic_load(&g_ext_stick[1]));
+        atomic_store(&g_ext_buttons, 0);
+        return;
+    }
+    atomic_store(&g_ext_buttons, g_touch_mask | g_pad_mask | g_key_mask);
+}
+static void SwkbdShowNative(void);   // system keyboard for the text field of the on-screen keyboard (below)
 
 #pragma mark - Paths, save
 
@@ -343,10 +352,20 @@ static void *StatsLoop(void *arg) {
     atomic_store(&g_touch_mask, m);
     publish_buttons();
 }
-- (void)touchesBegan:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { [self updateTouches:e.allTouches ending:nil]; }
-- (void)touchesMoved:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { [self updateTouches:e.allTouches ending:nil]; }
-- (void)touchesEnded:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { [self updateTouches:e.allTouches ending:t]; }
-- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { [self updateTouches:e.allTouches ending:t]; }
+// While the on-screen keyboard is open a touch goes to it (a key, or the text field, which brings up the system keyboard), not to the game
+- (BOOL)swkbdTouches:(NSSet<UITouch *> *)t began:(BOOL)began {
+    if (!swkbd_ui_active()) return NO;
+    if (began) {
+        CGPoint p = [t.anyObject locationInView:self];
+        float nx = (float)(p.x / self.bounds.size.width), ny = (float)(p.y / self.bounds.size.height);
+        if (swkbd_ui_field_hit(nx, ny)) SwkbdShowNative(); else swkbd_ui_touch(1, nx, ny);
+    }
+    return YES;
+}
+- (void)touchesBegan:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:YES]) return; [self updateTouches:e.allTouches ending:nil]; }
+- (void)touchesMoved:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:NO]) return; [self updateTouches:e.allTouches ending:nil]; }
+- (void)touchesEnded:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:NO]) return; [self updateTouches:e.allTouches ending:t]; }
+- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:NO]) return; [self updateTouches:e.allTouches ending:t]; }
 @end
 
 #pragma mark - Controller, Tastatur
@@ -404,9 +423,83 @@ static int KeyBit(UIKeyboardHIDUsage k) {
     }
 }
 
+static GameView *gView;   // game view of the scene (controller overlay)
+
+#pragma mark - Screen keyboard (text entry)
+
+// System keyboard: a hidden text field becomes first responder when the text field of the on-screen keyboard is tapped; what is typed goes to
+// swkbd_ui (the field itself stays empty). Hardware keyboards type directly (GameVC pressesBegan).
+@interface SwkbdNativeField : NSObject <UITextFieldDelegate>
+@end
+static UITextField *gNativeField;
+static SwkbdNativeField *gNativeDelegate;
+@implementation SwkbdNativeField
+- (BOOL)textField:(UITextField *)f shouldChangeCharactersInRange:(NSRange)r replacementString:(NSString *)s {
+    if (s.length == 0) swkbd_ui_key(SWKBD_KEY_BACKSPACE); else swkbd_ui_text(s.UTF8String);
+    return NO;
+}
+- (BOOL)textFieldShouldReturn:(UITextField *)f { swkbd_ui_key(SWKBD_KEY_ENTER); return NO; }
+@end
+
+static void SwkbdShowNative(void) {
+    if (!gNativeField) {
+        gNativeDelegate = [SwkbdNativeField new];
+        gNativeField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+        gNativeField.alpha = 0.02;
+        gNativeField.delegate = gNativeDelegate;
+        gNativeField.autocorrectionType = UITextAutocorrectionTypeNo;
+        gNativeField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        gNativeField.returnKeyType = UIReturnKeyDone;
+        [gView addSubview:gNativeField];
+    }
+    [gNativeField becomeFirstResponder];
+}
+
+static void SwkbdHideNative(void) {
+    if (gNativeField.isFirstResponder) {
+        [gNativeField resignFirstResponder];
+        [gView.window.rootViewController becomeFirstResponder];   // hardware keys again
+    }
+}
+
+// Called a few times per second: hides the touch gamepad while the on-screen keyboard is open and puts the system keyboard away when it closes
+static void SwkbdPoll(void) {
+    static BOOL was;
+    BOOL on = swkbd_ui_active() != 0;
+    if (on == was) return;
+    was = on;
+    for (CALayer *l in gView.pads) l.hidden = on;
+    if (!on) SwkbdHideNative();
+    publish_buttons();
+}
+
+static BOOL SwkbdPresses(NSSet<UIPress *> *presses) {
+    BOOL handled = NO;
+    for (UIPress *p in presses) {
+        UIKey *k = p.key;
+        if (!k) continue;
+        handled = YES;
+        switch (k.keyCode) {
+        case UIKeyboardHIDUsageKeyboardDeleteOrBackspace: swkbd_ui_key(SWKBD_KEY_BACKSPACE); continue;
+        case UIKeyboardHIDUsageKeyboardDeleteForward: swkbd_ui_key(SWKBD_KEY_DELETE); continue;
+        case UIKeyboardHIDUsageKeyboardReturnOrEnter: case UIKeyboardHIDUsageKeypadEnter: swkbd_ui_key(SWKBD_KEY_ENTER); continue;
+        case UIKeyboardHIDUsageKeyboardEscape: swkbd_ui_key(SWKBD_KEY_ESCAPE); continue;
+        case UIKeyboardHIDUsageKeyboardLeftArrow: swkbd_ui_key(SWKBD_KEY_LEFT); continue;
+        case UIKeyboardHIDUsageKeyboardRightArrow: swkbd_ui_key(SWKBD_KEY_RIGHT); continue;
+        case UIKeyboardHIDUsageKeyboardHome: swkbd_ui_key(SWKBD_KEY_HOME); continue;
+        case UIKeyboardHIDUsageKeyboardEnd: swkbd_ui_key(SWKBD_KEY_END); continue;
+        default: break;
+        }
+        if (k.modifierFlags & (UIKeyModifierCommand | UIKeyModifierControl)) continue;
+        NSString *c = k.characters;
+        unichar first = c.length ? [c characterAtIndex:0] : 0;
+        if (first >= 0x20 && !(first >= 0xF700 && first <= 0xF8FF)) swkbd_ui_text(c.UTF8String);   // not the function key codes of UIKit
+    }
+    return handled;
+}
+
 #pragma mark - App
 
-static GameView *gView;   // game view of the scene (controller overlay)
 
 @interface SceneDelegate : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic, strong) UIWindow *window;
@@ -426,9 +519,13 @@ static GameView *gView;   // game view of the scene (controller overlay)
     [super viewDidAppear:a];
     [self becomeFirstResponder];
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ [(SceneDelegate *)self.view.window.windowScene.delegate startRuntime]; });
+    dispatch_once(&once, ^{
+        [(SceneDelegate *)self.view.window.windowScene.delegate startRuntime];
+        [NSTimer scheduledTimerWithTimeInterval:0.15 repeats:YES block:^(NSTimer *t) { SwkbdPoll(); }];
+    });
 }
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)e {
+    if (swkbd_ui_active() && SwkbdPresses(presses)) return;   // typing into the on-screen keyboard
     BOOL handled = NO;
     for (UIPress *p in presses) {
         int b = p.key ? KeyBit(p.key.keyCode) : -1;
@@ -549,6 +646,10 @@ static void LaunchRuntime(const ModInfo *mod) {
     pthread_attr_t at;
     pthread_attr_init(&at);
     pthread_attr_setstacksize(&at, 8 << 20);
+    {   // firmware files of the on-screen keyboard (layouts, fonts, name check); without them the keyboard is a simple one of our own
+        NSString *fw = [docs stringByAppendingPathComponent:@"Firmware"];
+        if ([fm fileExistsAtPath:fw]) setenv("BDSP_FIRMWARE_DATA", fw.UTF8String, 0);
+    }
     pthread_create(&t, &at, RuntimeThread, NULL);
     pthread_detach(t);
     pthread_create(&st, NULL, StatsLoop, NULL);
