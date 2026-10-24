@@ -10,6 +10,7 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
 - The firmware's keyboard applet data in one folder (`BDSP_FIRMWARE_DATA`):
   `swkbd/lyt/*.szs` (layouts and animations), `swkbd/message/<language>/swkbd.msbt.szs` (button labels),
   `fonts/nintendo_udsg-r_std_003.bfttf` and `fonts/nintendo_ext_003.bfttf` (text font and button glyphs; without them a Mac font is used),
+  `swkbd/sound/swkbd.bfsar` (the keyboard's sounds; without it the keyboard is silent),
   and `0100000000000823.romfs` (word list of the game's name check; without it the check is skipped).
   `scripts/swkbd_firmware_extract.py --nca-dir <registered NCAs> --keys <prod.keys> --hactool <hactool> --out <folder>` writes exactly this
   folder from your own firmware dump (it uses hactool and your keys locally and prints no key material).
@@ -33,6 +34,10 @@ symbols and two pages of accented letters. The label language follows the runtim
 `BDSP_SWKBD_LAYOUT=us|uk|de|fr|es|it|pt|ru` says otherwise, the key layout. The colour scheme is light like the console's default;
 `BDSP_SWKBD_THEME=dark` selects a dark one (the layout files do not contain the colours, both schemes are ours).
 
+The keyboard plays the console's animations (layouts' own: focus, press, open, close, counter shake) and sounds (focus tick, key press,
+backspace and repeat, shift / caps lock, length error, error when the focus cannot move). The game behind it is blurred once when the
+keyboard opens and dimmed. `BDSP_SWKBD_SOUND=0` switches the sounds off.
+
 ## Scripted and test runs
 
 A run with any of `BDSP_INPUT_SCRIPT`, `BDSP_KEY_SCRIPT`, `BDSP_SWKBD_TEXT`, `BDSP_SWKBD_AUTO` or `BDSP_NO_ALERT` does not open the keyboard;
@@ -50,3 +55,4 @@ the answer is automatic:
 
 - `scripts/recomp/rt-bdsp/test/run_lyt_test.sh`: readers for Yaz0, SARC, BFLYT, BFLAN, BNTX (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
 - `scripts/recomp/rt-bdsp/test/run_swkbd_ui_test.sh`: keyboard logic and a software rendering to a PPM.
+- `scripts/recomp/rt-bdsp/test/run_swkbd_snd_test.sh`: reader of the sound archive (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
