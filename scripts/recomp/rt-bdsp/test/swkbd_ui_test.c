@@ -54,6 +54,10 @@ int main(int argc, char **argv) {
             swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);
         }
         for (int i = 0; i < 40; i++) { float s, o[2]; if (swkbd_ui_scene(0.016, W, H, &s, o)) swkbd_ui_unlock(); }
+        if (getenv("SWKBD_TEST_CLOSE")) {   // look test: a frame of the closing animation
+            swkbd_ui_key(SWKBD_KEY_ESCAPE);
+            for (int i = 0, n = atoi(getenv("SWKBD_TEST_CLOSE")); i < n - 1; i++) { float s, o[2]; if (swkbd_ui_scene(0.016, W, H, &s, o)) swkbd_ui_unlock(); }
+        }
         draw(argc > 1 ? argv[1] : NULL);
         return 0;
     }
@@ -94,6 +98,9 @@ int main(int argc, char **argv) {
     CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
     swkbd_ui_pad(1ull << 2, 0, 0);                         // X: cancel
     CHECK(!swkbd_ui_active() && cancels == 1);
+    CHECK(swkbd_ui_visible());                             // the closing animation still draws it ...
+    for (int i = 0; i < 20; i++) { float sc, o[2]; if (swkbd_ui_scene(0.016, W, H, &sc, o)) swkbd_ui_unlock(); }
+    CHECK(!swkbd_ui_visible());                            // ... for 14 frames, then it is gone
     p.initial[0] = 0;
     // pages: from the bottom row to the symbol tab (or key), press it, then a key of the fourth row types a symbol
     swkbd_ui_resolve(1, NULL);

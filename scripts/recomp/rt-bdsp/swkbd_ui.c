@@ -73,6 +73,9 @@ static struct {
     int focus;
     int touch_mode;                  // last input was touch
     int busy;
+    int closing;                     // the closing animation is playing (the keyboard no longer takes input)
+    double close_t;                  // seconds since the close started
+    double cnt_err;                  // frames since the counter's error shake started (>= 9: none)
     char msg[256];
     double msg_left;
     double fade, clock;
@@ -448,6 +451,7 @@ static void refresh_labels(void) {
 static void close_ui(void) {
     trace("close", NULL);
     G.active = 0;
+    G.closing = 1; G.close_t = 0;
     G.busy = 0;
 }
 
@@ -470,7 +474,7 @@ static void insert_text(const char *s) {
         int l = u8_len((unsigned char)*s);
         unsigned char c = (unsigned char)*s;
         if (c < 0x20 || c == 0x7F) { if (!(c == '\n' && G.p.multiline)) continue; }
-        if (G.p.maxlen > 0 && u8_count(G.text) >= G.p.maxlen) return;
+        if (G.p.maxlen > 0 && u8_count(G.text) >= G.p.maxlen) { G.cnt_err = 0; return; }   // the counter shakes
         int n = (int)strlen(G.text);
         if (n + l >= (int)sizeof G.text) return;
         memmove(G.text + G.caret + l, G.text + G.caret, (size_t)(n - G.caret + 1));
@@ -567,7 +571,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
         G.text[n] = 0;
     }
     G.caret = (int)strlen(G.text);
-    G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.fade = 0; G.clock = 0;
+    G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
     int si = p->mode == 1 && G.scr[SCR_NUMERIC].ok ? SCR_NUMERIC : SCR_QWERTY;
@@ -593,6 +597,8 @@ void swkbd_ui_resolve(int accepted, const char *message) {
 }
 
 int swkbd_ui_active(void) { return __atomic_load_n(&G.active, __ATOMIC_ACQUIRE); }
+int swkbd_ui_visible(void) { return __atomic_load_n(&G.active, __ATOMIC_ACQUIRE) || __atomic_load_n(&G.closing, __ATOMIC_ACQUIRE); }
+float swkbd_ui_backdrop(void) { return G.closing ? fmaxf(0, 1 - (float)(G.close_t * 60) / 6) : 1; }
 const char *swkbd_ui_text_value(void) { return G.text; }
 const char *swkbd_ui_focus_name(void) { Screen *s = &G.scr[G.cur]; return G.focus >= 0 && G.focus < s->nkeys ? s->keys[G.focus].name : ""; }
 void swkbd_ui_set_measure(float (*fn)(const char *, float)) { G.measure = fn; }
@@ -741,6 +747,7 @@ static int fb_build_screen(int si) {
     return 0;
 }
 
+static float g_sa = 1;   // alpha of everything the keyboard itself draws (fades out while it closes)
 static void fb_quad(LytScene *sc, float x, float y, float w, float h, int r, int g, int b, float a) {
     if (sc->n == sc->cap) {
         int nc = sc->cap ? sc->cap * 2 : 256;
@@ -753,7 +760,7 @@ static void fb_quad(LytScene *sc, float x, float y, float w, float h, int r, int
     it->type = LYT_ITEM_QUAD;
     it->x[0] = it->x[2] = x; it->x[1] = it->x[3] = x + w;
     it->y[0] = it->y[1] = y; it->y[2] = it->y[3] = y + h;
-    it->alpha = a;
+    it->alpha = a * g_sa;
     static const float uv[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
     memcpy(it->uv, uv, sizeof uv);
     for (int k = 0; k < 4; k++) { it->col[k][0] = (uint8_t)r; it->col[k][1] = (uint8_t)g; it->col[k][2] = (uint8_t)b; it->col[k][3] = 255; }
@@ -773,7 +780,7 @@ static void fb_text(LytScene *sc, const char *str, float x, float y, float w, fl
     it->type = LYT_ITEM_TEXT;
     it->x[0] = it->x[2] = x; it->x[1] = it->x[3] = x + w;
     it->y[0] = it->y[1] = y; it->y[2] = it->y[3] = y + h;
-    it->alpha = a;
+    it->alpha = a * g_sa;
     it->str = str;
     it->font_size[0] = it->font_size[1] = px;
     it->origin = (uint8_t)origin;
@@ -871,6 +878,8 @@ static void tick(double dt) {
     Screen *s = cur();
     G.clock += dt;
     G.fade = 1.0;
+    if (G.cnt_err < 99) G.cnt_err += dt * 60;
+    if (G.closing) { G.close_t += dt; if (G.close_t * 60 >= 14) G.closing = 0; }
     if (G.msg_left > 0) { G.msg_left -= dt; if (G.msg_left <= 0) G.msg[0] = 0; }
     if (G.repeat_dir && G.clock >= G.repeat_at) { pad_edge(G.repeat_dir); G.repeat_at = G.clock + 0.07; }
     int len = u8_count(G.text);
@@ -911,8 +920,11 @@ static void tick(double dt) {
 
 const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float off[2]) {
     LOCK();
-    if (!G.active) { pthread_mutex_unlock(&G.lock); return NULL; }
+    if (!G.active && !G.closing) { pthread_mutex_unlock(&G.lock); return NULL; }
     tick(dt);
+    if (!G.active && !G.closing) { pthread_mutex_unlock(&G.lock); return NULL; }   // the closing animation has just finished
+    float cf = G.closing ? (float)(G.close_t * 60) : 0;   // frames of the closing animation
+    g_sa = G.closing ? fmaxf(0, 1 - cf / 6) : 1;
     Screen *s = cur();
     float sc = fminf((float)tw / SWKBD_CANVAS_W, (float)th / SWKBD_CANVAS_H);
     G.scale = sc; G.tw = tw; G.th = th;
@@ -948,9 +960,11 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         char c[32];
         if (G.p.maxlen > 0) snprintf(c, sizeof c, "%d/%d", n, G.p.maxlen); else snprintf(c, sizeof c, "%d", n);
         lytinst_set_text(cnt, "T_TextLimit", c);
+        if (G.cnt_err < 9) lytinst_set_anim(cnt, "Err", (float)G.cnt_err);   // typing past the limit: the counter shakes
+        else if (G.p.maxlen > 0 && n >= G.p.maxlen) lytinst_set_anim(cnt, "Limit", 1);   // and shows its limit colour at the maximum
     }
     float a = (float)G.fade;
-    lytinst_set_alpha(s->bg, a); lytinst_set_alpha(s->kt, a); lytinst_set_alpha(s->area, a);
+    lytinst_set_alpha(s->bg, a); lytinst_set_alpha(s->kt, a * g_sa); lytinst_set_alpha(s->area, a);
     if (getenv("BDSP_TRACE_APPLET") && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] t=%.1f fade=%.2f scale=%.2f target %dx%d screen %d\n", G.clock, G.fade, sc, tw, th, G.cur);
     // entrance: the layouts' own In animations (the keytop slides up and fades in, the text area fades in); the mask fades over 6 frames
     float tf = (float)(G.clock * 60);
@@ -959,7 +973,15 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     fr = lytinst_anim_frames(s->area, "In");
     lytinst_set_anim(s->area, "In", tf < fr ? tf : fr);
     lytinst_set_alpha(s->mask, tf < 6 ? tf / 6 : 1);
-    lyt_scene_build(&G.scene, s->mask, 0, 0, 1);
+    if (G.closing) {   // the layouts' own Out animations: the keytop sinks and fades, the text area leaves, the mask fades over 6 frames
+        float fo = lytinst_anim_frames(s->bg, "Out");
+        lytinst_set_anim(s->bg, "Out", cf < fo ? cf : fo);
+        fo = lytinst_anim_frames(s->area, "Out");
+        lytinst_set_anim(s->area, "Out", cf < fo ? cf : fo);
+        lytinst_set_alpha(s->mask, g_sa);
+    }
+    G.scene.n = 0;
+    fb_quad(&G.scene, 0, 0, SWKBD_CANVAS_W, SWKBD_CANVAS_H, 10, 20, 30, (180 / 255.0f) * (tf < 6 ? tf / 6 : 1));   // the BgMask layout's colour (10,20,30,180) over the whole screen; it fades in over 6 frames (and out with g_sa)
     fb_quad(&G.scene, 0, 288, SWKBD_CANVAS_W, SWKBD_CANVAS_H - 288, COL(g_theme->bg), 1.0f);   // keyboard base (its pane is hidden in the file)
     lyt_scene_append(&G.scene, s->bg, 0, 0, 1);
     lyt_scene_append(&G.scene, s->kt, 0, 0, 1);

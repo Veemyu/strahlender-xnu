@@ -6,6 +6,7 @@
 Output (nothing of it belongs in the repository):
   swkbd/lyt/*.szs                              keyboard layouts and animations (title 0100000000001008)
   swkbd/message/<language>/swkbd.msbt.szs      button labels
+  swkbd/sound/swkbd.bfsar                      sound archive of the keyboard (key, cursor, enter sounds)
   fonts/nintendo_udsg-r_std_003.bfttf          text font (title 0100000000000811)
   fonts/nintendo_ext_003.bfttf                 button glyphs (title 0100000000000810)
   0100000000000823.romfs                       word list of the name check (title 0100000000000823)
@@ -81,6 +82,10 @@ def main():
             os.makedirs(lyt, exist_ok=True)
             for f in os.listdir(os.path.join(d, "lyt")):
                 shutil.copy2(os.path.join(d, "lyt", f), lyt)
+            snd = os.path.join(d, "sound")
+            for f in os.listdir(snd) if os.path.isdir(snd) else []:
+                os.makedirs(os.path.join(a.out, "swkbd", "sound"), exist_ok=True)
+                shutil.copy2(os.path.join(snd, f), os.path.join(a.out, "swkbd", "sound"))
             msg = os.path.join(d, "message")
             for lang in os.listdir(msg) if os.path.isdir(msg) else []:
                 src = os.path.join(msg, lang, "swkbd.msbt.szs")

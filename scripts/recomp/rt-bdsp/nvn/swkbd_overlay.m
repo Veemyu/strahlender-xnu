@@ -314,7 +314,7 @@ static void *keepalive(void *arg) {
     pthread_setname_np("swkbd-present");
     for (;;) {
         usleep(16000);
-        if (!swkbd_ui_active()) continue;
+        if (!swkbd_ui_visible()) continue;
         if (metal_now_ns() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
         metal_repeat_present();
     }
@@ -332,7 +332,7 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
     id<MTLCommandBuffer> cb = (__bridge id<MTLCommandBuffer>)cb_;
     id<MTLTexture> target = (__bridge id<MTLTexture>)target_;
     preview_check();
-    int active = swkbd_ui_active();
+    int active = swkbd_ui_visible();
     if (active != g_was_active) {   // the drawables must be readable while the keyboard is open (the blur is made from one of them)
         g_was_active = active;
         metal_set_sampleable(active);
@@ -366,7 +366,7 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
         if (g_blur_ready) {   // the stored blur instead of the sharp game image, fading in like the dimming layer
             float bx[4] = {0, (float)tw, 0, (float)tw}, by[4] = {0, 0, (float)th, (float)th};
             float buv[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}}, bc[4][4];
-            float fa = g_blur_t >= 0.1f ? 1.0f : g_blur_t / 0.1f;
+            float fa = (g_blur_t >= 0.1f ? 1.0f : g_blur_t / 0.1f) * swkbd_ui_backdrop();
             for (int k = 0; k < 4; k++) { bc[k][0] = bc[k][1] = bc[k][2] = 1; bc[k][3] = fa; }
             [enc setFragmentTexture:g_blur_b atIndex:0];
             quad(enc, bx, by, buv, bc);

@@ -37,6 +37,10 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user);   // 0 =
 // accepted = 1 closes the keyboard; 0 keeps it open and shows `message` (may be NULL) as the explanation line for a few seconds.
 void swkbd_ui_resolve(int accepted, const char *message);
 int swkbd_ui_active(void);
+// True while the keyboard is drawn: open, or playing its closing animation (swkbd_ui_active is 0 then, it takes no input).
+int swkbd_ui_visible(void);
+// Opacity (0..1) of the blurred backdrop behind the keyboard: 1 while open, fading out with the closing animation.
+float swkbd_ui_backdrop(void);
 
 // Input. Buttons as bit numbers: 0 A, 1 B, 2 X, 3 Y, 4 LStick, 5 RStick, 6 L, 7 R, 8 ZL, 9 ZR, 10 Plus, 11 Minus, 12 Left, 13 Up, 14 Right, 15 Down.
 void swkbd_ui_pad(uint64_t buttons, int lx, int ly);                 // current state; edges are detected inside
