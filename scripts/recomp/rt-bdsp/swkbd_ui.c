@@ -1024,15 +1024,16 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
             const Key *nk = &s->keys[j];
             if (nk->hidden || nk == tk || fabsf(nk->r[1] - tk->r[1]) > 1 || nk->r[0] < tk->r[2] || nk->r[0] - tk->r[2] > 6) continue;
             float gx = tk->r[2], gw = nk->r[0] - tk->r[2];
+            if (nk->kind != K_TAB) continue;   // (the gap to the space bar stays open)
             fb_quad(&G.scene, gx, tk->r[1], gw, tk->r[3] - tk->r[1], COL(g_theme->fn), 1);
-            if (nk->kind == K_TAB) fb_quad(&G.scene, gx + gw / 2 - 1.25f, tk->r[1], 2.5f, tk->r[3] - tk->r[1], 188, 188, 188, 1);   // seam between two tabs
+            fb_quad(&G.scene, gx + gw / 2 - 1.25f, tk->r[1], 2.5f, tk->r[3] - tk->r[1], 188, 188, 188, 1);   // seam between two tabs
         }
     }
     for (int i = 0; i < s->nkeys; i++) {   // underline of the open tab
         const Key *tk = &s->keys[i];
         if (tk->kind != K_TAB || tk->hidden || tk->page != G.page) continue;
         float tw = text_width(k_tab_label[tk->page], 22.2f) * 0.905f, cx = (tk->r[0] + tk->r[2]) / 2, cy = (tk->r[1] + tk->r[3]) / 2;
-        fb_quad(&G.scene, cx - tw / 2, cy + 15, tw, 2.7f, COL(g_theme->tab_on), 1);   // 2.7 px high, 45 px wide under ABC (measured on the console)
+        fb_quad(&G.scene, cx - tw / 2, cy + 14.6f, tw, 3.4f, 66, 78, 229, 1);   // 45 px wide under ABC, about 3.4 px high (measured on the console)
     }
     for (int i = 0; i < s->nkeys; i++) {   // caps lock dot in the top left corner of the shift key
         const Key *sk = &s->keys[i];
