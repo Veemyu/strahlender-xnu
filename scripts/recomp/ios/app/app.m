@@ -353,19 +353,18 @@ static void *StatsLoop(void *arg) {
     publish_buttons();
 }
 // While the on-screen keyboard is open a touch goes to it (a key, or the text field, which brings up the system keyboard), not to the game
-- (BOOL)swkbdTouches:(NSSet<UITouch *> *)t began:(BOOL)began {
+// phase: 1 began, 0 ended, -1 cancelled (a moving finger changes nothing until it is lifted)
+- (BOOL)swkbdTouches:(NSSet<UITouch *> *)t phase:(int)phase {
     if (!swkbd_ui_active()) return NO;
-    if (began) {
-        CGPoint p = [t.anyObject locationInView:self];
-        float nx = (float)(p.x / self.bounds.size.width), ny = (float)(p.y / self.bounds.size.height);
-        if (swkbd_ui_field_hit(nx, ny)) SwkbdShowNative(); else swkbd_ui_touch(1, nx, ny);
-    }
+    CGPoint p = [t.anyObject locationInView:self];
+    float nx = (float)(p.x / self.bounds.size.width), ny = (float)(p.y / self.bounds.size.height);
+    if (phase == 1 && swkbd_ui_field_hit(nx, ny)) SwkbdShowNative(); else if (phase != 2) swkbd_ui_touch(phase, nx, ny);
     return YES;
 }
-- (void)touchesBegan:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:YES]) return; [self updateTouches:e.allTouches ending:nil]; }
-- (void)touchesMoved:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:NO]) return; [self updateTouches:e.allTouches ending:nil]; }
-- (void)touchesEnded:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:NO]) return; [self updateTouches:e.allTouches ending:t]; }
-- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t began:NO]) return; [self updateTouches:e.allTouches ending:t]; }
+- (void)touchesBegan:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t phase:1]) return; [self updateTouches:e.allTouches ending:nil]; }
+- (void)touchesMoved:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t phase:2]) return; [self updateTouches:e.allTouches ending:nil]; }
+- (void)touchesEnded:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t phase:0]) return; [self updateTouches:e.allTouches ending:t]; }
+- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { if ([self swkbdTouches:t phase:-1]) return; [self updateTouches:e.allTouches ending:t]; }
 @end
 
 #pragma mark - Controller, Tastatur

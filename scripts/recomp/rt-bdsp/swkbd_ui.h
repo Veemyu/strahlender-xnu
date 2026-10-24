@@ -44,7 +44,9 @@ float swkbd_ui_backdrop(void);
 
 // Input. Buttons as bit numbers: 0 A, 1 B, 2 X, 3 Y, 4 LStick, 5 RStick, 6 L, 7 R, 8 ZL, 9 ZR, 10 Plus, 11 Minus, 12 Left, 13 Up, 14 Right, 15 Down.
 void swkbd_ui_pad(uint64_t buttons, int lx, int ly);                 // current state; edges are detected inside
-void swkbd_ui_touch(int down, float nx, float ny);                   // normalised position in the window (0..1, y down); the last scene's fit is used
+// Touch: down 1 = begins, 0 = the finger is lifted, -1 = cancelled; the key is entered when the finger is lifted over it. Position normalised in the window
+// (0..1, y down); the last scene's fit is used.
+void swkbd_ui_touch(int down, float nx, float ny);
 void swkbd_ui_text(const char *utf8);                                // typed characters (hardware keyboard, native keyboard)
 enum { SWKBD_KEY_BACKSPACE = 1, SWKBD_KEY_DELETE, SWKBD_KEY_LEFT, SWKBD_KEY_RIGHT, SWKBD_KEY_HOME, SWKBD_KEY_END, SWKBD_KEY_ENTER, SWKBD_KEY_ESCAPE };
 void swkbd_ui_key(int key);

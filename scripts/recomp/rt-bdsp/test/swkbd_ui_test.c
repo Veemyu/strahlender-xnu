@@ -114,6 +114,22 @@ int main(int argc, char **argv) {
     printf("symbol page: focus %s, text \"%s\"\n", swkbd_ui_focus_name(), swkbd_ui_text_value());
     CHECK(strlen(swkbd_ui_text_value()) == 1 && strchr(layouts ? "!@#$%^&*()_" : "1", swkbd_ui_text_value()[0]));
     swkbd_ui_resolve(1, NULL);
+    // touch: the key is entered when the finger is lifted over it, not when it comes down; lifting it elsewhere enters nothing
+    CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
+    {
+        float sc, o[2];
+        for (int i = 0; i < 3; i++) if (swkbd_ui_scene(0.016, W, H, &sc, o)) swkbd_ui_unlock();
+        float nx = (o[0] + 100 * sc) / W, ny = (o[1] + 364 * sc) / H;   // the first key of the top row (the "1" of the active layout)
+        swkbd_ui_touch(1, nx, ny);
+        CHECK(swkbd_ui_text_value()[0] == 0);
+        swkbd_ui_touch(0, nx, ny);
+        CHECK(swkbd_ui_text_value()[0] == '1');
+        swkbd_ui_touch(1, nx, ny); swkbd_ui_touch(0, nx + 0.3f, ny);   // lifted somewhere else
+        CHECK(!strcmp(swkbd_ui_text_value(), "1"));
+        swkbd_ui_touch(1, nx, ny); swkbd_ui_touch(-1, nx, ny);         // cancelled
+        CHECK(!strcmp(swkbd_ui_text_value(), "1"));
+    }
+    swkbd_ui_resolve(1, NULL);
     // the globe key switches the layout: us -> uk -> de -> fr, where the first letter of the second row is an "a" (a "q" before)
     CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
     for (int i = 0; i < 4; i++) { swkbd_ui_pad(1ull << 15, 0, 0); swkbd_ui_pad(0, 0, 0); }

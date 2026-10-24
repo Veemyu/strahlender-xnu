@@ -455,8 +455,16 @@ static bool swkbd_event(const SDL_Event *e) {
         if (e->button.button == SDL_BUTTON_LEFT && ww > 0 && wh > 0) swkbd_ui_touch(1, e->button.x / ww, e->button.y / wh);
         return true;
     }
-    case SDL_EVENT_MOUSE_BUTTON_UP: return true;
+    case SDL_EVENT_MOUSE_BUTTON_UP: {
+        SDL_Window *w = ui_window();
+        int ww = 0, wh = 0;
+        if (w) SDL_GetWindowSize(w, &ww, &wh);
+        if (e->button.button == SDL_BUTTON_LEFT && ww > 0 && wh > 0) swkbd_ui_touch(0, e->button.x / ww, e->button.y / wh);
+        return true;
+    }
     case SDL_EVENT_FINGER_DOWN: swkbd_ui_touch(1, e->tfinger.x, e->tfinger.y); return true;
+    case SDL_EVENT_FINGER_UP: swkbd_ui_touch(0, e->tfinger.x, e->tfinger.y); return true;
+    case SDL_EVENT_FINGER_CANCELED: swkbd_ui_touch(-1, e->tfinger.x, e->tfinger.y); return true;
     default: return false;
     }
 }

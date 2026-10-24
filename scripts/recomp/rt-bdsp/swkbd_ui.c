@@ -88,6 +88,7 @@ static struct {
     int focus;
     int touch_mode;                  // last input was touch
     int busy;
+    int touch_key;                   // key held down by a finger, -1 none
     int closing;                     // the closing animation is playing (the keyboard no longer takes input)
     double close_t;                  // seconds since the close started
     double cnt_err;                  // frames since the counter's error shake started (>= 9: none)
@@ -661,7 +662,7 @@ static void press_key(int i) {
     Key *k = &s->keys[i];
     set_key_anim(k, G.touch_mode ? "DecideTouch" : "DecideKey");
     switch (k->kind) {
-    case K_CHAR: snd(G.touch_mode ? "SeSwkbdGlyphDown" : "SeSwkbdGlyph"); break;
+    case K_CHAR: snd(G.touch_mode ? "SeSwkbdGlyphUp" : "SeSwkbdGlyph"); break;
     case K_BS: snd("SeSwkbdBsDecide"); break;
     case K_ENTER: break;   // do_submit plays its own
     case K_SHIFT: break;   // plays after the state changed
@@ -761,7 +762,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
         G.text[n] = 0;
     }
     G.caret = (int)strlen(G.text);
-    swkbd_ime_reset(&G.ime); G.comp_len = 0;
+    swkbd_ime_reset(&G.ime); G.comp_len = 0; G.touch_key = -1;
     G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
@@ -859,18 +860,38 @@ void swkbd_ui_pad(uint64_t buttons, int lx, int ly) {
     pthread_mutex_unlock(&G.lock);
 }
 
+// A touch: down shows the key pressed (the console's touch focus look) and plays the key-down sound; lifting the finger on the same key
+// enters it (press flash, up sound); lifting it elsewhere, or a cancelled touch, only lets the key go.
+static int key_at(float nx, float ny) {
+    if (G.scale <= 0) return -1;
+    float x = (nx * G.tw - G.off[0]) / G.scale, y = (ny * G.th - G.off[1]) / G.scale;
+    Screen *s = cur();
+    for (int i = 0; i < s->nkeys; i++) {
+        const Key *k = &s->keys[i];
+        if (k->kind != K_NONE && !k->hidden && x >= k->r[0] && x < k->r[2] && y >= k->r[1] && y < k->r[3]) return i;
+    }
+    return -1;
+}
+
 void swkbd_ui_touch(int down, float nx, float ny) {
     LOCK();
-    if (G.active && down && G.scale > 0) {
-        float x = (nx * G.tw - G.off[0]) / G.scale, y = (ny * G.th - G.off[1]) / G.scale;
+    if (G.active && !G.closing) {
         Screen *s = cur();
-        for (int i = 0; i < s->nkeys; i++) {
-            const Key *k = &s->keys[i];
-            if (k->kind != K_NONE && !k->hidden && x >= k->r[0] && x < k->r[2] && y >= k->r[1] && y < k->r[3]) {
+        if (down > 0) {
+            int i = key_at(nx, ny);
+            if (i >= 0) {
                 G.touch_mode = 1;
+                G.touch_key = i;
                 set_focus(i);
-                press_key(i);
-                break;
+                if (s->keys[i].kind == K_CHAR) snd("SeSwkbdGlyphDown");
+                else if (s->keys[i].kind == K_ENTER) snd("SeSwkbdEnterDown");
+            }
+        } else if (G.touch_key >= 0) {
+            int i = G.touch_key;
+            G.touch_key = -1;
+            if (i < s->nkeys) {
+                if (down == 0 && key_at(nx, ny) == i) press_key(i);
+                else set_key_anim(&s->keys[i], "UnFocusTouch");   // the finger left the key: it is let go without an entry
             }
         }
     }
