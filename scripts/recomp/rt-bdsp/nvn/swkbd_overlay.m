@@ -232,7 +232,8 @@ static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px, flo
         CGFloat asc, desc, lead;
         double w = CTLineGetTypographicBounds(l, &asc, &desc, &lead);
         CGRect ib = CTLineGetImageBounds(l, NULL);   // accents and cedillas can reach beyond the font's ascent / descent
-        CGFloat pad = fmax(0, fmax(CGRectGetMaxY(ib) - asc, -CGRectGetMinY(ib) - desc));
+        (void)ib;
+        CGFloat pad = ceil(px * 0.3);   // room for accents above and cedillas / descenders below: a fixed amount, so the baseline stands at the same place for every string
         asc += pad; desc += pad;
         int tw = (int)ceil(w) + 4, th = (int)ceil(asc + desc) + 4;
         if (tw > 0 && th > 0 && tw < 4096 && th < 1024) {
@@ -247,7 +248,7 @@ static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px, flo
             for (int i = 0; i < tw * th; i++) bits[i * 4] = bits[i * 4 + 1] = bits[i * 4 + 2] = 255;   // the context holds premultiplied white (rgb = alpha); the shader and the blend multiply by alpha again, which made dark fringes on edges: keep straight alpha
             id<MTLTexture> t = make_rgba(dev, tw, th, bits);   // row 0 of the bitmap is the top
             CGContextRelease(cg); CGColorSpaceRelease(cs);
-            res = @{@"tex": t, @"w": @(tw), @"h": @(th), @"asc": @(asc)};
+            res = @{@"tex": t, @"w": @(tw), @"h": @(th), @"asc": @(asc), @"pad": @(pad)};
         }
         CFRelease(l);
     }
@@ -466,7 +467,8 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
                 float drawW = w * sx, drawH = h * sx;                // too long for its box: smaller, in proportion (a squeezed label looks tall and thin)
                 int ox = it->origin & 3, oy = (it->origin >> 2) & 3;
                 float left = X[0] + (ox == 1 ? 0 : ox == 2 ? bw - drawW : (bw - drawW) / 2);
-                float top = Y[0] + (oy == 1 ? 0 : oy == 2 ? bh - drawH : (bh - drawH) / 2);
+                float padd = [d[@"pad"] floatValue] * sx;   // the texture has that much room above and below the font's own ascent and descent
+                float top = Y[0] + (oy == 1 ? -padd : oy == 2 ? bh - drawH + padd : (bh - drawH) / 2);
                 float gx[4] = {left - 2 * sx, left + drawW + 2 * sx, left - 2 * sx, left + drawW + 2 * sx};
                 float gy[4] = {top, top, top + drawH, top + drawH};
                 float uv[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}}, col[4][4];
