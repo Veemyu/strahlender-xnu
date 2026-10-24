@@ -114,6 +114,16 @@ int main(int argc, char **argv) {
     printf("symbol page: focus %s, text \"%s\"\n", swkbd_ui_focus_name(), swkbd_ui_text_value());
     CHECK(strlen(swkbd_ui_text_value()) == 1 && strchr(layouts ? "!@#$%^&*()_" : "1", swkbd_ui_text_value()[0]));
     swkbd_ui_resolve(1, NULL);
+    // the globe key switches the layout: us -> uk -> de -> fr, where the first letter of the second row is an "a" (a "q" before)
+    CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
+    for (int i = 0; i < 4; i++) { swkbd_ui_pad(1ull << 15, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    CHECK(strstr(swkbd_ui_focus_name(), "BtnArray") != NULL);
+    for (int i = 0; i < 3; i++) { swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    CHECK(swkbd_ui_text_value()[0] == 0);                  // the globe types nothing
+    for (int i = 0; i < 3; i++) { swkbd_ui_pad(1ull << 13, 0, 0); swkbd_ui_pad(0, 0, 0); }
+    swkbd_ui_pad(1ull << 0, 0, 0); swkbd_ui_pad(0, 0, 0);
+    CHECK(!strcmp(swkbd_ui_text_value(), "a"));
+    swkbd_ui_resolve(1, NULL);
     // a second opening fades in again to full opacity
     CHECK(swkbd_ui_open(&p, cb, NULL) == 0);
     float maxa = 0;

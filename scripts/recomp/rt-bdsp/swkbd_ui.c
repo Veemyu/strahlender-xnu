@@ -11,7 +11,7 @@
 
 static void trace(const char *what, const char *arg) { if (getenv("BDSP_TRACE_APPLET")) fprintf(stderr, "[swkbd_ui] %s %s\n", what, arg ? arg : ""); }
 
-enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE, K_TAB };
+enum { K_CHAR, K_BS, K_ENTER, K_SHIFT, K_SYMBOL, K_BACK, K_SPACE, K_NONE, K_TAB, K_GLOBE };
 enum { SCR_QWERTY, SCR_SIGN, SCR_NUMERIC, SCR_COUNT };
 #define MAX_KEYS 80
 #define FN_LABEL_EM 22.2f   // em size of the labels on the function keys (tabs, space, return); the layouts give each of them its own size, the console draws them alike
@@ -58,6 +58,8 @@ static const char *const k_numeric = "1234567890";
 // Accent pages (tabs "ÀÁÂ" and "ÑŃŅ"): lower case, and upper case with Shift
 static const char *const k_acc_lo[2] = {"àáâãäåæāăąçćċčðďǆǳèéêëēęěğġģħìíîïīįıĳķĺļľł", "ñńņňòóôõöøœőōŕřšßśşþťțùúûüūůűųýÿźżž"};
 static const char *const k_acc_up[2] = {"ÀÁÂÃÄÅÆĀĂĄÇĆĊČÐĎǅǲÈÉÊËĒĘĚĞĠĢĦÌÍÎÏĪĮİĲĶĹĻĽŁ", "ÑŃŅŇÒÓÔÕÖØŒŐŌŔŘŠßŚŞÞŤȚÙÚÛÜŪŮŰŲÝŸŹŻŽ"};
+// Label (in the firmware's message file) that names each layout of k_layouts, shown on the space bar when the globe key switches to it
+static const char *const k_layout_label[] = {"SwkbdAddKeytop_USEnglish", "SwkbdAddKeytop_EUEnglish", "SwkbdAddKeytop_EUGerman", "SwkbdAddKeytop_EUFrench", "SwkbdAddKeytop_EUSpanish", "SwkbdAddKeytop_EUItalianQwerty", "SwkbdAddKeytop_EUPortuguese", "SwkbdAddKeytop_EURussian"};
 static const char *const k_tab_label[4] = {"ABC", "#+=", "ÀÁÂ", "ÑŃŅ"};
 
 static struct {
@@ -93,7 +95,9 @@ static struct {
     float field[4];                  // text field, canvas pixels (left, top, right, bottom)
     int page;                        // 0 letters, 1 symbols, 2 and 3 accents
     int li;                          // index in k_layouts
-    struct { char name[56], text[96]; } labels[48];
+    struct { char name[56], text[96]; } labels[64];
+    char toast[96];                  // text on the space bar for a moment (name of the layout after the globe key)
+    double toast_left;
     int nlabels;
     char lang[16];
 } G;
@@ -160,7 +164,7 @@ static void load_labels(void) {
                         memcpy(name, lbl + q + 1, l < 127 ? l : 127);
                         uint32_t idx; memcpy(&idx, lbl + q + 1 + l, 4);
                         q += 5 + l;
-                        if (idx >= nt || G.nlabels >= 48 || strncmp(name, "Swkbd", 5)) continue;
+                        if (idx >= nt || G.nlabels >= 64 || strncmp(name, "Swkbd", 5)) continue;
                         char *dst = G.labels[G.nlabels].text;
                         snprintf(G.labels[G.nlabels].name, sizeof G.labels[0].name, "%s", name);
                         G.nlabels++;
@@ -290,16 +294,13 @@ static int build_screen(int si) {
         else if (!strcmp(p->name, "L_BtnBS")) kind = K_BS;
         else if (!strncmp(p->name, "L_BtnEnter", 10)) kind = K_ENTER;
         else if (!strcmp(p->name, "L_BtnShift")) kind = K_SHIFT;
+        else if (!strcmp(p->name, "L_BtnArray")) kind = K_GLOBE;   // the language key: switches between the keyboard layouts
         else if (!strcmp(p->name, "L_BtnSpace_00")) kind = si == SCR_QWERTY ? -2 : K_SPACE;   // the letter keyboard uses the narrower one next to the tabs
         else if (!strcmp(p->name, "L_BtnSpace_01") && si == SCR_QWERTY) kind = K_SPACE;
         else if (!strncmp(p->name, "L_InputMode_0", 13) && p->name[13] >= '0' && p->name[13] <= '3' && si != SCR_NUMERIC) { kind = K_TAB; page = p->name[13] - '0'; }
         if (kind == -1 || kind == -2) {
             // not a key: hidden (symbol key and unused widths) or decoration (language globe, Return)
             if (!strcmp(p->name, "L_BtnSymbol") || kind == -2 || !strncmp(p->name, "L_BtnSpace", 10) || !strncmp(p->name, "L_InputMode", 11)) lytinst_set_visible(s->kt, p->name, 0);
-            if (!strcmp(p->name, "L_BtnArray")) {   // the language key: a globe, no function here
-                LytInst *g = lytinst_part(s->kt, p->name);
-                lytinst_set_visible(g, "N_Image", 1); lytinst_set_visible(g, "N_Text", 0);
-            }
             if (!strcmp(p->name, "L_BtnLineBreak")) {   // Return: only for several-line fields, shown disabled
                 LytInst *g = lytinst_part(s->kt, p->name);
                 lytinst_set_text(g, "T_00", lbl("SwkbdCommon_Enter_LineBreak", "Return"));
@@ -322,6 +323,7 @@ static int build_screen(int si) {
         k->t = 1e9f;
         if (kind == K_BS) lytinst_set_text(inst, "T_Key", "");           // button badges: B, Y, +
         if (kind == K_SPACE) lytinst_set_text(inst, "T_Key", "");
+        if (kind == K_GLOBE) { lytinst_set_visible(inst, "N_Image", 1); lytinst_set_visible(inst, "N_Text", 0); }   // a globe, no label
         if (kind == K_ENTER) lytinst_set_text(inst, "T_Key_00", "");
         if (kind == K_ENTER) lytinst_set_offset(inst, "N_Key", 22, 38);   // badges sit 16 px from the right edge and 15 px from the top of their key, as on the console
         if (kind == K_BS) lytinst_set_offset(inst, "N_Key", 5, 8);
@@ -377,7 +379,7 @@ static int ensure_built(void) {
     }
     {   // keyboard layout: BDSP_SWKBD_LAYOUT, else from the language
         static const struct { const char *lang, *id; } map[] = {{"EUde", "de"}, {"EUfr", "fr"}, {"USfr", "fr"}, {"EUes", "es"}, {"USes", "es"}, {"EUit", "it"},
-                                                                  {"EUpt", "pt"}, {"USpt", "pt"}, {"EUru", "ru"}, {"EUen", "uk"}, {"USen", "us"}};
+                                                                  {"EUpt", "pt"}, {"USpt", "pt"}, {"EUru", "ru"}, {"EUen", "uk"}, {"USen", "us"}, {"EUnl", "us"}};   // (Dutch, Japanese, Korean and Chinese: the letters of the US layout for now)
         const char *want = getenv("BDSP_SWKBD_LAYOUT");
         for (unsigned q = 0; q < sizeof map / sizeof *map && !want; q++) if (!strcmp(G.lang, map[q].lang)) want = map[q].id;
         G.li = 0;
@@ -457,7 +459,7 @@ static void refresh_labels(void) {
         switch (k->kind) {
         case K_CHAR: t = G.shift ? k->shifted : k->normal; break;
         case K_ENTER: t = G.ok_label; break;
-        case K_SPACE: t = G.space_label; break;
+        case K_SPACE: t = G.toast_left > 0 ? G.toast : G.space_label; break;
         case K_SYMBOL: t = "#+="; break;
         case K_BACK: t = "ABC"; break;
         case K_TAB: t = k_tab_label[k->page]; break;
@@ -568,6 +570,14 @@ static void press_key(int i) {
         if (G.cur != SCR_NUMERIC) { G.shift = (G.shift + 1) % 3; refresh_labels(); snd(G.shift == 1 ? "SeSwkbdOptShiftOn" : G.shift == 2 ? "SeSwkbdOptCapsLock" : "SeSwkbdOptShiftOff"); }
         break;
     case K_TAB: if (k->page != G.page) switch_page(k->page); break;
+    case K_GLOBE: {
+        G.li = (G.li + 1) % (int)(sizeof k_layouts / sizeof *k_layouts);
+        if (G.cur == SCR_QWERTY && G.page == 0) assign_chars(s, 0);   // the other pages take the layout when they are opened
+        snprintf(G.toast, sizeof G.toast, "%s", lbl(k_layout_label[G.li], k_layouts[G.li].id));
+        G.toast_left = 1.5;
+        refresh_labels();
+        break;
+    }
     case K_SYMBOL: switch_page(1); break;
     case K_BACK: switch_page(0); break;
     }
@@ -613,7 +623,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
         G.text[n] = 0;
     }
     G.caret = (int)strlen(G.text);
-    G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
+    G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
     int si = p->mode == 1 && G.scr[SCR_NUMERIC].ok ? SCR_NUMERIC : SCR_QWERTY;
@@ -621,6 +631,9 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     for (int ki = 0; ki < G.scr[si].nkeys; ki++) { Key *rk = &G.scr[si].keys[ki]; finish_oneshots(rk); snprintf(rk->tag, sizeof rk->tag, "UnFocusKey"); rk->t = 1e9f; }   // keys start at rest (the focus and press states of the last session are gone)
     if (si == SCR_QWERTY) assign_chars(&G.scr[SCR_QWERTY], 0);
     refresh_labels();
+    if (getenv("BDSP_SWKBD_GLOBE") && si == SCR_QWERTY)   // test hook: presses the globe key this many times, the toast stays
+        for (int n = atoi(getenv("BDSP_SWKBD_GLOBE")), gi = find_key(K_GLOBE); gi >= 0 && n > 0; n--) press_key(gi);
+    if (getenv("BDSP_SWKBD_GLOBE") && getenv("BDSP_SWKBD_HOLD")) G.toast_left = 1e6;
     set_focus(0);
     trace("open", p->header);
     if (getenv("BDSP_SWKBD_TYPE")) insert_text(getenv("BDSP_SWKBD_TYPE"));   // test hook: types this text on opening
@@ -871,7 +884,7 @@ static void fb_scene(Screen *s, const char *shown) {
         switch (k->kind) {
         case K_CHAR: t = G.shift ? k->shifted : k->normal; break;
         case K_ENTER: t = G.ok_label; break;
-        case K_SPACE: t = G.space_label; break;
+        case K_SPACE: t = G.toast_left > 0 ? G.toast : G.space_label; break;
         case K_SYMBOL: t = "#+="; break;
         case K_BACK: t = "ABC"; break;
         case K_SHIFT: t = G.shift == 2 ? "\xE2\x87\xAA" : G.shift == 1 ? "\xE2\x87\xA7" : "\xE2\x87\xA7"; break;
@@ -928,6 +941,7 @@ static void tick(double dt) {
     if (G.cnt_err < 99) G.cnt_err += dt * 60;
     if (G.closing) { G.close_t += dt; if (G.close_t * 60 >= 14) G.closing = 0; }
     if (G.msg_left > 0) { G.msg_left -= dt; if (G.msg_left <= 0) G.msg[0] = 0; }
+    if (G.toast_left > 0) { G.toast_left -= dt; if (G.toast_left <= 0) refresh_labels(); }
     if (G.repeat_dir && G.clock >= G.repeat_at) { g_rep = 1; pad_edge(G.repeat_dir); g_rep = 0; G.repeat_at = G.clock + 0.07; }
     int len = u8_count(G.text);
     for (int i = 0; i < s->nkeys; i++) {
