@@ -1118,7 +1118,7 @@ static void tick(double dt) {
     if (G.toast_left > 0) { G.toast_left -= dt; if (G.toast_left <= 0) refresh_labels(); }
     if (G.touch_key >= 0 && G.touch_key < s->nkeys && G.touch_rep_at > 0 && G.clock >= G.touch_rep_at) {   // a key held by a finger repeats
         Key *hk = &s->keys[G.touch_key];
-        set_key_anim(hk, "RepeatTouch");
+        if (strcmp(hk->tag, "RepeatTouch")) set_key_anim(hk, "RepeatTouch"); else hk->t = 0;   // every repeat plays the animation again from its start
         if (hk->kind == K_BS) { snd("SeSwkbdBsRepeat"); backspace(); }
         else if (hk->kind == K_SPACE) { snd("SeSwkbdOptRepeat"); ime_end(); insert_text(" "); }
         else { snd("SeSwkbdGlyphRepeat"); enter_char(hk); }
@@ -1132,13 +1132,15 @@ static void tick(double dt) {
         float fr = k->inst ? lytinst_anim_frames(k->inst, k->tag) : (!strncmp(k->tag, "Decide", 6) ? 9.0f : 0.0f);
         if (k->t >= fr) {
             // a finished press falls back to the resting state of the key
-            if (!strncmp(k->tag, "Decide", 6)) {
+            if (!strncmp(k->tag, "Decide", 6) || !strncmp(k->tag, "Repeat", 6)) {   // (a held key goes back to its pressed look between two repeats)
                 finish_oneshots(k);
-                snprintf(k->tag, sizeof k->tag, i == G.focus ? (G.touch_mode ? "FocusTouch" : "FocusKey") : "UnFocusKey");
-                k->t = 1e9f;
+                // a finger still down keeps the key pressed; a lifted one lets it go (the key fades back, 6 frames); the controller's focus stays
+                int held = G.touch_mode && G.touch_key == i;
+                snprintf(k->tag, sizeof k->tag, G.touch_mode ? (held ? "FocusTouch" : "UnFocusTouch") : i == G.focus ? "FocusKey" : "UnFocusKey");
+                k->t = G.touch_mode && !held ? 0 : 1e9f;
                 fr = lytinst_anim_frames(k->inst, k->tag);
-            }
-            k->t = fr;
+                if (k->t > 1e8f) k->t = fr;
+            } else k->t = fr;
         }
         lytinst_set_anim(k->inst, k->tag, k->t);
         if (!strncmp(k->tag, "UnFocus", 7)) {   // the two unfocus animations (key / touch) each undo only their own focus animation: run both
@@ -1259,7 +1261,7 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){193, 194, 198};
         fb_dot(&G.scene, sk->r[0] + 13.96f, sk->r[1] + 13.67f, 3.75f, dc[0], dc[1], dc[2]);
     }
-    if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
+    if (!G.touch_mode && G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame (not while the keyboard is used by touch: there the pressed key is tinted by the layout)
         const Key *fk = &s->keys[G.focus];
         const uint8_t *cc = g_theme->cursor;
         fb_frame(&G.scene, fk->r[0], fk->r[1], fk->r[2], fk->r[3], COL(cc));   // the console's frame lies outside the key: 7 px, soft outer edge, 4.5 px core, rounded outer corners
