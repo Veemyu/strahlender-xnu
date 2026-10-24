@@ -351,6 +351,14 @@ static int ensure_built(void) {
     g_theme = th && !strcmp(th, "dark") ? &k_theme_dark : &k_theme_light;
     const char *lg = getenv("BDSP_SWKBD_LANG");
     snprintf(G.lang, sizeof G.lang, "%s", lg && *lg ? lg : "USen");
+    if (!(lg && *lg) && getenv("BDSP_LANG")) {   // the console language of the runtime (e.g. de-DE) selects the label language of the applet's messages
+        static const struct { const char *prefix, *dir; } lm[] = {{"en-GB", "EUen"}, {"en", "USen"}, {"de", "EUde"}, {"fr-CA", "USfr"}, {"fr", "EUfr"}, {"es-419", "USes"},
+            {"es", "EUes"}, {"it", "EUit"}, {"nl", "EUnl"}, {"pt-BR", "USpt"}, {"pt", "EUpt"}, {"ru", "EUru"}, {"ja", "JPja"}, {"ko", "KRko"},
+            {"zh-TW", "TWzh"}, {"zh-Hant", "TWzh"}, {"zh", "CNzh"}};
+        const char *bl = getenv("BDSP_LANG");
+        for (unsigned q = 0; q < sizeof lm / sizeof *lm; q++)
+            if (!strncmp(bl, lm[q].prefix, strlen(lm[q].prefix))) { snprintf(G.lang, sizeof G.lang, "%s", lm[q].dir); break; }
+    }
     {   // keyboard layout: BDSP_SWKBD_LAYOUT, else from the language
         static const struct { const char *lang, *id; } map[] = {{"EUde", "de"}, {"EUfr", "fr"}, {"USfr", "fr"}, {"EUes", "es"}, {"USes", "es"}, {"EUit", "it"},
                                                                   {"EUpt", "pt"}, {"USpt", "pt"}, {"EUru", "ru"}, {"EUen", "uk"}, {"USen", "us"}};

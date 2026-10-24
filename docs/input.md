@@ -29,7 +29,7 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
 - The game stops inside the keyboard call; the window keeps showing the last game image behind the keyboard.
 
 Key characters follow the standard national layouts (US, UK, DE, FR, ES, IT, PT, RU) and the tabs below the keys switch between letters,
-symbols and two pages of accented letters. `BDSP_SWKBD_LANG` selects the language of the labels (default `USen`, e.g. `EUde`) and, unless
+symbols and two pages of accented letters. The label language follows the runtime's console language (`BDSP_LANG`, e.g. `de-DE`), or `BDSP_SWKBD_LANG` (e.g. `EUde`, default `USen`), and, unless
 `BDSP_SWKBD_LAYOUT=us|uk|de|fr|es|it|pt|ru` says otherwise, the key layout. The colour scheme is light like the console's default;
 `BDSP_SWKBD_THEME=dark` selects a dark one (the layout files do not contain the colours, both schemes are ours).
 
