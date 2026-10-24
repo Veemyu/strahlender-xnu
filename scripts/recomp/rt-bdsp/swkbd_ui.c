@@ -947,7 +947,7 @@ static void tick(double dt) {
         if (!strncmp(k->tag, "UnFocus", 7)) {   // the two unfocus animations (key / touch) each undo only their own focus animation: run both
             const char *other = !strcmp(k->tag, "UnFocusKey") ? "UnFocusTouch" : "UnFocusKey";
             float of = lytinst_anim_frames(k->inst, other);
-            if (of > 0) lytinst_set_anim(k->inst, other, k->t < of ? k->t : of);
+            if (of > 0) lytinst_set_anim(k->inst, other, fr > 0 ? k->t / fr * of : of);   // same progress: both end at rest together
         }
         lytinst_set_anim(k->inst, "Alpha", 100);   // full plate (the layouts start dimmed at frame 10)
         if (k->kind == K_BS && g_theme == &k_theme_light) {   // dark with a white icon as soon as there is something to delete
