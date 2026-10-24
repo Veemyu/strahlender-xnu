@@ -44,6 +44,7 @@ for f in device exec shaders textures; do build "$SRC/nvn/vulkan/$f.c" "$O/vk_$f
 build "$SRC/nvn/vulkan/vma.cpp" "$O/vk_vma.o" "$@"
 build "$HERE/nvn_glue.c" "$O/nvn_glue.o" -Dg_debug_frame=bdsp_glue_debug_frame -include SDL3/SDL.h -include stdatomic.h -include string.h -include strings.h "$@"  # (exec.c defines g_debug_frame itself; nvn_glue.c includes SDL/stdatomic/string only under __APPLE__, but needs them here too for the input layer)
 build "$HERE/vulkan/vk_glue.c" "$O/vk_glue.o" "$@"
+build "$HERE/vulkan/swkbd_overlay_vk.c" "$O/swkbd_overlay_vk.o" "$@"   # on-screen keyboard (drawn over the frame, Vulkan)
 # Movie playback uses FFmpeg headers from the same installed development packages as the link step.
 if [ -z "${BDSP_NO_MOVIE:-}" ]; then
   FFI=$(pkg-config --cflags libavcodec libavformat libavutil)

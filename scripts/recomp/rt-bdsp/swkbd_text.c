@@ -102,6 +102,14 @@ static void atlas_clear(void) {
     T.version++;
 }
 
+int swkbd_text_available(const char *root) {
+    char path[1200];
+    snprintf(path, sizeof path, "%s/fonts/%s", root ? root : "", k_fonts[F_STD].file);
+    FILE *fp = fopen(path, "rb");
+    if (fp) fclose(fp);
+    return fp != NULL;
+}
+
 int swkbd_text_open(const char *root) {
     pthread_mutex_lock(&T.lock);
     if (!T.atlas) {

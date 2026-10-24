@@ -453,6 +453,7 @@ void vk_frame_resume(void) {
 }
 
 VkExtent2D vk_frame_extent(void) { return g_vk.sc_extent; }
+VkImage vk_frame_image(void) { return g_vk.sc_images[cur_frame.image]; }   // the window image being drawn (the on-screen keyboard blurs it once)
 void *vk_frame_cmd(void) { return (void *)vk_cmd(); }
 
 static void save_window_image(VkCommandBuffer cb, VkSpan *out) {
@@ -531,13 +532,26 @@ static NvnTexture *g_last_presented;
 
 const float *vk_shot_crop(void) { return g_shot_crop; }
 
-void backend_present(NvnTexture *t);
+// The on-screen keyboard's keepalive thread presents the last image again while the game is stopped in the keyboard call; a presentation of the
+// game itself and such a repeat never overlap.
+static pthread_mutex_t present_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t g_last_game_present_ns;
+uint64_t vk_last_game_present_ns(void) { return __atomic_load_n(&g_last_game_present_ns, __ATOMIC_RELAXED); }
+static void present_body(NvnTexture *t);
+void backend_present(NvnTexture *t) {
+    pthread_mutex_lock(&present_lock);
+    present_body(t);
+    __atomic_store_n(&g_last_game_present_ns, SDL_GetTicksNS(), __ATOMIC_RELAXED);
+    pthread_mutex_unlock(&present_lock);
+}
 void backend_represent(void) {
-    if (g_last_presented) backend_present(g_last_presented);
-    else SDL_Delay(16);
+    if (!g_last_presented) { SDL_Delay(16); return; }
+    pthread_mutex_lock(&present_lock);
+    present_body(g_last_presented);
+    pthread_mutex_unlock(&present_lock);
 }
 
-void backend_present(NvnTexture *t) {
+static void present_body(NvnTexture *t) {
     g_last_presented = t;
     TexBackend *b = vk_tex(t, true);
     b->presented = true;

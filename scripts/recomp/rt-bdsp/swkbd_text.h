@@ -11,6 +11,8 @@
 // gradient (0 top colour .. 1 bottom colour) its top and bottom edge lie.
 typedef struct { float x0, y0, x1, y1, u0, v0, u1, v1, g0, g1; } SwkbdGlyph;
 
+// 1 when the text font is in <root>/fonts (nothing is read yet).
+int swkbd_text_available(const char *root);
 // Reads the fonts from <root>/fonts (std text font, button glyph font; Korean and Chinese ones when present, loaded when a glyph needs them).
 // Returns 0 when there is no text font (nothing can be drawn then). Safe to call again.
 int swkbd_text_open(const char *root);
