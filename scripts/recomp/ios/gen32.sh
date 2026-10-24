@@ -15,7 +15,10 @@ export MODEL
 GEN=${GEN:-work/recomp/gen$D}
 IMG=${IMG:-work/recomp/img$D}
 OBJ=${OBJ:-work/recomp/obj$D}
-base_of() { local o; case "$1" in main) o=0x01000000;; sdk) o=0x07000000;; subsdk0) o=0x08000000;; rtld) o=0x09000000;; esac; printf '0x%x' $(( ORG + o )); }
+EXEFS_DIR=${BDSP_EXEFS_DIR:-work/exefs}
+base_of() { local o; case "$1" in main) o=0x01000000;; sdk) o=0x07000000;; subsdk0) o=0x08000000;; rtld) o=0x09000000;; subsdk1) o=0x06708000;; *) return 2;; esac; printf '0x%x' $(( ORG + o )); }
+modules=(main sdk subsdk0)
+[ ! -f "$EXEFS_DIR/subsdk1" ] || modules+=(subsdk1)
 HLE_BASE=$(printf '0x%x' $(( ORG + 0x0A000000 )))
 # Toolchain stamp of the guest objects: SDKs, compiler, compile script and headers of the runtime. If one of them changes, everything is recompiled.
 obj_stamp() {
@@ -26,34 +29,41 @@ obj_stamp() {
 
 do_gen() {
   mkdir -p "$GEN" work/recomp/spike2
-  for m in rtld main sdk subsdk0; do
+  for m in rtld "${modules[@]}"; do
+    extra=()
+    [ ! -f "$EXEFS_DIR/$m.entries" ] || extra+=(--entry-offsets "$EXEFS_DIR/$m.entries")
     # The base only enters the adrp/adr constants, the rest is unchanged compared to variant A.
-    python3 scripts/recomp/eh_gen.py gen "$m" "work/exefs/$m" "$(base_of "$m")" "$GEN/$m" --simd $SIMD > "work/recomp/spike2/gen${D}_$m.log" 2>&1
-    tail -1 "work/recomp/spike2/gen${D}_$m.log"
+    python3 scripts/recomp/eh_gen.py gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$GEN/$m" --simd $SIMD ${extra[@]+"${extra[@]}"} > "$GEN/gen_$m.log" 2>&1 \
+      || { tail -n 25 "$GEN/gen_$m.log" >&2; return 4; }
+    tail -1 "$GEN/gen_$m.log"
+    echo "module=$m generated"
   done
 }
 
 do_img() {
   mkdir -p "$IMG"
   rm -f "$IMG/hle.txt"
+  links=()
+  for m in "${modules[@]}"; do links+=(--link "$IMG/$m.syms.json"); done
   for pass in 1 2; do
-    for m in main sdk subsdk0; do
+    for m in "${modules[@]}"; do
       if [ $pass = 1 ]; then
-        python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" > /dev/null
+        python3 scripts/recomp/mkimg.py "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" > /dev/null
       else
-        python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" \
-          --link "$IMG/main.syms.json" --link "$IMG/sdk.syms.json" --link "$IMG/subsdk0.syms.json" \
+        python3 scripts/recomp/mkimg.py "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" \
+          "${links[@]}" \
           --interpose-from "$IMG/main.syms.json" --hle-list scripts/recomp/rt-bdsp/hle_nvn.txt
       fi
     done
-    [ $pass = 1 ] && rm -f "$IMG/hle.txt"
+    if [ "$pass" = 1 ]; then rm -f "$IMG/hle.txt"; fi
   done
 }
 
 # Compilation: like build_all.sh (single functions above 300 KB with -O0, otherwise -O1), but for iPhoneOS and with REBASE32
 do_build() {
-  local jobs=${1:-3}
-  [ "$jobs" -gt 4 ] && jobs=4
+  local jobs=${1:-$(python3 scripts/recomp/parallel_jobs.py)}
+  case "$jobs" in ''|*[!0-9]*) echo "JOBS must be a positive integer" >&2; return 2;; esac
+  [ "$jobs" -ge 1 ] || { echo "JOBS must be at least 1" >&2; return 2; }
   local sdk; sdk=$(xcrun --sdk iphoneos --show-sdk-path)
   mkdir -p "$OBJ"
   local stamp; stamp=$(obj_stamp)
@@ -65,11 +75,14 @@ do_build() {
     b=$(basename "$o" .o); m=${b%%_*}; rest=${b#*_}
     [ -f "$GEN/$m/$rest.c" ] || rm -f "$o"
   done
+  rm -f "$OBJ/.compile-total"
   : > "$OBJ/list_O0.txt"; : > "$OBJ/list_O1.txt"
   for f in "$GEN"/*/*.c; do
     size=$(stat -f %z "$f")
     if [ "$size" -gt 300000 ] && [ "$(grep -c '^void f_.*) {$' "$f")" = "1" ]; then echo "$f" >> "$OBJ/list_O0.txt"; else echo "$f" >> "$OBJ/list_O1.txt"; fi
   done
+  printf '%s\n' "$(( $(wc -l < "$OBJ/list_O0.txt") + $(wc -l < "$OBJ/list_O1.txt") ))" > "$OBJ/.compile-total.tmp"
+  mv "$OBJ/.compile-total.tmp" "$OBJ/.compile-total"
   echo "O1: $(wc -l < "$OBJ/list_O1.txt"), O0: $(wc -l < "$OBJ/list_O0.txt"), Jobs $jobs"
   export OBJ sdk
   local start; start=$(date +%s)
@@ -101,8 +114,8 @@ do_hot() {
 case "${1:-all}" in
   gen) do_gen ;;
   img) do_img ;;
-  build) do_build "${2:-3}" ;;
+  build) do_build "${2:-}" ;;
   hot) do_hot ;;
-  all) do_gen; do_img; do_build "${2:-3}" ;;
+  all) do_gen; do_img; do_build "${2:-}" ;;
   *) echo "Usage: gen32.sh gen|img|build [JOBS]|hot|all [JOBS]" >&2; exit 2 ;;
 esac

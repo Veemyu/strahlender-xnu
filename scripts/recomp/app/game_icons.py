@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import struct
 import subprocess
@@ -25,6 +26,53 @@ LANGUAGES = {
     "Russian": ("ru", "Русский"), "Korean": ("ko", "한국어"),
     "TraditionalChinese": ("zh-Hant", "繁體中文"), "SimplifiedChinese": ("zh-Hans", "简体中文"),
 }
+
+# NACP slot order is a binary-format contract, not LANGUAGES' display order.
+NACP_LANGUAGES = ("en-US", "en-GB", "ja", "fr", "de", "es-419", "es-ES", "it",
+                  "nl", "fr-CA", "pt-PT", "ru", "ko", "zh-Hant", "zh-Hans", "pt-BR")
+
+
+def read_nacp(directory):
+    directory = Path(directory)
+    path = (next((entry for entry in directory.iterdir()
+                  if entry.name.lower() == "control.nacp" and entry.is_file() and not entry.is_symlink()), None)
+            if directory.is_dir() else None)
+    if path is None:
+        return {}, ""
+    with path.open("rb") as file:
+        data = file.read(0x4001)
+    if len(data) != 0x4000:
+        raise ValueError("Invalid control.nacp size")
+    def string(start, size):
+        return data[start:start + size].split(b"\0", 1)[0].decode("utf-8").strip()
+    titles = {}
+    for index, locale in enumerate(NACP_LANGUAGES):
+        name = string(index * 0x300, 0x200)
+        if name:
+            titles[locale] = {"name": name, "publisher": string(index * 0x300 + 0x200, 0x100)}
+    return titles, string(0x3060, 0x10)
+
+
+def write_bundle_names(manifest, resources):
+    """Write every original title. Host/installer locale never filters the bundle."""
+    titles = dict(manifest.get("titles", {}))
+    for locale in titles:
+        if locale not in NACP_LANGUAGES:
+            raise ValueError("Unknown title locale")
+    # Existing runtime catalogs include generic language lproj directories. Give
+    # those a stable display-name fallback as well, keeping every regional original.
+    for language, preferred in (("en", "en-US"), ("es", "es-ES"), ("pt", "pt-PT"), ("zh", "zh-Hans")):
+        available = [{"id": locale} for locale in titles if locale.split("-")[0] == language]
+        if available:
+            titles[language] = titles[recommend(available, [preferred])]
+    for locale, title in titles.items():
+        path = output_path(Path(resources) / (locale + ".lproj") / "InfoPlist.strings")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+        existing = re.sub(r'(?m)^[ \t]*"CFBundleDisplayName"[ \t]*=[ \t]*"(?:\\.|[^"\\])*";[ \t]*$', '', existing)
+        # CFBundleName stays stable for executable/build identity. Display name is localized.
+        path.write_text(existing.rstrip() + '\n"CFBundleDisplayName" = ' + json.dumps(title["name"], ensure_ascii=False) + ';\n',
+                        encoding="utf-8")
 
 
 def image_module():
@@ -61,6 +109,83 @@ def normalize(data):
         return target.getvalue()
 
 
+def mod_logo_bundles(romfs, title_id=""):
+    """Only inspect the game's known title-logo bundles, never the whole RomFS."""
+    movie = Path(romfs) / "Data/StreamingAssets/AssetAssistant/Dpr/movie"
+    game = "pea" if str(title_id).lower() == "010018e011d92000" else "dia"
+    directory = movie / game / "logo"
+    if not directory.is_dir() or directory.is_symlink():
+        return []
+    return sorted(path for path in directory.iterdir() if path.is_file() and not path.is_symlink()
+                  and re.fullmatch(r"logo_" + game + r"_(en|fr|ge|it|jp|ko|si|sp|tr)", path.name))
+
+
+def square_mod_logo(artwork):
+    Image, ImageOps = image_module()
+    artwork = artwork.convert("RGBA")
+    bounds = artwork.getchannel("A").getbbox()
+    if bounds is None:
+        raise ValueError("Mod logo has no visible artwork")
+    artwork = ImageOps.contain(artwork.crop(bounds), (896, 896), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (1024, 1024), (20, 23, 28, 255))
+    canvas.alpha_composite(artwork, ((1024 - artwork.width) // 2, (1024 - artwork.height) // 2))
+    stream = io.BytesIO()
+    canvas.convert("RGB").save(stream, "PNG")
+    return stream.getvalue()
+
+
+def unity_module():
+    if os.environ.get("BDSP_INSTALLER_PRIVATE_RUNTIME") != "1":
+        sys.path.insert(0, str(ROOT / "tools/pydeps"))
+    try:
+        import UnityPy
+    except ImportError as error:
+        raise ValueError("Mod logos need the existing UnityPy shader profile in the build runtime; prepare it before packaging.") from error
+    return UnityPy
+
+
+def check_mod_artwork(mod_root):
+    root = Path(mod_root)
+    romfs = next((path for path in root.iterdir() if path.is_dir() and path.name.lower() == "romfs"), root / "romfs")
+    if any((directory / ("icon" + extension)).is_file() for directory in (root, root / "control", romfs, romfs / "control")
+           for extension in (".png", ".jpg", ".jpeg", ".webp")):
+        return
+    if mod_logo_bundles(romfs) or mod_logo_bundles(romfs, "010018e011d92000"):
+        unity_module()
+        print("Mod title-logo reader available (existing UnityPy profile).")
+
+
+def extract_mod_logos(romfs, title_id=""):
+    bundles = mod_logo_bundles(romfs, title_id)
+    if not bundles:
+        return {}, {}
+    UnityPy = unity_module()
+    locales = {"en": ("en-US", "en-GB"), "fr": ("fr", "fr-CA"), "ge": ("de",), "it": ("it",),
+               "jp": ("ja",), "ko": ("ko",), "si": ("zh-Hans",), "sp": ("es-ES", "es-419"), "tr": ("zh-Hant",)}
+    result, provenance = {}, {}
+    for path in bundles:
+        try:
+            if path.stat().st_size > 64 * 1024 * 1024:
+                raise ValueError("Mod logo bundle exceeds 64 MiB")
+            environment = UnityPy.load(str(path))
+            textures = [obj.read() for obj in environment.objects if obj.type.name == "Texture2D"]
+            matches = [texture for texture in textures if texture.m_Name == path.name]
+            if len(matches) != 1:
+                raise ValueError("No unique matching logo texture")
+            if any(not 16 <= getattr(matches[0], field, 16) <= 4096 for field in ("m_Width", "m_Height")):
+                raise ValueError("Mod logo texture dimensions exceed the supported range")
+            data = square_mod_logo(matches[0].image)
+        except (OSError, ValueError, RuntimeError, EOFError, struct.error, IndexError, KeyError) as error:
+            print("Notice: mod logo %s skipped (%s)" % (path.name, type(error).__name__), file=sys.stderr)
+            continue
+        for locale in locales[path.name.rsplit("_", 1)[1]]:
+            result[locale] = data
+            provenance[locale] = {"bundle": str(path.relative_to(romfs)), "texture": matches[0].m_Name,
+                                  "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    print("Mod artwork: %d language variants extracted from RomFS title-logo bundles" % len(result))
+    return result, provenance
+
+
 def default_variant(variants):
     ids = {v["id"] for v in variants}
     return next((x for x in ("en-US", "en-GB", "de") if x in ids), min(ids) if ids else "placeholder")
@@ -90,9 +215,14 @@ def ingest(base, update, destination, title_id=""):
     destination = output_path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     variants = {}
+    titles = {}
+    version = ""
     for directory in (base, update):
         if not directory:
             continue
+        localized_titles, display_version = read_nacp(directory)
+        titles.update(localized_titles)
+        version = display_version or version
         for name, (locale, label) in LANGUAGES.items():
             path = Path(directory) / ("icon_" + name + ".dat")
             if not path.is_file():
@@ -108,10 +238,121 @@ def ingest(base, update, destination, title_id=""):
             variants[locale] = {"id": locale, "label": label, "image": image,
                                 "sha256": digest, "icon": "BDSP_" + digest[:24]}
     entries = sorted(variants.values(), key=lambda v: v["id"])
-    manifest = {"schema": 1, "title_id": title_id, "default": default_variant(entries), "variants": entries}
+    manifest = {"schema": 1, "title_id": title_id, "default": default_variant(entries), "variants": entries,
+                "titles": titles, "display_version": version}
     write_json(destination / "icons.json", manifest)
     print("Original icons: %d language variants" % len(entries))
     return manifest
+
+
+def overlay_mod(source, mod_root, destination, mod_name):
+    """Keep every base language variant, replacing only icons supplied by a mod."""
+    source, mod_root, destination = Path(source), Path(mod_root), output_path(destination)
+    if not mod_root.is_dir():
+        raise ValueError("The selected mod folder is missing")
+    manifest = load_source(source)
+    destination.mkdir(parents=True, exist_ok=True)
+    for variant in manifest.get("variants", []):
+        filename = variant["image"]
+        if Path(filename).name != filename:
+            raise ValueError("Invalid base icon path")
+        shutil.copy2(source / filename, destination / filename)
+    # A separate mod app keeps the mod's name in every locale unless its control
+    # metadata supplies a translated title for that language.
+    manifest["titles"] = {locale: {"name": mod_name, "publisher": ""} for locale in NACP_LANGUAGES}
+    found = {}
+    generic = None
+    control = None
+    def child(directory, name):
+        if not directory.is_dir():
+            return directory / name
+        return next((path for path in directory.iterdir()
+                     if path.name.lower() == name and path.is_dir() and not path.is_symlink()), directory / name)
+    romfs = child(mod_root, "romfs")
+    candidates = [mod_root, child(mod_root, "control"), romfs, child(romfs, "control")]
+    for directory in candidates:
+        if not directory.is_dir() or directory.is_symlink():
+            continue
+        for item in sorted(directory.iterdir()):
+            if not item.is_file() or item.is_symlink():
+                continue
+            lower = item.name.lower()
+            if lower == "control.nacp":
+                control = item
+            elif lower in ("icon.png", "icon.jpg", "icon.jpeg", "icon.webp"):
+                generic = item
+            elif lower.startswith("icon_") and item.suffix.lower() in (".dat", ".png", ".jpg", ".jpeg", ".webp"):
+                label = item.stem[5:]
+                locale = next((code for name, (code, _) in LANGUAGES.items() if name.lower() == label.lower()), None)
+                if locale is None:
+                    locale = next((code for code in NACP_LANGUAGES if code.lower() == label.lower()), None)
+                if locale:
+                    found[locale] = item
+    if control:
+        titles, version = read_nacp(control.parent)
+        manifest["titles"].update(titles)
+        manifest["display_version"] = version or manifest.get("display_version", "")
+    variants = {entry["id"]: entry for entry in manifest.get("variants", [])}
+    supplied_icons = set()
+    if generic:
+        for locale in NACP_LANGUAGES:
+            found.setdefault(locale, generic)
+    embedded, provenance = extract_mod_logos(romfs, manifest.get("title_id", "")) if len(found) < len(NACP_LANGUAGES) else ({}, {})
+    if embedded:
+        default = embedded.get("en-US") or embedded[sorted(embedded)[0]]
+        for locale in NACP_LANGUAGES:
+            data = embedded.get(locale, default)
+            digest = hashlib.sha256(data).hexdigest()
+            image = digest + ".png"
+            (destination / image).write_bytes(data)
+            label = next(label for code, label in LANGUAGES.values() if code == locale)
+            variants[locale] = {"id": locale, "label": label, "image": image,
+                                "sha256": digest, "icon": "BDSP_" + digest[:24]}
+            supplied_icons.add(locale)
+        manifest["mod_artwork"] = provenance
+    for locale, path in found.items():
+        try:
+            data = normalize(path.read_bytes())
+        except (OSError, ValueError, SyntaxError) as error:
+            print("Notice: invalid mod icon %s (%s)" % (path.name, type(error).__name__), file=sys.stderr)
+            continue
+        digest = hashlib.sha256(data).hexdigest()
+        image = digest + ".png"
+        (destination / image).write_bytes(data)
+        label = LANGUAGES[next((name for name, (code, _) in LANGUAGES.items() if code == locale))][1]
+        variants[locale] = {"id": locale, "label": label, "image": image,
+                            "sha256": digest, "icon": "BDSP_" + digest[:24]}
+        supplied_icons.add(locale)
+    # A mod without its own artwork must remain distinguishable beside vanilla.
+    for locale, variant in variants.items():
+        if locale in supplied_icons:
+            continue
+        data = mod_fallback_icon((destination / variant["image"]).read_bytes())
+        digest = hashlib.sha256(data).hexdigest()
+        image = digest + ".png"
+        (destination / image).write_bytes(data)
+        variant.update(image=image, sha256=digest, icon="BDSP_" + digest[:24])
+    manifest["mod_icon_fallback"] = any(locale not in supplied_icons for locale in variants)
+    manifest["variants"] = sorted(variants.values(), key=lambda entry: entry["id"])
+    manifest["default"] = default_variant(manifest["variants"])
+    write_json(destination / "icons.json", manifest)
+    print("Mod icons: %d supplied variants, %d base variants marked MOD" %
+          (len(supplied_icons), len(variants) - len(supplied_icons)))
+    return manifest
+
+
+def mod_fallback_icon(data):
+    """Badge original artwork without a host font or a network asset."""
+    Image = image_module()[0]
+    from PIL import ImageDraw, ImageFont
+    image = Image.open(io.BytesIO(data)).convert("RGB").resize((512, 512), Image.Resampling.LANCZOS)
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((284, 360, 480, 456), radius=24, fill=(24, 24, 24), outline=(240, 240, 240), width=3)
+    font = ImageFont.load_default(size=48)
+    draw.text((382, 408), "MOD", font=font, fill=(255, 255, 255), anchor="mm")
+    stream = io.BytesIO()
+    image.save(stream, "PNG")
+    return stream.getvalue()
 
 
 def title_from_npdm(path):
@@ -240,9 +481,13 @@ def resized(data, size):
         return image.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
 
 
-def prepared(source, output):
+def prepared(source, output, mod_root=None, mod_name=None):
     output = output_path(output)
     output.mkdir(parents=True, exist_ok=True)
+    if mod_root:
+        with tempfile.TemporaryDirectory(prefix="mod-override-", dir=output.parent) as temporary:
+            overlay_mod(source, mod_root, temporary, mod_name or Path(mod_root).name)
+            return prepared(temporary, output)
     manifest = load_source(source)
     if not manifest["variants"]:
         print("Notice: no original icon available; using a neutral placeholder (run game_icons.py extract to extract it)", file=sys.stderr)
@@ -259,11 +504,12 @@ def prepared(source, output):
     return manifest
 
 
-def build_mac(source, output):
+def build_mac(source, output, mod_root=None, mod_name=None):
     image_module()
     from icon_composer import write_documents, compile_icons, STYLE
     output = output_path(output)
-    manifest = prepared(source, output / "AppIcons")
+    manifest = prepared(source, output / "AppIcons", mod_root, mod_name)
+    write_bundle_names(manifest, output)
     scratch = output_path(ROOT / "work/recomp/icons/native-build")
     scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="mac-", dir=scratch) as temporary:
@@ -293,9 +539,9 @@ def build_mac(source, output):
     write_json(output / "AppIcons/icons.json", manifest)
 
 
-def build_linux(source, output, executable):
+def build_linux(source, output, executable, mod_root=None, mod_name=None):
     output = output_path(output)
-    manifest = prepared(source, output)
+    manifest = prepared(source, output, mod_root, mod_name)
     for entry in manifest["variants"]:
         data = (output / entry["image"]).read_bytes()
         for size in (16, 32, 48, 64, 128, 256, 512):
@@ -311,12 +557,13 @@ def build_linux(source, output, executable):
     (output / "dev.local.xnubdsp.desktop").write_text(desktop, encoding="utf-8")
 
 
-def build_ios(source, output, bundle, settings):
+def build_ios(source, output, bundle, settings, mod_root=None, mod_name=None):
     image_module()
     from icon_composer import write_documents, compile_icons, STYLE
     output = output_path(output)
     bundle = output_path(bundle)
-    manifest = prepared(source, bundle / "AppIcons")
+    manifest = prepared(source, bundle / "AppIcons", mod_root, mod_name)
+    write_bundle_names(manifest, bundle)
     documents = write_documents(manifest, bundle / "AppIcons", output / "Documents")
     primary = next(v["icon"] for v in manifest["variants"] if v["id"] == manifest["default"])
     partial_info = compile_icons(documents, primary, output / "Compiled", "iphoneos")
@@ -414,10 +661,19 @@ def main(argv=None):
     extraction.add_argument("--npdm", default="work/exefs/main.npdm")
     extraction.add_argument("--hactool", default="tools/hactool/hactool")
     extraction.add_argument("--output", default="work/recomp/icons/source")
+    mod_icons = sub.add_parser("overlay-mod")
+    mod_icons.add_argument("--source", required=True)
+    mod_icons.add_argument("--mod-root", required=True)
+    mod_icons.add_argument("--mod-name", required=True)
+    mod_icons.add_argument("--output", required=True)
+    mod_check = sub.add_parser("check-mod-artwork")
+    mod_check.add_argument("--mod-root", required=True)
     for name in ("mac", "ios", "linux"):
         p = sub.add_parser(name)
         p.add_argument("--source", default="work/recomp/icons/source")
         p.add_argument("--output", required=True)
+        p.add_argument("--mod-root")
+        p.add_argument("--mod-name")
         if name == "ios":
             p.add_argument("--bundle", required=True)
             p.add_argument("--settings", default="scripts/recomp/ios/app/Settings.bundle")
@@ -437,10 +693,14 @@ def main(argv=None):
             extract(args)
         elif args.command == "ingest":
             ingest(args.base_control, args.update_control, args.output, args.title_id)
+        elif args.command == "overlay-mod":
+            overlay_mod(args.source, args.mod_root, args.output, args.mod_name)
+        elif args.command == "check-mod-artwork":
+            check_mod_artwork(args.mod_root)
         elif args.command == "mac":
-            build_mac(args.source, args.output)
+            build_mac(args.source, args.output, args.mod_root, args.mod_name)
         elif args.command == "ios":
-            build_ios(args.source, args.output, args.bundle, args.settings)
+            build_ios(args.source, args.output, args.bundle, args.settings, args.mod_root, args.mod_name)
         elif args.command == "sign-ios":
             sign_ios(args.bundle)
         elif args.command == "pick-control":
@@ -454,7 +714,7 @@ def main(argv=None):
             output.parent.mkdir(parents=True, exist_ok=True)
             preview((Path(args.source) / entry["image"]).read_bytes(), output)
         else:
-            build_linux(args.source, args.output, args.executable)
+            build_linux(args.source, args.output, args.executable, args.mod_root, args.mod_name)
         return 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print("ERROR: " + str(error), file=sys.stderr)

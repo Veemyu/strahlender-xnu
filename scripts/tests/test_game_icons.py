@@ -53,6 +53,140 @@ class GameIconTests(unittest.TestCase):
         (self.update / "icon_Japanese.dat").write_bytes(b"invalid synthetic image")
         return icons.ingest(self.base, self.update, self.source, "0000000000000000")
 
+    def test_mod_icons_and_names_take_priority_over_base_variants(self):
+        base = self.fixture()
+        mod = self.root / "Luminescent"
+        control = mod / "ROMFS/control"
+        control.mkdir(parents=True)
+        self.picture(control, "German", "purple")
+        self.nacp(control, {"de": "Platin Mod"})
+        Image.new("RGB", (256, 256), "yellow").save(mod / "icon.png")
+        result = icons.prepared(self.source, self.root / "mod-icons", mod, "Luminescent")
+        variants = {item["id"]: item for item in result["variants"]}
+        originals = {item["id"]: item for item in base["variants"]}
+        self.assertNotEqual(variants["de"]["sha256"], originals["de"]["sha256"])
+        self.assertNotEqual(variants["en-US"]["sha256"], originals["en-US"]["sha256"])
+        self.assertEqual(result["titles"]["de"]["name"], "Platin Mod")
+        self.assertEqual(result["titles"]["en-US"]["name"], "Luminescent")
+        self.assertTrue((self.root / "mod-icons" / variants["de"]["image"]).is_file())
+
+    def test_mod_icon_is_used_when_the_dump_has_no_control_icon(self):
+        mod = self.root / "mod"
+        mod.mkdir()
+        Image.new("RGB", (256, 256), "gray").save(mod / "icon.png")
+        result = icons.prepared(self.root / "missing-source", self.root / "icons", mod, "Example Mod")
+        self.assertNotEqual(result["default"], "placeholder")
+        self.assertEqual(result["titles"]["de"]["name"], "Example Mod")
+
+    def test_mod_without_artwork_has_a_distinct_offline_icon_in_every_base_language(self):
+        original = self.fixture()
+        mod = self.root / "Mod Without Artwork"
+        mod.mkdir()
+        result = icons.prepared(self.source, self.root / "mod-fallback", mod, mod.name)
+        before = {variant["id"]: variant["sha256"] for variant in original["variants"]}
+        self.assertEqual(set(before), {variant["id"] for variant in result["variants"]})
+        self.assertTrue(result["mod_icon_fallback"])
+        for variant in result["variants"]:
+            self.assertNotEqual(before[variant["id"]], variant["sha256"])
+        self.assertEqual(icons.load_source(self.source), original)
+
+    def test_embedded_mod_logos_keep_locales_and_yield_to_explicit_icons(self):
+        self.fixture()
+        mod = self.root / "Embedded Mod"
+        logos = mod / "romfs/Data/StreamingAssets/AssetAssistant/Dpr/movie/dia/logo"
+        logos.mkdir(parents=True)
+        for language in ("en", "ge"):
+            (logos / ("logo_dia_" + language)).write_bytes(language.encode())
+        self.picture(mod, "German", "purple")
+
+        def load(path):
+            image = Image.new("RGBA", (640, 240), "green" if str(path).endswith("_en") else "blue")
+            texture = SimpleNamespace(m_Name=Path(path).name, image=image)
+            return SimpleNamespace(objects=[SimpleNamespace(type=SimpleNamespace(name="Texture2D"), read=lambda: texture)])
+
+        with patch.dict(sys.modules, {"UnityPy": SimpleNamespace(load=load)}):
+            result = icons.prepared(self.source, self.root / "embedded-icons", mod, "Embedded Mod")
+        variants = {item["id"]: item for item in result["variants"]}
+        self.assertEqual(set(variants), set(icons.NACP_LANGUAGES))
+        self.assertEqual(variants["en-US"]["sha256"], variants["pt-BR"]["sha256"])
+        self.assertNotEqual(variants["en-US"]["sha256"], variants["de"]["sha256"])
+        self.assertFalse(result["mod_icon_fallback"])
+        self.assertEqual(result["mod_artwork"]["en-US"]["texture"], "logo_dia_en")
+        output = self.root / "embedded-icons"
+        with Image.open(output / variants["en-US"]["image"]) as image:
+            self.assertEqual(image.size, (1024, 1024))
+            self.assertEqual(image.getpixel((512, 512)), (0, 128, 0))
+        with Image.open(output / variants["de"]["image"]) as image:
+            with Image.open(mod / "icon_German.dat") as supplied:
+                self.assertEqual(image.getpixel((128, 128)), supplied.convert("RGB").getpixel((128, 128)))
+
+    def test_explicit_mod_artwork_does_not_require_the_unity_reader(self):
+        self.fixture()
+        mod = self.root / "Explicit Mod"
+        logos = mod / "romfs/Data/StreamingAssets/AssetAssistant/Dpr/movie/dia/logo"
+        logos.mkdir(parents=True)
+        (logos / "logo_dia_en").write_bytes(b"not needed")
+        Image.new("RGB", (256, 256), "gray").save(mod / "icon.png")
+        with patch.dict(sys.modules, {"UnityPy": None}):
+            result = icons.prepared(self.source, self.root / "explicit-icons", mod, mod.name)
+        self.assertFalse(result["mod_icon_fallback"])
+        self.assertNotIn("mod_artwork", result)
+
+    def nacp(self, directory, titles, version="1.0.0"):
+        data = bytearray(0x4000)
+        for locale, name in titles.items():
+            offset = icons.NACP_LANGUAGES.index(locale) * 0x300
+            encoded = name.encode("utf-8")
+            data[offset:offset + len(encoded)] = encoded
+        data[0x3060:0x3060 + len(version)] = version.encode("utf-8")
+        (directory / "control.nacp").write_bytes(data)
+
+    def test_all_original_titles_survive_ingest_and_apple_bundle_generation(self):
+        titles = {locale: 'Original "' + locale + '" 日本語' for locale in icons.NACP_LANGUAGES}
+        self.nacp(self.base, titles)
+        self.nacp(self.update, {"de": "Aktualisierter Titel"}, "1.3.0")
+        self.picture(self.base, "AmericanEnglish", "red")
+        self.picture(self.base, "German", "green")
+        manifests = []
+        for language in ("de-DE", "ja-JP", "pt-BR"):
+            with patch.dict(os.environ, BDSP_LANG=language, LANG=language):
+                manifest = icons.ingest(self.base, self.update, self.source)
+            manifests.append(manifest)
+        self.assertEqual(manifests[0], manifests[1])
+        self.assertEqual(manifests[1], manifests[2])
+        self.assertEqual(set(manifest["titles"]), set(icons.NACP_LANGUAGES))
+        self.assertEqual(manifest["titles"]["de"]["name"], "Aktualisierter Titel")
+        self.assertEqual(manifest["display_version"], "1.3.0")
+        self.assertEqual(len(manifest["variants"]), 2)
+        for resources in (self.root / "Mac.app/Contents/Resources", self.root / "iOS.app"):
+            icons.write_bundle_names(manifest, resources)
+            names = list(resources.glob("*.lproj/InfoPlist.strings"))
+            self.assertEqual(len(names), 20)
+            for locale, title in manifest["titles"].items():
+                content = (resources / (locale + ".lproj/InfoPlist.strings")).read_text()
+                value = content.partition(" = ")[2].removesuffix(";\n")
+                self.assertEqual(json.loads(value), title["name"])
+
+    def test_bundle_titles_preserve_other_localized_strings_and_regional_variants(self):
+        resources = self.root / "Resources"
+        directory = resources / "es.lproj"
+        directory.mkdir(parents=True)
+        path = directory / "InfoPlist.strings"
+        path.write_text('"CFBundleTypeName" = "Partida";\n')
+        manifest = {"titles": {"es-419": {"name": "América"}, "es-ES": {"name": "España"}}}
+        for _ in range(2):
+            icons.write_bundle_names(manifest, resources)
+        self.assertIn('"CFBundleTypeName" = "Partida";', path.read_text())
+        self.assertEqual(path.read_text().count('"CFBundleDisplayName"'), 1)
+        self.assertIn("España", path.read_text())
+        self.assertIn("América", (resources / "es-419.lproj/InfoPlist.strings").read_text())
+
+    def test_truncated_nacp_is_rejected_and_missing_metadata_stays_empty(self):
+        self.assertEqual(icons.read_nacp(self.base), ({}, ""))
+        (self.base / "control.nacp").write_bytes(bytes(0x3000))
+        with self.assertRaisesRegex(ValueError, "Invalid control.nacp"):
+            icons.read_nacp(self.base)
+
     def test_update_merge_and_image_deduplication(self):
         metadata = self.fixture()
         variants = {v["id"]: v for v in metadata["variants"]}
@@ -94,6 +228,7 @@ class GameIconTests(unittest.TestCase):
                 self.assertEqual(image.size, (size, size))
 
     def test_mac_icns_and_incremental_fingerprint(self):
+        self.nacp(self.base, {"de": "Diamant", "ja": "ダイヤモンド"})
         self.fixture()
         output = self.root / "mac"
         import icon_composer
@@ -107,6 +242,8 @@ class GameIconTests(unittest.TestCase):
         with Image.open(output / "BDSP.icns") as image:
             self.assertEqual(image.format, "ICNS")
             self.assertEqual(image.size, (1024, 1024))
+        self.assertTrue((output / "ja.lproj/InfoPlist.strings").is_file())
+        self.assertTrue((output / "de.lproj/InfoPlist.strings").is_file())
         sys.path.insert(0, str(ROOT / "scripts"))
         import build_stages
         before, _ = build_stages.stage_hash("recomp", str(ROOT), str(self.root), env={"BDSP_ICON_SOURCE": str(self.source)})
@@ -195,6 +332,7 @@ class GameIconTests(unittest.TestCase):
                     self.assertEqual(image.getchannel("A").getextrema(), (255, 255))
 
     def test_ios_catalog_and_settings_include_all_variants(self):
+        self.nacp(self.base, {"de": "Diamant", "ja": "ダイヤモンド"})
         self.fixture()
         bundle = self.root / "BDSP.app"
         bundle.mkdir()
@@ -227,6 +365,8 @@ class GameIconTests(unittest.TestCase):
         info = plistlib.loads((bundle / "Info.plist").read_bytes())
         self.assertEqual(info["CFBundleIdentifier"], "synthetic.icons")
         self.assertIn("CFBundleIcons", info)
+        self.assertTrue((bundle / "ja.lproj/InfoPlist.strings").is_file())
+        self.assertTrue((bundle / "de.lproj/InfoPlist.strings").is_file())
 
 
 @unittest.skipUnless(sys.platform == "darwin" and shutil.which("clang"), "Apple compiler required")

@@ -17,7 +17,7 @@
 		A20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000003 /* BDSP.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BDSP.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000004 /* BDSP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BDSP.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A20000000000000000000005 /* res */ = {isa = PBXFileReference; lastKnownFileType = folder; name = res; path = ../../../../work/ios/res; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000005 /* res */ = {isa = PBXFileReference; lastKnownFileType = folder; name = res; path = "$(BDSP_RES_DIR)"; sourceTree = SOURCE_ROOT; };
 		A20000000000000000000006 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -141,6 +141,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				BDSP_RT_DIR = "ios-rt-a";
+				BDSP_RES_DIR = "$(SRCROOT)/../../../../work/ios/res";
 				CLANG_ENABLE_OBJC_ARC = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -156,6 +157,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				BDSP_RT_DIR = "ios-rt-a";
+				BDSP_RES_DIR = "$(SRCROOT)/../../../../work/ios/res";
 				CLANG_ENABLE_OBJC_ARC = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;

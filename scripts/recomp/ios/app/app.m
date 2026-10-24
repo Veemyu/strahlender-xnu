@@ -613,6 +613,19 @@ static void *RuntimeThread(void *arg) {
 // Starts the runtime with the game (mod == NULL) or with a mod: the mod's RomFS is merged over the game's and the mod gets a save folder of
 // its own (Saves/mods/<name>). The save of the game is not touched while a mod is active, so a dropped-in SaveData.bin waits (ImportSave)
 // for the next start of the game.
+static NSDictionary *InstallerData(void) {
+    NSString *path = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res/install-data.plist"];
+    return [NSDictionary dictionaryWithContentsOfFile:path];
+}
+
+static NSString *InstallerDocumentPath(NSDictionary *metadata, NSString *key) {
+    id relative = metadata[key];
+    if (![relative isKindOfClass:NSString.class] || ![relative length] || [relative isAbsolutePath]) return nil;
+    NSString *docs = Documents().stringByStandardizingPath;
+    NSString *path = [[docs stringByAppendingPathComponent:relative] stringByStandardizingPath];
+    return [path hasPrefix:[docs stringByAppendingString:@"/"]] ? path : nil;
+}
+
 static void LaunchRuntime(const ModInfo *mod) {
     if (getenv("BDSP_PROBE_FIXED")) ProbeFixedWindows();
     NSString *docs = Documents(), *res = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res"];
@@ -629,8 +642,13 @@ static void LaunchRuntime(const ModInfo *mod) {
     }
     setenv("BDSP_IMG", [res stringByAppendingPathComponent:@"img32"].UTF8String, 0);
     setenv("BDSP_NPDM", [res stringByAppendingPathComponent:@"main.npdm"].UTF8String, 0);
-    setenv("BDSP_ROMFS", [docs stringByAppendingPathComponent:@"GameData/romfs"].UTF8String, 0);
+    NSString *romfs = InstallerDocumentPath(InstallerData(), @"RomFSDirectory") ?: [docs stringByAppendingPathComponent:@"GameData/romfs"];
+    setenv("BDSP_ROMFS", romfs.UTF8String, 0);
     setenv("BDSP_SAVE", [docs stringByAppendingPathComponent:@"Saves"].UTF8String, 0);
+    {   // firmware files of the on-screen keyboard (layouts, fonts, name check); without them the keyboard is a simple one of our own
+        NSString *fw = [docs stringByAppendingPathComponent:@"Firmware"];
+        if ([fm fileExistsAtPath:fw]) setenv("BDSP_FIRMWARE_DATA", fw.UTF8String, 0);
+    }
     setenv("BDSP_SHOT_DIR", [docs stringByAppendingPathComponent:@"Shots"].UTF8String, 0);
     setenv("BDSP_TIMEOUT", "86400", 0);
     setenv("BDSP_FPS_INTERVAL", "5", 0);
@@ -639,16 +657,12 @@ static void LaunchRuntime(const ModInfo *mod) {
     bdsp_set_fps(fps ? (int)fps : 60);
     fprintf(stderr, "[ipad] Start: %s, device %s, os_proc_available_memory %zu MiB\n", UIDevice.currentDevice.systemVersion.UTF8String,
             UIDevice.currentDevice.model.UTF8String, os_proc_available_memory() >> 20);
-    if (![fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"GameData/romfs"]])
+    if (![fm fileExistsAtPath:romfs])
         fprintf(stderr, "[ipad] WARNING: Documents/GameData/romfs missing (copy the RomFS via devicectl, docs/recomp-ios.md)\n");
     pthread_t t, st;
     pthread_attr_t at;
     pthread_attr_init(&at);
     pthread_attr_setstacksize(&at, 8 << 20);
-    {   // firmware files of the on-screen keyboard (layouts, fonts, name check); without them the keyboard is a simple one of our own
-        NSString *fw = [docs stringByAppendingPathComponent:@"Firmware"];
-        if ([fm fileExistsAtPath:fw]) setenv("BDSP_FIRMWARE_DATA", fw.UTF8String, 0);
-    }
     pthread_create(&t, &at, RuntimeThread, NULL);
     pthread_detach(t);
     pthread_create(&st, NULL, StatsLoop, NULL);
@@ -665,6 +679,31 @@ static void StartRuntime(void) {
     NSString *modsDir = [Documents() stringByAppendingPathComponent:@"Mods"];
     [NSFileManager.defaultManager createDirectoryAtPath:modsDir withIntermediateDirectories:YES attributes:nil error:nil];   // visible in the Files app
     int n = mods_scan(modsDir.UTF8String, gMods, MODS_MAX);
+    NSDictionary *installed = InstallerData();
+    NSString *installedRoot = InstallerDocumentPath(installed, @"ModDirectory");
+    NSString *installedName = installed[@"ModName"];
+    BOOL compiled = [installed[@"CompiledExeFS"] boolValue];
+    int installedIndex = -1;
+    if (installedRoot && [installedName isKindOfClass:NSString.class] && installedName.length && strlen(installedName.UTF8String) < sizeof gMods[0].name) {
+        for (int i = 0; i < n; i++) if (!strcmp(gMods[i].root, installedRoot.UTF8String)) {
+            snprintf(gMods[i].name, sizeof gMods[i].name, "%s", installedName.UTF8String);
+            installedIndex = i;
+            break;
+        }
+    }
+    if (compiled) {
+        if (installedIndex < 0) {
+            UIAlertController *missing = [UIAlertController alertControllerWithTitle:@"Mod files missing"
+                message:@"Connect this device to the installer to finish copying the mod files. This app contains code built for that mod."
+                preferredStyle:UIAlertControllerStyleAlert];
+            [missing addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [gView.window.rootViewController presentViewController:missing animated:YES completion:nil];
+            return;
+        }
+        setenv("BDSP_COMPILED_EXEFS", installedName.UTF8String, 1);
+        LaunchRuntime(&gMods[installedIndex]);
+        return;
+    }
     const char *want = getenv("BDSP_MOD");
     if (want && *want) {
         for (int i = 0; i < n; i++) if (!strcasecmp(gMods[i].name, want)) { LaunchRuntime(&gMods[i]); return; }
@@ -677,7 +716,7 @@ static void StartRuntime(void) {
     }
     if (n == 0) { LaunchRuntime(NULL); return; }
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    NSString *last = [ud stringForKey:@"bdsp_mod"] ?: @"";
+    NSString *last = [ud stringForKey:@"bdsp_mod"] ?: (installedIndex >= 0 ? installedName : @"");
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Choose a game"
         message:@"A mod runs with a save of its own. The save of Brilliant Diamond is not touched while a mod is active."
         preferredStyle:UIAlertControllerStyleAlert];
