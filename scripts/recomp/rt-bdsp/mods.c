@@ -151,7 +151,9 @@ int mods_activate(const ModInfo *m, const char *saves_dir) {
     struct dirent *e;
     while (d && (e = readdir(d))) if (e->d_name[0] != '.' && strcasecmp(e->d_name, "LICENSE") && strcasecmp(e->d_name, "NOTICE")) nexe++;
     if (d) closedir(d);
-    if (nexe) fprintf(stderr, "[mods] WARNING: %s has %d ExeFS file(s) (code patches); they are not applied, only its RomFS is\n", m->name, nexe);
+    const char *compiled = getenv("BDSP_COMPILED_EXEFS");
+    if (nexe && compiled && !strcmp(compiled, m->name)) fprintf(stderr, "[mods] ExeFS for %s is already compiled into this app\n", m->name);
+    else if (nexe) fprintf(stderr, "[mods] WARNING: %s has %d ExeFS file(s) (code patches); they are not applied, only its RomFS is\n", m->name, nexe);
     return 0;
 }
 

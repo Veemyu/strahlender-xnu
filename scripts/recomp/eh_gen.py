@@ -19,6 +19,7 @@ Additionally: --las-dir <folder with gen.py> (default scripts/recomp/upstream/ge
 """
 import atexit
 import bisect
+import os
 import re
 import struct
 import sys
@@ -27,7 +28,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
+if os.environ.get("BDSP_INSTALLER_PRIVATE_RUNTIME") != "1":
+    sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
 
@@ -62,9 +64,15 @@ def install(las_dir):
             super().__init__(name, path, base, simd)
             n = self.nso
             img = n.image
+            # Homebrew NSOs can have an empty unwind range whose relative
+            # offsets both resolve to MOD0, rather than an .eh_frame_hdr.
+            if n.eh_start == n.eh_end:
+                n.eh_start = n.eh_end = 0
+            self.no_unwind = not n.eh_start
+            self.wide_tables = {}
             mod0 = struct.unpack_from("<I", img, 4)[0]
             hdr = mod0 + struct.unpack_from("<i", img, mod0 + 16)[0]
-            fdes = eh_lsda.parse_module(img, hdr)
+            fdes = eh_lsda.parse_module(img, hdr) if n.eh_start else []
             lps = set()
             for f in fdes:
                 for (_, _, lp, _) in f["sites"]:
@@ -124,6 +132,31 @@ def install(las_dir):
                     STATS["ret_after_mov_sp"] += 1
                     return Insn("br", target="c->x[30]")
             return ins
+
+        def jump_table(self, br_pc, entry, end):
+            targets = super().jump_table(br_pc, entry, end)
+            if targets is None:
+                # Tables can span partitions inferred from ADR targets. Keep
+                # guard discovery bounded, but admit targets in other text blocks.
+                if br_pc not in self.wide_tables:
+                    context = max(self.lo, br_pc - 0x1000)
+                    wide = self._jump_table_fallthrough(br_pc, context, self.hi)
+                    if wide is None and self.no_unwind:
+                        wide = super().jump_table(br_pc, context, self.hi)
+                    self.wide_tables[br_pc] = wide
+                targets = self.wide_tables[br_pc]
+            return targets
+
+        def scan(self, entry, end):
+            labels, external, tables = super().scan(entry, end)
+            for pc, targets in list(tables.items()):
+                if targets == "all":
+                    continue
+                external.update(target for target in targets if not entry <= target < end)
+                # Other partitions have their own dispatch entries. A local
+                # switch must never emit a goto into another generated C function.
+                tables[pc] = [target for target in targets if entry <= target < end] or "all"
+            return {target for target in labels if entry <= target < end}, external, tables
 
         def emit_function(self, entry, end, labels, tables, hle):
             lo = bisect.bisect_left(self.nle, entry)
@@ -188,6 +221,12 @@ def generate(gen, args):
             if shndx and name in want:
                 hle[args.base + value] = name
     start_set = set(starts)
+    if args.entry_offsets:
+        for offset in Path(args.entry_offsets).read_text().split():
+            target = args.base + int(offset, 16)
+            if target & 3 or not m.in_text(target):
+                raise ValueError(f"Cross-module entry outside {args.name} text: {target:#x}")
+            start_set.add(target)
     for i, w in enumerate(m.words):
         if (w & 0xFC000000) == 0x94000000:
             t = m.lo + i * 4 + gen.sext26(w) * 4
@@ -342,6 +381,7 @@ def main():
                     help="additional setjmp function (offset to the module base) for modules without dynamic symbols (test module)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only")
+    ap.add_argument("--entry-offsets", help="module-relative cross-module branch targets from native ExeFS staging")
     ap.add_argument("--simd", choices=("asm", "c"), default="asm" if platform.machine().lower() in ("arm64", "aarch64") else "c")
     args = ap.parse_args(argv)
     EXTRA_SETJMP.extend(args.setjmp_at)

@@ -6,17 +6,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 O=${IMG:-work/recomp/img}
+EXEFS_DIR=${BDSP_EXEFS_DIR:-work/exefs}
 mkdir -p "$O"
-base_of() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; rtld) echo 0x7008000000;; esac; }
+base_of() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; rtld) echo 0x7008000000;; subsdk1) echo 0x7005708000;; *) return 2;; esac; }
+modules=(main sdk subsdk0)
+[ ! -f "$EXEFS_DIR/subsdk1" ] || modules+=(subsdk1)
+links=()
+for m in "${modules[@]}"; do links+=(--link "$O/$m.syms.json"); done
 rm -f "$O/hle.txt"
 # first pass: only collect the exports; second: bind imports across the modules
-for m in main sdk subsdk0; do
-  python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --out "$O" > /dev/null
+for m in "${modules[@]}"; do
+  python3 scripts/recomp/mkimg.py "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --out "$O" > /dev/null
 done
 rm -f "$O/hle.txt"
-for m in main sdk subsdk0; do
-  python3 scripts/recomp/mkimg.py "work/exefs/$m" "$m" --base "$(base_of $m)" --out "$O" \
-    --link "$O/main.syms.json" --link "$O/sdk.syms.json" --link "$O/subsdk0.syms.json" \
+for m in "${modules[@]}"; do
+  python3 scripts/recomp/mkimg.py "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --out "$O" \
+    "${links[@]}" \
     --interpose-from "$O/main.syms.json" \
     ${HLE_LIST:+--hle-list "$HLE_LIST"}
 done

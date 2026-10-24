@@ -2,7 +2,7 @@
 # Stage recomp: from your own dump (work/exefs, work/romfs) to the macOS app work/builds/macos-recomp/BDSP.app.
 #   1 generator -> C (about 1 GB, work/recomp/gen4), only if inputs/generator changed (otherwise skipped;
 #                  with existing C only files with changed content are replaced)
-#   2 compile   -> work/recomp/obj4 (incremental, at most 4 compilers, outliers -O0 from 300 KB)
+#   2 compile   -> work/recomp/obj4 (incremental, CPU/RAM-based compiler count, outliers -O0 from 300 KB)
 #   3 module images (mkimages.sh), 4 build runtime/NVN-Metal and link with libgame (obj4/*.o) into bdsp_app
 #   5 assemble BDSP.app, sign ad hoc; 6 provide data (RomFS as an APFS clone into Application Support)
 # The sub-steps carry their own markers (work/.stages/recomp-*.json). Everything under work/ (never in the repo), messages in English.
@@ -14,8 +14,9 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 WORK="${WORK:-$ROOT/work}"
 R="${RECOMP_DIR:-$WORK/recomp}"
+EXEFS_DIR="${BDSP_EXEFS_DIR:-$ROOT/work/exefs}"
 case "$R" in /*) ;; *) R="$PWD/$R" ;; esac
-JOBS=4 O0_KB=300 DRY=0 FORCE=0 HARDENED=0 INSTALL_DATA=1 OUT="$WORK/builds/macos-recomp/BDSP.app"
+JOBS=auto O0_KB=300 DRY=0 FORCE=0 HARDENED=0 INSTALL_DATA=1 OUT="$WORK/builds/macos-recomp/BDSP.app"
 SP="python3 $ROOT/scripts/build_stages.py"
 log() { echo "[$(date +%H:%M:%S)] recomp: $*"; }
 die() { local c="$1"; shift; echo "ERROR: $*" >&2; exit "$c"; }
@@ -31,14 +32,15 @@ while [ $# -gt 0 ]; do
     *) die 2 "Unknown option: $1" ;;
   esac
 done
-[ "$JOBS" -ge 1 ] 2>/dev/null || die 2 "--jobs needs a number >= 1"
-[ "$JOBS" -le 4 ] || JOBS=4   # the machine is shared: at most four compilers
+if [ "$JOBS" = auto ]; then JOBS=$(python3 "$ROOT/scripts/recomp/parallel_jobs.py"); fi
+case "$JOBS" in ''|*[!0-9]*) die 2 "--jobs needs a number >= 1" ;; esac
+[ "$JOBS" -ge 1 ] || die 2 "--jobs needs a number >= 1"
 case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
 
 GEN="$R/gen4" OBJ="$R/obj4" IMG="$R/img_app" RTO="$R/rt-bdsp-app" NVNRT="$R/rt-bdsp" NVNSRC="$R/nvn-src" BIN="$R/bdsp_app"
 O0_BYTES=$((O0_KB * 1000))
-# The helper scripts read work/exefs hard-coded relative to the repo
-[ -s "$ROOT/work/exefs/main" ] || die 10 "work/exefs/main missing: run the extract stage first (scripts/build_all.sh extract --xci … --keys …)"
+# The mod build uses an isolated ExeFS staging directory; the base RomFS stays shared.
+[ -s "$EXEFS_DIR/main" ] || die 10 "$EXEFS_DIR/main missing: run the extract stage first"
 [ -d "$ROOT/work/romfs/Data" ] || die 10 "work/romfs/Data missing: run the extract stage first"
 [ -f "$ROOT/work/exefs/main.npdm" ] || die 10 "work/exefs/main.npdm missing: extract stage incomplete"
 [ -f "$ROOT/scripts/recomp/upstream/generator/gen.py" ] \
@@ -56,6 +58,11 @@ doit() {  # description, command…  (with --dry-run only show)
 
 # ---------- 1 Generator ----------
 H_GEN="$(hash_of recomp-gen)"
+if [ -n "${BDSP_EXEFS_DIR:-}" ]; then
+  sources=("$EXEFS_DIR"/{rtld,main,sdk,subsdk0})
+  [ ! -f "$EXEFS_DIR/subsdk1" ] || sources+=("$EXEFS_DIR/subsdk1" "$EXEFS_DIR/"*.entries)
+  H_GEN="$(printf '%s:%s' "$H_GEN" "$(shasum -a 256 "${sources[@]}" | shasum -a 256 | cut -c1-64)" | shasum -a 256 | cut -c1-64)"
+fi
 if [ "$FORCE" -eq 0 ] && [ -d "$GEN/main" ] && marker_ok recomp-gen "$H_GEN"; then
   log "1/6 generator: marker matches, C present ($(ls "$GEN"/*/*.c | wc -l | tr -d ' ') files), skipped"
 else
@@ -81,11 +88,11 @@ fi
 
 # ---------- 2 Compile ----------
 H_HOT="$(shasum -a 256 < "$ROOT/scripts/recomp/hot_o2.txt" | cut -c1-16)"   # list of the functions built with -O2
-H_OBJ="$(printf '%s|%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" "$H_HOT" | shasum -a 256 | cut -c1-64)"
+H_OBJ="$(printf '%s|%s|%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" "$H_HOT" "file-prefix-map-v1" | shasum -a 256 | cut -c1-64)"
 if [ "$FORCE" -eq 0 ] && [ -d "$OBJ" ] && marker_ok recomp-obj "$H_OBJ"; then
   log "2/6 compile: marker matches ($(ls "$OBJ"/*.o | wc -l | tr -d ' ') objects), skipped"
 else
-  log "2/6 compile: at most $JOBS compilers, outliers from ${O0_KB} KB with -O0 (about 12 to 16 min cold; progress: $WORK/logs/recomp-compile.log)"
+  log "2/6 compile: $JOBS parallel compilers, outliers from ${O0_KB} KB with -O0 (progress: $WORK/logs/recomp-compile.log)"
   if [ "$FORCE" -eq 1 ] && [ "$DRY" -eq 0 ]; then rm -rf "$OBJ"; fi
   # changed -O0 threshold: discard the objects of the affected files (compile_chunk.sh skips existing ones)
   if [ "$DRY" -eq 0 ] && [ -f "$OBJ/.o0_bytes" ] && [ "$(cat "$OBJ/.o0_bytes")" != "$O0_BYTES" ]; then
@@ -102,7 +109,7 @@ else
     mkdir -p "$OBJ"
     if ! GEN="$GEN" OBJ="$OBJ" O0_BYTES="$O0_BYTES" "$ROOT/scripts/recomp/build_all.sh" "$JOBS" > "$WORK/logs/recomp-compile.log" 2>&1; then
       tail -n 20 "$WORK/logs/recomp-compile.log" >&2
-      die 4 "Compile failed (log: $WORK/logs/recomp-compile.log). Common causes: not enough memory (one compiler needs up to 1.7 GB: --jobs 2), disk full"
+      die 4 "Compile failed (log: $WORK/logs/recomp-compile.log). Check memory, disk space, or retry with --jobs N"
     fi
     grep -q "^ERROR" "$WORK/logs/recomp-compile.log" && die 4 "Compile reports errors (log: $WORK/logs/recomp-compile.log)"
     echo "$O0_BYTES" > "$OBJ/.o0_bytes"
@@ -136,7 +143,15 @@ fi
 # ---------- 5 App ----------
 log "5/6 assembling and signing BDSP.app (ad hoc$([ "$HARDENED" -eq 1 ] && echo ', hardened runtime'))"
 APPARGS=(--bin "$BIN" --img "$IMG" --npdm "$ROOT/work/exefs/main.npdm" --out "$OUT")
-export BDSP_ICON_SOURCE="${BDSP_ICON_SOURCE:-$R/icons/source}"
+if [ -n "${BDSP_MOD_NAME:-}" ]; then
+  [ -n "${BDSP_MODS_DIR:-}" ] && [ -n "${BDSP_MOD_ROOT:-}" ] && [ -n "${BDSP_MOD_BUNDLE_ID:-}" ] || die 2 "mod app metadata is incomplete"
+  APPARGS+=(--mod-name "$BDSP_MOD_NAME" --mods-dir "$BDSP_MODS_DIR" --mod-root "$BDSP_MOD_ROOT" --bundle-id "$BDSP_MOD_BUNDLE_ID" --display-name "${BDSP_MOD_DISPLAY_NAME:-$BDSP_MOD_NAME}")
+fi
+if [ -n "${BDSP_EXEFS_DIR:-}" ]; then
+  export BDSP_ICON_SOURCE="${BDSP_ICON_SOURCE:-$WORK/recomp/icons/source}"
+else
+  export BDSP_ICON_SOURCE="${BDSP_ICON_SOURCE:-$R/icons/source}"
+fi
 [ "$HARDENED" -eq 0 ] || APPARGS+=(--hardened)
 doit "app" "$ROOT/scripts/recomp/app/make_app.sh" "${APPARGS[@]}"
 

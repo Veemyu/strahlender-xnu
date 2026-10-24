@@ -124,8 +124,12 @@ void loader_load(const char *dir) {
         while (fgets(l, sizeof l, f)) { l[strcspn(l, "\n")] = 0; if (l[0]) hle_register(l, NULL); }
         fclose(f);
     }
-    static const char *order[] = {"main", "sdk", "subsdk0"};
-    for (int i = 0; i < 3; i++) {
+    static const char *order[] = {"main", "sdk", "subsdk0",
+#if BDSP_HAS_SUBSDK1
+        "subsdk1",
+#endif
+    };
+    for (size_t i = 0; i < sizeof order / sizeof order[0]; i++) {
         snprintf(path, sizeof path, "%s/%s.mod", dir, order[i]);
         f = fopen(path, "r");
         if (!f) rt_fatal("%s missing (run mkimages.sh)\n", path);
@@ -136,6 +140,15 @@ void loader_load(const char *dir) {
         fclose(f);
         m->base = v[0]; m->text_lo = v[1]; m->text_hi = v[2]; m->ro_lo = v[3]; m->ro_hi = v[4]; m->data_lo = v[5]; m->data_hi = v[6]; m->size = v[7];
         m->init = v[8]; m->init_array = v[9]; m->init_array_sz = v[10];
+        if (m->base < GUEST_LO || m->base >= GUEST_HI || m->size > GUEST_HI - m->base)
+            rt_fatal("module %s is outside the guest window\n", m->name);
+        for (int previous = 0; previous < g_nmodules - 1; previous++) {
+            Module *other = &g_modules[previous];
+            if (m->base < other->base + other->size && other->base < m->base + m->size)
+                rt_fatal("module %s overlaps %s\n", m->name, other->name);
+        }
+        if (!strcmp(m->name, "subsdk1") && m->base != SUBSDK1_BASE)
+            rt_fatal("subsdk1 base does not match the compiled layout\n");
         snprintf(path, sizeof path, "%s/%s.img", dir, order[i]);
         read_image(path, m->base);
         kernel_region_add(m->base + m->text_lo, m->text_hi - m->text_lo, 3, 5);

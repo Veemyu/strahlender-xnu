@@ -212,6 +212,10 @@ extern const ServiceDef g_service_defs_fs[];
 extern const ServiceDef g_service_defs_gfx[];
 
 // ---- Dispatch / Module / HLE
+#ifndef BDSP_HAS_SUBSDK1
+#define BDSP_HAS_SUBSDK1 0
+#endif
+#define SUBSDK1_BASE (MAIN_BASE + 0x5708000ull)
 typedef void (*HostFn)(Cpu *c);
 typedef struct Module {
     char name[16];

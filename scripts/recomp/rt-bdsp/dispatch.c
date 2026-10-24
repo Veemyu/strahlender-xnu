@@ -12,9 +12,12 @@ extern const uint64_t main_fn_addrs[]; extern const GuestFn main_fn_ptrs[]; exte
 extern const uint64_t sdk_fn_addrs[]; extern const GuestFn sdk_fn_ptrs[]; extern const uint64_t sdk_fn_count;
 extern const uint64_t subsdk0_fn_addrs[]; extern const GuestFn subsdk0_fn_ptrs[]; extern const uint64_t subsdk0_fn_count;
 extern const uint64_t rtld_fn_addrs[]; extern const GuestFn rtld_fn_ptrs[]; extern const uint64_t rtld_fn_count;
+#if BDSP_HAS_SUBSDK1
+extern const uint64_t subsdk1_fn_addrs[]; extern const GuestFn subsdk1_fn_ptrs[]; extern const uint64_t subsdk1_fn_count;
+#endif
 
 typedef struct { const uint64_t *addrs; const GuestFn *fns; uint64_t count, lo, hi; } FnTable;
-static FnTable tables[4];
+static FnTable tables[4 + BDSP_HAS_SUBSDK1];
 volatile int g_fnprof;
 
 // ---- HLE slots: fake addresses HLE_BASE + 16 * i
@@ -147,6 +150,10 @@ void dispatch_init(void) {
     tables[1] = (FnTable){sdk_fn_addrs, sdk_fn_ptrs, sdk_fn_count, sdk_fn_addrs[0], sdk_fn_addrs[sdk_fn_count - 1]};
     tables[2] = (FnTable){subsdk0_fn_addrs, subsdk0_fn_ptrs, subsdk0_fn_count, subsdk0_fn_addrs[0], subsdk0_fn_addrs[subsdk0_fn_count - 1]};
     tables[3] = (FnTable){rtld_fn_addrs, rtld_fn_ptrs, rtld_fn_count, rtld_fn_addrs[0], rtld_fn_addrs[rtld_fn_count - 1]};
+#if BDSP_HAS_SUBSDK1
+    if (!subsdk1_fn_count) rt_fatal("subsdk1 has no compiled function table\n");
+    tables[4] = (FnTable){subsdk1_fn_addrs, subsdk1_fn_ptrs, subsdk1_fn_count, subsdk1_fn_addrs[0], subsdk1_fn_addrs[subsdk1_fn_count - 1]};
+#endif
     if (getenv("BDSP_FNPROF")) g_fnprof = 1;
     for (const char *p = getenv("BDSP_COUNT_FN"); p && *p && g_count_n < 4;) {
         g_count_addr[g_count_n++] = strtoull(p, (char **)&p, 16);
@@ -161,7 +168,7 @@ void dispatch_init(void) {
 }
 
 GuestFn dispatch_lookup(uint64_t addr) {
-    for (int t = 0; t < 4; t++) {
+    for (size_t t = 0; t < sizeof tables / sizeof tables[0]; t++) {
         FnTable *ft = &tables[t];
         if (addr < ft->lo || addr > ft->hi) continue;
         uint64_t lo = 0, hi = ft->count;

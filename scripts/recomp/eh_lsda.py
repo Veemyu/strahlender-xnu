@@ -15,13 +15,15 @@ Subcommands:
 """
 import argparse
 import json
+import os
 import struct
 import sys
 from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
+if os.environ.get("BDSP_INSTALLER_PRIVATE_RUNTIME") != "1":
+    sys.path.insert(0, str(ROOT / "tools" / "pydeps"))
 OUT = ROOT / "work" / "recomp" / "spike2"
 EXEFS = ROOT / "work" / "exefs"
 MODULES = ("rtld", "main", "sdk", "subsdk0")

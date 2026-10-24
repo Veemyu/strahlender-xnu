@@ -3,9 +3,9 @@
 // No graphics, no audio output. Own code.
 #ifdef __APPLE__
 #include <TargetConditionals.h>
+#include <malloc/malloc.h>
 #endif
 #include <errno.h>
-#include <malloc/malloc.h>
 #include <mach/mach.h>
 #include <signal.h>
 #include <sys/mman.h>
@@ -77,6 +77,11 @@ static long rss_now_mib(void) {
 // (diagnostics, BDSP_MEM_REPORT=1) dirty and swapped memory per VM tag; the guest window is listed apart. The footprint
 // (what iOS kills for) counts dirty + swapped pages and GPU allocations.
 static void mem_report(void) {
+#ifndef __APPLE__
+    struct rusage ru;
+    if (getrusage(RUSAGE_SELF, &ru) == 0)
+        printf("[mem] peak RSS %ld MiB\n", (long)(ru.ru_maxrss >> 10));
+#else
     {   // system-wide compressor activity since the last report: a high decompression rate means threads wait for compressed pages
         static uint64_t prev_dec, prev_comp, prev_pin, prev_ns;
         vm_statistics64_data_t vs;
@@ -119,9 +124,18 @@ static void mem_report(void) {
     malloc_statistics_t ms;
     malloc_zone_statistics(NULL, &ms);
     printf("[mem] malloc in use %zu MiB (%u blocks), reserved %zu MiB\n", ms.size_in_use >> 20, ms.blocks_in_use, ms.size_allocated >> 20);
+#endif
 }
 
-static long rss_peak_mib(void) { struct rusage ru; getrusage(RUSAGE_SELF, &ru); return (long)(ru.ru_maxrss >> 20); }
+static long rss_peak_mib(void) {
+    struct rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+#ifdef __APPLE__
+    return (long)(ru.ru_maxrss >> 20);  // macOS reports bytes
+#else
+    return (long)(ru.ru_maxrss >> 10);  // Linux reports KiB
+#endif
+}
 
 // ---- rtld replacement: nn::init::Start calls x2 after nnosInitialize (initialisation of the SDK module) and x3 before nnMain (main)
 static void module_init(Cpu *c, Module *m) {
@@ -133,7 +147,11 @@ static void module_init(Cpu *c, Module *m) {
     }
 }
 static void rtld_init_sdk(Cpu *c) { module_init(c, &g_modules[1]); }
-static void rtld_init_main(Cpu *c) { module_init(c, &g_modules[0]); }
+static void rtld_init_main(Cpu *c) {
+    // Extra code modules install their hooks before the game's constructors run.
+    for (int i = 3; i < g_nmodules; i++) module_init(c, &g_modules[i]);
+    module_init(c, &g_modules[0]);
+}
 static void rtld_nop(Cpu *c) { (void)c; LOG("[init] fini callback after nnMain reached\n"); }
 
 static volatile uint64_t g_start_ns;
@@ -240,7 +258,9 @@ static void *monitor_loop(void *arg) {
     const int mem_rep = getenv("BDSP_MEM_REPORT") != NULL;
     const char *why = "time limit";
     const int perf_log = getenv("BDSP_PERF_LOG") != NULL || g_count_n > 0;
+#ifdef __APPLE__
     if (perf_log) pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);   // stay on a performance core: the calibration must see the clock
+#endif
     for (;;) {
         usleep(20000);
         double secs = (rt_now_ns() - g_start_ns) / 1e9;
@@ -301,6 +321,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // no graphics (gate 1 measurement only): NVN functions stay unused
         else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) setenv("BDSP_INPUT_SCRIPT", argv[++i], 1);   // "second:KEY[+KEY]:duration,..." (nvn_glue.c)
         else if (!strcmp(argv[i], "--save") && i + 1 < argc) setenv("BDSP_SAVE", argv[++i], 1);   // save folder (default work/recomp/save, see install_save.sh)
+        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) setenv("BDSP_MOD", argv[++i], 1);   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) setenv("BDSP_TIMEOUT", argv[++i], 1);
         else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }
     }
@@ -308,6 +329,11 @@ int main(int argc, char **argv) {
     const char *npdm = getenv("BDSP_NPDM") ? getenv("BDSP_NPDM") : "work/exefs/main.npdm";
     g_timeout = getenv("BDSP_TIMEOUT") ? atoi(getenv("BDSP_TIMEOUT")) : 120;
     int timeout = g_timeout;
+    if (!mods_active()) {   // BDSP_MODS_DIR + BDSP_MOD (tests, Linux); the app shells choose the mod with a dialog before this point
+        int sel = mods_select_from_env(getenv("BDSP_SAVE") ? getenv("BDSP_SAVE") : g_save_dir);
+        if (sel < 0) return 2;
+        if (sel > 0) setenv("BDSP_SAVE", mods_active_save(), 1);   // the unmodified game's save folder stays untouched
+    }
     fs_set_dirs(getenv("BDSP_ROMFS"), getenv("BDSP_SAVE"));
     g_start_ns = rt_now_ns();
     g_proc_start_ns = g_start_ns;
@@ -317,7 +343,6 @@ int main(int argc, char **argv) {
     int prio = 44;
     FILE *f = fopen(npdm, "rb");
     if (f) {
-        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) setenv("BDSP_MOD", argv[++i], 1);   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
         uint8_t meta[0x80];
         if (fread(meta, 1, sizeof meta, f) == sizeof meta && !memcmp(meta, "META", 4)) {
             prio = meta[0xE];
@@ -325,11 +350,6 @@ int main(int argc, char **argv) {
             stack_size = *(uint32_t *)(meta + 0x1C);
             uint32_t aci0 = *(uint32_t *)(meta + 0x70);
             uint8_t aci[0x20];
-    if (!mods_active()) {   // BDSP_MODS_DIR + BDSP_MOD (tests, Linux); the app shells choose the mod with a dialog before this point
-        int sel = mods_select_from_env(getenv("BDSP_SAVE") ? getenv("BDSP_SAVE") : g_save_dir);
-        if (sel < 0) return 2;
-        if (sel > 0) setenv("BDSP_SAVE", mods_active_save(), 1);   // the unmodified game's save folder stays untouched
-    }
             if (!fseek(f, aci0, SEEK_SET) && fread(aci, 1, sizeof aci, f) == sizeof aci && !memcmp(aci, "ACI0", 4)) memcpy(&g_program_id, aci + 0x10, 8);
         }
         fclose(f);

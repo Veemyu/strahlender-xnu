@@ -109,16 +109,39 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
     char def[1200], dir[1100];
     snprintf(def, sizeof def, "%s/mods", g_app.home);
     pick_path(dir, sizeof dir, "BDSP_MODS_DIR", mods_cfg, def);
+    char bundled_name[256] = "", bundled_dir[1100] = "", bundled_root[1100] = "", bundle_meta[1400];
+    if (g_app.resources[0] && snprintf(bundle_meta, sizeof bundle_meta, "%s/mod-build.txt", g_app.resources) < (int)sizeof bundle_meta) {
+        FILE *meta = fopen(bundle_meta, "r");
+        if (meta) {
+            int valid = fgets(bundled_name, sizeof bundled_name, meta) && fgets(bundled_dir, sizeof bundled_dir, meta) && fgets(bundled_root, sizeof bundled_root, meta);
+            valid = valid && strchr(bundled_name, '\n') && strchr(bundled_dir, '\n') && strchr(bundled_root, '\n');
+            fclose(meta);
+            if (!valid) {
+                bdsp_app_alert("BDSP: mod build", "This app has invalid mod metadata. Rebuild it with the installer.");
+                exit(2);
+            }
+            bundled_name[strcspn(bundled_name, "\r\n")] = 0;
+            bundled_dir[strcspn(bundled_dir, "\r\n")] = 0;
+            bundled_root[strcspn(bundled_root, "\r\n")] = 0;
+            if (!bundled_name[0] || bundled_dir[0] != '/' || bundled_root[0] != '/') {
+                bdsp_app_alert("BDSP: mod build", "This app has an invalid mod name or folder.");
+                exit(2);
+            }
+            snprintf(dir, sizeof dir, "%s", bundled_dir);
+        }
+    }
     mkdir_p(dir);
     setenv("BDSP_MODS_DIR", dir, 1);
     ModInfo list[MODS_MAX];
     int n = mods_scan(dir, list, MODS_MAX);
-    const char *want = getenv("BDSP_MOD");
-    for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--mod")) want = argv[i + 1];
+    const char *want = bundled_name[0] ? bundled_name : getenv("BDSP_MOD");
+    if (!bundled_name[0]) for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--mod")) want = argv[i + 1];
     int pick = -1;   // index in list; -1: the game
     if (want && *want) {
-        if (strcasecmp(want, "none") && strcasecmp(want, "diamond")) {
-            for (int i = 0; i < n && pick < 0; i++) if (!strcasecmp(list[i].name, want)) pick = i;
+        if (bundled_name[0] || (strcasecmp(want, "none") && strcasecmp(want, "diamond"))) {
+            for (int i = 0; i < n && pick < 0; i++) {
+                if (bundled_name[0] ? !strcmp(list[i].root, bundled_root) : !strcasecmp(list[i].name, want)) pick = i;
+            }
             if (pick < 0) {
                 char msg[2048];
                 snprintf(msg, sizeof msg, "There is no mod \"%s\" in %s (%d found).", want, dir, n);
@@ -150,6 +173,10 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
         CFRelease(v);
     }
     if (pick >= 0) {
+        if (bundled_name[0]) {
+            snprintf(list[pick].name, sizeof list[pick].name, "%s", bundled_name);
+            setenv("BDSP_COMPILED_EXEFS", bundled_name, 1);
+        }
         if (mods_activate(&list[pick], g_app.save) != 0) {
             bdsp_app_alert("BDSP: mod", "The save folder of the mod could not be created.");
             exit(2);
@@ -224,7 +251,6 @@ void bdsp_app_init(int argc, char **argv) {
     pick_path(g_app.logs, sizeof g_app.logs, "BDSP_LOG_DIR", cfg_get(keys, vals, n, "logs"), def_logs);
     for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--save")) {   // runtime option: takes effect before the configuration
         absolutize(g_app.save, sizeof g_app.save, argv[i + 1]);
-        argv[i + 1] = strdup(g_app.save);
     }
     const char *pl = getenv("BDSP_PAD_LAYOUT");
     if (!pl) pl = cfg_get(keys, vals, n, "pad_layout");
@@ -255,6 +281,7 @@ void bdsp_app_init(int argc, char **argv) {
         exit(r == 0 ? 0 : 1);
     }
     choose_mod(cfg_get(keys, vals, n, "mods"), argc, argv);   // may point g_app.save at the save folder of a mod
+    for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--save")) argv[i + 1] = strdup(g_app.save);
     // Environment of the runtime (the command-line options override it later)
     setenv("BDSP_ROMFS", g_app.romfs, 1);
     setenv("BDSP_SAVE", g_app.save, 1);
