@@ -83,10 +83,11 @@ static CTFontRef ext_at(float px) {
 }
 
 // Attributed string: button glyphs (private use area) from the button font, everything else from the text font
-static NSAttributedString *make_attr(NSString *str, float px) {
+static NSAttributedString *make_attr(NSString *str, float px, float kern) {
     CTFontRef f = font_at(px), e = ext_at(px);
     NSMutableAttributedString *as = [[NSMutableAttributedString alloc] initWithString:str attributes:@{(__bridge id)kCTFontAttributeName: (__bridge id)f,
         (__bridge id)kCTForegroundColorFromContextAttributeName: @YES}];
+    if (kern != 0) [as addAttribute:(__bridge id)kCTKernAttributeName value:@(kern) range:NSMakeRange(0, str.length)];
     if (e) {
         for (NSUInteger i = 0; i < str.length; i++) {
             unichar c = [str characterAtIndex:i];
@@ -100,7 +101,7 @@ static NSAttributedString *make_attr(NSString *str, float px) {
 
 static float measure(const char *utf8, float px) {
     @autoreleasepool {
-        NSAttributedString *s = make_attr(@(utf8), px > 1 ? px : 1);
+        NSAttributedString *s = make_attr(@(utf8), px > 1 ? px : 1, 0);
         CTLineRef l = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)s);
         float w = (float)CTLineGetTypographicBounds(l, NULL, NULL, NULL);
         CFRelease(l);
@@ -152,16 +153,19 @@ static id<MTLTexture> gpu_tex(id<MTLDevice> dev, const LytTex *t) {
 }
 
 // Text as a texture: white glyphs with alpha, so the vertex colour tints it. Size in device pixels.
-static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px) {
-    NSString *key = [NSString stringWithFormat:@"%.1f|%s", px, utf8];
+static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px, float kern) {
+    NSString *key = [NSString stringWithFormat:@"%.1f|%.2f|%s", px, kern, utf8];
     NSDictionary *hit = g_text[key];
     if (hit) return hit;
     NSDictionary *res = nil;
     @autoreleasepool {
-        NSAttributedString *s = make_attr(@(utf8), px);
+        NSAttributedString *s = make_attr(@(utf8), px, kern);
         CTLineRef l = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)s);
         CGFloat asc, desc, lead;
         double w = CTLineGetTypographicBounds(l, &asc, &desc, &lead);
+        CGRect ib = CTLineGetImageBounds(l, NULL);   // accents and cedillas can reach beyond the font's ascent / descent
+        CGFloat pad = fmax(0, fmax(CGRectGetMaxY(ib) - asc, -CGRectGetMinY(ib) - desc));
+        asc += pad; desc += pad;
         int tw = (int)ceil(w) + 4, th = (int)ceil(asc + desc) + 4;
         if (tw > 0 && th > 0 && tw < 4096 && th < 1024) {
             CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
@@ -298,13 +302,15 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
                 quad(enc, X, Y, (const float (*)[2])it->uv, col);
             } else if (it->str && it->str[0]) {
                 float bw = X[3] - X[0], bh = Y[3] - Y[0];
-                float px = it->font_size[1] * scale;
+                float px = it->font_size[0] * scale;   // the layouts' glyph width is the em size; the height is 1.5x of it (the font is drawn at its own proportions)
                 if (px < 4 || bw <= 0 || bh <= 0) continue;
-                NSDictionary *d = text_tex(dev, it->str, px);
+                NSDictionary *d = text_tex(dev, it->str, px, it->char_space * scale);
                 id<MTLTexture> t = d[@"tex"];
                 if (!t) continue;
                 float w = [d[@"w"] floatValue] - 4, h = [d[@"h"] floatValue];
-                float sx = w > bw ? bw / w : 1;                   // squeeze to fit the box
+                BOOL glyph = NO;                                  // button glyphs are never squeezed
+                for (const unsigned char *u = (const unsigned char *)it->str; *u; u++) if (*u == 0xEE) glyph = YES;   // utf-8 lead byte of U+E000..EFFF
+                float sx = (w > bw && !glyph) ? bw / w : 1;       // squeeze text to fit the box
                 float drawW = w * sx, drawH = h;
                 int ox = it->origin & 3, oy = (it->origin >> 2) & 3;
                 float left = X[0] + (ox == 1 ? 0 : ox == 2 ? bw - drawW : (bw - drawW) / 2);

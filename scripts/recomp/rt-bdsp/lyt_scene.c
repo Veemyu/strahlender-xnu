@@ -335,7 +335,13 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
     }
     if (po->has_alpha) al = po->alpha;
     if (p->mag & 1) { t[0] *= mx; t[1] *= my; }
-    if (p->mag & 4) { sz[0] *= mx; sz[1] *= my; }
+    if (p->mag & 4) {
+        float kx = mx, ky = my;
+        if (p->kind == LYT_PIC && p->mat < l->nmats && l->mats[p->mat].ntex > 0 && l->mats[p->mat].tex[0].idx < l->ntex
+            && strncmp(l->tex[l->mats[p->mat].tex[0].idx], "White", 5))   // icons keep their proportions when the part is not square
+            kx = ky = fminf(mx, my);
+        sz[0] *= kx; sz[1] *= ky;
+    }
     if (p->mag & 2) { s[0] *= mx; s[1] *= my; }   // bit 1: the pane's scale follows the part magnification (BgMask, cursor)
     float a = alpha * al / 255.0f;
     int ox = p->base & 3, oy = (p->base >> 2) & 3, qx = (p->base >> 4) & 3, qy = (p->base >> 6) & 3;
@@ -376,8 +382,9 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
             } else {
                 it->type = LYT_ITEM_TEXT;
                 it->str = in->text[idx];
-                it->font_size[0] = p->font_size[0] * hypotf(m.a, m.b);   // follows the accumulated scale of the parents
-                it->font_size[1] = p->font_size[1] * hypotf(m.c, m.d);
+                float fx = 1, fy = 1;   // the glyph size is authored for the part as placed; only the parents' own scale counts
+                it->font_size[0] = p->font_size[0] * fx * hypotf(m.a, m.b);   // and the accumulated scale of the parents
+                it->font_size[1] = p->font_size[1] * fy * hypotf(m.c, m.d);
                 it->char_space = p->char_space; it->line_space = p->line_space;
                 memcpy(it->top_color, p->top_color, 4); memcpy(it->bottom_color, p->bottom_color, 4);
                 if (in->col[idx][3])

@@ -133,7 +133,7 @@ static void dump_layout(const LytFile *f) {
         printf(" P %s %s parent %d base %x flags %x alpha %d mag %d t %.4f,%.4f,%.4f s %.4f,%.4f size %.4f,%.4f", lyt_pane_kind_name(p->kind), p->name,
                p->parent, p->base, p->flags, p->alpha, p->mag, p->t[0], p->t[1], p->t[2], p->s[0], p->s[1], p->size[0], p->size[1]);
         if (p->kind == LYT_PIC) printf(" mat %d ntc %d vcol %d,%d,%d,%d", p->mat, p->ntc, p->vcol[0][0], p->vcol[0][1], p->vcol[0][2], p->vcol[0][3]);
-        if (p->kind == LYT_TXT) printf(" tbytes %d tlen %d mat %d font %d align %d,%d", p->text_bytes, p->text_len, p->mat, p->font, p->halign, p->valign);
+        if (p->kind == LYT_TXT) printf(" tbytes %d tlen %d mat %d font %d align %d,%d fsize %.1f,%.1f", p->text_bytes, p->text_len, p->mat, p->font, p->halign, p->valign, p->font_size[0], p->font_size[1]);
         if (p->kind == LYT_PRT) printf(" nprop %u pscale %.4f,%.4f part %s", p->nprop, p->pscale[0], p->pscale[1], p->part);
         printf("\n");
     }

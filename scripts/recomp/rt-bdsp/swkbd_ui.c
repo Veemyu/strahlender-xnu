@@ -819,20 +819,30 @@ static void fb_scene(Screen *s, const char *shown) {
 
 
 // Footer with the button hints (glyphs of the system's button font): controller, caret keys, shift, cancel, select
+static float text_width(const char *s, float px);
 static void footer_items(LytScene *sc) {
     const Theme *t = g_theme;
     int gray = t->text[0];
     float y = 664, h = 40;
     fb_text(sc, "\uE12C", 70, y, 60, h, 38, 0x01, gray, 1);
     for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 653, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
-    fb_text(sc, "\uE0E4\uE145", 632, y, 110, h, 30, 0x01, gray, 1);
-    fb_text(sc, "\uE0E5\uE146", 733, y, 110, h, 30, 0x01, gray, 1);
-    fb_text(sc, "\uE104", 830, y, 44, h, 32, 0x01, gray, 1);
-    fb_text(sc, G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 876, y, 90, h, 30, 0x01, gray, 1);
-    fb_text(sc, "\uE0E2", 960, y, 40, h, 32, 0x01, gray, 1);
-    fb_text(sc, lbl("SwkbdFooter_Close", "Cancel"), 1000, y, 110, h, 30, 0x01, gray, 1);
-    fb_text(sc, "\uE0E0", 1115, y, 40, h, 32, 0x01, gray, 1);
-    fb_text(sc, lbl("SwkbdFooter_Decide", "Select"), 1154, y, 90, h, 30, 0x01, gray, 1);
+    // the hints are laid out from the right edge with the width of each text (the labels differ in length between languages)
+    struct { const char *s; float px; } it[] = {
+        {"\uE0E4\uE145", 30}, {"\uE0E5\uE146", 30}, {"\uE104", 32},
+        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 30}, {"\uE0E2", 32},
+        {lbl("SwkbdFooter_Close", "Cancel"), 30}, {"\uE0E0", 32}, {lbl("SwkbdFooter_Decide", "Select"), 30}};
+    enum { N = sizeof it / sizeof *it };
+    float w[N], total = 0;
+    for (int i = 0; i < N; i++) {
+        w[i] = text_width(it[i].s, it[i].px) + 4;
+        total += w[i] + (i ? (i == 4 || i == 6 ? 8 : 22) : 0);   // a glyph sits close to its label
+    }
+    float x = 1244 - total;
+    for (int i = 0; i < N; i++) {
+        if (i) x += (i == 4 || i == 6 ? 8 : 22);
+        fb_text(sc, it[i].s, x, y, w[i], h, it[i].px, 0x01, gray, 1);
+        x += w[i];
+    }
 }
 
 // ---- scene
