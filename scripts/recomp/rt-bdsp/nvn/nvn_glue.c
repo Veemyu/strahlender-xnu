@@ -263,8 +263,47 @@ static uint64_t buttons_now(void) {
     return b;
 }
 
+#if !defined(__APPLE__)
+// Events for the on-screen keyboard (swkbd_ui.c) while it is open: typed text, editing keys, mouse and touch (the Mac shell, app_ui.m, does the same);
+// the game sees no input then. Returns true when consumed.
+#include "swkbd_ui.h"
+static bool swkbd_input(const SDL_Event *e) {
+    switch (e->type) {
+    case SDL_EVENT_TEXT_INPUT: swkbd_ui_text(e->text.text); return true;
+    case SDL_EVENT_KEY_DOWN:
+        switch (e->key.scancode) {
+        case SDL_SCANCODE_BACKSPACE: swkbd_ui_key(SWKBD_KEY_BACKSPACE); break;
+        case SDL_SCANCODE_DELETE: swkbd_ui_key(SWKBD_KEY_DELETE); break;
+        case SDL_SCANCODE_LEFT: swkbd_ui_key(SWKBD_KEY_LEFT); break;
+        case SDL_SCANCODE_RIGHT: swkbd_ui_key(SWKBD_KEY_RIGHT); break;
+        case SDL_SCANCODE_HOME: swkbd_ui_key(SWKBD_KEY_HOME); break;
+        case SDL_SCANCODE_END: swkbd_ui_key(SWKBD_KEY_END); break;
+        case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: swkbd_ui_key(SWKBD_KEY_ENTER); break;
+        case SDL_SCANCODE_ESCAPE: swkbd_ui_key(SWKBD_KEY_ESCAPE); break;
+        default: break;
+        }
+        return true;
+    case SDL_EVENT_KEY_UP: return true;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP: {
+        SDL_Window *w = SDL_GetWindowFromID(e->button.windowID);
+        int ww = 0, wh = 0;
+        if (w) SDL_GetWindowSize(w, &ww, &wh);
+        if (e->button.button == SDL_BUTTON_LEFT && ww > 0 && wh > 0) swkbd_ui_touch(e->type == SDL_EVENT_MOUSE_BUTTON_DOWN, e->button.x / ww, e->button.y / wh);
+        return true;
+    }
+    case SDL_EVENT_FINGER_DOWN: swkbd_ui_touch(1, e->tfinger.x, e->tfinger.y); return true;
+    case SDL_EVENT_FINGER_UP: swkbd_ui_touch(0, e->tfinger.x, e->tfinger.y); return true;
+    case SDL_EVENT_FINGER_CANCELED: swkbd_ui_touch(-1, e->tfinger.x, e->tfinger.y); return true;
+    default: return false;
+    }
+}
+#endif
+
 void input_handle_event(const void *ev) {
     const SDL_Event *e = ev;
+#if !defined(__APPLE__)
+    if (swkbd_ui_active() && swkbd_input(e)) return;
+#endif
     if (e->type != SDL_EVENT_KEY_DOWN && e->type != SDL_EVENT_KEY_UP) return;
     int bit = -1;
     switch (e->key.scancode) {

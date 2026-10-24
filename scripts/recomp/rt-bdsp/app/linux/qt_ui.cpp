@@ -24,6 +24,7 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMouseEvent>
 #include <QMessageBox>
 #include <QPalette>
 #include <QProcess>
@@ -88,6 +89,11 @@ QString fillSize(QString s, int w, int h) {
     return s;
 }
 
+// On-screen keyboard (swkbd_ui.c in the runtime, same process): while it is open, typed text, editing keys and the left mouse button go to it.
+extern "C" {
+#include "../../swkbd_ui.h"
+}
+
 // Qt key -> SDL scancode used by nvn_glue.c (input_handle_event).
 SDL_Scancode scancodeFor(int key) {
     switch (key) {
@@ -121,6 +127,14 @@ public:
 
 protected:
     void resizeEvent(QResizeEvent *) override { publishSize(); }
+    // The on-screen keyboard takes the left mouse button while it is open (position relative to the window, like the Mac and SDL versions).
+    void mousePressEvent(QMouseEvent *e) override { keyboardTouch(1, e); }
+    void mouseReleaseEvent(QMouseEvent *e) override { keyboardTouch(0, e); }
+
+    void keyboardTouch(int down, QMouseEvent *e) {
+        if (swkbd_ui_active() && e->button() == Qt::LeftButton && width() > 0 && height() > 0)
+            swkbd_ui_touch(down, float(e->position().x() / width()), float(e->position().y() / height()));
+    }
 
 public:
     void publishSize() {  // Surface pixels: logical dimensions times devicePixelRatio.
@@ -138,6 +152,25 @@ public:
         if (ev->type() != QEvent::KeyPress && ev->type() != QEvent::KeyRelease) return false;
         if (!obj->isWindowType()) return false;  // Events pass through windows/widgets repeatedly; count only the window level.
         QKeyEvent *e = static_cast<QKeyEvent *>(ev);
+        if (swkbd_ui_active()) {  // the on-screen keyboard is open: the keys type into it, the game sees none
+            if (ev->type() == QEvent::KeyPress && !(e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+                switch (e->key()) {
+                case Qt::Key_Backspace: swkbd_ui_key(SWKBD_KEY_BACKSPACE); break;
+                case Qt::Key_Delete: swkbd_ui_key(SWKBD_KEY_DELETE); break;
+                case Qt::Key_Left: swkbd_ui_key(SWKBD_KEY_LEFT); break;
+                case Qt::Key_Right: swkbd_ui_key(SWKBD_KEY_RIGHT); break;
+                case Qt::Key_Home: swkbd_ui_key(SWKBD_KEY_HOME); break;
+                case Qt::Key_End: swkbd_ui_key(SWKBD_KEY_END); break;
+                case Qt::Key_Return: case Qt::Key_Enter: swkbd_ui_key(SWKBD_KEY_ENTER); break;
+                case Qt::Key_Escape: swkbd_ui_key(SWKBD_KEY_ESCAPE); break;
+                default: {
+                    const QString t = e->text();
+                    if (!t.isEmpty() && t.at(0).isPrint()) swkbd_ui_text(t.toUtf8().constData());
+                }
+                }
+            }
+            return true;
+        }
         const bool down = ev->type() == QEvent::KeyPress;
         if (down && ((e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) ||
                      QApplication::activeWindow() != host_ || QApplication::activePopupWidget()))

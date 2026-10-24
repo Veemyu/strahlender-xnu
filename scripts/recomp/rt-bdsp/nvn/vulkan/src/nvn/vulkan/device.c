@@ -840,6 +840,13 @@ int ui_run(void) {
     for (;;) {
         if (rt_reboot_requested()) return rt_reboot_requested();  // (runtime/main.c tears the game down)
         if (headless) { SDL_Delay(16); continue; }
+        {   // text input events (the letters of the keyboard) only come while the on-screen keyboard is open
+            extern int swkbd_ui_active(void);
+            static bool text_input;
+            bool want = swkbd_ui_active() != 0;
+            SDL_Window *fw = want != text_input ? SDL_GetKeyboardFocus() : NULL;
+            if (fw) { if (want) SDL_StartTextInput(fw); else SDL_StopTextInput(fw); text_input = want; }
+        }
         SDL_Event e;
         while (SDL_WaitEventTimeout(&e, 16)) {
             if (e.type == SDL_EVENT_QUIT) {
