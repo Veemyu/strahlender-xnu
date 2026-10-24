@@ -426,7 +426,8 @@ static void refresh_labels(void) {
         if (t) lytinst_set_text(k->inst, "T_00", t);
         if (k->kind == K_TAB) {
             int on = k->page == G.page;
-            lytinst_set_visible(k->inst, "P_Active_00", on);
+            lytinst_set_visible(k->inst, "P_Active_00", 0);   // the underline of the open tab is drawn by tick (it follows the label width)
+            (void)on;
             lytinst_set_color(k->inst, "T_00", COL(on ? g_theme->tab_on : g_theme->text));
         }
         if (k->kind == K_SHIFT) {
@@ -942,6 +943,12 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     fb_quad(&G.scene, 0, 288, SWKBD_CANVAS_W, SWKBD_CANVAS_H - 288, COL(g_theme->bg), 1.0f);   // keyboard base (its pane is hidden in the file)
     lyt_scene_append(&G.scene, s->bg, 0, 0, 1);
     lyt_scene_append(&G.scene, s->kt, 0, 0, 1);
+    for (int i = 0; i < s->nkeys; i++) {   // underline of the open tab
+        const Key *tk = &s->keys[i];
+        if (tk->kind != K_TAB || tk->hidden || tk->page != G.page) continue;
+        float tw = text_width(k_tab_label[tk->page], 30), cx = (tk->r[0] + tk->r[2]) / 2, cy = (tk->r[1] + tk->r[3]) / 2;
+        fb_quad(&G.scene, cx - tw / 2 - 2, cy + 17, tw + 4, 3, COL(g_theme->tab_on), 1);
+    }
     if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
         const Key *fk = &s->keys[G.focus];
         const uint8_t *cc = g_theme->cursor;
@@ -960,13 +967,15 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     if (fmod(G.clock, 1.0) < 0.6 && lyt_pane_bounds(s->area, s->area, "T_TextBox_Long", 0, 0, 1, b)) {
         const LytLayout *al = lytinst_layout(s->area);
         int ti = lyt_layout_find_pane(al, "T_TextBox_Long");
-        float fpx = ti >= 0 ? al->panes[ti].font_size[1] : 40;
+        float fpx = ti >= 0 ? al->panes[ti].font_size[0] : 26;   // the renderer draws a glyph with the layout's glyph width as its em size
         char pre[1100];
         snprintf(pre, sizeof pre, "%.*s", G.caret, G.p.password ? shown : G.text);
-        float x = b[0] + text_width(pre, fpx);
-        float y = b[1] + 2;
+        float cs = ti >= 0 ? al->panes[ti].char_space : 0;
+        float x = b[0] + text_width(pre, fpx) + u8_count(pre) * cs;
+        float lh = fpx * 1.3f;                     // height of a text line
+        float y = b[1] + 1;                        // the caret pane hangs down from its origin (top left), so this is the top of the line
         const LytLayout *cl = lytinst_layout(s->caret);
-        lyt_scene_append(&G.scene, s->caret, x - cl->size_xy[0] / 2, y - cl->size_xy[1] / 2, 1);
+        lyt_scene_append(&G.scene, s->caret, x - cl->size_xy[0] / 2, y - cl->size_xy[1] / 2, lh / 58.0f);   // the layout's caret is 58 high
     }
     if (getenv("BDSP_TRACE_APPLET") && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] items %d\n", G.scene.n);
     return &G.scene;
