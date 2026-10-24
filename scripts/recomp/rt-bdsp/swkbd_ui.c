@@ -814,11 +814,12 @@ const char *swkbd_ui_focus_name(void) { Screen *s = &G.scr[G.cur]; return G.focu
 void swkbd_ui_set_measure(float (*fn)(const char *, float)) { G.measure = fn; }
 const char *swkbd_ui_root(void) { return G.root; }
 
-// The text field (for tapping it to bring up the system keyboard), canvas pixels, set by the last scene
+// The text field, for tapping it to bring up the system keyboard (canvas pixels, set by the last scene). Only the simple keyboard that stands in
+// when there are no firmware layouts offers that; with the console's own keyboard the tap does nothing (hardware keys work either way).
 int swkbd_ui_field_hit(float nx, float ny) {
     LOCK();
     int hit = 0;
-    if (G.active && G.scale > 0) {
+    if (G.active && G.scale > 0 && cur()->fallback) {
         float x = (nx * G.tw - G.off[0]) / G.scale, y = (ny * G.th - G.off[1]) / G.scale;
         hit = x >= G.field[0] && x < G.field[2] && y >= G.field[1] && y < G.field[3];
     }
