@@ -431,10 +431,10 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
             const LytItem *it = &sc->items[i];
             float X[4], Y[4];
             for (int k = 0; k < 4; k++) { X[k] = off[0] + it->x[k] * scale; Y[k] = off[1] + it->y[k] * scale; }
-            if (it->type == LYT_ITEM_FRAME) {   // focus frame around the key rectangle (items x[0], y[0] .. x[3], y[3])
+            if (it->type == LYT_ITEM_FRAME) {   // focus frame around the key rectangle (items x[0], y[0] .. x[3], y[3]); the faint outer 1.9 px do not count, so the radius of the outer shape is 2.5 + 1.9
                 float kx0 = X[0], ky0 = Y[0], kx1 = X[3], ky1 = Y[3], m = 8 * scale;
                 float cx = (kx0 + kx1) / 2, cy = (ky0 + ky1) / 2, hw = (kx1 - kx0) / 2 / scale + 7, hh = (ky1 - ky0) / 2 / scale + 7;
-                struct { float half[2]; float rad, px; float col[4]; } fu = {{hw, hh}, 2.5f, 1.0f / scale, {it->col[0][0] / 255.0f, it->col[0][1] / 255.0f, it->col[0][2] / 255.0f, it->alpha}};
+                struct { float half[2]; float rad, px; float col[4]; } fu = {{hw, hh}, 4.4f, 1.0f / scale, {it->col[0][0] / 255.0f, it->col[0][1] / 255.0f, it->col[0][2] / 255.0f, it->alpha}};
                 float fx[4] = {cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale, cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale};
                 float fy[4] = {cy - hh * scale - m + 7 * scale, cy - hh * scale - m + 7 * scale, cy + hh * scale + m - 7 * scale, cy + hh * scale + m - 7 * scale};
                 float fuv[4][2], fcol[4][4] = {{1,1,1,1},{1,1,1,1},{1,1,1,1},{1,1,1,1}};

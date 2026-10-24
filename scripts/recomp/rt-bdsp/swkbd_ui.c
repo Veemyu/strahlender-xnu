@@ -274,6 +274,9 @@ static int build_screen(int si) {
     lytinst_set_visible(s->area, "L_BgMask", 0);           // its own mask would dim the text area
     lytinst_set_visible(s->bg, "P_FShdwD", 0);             // the shadow under the key area would run through the footer row (the footer has its own line)
     lytinst_set_anim(s->area, "TextAreaType", 1);          // frame 1: the long single-line text field
+    lytinst_set_anim(s->area, "TextAreaPos", 1);           // frame 1: the field as high as it stands over the full size keyboard (frame 0 and 3 are for the other keyboard heights)
+    lytinst_set_offset(s->area, "T_Header", 0, -6.0f);         // header and typed text stand 6 / 5.5 px lower than the layout puts them (measured on the console)
+    lytinst_set_offset(s->area, "T_TextBox_Long", 0, -5.5f);
     lytinst_set_visible(s->area, "T_TextBox_Long", 1);
     lytinst_set_visible(s->area, "N_UnFixed", 0);          // composition markers of the input methods we do not have
     apply_theme(s);
@@ -419,8 +422,19 @@ static const char *focus_sound(int kind) {
     }
 }
 
+// A one-shot animation (the press flash) that is left for another state must end on its last frame, otherwise its colour stays on the key.
+static void finish_oneshots(Key *k) {
+    static const char *const tags[] = {"DecideKey", "DecideTouch", "RepeatKey", "RepeatTouch"};
+    if (!k->inst) return;
+    for (unsigned i = 0; i < sizeof tags / sizeof *tags; i++) {
+        float f = lytinst_anim_frames(k->inst, tags[i]);
+        if (f > 0) lytinst_set_anim(k->inst, tags[i], f);
+    }
+}
+
 static void set_key_anim(Key *k, const char *tag) {
     if (!strcmp(k->tag, tag) && k->t < 1e8f) return;
+    if (!strncmp(k->tag, "Decide", 6) || !strncmp(k->tag, "Repeat", 6)) finish_oneshots(k);
     snprintf(k->tag, sizeof k->tag, "%s", tag);
     k->t = 0;
 }
@@ -603,6 +617,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
     G.touch_mode = 0;
     int si = p->mode == 1 && G.scr[SCR_NUMERIC].ok ? SCR_NUMERIC : SCR_QWERTY;
     G.cur = si; G.focus = -1; G.shift = 0; G.page = 0;
+    for (int ki = 0; ki < G.scr[si].nkeys; ki++) { Key *rk = &G.scr[si].keys[ki]; finish_oneshots(rk); snprintf(rk->tag, sizeof rk->tag, "UnFocusKey"); rk->t = 1e9f; }   // keys start at rest (the focus and press states of the last session are gone)
     if (si == SCR_QWERTY) assign_chars(&G.scr[SCR_QWERTY], 0);
     refresh_labels();
     set_focus(0);
@@ -921,6 +936,7 @@ static void tick(double dt) {
         if (k->t >= fr) {
             // a finished press falls back to the resting state of the key
             if (!strncmp(k->tag, "Decide", 6)) {
+                finish_oneshots(k);
                 snprintf(k->tag, sizeof k->tag, i == G.focus ? (G.touch_mode ? "FocusTouch" : "FocusKey") : "UnFocusKey");
                 k->t = 1e9f;
                 fr = lytinst_anim_frames(k->inst, k->tag);
@@ -928,6 +944,11 @@ static void tick(double dt) {
             k->t = fr;
         }
         lytinst_set_anim(k->inst, k->tag, k->t);
+        if (!strncmp(k->tag, "UnFocus", 7)) {   // the two unfocus animations (key / touch) each undo only their own focus animation: run both
+            const char *other = !strcmp(k->tag, "UnFocusKey") ? "UnFocusTouch" : "UnFocusKey";
+            float of = lytinst_anim_frames(k->inst, other);
+            if (of > 0) lytinst_set_anim(k->inst, other, k->t < of ? k->t : of);
+        }
         lytinst_set_anim(k->inst, "Alpha", 100);   // full plate (the layouts start dimmed at frame 10)
         if (k->kind == K_BS && g_theme == &k_theme_light) {   // dark with a white icon as soon as there is something to delete
             int on = len > 0;
@@ -1061,9 +1082,9 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         char pre[1100];
         snprintf(pre, sizeof pre, "%.*s", G.caret, G.p.password ? shown : G.text);
         float cs = ti >= 0 ? al->panes[ti].char_space : 0;
-        float x = b[0] + text_width(pre, fpx) + u8_count(pre) * cs;
+        float x = b[0] + text_width(pre, fpx) + u8_count(pre) * cs + (pre[0] ? 0.4f : 0.7f);   // measured on the console
         float lh = fpx * 1.45f;                    // height of a text line (37.7 px for the 26 px font on the console)
-        float y = b[1] + 7.7f;                     // the caret pane hangs down from its origin (top left), so this is the top of the caret
+        float y = b[1] - 7.6f;                     // the caret pane hangs down from its origin (top left), so this is the top of the caret (measured on the console: 161.7 to 199.3 for the 26 px line)
         const LytLayout *cl = lytinst_layout(s->caret);
         lyt_scene_append(&G.scene, s->caret, x - cl->size_xy[0] / 2, y - cl->size_xy[1] / 2, lh / 58.0f);   // the layout's caret is 58 high
     }
