@@ -1255,6 +1255,7 @@ static uint64_t g_rep_frame;
 static _Atomic uint64_t g_last_present_ns;
 // The on-screen keyboard blurs the game image once; the drawables must be readable for that while it is open.
 void metal_set_sampleable(int on) { layer.framebufferOnly = (on || getenv("BDSP_WINDOW_SHOT")) ? NO : YES; }
+uint64_t metal_now_ns(void) { return SDL_GetTicksNS(); }   // the clock of metal_last_present_ns (SDL is not linked on iOS)
 uint64_t metal_last_present_ns(void) { return atomic_load(&g_last_present_ns); }
 static bool present_gpu(uint64_t frame, id<MTLTexture> tex, bool has_wc, const float wc[4]) {
     pthread_mutex_lock(&g_present_lock);

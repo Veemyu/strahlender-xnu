@@ -308,14 +308,14 @@ static void preview_check(void) {
 extern uint64_t metal_last_present_ns(void);
 extern void metal_repeat_present(void);
 
-extern uint64_t SDL_GetTicksNS(void);
+extern uint64_t metal_now_ns(void);
 
 static void *keepalive(void *arg) {
     pthread_setname_np("swkbd-present");
     for (;;) {
         usleep(16000);
         if (!swkbd_ui_active()) continue;
-        if (SDL_GetTicksNS() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
+        if (metal_now_ns() - metal_last_present_ns() < 50000000ull) continue;   // the game is presenting itself
         metal_repeat_present();
     }
     return NULL;
