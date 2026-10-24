@@ -48,7 +48,8 @@ void lytinst_set_offset(LytInst *in, const char *pane, float dx, float dy);
 void lytinst_set_font_size(LytInst *in, const char *pane, float w, float h);
 void lytinst_set_alpha(LytInst *in, float alpha);                        // multiplies the whole instance (0..1)
 
-enum { LYT_ITEM_QUAD, LYT_ITEM_TEXT };
+// LYT_ITEM_FRAME (the keyboard's focus frame): the rectangle of the key is given by x[0], y[0] and x[3], y[3]; the renderer draws the frame around it
+enum { LYT_ITEM_QUAD, LYT_ITEM_TEXT, LYT_ITEM_FRAME };
 
 typedef struct {
     int type;

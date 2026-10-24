@@ -400,7 +400,8 @@ static void walk(Walk *w, LytInst *in, int idx, Mat pm, float pw, float ph, floa
                     for (int c = 0; c < 4; c++) it->col[k][c] = (uint8_t)((p->vcol[k][c] * (mt ? mt->white[c] : 255) + 127) / 255);
                 if (in->col[idx][3])   // colour override replaces the material colour (the corner colours still shade it)
                     for (int k = 0; k < 4; k++)
-                        for (int c = 0; c < 3; c++) it->col[k][c] = (uint8_t)((p->vcol[k][c] * in->col[idx][c] + 127) / 255);
+                        { for (int c = 0; c < 3; c++) it->col[k][c] = (uint8_t)((p->vcol[k][c] * in->col[idx][c] + 127) / 255);
+                        it->col[k][3] = p->vcol[k][3]; }   // a colour set by the program is not dimmed by the material's own alpha
             } else {
                 it->type = LYT_ITEM_TEXT;
                 it->str = in->text[idx];

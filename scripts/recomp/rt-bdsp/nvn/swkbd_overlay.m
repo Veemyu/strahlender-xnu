@@ -24,6 +24,16 @@ static NSString *const kMsl =
     "struct O { float4 p [[position]]; float2 uv; float4 col; };\n"
     "vertex O vs(uint i [[vertex_id]], constant V *v [[buffer(0)]], constant float2 &vp [[buffer(1)]]) {\n"
     "  O o; o.p = float4(v[i].pos.x / vp.x * 2.0 - 1.0, 1.0 - v[i].pos.y / vp.y * 2.0, 0, 1); o.uv = v[i].uv; o.col = v[i].col; return o; }\n"
+    "struct FU { float2 hsz; float rad; float px; float4 col; };\n"
+    "fragment float4 ffs(O in [[stage_in]], constant FU &u [[buffer(0)]]) {\n"
+    "  float2 q = abs(in.uv) - (u.hsz - u.rad);\n"
+    "  float depth = -(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - u.rad);\n"   // distance inside the outer, rounded rectangle
+    "  float aa = u.px;\n"
+    "  float f = mix(0.12, 1.0, smoothstep(1.9 - aa, 1.9 + aa, depth));\n"     // soft outer edge, core
+    "  f = mix(f, 0.5, smoothstep(6.4 - aa, 6.4 + aa, depth));\n"            // soft inner edge
+    "  f = mix(f, 0.0, smoothstep(7.0 - aa, 7.0 + aa, depth));\n"            // the key itself
+    "  float cov = smoothstep(-aa, aa, depth);\n"
+    "  return float4(u.col.rgb, u.col.a * f * cov); }\n"
     "fragment float4 fs(O in [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]]) {\n"
     "  return t.sample(s, in.uv) * in.col; }\n";
 
@@ -48,7 +58,7 @@ static float g_blur_t;
 
 typedef struct { float pos[2], uv[2], col[4]; } Vtx;
 
-static id<MTLRenderPipelineState> g_pipe;
+static id<MTLRenderPipelineState> g_pipe, g_pipe_frame;
 static MTLPixelFormat g_pipe_fmt;
 static id<MTLSamplerState> g_samp;
 static id<MTLTexture> g_white;
@@ -147,6 +157,41 @@ static MTLTextureSwizzle swz(uint32_t c) {
     }
 }
 
+// The icon textures are 64 px (the backspace one a single BC4 channel with visible 4x4 blocks) and are drawn at about 75 device pixels. They are
+// scaled to twice the size with a Catmull-Rom filter and their alpha edge is sharpened, so the shape stays crisp instead of soft and blocky.
+static float cubic(float p0, float p1, float p2, float p3, float t) {
+    return p1 + 0.5f * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+}
+static uint8_t *upscale2_sharp(const uint8_t *px, int w, int h) {
+    int W = w * 2, H = h * 2;
+    uint8_t *out = malloc((size_t)W * H * 4);
+    if (!out) return NULL;
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            float sx = (x + 0.5f) / 2 - 0.5f, sy = (y + 0.5f) / 2 - 0.5f;
+            int ix = (int)floorf(sx), iy = (int)floorf(sy);
+            float fx = sx - ix, fy = sy - iy;
+            for (int c = 0; c < 4; c++) {
+                float col[4];
+                for (int j = 0; j < 4; j++) {
+                    int yy = iy - 1 + j; yy = yy < 0 ? 0 : yy >= h ? h - 1 : yy;
+                    float v[4];
+                    for (int i = 0; i < 4; i++) { int xx = ix - 1 + i; xx = xx < 0 ? 0 : xx >= w ? w - 1 : xx; v[i] = px[((size_t)yy * w + xx) * 4 + c]; }
+                    col[j] = cubic(v[0], v[1], v[2], v[3], fx);
+                }
+                float r = cubic(col[0], col[1], col[2], col[3], fy);
+                r = r < 0 ? 0 : r > 255 ? 255 : r;
+                if (c == 3) {   // sharpen the edge of the shape
+                    float a = r / 255, u = (a - 0.3f) / 0.4f;
+                    u = u < 0 ? 0 : u > 1 ? 1 : u;
+                    r = 255 * u * u * (3 - 2 * u);
+                }
+                out[((size_t)y * W + x) * 4 + c] = (uint8_t)(r + 0.5f);
+            }
+        }
+    return out;
+}
+
 static id<MTLTexture> gpu_tex(id<MTLDevice> dev, const LytTex *t) {
     NSValue *key = [NSValue valueWithPointer:t];
     id<MTLTexture> r = [g_tex objectForKey:key];
@@ -164,7 +209,11 @@ static id<MTLTexture> gpu_tex(id<MTLDevice> dev, const LytTex *t) {
         }
     } else {
         uint8_t *px = malloc((size_t)t->w * t->h * 4);
-        if (px && lyt_tex_decode(t, px)) r = make_rgba(dev, (int)t->w, (int)t->h, px);
+        if (px && lyt_tex_decode(t, px)) {
+            uint8_t *big = !strncmp(t->name, "Ico", 3) ? upscale2_sharp(px, (int)t->w, (int)t->h) : NULL;
+            r = big ? make_rgba(dev, (int)t->w * 2, (int)t->h * 2, big) : make_rgba(dev, (int)t->w, (int)t->h, px);
+            free(big);
+        }
         free(px);
     }
     [g_tex setObject:r ?: (id)[NSNull null] forKey:key];
@@ -190,9 +239,13 @@ static NSDictionary *text_tex(id<MTLDevice> dev, const char *utf8, float px, flo
             CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
             CGContextRef cg = CGBitmapContextCreate(NULL, (size_t)tw, (size_t)th, 8, (size_t)tw * 4, cs, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
             CGContextSetRGBFillColor(cg, 1, 1, 1, 1);
+            CGContextSetAllowsFontSmoothing(cg, false);   // no stem darkening: the console's strokes are thinner than macOS draws them
+            CGContextSetShouldSmoothFonts(cg, false);
             CGContextSetTextPosition(cg, 2, desc + 2);
             CTLineDraw(l, cg);
-            id<MTLTexture> t = make_rgba(dev, tw, th, CGBitmapContextGetData(cg));   // row 0 of the bitmap is the top
+            uint8_t *bits = CGBitmapContextGetData(cg);
+            for (int i = 0; i < tw * th; i++) bits[i * 4] = bits[i * 4 + 1] = bits[i * 4 + 2] = 255;   // the context holds premultiplied white (rgb = alpha); the shader and the blend multiply by alpha again, which made dark fringes on edges: keep straight alpha
+            id<MTLTexture> t = make_rgba(dev, tw, th, bits);   // row 0 of the bitmap is the top
             CGContextRelease(cg); CGColorSpaceRelease(cs);
             res = @{@"tex": t, @"w": @(tw), @"h": @(th), @"asc": @(asc)};
         }
@@ -220,6 +273,9 @@ static int setup(id<MTLDevice> dev, MTLPixelFormat fmt) {
     c.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
     g_pipe = [dev newRenderPipelineStateWithDescriptor:pd error:&err];
     if (!g_pipe) { fprintf(stderr, "[swkbd] pipeline: %s\n", err.localizedDescription.UTF8String); return 0; }
+    pd.fragmentFunction = [lib newFunctionWithName:@"ffs"];
+    g_pipe_frame = [dev newRenderPipelineStateWithDescriptor:pd error:&err];
+    if (!g_pipe_frame) { fprintf(stderr, "[swkbd] frame pipeline: %s\n", err.localizedDescription.UTF8String); return 0; }
     g_pipe_fmt = fmt;
     if (!g_samp) {
         MTLSamplerDescriptor *sd = [MTLSamplerDescriptor new];
@@ -295,7 +351,7 @@ static void preview_check(void) {
     if (at && ++frame == at) {
         SwkbdParams p = {0};
         p.minlen = 1; p.maxlen = 12;
-        snprintf(p.header, sizeof p.header, "Enter your name");
+        snprintf(p.header, sizeof p.header, "%s", getenv("BDSP_SWKBD_HEADER") ? getenv("BDSP_SWKBD_HEADER") : "Enter your name");   // (BDSP_SWKBD_HEADER: for comparing with a screenshot)
         snprintf(p.sub, sizeof p.sub, "Up to 12 characters");
         snprintf(p.guide, sizeof p.guide, "Name");
         SwkbdCallbacks cb = {0};
@@ -375,6 +431,20 @@ void swkbd_overlay_render(void *dev_, void *cb_, void *target_) {
             const LytItem *it = &sc->items[i];
             float X[4], Y[4];
             for (int k = 0; k < 4; k++) { X[k] = off[0] + it->x[k] * scale; Y[k] = off[1] + it->y[k] * scale; }
+            if (it->type == LYT_ITEM_FRAME) {   // focus frame around the key rectangle (items x[0], y[0] .. x[3], y[3])
+                float kx0 = X[0], ky0 = Y[0], kx1 = X[3], ky1 = Y[3], m = 8 * scale;
+                float cx = (kx0 + kx1) / 2, cy = (ky0 + ky1) / 2, hw = (kx1 - kx0) / 2 / scale + 7, hh = (ky1 - ky0) / 2 / scale + 7;
+                struct { float half[2]; float rad, px; float col[4]; } fu = {{hw, hh}, 2.5f, 1.0f / scale, {it->col[0][0] / 255.0f, it->col[0][1] / 255.0f, it->col[0][2] / 255.0f, it->alpha}};
+                float fx[4] = {cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale, cx - hw * scale - m + 7 * scale, cx + hw * scale + m - 7 * scale};
+                float fy[4] = {cy - hh * scale - m + 7 * scale, cy - hh * scale - m + 7 * scale, cy + hh * scale + m - 7 * scale, cy + hh * scale + m - 7 * scale};
+                float fuv[4][2], fcol[4][4] = {{1,1,1,1},{1,1,1,1},{1,1,1,1},{1,1,1,1}};
+                for (int k = 0; k < 4; k++) { fuv[k][0] = (fx[k] - cx) / scale; fuv[k][1] = (fy[k] - cy) / scale; }
+                [enc setRenderPipelineState:g_pipe_frame];
+                [enc setFragmentBytes:&fu length:sizeof fu atIndex:0];
+                quad(enc, fx, fy, fuv, fcol);
+                [enc setRenderPipelineState:g_pipe];
+                continue;
+            }
             if (it->type == LYT_ITEM_QUAD) {
                 id<MTLTexture> t = g_white;
                 if (it->tex) { t = gpu_tex(dev, it->tex); if (!t) continue; }

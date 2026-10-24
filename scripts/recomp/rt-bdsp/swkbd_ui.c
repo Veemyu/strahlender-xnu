@@ -198,8 +198,8 @@ static int cmp_keys(const void *a, const void *b) {
 typedef struct {
     uint8_t bg[3], plate[3], fn[3], dis[3], text[3], text_dis[3], icon[3], badge[3], focus[3], accent[3], accent_text[3], tab_on[3], cursor[3];
 } Theme;
-static const Theme k_theme_light = {{241, 241, 241}, {234, 234, 234}, {224, 224, 224}, {224, 224, 224}, {45, 45, 45}, {178, 178, 178}, {45, 45, 45},
-                                    {45, 45, 45}, {255, 255, 255}, {52, 80, 240}, {255, 255, 255}, {52, 64, 232}, {78, 240, 216}};
+static const Theme k_theme_light = {{242, 242, 242}, {234, 234, 234}, {220, 220, 220}, {220, 220, 220}, {52, 52, 52}, {178, 178, 178}, {52, 52, 52},
+                                    {52, 52, 52}, {255, 255, 255}, {77, 90, 234}, {255, 255, 255}, {80, 90, 231}, {110, 207, 204}};
 static const Theme k_theme_dark = {{38, 41, 48}, {58, 62, 68}, {78, 82, 90}, {66, 70, 78}, {255, 255, 255}, {140, 144, 150}, {255, 255, 255},
                                    {190, 190, 190}, {0, 140, 180}, {0, 140, 180}, {255, 255, 255}, {0, 193, 242}, {0, 193, 242}};
 static const Theme *g_theme = &k_theme_light;
@@ -235,7 +235,7 @@ static void apply_theme(Screen *s) {
         LytInst *k = lytinst_part(s->kt, kl->panes[i].name);
         if (k) style_key(k, !strncmp(kl->panes[i].name, "L_BtnNml", 8));
     }
-    if (t == &k_theme_light) lytinst_set_color(s->caret, "P_Cursor", 0, 176, 236);   // the text caret is blue, the key frame turquoise
+    if (t == &k_theme_light) lytinst_set_color(s->caret, "P_Cursor", 90, 190, 230);   // the text caret is blue, the key frame turquoise
     else lytinst_set_color(s->caret, "P_Cursor", COL(t->cursor));
 }
 
@@ -300,6 +300,7 @@ static int build_screen(int si) {
                 LytInst *g = lytinst_part(s->kt, p->name);
                 lytinst_set_text(g, "T_00", lbl("SwkbdCommon_Enter_LineBreak", "Return"));
                 lytinst_set_color(g, "T_00", COL(g_theme->text_dis));
+                lytinst_set_font_size(g, "T_00", 22, 33);   // the layout gives the key 30 px, the console draws it like the OK label
                 lytinst_set_visible(g, "N_Key", 0);
             }
             continue;
@@ -320,6 +321,7 @@ static int build_screen(int si) {
         if (kind == K_ENTER) lytinst_set_text(inst, "T_Key_00", "");
         if (kind == K_ENTER) lytinst_set_offset(inst, "N_Key", 22, 38);   // badges sit 16 px from the right edge and 15 px from the top of their key, as on the console
         if (kind == K_BS) lytinst_set_offset(inst, "N_Key", 5, 8);
+        if (kind == K_SPACE) { lytinst_set_font_size(inst, "T_00", 22, 33); lytinst_set_font_size(inst, "T_01", 22, 33); }   // the labels of the function keys are smaller than the layouts say
         if (kind == K_SPACE) { float kw = k->r[2] - k->r[0]; lytinst_set_offset(inst, "N_Key", kw / 2 - 16 - 34 * kw / 100, 4.4f); }
         if (kind == K_SHIFT) { lytinst_set_visible(inst, "P_GlowOff", 0); lytinst_set_visible(inst, "P_GlowOn", 0); }   // the caps lock dot is drawn by tick (a round one)
         s->nkeys++;
@@ -449,7 +451,7 @@ static void refresh_labels(void) {
         if (t) lytinst_set_text(k->inst, "T_00", t);
         if (k->kind == K_TAB) {
             int on = k->page == G.page;
-            lytinst_set_font_size(k->inst, "T_00", 26, 39);   // the layouts give each tab its own size; all four look the same
+            lytinst_set_font_size(k->inst, "T_00", 22.2f, 33); lytinst_set_offset(k->inst, "T_00", 0, on ? 2.4f : -1.8f);   // the label of the open tab stands 4 px higher, over its underline   // the layouts give each tab its own size; all four look the same
             lytinst_set_visible(k->inst, "P_Active_00", 0);   // the underline of the open tab is drawn by tick (it follows the label width)
             (void)on;
             lytinst_set_color(k->inst, "T_00", COL(on ? g_theme->tab_on : g_theme->text));
@@ -774,6 +776,12 @@ static int fb_build_screen(int si) {
 }
 
 static float g_sa = 1;   // alpha of everything the keyboard itself draws (fades out while it closes)
+static void fb_quad(LytScene *sc, float x, float y, float w, float h, int r, int g, int b, float a);
+// focus frame around a key rectangle (drawn by the renderer: rounded outer corners, soft edges)
+static void fb_frame(LytScene *sc, float x0, float y0, float x1, float y1, int r, int g, int b) {
+    fb_quad(sc, x0, y0, x1 - x0, y1 - y0, r, g, b, 1);
+    if (sc->n > 0) sc->items[sc->n - 1].type = LYT_ITEM_FRAME;
+}
 static void fb_quad(LytScene *sc, float x, float y, float w, float h, int r, int g, int b, float a) {
     if (sc->n == sc->cap) {
         int nc = sc->cap ? sc->cap * 2 : 256;
@@ -872,18 +880,19 @@ static void footer_items(LytScene *sc) {
     const Theme *t = g_theme;
     int gray = t->text[0];
     float y = 664, h = 40;
-    fb_text(sc, "\uE12C", 70, y, 60, h, 38, 0x01, gray, 1);
-    for (int i = 0; i < 4; i++) fb_quad(sc, 72 + 13 * i, 655, 8, 8, i == 0 ? 130 : 175, i == 0 ? 200 : 175, i == 0 ? 60 : 175, 1);
+    fb_text(sc, "\uE12C", 67.3f, y + 2.4f, 60, h, 44.7f, 0x01, gray, 1);
+    fb_quad(sc, 70.7f, 657.7f, 8, 8, 149, 205, 58, 1);   // pagination dots: the current one green and 8 px, the others 6 px grey (measured at half height)
+    for (int i = 0; i < 3; i++) fb_quad(sc, 81.7f + 10 * i, 658.7f, 6, 6, 188, 188, 188, 1);
     // the hints are laid out from the right edge with the width of each text (the labels differ in length between languages)
     // glyph or label, its em size and the gap that follows it: 9 px between a key badge and its arrow, 10 px between a glyph and its label, 41 px between the hints
     struct { const char *s; float px; float gap; } it[] = {
-        {"\uE0E4", 25, 9}, {"\uE145", 25, 41}, {"\uE0E5", 25, 9}, {"\uE146", 25, 40}, {"\uE104", 25, 11},
-        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 22.5f, 41}, {"\uE0E2", 25, 11},
-        {lbl("SwkbdFooter_Close", "Cancel"), 22.5f, 41}, {"\uE0E0", 25, 10}, {lbl("SwkbdFooter_Decide", "Select"), 22.5f, 0}};
+        {"\uE0E4", 26.2f, 10.1f}, {"\uE145", 22, 41.9f}, {"\uE0E5", 26.2f, 10.1f}, {"\uE146", 22, 41.4f}, {"\uE103", 25.2f, 11.6f},
+        {G.shift == 2 ? lbl("SwkbdFooter_CapsLockOn", "Caps Lock") : lbl("SwkbdFooter_Shift", "Shift"), 22.2f, 40}, {"\uE0E2", 26.2f, 10.7f},
+        {lbl("SwkbdFooter_Close", "Cancel"), 22.2f, 41.3f}, {"\uE0E0", 26.2f, 11}, {lbl("SwkbdFooter_Decide", "Select"), 22.2f, 0}};
     enum { N = sizeof it / sizeof *it };
     float w[N], total = 0;
     for (int i = 0; i < N; i++) { w[i] = text_width(it[i].s, it[i].px); total += w[i] + (i < N - 1 ? it[i].gap : 0); }
-    float x = 1219 - total;   // the right end of the last label is 61 px from the screen edge on the console
+    float x = 1218.8f - total;   // the right end of the last label is 61 px from the screen edge on the console
     for (int i = 0; i < N; i++) {
         fb_text(sc, it[i].s, x, y, w[i] + 2, h, it[i].px, 0x01, gray, 1);
         x += w[i] + it[i].gap;
@@ -922,9 +931,9 @@ static void tick(double dt) {
         lytinst_set_anim(k->inst, "Alpha", 100);   // full plate (the layouts start dimmed at frame 10)
         if (k->kind == K_BS && g_theme == &k_theme_light) {   // dark with a white icon as soon as there is something to delete
             int on = len > 0;
-            lytinst_set_color(k->inst, "P_BtnBase", on ? 40 : g_theme->fn[0], on ? 40 : g_theme->fn[1], on ? 40 : g_theme->fn[2]);
-            lytinst_set_color(k->inst, "P_00", on ? 255 : g_theme->icon[0], on ? 255 : g_theme->icon[1], on ? 255 : g_theme->icon[2]);
-            lytinst_set_color(k->inst, "T_Key", on ? 255 : g_theme->badge[0], on ? 255 : g_theme->badge[1], on ? 255 : g_theme->badge[2]);
+            lytinst_set_color(k->inst, "P_BtnBase", on ? 52 : g_theme->fn[0], on ? 52 : g_theme->fn[1], on ? 52 : g_theme->fn[2]);
+            lytinst_set_color(k->inst, "P_00", on ? 255 : 160, on ? 255 : 160, on ? 255 : 160);   // white icon on the dark key, grey while there is nothing to delete
+            lytinst_set_color(k->inst, "T_Key", on ? 255 : 170, on ? 255 : 170, on ? 255 : 170);
         }
         if (k->kind == K_ENTER) {
             int en = len >= G.p.minlen && !G.busy;
@@ -1004,27 +1013,37 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     }
     G.scene.n = 0;
     fb_quad(&G.scene, 0, 0, SWKBD_CANVAS_W, SWKBD_CANVAS_H, 10, 20, 30, (180 / 255.0f) * (tf < 6 ? tf / 6 : 1));   // the BgMask layout's colour (10,20,30,180) over the whole screen; it fades in over 6 frames (and out with g_sa)
-    fb_quad(&G.scene, 0, 288, SWKBD_CANVAS_W, SWKBD_CANVAS_H - 288, COL(g_theme->bg), 1.0f);   // keyboard base (its pane is hidden in the file)
+    fb_quad(&G.scene, 0, 320, SWKBD_CANVAS_W, SWKBD_CANVAS_H - 320, COL(g_theme->bg), 1.0f);   // keyboard base (its pane is hidden in the file); the console's starts at y 320
+    fb_quad(&G.scene, 0, 320, SWKBD_CANVAS_W, 1, 225, 228, 231, 1.0f);   // with a one pixel highlight at its top edge
     lyt_scene_append(&G.scene, s->bg, 0, 0, 1);
     lyt_scene_append(&G.scene, s->kt, 0, 0, 1);
+    for (int i = 0; i < s->nkeys; i++) {   // the tab keys touch: the gap between them is filled and carries a thin dark seam
+        const Key *tk = &s->keys[i];
+        if (tk->kind != K_TAB || tk->hidden) continue;
+        for (int j = 0; j < s->nkeys; j++) {
+            const Key *nk = &s->keys[j];
+            if (nk->hidden || nk == tk || fabsf(nk->r[1] - tk->r[1]) > 1 || nk->r[0] < tk->r[2] || nk->r[0] - tk->r[2] > 6) continue;
+            float gx = tk->r[2], gw = nk->r[0] - tk->r[2];
+            fb_quad(&G.scene, gx, tk->r[1], gw, tk->r[3] - tk->r[1], COL(g_theme->fn), 1);
+            if (nk->kind == K_TAB) fb_quad(&G.scene, gx + gw / 2 - 1.25f, tk->r[1], 2.5f, tk->r[3] - tk->r[1], 188, 188, 188, 1);   // seam between two tabs
+        }
+    }
     for (int i = 0; i < s->nkeys; i++) {   // underline of the open tab
         const Key *tk = &s->keys[i];
         if (tk->kind != K_TAB || tk->hidden || tk->page != G.page) continue;
-        float tw = text_width(k_tab_label[tk->page], 26), cx = (tk->r[0] + tk->r[2]) / 2, cy = (tk->r[1] + tk->r[3]) / 2;
-        fb_quad(&G.scene, cx - tw / 2 - 2, cy + 17, tw + 4, 3, COL(g_theme->tab_on), 1);
+        float tw = text_width(k_tab_label[tk->page], 22.2f) * 0.905f, cx = (tk->r[0] + tk->r[2]) / 2, cy = (tk->r[1] + tk->r[3]) / 2;
+        fb_quad(&G.scene, cx - tw / 2, cy + 15, tw, 2.7f, COL(g_theme->tab_on), 1);   // 2.7 px high, 45 px wide under ABC (measured on the console)
     }
     for (int i = 0; i < s->nkeys; i++) {   // caps lock dot in the top left corner of the shift key
         const Key *sk = &s->keys[i];
         if (sk->kind != K_SHIFT || sk->hidden) continue;
-        const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){175, 181, 186};
-        fb_dot(&G.scene, sk->r[0] + 13.5f, sk->r[1] + 13.5f, 3.3f, dc[0], dc[1], dc[2]);
+        const uint8_t *dc = G.shift == 2 ? g_theme->accent : (const uint8_t[]){193, 194, 198};
+        fb_dot(&G.scene, sk->r[0] + 13.5f, sk->r[1] + 13.8f, 2.75f, dc[0], dc[1], dc[2]);
     }
     if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
         const Key *fk = &s->keys[G.focus];
         const uint8_t *cc = g_theme->cursor;
-        float x0 = fk->r[0] - 2, y0 = fk->r[1] - 2, w = fk->r[2] - fk->r[0] + 4, h = fk->r[3] - fk->r[1] + 4, b = 4;
-        fb_quad(&G.scene, x0, y0, w, b, COL(cc), 1); fb_quad(&G.scene, x0, y0 + h - b, w, b, COL(cc), 1);
-        fb_quad(&G.scene, x0, y0, b, h, COL(cc), 1); fb_quad(&G.scene, x0 + w - b, y0, b, h, COL(cc), 1);
+        fb_frame(&G.scene, fk->r[0], fk->r[1], fk->r[2], fk->r[3], COL(cc));   // the console's frame lies outside the key: 7 px, soft outer edge, 4.5 px core, rounded outer corners
     }
     footer_items(&G.scene);
     lyt_scene_append(&G.scene, s->area, 0, 0, 1);
@@ -1042,8 +1061,8 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
         snprintf(pre, sizeof pre, "%.*s", G.caret, G.p.password ? shown : G.text);
         float cs = ti >= 0 ? al->panes[ti].char_space : 0;
         float x = b[0] + text_width(pre, fpx) + u8_count(pre) * cs;
-        float lh = fpx * 1.3f;                     // height of a text line
-        float y = b[1] + 1;                        // the caret pane hangs down from its origin (top left), so this is the top of the line
+        float lh = fpx * 1.45f;                    // height of a text line (37.7 px for the 26 px font on the console)
+        float y = b[1] + 7.7f;                     // the caret pane hangs down from its origin (top left), so this is the top of the caret
         const LytLayout *cl = lytinst_layout(s->caret);
         lyt_scene_append(&G.scene, s->caret, x - cl->size_xy[0] / 2, y - cl->size_xy[1] / 2, lh / 58.0f);   // the layout's caret is 58 high
     }
