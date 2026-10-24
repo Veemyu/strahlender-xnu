@@ -428,6 +428,7 @@ static void refresh_labels(void) {
         if (t) lytinst_set_text(k->inst, "T_00", t);
         if (k->kind == K_TAB) {
             int on = k->page == G.page;
+            lytinst_set_font_size(k->inst, "T_00", 26, 39);   // the layouts give each tab its own size; all four look the same
             lytinst_set_visible(k->inst, "P_Active_00", 0);   // the underline of the open tab is drawn by tick (it follows the label width)
             (void)on;
             lytinst_set_color(k->inst, "T_00", COL(on ? g_theme->tab_on : g_theme->text));
@@ -955,7 +956,7 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     for (int i = 0; i < s->nkeys; i++) {   // underline of the open tab
         const Key *tk = &s->keys[i];
         if (tk->kind != K_TAB || tk->hidden || tk->page != G.page) continue;
-        float tw = text_width(k_tab_label[tk->page], 30), cx = (tk->r[0] + tk->r[2]) / 2, cy = (tk->r[1] + tk->r[3]) / 2;
+        float tw = text_width(k_tab_label[tk->page], 26), cx = (tk->r[0] + tk->r[2]) / 2, cy = (tk->r[1] + tk->r[3]) / 2;
         fb_quad(&G.scene, cx - tw / 2 - 2, cy + 17, tw + 4, 3, COL(g_theme->tab_on), 1);
     }
     if (G.focus >= 0 && G.focus < s->nkeys && !s->keys[G.focus].hidden && s->keys[G.focus].kind != K_NONE) {   // focus frame
