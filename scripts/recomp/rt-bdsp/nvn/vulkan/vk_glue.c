@@ -9,6 +9,9 @@
 #include "kernel.h"
 #include "platform.h"
 
+// Overlay drawn over the finished frame (the on-screen keyboard); a no-op until swkbd_overlay_vk.c, which replaces it, is built.
+__attribute__((weak)) void menu_render(void *cmd, uint32_t w, uint32_t h) { (void)cmd; (void)w; (void)h; }
+
 // No write tracking of the guest pages: the vertex cache stays off, textures are re-checked on every use
 // (textures.c: hash comparison). Tracking via mprotect/userfaultfd would be the later optimization (docs/recomp-linux.md).
 int plat_written_pages(uint64_t addr, uint64_t size, uint64_t *pages, int max, uint64_t *page) {
