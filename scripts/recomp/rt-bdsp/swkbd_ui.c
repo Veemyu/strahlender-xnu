@@ -89,6 +89,8 @@ static struct {
     int touch_mode;                  // last input was touch
     int busy;
     int touch_key;                   // key held down by a finger, -1 none
+    double touch_rep_at;             // when the held key repeats next (0: it does not repeat)
+    int touch_repeated;              // the held key has repeated: lifting the finger enters nothing more
     int closing;                     // the closing animation is playing (the keyboard no longer takes input)
     double close_t;                  // seconds since the close started
     double cnt_err;                  // frames since the counter's error shake started (>= 9: none)
@@ -656,6 +658,18 @@ static void switch_page(int page) {
     g_quiet = 1; set_focus(f); g_quiet = 0;
 }
 
+// The character of a key goes into the text (a kana of the grid, or a letter with the shift state)
+static void enter_char(const Key *k) {
+    if (G.cur == SCR_50ON) {
+        char kn[16];
+        if (G.kata) swkbd_ime_to_katakana(k->normal, kn, sizeof kn); else snprintf(kn, sizeof kn, "%s", k->normal);
+        ime_end(); insert_text(kn);
+        return;
+    }
+    type_key(G.shift ? k->shifted : k->normal);
+    if (G.shift == 1) { G.shift = 0; refresh_labels(); }
+}
+
 static void press_key(int i) {
     Screen *s = cur();
     if (i < 0 || i >= s->nkeys) return;
@@ -669,16 +683,7 @@ static void press_key(int i) {
     default: snd("SeSwkbdOptDecide"); break;   // space, tabs, symbols, globe
     }
     switch (k->kind) {
-    case K_CHAR:
-        if (G.cur == SCR_50ON) {   // a kana of the grid
-            char kn[16];
-            if (G.kata) swkbd_ime_to_katakana(k->normal, kn, sizeof kn); else snprintf(kn, sizeof kn, "%s", k->normal);
-            ime_end(); insert_text(kn);
-            break;
-        }
-        type_key(G.shift ? k->shifted : k->normal);
-        if (G.shift == 1) { G.shift = 0; refresh_labels(); }
-        break;
+    case K_CHAR: enter_char(k); break;
     case K_SPACE: ime_end(); insert_text(" "); break;
     case K_BS: backspace(); break;
     case K_ENTER: do_submit(); break;
@@ -762,7 +767,7 @@ int swkbd_ui_open(const SwkbdParams *p, SwkbdCallbacks cb, void *user) {
         G.text[n] = 0;
     }
     G.caret = (int)strlen(G.text);
-    swkbd_ime_reset(&G.ime); G.comp_len = 0; G.touch_key = -1;
+    swkbd_ime_reset(&G.ime); G.comp_len = 0; G.touch_key = -1; G.touch_rep_at = 0;
     G.busy = 0; G.msg[0] = 0; G.msg_left = 0; G.toast_left = 0; G.fade = 0; G.clock = 0; G.closing = 0; G.cnt_err = 99;
     G.pad_prev = 0; memset(G.stick_prev, 0, sizeof G.stick_prev); G.repeat_dir = 0;
     G.touch_mode = 0;
@@ -883,14 +888,17 @@ void swkbd_ui_touch(int down, float nx, float ny) {
                 G.touch_mode = 1;
                 G.touch_key = i;
                 set_focus(i);
+                G.touch_repeated = 0;
+                G.touch_rep_at = s->keys[i].kind == K_CHAR || s->keys[i].kind == K_BS || s->keys[i].kind == K_SPACE ? G.clock + 0.4 : 0;   // held: repeats like the controller's buttons
                 if (s->keys[i].kind == K_CHAR) snd("SeSwkbdGlyphDown");
                 else if (s->keys[i].kind == K_ENTER) snd("SeSwkbdEnterDown");
             }
         } else if (G.touch_key >= 0) {
             int i = G.touch_key;
-            G.touch_key = -1;
+            G.touch_key = -1; G.touch_rep_at = 0;
             if (i < s->nkeys) {
-                if (down == 0 && key_at(nx, ny) == i) press_key(i);
+                if (G.touch_repeated) set_key_anim(&s->keys[i], "UnFocusTouch");   // it has entered by repeating already
+                else if (down == 0 && key_at(nx, ny) == i) press_key(i);
                 else set_key_anim(&s->keys[i], "UnFocusTouch");   // the finger left the key: it is let go without an entry
             }
         }
@@ -1108,6 +1116,14 @@ static void tick(double dt) {
     if (G.closing) { G.close_t += dt; if (G.close_t * 60 >= 14) G.closing = 0; }
     if (G.msg_left > 0) { G.msg_left -= dt; if (G.msg_left <= 0) G.msg[0] = 0; }
     if (G.toast_left > 0) { G.toast_left -= dt; if (G.toast_left <= 0) refresh_labels(); }
+    if (G.touch_key >= 0 && G.touch_key < s->nkeys && G.touch_rep_at > 0 && G.clock >= G.touch_rep_at) {   // a key held by a finger repeats
+        Key *hk = &s->keys[G.touch_key];
+        set_key_anim(hk, "RepeatTouch");
+        if (hk->kind == K_BS) { snd("SeSwkbdBsRepeat"); backspace(); }
+        else if (hk->kind == K_SPACE) { snd("SeSwkbdOptRepeat"); ime_end(); insert_text(" "); }
+        else { snd("SeSwkbdGlyphRepeat"); enter_char(hk); }
+        G.touch_repeated = 1; G.touch_rep_at = G.clock + 0.07;
+    }
     if (G.repeat_dir && G.clock >= G.repeat_at) { g_rep = 1; pad_edge(G.repeat_dir); g_rep = 0; G.repeat_at = G.clock + 0.07; }
     int len = u8_count(G.text);
     for (int i = 0; i < s->nkeys; i++) {

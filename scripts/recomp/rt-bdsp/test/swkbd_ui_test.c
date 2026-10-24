@@ -128,6 +128,18 @@ int main(int argc, char **argv) {
         CHECK(!strcmp(swkbd_ui_text_value(), "1"));
         swkbd_ui_touch(1, nx, ny); swkbd_ui_touch(-1, nx, ny);         // cancelled
         CHECK(!strcmp(swkbd_ui_text_value(), "1"));
+        // a held backspace key deletes one character after another, and lifting the finger enters nothing more
+        swkbd_ui_text("234");
+        float bx = (o[0] + 1190 * sc) / W, by = (o[1] + 364 * sc) / H;
+        swkbd_ui_touch(1, bx, by);
+        CHECK(!strcmp(swkbd_ui_text_value(), "1234"));
+        for (int i = 0; i < 20; i++) if (swkbd_ui_scene(0.016, W, H, &sc, o)) swkbd_ui_unlock();   // 0.3 s: not yet
+        CHECK(!strcmp(swkbd_ui_text_value(), "1234"));
+        for (int i = 0; i < 25; i++) if (swkbd_ui_scene(0.016, W, H, &sc, o)) swkbd_ui_unlock();   // 0.7 s: it repeats
+        CHECK(strlen(swkbd_ui_text_value()) <= 2);
+        size_t held = strlen(swkbd_ui_text_value());
+        swkbd_ui_touch(0, bx, by);
+        CHECK(strlen(swkbd_ui_text_value()) == held);
     }
     swkbd_ui_resolve(1, NULL);
     // the globe key switches the layout: us -> uk -> de -> fr, where the first letter of the second row is an "a" (a "q" before)
