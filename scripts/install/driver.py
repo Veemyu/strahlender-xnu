@@ -194,8 +194,12 @@ def _compile_count(work, target, recomp_dir=None):
     lists = [obj / "list_O0.txt", obj / "list_O1.txt"]
     if not all(path.is_file() for path in lists):
         return None
-    total = sum(len(path.read_text().splitlines()) for path in lists)
-    if not total:
+    try:
+        total = int((obj / ".compile-total").read_text().strip())
+        inventory = sum(len(path.read_text().splitlines()) for path in lists)
+    except (OSError, ValueError):
+        return None
+    if total <= 0 or total != inventory:
         return None
     return min(sum(1 for _ in obj.glob("*.o")), total), total
 

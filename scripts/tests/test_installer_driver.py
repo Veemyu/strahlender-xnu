@@ -65,6 +65,21 @@ class InstallerDriverTests(unittest.TestCase):
         self.assertEqual(driver._safe_line("Python 3.14.3; 44.8 GB free", args),
                          "Python 3.14.3; 44.8 GB free")
 
+    def test_desktop_compile_progress_ignores_an_incomplete_inventory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            for target, name in (("macos", "obj4"), ("linux", "obj4-c")):
+                obj = work / "recomp" / name
+                obj.mkdir(parents=True)
+                (obj / "list_O0.txt").write_text("")
+                (obj / "list_O1.txt").write_text("first.c\n")
+                self.assertIsNone(driver._compile_count(work, target))
+                (obj / ".compile-total").write_text("2\n")
+                self.assertIsNone(driver._compile_count(work, target))
+                (obj / "list_O1.txt").write_text("first.c\nsecond.c\n")
+                (obj / "first.o").touch()
+                self.assertEqual(driver._compile_count(work, target), (1, 2))
+
     def test_ios_compile_progress_waits_for_the_complete_inventory(self):
         with tempfile.TemporaryDirectory() as temporary:
             build = Path(temporary)

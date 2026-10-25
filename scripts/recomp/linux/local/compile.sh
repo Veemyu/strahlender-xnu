@@ -24,6 +24,7 @@ STAMP=$( (cat scripts/recomp/rt/cpu.h $LAS/runtime/cpu.h $LAS/runtime/simd.h $LA
 if [ -f "$OBJ/.stamp" ] && [ "$(cat "$OBJ/.stamp")" != "$STAMP" ]; then echo "Header or flags changed: full rebuild"; rm -f "$OBJ"/*.o "$OBJ"/*.so; fi
 echo "$STAMP" > "$OBJ/.stamp"
 
+rm -f "$OBJ/.compile-total"
 : > "$OBJ/list_O0.txt"; : > "$OBJ/list_O1.txt"
 for f in "$GEN"/*/*.c; do
   size=$(stat -c %s "$f")
@@ -33,6 +34,8 @@ sort -rn -o "$OBJ/list_O0.txt" "$OBJ/list_O0.txt"; sort -rn -o "$OBJ/list_O1.txt
 # Remove objects without source (chunk renumbering after a generator change), otherwise they end up in the library
 cat "$OBJ/list_O0.txt" "$OBJ/list_O1.txt" | cut -d' ' -f2 | while read -r f; do echo "$(basename "$(dirname "$f")")_$(basename "$f" .c).o"; done | sort > "$OBJ/expected.txt"
 ls "$OBJ" | grep '\.o$' | sort | comm -23 - "$OBJ/expected.txt" | while read -r stale; do echo "removing stale object $stale"; rm -f "$OBJ/$stale"; done
+printf '%s\n' "$(( $(wc -l < "$OBJ/list_O0.txt") + $(wc -l < "$OBJ/list_O1.txt") ))" > "$OBJ/.compile-total.tmp"
+mv "$OBJ/.compile-total.tmp" "$OBJ/.compile-total"
 echo "O1: $(wc -l < "$OBJ/list_O1.txt") files, O0: $(wc -l < "$OBJ/list_O0.txt") files, Jobs $JOBS, rebuild=$FORCE"
 
 one() {   # <opt> <size> <source>

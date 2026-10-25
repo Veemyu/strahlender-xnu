@@ -20,11 +20,14 @@ for o in "$OBJ"/*.o; do
   rest=${b#*_}
   [ -f "$GEN/$m/$rest.c" ] || rm -f "$o"
 done
+rm -f "$OBJ/.compile-total"
 : > "$OBJ/list_O1.txt"; : > "$OBJ/list_O0.txt"
 for f in "$GEN"/*/*.c; do
   size=$(stat -f %z "$f")
   if [ "$size" -gt "${O0_BYTES:-1000000}" ] && [ "$(grep -c '^void f_.*) {$' "$f")" = "1" ]; then echo "$f" >> "$OBJ/list_O0.txt"; else echo "$f" >> "$OBJ/list_O1.txt"; fi
 done
+printf '%s\n' "$(( $(wc -l < "$OBJ/list_O0.txt") + $(wc -l < "$OBJ/list_O1.txt") ))" > "$OBJ/.compile-total.tmp"
+mv "$OBJ/.compile-total.tmp" "$OBJ/.compile-total"
 echo "O1: $(wc -l < "$OBJ/list_O1.txt") files, O0: $(wc -l < "$OBJ/list_O0.txt") files, jobs $JOBS"
 start=$(date +%s)
 tr '\n' '\000' < "$OBJ/list_O0.txt" | OPT=-O0 xargs -0 -P "$JOBS" -I{} scripts/recomp/test/compile_chunk.sh {} "$OBJ"
