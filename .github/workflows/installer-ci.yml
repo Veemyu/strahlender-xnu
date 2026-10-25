@@ -73,6 +73,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.plan.outputs.revision }}
+          fetch-depth: 0 # native generator tests extract the frozen Python reference
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
@@ -101,6 +102,13 @@ jobs:
             --fetch-source --repair-linux --output work/installer-runtime-release/linux-aarch64/wheels
       - name: Assemble complete private Python
         run: bash installer/scripts/prepare_runtime.sh '${{ matrix.target }}'
+      - name: Validate native C generator checkpoints
+        shell: bash
+        env:
+          BDSP_INSTALLER_PRIVATE_RUNTIME: '1'
+        run: |
+          CODEGEN_PYTHON="$PWD/work/installer-runtime-release/${{ matrix.target }}/runtime/python/bin/python3"
+          "$CODEGEN_PYTHON" -m unittest scripts.tests.test_native_codegen
       - name: Package
         shell: bash
         run: |
