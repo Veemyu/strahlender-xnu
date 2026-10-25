@@ -1,5 +1,15 @@
 # Private Python runtime (development)
 
+## Release profile update
+
+Full macOS and Linux release preparation now uses `--profile shaders`, with
+`shader-wheels.lock.json` covering all transitive packages. `tpk_ar` and Linux
+ARM64 UnityPy are built from locked sources; their native build records and wheel
+hashes accompany the assembled runtime. The full runtime passed native checks on
+macOS ARM64 and headless Fedora ARM64. See [release preparation](../docs/releases.md)
+for the current pipeline and outstanding acceptance work. Historical probe notes
+below describe the earlier base-only stage.
+
 `manifest.json` pins standard CPython 3.13.15 from the [python-build-standalone
 20260901 release](https://github.com/astral-sh/python-build-standalone/releases/tag/20260901).
 Each of the six host archives has a recorded SHA-256. `wheels.lock.json` pins

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "python": "3.13.15",
+  "common": {
+    "archspec-0.2.6-py3-none-any.whl": "22463371fe8e9fa92fa144bf320cb445373a99f2ca6a5914c890e0c0b7816f8f",
+    "attrs-26.1.0-py3-none-any.whl": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+    "fsspec-2026.9.0-py3-none-any.whl": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f",
+    "pyfmodex-0.7.2-py3-none-any.whl": "1c42112b788e80ee7b4b57ae25bbbc0a98eb1e32a8e7c9e1246698cdf72efa9d"
+  },
+  "targets": {
+    "macos-aarch64": {
+      "astc_encoder_py-0.1.12-cp37-abi3-macosx_11_0_arm64.whl": "b7fdd11d997610da9e64a91bb031a5e18f41cfd20315763019fb14227b461c85",
+      "brotli-1.2.1-cp313-cp313-macosx_10_13_universal2.whl": "a84e0ae14d1efe782a9f143021c4e01d5ed986a140fe5070505cc5978eaf0592",
+      "etcpak-0.9.15-cp37-abi3-macosx_11_0_arm64.whl": "b96260c18ff79387d9b003c9188196c2490bdcd3420496fcf544f246a534c31b",
+      "fmod_toolkit-0.1.3-cp38-abi3.abi3t-macosx_11_0_arm64.whl": "cd5ae416f63b2d2a68b7eeef511f43e69e27576626e46195e02c72f829d6ff0f",
+      "texture2ddecoder-1.0.6-cp311-abi3-macosx_11_0_arm64.whl": "ebb12555f8774a2e497c92803102224546abe4d9bb8d10c77c2f300f07ce6ed9",
+      "tpk_ar-0.2.4-py3-none-any.whl": "914447f5d3b8317661bbe2c3ee0b7b864d31e4625117e6680534c314a22995f0",
+      "unitypy-1.25.4-cp313-cp313-macosx_11_0_arm64.whl": "05ce3cd2afee9886eb9579ff4848a67ccc8a749a7f906a0e08960df89169733a"
+    },
+    "macos-x86_64": {
+      "astc_encoder_py-0.1.12-cp37-abi3-macosx_10_9_x86_64.whl": "0274f444fd7630f86eee4b76030322ac38508ab81b102e93e3699d17a88f5d4e",
+      "brotli-1.2.1-cp313-cp313-macosx_10_13_x86_64.whl": "c5302747f969d5ec925810176f7697712a3fa2ea0fae0c7a85aa4ad9325247fd",
+      "etcpak-0.9.15-cp37-abi3-macosx_10_9_x86_64.whl": "ead1fa47527b9d216be50f65ab4cc728ced93dafea773139026ad6268934fb6f",
+      "fmod_toolkit-0.1.3-cp38-abi3.abi3t-macosx_10_9_x86_64.whl": "6c0a7ff0d6ea87cc424cfe13d9062e29791868658dc4dd93c17b2e34394f00a9",
+      "texture2ddecoder-1.0.6-cp311-abi3-macosx_10_9_x86_64.whl": "bc09a8f3b5717c8a4a41be57a0a39dee3378aebfcc3ed0a25331728496886548",
+      "tpk_ar-0.2.4-py3-none-any.whl": "914447f5d3b8317661bbe2c3ee0b7b864d31e4625117e6680534c314a22995f0",
+      "unitypy-1.25.4-cp313-cp313-macosx_10_13_x86_64.whl": "e922b3262d9dd4d6090e0b3a5c19b12fa2b79646ea5df05b2dbaa777a4be05ae"
+    },
+    "linux-x86_64": {
+      "astc_encoder_py-0.1.12-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "1a3c0efc3187e06fd1d5992a986220a5921498c35c44d1edbd9b2971c71a8a4f",
+      "brotli-1.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": "264fd5b200f6f6170cb551a4b9fcaabf8aa846ddaefe72db4d5f49f9d3743df9",
+      "etcpak-0.9.15-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "b75248c4869c7fddf1e5bba4be02a504da08cffb17434dcdb5bc618869d4ea0a",
+      "fmod_toolkit-0.1.3-cp38-abi3.abi3t-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "d1d97d9c2c69528a8b5696a04a86d178569c7bac5fadeb4e28aa92e19885aa6c",
+      "texture2ddecoder-1.0.6-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": "09b98ea4d66e21aca42558727dc609a8a952e2b6eb09d0ee8e0e52ba14b7848a",
+      "tpk_ar-0.2.4-py3-none-any.whl": "914447f5d3b8317661bbe2c3ee0b7b864d31e4625117e6680534c314a22995f0",
+      "unitypy-1.25.4-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl": "a50ca709280cb6dd3da12038c7a7fc001767b9a8f1ab93cb2ecc8838cf49eb1f"
+    },
+    "linux-aarch64": {
+      "astc_encoder_py-0.1.12-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": "feada45aea860f0e6db9c0bcec2010efe86ae4a97a04a7b9e649c3f5da5b9723",
+      "brotli-1.2.1-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl": "b5b458950312830913f837e179ce9221000ab7a20b4e42d7b48c1fcd79140de1",
+      "etcpak-0.9.15-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": "a5c4c6ebe3a5aaf907afa14619071cd5bc60857f175491d04cbacedbba561d5c",
+      "fmod_toolkit-0.1.3-cp38-abi3.abi3t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": "5abeadaba90a7620fa1cf49bde0566545dc9aac644136536c642e1dd8f039fde",
+      "texture2ddecoder-1.0.6-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl": "e83343e9ec30e2c9a5c83c1ae39ff6ec3010bf92b00ddb612f764066528f02bf",
+      "tpk_ar-0.2.4-py3-none-any.whl": "914447f5d3b8317661bbe2c3ee0b7b864d31e4625117e6680534c314a22995f0",
+      "unitypy-1.25.4-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl": "a79c264168a3ee4f7538cf9d8178ff9145a3e37b8941fa0fb88c150da3f6e4a5"
+    }
+  }
+}

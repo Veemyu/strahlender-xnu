@@ -10,6 +10,7 @@ import sys
 import sysconfig
 import tarfile
 import tempfile
+import urllib.request
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -55,7 +56,7 @@ def native_members(wheel):
                       if name.lower().endswith((".dll", ".pyd", ".so", ".dylib")))
 
 
-def build(package, archive, output):
+def build(package, archive, output, repair_linux=False):
     lock = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
     if lock.get("schema") != 1 or package not in lock["sources"]:
         raise ValueError("Unknown pinned source package")
@@ -84,6 +85,19 @@ def build(package, archive, output):
     if len(matches) != 1:
         raise ValueError(f"Expected exactly one built wheel for {package}")
     wheel = matches[0]
+    if repair_linux:
+        if platform.system() != "Linux" or platform.machine() not in ("aarch64", "x86_64"):
+            raise ValueError("Wheel repair requires a native manylinux builder")
+        repaired = output / "repaired"
+        run(["auditwheel", "repair", "--plat", "manylinux_2_28_" + platform.machine(),
+             "--wheel-dir", str(repaired), str(wheel)])
+        repaired_wheels = list(repaired.glob("*.whl"))
+        if len(repaired_wheels) != 1:
+            raise ValueError("Expected exactly one repaired wheel")
+        wheel = repaired_wheels[0]
+        final = output / wheel.name
+        shutil.move(wheel, final)
+        wheel = final
     members = native_members(wheel)
     if package != "tpk_ar" and not members:
         raise ValueError(f"Built {package} wheel has no native library")
@@ -102,10 +116,24 @@ def build(package, archive, output):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", choices=("capstone", "unicorn", "UnityPy", "tpk_ar"))
-    parser.add_argument("--source-archive", required=True, type=Path)
+    parser.add_argument("--source-archive", type=Path)
+    parser.add_argument("--fetch-source", action="store_true")
+    parser.add_argument("--repair-linux", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
-    record = build(args.package, args.source_archive.resolve(), args.output.resolve())
+    archive = args.source_archive
+    if args.fetch_source:
+        entry = json.loads(SOURCE_LOCK.read_text())["sources"][args.package]
+        args.output.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(f"https://pypi.org/pypi/{args.package}/{entry['version']}/json", timeout=60) as response:
+            metadata = json.load(response)
+        asset = next(item for item in metadata["urls"] if item["filename"] == entry["archive"]
+                     and item["digests"]["sha256"] == entry["sha256"])
+        archive = args.output / entry["archive"]
+        urllib.request.urlretrieve(asset["url"], archive)
+    if archive is None:
+        parser.error("Specify --source-archive or --fetch-source")
+    record = build(args.package, archive.resolve(), args.output.resolve(), args.repair_linux)
     print(f"Built {record['wheel']} from verified {args.package} source")
     return 0
 

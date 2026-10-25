@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.request
 from pathlib import Path
 
 from probe_runtime import MANIFEST, ROOT, sha256, validate_manifest
@@ -42,7 +43,7 @@ def python_path(directory, name):
             directory / "python" / "bin" / "python3")
 
 
-def assemble(name, archive, output, wheelhouse, fetch):
+def assemble(name, archive, output, wheelhouse, fetch, profile="base", source_builds=None):
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     validate_manifest(manifest)
     lock = json.loads(LOCK.read_text(encoding="utf-8"))
@@ -53,6 +54,29 @@ def assemble(name, archive, output, wheelhouse, fetch):
     if name not in lock["targets"]:
         raise ValueError(f"No verified wheel lock for {name}")
     expected_archive = manifest["targets"][name]["python_sha256"]
+    expected = dict(lock["targets"][name])
+    if profile == "shaders":
+        shaders = json.loads((ROOT / "runtime" / "shader-wheels.lock.json").read_text())
+        if shaders["schema"] != 1 or shaders["python"] != lock["python"]:
+            raise ValueError("Shader lock and base runtime disagree")
+        for wheel, digest in {**shaders["common"], **shaders["targets"][name]}.items():
+            expected[wheel] = {"wheel": wheel, "sha256": digest}
+    if source_builds:
+        sources = json.loads((ROOT / "runtime" / "source-lock.json").read_text())["sources"]
+        for record_path in source_builds.glob("*-build.json"):
+            record = json.loads(record_path.read_text())
+            package = record["package"]
+            if profile != "shaders" or not (package == "tpk_ar" or (name == "linux-aarch64" and package == "UnityPy")):
+                raise ValueError("Unexpected source wheel substitution")
+            if record["source_sha256"] != sources[package]["sha256"]:
+                raise ValueError("Source wheel provenance disagrees with source lock")
+            wheel = source_builds / record["wheel"]
+            portable = ("manylinux_2_28_aarch64" in wheel.name if package == "UnityPy" else wheel.name.endswith("-py3-none-any.whl"))
+            if wheel.name != record["wheel"] or not portable or sha256(wheel) != record["wheel_sha256"]:
+                raise ValueError("Source-built wheel is missing, damaged or not portable")
+            expected = {k: v for k, v in expected.items() if not v["wheel"].startswith(package.lower() + "-")}
+            expected[wheel.name] = {"wheel": wheel.name, "sha256": record["wheel_sha256"],
+                                    "source_sha256": record["source_sha256"]}
     if sha256(archive) != expected_archive:
         raise ValueError("Python archive SHA-256 mismatch")
     if output.exists():
@@ -63,17 +87,29 @@ def assemble(name, archive, output, wheelhouse, fetch):
         stage = Path(stage_name)
         wheels = wheelhouse or stage / "wheels"
         wheels.mkdir(parents=True, exist_ok=True)
+        if source_builds:
+            import shutil
+            for entry in expected.values():
+                source = source_builds / entry["wheel"]
+                if "source_sha256" in entry and source.resolve() != (wheels / source.name).resolve():
+                    shutil.copy2(source, wheels / source.name)
         platforms = manifest["targets"][name]["pip_platform"]
         if isinstance(platforms, str):
             platforms = [platforms]
         if fetch:
-            for package in manifest["packages"]["base"]:
-                run([sys.executable, "-m", "pip", "download", "--disable-pip-version-check",
-                     "--only-binary=:all:", "--no-deps", "--python-version", "3.13",
-                     "--implementation", "cp", "--abi", "cp313",
-                     *(part for item in platforms for part in ("--platform", item)),
-                     "--dest", str(wheels), package, "--quiet"])
-        verify_wheels(wheels, lock["targets"][name])
+            for entry in expected.values():
+                destination = wheels / entry["wheel"]
+                if destination.is_file():
+                    continue
+                distribution, version = entry["wheel"].split("-", 2)[:2]
+                with urllib.request.urlopen(f"https://pypi.org/pypi/{distribution}/{version}/json", timeout=60) as response:
+                    metadata = json.load(response)
+                asset = next((item for item in metadata["urls"] if item["filename"] == entry["wheel"]
+                              and item["digests"]["sha256"] == entry["sha256"]), None)
+                if asset is None:
+                    raise ValueError(f"Supply the verified source-built wheel in --wheelhouse: {entry['wheel']}")
+                urllib.request.urlretrieve(asset["url"], destination)
+        verify_wheels(wheels, expected)
 
         runtime = stage / "runtime"
         runtime.mkdir()
@@ -88,14 +124,25 @@ def assemble(name, archive, output, wheelhouse, fetch):
         env["PYTHONNOUSERSITE"] = "1"
         run([str(python), "-I", "-B", "-m", "pip", "install", "--no-index",
              "--disable-pip-version-check", "--no-compile", "--no-deps",
-             "--find-links", str(wheels), *manifest["packages"]["base"]], env=env)
+             "--find-links", str(wheels), *(str(wheels / entry["wheel"]) for entry in expected.values())], env=env)
         run([str(python), "-I", "-B", "-c",
              "import sys; assert sys.version_info[:3] == (3, 13, 15)"], env=env)
         run([str(python), "-I", "-B", str(ROOT / "runtime" / "native_smoke.py")], env=env)
+        run([str(python), "-I", "-B", "-m", "pip", "check"], env=env)
+        if profile == "shaders":
+            run([str(python), "-I", "-B", "-c",
+                 "import UnityPy, UnityPy.UnityPyBoost; "
+                 "from PIL import Image; import texture2ddecoder; "
+                 "assert len(texture2ddecoder.decode_bc1(bytes(8), 4, 4)) == 64; "
+                 "import io; f=io.BytesIO(); Image.new('RGBA',(8,8)).save(f,format='PNG'); "
+                 "assert Image.open(io.BytesIO(f.getvalue())).size == (8,8)"], env=env)
+        # pip records absolute build-machine wheel URLs when installing local files.
+        for metadata in runtime.glob("python/**/site-packages/*.dist-info/direct_url.json"):
+            metadata.unlink()
         (runtime / "runtime.json").write_text(json.dumps({
             "schema": 1, "target": name, "python": manifest["python"]["version"],
             "python_sha256": expected_archive,
-            "wheels": lock["targets"][name],
+            "profile": profile, "wheels": expected,
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         runtime.rename(output)
     return output
@@ -104,6 +151,8 @@ def assemble(name, archive, output, wheelhouse, fetch):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", default=host_target())
+    parser.add_argument("--profile", choices=("base", "shaders"), default="base")
+    parser.add_argument("--source-builds", type=Path)
     parser.add_argument("--python-archive", required=True, type=Path)
     parser.add_argument("--wheelhouse", type=Path)
     parser.add_argument("--fetch-wheels", action="store_true")
@@ -112,7 +161,8 @@ def main(argv=None):
     if not args.fetch_wheels and args.wheelhouse is None:
         parser.error("Specify --wheelhouse or --fetch-wheels")
     output = assemble(args.target, args.python_archive.resolve(), args.output.resolve(),
-                      args.wheelhouse.resolve() if args.wheelhouse else None, args.fetch_wheels)
+                      args.wheelhouse.resolve() if args.wheelhouse else None, args.fetch_wheels, args.profile,
+                      args.source_builds.resolve() if args.source_builds else None)
     print(f"Private runtime verified at {output}")
     return 0
 
