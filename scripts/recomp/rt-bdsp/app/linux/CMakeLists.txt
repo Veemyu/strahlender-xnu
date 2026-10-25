@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-add_executable(bdsp_qt_host bdsp_qt_host.cpp bdsp_l10n.h bdsp_icons.h)
+add_executable(bdsp_qt_host bdsp_qt_host.cpp bdsp_l10n.h bdsp_icons.h bdsp_theme.h)
 target_link_libraries(bdsp_qt_host PRIVATE Qt6::Widgets)
 target_compile_options(bdsp_qt_host PRIVATE -Wall -Wextra)
 # Translations (lproj/<locale>.lproj/Localizable.strings): copied next to the binary, the fallback is the source folder

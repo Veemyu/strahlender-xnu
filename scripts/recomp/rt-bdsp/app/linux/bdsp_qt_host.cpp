@@ -11,6 +11,7 @@
 #include <QActionGroup>
 #include <QApplication>
 #include "bdsp_icons.h"
+#include "bdsp_theme.h"
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -454,6 +455,7 @@ int main(int argc, char **argv) {
         if (!c.isEmpty()) qputenv("XAUTHORITY", rt.filePath(c.first()).toUtf8());
     }
     QApplication app(argc, argv);
+    bdsp::installTheme();
     QStringList args = app.arguments().mid(1);
     QString game = QStringLiteral("work/recomp/bdsp_boot_vk");
     if (args.value(0) == QLatin1String("--game") && args.size() >= 2) {

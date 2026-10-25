@@ -11,6 +11,7 @@
 #include <QActionGroup>
 #include <QApplication>
 #include "bdsp_icons.h"
+#include "bdsp_theme.h"
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -556,6 +557,7 @@ int bdsp_qt_ui_run(void) {
         if (!c.isEmpty()) qputenv("XAUTHORITY", rt.filePath(c.first()).toUtf8());
     }
     QApplication app(argc, argv);
+    bdsp::installTheme();
     const QString platform = QGuiApplication::platformName();
     out(QStringLiteral("[qt] Platform: %1").arg(platform));
 
