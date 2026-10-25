@@ -195,12 +195,13 @@ See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for the LZ4 lice
   every initial boundary, landing pad and setjmp address matches the frozen oracle.
 - Linux x86_64 (Nobara): native Clang and GCC builds; synthetic compressed/plain
   images and EH analysis match the Mac results, including Unicode/spaced paths.
-- Linux ARM64 (archimedesseal): native GCC build, synthetic image/EH parity,
-  function C-output and assembly-IR goldens pass. No game data was transferred.
-  The emitted-code execution probe needs Clang, which is not installed there.
+- Linux ARM64 (archimedesseal): native GCC and Clang 22.1.8 builds, synthetic
+  image/EH parity, function C-output and assembly-IR goldens pass. The Clang-built
+  execution probe also passes scalar branches, EH/longjmp/frame cleanup and native
+  AArch64 vector addition. No game data was transferred.
 - Linux x86_64 additionally passes the Clang-built scalar/EH execution probe;
   macOS ARM64 also executes the generated SIMD addition successfully.
 - CI matrix tests prepared after private-runtime assembly; no CI run dispatched.
 
 These results do not establish full native C generation, a new complete game build,
-Windows support, or a native Linux ARM64 run.
+Windows support, or a complete Linux ARM64 game run.
