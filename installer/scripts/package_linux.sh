@@ -46,7 +46,6 @@ exec "$APPDIR/usr/bin/strahlender-xnu-installer" "$@"
 LAUNCHER
 chmod 755 "$APPDIR/AppRun"
 fi
-tar -czf "$OUTPUT/installer-linux-$ARCH.tar.gz" -C "$OUTPUT" Strahlender.AppDir
 TOOL="$OUTPUT/tools/appimagetool-$ARCH.AppImage"
 RUNTIME="$OUTPUT/tools/runtime-$ARCH"
 fetch_verified() {
@@ -61,4 +60,4 @@ fetch_verified "https://github.com/AppImage/type2-runtime/releases/download/cont
 chmod 755 "$TOOL"
 ARCH="$ARCH" "$TOOL" --appimage-extract-and-run --runtime-file "$RUNTIME" "$APPDIR" "$OUTPUT/installer-linux-$ARCH.AppImage"
 cd "$OUTPUT"
-sha256sum installer-* > SHA256SUMS
+sha256sum "installer-linux-$ARCH.AppImage" > SHA256SUMS

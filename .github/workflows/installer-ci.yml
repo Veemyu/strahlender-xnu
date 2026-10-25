@@ -123,14 +123,66 @@ jobs:
         with:
           name: installer-${{ matrix.target }}
           path: |
-            work/installer-packages/**/*.zip
-            work/installer-packages/**/*.tar.gz
-            work/installer-packages/**/*.AppImage
+            work/installer-packages/**/installer-*.zip
+            work/installer-packages/**/installer-*.AppImage
             work/installer-packages/**/SHA256SUMS
           if-no-files-found: error
-          retention-days: 14
-  publish:
+          retention-days: 1
+  universal:
     needs: [plan, package]
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.plan.outputs.revision }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: installer-macos-aarch64
+          path: work/universal-inputs/arm
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: installer-macos-x86_64
+          path: work/universal-inputs/intel
+      - name: Assemble one signed universal Mac installer
+        run: |
+          ARM_ZIP="$(find work/universal-inputs/arm -name installer-macos-aarch64.zip -print -quit)"
+          INTEL_ZIP="$(find work/universal-inputs/intel -name installer-macos-x86_64.zip -print -quit)"
+          bash installer/scripts/package_macos_universal.sh "$ARM_ZIP" "$INTEL_ZIP"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installer-macos-universal
+          path: |
+            work/installer-packages/macos-universal/installer-macos-universal.zip
+            work/installer-packages/macos-universal/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+  verify-universal:
+    needs: [plan, universal]
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: installer-macos-universal
+          path: universal
+      - name: Verify both slices and run the matching bundled runtime
+        run: |
+          cd universal
+          shasum -a 256 -c SHA256SUMS
+          ditto -x -k installer-macos-universal.zip "$RUNNER_TEMP/universal-installer"
+          APP="$RUNNER_TEMP/universal-installer/Strahlender Installer.app"
+          for binary in strahlender-xnu-installer ips_patch installer_update installer_setup; do
+            lipo "$APP/Contents/MacOS/$binary" -verify_arch arm64
+            lipo "$APP/Contents/MacOS/$binary" -verify_arch x86_64
+          done
+          codesign --verify --deep --strict "$APP"
+          cd "$RUNNER_TEMP"
+          env -i HOME="$HOME" PATH=/usr/bin:/bin "$APP/Contents/MacOS/strahlender-xnu-installer" --check-runtime
+  publish:
+    needs: [plan, package, verify-universal]
     if: needs.plan.outputs.channel != 'artifacts'
     runs-on: ubuntu-24.04
     permissions:
@@ -145,7 +197,7 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
-      - name: Verify and collect all four native packages
+      - name: Verify and collect the three public installers
         run: |
           python3 installer/scripts/release.py collect --artifacts artifacts --output release-assets \
             --plan artifacts/installer-release-plan/installer-release-plan.json

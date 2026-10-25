@@ -12,6 +12,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ("macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64")
+PACKAGES = ("installer-macos-universal.zip", "installer-linux-aarch64.AppImage", "installer-linux-x86_64.AppImage")
 
 
 def plan(version, event, ref, channel, revision, run_id, attempt, draft=False):
@@ -42,30 +43,29 @@ def collect(artifacts, output, release):
     if output.exists():
         raise ValueError("Release staging directory already exists.")
     inventory = {}
-    for target in TARGETS:
-        suffixes = ("zip", "tar.gz") if target.startswith("macos") else ("AppImage", "tar.gz")
-        for suffix in suffixes:
-            name = f"installer-{target}.{suffix}"
-            matches = list(artifacts.rglob(name))
-            if len(matches) != 1 or not matches[0].is_file() or matches[0].is_symlink():
-                raise ValueError(f"Expected exactly one regular artifact: {name}")
-            source = matches[0]
-            checksum_file = source.parent / "SHA256SUMS"
-            entries = {}
-            for line in checksum_file.read_text().splitlines():
-                digest, filename = line.split(maxsplit=1)
-                entries[filename.lstrip("*")] = digest
-            with source.open("rb") as file:
-                digest = hashlib.file_digest(file, "sha256").hexdigest()
-            if entries.get(name) != digest:
-                raise ValueError(f"Artifact checksum mismatch: {name}")
-            inventory[name] = (source, digest)
+    for name in PACKAGES:
+        matches = list(artifacts.rglob(name))
+        if len(matches) != 1 or not matches[0].is_file() or matches[0].is_symlink():
+            raise ValueError(f"Expected exactly one regular artifact: {name}")
+        source = matches[0]
+        checksum_file = source.parent / "SHA256SUMS"
+        entries = {}
+        for line in checksum_file.read_text().splitlines():
+            digest, filename = line.split(maxsplit=1)
+            entries[filename.lstrip("*")] = digest
+        with source.open("rb") as file:
+            digest = hashlib.file_digest(file, "sha256").hexdigest()
+        if entries.get(name) != digest:
+            raise ValueError(f"Artifact checksum mismatch: {name}")
+        inventory[name] = (source, digest)
     output.mkdir(parents=True)
     for name, (source, _) in inventory.items():
         shutil.copy2(source, output / name)
     (output / "SHA256SUMS").write_text("".join(
         f"{digest}  {name}\n" for name, (_, digest) in sorted(inventory.items())))
-    (output / "installer-build.json").write_text(json.dumps(
+    internal = output / ".internal"
+    internal.mkdir()
+    (internal / "installer-build.json").write_text(json.dumps(
         {"schema": 1, **release, "targets": TARGETS}, indent=2) + "\n")
 
 
@@ -77,9 +77,7 @@ def release_notes(release, repository):
     if not path.is_file():
         raise ValueError(f"Write installer/releases/{version}.md before publishing this version.")
     notes = path.read_text().rstrip()
-    for target in TARGETS:
-        suffix = "zip" if target.startswith("macos") else "AppImage"
-        name = f"installer-{target}.{suffix}"
+    for name in PACKAGES:
         link = f"https://github.com/{repository}/releases/download/{release['tag']}/{name}"
         notes = notes.replace(f"`{name}`", f"[{name}]({link})")
     return notes + (
@@ -112,7 +110,7 @@ def publish(folder, release, repository):
                    "--notes-file", str(path)]
         if prerelease:
             command.append("--prerelease")
-        command.extend(str(path) for path in sorted(folder.iterdir()) if path.is_file())
+        command.extend(str(folder / name) for name in (*PACKAGES, "SHA256SUMS"))
         subprocess.run(command, check=True)
     if release.get("draft", False):
         return

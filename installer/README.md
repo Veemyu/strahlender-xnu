@@ -1,8 +1,9 @@
 # strahlender · Installer
 
 Cross-platform Rust/Iced installer. Download the development builds from
-[GitHub Releases](https://github.com/Veemyu/strahlender-xnu/releases): a macOS app
-or Linux AppImage for aarch64 and x86_64. End users do not need Rust or Python to
+[GitHub Releases](https://github.com/Veemyu/strahlender-xnu/releases): one universal
+macOS app ZIP for Apple Silicon and Intel, or a Linux AppImage for aarch64 or
+x86_64. End users do not need Rust or Python to
 open the installer. Building the game requires your own prod.keys, base game,
 optional update and the platform tools listed by guided setup. Full native Mac
 and Linux GUI builds have passed desktop testing; fresh-system dependency

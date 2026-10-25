@@ -36,19 +36,18 @@ class InstallerReleaseTests(unittest.TestCase):
 
     def artifacts(self, root):
         files = []
-        for target in release.TARGETS:
-            directory = root / target
+        for index, name in enumerate(release.PACKAGES):
+            directory = root / str(index)
             directory.mkdir(parents=True)
             lines = []
-            for suffix in (("zip", "tar.gz") if target.startswith("macos") else ("AppImage", "tar.gz")):
-                path = directory / f"installer-{target}.{suffix}"
-                path.write_bytes(b"synthetic package " + target.encode())
-                lines.append(hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name)
-                files.append(path)
+            path = directory / name
+            path.write_bytes(b"synthetic package " + name.encode())
+            lines.append(hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name)
+            files.append(path)
             (directory / "SHA256SUMS").write_text("\n".join(lines) + "\n")
         return files
 
-    def test_collect_requires_all_four_targets_and_verified_bytes(self):
+    def test_collect_requires_universal_mac_and_both_linux_architectures_with_verified_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             files = self.artifacts(root / "artifacts")
@@ -65,8 +64,10 @@ class InstallerReleaseTests(unittest.TestCase):
             root = Path(temporary)
             self.artifacts(root / "artifacts")
             release.collect(root / "artifacts", root / "output", self.plan())
-            self.assertEqual(len(list((root / "output").iterdir())), 10)
-            self.assertEqual(len((root / "output/SHA256SUMS").read_text().splitlines()), 8)
+            self.assertEqual(len(list((root / "output").iterdir())), 5)
+            self.assertEqual(len((root / "output/SHA256SUMS").read_text().splitlines()), 3)
+            self.assertFalse((root / "output/installer-build.json").exists())
+            self.assertTrue((root / "output/.internal/installer-build.json").is_file())
 
     def test_artifact_only_run_never_calls_github(self):
         with patch.object(release.subprocess, "run") as run:
@@ -85,12 +86,16 @@ class InstallerReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.object(release.subprocess, "run", return_value=SimpleNamespace(stdout="")) as run:
             (Path(temporary) / "installer-build.json").write_text("{}")
+            (Path(temporary) / "installer-linux-x86_64.tar.gz").write_bytes(b"not a public download")
             release.publish(Path(temporary), self.plan("nightly"), "Veemyu/strahlender-xnu")
             create, edit = run.call_args_list[-2].args[0], run.call_args_list[-1].args[0]
             self.assertIn("--draft", create)
             self.assertIn("--prerelease", create)
             self.assertIn("--draft=false", edit)
             self.assertIn("--latest=false", edit)
+            self.assertNotIn(str(Path(temporary) / "installer-build.json"), create)
+            self.assertNotIn(str(Path(temporary) / "installer-linux-x86_64.tar.gz"), create)
+            self.assertTrue(all(str(Path(temporary) / name) in create for name in release.PACKAGES))
 
     def test_draft_uploads_downloads_without_publishing(self):
         with tempfile.TemporaryDirectory() as temporary, \

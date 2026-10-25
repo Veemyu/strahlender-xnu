@@ -1,7 +1,7 @@
 # Installer release preparation
 
-The first downloads are macOS apps (ZIP/tar.gz) and Linux AppImages/portable
-archives, each on x86_64 and aarch64. Windows installers and Android remain
+The public downloads are one universal macOS app ZIP and two Linux AppImages
+(x86_64 and aarch64). Windows installers and Android remain
 follow-up work. CI never processes game files or keys.
 
 ## Deliberate builds and publication
@@ -19,9 +19,11 @@ an `installer-v*` tag. No scheduled nightly publication is configured.
 | Push `installer-v0.1.0` | Stable release, only if the Cargo version is exactly `0.1.0` |
 
 The tag namespace separates installer publication from unrelated repository
-tags. Every release requires all four native jobs to pass. Packaging hashes are
-verified before collection; the final downloads include a combined
-`SHA256SUMS` and `installer-build.json` with the exact installer source commit.
+tags. Every release requires all four native jobs and both final universal-app
+tests to pass. Packaging hashes are verified before collection. Downloads include
+the three installers and a combined `SHA256SUMS`; `installer-build.json` stays in
+internal CI staging and is never attached to a release. The release message links
+the exact installer source commit.
 Uploads are staged in a draft before publication. Existing release tags are
 never moved or silently overwritten. Nightlies do not replace stable `latest`.
 
@@ -100,10 +102,23 @@ BDSP_INSTALLER_RUNTIME="$PWD/work/installer-runtime-release/macos-aarch64/runtim
   bash installer/scripts/package_macos_app.sh
 ```
 
-Linux uses `package_linux.sh` with its native full runtime. The output is an
-AppImage and a portable AppDir archive. The latter also works where mounting an
-AppImage is unavailable. Packaging tools are hash checked. Build paths are
+Linux uses `package_linux.sh` with its native full runtime. The output is one
+AppImage per architecture. AppImages are single executable files; no enclosing
+ZIP or tar archive is needed. If FUSE mounting is unavailable, the same file's
+`--appimage-extract-and-run` mode provides an extraction-based launch path.
+Packaging tools are hash checked. Build paths are
 remapped in Rust release binaries and pip's local wheel URL metadata is removed.
+
+The two Mac jobs produce internal native ZIPs. `package_macos_universal.sh`
+checks their hashes, bundle versions and source revision, then combines the GUI
+and all Rust helpers with `lipo`. The app contains two verified Python profiles
+under `Contents/Resources/runtime/macos-aarch64` and `macos-x86_64`; the native
+Rust slice selects its matching profile. Native libraries and Python build
+configuration stay within their original architecture profile. Homebrew/LLVM
+search order also follows the current Rust slice (Apple Silicon: /opt/homebrew,
+Intel: /usr/local). The final app is ad-hoc signed once and packaged only as
+`installer-macos-universal.zip`, then extracted and smoke-tested on both native
+Mac runners. The native intermediate ZIPs are not public release downloads.
 
 The initial Linux GUI build baseline is Ubuntu 22.04 (glibc 2.35). Runtime wheels
 target manylinux 2.28, but that does not lower the GUI's own glibc requirement.
@@ -146,9 +161,10 @@ cargo run --locked --manifest-path installer/Cargo.toml --bin installer_release 
 ```
 
 Upload `installer-update.json`, `installer-update.json.sig` and its named assets
-to the matching stable release only after approval. macOS updates use `.tar.gz`;
-Linux updates use `.AppImage`. ZIPs/portable archives are also available for
-manual installation. The public key printed by the signing tool must match the
+to the matching stable release only after approval. macOS updates use the same
+universal `.zip` as manual downloads (extracted with macOS ditto); both Mac
+architecture entries refer to that file. Linux updates use `.AppImage`.
+The public key printed by the signing tool must match the
 one embedded in the installer. The workflow does not store or use the private key.
 
 Update metadata signatures and downloaded bytes are verified before replacement.
