@@ -95,8 +95,13 @@ AArch64 SIMD/FP and CRC assembly metadata are now implemented as well: ordered
 GPR mappings (including SP), touched vector registers, flags and literal constants.
 A further 9,860 seeded assembly IR records match the frozen lifter, including
 vector register wrapping and negative diagnostic PC-relative constants.
-Portable SIMD/FP C lowering still emits `handled: false`; this is a development
-checkpoint, not a partial production `gen` command.
+Portable SIMD/FP C lowering is now ported as well: scalar FP, vector arithmetic,
+copy/permute/table operations, crypto/CRC, shifts, indexed operands and all SIMD
+load/store forms supported by the frozen generator. Over 90,000 additional
+portable IR comparisons cover seeded and systematic size/opcode/immediate fields.
+A compiled mixed memory/vector/FP probe matches native AArch64 execution on macOS
+and Linux ARM64. Existing SIMD runtime helpers are reused unchanged.
+This is still a development checkpoint, not a production whole-module `gen` command.
 Temporary expression strings are reclaimed after each diagnostic instruction.
 The current arena/error context is single-threaded; worker-owned contexts must be
 introduced before enabling the future native thread pool.
@@ -122,8 +127,9 @@ remapping, constant operands, flags and clobber order. Batches split at labels,
 control flow, 24 instructions or scratch-register exhaustion. Reserved SIMD
 literal encodings are rejected with a trap instead of the Python decoder's
 uncaught KeyError; scratch exhaustion is bounded even for constant-only batches.
-Unported portable SIMD families fail before publishing any partial function.
-Malformed ranges, missing local labels and invalid table descriptions also fail.
+Malformed ranges, missing local labels and invalid table descriptions fail before
+publishing any partial function. Unallocated instructions retain the frozen
+reference's trap output.
 
 Tests compare complete function text and reference sets against the unchanged
 frozen `EhModule.emit_function`, including EH and assembly-batch boundaries.
@@ -133,7 +139,7 @@ vector addition through the emitted inline assembly. A local comparison of 19
 selected real Vanilla/Lumi functions (including subsdk1) matched byte for byte;
 this is a checkpoint comparison, not full-game validation.
 
-Remaining work includes portable SIMD/FP lowering, ordered Unicorn scanning,
+Remaining work includes ordered Unicorn scanning,
 whole-module chunk/registration emission, worker contexts and production wiring.
 
 ## Frozen-reference comparison
@@ -174,8 +180,8 @@ For the sanitizer executable, set `BDSP_CODEGEN_TEST_BINARY` to its absolute pat
 1. Frozen reference, NSO loader and image parity — implemented.
 2. Initial EH/entry discovery — implemented.
 3. Instruction classification/lifting — scalar and native AArch64 assembly families
-   implemented and differentially checked. Portable SIMD/FP lowering, analysis
-   fixpoint and ordered Unicorn jump-table behavior remain pending.
+   and portable SIMD/FP families implemented and differentially checked.
+   Analysis fixpoint and ordered Unicorn jump-table behavior remain pending.
 4. Function C emission, inline ARM64 ASM batching and EH frame insertion —
    implemented as explicit-analysis checkpoints. Whole-module chunk/registration
    output and partial-build stubs remain pending.

@@ -282,8 +282,8 @@ class NativeCodegenTests(unittest.TestCase):
             self.assertEqual([json.loads(x) for x in old.stdout.splitlines()],
                              [json.loads(x) for x in new.stdout.splitlines()])
             pending = subprocess.run([str(self.binary), "decode", "--pc", "0x801001000", "--simd", "c"],
-                                     input="3dc00020\n", capture_output=True, text=True, check=True)
-            self.assertFalse(json.loads(pending.stdout)["handled"])
+                                     input="4e208400\n", capture_output=True, text=True, check=True)
+            self.assertTrue(json.loads(pending.stdout)["handled"])
 
     def test_aarch64_assembly_ir_matches_frozen_lifter(self):
         spec = importlib.util.spec_from_file_location("asm_compare", HERE / "compare.py")
@@ -312,6 +312,71 @@ class NativeCodegenTests(unittest.TestCase):
                 self.assertEqual(len(right), len(words))
                 for w, a, b in zip(words, left, right):
                     self.assertEqual(a, b, f"assembly IR {w:08x}, PC={pc:x}")
+
+    def test_portable_memory_and_scalar_fp_ir(self):
+        spec = importlib.util.spec_from_file_location("portable_compare", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compare)
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            reference = compare.snapshot(Path(temporary))
+            rng = random.Random(194409)
+            words = [(rng.getrandbits(32) & ~(15 << 25)) | rng.choice((6, 14)) << 25
+                     for _ in range(12000)]
+            words += [(rng.getrandbits(32) & ~(15 << 25)) | 15 << 25 for _ in range(12000)]
+            # Scalar FP op0 (bits28..31) selects 1,3,9,11; other AdvSIMD families follow later.
+            words = [w for w in words if w >> 25 & 15 in (6, 14) or (w >> 28 & 5) == 1]
+            # Exhaust scalar FP immediate payloads for both widths.
+            words += [0x1e201000 | t << 22 | imm << 13 | d
+                      for t in range(2) for imm in range(256) for d in (0, 31)]
+            words += [0x4cdfa03f, 0x4c4073ff, 0x9cffffe0, 0x3dc003e0, 0x3cc10420,
+                      0x1e222820, 0x1e624820, 0x9e660000, 0x9eae0000, 0x1e23c000]
+            stream = "".join(f"{w:08x}\n" for w in words)
+            for pc in (0, 0x801001000):
+                arguments = ["--pc", hex(pc), "--simd", "c"]
+                old = subprocess.run([sys.executable, str(HERE / "reference_decode.py"),
+                                      "--reference", str(reference), *arguments], input=stream,
+                                     capture_output=True, text=True)
+                self.assertEqual(old.returncode, 0, old.stderr)
+                new = subprocess.run([str(self.binary), "decode", *arguments], input=stream,
+                                     capture_output=True, text=True, check=True)
+                left, right = ([json.loads(line) for line in result.stdout.splitlines()] for result in (old, new))
+                self.assertEqual(len(left), len(words))
+                self.assertEqual(len(right), len(words))
+                for w, a, b in zip(words, left, right):
+                    self.assertEqual(a, b, f"portable IR {w:08x}, PC={pc:x}")
+
+    def test_portable_vector_ir_matches_frozen_simdc(self):
+        spec = importlib.util.spec_from_file_location("vector_compare", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compare)
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            reference = compare.snapshot(Path(temporary))
+            rng = random.Random(622512)
+            words = [(rng.getrandbits(32) & ~(15 << 25)) | rng.choice((7, 15)) << 25
+                     for _ in range(20000)]
+            words += [family | q << 30 | u << 29 | sz << 22 | opc << shift | 3 << 5 | 7
+                      for family, shift, count in ((0x0e200400, 11, 32), (0x0e200800, 12, 32),
+                                                    (0x0e200000, 12, 16), (0x5e200400, 11, 32),
+                                                    (0x5e200800, 12, 32))
+                      for q in range(2) for u in range(2) for sz in range(4) for opc in range(count)]
+            words += [0x0f000400 | q << 30 | u << 29 | ih << 19 | ib << 16 | opc << 11 | 3 << 5 | 7
+                      for q in range(2) for u in range(2) for ih in range(1, 16)
+                      for ib in range(8) for opc in range(32)]
+            words += [0x0f000400 | q << 30 | u << 29 | cm << 12 | (imm >> 5) << 16 | (imm & 31) << 5
+                      for q in range(2) for u in range(2) for cm in range(16) for imm in range(256)]
+            stream = "".join(f"{w:08x}\n" for w in words)
+            args = ["--pc", "0x801001000", "--simd", "c"]
+            old = subprocess.run([sys.executable, str(HERE / "reference_decode.py"),
+                                  "--reference", str(reference), *args], input=stream,
+                                 capture_output=True, text=True)
+            self.assertEqual(old.returncode, 0, old.stderr)
+            new = subprocess.run([str(self.binary), "decode", *args], input=stream,
+                                 capture_output=True, text=True, check=True)
+            left, right = ([json.loads(line) for line in result.stdout.splitlines()] for result in (old, new))
+            self.assertEqual(len(left), len(words))
+            self.assertEqual(len(right), len(words))
+            for w, a, b in zip(words, left, right):
+                self.assertEqual(a, b, f"vector IR {w:08x}")
 
     def test_function_emitter_matches_frozen_eh_emitter(self):
         spec = importlib.util.spec_from_file_location("emitter_compare", HERE / "compare.py")
@@ -375,9 +440,9 @@ class NativeCodegenTests(unittest.TestCase):
                     new = self.run_native("emit-function", *common)
                     self.assertEqual(json.loads(new.stdout), json.loads(old.stdout),
                                      f"case {index}, EH={eh}")
-            # Pending families must not publish a partial function or overwrite prior output.
+            # Invalid analysis after a valid instruction must not publish a partial function.
             raw = bytearray(source.read_bytes())
-            struct.pack_into("<II", raw, 0x120, 0x91000400, 0x3dc00020)
+            struct.pack_into("<II", raw, 0x120, 0x91000400, 0x14000000)
             source.write_bytes(raw)
             output = folder / "preserved.c"
             output.write_text("previous valid output")
@@ -457,6 +522,53 @@ int main(void) {
             self.assertEqual(result.returncode, 0, result.stderr)
             executed = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
             self.assertEqual(executed.returncode, 0, executed.stderr)
+
+    @unittest.skipUnless(shutil.which("clang"), "portable execution probe requires Clang")
+    def test_emitted_portable_simd_memory_and_fp_execute(self):
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            folder = Path(temporary)
+            source = synthetic_nso(folder / "portable.nso")
+            raw = bytearray(source.read_bytes())
+            words = [0x3dc00000, 0x3dc00401, 0x4e218402, 0x3d800802,
+                     0x1e242865, 0x9e3800a1, 0xd65f03c0]
+            struct.pack_into("<7I", raw, 0x120, *words)
+            struct.pack_into("<7I", raw, 0x180, *words)
+            source.write_bytes(raw)
+            base = 0x801000000
+            portable = self.run_native("emit-function", source, "--base", hex(base), "--entry", hex(base + 0x20),
+                                       "--end", hex(base + 0x20 + 4 * len(words)), "--simd", "c").stdout
+            native = self.run_native("emit-function", source, "--base", hex(base), "--entry", hex(base + 0x80),
+                                     "--end", hex(base + 0x80 + 4 * len(words)), "--simd", "asm").stdout
+            program = folder / "portable.c"
+            program.write_text('#include "cpu.h"\n#include "simd.h"\n#include <stdlib.h>\n' + portable +
+                               '#ifdef __aarch64__\n' + native + '#endif\n' + r"""
+volatile int g_fnprof;
+void fnprof_hit(uint64_t a,uint64_t b,uint64_t d){(void)a;(void)b;(void)d;}
+static void prepare(Cpu *c,unsigned char *memory){
+    memset(c,0,sizeof(*c));memset(memory,1,16);memset(memory+16,2,16);memset(memory+32,0,16);
+    c->x[0]=(uintptr_t)memory;
+    float a=1.5f,b=2.25f;
+    memcpy(&c->v[3],&a,4);memcpy(&c->v[4],&b,4);c->v[5]=~(u128)0;
+}
+int main(void){
+    Cpu c; unsigned char memory[48];prepare(&c,memory);f_801000020(&c);
+    float result;memcpy(&result,&c.v[5],4);
+    if(result!=3.75f||c.x[1]!=3||(c.v[5]>>32))return 1;
+    for(int i=32;i<48;i++)if(memory[i]!=3)return 2;
+#ifdef __aarch64__
+    Cpu n;unsigned char other[48];prepare(&n,other);rt_set_fpcr(0);rt_set_fpsr(0);f_801000080(&n);
+    if(memcmp(memory,other,48)||c.x[1]!=n.x[1]||memcmp(c.v,n.v,sizeof(c.v)))return 3;
+#endif
+    return 0;
+}
+""")
+            executable = folder / "portable-probe"
+            built = subprocess.run(["clang", "-std=c17", "-D_DEFAULT_SOURCE", "-O2", "-w", "-I", str(ROOT / "scripts/recomp/rt"),
+                                    "-I", str(ROOT / "scripts/recomp/upstream/runtime"), str(program), "-lm", "-o", str(executable)],
+                                   text=True, capture_output=True)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            run = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(run.returncode, 0, run.stderr)
 
     def test_failed_publish_preserves_existing_output_and_removes_owned_temporary(self):
         with tempfile.TemporaryDirectory(dir=self.folder) as temporary:

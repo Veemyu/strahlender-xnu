@@ -1,7 +1,7 @@
 # Native generator source attribution
 
 The NSO layout, symbol/relocation semantics, exception-table boundary discovery and
-initial instruction-entry heuristics, scalar/assembly instruction lifting and
+initial instruction-entry heuristics, scalar, portable SIMD/FP and assembly instruction lifting and
 function/inline-assembly emission are adapted from the statically vendored
 LASRecomp generator (Copyright (c) 2026 Peiikai, MIT), together with this project's
 `eh_gen.py`, `eh_lsda.py` and `mkimg.py`. The upstream license remains in

@@ -1,24 +1,10 @@
 /* SPDX-License-Identifier: MIT
  * C port of LASRecomp lifter.py scalar families plus our EH overrides.
  * Further families report CG_PENDING, never a fabricated supported instruction. */
-#include "lifter.h"
+#include "lifter_internal.h"
 #include <inttypes.h>
 #include <string.h>
 
-static unsigned bits(uint32_t w, unsigned lo, unsigned width) { return (w >> lo) & ((1u << width) - 1); }
-static uint64_t ones(unsigned width) { return width == 64 ? UINT64_MAX : (UINT64_C(1) << width) - 1; }
-static int64_t sext(uint64_t value, unsigned width) { return (int64_t)value - ((value & (UINT64_C(1) << (width - 1))) ? (INT64_C(1) << width) : 0); }
-static const char *hex(uint64_t value) { return cg_format("0x%" PRIx64 "ull", value); }
-static const char *reg(bool sf, unsigned r, bool sp) {
-    if (r == 31) return sp ? (sf ? "c->sp" : "(uint32_t)c->sp") : (sf ? "0ull" : "0u");
-    return cg_format("%sc->x[%u]", sf ? "" : "(uint32_t)", r);
-}
-static const char *set(bool sf, unsigned r, const char *expression, bool sp) {
-    if (r == 31 && !sp) return cg_format("(void)(%s);", expression);
-    return cg_format("%s = (uint%u_t)(%s);", reg(true, r, true), sf ? 64u : 32u, expression);
-}
-static Instruction op(const char *code) { return (Instruction){.kind = CG_OP, .code = code}; }
-static Instruction unsupported(uint64_t pc, const char *reason) { return (Instruction){.kind = CG_TRAP, .code = cg_format("rt_udf(c, %s); /* %s */", hex(pc), reason)}; }
 static Instruction target(InsnKind kind, uint64_t pc, int64_t delta, bool wrap, const char *condition) {
     Instruction ins = {.kind = kind, .numeric_target = true, .condition = condition};
     uint64_t magnitude = delta < 0 ? (uint64_t)(-delta) : 0;
@@ -168,16 +154,6 @@ static Instruction control(uint32_t w, uint64_t pc, bool portable, bool has_prev
     if (bits(w, 22, 10) == 0x354) return system_instruction(w, pc, portable);
     return unsupported(pc, cg_format("branch_sys %08x", w));
 }
-static const char *extend(unsigned r, unsigned option, unsigned shift) {
-    const char *value = reg(true, r, false);
-    const char *formats[] = {"(uint64_t)(uint8_t)%s", "(uint64_t)(uint16_t)%s", "(uint64_t)(uint32_t)%s", "%s",
-        "(uint64_t)(int64_t)(int8_t)%s", "(uint64_t)(int64_t)(int16_t)%s", "(uint64_t)(int64_t)(int32_t)%s", "%s"};
-    const char *expression = cg_format(formats[option], value);
-    return shift ? cg_format("(%s << %u)", expression, shift) : expression;
-}
-static const char *offset(const char *base, int64_t displacement) {
-    return cg_format("%s %s %" PRIu64, base, displacement < 0 ? "-" : "+", (uint64_t)(displacement < 0 ? -displacement : displacement));
-}
 static Instruction assembly(uint32_t word, uint32_t vregs) {
     return (Instruction){.kind = CG_ASM, .assembly = {.word = word, .vregs = vregs}};
 }
@@ -251,7 +227,7 @@ static Instruction load_store(uint32_t w, uint64_t pc, bool portable) {
         return op(cg_format("{ uint64_t ea = %s; uint32_t st = stxp%u(c, ea, GPTR(ea), %s, %s); %s }",
             base, width, reg(true, rt, false), reg(true, rt2, false), set(false, bits(w, 16, 5), "st", false)));
     }
-    if (bits(w, 26, 1)) return portable ? (Instruction){.kind = CG_PENDING} : simd_load_store(w, pc);
+    if (bits(w, 26, 1)) return portable ? cg_portable_load_store(w, pc) : simd_load_store(w, pc);
     if (bits(w, 24, 6) == 8) {
         unsigned width = 8u << bits(w, 30, 2);
         bool acquire = bits(w, 23, 1) != 0, load = bits(w, 22, 1) != 0;
@@ -330,10 +306,6 @@ static const char *shift(bool sf, const char *value, unsigned type, unsigned amo
     if (type == 0 || type == 1) return cg_format("(%s %s %u)", value, type == 0 ? "<<" : ">>", amount);
     if (type == 2) return cg_format("(uint%u_t)((int%u_t)%s >> %u)", size, size, value, amount);
     return cg_format("ROR%u(%s, %u)", size, value, amount);
-}
-static const char *condition(unsigned cond) {
-    const char *const names[] = {"EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC", "HI", "LS", "GE", "LT", "GT", "LE"};
-    return cond >= 14 ? "1" : cg_format("COND_%s(c)", names[cond]);
 }
 static Instruction register_instruction(uint32_t w, uint64_t pc, bool portable) {
     bool sf = bits(w, 31, 1) != 0;
@@ -441,6 +413,6 @@ Instruction cg_lift_basic(uint32_t w, uint64_t pc, bool portable, bool has_previ
     if ((op0 & 14) == 10) return control(w, pc, portable, has_previous, previous);
     if ((op0 & 5) == 4) return load_store(w, pc, portable);
     if ((op0 & 7) == 5) return register_instruction(w, pc, portable);
-    if ((op0 & 7) == 7) return portable ? (Instruction){.kind = CG_PENDING} : simd_instruction(w);
+    if ((op0 & 7) == 7) return portable ? cg_portable_simd(w, pc) : simd_instruction(w);
     return (Instruction){.kind = CG_TRAP, .code = cg_format("rt_udf(c, %s);", hex(pc))};
 }
