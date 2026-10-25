@@ -29,8 +29,8 @@ increment them again.
 | audren:u:0, open renderer | Not recorded | Not recorded | Not recorded |
 | IHardwareOpusDecoder, decode | Not recorded | Not recorded | Not recorded |
 
-Sources: `work/builds/mac-b-run9.log`,
-`work/builds/ipad-recomp-20261020-134156.log`, and
+Sources: `work/builds/logs/mac-b-run9.log`,
+`work/builds/logs/ipad-recomp-20261020-134156.log`, and
 `work/recomp/qa/pokecenter-20261019-164824-a4/log_p1.txt`.
 These runs differ in duration and build; absolute counts are not performance
 comparisons. No audin:u request appears in their summary lines.
@@ -47,7 +47,7 @@ Wwise Vorbis, but the tag alone does not prove successful decoding. Host-side
 bank decoding or replacement is not part of the implementation.
 
 `BDSP_AUDIO_PROBE=1` logs descriptor/sample statistics, never audio samples.
-The initial probe on Mac variant A (`work/builds/audio-probe-mac.log`) ran
+The initial probe on Mac variant A (`work/builds/logs/audio-probe-mac.log`) ran
 before host playback was implemented. It observed negotiated PCM16, 48 kHz,
 stereo, 4,096-byte buffers, offset zero: 1,024 frames or 21.333 ms.
 One stream initially contained silence. Another had 214,918 nonzero samples
@@ -123,12 +123,12 @@ service implementation against a simulated host and kernel). At audio
 completion the full suite passed:
 309 tests, three skipped; repository checks passed.
 
-Mac: `work/builds/audio-output-mac.log`, 45 seconds, clean sound confirmed.
+Mac: `work/builds/logs/audio-output-mac.log`, 45 seconds, clean sound confirmed.
 Two streams; one dropped host copy on the initially silent stream during startup,
 with no subsequent counter growth; no drops on the nonzero stream.
 
 iPad: exactly one 60-second run,
-`work/builds/ipad-recomp-20261020-204619.log`. Final 60 fps, 39 guest threads,
+`work/builds/logs/ipad-recomp-20261020-204619.log`. Final 60 fps, 39 guest threads,
 2,202 MiB footprint, thermalState 0. Neither stream dropped host buffers.
 The second stream had 4,390,474 nonzero samples out of 5,242,880 at buffer 2,560,
 peak 7,002. Clean sound confirmed. The unchanged gate built 2,845 pipelines

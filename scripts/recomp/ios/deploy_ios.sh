@@ -5,7 +5,7 @@
 #
 # Usage:   deploy_ios.sh build            build runtime library, libgame.a (from work/recomp/obj32), resources and app (xcodebuild)
 #          deploy_ios.sh install          install the app on the iPad
-#          deploy_ios.sh run [seconds]    start (--console), log to work/builds/ipad-recomp-<time>.log; without a time until Ctrl-C
+#          deploy_ios.sh run [seconds]    start (--console), log to work/builds/logs/ipad-recomp-<time>.log; without a time until Ctrl-C
 #          deploy_ios.sh data             copy RomFS (work/romfs) to Documents/GameData/romfs (once, about 4.7 GB)
 #          deploy_ios.sh save             put SaveData.bin/Backup.bin/user_id.hex from work/recomp/save into Documents/ (the app imports them)
 #          deploy_ios.sh shots            fetch Documents/Shots to work/visual/ipad-recomp/
@@ -27,7 +27,7 @@ if [[ "${IOS_MODEL:-b}" = a ]]; then
   export MODEL=a; RT=work/recomp/ios-rt-a; OBJD=work/recomp/obj4i; IMGD=work/recomp/img4i; DD="$ROOT/work/builds/ios-recomp-derived-a"
 fi
 RES=work/ios/res
-mkdir -p work/builds work/visual/ipad-recomp work/ios
+mkdir -p work/builds work/builds/logs work/visual/ipad-recomp work/ios   # logs of builds and runs: work/builds/logs/
 
 # RomFS manifest (file count and total size of work/romfs). If it is on the iPad, the state is complete.
 romfs_manifest() {
@@ -91,8 +91,8 @@ case "${1:-}" in
     cp work/exefs/main.npdm "$RES/main.npdm"
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
-      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates BDSP_RT_DIR="$(basename "$RT")" OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
-      || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
+      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates BDSP_RT_DIR="$(basename "$RT")" OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/logs/ios-recomp-xcodebuild.log 2>&1 \
+      || { tail -n 30 work/builds/logs/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "built:$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
     # The Xcode build phase puts the shader cache, metallibs and pipelines.bin into the bundle (app/copy_bundle_resources.sh)
     APPB="$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' -path '*iphoneos*' | head -1)"
@@ -105,8 +105,8 @@ case "${1:-}" in
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
       -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates GCC_PREPROCESSOR_DEFINITIONS='BDSP_STUB=1' \
-      OTHER_LDFLAGS='-framework UIKit -framework Foundation -framework CoreGraphics -framework Metal -framework MetalFX -framework GameController -framework QuartzCore -framework CoreText -framework AVFAudio' build > work/builds/ios-recomp-xcodebuild.log 2>&1 \
-      || { tail -n 30 work/builds/ios-recomp-xcodebuild.log >&2; exit 4; }
+      OTHER_LDFLAGS='-framework UIKit -framework Foundation -framework CoreGraphics -framework Metal -framework MetalFX -framework GameController -framework QuartzCore -framework CoreText -framework AVFAudio' build > work/builds/logs/ios-recomp-xcodebuild.log 2>&1 \
+      || { tail -n 30 work/builds/logs/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "Sondenbau gebaut"
     ;;
   install)
@@ -119,7 +119,7 @@ case "${1:-}" in
   run)
     device
     romfs_ensure
-    LOG="work/builds/ipad-recomp-$(date +%Y%m%d-%H%M%S).log"
+    LOG="work/builds/logs/ipad-recomp-$(date +%Y%m%d-%H%M%S).log"
     echo "Log: $LOG"
     ENVJ="${RUN_ENV:-}"
     [[ -n "$ENVJ" ]] || ENVJ='{"BDSP_TIMEOUT":"86400"}'

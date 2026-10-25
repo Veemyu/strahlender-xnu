@@ -148,5 +148,5 @@ stack and nine compatibility ICNS variants. Signatures are checked. No repeated
 iPad launch loops are used. Device appearance and actual alternate-icon switching
 remain separate manual checks.
 
-Logs: work/builds/icons-*.log and work/recomp/icons/.
+Logs: work/builds/logs/icons-*.log and work/recomp/icons/.
 The earlier German report is historical and lives in the git history.
