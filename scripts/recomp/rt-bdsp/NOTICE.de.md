@@ -37,3 +37,8 @@ Eigen sind `nvn/shim/*`, `nvn/nvn_glue.c`, `nvn/build_nvn.sh`, `nvn/prepare.sh` 
 **Filmschicht (`nvn/movie_glue.c`):** in eigener Schreibweise nach `runtime/hle/movie.c` des Klons (Aufbau von `MediaData`, Extractor, Decoder, Ausgabeschlange und Ereignisse als Vorbild; Anpassungen für BDSP: Vtable-Slot 2, direkt importierte Aufrufe, Videospur allein, Schreiben in den Puffer des Spielers). Linkt FFmpeg (LGPL/GPL je nach Bauart, wird nicht mitgeliefert).
 
 **Vulkan-Fassung (Linux/Windows):** übernimmt zusätzlich `runtime/nvn/vulkan/*` des Klons, ebenfalls nur zur Bauzeit und mit eigenem Patch; Einzelheiten, Drittkomponenten und Lizenzen in [`nvn/vulkan/NOTICE.md`](nvn/vulkan/NOTICE.md).
+
+## Weiterer Fremdcode
+
+`third_party/stb_truetype.h` ist stb_truetype v1.26 (Sean Barrett, gemeinfrei oder MIT nach Wahl; der Lizenztext steht am Ende der Datei) in der leicht geänderten Fassung, die Dear ImGui ausliefert. Die Bildschirmtastatur nutzt sie, um die Schriften der eigenen Firmware des Nutzers zu rastern (`swkbd_text.c`). Die Bibliothek ist nicht für fremde, unvertrauenswürdige Schriftdateien gedacht; sie liest nur die Schriften der Firmware.
+

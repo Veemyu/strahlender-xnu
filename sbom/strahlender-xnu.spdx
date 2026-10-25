@@ -1,10 +1,10 @@
 SPDXVersion: SPDX-2.3
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
-DocumentName: strahlender-xnu 6d50e0b-dirty SBOM
-DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-4b7767f1-e546-5ef6-b017-6274e45a1bbb
+DocumentName: strahlender-xnu a3a242e-dirty SBOM
+DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-653229cb-b9ef-587c-be2d-976a4d37834a
 Creator: Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)
-Created: 2026-10-25T12:37:54Z
+Created: 2026-10-25T17:07:19Z
 
 LicenseID: LicenseRef-Apple-SDK
 LicenseName: Apple Xcode and SDK Agreement
@@ -16,14 +16,14 @@ ExtractedText: <text>Proprietary FMOD runtime library (libfmod) inside fmod_tool
 
 PackageName: strahlender-xnu
 SPDXID: SPDXRef-strahlender-xnu
-PackageVersion: 6d50e0b-dirty
+PackageVersion: a3a242e-dirty
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: NOASSERTION
 PackageLicenseDeclared: MIT
 PackageCopyrightText: <text>Copyright (c) 2026 Veemyu</text>
 PrimaryPackagePurpose: APPLICATION
-PackageComment: <text>Repository commit 6d50e0be56f60d004462194d3184c9e3f0f91937. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py, scripts/tests/test_generate_sbom.py.</text>
+PackageComment: <text>Repository commit a3a242e5dd63cb7318d406dfd7a4684d8862f7cb. Uncommitted files at generation: scripts/recomp/ios/app/app.m, scripts/recomp/rt-bdsp/NOTICE.de.md, scripts/sbom/generate_sbom.py.</text>
 
 PackageName: strahlender-xnu-installer
 SPDXID: SPDXRef-installer
@@ -7523,6 +7523,18 @@ PrimaryPackagePurpose: SOURCE
 ExternalRef: PACKAGE-MANAGER purl pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5
 PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: THIRD_PARTY_NOTICES.md, shader_translator/NOTICE.md, scripts/recomp/rt-bdsp/NOTICE.md, scripts/recomp/upstream/LICENSE. Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included.</text>
 
+PackageName: stb_truetype (as shipped by Dear ImGui; on-screen keyboard text)
+SPDXID: SPDXRef-stb-truetype
+PackageVersion: 1.26
+PackageDownloadLocation: https://github.com/nothings/stb
+FilesAnalyzed: false
+PackageLicenseConcluded: NOASSERTION
+PackageLicenseDeclared: MIT OR Unlicense
+PackageCopyrightText: <text>Copyright (c) 2017 Sean Barrett</text>
+PrimaryPackagePurpose: SOURCE
+ExternalRef: PACKAGE-MANAGER purl pkg:github/nothings/stb@stb_truetype-1.26
+PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/rt-bdsp/third_party/stb_truetype.h, scripts/recomp/rt-bdsp/NOTICE.md, scripts/recomp/rt-bdsp/NOTICE.de.md. Single header, MIT or public domain at the user's choice. Rasterizes the user's own firmware fonts for the on-screen keyboard; not meant for untrusted font files.</text>
+
 Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-strahlender-xnu
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-installer
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-octicons-mark-github-16
@@ -7579,6 +7591,7 @@ Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-linux-vulkan
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-linux-vma
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-xcode
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lasrecomp
+Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-stb-truetype
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-base64-0.22.1
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-cc-1.10.0
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-directories-6.0.0
@@ -7593,6 +7606,7 @@ Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-objc2-app-kit-0.3.2
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-objc2-foundation-0.3.2
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-png-0.18.1
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-reqwest-0.12.28
+Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-resvg-0.45.1
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-rfd-0.16.1
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-serde-1.0.229
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-serde-json-1.0.154

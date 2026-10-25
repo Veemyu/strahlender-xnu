@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "strahlender-xnu 6d50e0b-dirty SBOM",
-  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-4b7767f1-e546-5ef6-b017-6274e45a1bbb",
+  "name": "strahlender-xnu a3a242e-dirty SBOM",
+  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-653229cb-b9ef-587c-be2d-976a4d37834a",
   "creationInfo": {
-    "created": "2026-10-25T12:37:54Z",
+    "created": "2026-10-25T17:07:19Z",
     "creators": [
       "Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)"
     ]
@@ -17,14 +17,14 @@
     {
       "SPDXID": "SPDXRef-strahlender-xnu",
       "name": "strahlender-xnu",
-      "versionInfo": "6d50e0b-dirty",
+      "versionInfo": "a3a242e-dirty",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT",
       "copyrightText": "Copyright (c) 2026 Veemyu",
       "primaryPackagePurpose": "APPLICATION",
-      "comment": "Repository commit 6d50e0be56f60d004462194d3184c9e3f0f91937. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py, scripts/tests/test_generate_sbom.py."
+      "comment": "Repository commit a3a242e5dd63cb7318d406dfd7a4684d8862f7cb. Uncommitted files at generation: scripts/recomp/ios/app/app.m, scripts/recomp/rt-bdsp/NOTICE.de.md, scripts/sbom/generate_sbom.py."
     },
     {
       "SPDXID": "SPDXRef-installer",
@@ -14167,6 +14167,25 @@
           "referenceLocator": "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5"
         }
       ]
+    },
+    {
+      "SPDXID": "SPDXRef-stb-truetype",
+      "name": "stb_truetype (as shipped by Dear ImGui; on-screen keyboard text)",
+      "versionInfo": "1.26",
+      "downloadLocation": "https://github.com/nothings/stb",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Unlicense",
+      "copyrightText": "Copyright (c) 2017 Sean Barrett",
+      "primaryPackagePurpose": "SOURCE",
+      "comment": "Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/rt-bdsp/third_party/stb_truetype.h, scripts/recomp/rt-bdsp/NOTICE.md, scripts/recomp/rt-bdsp/NOTICE.de.md. Single header, MIT or public domain at the user's choice. Rasterizes the user's own firmware fonts for the on-screen keyboard; not meant for untrusted font files.",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/nothings/stb@stb_truetype-1.26"
+        }
+      ]
     }
   ],
   "relationships": [
@@ -14451,6 +14470,11 @@
       "relatedSpdxElement": "SPDXRef-lasrecomp"
     },
     {
+      "spdxElementId": "SPDXRef-strahlender-xnu",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-stb-truetype"
+    },
+    {
       "spdxElementId": "SPDXRef-installer",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-crate-base64-0.22.1"
@@ -14519,6 +14543,11 @@
       "spdxElementId": "SPDXRef-installer",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-crate-reqwest-0.12.28"
+    },
+    {
+      "spdxElementId": "SPDXRef-installer",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-resvg-0.45.1"
     },
     {
       "spdxElementId": "SPDXRef-installer",

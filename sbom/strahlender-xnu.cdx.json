@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:4b7767f1-e546-5ef6-b017-6274e45a1bbb",
+  "serialNumber": "urn:uuid:653229cb-b9ef-587c-be2d-976a4d37834a",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-25T12:37:54Z",
+    "timestamp": "2026-10-25T17:07:19Z",
     "tools": {
       "components": [
         {
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "root",
       "name": "strahlender-xnu",
-      "version": "6d50e0b-dirty",
+      "version": "a3a242e-dirty",
       "licenses": [
         {
           "license": {
@@ -25,7 +25,7 @@
           }
         }
       ],
-      "description": "Repository commit 6d50e0be56f60d004462194d3184c9e3f0f91937. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py, scripts/tests/test_generate_sbom.py."
+      "description": "Repository commit a3a242e5dd63cb7318d406dfd7a4684d8862f7cb. Uncommitted files at generation: scripts/recomp/ios/app/app.m, scripts/recomp/rt-bdsp/NOTICE.de.md, scripts/sbom/generate_sbom.py."
     }
   },
   "components": [
@@ -24999,6 +24999,45 @@
       ],
       "copyright": "Copyright (c) 2026 Peiikai",
       "description": "Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included."
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/nothings/stb@stb_truetype-1.26",
+      "name": "stb_truetype (as shipped by Dear ImGui; on-screen keyboard text)",
+      "version": "1.26",
+      "purl": "pkg:github/nothings/stb@stb_truetype-1.26",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Unlicense"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "vendored-source"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "scripts/recomp/rt-bdsp/third_party/stb_truetype.h, scripts/recomp/rt-bdsp/NOTICE.md, scripts/recomp/rt-bdsp/NOTICE.de.md"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/nothings/stb"
+        }
+      ],
+      "copyright": "Copyright (c) 2017 Sean Barrett",
+      "description": "Single header, MIT or public domain at the user's choice. Rasterizes the user's own firmware fonts for the on-screen keyboard; not meant for untrusted font files."
     }
   ],
   "dependencies": [
@@ -25059,7 +25098,8 @@
         "pkg:generic/vulkan",
         "pkg:generic/vulkan-memory-allocator",
         "pkg:generic/xcode",
-        "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5"
+        "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5",
+        "pkg:github/nothings/stb@stb_truetype-1.26"
       ]
     },
     {
@@ -25079,6 +25119,7 @@
         "pkg:cargo/objc2-foundation@0.3.2",
         "pkg:cargo/png@0.18.1",
         "pkg:cargo/reqwest@0.12.28",
+        "pkg:cargo/resvg@0.45.1",
         "pkg:cargo/rfd@0.16.1",
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/serde_json@1.0.154",
@@ -29215,6 +29256,10 @@
     },
     {
       "ref": "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:github/nothings/stb@stb_truetype-1.26",
       "dependsOn": []
     }
   ]
