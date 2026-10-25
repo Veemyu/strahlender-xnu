@@ -1595,6 +1595,9 @@ void ui_window_init(void) {
     // up to 50 ms of delay between a pad read and the picture (measured 40 to 53 ms in the overworld; 34 ms with 2). The Mac gets 2; the iPad keeps 3
     // (its slower frames never fill the queue). BDSP_DRAWABLES=<n> overrides.
 #if TARGET_OS_OSX
+    if (getenv("BDSP_DISPLAYSYNC") && !atoi(getenv("BDSP_DISPLAYSYNC"))) layer.displaySyncEnabled = NO;   // debug: present without waiting for the display refresh (tearing possible)
+#endif
+#if TARGET_OS_OSX
     layer.maximumDrawableCount = getenv("BDSP_DRAWABLES") ? (NSUInteger)atoi(getenv("BDSP_DRAWABLES")) : 2;
 #else
     if (getenv("BDSP_DRAWABLES")) layer.maximumDrawableCount = (NSUInteger)atoi(getenv("BDSP_DRAWABLES"));
