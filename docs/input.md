@@ -94,4 +94,8 @@ single-player game). The keyboard stays available next to the pad on every platf
 - **Layers:** `input.h` is the neutral interface. Keyboard, touch and gamepads are separate sources (`input_source_set`); the game reads the merged
   state through `input_current`, which is empty while the on-screen keyboard is open.
 - `BDSP_PAD_LOG=1` (Linux/Windows) prints connections and every change of buttons and sticks, with the button names.
+- **Windows (prepared, not built or tested):** the controller layer needs no change, only the build target. `input.c` and `pad_sdl.c` use
+  POSIX threads (`pthread_mutex`, `pthread_once`), so the Windows build is MinGW-w64 (winpthreads), not MSVC. SDL3's gamepad subsystem handles
+  Switch Pro, Joy-Con, DualShock, DualSense and Xbox pads over USB or Bluetooth with its own drivers (HIDAPI, XInput); that it runs without a
+  window on Windows, as it does on Linux, is not yet checked. The Linux-only part (the hidraw hint for the udev rules) is behind `#ifdef __linux__`.
 
