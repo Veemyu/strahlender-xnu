@@ -7,7 +7,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#define POLL_US 16000
+#define TICK_NS 16666667ull           // the thread wakes at a fixed 60 Hz rhythm: sleeping a fixed 16 ms after each draw added the draw time (about 48 fps)
 #define GAME_ACTIVE_NS 50000000ull    // the game presented this recently: it is running, nothing to repeat
 #define IDLE_REDRAW_NS 100000000ull   // a frozen picture is drawn again this often (the caret blinks)
 
@@ -24,9 +24,11 @@ static void *run(void *arg) {
     pthread_setname_np(pthread_self(), "swkbd-present");
 #endif
     unsigned seen = swkbd_ui_revision() - 1;
-    uint64_t last = 0;
+    uint64_t last = 0, next = k->now_ns();
     for (;;) {
-        usleep(POLL_US);
+        uint64_t t = k->now_ns();
+        if (t < next) usleep((useconds_t)((next - t) / 1000)); else next = t;   // behind schedule: no catching up with a burst
+        next += TICK_NS;
         pthread_mutex_lock(&g_lock);
         if (!swkbd_ui_visible()) { g_running = 0; pthread_mutex_unlock(&g_lock); return NULL; }
         pthread_mutex_unlock(&g_lock);
