@@ -54,9 +54,11 @@ Keyboard: Z/X/C/V = A/B/X/Y; Return or Space also A; Backspace also B.
 E/U = L/R, Q/O = ZL/ZR, equals or Tab = plus, minus = minus.
 Arrow keys = D-pad; WASD = left stick; IJKL = right stick; F/H = stick clicks.
 
-GameController.framework supports compatible controllers. Default Nintendo
-layout follows physical button positions; xbox layout follows labels. Stick
-dead zone is 12%. Real controller hardware has not been validated.
+GameController.framework supports compatible controllers (Switch Pro, Joy-Con,
+DualShock, DualSense, Xbox) and is the only controller layer on Apple platforms
+(see "Controllers" in `docs/input.md`). Nintendo pads keep their own button
+positions; for other pads the default layout follows physical positions and
+`pad_layout = xbox` follows labels. Stick dead zone is 12%.
 The view preserves 16:9 with letterboxing, default 1280×720, minimum 640×360.
 MetalFX is not implemented.
 

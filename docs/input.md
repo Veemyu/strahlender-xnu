@@ -72,3 +72,26 @@ the answer is automatic:
 - `scripts/recomp/rt-bdsp/test/run_swkbd_ui_test.sh`: keyboard logic and a software rendering to a PPM.
 - `scripts/recomp/rt-bdsp/test/run_swkbd_text_test.sh`: glyph atlas text (measure, placement, atlas reuse and clearing; with `BDSP_FIRMWARE_DATA`, the firmware fonts).
 - `scripts/recomp/rt-bdsp/test/run_swkbd_snd_test.sh`: reader of the sound archive (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
+
+## Controllers (game input)
+
+Plug in or pair over Bluetooth and it works; no driver, mapper or Steam Input is needed. All connected pads act as player 1 (BDSP is a
+single-player game). The keyboard stays available next to the pad on every platform.
+
+- **macOS, iPadOS:** `GameController.framework` only (Switch Pro, Joy-Con, DualShock, DualSense, Xbox, MFi). SDL's gamepad subsystem is
+  not started on Apple platforms: it would open the same devices through HIDAPI and fight with Apple's own driver over them. Nintendo pads
+  already name their buttons like the console and are used as they are; Xbox and PlayStation pads are mapped by position (A right, B bottom,
+  X top, Y left). On the Mac `pad_layout = xbox` keeps the labels of those pads instead. The iPad hides the touch gamepad while a pad is
+  connected.
+- **Linux (and Windows, prepared):** SDL3's gamepad subsystem in its own thread (`pad_sdl.c`), independent of the window and of the UI
+  toolkit (Qt or SDL). Nintendo pads need nothing on a desktop with the kernel driver `hid-nintendo`. If a Nintendo or Sony pad is connected
+  but cannot be opened, the log says so once; `scripts/recomp/rt-bdsp/app/linux/udev/70-bdsp-controllers.rules` grants the logged-in user access
+  (commands are in the file, root needed once).
+- **Buttons:** A, B, X, Y by position; L/R; ZL/ZR as buttons (the game needs no analog trigger); both sticks (12 % dead zone) and their clicks;
+  D-pad; Plus and Minus. Not implemented: motion, rumble, other players.
+- **Keys** (Linux): Return/Space/K = A, Backspace/J = B, X, Y, Q/E = L/R, P = Plus, O = Minus, arrows and WASD = D-pad. The Mac has the
+  Ryujinx default keys (see the app's help text).
+- **Layers:** `input.h` is the neutral interface. Keyboard, touch and gamepads are separate sources (`input_source_set`); the game reads the merged
+  state through `input_current`, which is empty while the on-screen keyboard is open.
+- `BDSP_PAD_LOG=1` (Linux/Windows) prints connections and every change of buttons and sticks, with the button names.
+
