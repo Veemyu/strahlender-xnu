@@ -170,6 +170,7 @@ public:
                 }
                 }
             }
+            if (ev->type() == QEvent::KeyRelease) handle(e->key(), false, e->isAutoRepeat());  // a game key held while the keyboard opened must not stay pressed
             return true;
         }
         const bool down = ev->type() == QEvent::KeyPress;

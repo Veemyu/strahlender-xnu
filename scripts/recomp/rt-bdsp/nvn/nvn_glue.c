@@ -307,7 +307,8 @@ static bool swkbd_input(const SDL_Event *e) {
 void input_handle_event(const void *ev) {
     const SDL_Event *e = ev;
 #if !defined(__APPLE__)
-    if (swkbd_ui_active() && swkbd_input(e)) return;
+    // key releases still reach the game while the keyboard is open: a key held when it opened (Enter that started the prompt) must not stay pressed
+    if (swkbd_ui_active() && e->type != SDL_EVENT_KEY_UP && swkbd_input(e)) return;
 #endif
     if (e->type != SDL_EVENT_KEY_DOWN && e->type != SDL_EVENT_KEY_UP) return;
     int bit = -1;
