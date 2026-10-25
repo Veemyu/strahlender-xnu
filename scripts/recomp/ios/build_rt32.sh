@@ -16,29 +16,30 @@ MODEL=${MODEL:-b}
 ORG=${ORG:-0x800000000}
 if [ "$MODEL" = a ]; then
   [ "$TARGET" = ios ] || { echo "MODEL=a: only the ios target" >&2; exit 2; }
-  NVN32=work/recomp/nvn-src-a
+  NVN32=${BDSP_IOS_NVN_DIR:-work/recomp/nvn-src-a}
   OBJ=${OBJ:-work/recomp/obj4i}
   BASEINC="-I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
 else
-  NVN32=work/recomp/nvn-src32
+  NVN32=${BDSP_IOS_NVN_DIR:-work/recomp/nvn-src32}
   OBJ=${OBJ:-work/recomp/obj32}
   BASEINC="-I scripts/recomp/rt32 -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I $SRC"
 fi
+export NVN_SRC=${NVN_SRC:-work/recomp/nvn-src}
 # Recreate the copy if it is missing or the repo sources are newer (otherwise the iPad runs with an outdated renderer)
 scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null   # copies only if the stamp differs
 # nvn-src32: stamp from the source stamp plus nvn_rebase32.py and movie_glue.c (model A-low: nvn_ios.py and ui_ios.inc instead)
 . scripts/recomp/rt-bdsp/nvn/hash.inc.sh
 if [ "$MODEL" = a ]; then
-  want32=$({ cat work/recomp/nvn-src/.stamp; sha256 scripts/recomp/ios/nvn_ios.py scripts/recomp/ios/ui_ios.inc; } | sha256 | cut -d' ' -f1)
+  want32=$({ cat "$NVN_SRC/.stamp"; sha256 scripts/recomp/ios/nvn_ios.py scripts/recomp/ios/ui_ios.inc; } | sha256 | cut -d' ' -f1)
   if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
-    rm -rf "$NVN32"; cp -R work/recomp/nvn-src "$NVN32"
+    rm -rf "$NVN32"; cp -R "$NVN_SRC" "$NVN32"
     python3 scripts/recomp/ios/nvn_ios.py "$NVN32" > /dev/null
     echo "$want32" > "$NVN32/.stamp32"
   fi
 else
-  want32=$({ cat work/recomp/nvn-src/.stamp; sha256 scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c"; } | sha256 | cut -d' ' -f1)
+  want32=$({ cat "$NVN_SRC/.stamp"; sha256 scripts/recomp/ios/nvn_rebase32.py "$SRC/nvn/movie_glue.c"; } | sha256 | cut -d' ' -f1)
   if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
-    python3 scripts/recomp/ios/nvn_rebase32.py work/recomp/nvn-src "$NVN32" > /dev/null
+    python3 scripts/recomp/ios/nvn_rebase32.py "$NVN_SRC" "$NVN32" > /dev/null
     echo "$want32" > "$NVN32/.stamp32"
   fi
 fi
@@ -53,6 +54,7 @@ case "$TARGET" in
     ;;
   ios)
     RT=work/recomp/ios-rt; [ "$MODEL" = a ] && RT=work/recomp/ios-rt-a; OUT=
+    RT=${BDSP_IOS_RT_DIR:-$RT}
     SDKP=$(xcrun --sdk iphoneos --show-sdk-path)
     CCFLAGS="-target arm64-apple-ios17.0 -isysroot $SDKP -DBDSP_IOS"; MCC="/usr/bin/clang $CCFLAGS"
     NVINC="-I scripts/recomp/ios/shim -I $NVN32 -I $NVN32/nvn $BASEINC"
@@ -61,11 +63,14 @@ case "$TARGET" in
   *) echo "Usage: build_rt32.sh mac|ios" >&2; exit 2 ;;
 esac
 mkdir -p "$RT/nvn"
+HAS_SUBSDK1=0
+[ ! -f "${BDSP_EXEFS_DIR:-work/exefs}/subsdk1" ] || HAS_SUBSDK1=1
 # Toolchain stamp: reuse objects only with the compiler and SDKs they were built with
-TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; echo "model ${MODEL:-b} ${ORG:-}"; } | sha256 | cut -d' ' -f1)
+TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; echo "model ${MODEL:-b} ${ORG:-} subsdk1=$HAS_SUBSDK1"; } | sha256 | cut -d' ' -f1)
 if [ "$(cat "$RT/.stamp" 2>/dev/null || true)" != "$TC_STAMP" ]; then rm -f "$RT"/*.o "$RT"/nvn/*.o; echo "$TC_STAMP" > "$RT/.stamp"; fi
 . scripts/recomp/rt-bdsp/nvn/flags.inc.sh
 DEFS="-DBDSP_REBASE32"; [ "$MODEL" = a ] && DEFS="-DBDSP_COMPACT_BASE=${ORG}ull"
+DEFS="$DEFS -DBDSP_HAS_SUBSDK1=$HAS_SUBSDK1"
 [ "$TARGET" = ios ] && SDLINC="-I scripts/recomp/ios/shim" || SDLINC=""
 
 compile() {  # Quelle Objekt Compiler Flags...
@@ -94,19 +99,20 @@ else
   compile "$NVN32/nvn/renderer_ios.m" "$RT/nvn/renderer.o" "$MCC" $W $NVINC -fobjc-arc
   compile "$NVN32/nvn/metal_ios.m" "$RT/nvn/metal.o" "$MCC" $W $NVINC -fobjc-arc
 fi
+compile "$SRC/nvn/swkbd_overlay.m" "$RT/nvn/swkbd_overlay.o" "$MCC" $W $NVINC -fobjc-arc   # on-screen keyboard (drawn over the frame, Metal)
 compile "$SRC/nvn/nvn_glue.c" "$RT/nvn/nvn_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC
 compile "$SRC/nvn/debug_thread.c" "$RT/nvn/debug_thread.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC
 if [ "$TARGET" = mac ] || [ -n "$FFINC" ]; then
   MG="$NVN32/movie_glue32.c"; [ "$MODEL" = a ] && MG="$SRC/nvn/movie_glue.c"
   compile "$MG" "$RT/nvn/movie_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS $NVINC $FFINC
-compile "$SRC/nvn/swkbd_overlay.m" "$RT/nvn/swkbd_overlay.o" "$MCC" $W $NVINC -fobjc-arc   # on-screen keyboard (drawn over the frame, Metal)
 fi
 
 if [ "$TARGET" = mac ]; then
   # Guest objects: platformless copies (the objects are compiled for iOS; vtool removes the platform, then the Mac can link them too)
   MOBJ=work/recomp/obj32m
   mkdir -p "$MOBJ"
-  ls "$OBJ"/*.o | xargs -P 4 -n 20 bash -c 'for o in "$@"; do m='"$MOBJ"'/$(basename "$o"); [ "$m" -nt "$o" ] || xcrun vtool -remove-build-version ios -output "$m" "$o" 2>/dev/null; done' _
+  jobs=$(python3 scripts/recomp/parallel_jobs.py)
+  ls "$OBJ"/*.o | xargs -P "$jobs" -n 20 bash -c 'for o in "$@"; do m='"$MOBJ"'/$(basename "$o"); [ "$m" -nt "$o" ] || xcrun vtool -remove-build-version ios -output "$m" "$o" 2>/dev/null; done' _
   objs=("$RT"/*.o "$RT"/nvn/*.o)
   if [ ! -x "$OUT" ] || [ -n "$(find "$RT" "$MOBJ" -name '*.o' -newer "$OUT" -print -quit)" ]; then
     clang -o "$OUT" "${objs[@]}" "$MOBJ"/*.o $FW

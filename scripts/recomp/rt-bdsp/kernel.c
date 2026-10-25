@@ -6,10 +6,10 @@
 #include <mach/mach_time.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
+#include <sys/sysctl.h>
 #endif
 #include <sched.h>
 #include <sys/mman.h>
-#include <sys/sysctl.h>
 #include <time.h>
 #include <unistd.h>
 
