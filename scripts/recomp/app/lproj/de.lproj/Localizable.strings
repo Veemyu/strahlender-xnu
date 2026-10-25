@@ -20,6 +20,11 @@
 "Window Size %d × %d" = "Fenstergröße %d × %d";
 "Debug" = "Debug";
 "Show Metal HUD" = "Metal-HUD anzeigen";
+"Presentation" = "Bildausgabe";
+"Double Buffering (less delay)" = "Double Buffering (weniger Verzögerung)";
+"Triple Buffering" = "Triple Buffering";
+"VSync On" = "VSync an";
+"VSync Off (less delay, may tear)" = "VSync aus (weniger Verzögerung, kann reißen)";
 "Window" = "Fenster";
 "Minimize" = "Im Dock ablegen";
 "Help" = "Hilfe";

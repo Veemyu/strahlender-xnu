@@ -1254,6 +1254,15 @@ static float g_rep_wc[4];
 static uint64_t g_rep_frame;
 static _Atomic uint64_t g_last_present_ns;
 // The on-screen keyboard blurs the game image once; the drawables must be readable for that while it is open.
+// View > Debug > Turn VSync Off (macOS app): present without waiting for the display refresh. About 5 ms less delay between a pad read and the picture
+// at 60 fps (measured), larger spikes; the compositor still composes every frame in a window, so no tearing there. Also BDSP_DISPLAYSYNC=0 at the start.
+#if TARGET_OS_OSX
+void metal_set_display_sync(int on) { layer.displaySyncEnabled = on ? YES : NO; }
+int metal_display_sync(void) { return layer.displaySyncEnabled ? 1 : 0; }
+// Buffering: 2 drawables (the game can be one frame ahead of the screen) or 3 (up to three); takes effect on the following drawables, no restart
+void metal_set_drawable_count(int n) { layer.maximumDrawableCount = (NSUInteger)(n <= 2 ? 2 : 3); }
+int metal_drawable_count(void) { return (int)layer.maximumDrawableCount; }
+#endif
 void metal_set_sampleable(int on) { layer.framebufferOnly = (on || getenv("BDSP_WINDOW_SHOT")) ? NO : YES; }
 uint64_t metal_now_ns(void) { return SDL_GetTicksNS(); }   // the clock of metal_last_present_ns (SDL is not linked on iOS)
 uint64_t metal_last_present_ns(void) { return atomic_load(&g_last_present_ns); }

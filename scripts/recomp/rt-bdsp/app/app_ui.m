@@ -31,6 +31,10 @@ static void ApplyDockIcon(void) {
 }
 
 extern char **environ;
+void metal_set_display_sync(int on);   // nvn/metal.m
+int metal_display_sync(void);
+void metal_set_drawable_count(int n);
+int metal_drawable_count(void);
 SDL_Window *ui_window(void);
 // ---- Key mapping (Ryujinx default, plus Return/Space = A and Backspace = B)
 typedef struct { SDL_Scancode sc; int kind; int a; int b; } KeyMap;   // kind 0: button a; kind 1: stick axis a with direction b (+1/-1)
@@ -243,6 +247,15 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     [d setBool:![d boolForKey:@"bdsp_metal_hud"] forKey:@"bdsp_metal_hud"];
     ask(@"Metal HUD", L("Takes effect after restarting BDSP."), @[@"OK"]);
 }
+// View > Debug > Presentation: buffering (2 or 3 drawables) and VSync, effective at once and kept in the defaults (env BDSP_DRAWABLES / BDSP_DISPLAYSYNC win at the start)
+- (void)setBuffering:(NSMenuItem *)it {
+    metal_set_drawable_count((int)it.tag);
+    [[NSUserDefaults standardUserDefaults] setInteger:it.tag forKey:@"bdsp_drawables"];
+}
+- (void)setVsync:(NSMenuItem *)it {
+    metal_set_display_sync((int)it.tag);
+    [[NSUserDefaults standardUserDefaults] setBool:it.tag == 0 forKey:@"bdsp_vsync_off"];
+}
 - (void)openCache:(id)s { open_folder(g_app.cache); }
 - (void)openLogs:(id)s { open_folder(g_app.logs); }
 - (void)showConfig:(id)s {
@@ -262,6 +275,8 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
         NSString *selected = BDSPIconSelection(BDSPReadIcons([NSString stringWithUTF8String:g_app.resources]));
         item.state = [item.representedObject isEqualToString:selected] ? NSControlStateValueOn : NSControlStateValueOff;
     }
+    if (item.action == @selector(setBuffering:)) item.state = metal_drawable_count() == item.tag ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(setVsync:)) item.state = metal_display_sync() == item.tag ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(toggleFullscreen:)) {
         SDL_Window *w = ui_window();
         item.state = w && (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -349,6 +364,14 @@ static void install_menu(void) {
     NSMenu *dm = [[NSMenu alloc] initWithTitle:L("Debug")];
     di.submenu = dm;
     item(dm, L("Show Metal HUD"), @selector(toggleMetalHud:), @"", 0, g_target);
+    NSMenuItem *pi = [dm addItemWithTitle:L("Presentation") action:nil keyEquivalent:@""];
+    NSMenu *pm = [[NSMenu alloc] initWithTitle:L("Presentation")];
+    pi.submenu = pm;
+    item(pm, L("Double Buffering (less delay)"), @selector(setBuffering:), @"", 0, g_target).tag = 2;
+    item(pm, L("Triple Buffering"), @selector(setBuffering:), @"", 0, g_target).tag = 3;
+    [pm addItem:[NSMenuItem separatorItem]];
+    item(pm, L("VSync On"), @selector(setVsync:), @"", 0, g_target).tag = 1;
+    item(pm, L("VSync Off (less delay, may tear)"), @selector(setVsync:), @"", 0, g_target).tag = 0;
     // Window
     NSMenuItem *wi = [bar addItemWithTitle:@"" action:nil keyEquivalent:@""];
     NSMenu *wm = [[NSMenu alloc] initWithTitle:L("Window")];
@@ -517,6 +540,11 @@ static void ui_selftest_tick(void) {
         fprintf(stderr, "[app] Selbsttest %s bei %.1f s\n", st[i].act, t);
         if (!strcmp(st[i].act, "fs")) [g_target toggleFullscreen:nil];
         else if (!strcmp(st[i].act, "pause")) [g_target togglePause:nil];
+        else if (!strncmp(st[i].act, "buf", 3) || !strncmp(st[i].act, "vsync", 5)) {   // buf2, buf3, vsync0, vsync1
+            NSMenuItem *it = [NSMenuItem new];
+            if (st[i].act[0] == 'b') { it.tag = atoi(st[i].act + 3); [g_target setBuffering:it]; }
+            else { it.tag = atoi(st[i].act + 5); [g_target setVsync:it]; }
+        }
         else if (!strcmp(st[i].act, "restart")) bdsp_app_restart();
         else if (st[i].act[0] == 'w') {
             NSMenuItem *it = [NSMenuItem new];
@@ -539,6 +567,11 @@ void menu_apply_window_requests(void *window) {
             if (mods_active()) snprintf(title, sizeof title, "BDSP - %s", mods_active()->name);
             SDL_SetWindowTitle(w, title);
             SDL_SetWindowMinimumSize(w, 640, 360);
+            {   // View > Debug > Presentation: the saved choice (the environment variables take precedence)
+                NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+                if (!getenv("BDSP_DISPLAYSYNC") && [d boolForKey:@"bdsp_vsync_off"]) metal_set_display_sync(0);
+                if (!getenv("BDSP_DRAWABLES") && [d integerForKey:@"bdsp_drawables"] == 3) metal_set_drawable_count(3);
+            }
             if (g_app.fullscreen && !g_app.headless) SDL_SetWindowFullscreen(w, true);
             if (!g_app.headless) {
                 // The window only now appears in the foreground (SDL shows it without activation)
