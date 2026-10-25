@@ -251,7 +251,7 @@ Battle and extended gameplay validation, plus a fresh-input GUI run, remain open
 ### Linux CPU optimization
 
 The review page offers **Optimize for this computer**, enabled by default.
-The selection is remembered and passed explicitly to the build as
+It starts enabled on every app launch. The selection for this run is passed explicitly as
 `BDSP_CPU_TARGET=native` (off: `portable`). Native builds use supported CPU
 features including AVX/AVX2; AVX2 is not a minimum requirement. Turn this off
 when building for other computers. This option currently applies to Linux game

@@ -308,7 +308,6 @@ impl Installer {
         let capture = options
             .capture
             .map(|path| Capture::new(path, options.scenes));
-        let portable_cpu = capture.is_none() && preferences::portable_cpu();
         let mut app = Self {
             appearance: if capture.is_some() {
                 Appearance::Dark
@@ -345,7 +344,7 @@ impl Installer {
             log: Vec::new(),
             demo,
             target: InstallTarget::native(host),
-            portable_cpu,
+            portable_cpu: false,
             host,
             simulated_platform: options.platform.is_some(),
             motion: crate::motion::ProgressMotion::default(),
@@ -633,9 +632,6 @@ impl Installer {
                 if self.page == Page::Review && self.target == InstallTarget::Linux =>
             {
                 self.portable_cpu = !enabled;
-                if !self.demo && self.capture.is_none() {
-                    let _ = preferences::save_portable_cpu(self.portable_cpu);
-                }
             }
             Message::AnimationFrame(now) if self.page == Page::Progress => {
                 let dt = self
@@ -1744,6 +1740,10 @@ mod tests {
     #[test]
     fn cpu_choice_is_editable_only_in_linux_review() {
         let (mut app, _) = Installer::new();
+        assert!(
+            !app.portable_cpu,
+            "Every launch defaults to CPU optimization"
+        );
         app.demo = true;
         app.target = InstallTarget::Linux;
         app.page = Page::Review;
