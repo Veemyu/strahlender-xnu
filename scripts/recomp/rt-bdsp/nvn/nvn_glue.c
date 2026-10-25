@@ -352,7 +352,13 @@ void input_handle_event(const void *ev) {
 }
 
 // Npad state (all state types are laid out the same): {s64 sample number, u64 buttons, stick L {s32 x, y}, stick R, u32 attributes}; player 1 is a connected Pro Controller
+#ifdef __APPLE__
+volatile double g_last_input_read_s;   // CACurrentMediaTime() of the game's latest pad read: metal.m BDSP_PRESENT_STATS reports input to display
+#endif
 static void npad_fill(uint8_t *s) {
+#ifdef __APPLE__
+    g_last_input_read_s = (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9;
+#endif
     memset(s, 0, 0x28);
     *(int64_t *)s = ++pad_sampling;
     uint64_t b = buttons_now();
@@ -362,7 +368,18 @@ static void npad_fill(uint8_t *s) {
     for (int i = 0; i < 4; i++) *(int32_t *)(s + 16 + 4 * i) = cur.stick[i];
     *(uint32_t *)(s + 32) = 1;
     static uint64_t last;
-    if (b != last && getenv("BDSP_TRACE_INPUT")) LOG("[input] Buttons %#llx\n", (unsigned long long)b);
+    static int trace = -1;
+    if (trace < 0) trace = getenv("BDSP_TRACE_INPUT") != NULL;
+    if (trace) {   // BDSP_TRACE_INPUT=1: changes with the time since start, and how often the game reads the pad (its sampling rate)
+        static uint64_t sec_start, reads;
+        uint64_t now = rt_now_ns();
+        if (b != last) LOG("[input] %.3f Buttons %#llx\n", (now - g_proc_start_ns) / 1e9, (unsigned long long)b);
+        reads++;
+        if (now - sec_start >= 1000000000ull) {
+            if (sec_start) LOG("[input] %.1f npad reads per second\n", reads * 1e9 / (double)(now - sec_start));
+            sec_start = now; reads = 0;
+        }
+    }
     last = b;
 }
 #define NPAD_STATE(sym, fn) HLE_FUNC(sym, fn) { if (*(uint32_t *)G2HC(c->x[1]) == 0) npad_fill((uint8_t *)G2H(c->x[0])); }

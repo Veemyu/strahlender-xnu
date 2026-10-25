@@ -15,7 +15,7 @@
 #include <unistd.h>
 #endif
 
-#define DEADZONE 4000       // about 12 % of the range, as on the Mac
+#define DEADZONE 1300       // 4 % of the range, scaled out below: a console passes sticks raw and the game has its own dead zone
 #define TRIGGER_ON 10000    // analog trigger counted as pressed (the Pro Controller's ZL/ZR report 0 or full)
 
 static int pad_log;
@@ -33,9 +33,12 @@ static const struct { SDL_GamepadButton sdl; int pb; } k_buttons[] = {
 
 static int32_t stick_axis(SDL_Gamepad *g, SDL_GamepadAxis a, int up_positive) {
     int v = SDL_GetGamepadAxis(g, a);
-    if (v > -DEADZONE && v < DEADZONE) return 0;
-    if (v < -32767) v = -32767;
-    return up_positive ? -v : v;   // SDL: y grows downward
+    int m = v < 0 ? -v : v;
+    if (m <= DEADZONE) return 0;
+    int32_t o = (int32_t)((int64_t)(m - DEADZONE) * 32767 / (32767 - DEADZONE));
+    if (o > 32767) o = 32767;
+    if (v < 0) o = -o;
+    return up_positive ? -o : o;   // SDL: y grows downward
 }
 
 #define MAX_PADS 8

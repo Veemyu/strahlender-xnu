@@ -1432,9 +1432,11 @@ static bool present_gpu_locked(uint64_t frame, id<MTLTexture> tex, bool has_wc, 
         } else [cb presentDrawable:drawable];
         if (pstats || pat >= 2) {
             double commit_t = CACurrentMediaTime();
+            extern volatile double g_last_input_read_s;
+            const double read_t = g_last_input_read_s;   // the pad read this frame can contain at the latest
         [drawable addPresentedHandler:^(id<MTLDrawable> d) {
-                static double prev, t0, sum, sum2;
-                static unsigned n, hist[6], ncnt, inband;
+                static double prev, t0, sum, sum2, lat_sum, lat_max;
+                static unsigned n, hist[6], ncnt, inband, lat_n;
                 double pt = d.presentedTime;
                 if (pt <= 0) { hist[5]++; return; }   // verworfen, nie angezeigt
                 atomic_store(&vsync_anchor, pt);
@@ -1450,11 +1452,14 @@ static bool present_gpu_locked(uint64_t frame, id<MTLTexture> tex, bool has_wc, 
                 }
                 prev = pt;
                 n++;
+                if (read_t > 0 && pt > read_t) { double l = (pt - read_t) * 1000; lat_sum += l; lat_n++; if (l > lat_max) lat_max = l; }
                 if (!t0) t0 = pt;
                 if (pt - t0 >= 2) {
                     double mean = ncnt ? sum / ncnt : 0, sd = ncnt ? sqrt(fmax(0, sum2 / ncnt - mean * mean)) : 0;
                     LOG("[present] %.1f angezeigt/s, Intervalle zu 1/2/3/4+ Vsync: %u/%u/%u/%u, verworfen %u, Abstand Mittel %.2f ms sd %.2f ms, im Zielband (±0,3 ms) %.1f %%\n",
                         n / (pt - t0), hist[0], hist[1], hist[2], hist[3] + hist[4], hist[5], mean, sd, ncnt ? 100.0 * inband / ncnt : 0.0);
+                    if (lat_n) LOG("[present] Eingabe bis Anzeige: Mittel %.1f ms, max %.1f ms (letztes Lesen des Controllers bis zum Erscheinen des Bildes)\n", lat_sum / lat_n, lat_max);
+                    lat_sum = lat_max = 0; lat_n = 0;
                     n = 0; t0 = pt; sum = sum2 = 0; ncnt = 0; inband = 0; memset(hist, 0, sizeof hist);
                 }
             }];
@@ -1586,6 +1591,14 @@ void ui_window_init(void) {
     dev = MTLCreateSystemDefaultDevice();
     layer.device = dev;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    // Drawables in flight between the game and the display. With the default 3 the game runs up to three frames ahead of the screen, which at 60 fps is
+    // up to 50 ms of delay between a pad read and the picture (measured 40 to 53 ms in the overworld; 34 ms with 2). The Mac gets 2; the iPad keeps 3
+    // (its slower frames never fill the queue). BDSP_DRAWABLES=<n> overrides.
+#if TARGET_OS_OSX
+    layer.maximumDrawableCount = getenv("BDSP_DRAWABLES") ? (NSUInteger)atoi(getenv("BDSP_DRAWABLES")) : 2;
+#else
+    if (getenv("BDSP_DRAWABLES")) layer.maximumDrawableCount = (NSUInteger)atoi(getenv("BDSP_DRAWABLES"));
+#endif
     layer.framebufferOnly = getenv("BDSP_WINDOW_SHOT") ? NO : YES;
 }
 
