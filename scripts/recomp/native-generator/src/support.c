@@ -35,6 +35,20 @@ void *cg_alloc(size_t count, size_t size) {
     errno = saved_errno;
     return a + 1;
 }
+void *cg_mark(void) { return allocations; }
+void cg_rewind(void *mark) {
+    while (allocations != mark) {
+        if (!allocations) cg_fail(4, "invalid allocation checkpoint");
+        Allocation *next = allocations->link.next; free(allocations); allocations = next;
+    }
+}
+char *cg_format(const char *format, ...) {
+    va_list ap, copy; va_start(ap, format); va_copy(copy, ap);
+    int n = vsnprintf(NULL, 0, format, copy); va_end(copy);
+    if (n < 0) cg_fail(4, "text formatting failed");
+    char *s = cg_alloc((size_t)n + 1, 1); vsnprintf(s, (size_t)n + 1, format, ap); va_end(ap);
+    return s;
+}
 char *cg_string(const char *s, size_t n) {
     if (n == SIZE_MAX) cg_fail(4, "string size overflow");
     char *p = cg_alloc(n + 1, 1); memcpy(p, s, n); return p;

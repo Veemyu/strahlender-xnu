@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import random
 from pathlib import Path
 import struct
 import subprocess
@@ -107,7 +108,7 @@ class NativeCodegenTests(unittest.TestCase):
 
     def test_version_and_cached_compiler_output(self):
         version = json.loads(self.run_native("--version", "--json").stdout)
-        self.assertEqual(version["capabilities"], ["image", "inspect"])
+        self.assertEqual(version["capabilities"], ["image", "inspect", "decode-basic"])
         self.assertEqual(version["lz4"], "1.9.4")
         cached = builder.build(self.folder / "cached_codegen")
         before = cached.stat().st_mtime_ns
@@ -215,6 +216,49 @@ class NativeCodegenTests(unittest.TestCase):
                 self.assertEqual(event["event"], "error")
                 self.assertNotIn(str(folder), result.stdout + result.stderr)
                 self.assertFalse(out.exists())
+
+    def test_immediate_and_control_ir_matches_frozen_lifter(self):
+        compare_spec = importlib.util.spec_from_file_location("native_codegen_compare", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(compare_spec)
+        compare_spec.loader.exec_module(compare)
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            reference = compare.snapshot(Path(temporary))
+            rng = random.Random(48219)
+            words = [0, 0xd503201f, 0xd5033f5f, 0xd5033f9f, 0xd4000001,
+                     0xd4200000, 0xd65f03c0, 0xd65f0000, 0xd65f03e0, 0xd61f03e0,
+                     0xd53b4400, 0xd53b4420, 0xd51b4400, 0xd51b4420]
+            words += [(rng.getrandbits(32) & ~(15 << 25)) | rng.choice((8, 9, 10, 11)) << 25
+                      for _ in range(3000)]
+            # Exhaust every immediate bit-mask encoding, including reserved forms.
+            words += [0xd2000000 | n << 22 | r << 16 | s << 10 | 31 << 5 | 3
+                      for n in range(2) for r in range(64) for s in range(64)]
+            stream = "".join(f"{word:08x}\n" for word in words)
+            for pc, mode in ((0, "asm"), (0x801001000, "c"), (0x7000001000, "asm")):
+                common = ["--pc", hex(pc), "--simd", mode]
+                expected = subprocess.run([sys.executable, str(HERE / "reference_decode.py"),
+                                           "--reference", str(reference), *common], input=stream,
+                                          capture_output=True, text=True, timeout=60)
+                actual = subprocess.run([str(self.binary), "decode", *common], input=stream,
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(expected.returncode, 0, expected.stderr)
+                self.assertEqual(actual.returncode, 0, actual.stderr)
+                left = [json.loads(line) for line in expected.stdout.splitlines()]
+                right = [json.loads(line) for line in actual.stdout.splitlines()]
+                self.assertEqual(len(left), len(words))
+                self.assertEqual(len(right), len(words))
+                for word, old, new in zip(words, left, right):
+                    self.assertEqual(new, old, f"instruction {word:08x}, PC={pc:x}, SIMD={mode}")
+            for previous in (0x910003bf, 0xd503201f):
+                arguments = ["--pc", "0x801001000", "--previous-word", hex(previous)]
+                old = subprocess.run([sys.executable, str(HERE / "reference_decode.py"),
+                                      "--reference", str(reference), *arguments], input="d65f03c0\n",
+                                     capture_output=True, text=True, check=True)
+                new = subprocess.run([str(self.binary), "decode", *arguments], input="d65f03c0\n",
+                                     capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(old.stdout), json.loads(new.stdout))
+            pending = subprocess.run([str(self.binary), "decode", "--pc", "0x801001000"],
+                                     input="f9400020\n", capture_output=True, text=True, check=True)
+            self.assertFalse(json.loads(pending.stdout)["handled"])
 
     def test_failed_publish_preserves_existing_output_and_removes_owned_temporary(self):
         with tempfile.TemporaryDirectory(dir=self.folder) as temporary:

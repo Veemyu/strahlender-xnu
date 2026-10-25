@@ -64,6 +64,27 @@ CIE/FDE/LSDA metadata, direct calls, ADR/ADRP candidates and setjmp PLT discover
 Unicorn jump-table scanning and C emission are subsequent milestones, not hidden
 behind this command.
 
+## Instruction-lifter checkpoint
+
+`decode` reads one hexadecimal instruction per line on stdin and emits diagnostic
+IR as JSONL. `--pc` selects the guest address; `--simd asm|c` selects system-register
+semantics; `--previous-word` supplies context for EH-aware return handling.
+
+```sh
+printf '91000400\nd65f03c0\n' | work/native-generator/bdsp_codegen decode \
+  --pc 0x801001000 --simd c
+```
+
+Immediate arithmetic/logical/bitfield/move instructions, PC-relative operations,
+branches, system registers, exception instructions and EH return overrides are
+ported. The test exhausts immediate bit-mask encodings and adds seeded invalid
+and control encodings, comparing over 33,000 IR records with the frozen lifter.
+Pending load/store, register and SIMD families explicitly emit `handled: false`;
+this is a development checkpoint, not a partial production `gen` command.
+Temporary expression strings are reclaimed after each diagnostic instruction.
+The current arena/error context is single-threaded; worker-owned contexts must be
+introduced before enabling the future native thread pool.
+
 ## Frozen-reference comparison
 
 The reference is Git revision `a26bc12e4188fb69d6cd96f3271a07bfc9e475ab`.
@@ -101,8 +122,9 @@ For the sanitizer executable, set `BDSP_CODEGEN_TEST_BINARY` to its absolute pat
 
 1. Frozen reference, NSO loader and image parity — implemented.
 2. Initial EH/entry discovery — implemented.
-3. Full instruction classification/lifting, analysis fixpoint and ordered
-   Unicorn jump-table behavior — pending.
+3. Full instruction classification/lifting — immediate/control/system families
+   implemented and differentially checked; remaining families, analysis fixpoint
+   and ordered Unicorn jump-table behavior pending.
 4. Exact C emission, inline ARM64 ASM and portable SIMD-C, chunking, EH frame
    insertion and partial-build stubs — pending.
 5. Native worker pool, GUI/CLI integration, stage hashes and source-matched
@@ -121,7 +143,8 @@ See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for the LZ4 lice
   every initial boundary, landing pad and setjmp address matches the frozen oracle.
 - Linux x86_64 (Nobara): native Clang and GCC builds; synthetic compressed/plain
   images and EH analysis match the Mac results, including Unicode/spaced paths.
-- Linux ARM64: host reachable; direct test awaits the user-installed C compiler.
+- Linux ARM64 (archimedesseal): native GCC build and synthetic image/EH parity
+  passed after the user installed GCC. No game data was transferred.
 - CI matrix tests prepared after private-runtime assembly; no CI run dispatched.
 
 These results do not establish full native C generation, a new complete game build,
