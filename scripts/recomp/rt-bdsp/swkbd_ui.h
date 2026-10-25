@@ -50,6 +50,8 @@ float swkbd_ui_backdrop(void);
 
 // Input. Buttons as bit numbers: 0 A, 1 B, 2 X, 3 Y, 4 LStick, 5 RStick, 6 L, 7 R, 8 ZL, 9 ZR, 10 Plus, 11 Minus, 12 Left, 13 Up, 14 Right, 15 Down.
 void swkbd_ui_pad(uint64_t buttons, int lx, int ly);                 // current state; edges are detected inside
+// Buttons already held when the keyboard opens (the A that answered "yes" to the prompt): they are not presses, only a later press counts.
+void swkbd_ui_pad_held(uint64_t buttons, int lx, int ly);
 // Touch: down 1 = begins, 0 = the finger is lifted, -1 = cancelled; the key is entered when the finger is lifted over it. Position normalised in the window
 // (0..1, y down); the last scene's fit is used.
 void swkbd_ui_touch(int down, float nx, float ny);

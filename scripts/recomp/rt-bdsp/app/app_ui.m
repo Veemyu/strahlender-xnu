@@ -5,7 +5,7 @@
 // UI texts: the English text is the key (NSLocalizedString, development language en); German is in lproj/de.lproj.
 #import <AppKit/AppKit.h>
 #import <GameController/GameController.h>
-#include "../pad_apple.h"
+#include "../pad_gc.h"
 #include <SDL3/SDL.h>
 #include <spawn.h>
 #include <stdatomic.h>
@@ -32,12 +32,6 @@ static void ApplyDockIcon(void) {
 
 extern char **environ;
 SDL_Window *ui_window(void);
-// Input of the runtime (nvn/nvn_glue.c): buttons as a bit mask, sticks from -32767 to 32767 (lx, ly, rx, ry)
-extern _Atomic uint64_t g_ext_buttons;
-extern _Atomic int32_t g_ext_stick[4];
-
-enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
-
 // ---- Key mapping (Ryujinx default, plus Return/Space = A and Backspace = B)
 typedef struct { SDL_Scancode sc; int kind; int a; int b; } KeyMap;   // kind 0: button a; kind 1: stick axis a with direction b (+1/-1)
 static const KeyMap k_keys[] = {
@@ -54,29 +48,18 @@ static const KeyMap k_keys[] = {
 };
 #define NKEYS (sizeof k_keys / sizeof k_keys[0])
 static bool g_down[SDL_SCANCODE_COUNT];
-static uint64_t g_pad_buttons;
-static int32_t g_pad_stick[4];
 
+// The keys of the window as one input source (input.h); the controllers are merged by pad_gc.h
 static void publish(void) {
-    if (swkbd_ui_active()) {   // the on-screen keyboard has the input; the game sees nothing meanwhile
-        atomic_store(&g_ext_buttons, 0);
-        for (int i = 0; i < 4; i++) atomic_store(&g_ext_stick[i], 0);
-        return;
-    }
-    uint64_t b = g_pad_buttons;
-    int32_t s[4] = {0, 0, 0, 0};
+    PadState k = {0};
+    int32_t st[4] = {0, 0, 0, 0};
     for (size_t i = 0; i < NKEYS; i++) {
         if (!g_down[k_keys[i].sc]) continue;
-        if (k_keys[i].kind == 0) b |= 1ull << k_keys[i].a;
-        else s[k_keys[i].a] += k_keys[i].b * 32767;
+        if (k_keys[i].kind == 0) k.buttons |= 1ull << k_keys[i].a;
+        else st[k_keys[i].a] += k_keys[i].b * 32767;
     }
-    for (int i = 0; i < 4; i++) {
-        if (s[i] > 32767) s[i] = 32767;
-        if (s[i] < -32767) s[i] = -32767;
-        if (!s[i]) s[i] = g_pad_stick[i];
-        atomic_store(&g_ext_stick[i], s[i]);
-    }
-    atomic_store(&g_ext_buttons, b);
+    for (int i = 0; i < 4; i++) k.stick[i] = st[i] > 32767 ? 32767 : st[i] < -32767 ? -32767 : st[i];
+    input_source_set(INPUT_SRC_KEYBOARD, &k);
 }
 
 static void release_all(void) {
@@ -84,48 +67,10 @@ static void release_all(void) {
     publish();
 }
 
-// ---- Controller (GameController.framework: Xbox, PlayStation, Switch Pro, among others)
-static int32_t axis32(float v) {
-    if (v > -0.12f && v < 0.12f) return 0;
-    int32_t r = (int32_t)(v * 32767.0f);
-    return r > 32767 ? 32767 : r < -32767 ? -32767 : r;
-}
-
+// ---- Controller (GameController.framework: Xbox, PlayStation, Switch Pro, among others; see pad_gc.h)
 static void pad_poll(void) {
-    uint64_t b = 0;
-    int32_t s[4] = {0, 0, 0, 0};
-    bool nintendo = !strcmp(g_app.pad_layout, "nintendo");
-    for (GCController *c in [GCController controllers]) {
-        GCExtendedGamepad *g = c.extendedGamepad;
-        if (!g) continue;
-        // Nintendo layout: A is on the right (GameController: buttonB), B at the bottom (buttonA), X at the top (buttonY), Y on the left (buttonX).
-        // A Nintendo pad already names its buttons like the console (buttonA is the right one), so it needs no swap.
-        BOOL swap = nintendo && !pad_is_nintendo(c);
-        if ((swap ? g.buttonB : g.buttonA).pressed) b |= 1ull << PB_A;
-        if ((swap ? g.buttonA : g.buttonB).pressed) b |= 1ull << PB_B;
-        if ((swap ? g.buttonY : g.buttonX).pressed) b |= 1ull << PB_X;
-        if ((swap ? g.buttonX : g.buttonY).pressed) b |= 1ull << PB_Y;
-        if (g.leftShoulder.pressed) b |= 1ull << PB_L;
-        if (g.rightShoulder.pressed) b |= 1ull << PB_R;
-        if (g.leftTrigger.pressed) b |= 1ull << PB_ZL;
-        if (g.rightTrigger.pressed) b |= 1ull << PB_ZR;
-        if (g.buttonMenu.pressed) b |= 1ull << PB_PLUS;
-        if (g.buttonOptions.pressed) b |= 1ull << PB_MINUS;
-        if (g.leftThumbstickButton.pressed) b |= 1ull << PB_LSTICK;
-        if (g.rightThumbstickButton.pressed) b |= 1ull << PB_RSTICK;
-        if (g.dpad.left.pressed) b |= 1ull << PB_LEFT;
-        if (g.dpad.right.pressed) b |= 1ull << PB_RIGHT;
-        if (g.dpad.up.pressed) b |= 1ull << PB_UP;
-        if (g.dpad.down.pressed) b |= 1ull << PB_DOWN;
-        int32_t v[4] = {axis32(g.leftThumbstick.xAxis.value), axis32(g.leftThumbstick.yAxis.value),
-                        axis32(g.rightThumbstick.xAxis.value), axis32(g.rightThumbstick.yAxis.value)};
-        for (int i = 0; i < 4; i++) if (!s[i]) s[i] = v[i];
-    }
-    if (b != g_pad_buttons || memcmp(s, g_pad_stick, sizeof s)) {
-        g_pad_buttons = b;
-        memcpy(g_pad_stick, s, sizeof s);
-        publish();
-    }
+    g_pad_by_position = !strcmp(g_app.pad_layout, "nintendo");
+    pad_gc_update();
 }
 
 // ---- Messages
@@ -601,6 +546,7 @@ void menu_apply_window_requests(void *window) {
         }
     }
     @autoreleasepool { pad_poll(); }
+    input_tick();
     {   // on-screen keyboard: input moves over to it while it is open (and back, with all held keys released)
         static bool kb_was;
         bool kb = swkbd_ui_active();
@@ -610,7 +556,6 @@ void menu_apply_window_requests(void *window) {
             if (kb) SDL_StartTextInput(window); else SDL_StopTextInput(window);
             publish();
         }
-        if (kb) swkbd_ui_pad(g_pad_buttons, g_pad_stick[0], g_pad_stick[1]);
     }
     key_script_tick();
     // Self-test of the pause (BDSP_PAUSE_SELFTEST="<from second>:<duration>"): stops the vsync event and releases it again

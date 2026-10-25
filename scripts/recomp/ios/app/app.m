@@ -17,7 +17,7 @@
 #import "../../app/icon_variants.h"
 #include <strings.h>
 #include "../../rt-bdsp/mods.h"
-#include "../../rt-bdsp/pad_apple.h"
+#include "../../rt-bdsp/pad_gc.h"
 #include "../../rt-bdsp/swkbd_ui.h"
 
 static BOOL sceneActive;   // state of the scene, set by SceneDelegate
@@ -46,8 +46,6 @@ static void audio_output_set_active(int active) { (void)active; }
 #endif
 extern void bdsp_set_fps(int fps);   // services_gfx.c: 30, 60 or 120
 extern CAMetalLayer *g_ios_layer;
-extern _Atomic uint64_t g_ext_buttons;
-extern _Atomic int32_t g_ext_stick[4];
 
 static double FootprintMiB(void);
 static BOOL audioInterrupted;
@@ -80,8 +78,6 @@ static void ConfigureAudioSession(void) {
 #import <Metal/Metal.h>
 #include <sys/mman.h>
 CAMetalLayer *g_ios_layer;
-_Atomic uint64_t g_ext_buttons;
-_Atomic int32_t g_ext_stick[4];
 int bdsp_runtime_main(int argc, char **argv) {
     id<MTLDevice> d = MTLCreateSystemDefaultDevice();
     fprintf(stderr, "[probe] Metal %s, BC-Texturen %d, ASTC %d, maxBufferLength %llu MiB, recommendedMaxWorkingSetSize %llu MiB, hasUnifiedMemory %d, Apple9 %d\n",
@@ -110,18 +106,14 @@ int bdsp_runtime_main(int argc, char **argv) {
 }
 #endif
 
-// Bits as in enum PB_* in nvn_glue.c
-enum { PB_A, PB_B, PB_X, PB_Y, PB_LSTICK, PB_RSTICK, PB_L, PB_R, PB_ZL, PB_ZR, PB_PLUS, PB_MINUS, PB_LEFT, PB_UP, PB_RIGHT, PB_DOWN };
 #define BIT(b) (1ull << (b))
 
-static _Atomic uint64_t g_touch_mask, g_pad_mask, g_key_mask;
+// Touch gamepad and hardware keyboard are input sources (input.h); the controllers are merged by pad_gc.h
+static _Atomic uint64_t g_touch_mask, g_key_mask;
 static void publish_buttons(void) {
-    if (swkbd_ui_active()) {   // the on-screen keyboard has the input; the game sees no buttons meanwhile
-        swkbd_ui_pad(atomic_load(&g_pad_mask), atomic_load(&g_ext_stick[0]), atomic_load(&g_ext_stick[1]));
-        atomic_store(&g_ext_buttons, 0);
-        return;
-    }
-    atomic_store(&g_ext_buttons, g_touch_mask | g_pad_mask | g_key_mask);
+    PadState t = {.buttons = atomic_load(&g_touch_mask)}, k = {.buttons = atomic_load(&g_key_mask)};
+    input_source_set(INPUT_SRC_TOUCH, &t);
+    input_source_set(INPUT_SRC_KEYBOARD, &k);
 }
 static void SwkbdShowNative(void);   // system keyboard for the text field of the on-screen keyboard (below)
 
@@ -371,40 +363,8 @@ static void *StatsLoop(void *arg) {
 #pragma mark - Controller, Tastatur
 
 static void BindController(GCController *c) {
-    GCExtendedGamepad *g = c.extendedGamepad;
-    if (!g) return;
-    __weak GCExtendedGamepad *wg = g;
-    // Button layout of the console (by position): A = right, B = bottom, X = top, Y = left. GameController calls the bottom button "A" on
-    // Xbox and PlayStation pads, but a Nintendo pad already names its buttons like the console.
-    BOOL nintendo = pad_is_nintendo(c);
-    void (^update)(void) = ^{
-        GCExtendedGamepad *p = wg;
-        if (!p) return;
-        uint64_t m = 0;
-        if ((nintendo ? p.buttonA : p.buttonB).pressed) m |= BIT(PB_A);
-        if ((nintendo ? p.buttonB : p.buttonA).pressed) m |= BIT(PB_B);
-        if ((nintendo ? p.buttonX : p.buttonY).pressed) m |= BIT(PB_X);
-        if ((nintendo ? p.buttonY : p.buttonX).pressed) m |= BIT(PB_Y);
-        if (p.leftShoulder.pressed) m |= BIT(PB_L);
-        if (p.rightShoulder.pressed) m |= BIT(PB_R);
-        if (p.leftTrigger.pressed) m |= BIT(PB_ZL);
-        if (p.rightTrigger.pressed) m |= BIT(PB_ZR);
-        if (p.buttonMenu.pressed) m |= BIT(PB_PLUS);
-        if (p.buttonOptions.pressed) m |= BIT(PB_MINUS);
-        if (p.leftThumbstickButton.pressed) m |= BIT(PB_LSTICK);
-        if (p.rightThumbstickButton.pressed) m |= BIT(PB_RSTICK);
-        if (p.dpad.left.pressed) m |= BIT(PB_LEFT);
-        if (p.dpad.right.pressed) m |= BIT(PB_RIGHT);
-        if (p.dpad.up.pressed) m |= BIT(PB_UP);
-        if (p.dpad.down.pressed) m |= BIT(PB_DOWN);
-        atomic_store(&g_pad_mask, m);
-        atomic_store(&g_ext_stick[0], (int32_t)(p.leftThumbstick.xAxis.value * 32767));
-        atomic_store(&g_ext_stick[1], (int32_t)(p.leftThumbstick.yAxis.value * 32767));
-        atomic_store(&g_ext_stick[2], (int32_t)(p.rightThumbstick.xAxis.value * 32767));
-        atomic_store(&g_ext_stick[3], (int32_t)(p.rightThumbstick.yAxis.value * 32767));
-        publish_buttons();
-    };
-    g.valueChangedHandler = ^(GCExtendedGamepad *p, GCControllerElement *e) { update(); };
+    pad_gc_bind(c);
+    pad_gc_update();
 }
 
 static int KeyBit(UIKeyboardHIDUsage k) {
@@ -473,6 +433,7 @@ static void SwkbdPoll(void) {
     for (CALayer *l in gView.pads) l.hidden = on;
     if (!on) SwkbdHideNative();
     publish_buttons();
+    input_tick();
 }
 
 static BOOL SwkbdPresses(NSSet<UIPress *> *presses) {
@@ -577,9 +538,7 @@ static void *RuntimeThread(void *arg) {
     }];
     [NSNotificationCenter.defaultCenter addObserverForName:GCControllerDidDisconnectNotification object:nil queue:NSOperationQueue.mainQueue
                                                 usingBlock:^(NSNotification *n) {
-        atomic_store(&g_pad_mask, 0);
-        for (int i = 0; i < 4; i++) atomic_store(&g_ext_stick[i], 0);   // a stick held while the pad went away would stay deflected
-        publish_buttons();
+        pad_gc_update();   // the pad that went away is no longer listed, so a held stick or button is released
         GameView *v = gView;
         v.overlayHidden = GCController.controllers.count > 0;
         [v buildOverlay];

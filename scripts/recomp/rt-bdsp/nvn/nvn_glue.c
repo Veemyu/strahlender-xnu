@@ -210,10 +210,7 @@ int maxwell_dbg_reg;
 // Keys: Enter/Space/K = A, Backspace/J = B, X, Y, arrow keys and WASD = D-pad, Q/E = L/R, P = Plus, O = Minus.
 // Test script (--input-script / BDSP_INPUT_SCRIPT): "second:KEY[+KEY]:duration, ..." from the process start, e.g. "30:A:0.3,34:A+DOWN:0.2".
 static const char *const pad_names[16] = {"A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS", "MINUS", "LEFT", "UP", "RIGHT", "DOWN"};
-static _Atomic uint64_t key_buttons;
-// Buttons and sticks of the app shell (rt-bdsp/app: keyboard, GameController); sticks lx, ly, rx, ry from -32767 to 32767
-_Atomic uint64_t g_ext_buttons;
-_Atomic int32_t g_ext_stick[4];
+static _Atomic uint64_t key_buttons;   // keys of this file's window handling (Linux/Windows); the Mac and iPad shells report their own keys through input.h
 static int64_t pad_sampling;
 extern uint64_t g_proc_start_ns;
 typedef struct { double at, len; uint32_t mask; } ScriptStep;
@@ -254,7 +251,9 @@ static uint64_t buttons_now(void) {
         pad_sdl_start();   // first read of the game: gamepads of Linux/Windows (any front end)
 #endif
     }
-    uint64_t b = key_buttons | g_ext_buttons;
+    PadState cur;
+    input_current(&cur);   // keyboard, touch and gamepads of the front end (input.h)
+    uint64_t b = cur.buttons;
     static int ctl_fd = -2;   // BDSP_INPUT_CTL=<file>: button mask (16 hex digits) from outside, QA harness (event-driven inputs)
     if (ctl_fd == -2) { const char *p = getenv("BDSP_INPUT_CTL"); ctl_fd = p ? open(p, O_RDONLY) : -1; }
     if (ctl_fd >= 0) {
@@ -329,6 +328,8 @@ void input_handle_event(const void *ev) {
     }
     if (e->type == SDL_EVENT_KEY_DOWN) atomic_fetch_or(&key_buttons, 1ull << bit);
     else atomic_fetch_and(&key_buttons, ~(1ull << bit));
+    PadState k = {.buttons = key_buttons};
+    input_source_set(INPUT_SRC_KEYBOARD, &k);
 }
 
 // Npad state (all state types are laid out the same): {s64 sample number, u64 buttons, stick L {s32 x, y}, stick R, u32 attributes}; player 1 is a connected Pro Controller
@@ -337,7 +338,9 @@ static void npad_fill(uint8_t *s) {
     *(int64_t *)s = ++pad_sampling;
     uint64_t b = buttons_now();
     *(uint64_t *)(s + 8) = b;
-    for (int i = 0; i < 4; i++) *(int32_t *)(s + 16 + 4 * i) = g_ext_stick[i];
+    PadState cur;
+    input_current(&cur);
+    for (int i = 0; i < 4; i++) *(int32_t *)(s + 16 + 4 * i) = cur.stick[i];
     *(uint32_t *)(s + 32) = 1;
     static uint64_t last;
     if (b != last && getenv("BDSP_TRACE_INPUT")) LOG("[input] Buttons %#llx\n", (unsigned long long)b);

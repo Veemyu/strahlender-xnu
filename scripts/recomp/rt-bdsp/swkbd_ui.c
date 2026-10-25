@@ -881,15 +881,20 @@ static void pad_edge(int b) {
     }
 }
 
+// Buttons plus the left stick folded into the D-pad (stick y is up-positive)
+static uint64_t pad_effective(uint64_t buttons, int lx, int ly) {
+    uint64_t eff = buttons;
+    if (lx < -16000) eff |= 1ull << B_LEFT;
+    if (lx > 16000) eff |= 1ull << B_RIGHT;
+    if (ly > 16000) eff |= 1ull << B_UP;
+    if (ly < -16000) eff |= 1ull << B_DOWN;
+    return eff;
+}
+
 void swkbd_ui_pad(uint64_t buttons, int lx, int ly) {
     LOCK(); G.rev++;
     if (G.active) {
-        int st[4] = {lx < -16000, lx > 16000, ly > 16000, ly < -16000};   // left, right, up, down (stick y is up-positive)
-        uint64_t eff = buttons;
-        if (st[0]) eff |= 1ull << B_LEFT;
-        if (st[1]) eff |= 1ull << B_RIGHT;
-        if (st[2]) eff |= 1ull << B_UP;
-        if (st[3]) eff |= 1ull << B_DOWN;
+        uint64_t eff = pad_effective(buttons, lx, ly);
         uint64_t down = eff & ~G.pad_prev;
         for (int b = 0; b < 16; b++) if (down & (1ull << b)) {
             pad_edge(b);
@@ -898,6 +903,13 @@ void swkbd_ui_pad(uint64_t buttons, int lx, int ly) {
         if (G.repeat_dir && !(eff & (1ull << G.repeat_dir))) G.repeat_dir = 0;
         G.pad_prev = eff;
     }
+    pthread_mutex_unlock(&G.lock);
+}
+
+void swkbd_ui_pad_held(uint64_t buttons, int lx, int ly) {
+    LOCK();
+    G.pad_prev = pad_effective(buttons, lx, ly);
+    G.repeat_dir = 0;
     pthread_mutex_unlock(&G.lock);
 }
 
