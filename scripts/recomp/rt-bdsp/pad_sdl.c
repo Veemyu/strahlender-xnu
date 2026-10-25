@@ -87,6 +87,7 @@ static void *pad_thread(void *arg) {
         PadState s;
         poll_pads(&s);
         input_pad_set(&s);
+        input_tick();
         if (pad_log) {
             // log on a change of the buttons or of a stick by more than a quarter of its range (names for the manual check of a pad)
             int moved = 0;
