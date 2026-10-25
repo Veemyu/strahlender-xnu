@@ -75,11 +75,29 @@ fn succeeds(program: &str, args: &[&str]) -> bool {
         .is_ok_and(|s| s.success())
 }
 pub fn brew() -> String {
-    ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+    mac_prefixes(std::env::consts::ARCH)
         .into_iter()
+        .map(|prefix| format!("{prefix}/bin/brew"))
         .find(|p| std::path::Path::new(p).is_file())
-        .unwrap_or("brew")
-        .into()
+        .unwrap_or_else(|| "brew".into())
+}
+fn mac_prefixes(architecture: &str) -> [&'static str; 2] {
+    if architecture == "x86_64" {
+        ["/usr/local", "/opt/homebrew"]
+    } else {
+        ["/opt/homebrew", "/usr/local"]
+    }
+}
+pub fn mac_tool_paths() -> Vec<PathBuf> {
+    mac_prefixes(std::env::consts::ARCH)
+        .into_iter()
+        .flat_map(|prefix| {
+            [
+                PathBuf::from(format!("{prefix}/opt/llvm/bin")),
+                PathBuf::from(format!("{prefix}/bin")),
+            ]
+        })
+        .collect()
 }
 pub fn detect_manager(os: &str) -> Option<&'static str> {
     let ids: Vec<_> = os
@@ -204,8 +222,16 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
 pub fn installation_script(plan: &Plan) -> Result<String, String> {
     // The terminal owns authentication; no password is read by this process.
     let mut script = String::from(
-        "#!/bin/bash\nset -e\nexport PATH=/opt/homebrew/bin:/usr/local/bin:$PATH\ntrap 'echo \"Setup stopped. Return to the installer, open Details and check again.\"; read -r -p \"Press Enter to close.\"' ERR\n",
+        "#!/bin/bash\nset -e\ntrap 'echo \"Setup stopped. Return to the installer, open Details and check again.\"; read -r -p \"Press Enter to close.\"' ERR\n",
     );
+    if cfg!(target_os = "macos") {
+        let paths = mac_tool_paths()
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(":");
+        script.push_str(&format!("export PATH={paths}:$PATH\n"));
+    }
     if plan.bootstrap_brew {
         script.push_str("echo 'Installing Homebrew to provide the game build tools.'\n/bin/bash -c \"$(/usr/bin/curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"\n");
     }
@@ -319,6 +345,17 @@ fn return_success() -> std::process::ExitStatus {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn homebrew_prefix_order_matches_each_mac_architecture() {
+        assert_eq!(
+            super::mac_prefixes("aarch64"),
+            ["/opt/homebrew", "/usr/local"]
+        );
+        assert_eq!(
+            super::mac_prefixes("x86_64"),
+            ["/usr/local", "/opt/homebrew"]
+        );
+    }
     #[test]
     fn scripts_validate_package_names_and_use_only_the_selected_manager() {
         for (manager, expected) in [

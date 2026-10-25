@@ -155,7 +155,17 @@ fn verified_runtime_python(runtime: &Path) -> Option<PathBuf> {
 fn bundled_runtime() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
     let contents = executable.parent()?.parent()?;
-    let runtime = contents.join("Resources/runtime");
+    runtime_in_resources(&contents.join("Resources"))
+}
+
+fn runtime_in_resources(resources: &Path) -> Option<PathBuf> {
+    let runtime = resources.join("runtime");
+    if let Some(host) = host_target()
+        && let Some(python) = verified_runtime_python(&runtime.join(host))
+    {
+        return Some(python);
+    }
+    // Existing single-architecture Mac bundles and Linux AppImages.
     verified_runtime_python(&runtime)
 }
 
@@ -317,15 +327,7 @@ fn run_driver(
         let mut command = Command::new(&python);
         let inherited = std::env::var_os("PATH").unwrap_or_default();
         let mut search_paths: Vec<PathBuf> = if cfg!(target_os = "macos") {
-            [
-                "/opt/homebrew/opt/llvm/bin",
-                "/usr/local/opt/llvm/bin",
-                "/opt/homebrew/bin",
-                "/usr/local/bin",
-            ]
-            .into_iter()
-            .map(PathBuf::from)
-            .collect()
+            crate::dependencies::mac_tool_paths()
         } else {
             Vec::new()
         };
@@ -612,6 +614,34 @@ mod tests {
             serde_json::from_str(r#"{"event":"log","level":"info","message":"clang available"}"#)
                 .unwrap();
         assert!(matches!(log, ProtocolEvent::Log { .. }));
+    }
+
+    #[test]
+    fn universal_bundle_selects_only_the_matching_private_runtime() {
+        let resources =
+            std::env::temp_dir().join(format!("universal-runtime-test-{}", std::process::id()));
+        let host = super::host_target().unwrap();
+        let native = resources.join("runtime").join(host);
+        let executable = native.join(if cfg!(windows) {
+            "python/python.exe"
+        } else {
+            "python/bin/python3"
+        });
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable, b"fixture").unwrap();
+        std::fs::write(
+            native.join("runtime.json"),
+            format!(r#"{{"schema":1,"target":"{host}","python":"3.13.15"}}"#),
+        )
+        .unwrap();
+        assert_eq!(super::runtime_in_resources(&resources), Some(executable));
+        std::fs::write(
+            native.join("runtime.json"),
+            r#"{"schema":1,"target":"other-architecture","python":"3.13.15"}"#,
+        )
+        .unwrap();
+        assert_eq!(super::runtime_in_resources(&resources), None);
+        std::fs::remove_dir_all(resources).unwrap();
     }
 
     #[test]

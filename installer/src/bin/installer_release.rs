@@ -16,14 +16,11 @@ fn manifest(version: &str, folder: &Path) -> Result<Vec<u8>, String> {
         "linux-aarch64",
         "linux-x86_64",
     ] {
-        let name = format!(
-            "installer-{host}.{}",
-            if host.starts_with("macos") {
-                "tar.gz"
-            } else {
-                "AppImage"
-            }
-        );
+        let name = if host.starts_with("macos") {
+            "installer-macos-universal.zip".into()
+        } else {
+            format!("installer-{host}.AppImage")
+        };
         let path = folder.join(&name);
         if !path.is_file() {
             continue;
@@ -79,5 +76,27 @@ fn main() {
     if let Err(error) = run() {
         eprintln!("{error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn one_universal_zip_serves_both_mac_update_targets() {
+        let folder =
+            std::env::temp_dir().join(format!("universal-manifest-test-{}", std::process::id()));
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(folder.join("installer-macos-universal.zip"), b"fixture").unwrap();
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&super::manifest("0.2.0", &folder).unwrap()).unwrap();
+        let assets = manifest["assets"].as_array().unwrap();
+        assert_eq!(assets.len(), 2);
+        assert_eq!(assets[0]["target"], "macos-aarch64");
+        assert_eq!(assets[1]["target"], "macos-x86_64");
+        for asset in assets {
+            assert_eq!(asset["name"], "installer-macos-universal.zip");
+        }
+        assert_eq!(assets[0]["sha256"], assets[1]["sha256"]);
+        std::fs::remove_dir_all(folder).unwrap();
     }
 }

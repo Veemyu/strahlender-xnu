@@ -222,11 +222,15 @@ pub fn apply(download: &std::path::Path) -> Result<(), String> {
                     .as_nanos()
             ));
         std::fs::create_dir(&stage).map_err(|e| e.to_string())?;
-        tar::Archive::new(flate2::read::GzDecoder::new(
-            std::fs::File::open(download).map_err(|e| e.to_string())?,
-        ))
-        .unpack(&stage)
-        .map_err(|e| e.to_string())?;
+        if !std::process::Command::new("/usr/bin/ditto")
+            .args(["-x", "-k"])
+            .arg(download)
+            .arg(&stage)
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            return Err("The downloaded installer ZIP could not be opened.".into());
+        }
         let app = stage.join("Strahlender Installer.app");
         for (tool, args) in [
             ("codesign", vec!["--verify", "--deep", "--strict"]),
