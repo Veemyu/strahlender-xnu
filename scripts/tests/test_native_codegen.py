@@ -2,7 +2,9 @@
 import importlib.util
 import json
 import os
+import platform
 import random
+import shutil
 from pathlib import Path
 import struct
 import subprocess
@@ -108,7 +110,7 @@ class NativeCodegenTests(unittest.TestCase):
 
     def test_version_and_cached_compiler_output(self):
         version = json.loads(self.run_native("--version", "--json").stdout)
-        self.assertEqual(version["capabilities"], ["image", "inspect", "decode-basic"])
+        self.assertEqual(version["capabilities"], ["image", "inspect", "decode-basic", "emit-function"])
         self.assertEqual(version["lz4"], "1.9.4")
         cached = builder.build(self.folder / "cached_codegen")
         before = cached.stat().st_mtime_ns
@@ -279,9 +281,182 @@ class NativeCodegenTests(unittest.TestCase):
                                  capture_output=True, text=True, check=True)
             self.assertEqual([json.loads(x) for x in old.stdout.splitlines()],
                              [json.loads(x) for x in new.stdout.splitlines()])
-            pending = subprocess.run([str(self.binary), "decode", "--pc", "0x801001000"],
+            pending = subprocess.run([str(self.binary), "decode", "--pc", "0x801001000", "--simd", "c"],
                                      input="3dc00020\n", capture_output=True, text=True, check=True)
             self.assertFalse(json.loads(pending.stdout)["handled"])
+
+    def test_aarch64_assembly_ir_matches_frozen_lifter(self):
+        spec = importlib.util.spec_from_file_location("asm_compare", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compare)
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            reference = compare.snapshot(Path(temporary))
+            rng = random.Random(71047)
+            words = [(rng.getrandbits(32) & ~(15 << 25)) | rng.choice((6, 7, 14, 15)) << 25
+                     for _ in range(5000)]
+            # Reserved SIMD literal opc=3 raises KeyError in the frozen Python decoder.
+            words = [w for w in words if not (w >> 27 & 7 == 3 and w >> 24 & 3 == 0 and w >> 30 == 3)]
+            words += [0x9cffffe0, 0x1e202000, 0x1e200400, 0x3dc003e0, 0x4c4073ff,
+                      0x1ac04000, 0x9ac04c00, 0x1e26001f, 0x1e2703e0]
+            stream = "".join(f"{w:08x}\n" for w in words)
+            for pc in (0, 0x801001000):
+                arguments = ["--pc", hex(pc), "--simd", "asm"]
+                old = subprocess.run([sys.executable, str(HERE / "reference_decode.py"),
+                                      "--reference", str(reference), *arguments], input=stream,
+                                     capture_output=True, text=True)
+                self.assertEqual(old.returncode, 0, old.stderr)
+                new = subprocess.run(
+                    [str(self.binary), "decode", *arguments], input=stream, capture_output=True, text=True, check=True)
+                left, right = ([json.loads(line) for line in result.stdout.splitlines()] for result in (old, new))
+                self.assertEqual(len(left), len(words))
+                self.assertEqual(len(right), len(words))
+                for w, a, b in zip(words, left, right):
+                    self.assertEqual(a, b, f"assembly IR {w:08x}, PC={pc:x}")
+
+    def test_function_emitter_matches_frozen_eh_emitter(self):
+        spec = importlib.util.spec_from_file_location("emitter_compare", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compare)
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            folder = Path(temporary)
+            reference = compare.snapshot(folder)
+            module_base = 0x801000000
+            base = module_base + 0x20
+            source = synthetic_nso(folder / "emitter.nso")
+            # NSO text segment is 256 bytes at file offset 0x100, with no unwind table.
+            cases = [
+                ([0x91000400, 0xd65f03c0], []),  # arithmetic + return
+                ([0x14000002, 0xd503201f, 0xd65f03c0], ["--label", hex(base + 8)]),
+                ([0x54000040, 0x91000400, 0xd65f03c0], ["--label", hex(base + 8)]),
+                ([0x14000020], []),  # tail call inside text but outside function
+                ([0x14000100], []),  # tail dispatch outside module text
+                ([0x94000020, 0x94000100, 0xd63f0060, 0xd65f03c0], []),
+                ([0x91000400], []),  # fallthrough to next function
+                ([0xd503201f] * 56, []),  # fallthrough exactly at module text end
+                ([0xd4200000], []),  # trap is terminal
+                ([0xd61f0060], []),  # indirect tail dispatch
+                ([0xd65f0060], []),  # ret x3 is an indirect jump
+                ([0x9100009f, 0xd65f03c0], []),  # mov sp,x4; ret override
+                ([0xd61f0060], ["--table", f"{base:#x}=all"]),
+                ([0xd61f0060, 0xd65f03c0], ["--table", f"{base:#x}={base + 4:#x}"]),
+                ([0xd61f0020, 0xd61f0040, 0xd65f03c0],
+                 ["--table", f"{base + 4:#x}=all", "--table", f"{base:#x}={base + 8:#x}"]),
+                ([0xd65f03c0], ["--hle", "_Z日本語-name"]),
+                ([0x54000040, 0x1400001f, 0xd61f0060, 0xd65f03c0],
+                 ["--label", hex(base + 8)]),
+            ]
+            asm_cases = [
+                ([0x4e208400, 0x4e208401, 0xd65f03c0], []),
+                ([0x1e202000, 0x1e200400, 0xd65f03c0], []),
+                ([0x3dc003e0, 0x3dc00020, 0xd65f03c0], []),
+                ([0x9c000020, 0x1e260000, 0xd65f03c0], []),
+                ([0x1ac04000, 0x9ac04c00, 0xd65f03c0], []),
+                ([0x4e208400] * 49 + [0xd65f03c0], []),  # 24-instruction batch limit
+                ([0x1e260000 | r for r in range(12)] + [0xd65f03c0], []),  # scratch exhaustion
+                ([0x4e208400, 0x4e208401, 0xd65f03c0], ["--label", hex(base + 4)]),
+                ([0x4e208400, 0x4e208401, 0xd65f03c0], ["--table", f"{base + 8:#x}=all"]),
+            ]
+            # Last table case needs an indirect branch; preserve a SIMD prefix to test flush ordering.
+            asm_cases[-1][0][-1] = 0xd61f0060
+            for index, (words, options, mode) in enumerate(
+                    [(w, o, "c") for w, o in cases] + [(w, o, "asm") for w, o in asm_cases]):
+                raw = bytearray(source.read_bytes())
+                raw[0x120:0x200] = struct.pack("<56I", *(words + [0] * (56 - len(words))))
+                source.write_bytes(raw)
+                for eh in (False, True):
+                    common = [str(source), "--base", hex(module_base), "--entry", hex(base),
+                              "--end", hex(base + 4 * len(words)), "--simd", mode, "--json", *options]
+                    if eh:
+                        common += ["--nle", hex(base), "--nle", hex(base + 4 * (len(words) - 1))]
+                    old = subprocess.run([sys.executable, str(HERE / "reference_emit.py"),
+                                          "--reference", str(reference), *common],
+                                         capture_output=True, text=True)
+                    self.assertEqual(old.returncode, 0, old.stderr)
+                    new = self.run_native("emit-function", *common)
+                    self.assertEqual(json.loads(new.stdout), json.loads(old.stdout),
+                                     f"case {index}, EH={eh}")
+            # Pending families must not publish a partial function or overwrite prior output.
+            raw = bytearray(source.read_bytes())
+            struct.pack_into("<II", raw, 0x120, 0x91000400, 0x3dc00020)
+            source.write_bytes(raw)
+            output = folder / "preserved.c"
+            output.write_text("previous valid output")
+            result = self.run_native("emit-function", source, "--base", hex(module_base), "--entry", hex(base),
+                                     "--end", hex(base + 8), "--simd", "c", "--out", output, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(output.read_text(), "previous valid output")
+            # Reject invalid boundaries, labels and table descriptions before publication.
+            for end, options in [(base, []), (base + 3, []), (base + 0x104, []),
+                                 (base + 8, ["--label", hex(base + 12)]),
+                                 (base + 8, ["--table", f"{base:#x}=all"])]:
+                result = self.run_native("emit-function", source, "--base", hex(module_base), "--entry", hex(base),
+                                         "--end", hex(end), *options, check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+
+    @unittest.skipUnless(shutil.which("clang"), "emitted execution probe requires Clang")
+    def test_emitted_scalar_and_eh_functions_compile_and_execute(self):
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            folder = Path(temporary)
+            base = 0x801000000
+            source = synthetic_nso(folder / "execute.nso")
+            raw = bytearray(source.read_bytes())
+            # Compute 12, compare, then take the success path and return with x1=15.
+            arithmetic = [0xd28000a0, 0x91001c00, 0xf100301f, 0x54000061,
+                          0x91000c01, 0xd65f03c0, 0xd29fffe1, 0xd65f03c0]
+            # BLR invokes a test dispatcher that longjmps to the landing pad at +16.
+            reentry = [0xd503201f, 0xd63f0060, 0xd2800000, 0xd65f03c0,
+                       0x91000c01, 0xd65f03c0]
+            struct.pack_into("<8I", raw, 0x120, *arithmetic)
+            struct.pack_into("<6I", raw, 0x180, *reentry)
+            source.write_bytes(raw)
+            code = []
+            for offset, words, label in [(0x20, arithmetic, 24), (0x80, reentry, 16)]:
+                arguments = [source, "--base", hex(base), "--entry", hex(base + offset),
+                             "--end", hex(base + offset + len(words) * 4), "--simd", "c",
+                             "--label", hex(base + offset + label)]
+                if offset == 0x80:
+                    arguments += ["--nle", hex(base + offset + label)]
+                code.append(self.run_native("emit-function", *arguments).stdout)
+            vector_check = ""
+            if platform.machine().lower() in ("arm64", "aarch64"):
+                # ADD v0.16b,v0.16b,v1.16b checks native assembly register load/store mapping.
+                struct.pack_into("<II", raw, 0x1c0, 0x4e218400, 0xd65f03c0)
+                source.write_bytes(raw)
+                code.append(self.run_native("emit-function", source, "--base", hex(base),
+                                            "--entry", hex(base + 0xc0), "--end", hex(base + 0xc8),
+                                            "--simd", "asm").stdout)
+                vector_check = """
+    memset(&c.v[0], 1, 16); memset(&c.v[1], 2, 16);
+    f_8010000c0(&c);
+    for (int i = 0; i < 16; i++) if (((unsigned char *)&c.v[0])[i] != 3) return 3;
+"""
+            program = folder / "execution.c"
+            program.write_text('#include "cpu.h"\n#include <stdlib.h>\n' + "\n".join(code) + r"""
+volatile int g_fnprof;
+void fnprof_hit(uint64_t a, uint64_t lr, uint64_t x0) { (void)a; (void)lr; (void)x0; }
+void rt_nle_fatal(Cpu *c) { (void)c; abort(); }
+void rt_dispatch(Cpu *c) {
+    if (!EH_TOP(c)) abort();
+    c->pc = 0x801000090ull;
+    _longjmp(EH_TOP(c)->jb, 1);
+}
+int main(void) {
+    Cpu c = {0};
+    f_801000020(&c);
+    if (c.x[0] != 12 || c.x[1] != 15 || EH_TOP(&c)) return 1;
+    c.x[1] = 0;
+    f_801000080(&c);
+    if (c.x[0] != 12 || c.x[1] != 15 || EH_TOP(&c)) return 2;
+""" + vector_check + "    return 0;\n}\n")
+            executable = folder / "execution-probe"
+            result = subprocess.run(["clang", "-std=c17", "-D_DEFAULT_SOURCE", "-O2", "-w", "-I", str(ROOT / "scripts/recomp/rt"),
+                                     "-I", str(ROOT / "scripts/recomp/upstream/runtime"),
+                                     str(program), "-o", str(executable)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            executed = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(executed.returncode, 0, executed.stderr)
 
     def test_failed_publish_preserves_existing_output_and_removes_owned_temporary(self):
         with tempfile.TemporaryDirectory(dir=self.folder) as temporary:

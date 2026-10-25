@@ -2,8 +2,9 @@
 
 C17 replacement for the Python generator and module-image builder, introduced in
 independently checked stages. **This milestone implements images, the initial
-analysis checkpoint and scalar instruction decoding. It does not implement `gen`
-or replace the production Python C emitter yet.** No game bytes or generated game output belong in this directory.
+analysis checkpoint, scalar/AArch64 assembly decoding and function C emission.
+It does not implement the complete `gen` pipeline or replace the production
+Python generator yet.** No game bytes or generated game output belong in this directory.
 
 ## Build
 
@@ -90,11 +91,50 @@ no game data or samples are checked in. GCC builds on Linux x86-64 and AArch64
 matched a further 12,007 synthetic instruction records against frozen-reference
 outputs. macOS tests also pass with ASan/UBSan and the bundled Python runtime.
 
-SIMD and native CRC assembly metadata still emit `handled: false`; this is a
-development checkpoint, not a partial production `gen` command.
+AArch64 SIMD/FP and CRC assembly metadata are now implemented as well: ordered
+GPR mappings (including SP), touched vector registers, flags and literal constants.
+A further 9,860 seeded assembly IR records match the frozen lifter, including
+vector register wrapping and negative diagnostic PC-relative constants.
+Portable SIMD/FP C lowering still emits `handled: false`; this is a development
+checkpoint, not a partial production `gen` command.
 Temporary expression strings are reclaimed after each diagnostic instruction.
 The current arena/error context is single-threaded; worker-owned contexts must be
 introduced before enabling the future native thread pool.
+
+## Function C-emission checkpoint
+
+`emit-function NSO --base N --entry N --end N` emits one function from an
+**explicitly supplied analysis result**. It does not discover final partitions or
+jump tables and is not yet a replacement for the whole-module generator.
+All addresses are absolute guest addresses; the function range is half-open.
+
+- `--simd asm|c`: native AArch64 assembly or portable C semantics.
+- Repeat `--label N` for local targets and `--nle N` for landing pads/setjmp returns.
+- Repeat `--table PC=TARGET,TARGET` or `--table PC=all` for resolved/fallback tables.
+- `--hle SYMBOL` emits the HLE wrapper instead of an instruction body.
+- `--json` returns the generated C and sorted external function references.
+- `--out PATH` publishes atomically and preserves timestamps for identical output.
+
+The C emitter handles function entry, direct/indirect calls, local/external tail
+jumps, all-label table fallback, EH entry/re-entry/pop and HLE symbol sanitization.
+AArch64 inline-assembly batches preserve reference output, including instruction
+remapping, constant operands, flags and clobber order. Batches split at labels,
+control flow, 24 instructions or scratch-register exhaustion. Reserved SIMD
+literal encodings are rejected with a trap instead of the Python decoder's
+uncaught KeyError; scratch exhaustion is bounded even for constant-only batches.
+Unported portable SIMD families fail before publishing any partial function.
+Malformed ranges, missing local labels and invalid table descriptions also fail.
+
+Tests compare complete function text and reference sets against the unchanged
+frozen `EhModule.emit_function`, including EH and assembly-batch boundaries.
+A compiled execution probe checks scalar arithmetic/branches, a real longjmp into
+a generated EH landing pad and frame cleanup; on AArch64 it also executes a
+vector addition through the emitted inline assembly. A local comparison of 19
+selected real Vanilla/Lumi functions (including subsdk1) matched byte for byte;
+this is a checkpoint comparison, not full-game validation.
+
+Remaining work includes portable SIMD/FP lowering, ordered Unicorn scanning,
+whole-module chunk/registration emission, worker contexts and production wiring.
 
 ## Frozen-reference comparison
 
@@ -133,11 +173,12 @@ For the sanitizer executable, set `BDSP_CODEGEN_TEST_BINARY` to its absolute pat
 
 1. Frozen reference, NSO loader and image parity — implemented.
 2. Initial EH/entry discovery — implemented.
-3. Full instruction classification/lifting — immediate/control/system families
-   implemented and differentially checked; remaining families, analysis fixpoint
-   and ordered Unicorn jump-table behavior pending.
-4. Exact C emission, inline ARM64 ASM and portable SIMD-C, chunking, EH frame
-   insertion and partial-build stubs — pending.
+3. Instruction classification/lifting — scalar and native AArch64 assembly families
+   implemented and differentially checked. Portable SIMD/FP lowering, analysis
+   fixpoint and ordered Unicorn jump-table behavior remain pending.
+4. Function C emission, inline ARM64 ASM batching and EH frame insertion —
+   implemented as explicit-analysis checkpoints. Whole-module chunk/registration
+   output and partial-build stubs remain pending.
 5. Native worker pool, GUI/CLI integration, stage hashes and source-matched
    packaging — pending.
 6. Complete platform/mod acceptance; remove replaced Python implementations and
@@ -154,8 +195,11 @@ See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for the LZ4 lice
   every initial boundary, landing pad and setjmp address matches the frozen oracle.
 - Linux x86_64 (Nobara): native Clang and GCC builds; synthetic compressed/plain
   images and EH analysis match the Mac results, including Unicode/spaced paths.
-- Linux ARM64 (archimedesseal): native GCC build and synthetic image/EH parity
-  passed after the user installed GCC. No game data was transferred.
+- Linux ARM64 (archimedesseal): native GCC build, synthetic image/EH parity,
+  function C-output and assembly-IR goldens pass. No game data was transferred.
+  The emitted-code execution probe needs Clang, which is not installed there.
+- Linux x86_64 additionally passes the Clang-built scalar/EH execution probe;
+  macOS ARM64 also executes the generated SIMD addition successfully.
 - CI matrix tests prepared after private-runtime assembly; no CI run dispatched.
 
 These results do not establish full native C generation, a new complete game build,

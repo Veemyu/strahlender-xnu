@@ -178,7 +178,68 @@ static const char *extend(unsigned r, unsigned option, unsigned shift) {
 static const char *offset(const char *base, int64_t displacement) {
     return cg_format("%s %s %" PRIu64, base, displacement < 0 ? "-" : "+", (uint64_t)(displacement < 0 ? -displacement : displacement));
 }
-static Instruction load_store(uint32_t w, uint64_t pc) {
+static Instruction assembly(uint32_t word, uint32_t vregs) {
+    return (Instruction){.kind = CG_ASM, .assembly = {.word = word, .vregs = vregs}};
+}
+static void asm_reg(Instruction *ins, unsigned position, unsigned r) {
+    ins->assembly.gprs[ins->assembly.gpr_count++] = (AsmRegister){position, r};
+}
+static Instruction simd_load_store(uint32_t w, uint64_t pc) {
+    unsigned rt = bits(w, 0, 5), rn = bits(w, 5, 5), rm = bits(w, 16, 5);
+    if (bits(w, 27, 3) == 3 && !bits(w, 24, 2)) {
+        unsigned opc = bits(w, 30, 2);
+        if (opc == 3) return unsupported(pc, "SIMD literal opc 3"); /* Frozen Python rejects this reserved encoding. */
+        unsigned size = (unsigned[]){2, 3, 0}[opc], o = opc == 2 ? 3u : 1u;
+        Instruction ins = assembly((size << 30) | 0x3d000000 | (o << 22) | (31u << 5) | rt, UINT32_C(1) << rt);
+        int64_t displacement = sext(bits(w, 5, 19), 19) * 4;
+        uint64_t magnitude = displacement < 0 ? (uint64_t)(-displacement) : 0;
+        bool negative = displacement < 0 && pc < magnitude;
+        ins.assembly.constants[0] = (AsmConstant){5, negative ? magnitude - pc : pc + (uint64_t)displacement, negative};
+        ins.assembly.constant_count = 1; return ins;
+    }
+    Instruction ins = assembly(w, UINT32_C(1) << rt);
+    if (!bits(w, 31, 1) && (bits(w, 24, 6) == 12 || bits(w, 24, 6) == 13)) {
+        unsigned n;
+        if (!bits(w, 24, 1)) {
+            unsigned counts[] = {4, 0, 4, 0, 3, 0, 3, 1, 2, 0, 2, 0, 0, 0, 0, 0};
+            n = counts[bits(w, 12, 4)];
+            if (!n) return unsupported(pc, "ldst multiple opcode");
+        } else n = ((bits(w, 13, 1) << 1) | bits(w, 21, 1)) + 1;
+        for (unsigned i = 0; i < n; i++) ins.assembly.vregs |= UINT32_C(1) << ((rt + i) % 32);
+        asm_reg(&ins, 5, rn);
+        if (bits(w, 23, 1) && rm != 31) asm_reg(&ins, 16, rm);
+        return ins;
+    }
+    asm_reg(&ins, 5, rn);
+    if (bits(w, 27, 3) == 5) ins.assembly.vregs |= UINT32_C(1) << bits(w, 10, 5);
+    else if (bits(w, 27, 3) == 7 && !bits(w, 24, 2) && bits(w, 21, 1) && bits(w, 10, 2) == 2 && rm != 31) asm_reg(&ins, 16, rm);
+    return ins;
+}
+static Instruction simd_instruction(uint32_t w) {
+    unsigned rd = bits(w, 0, 5), rn = bits(w, 5, 5), rm = bits(w, 16, 5), ra = bits(w, 10, 5);
+    Instruction ins = assembly(w, (UINT32_C(1) << rd) | (UINT32_C(1) << rn) | (UINT32_C(1) << rm) | (UINT32_C(1) << ra));
+    bool from_fp = false, conversion = false;
+    if ((w & 0x5f20fc00) == 0x1e200000) {
+        unsigned opcode = bits(w, 16, 3); conversion = true;
+        from_fp = opcode == 0 || opcode == 1 || opcode == 4 || opcode == 5 || opcode == 6;
+    } else if ((w & 0x5f200000) == 0x1e000000) {
+        unsigned opcode = bits(w, 16, 3); conversion = true; from_fp = opcode == 0 || opcode == 1;
+    } else if ((w & 0x9fe08400) == 0x0e000400 && !bits(w, 29, 1)) {
+        unsigned imm4 = bits(w, 11, 4);
+        if (imm4 == 1 || imm4 == 3 || imm4 == 5 || imm4 == 7) { conversion = true; from_fp = imm4 == 5 || imm4 == 7; }
+        else ins.assembly.vregs = (UINT32_C(1) << rd) | (UINT32_C(1) << rn);
+    } else if ((w & 0xbfe08c00) == 0x0e000000) {
+        ins.assembly.vregs = (UINT32_C(1) << rd) | (UINT32_C(1) << rm);
+        for (unsigned i = 0; i <= bits(w, 13, 2); i++) ins.assembly.vregs |= UINT32_C(1) << ((rn + i) % 32);
+    }
+    if (conversion) {
+        ins.assembly.vregs = UINT32_C(1) << (from_fp ? rn : rd);
+        if ((from_fp ? rd : rn) != 31) asm_reg(&ins, from_fp ? 0u : 5u, from_fp ? rd : rn);
+    }
+    ins.assembly.flags = (w & 0x5f203c00) == 0x1e202000 || (w & 0x5f200c00) == 0x1e200400 || (w & 0x5f200c00) == 0x1e200c00;
+    return ins;
+}
+static Instruction load_store(uint32_t w, uint64_t pc, bool portable) {
     unsigned rn = bits(w, 5, 5), rt = bits(w, 0, 5), rt2 = bits(w, 10, 5);
     const char *base = reg(true, rn, true);
     /* EH generator override: pair exclusives use our reservation helpers. */
@@ -190,7 +251,7 @@ static Instruction load_store(uint32_t w, uint64_t pc) {
         return op(cg_format("{ uint64_t ea = %s; uint32_t st = stxp%u(c, ea, GPTR(ea), %s, %s); %s }",
             base, width, reg(true, rt, false), reg(true, rt2, false), set(false, bits(w, 16, 5), "st", false)));
     }
-    if (bits(w, 26, 1)) return (Instruction){.kind = CG_PENDING}; /* SIMD is a separate milestone. */
+    if (bits(w, 26, 1)) return portable ? (Instruction){.kind = CG_PENDING} : simd_load_store(w, pc);
     if (bits(w, 24, 6) == 8) {
         unsigned width = 8u << bits(w, 30, 2);
         bool acquire = bits(w, 23, 1) != 0, load = bits(w, 22, 1) != 0;
@@ -348,7 +409,13 @@ static Instruction register_instruction(uint32_t w, uint64_t pc, bool portable) 
             if (!expression) return unsupported(pc, "dp1");
         } else {
             if (opcode >= 16 && opcode <= 23) {
-                if (!portable) return (Instruction){.kind = CG_PENDING}; /* Native ASM IR follows separately. */
+                if (!portable) {
+                    Instruction ins = assembly(w, 0);
+                    if (rd != 31) asm_reg(&ins, 0, rd);
+                    if (rn != 31) asm_reg(&ins, 5, rn);
+                    if (rm != 31) asm_reg(&ins, 16, rm);
+                    return ins;
+                }
                 unsigned crc_size = bits(w, 10, 2);
                 if ((crc_size == 3) != sf) return unsupported(pc, "crc size");
                 return op(set(false, rd, cg_format("%s(%s, %s, %u)", bits(w, 12, 1) ? "CRC32C" : "CRC32",
@@ -372,8 +439,8 @@ Instruction cg_lift_basic(uint32_t w, uint64_t pc, bool portable, bool has_previ
     unsigned op0 = bits(w, 25, 4);
     if ((op0 & 14) == 8) return immediate(w, pc);
     if ((op0 & 14) == 10) return control(w, pc, portable, has_previous, previous);
-    if ((op0 & 5) == 4) return load_store(w, pc);
+    if ((op0 & 5) == 4) return load_store(w, pc, portable);
     if ((op0 & 7) == 5) return register_instruction(w, pc, portable);
-    if ((op0 & 7) == 7) return (Instruction){.kind = CG_PENDING};
+    if ((op0 & 7) == 7) return portable ? (Instruction){.kind = CG_PENDING} : simd_instruction(w);
     return (Instruction){.kind = CG_TRAP, .code = cg_format("rt_udf(c, %s);", hex(pc))};
 }

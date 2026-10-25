@@ -37,8 +37,12 @@ def main():
                 ins = Insn("br", target=f"c->x[{rn}]")
             elif args.previous_word is not None and args.previous_word & 0xfffffc1f == 0x9100001f:
                 ins = Insn("br", target="c->x[30]")
-        print(json.dumps({"handled": True, "kind": ins.kind, "code": ins.code,
-                          "target": ins.target, "cond": ins.cond}))
+        record = {"handled": True, "kind": ins.kind, "code": ins.code, "target": ins.target, "cond": ins.cond}
+        if ins.asm is not None:
+            a = ins.asm
+            record["asm"] = {"word": a.word, "vregs": sorted(a.vregs), "gprs": a.gprs,
+                             "flags": a.flags, "consts": a.consts}
+        print(json.dumps(record))
 
 
 if __name__ == "__main__":
