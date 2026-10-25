@@ -13,7 +13,7 @@
 source "$(dirname "$0")/common.sh"
 T=scripts/recomp/test
 P=$W/probe
-CF="-fno-strict-aliasing -fvisibility=hidden -w -fPIC -march=x86-64-v3 -I scripts/recomp/rt -I $LAS/runtime"
+CF="-fno-strict-aliasing -fvisibility=hidden -w -fPIC $CPU_FLAGS -I scripts/recomp/rt -I $LAS/runtime"
 export CF
 mkdir -p "$P"
 
@@ -114,10 +114,10 @@ probe_bench() {
   python3 scripts/recomp/mini_link.py "$S/bench_guest.o" "$S/gbn" --base 0x7008000000 --syms "$S/empty.json" > /dev/null
   python3 scripts/recomp/eh_gen.py gen gbn "$S/gbn.nso" 0x7008000000 "$S/gen" --simd c 2>&1 | grep -E "wrote|eh_gen"
   EXTRA="" cc_all "$S/obj" "$OPT" "$S"/gen/*.c
-  clang -O2 -w -march=x86-64-v3 -I scripts/recomp/rt -I $LAS/runtime -I $T -c $T/bench_prove.c -o "$S/bench_prove.o"
+  clang -O2 -w $CPU_FLAGS -I scripts/recomp/rt -I $LAS/runtime -I $T -c $T/bench_prove.c -o "$S/bench_prove.o"
   clang -o "$S/bench_prove" "$S/bench_prove.o" "$S"/obj/*.o -lm
   off() { python3 -c "import json,sys; print(hex(json.load(open('$S/gbn.json'))['syms'][sys.argv[1]]))" "$1"; }
-  echo "Generated C with $OPT (x86 c mode), guest code aarch64 -O2, native comparison version -O2 -march=x86-64-v3"
+  echo "Generated C with $OPT (x86 c mode), guest code aarch64 -O2, native comparison version -O2 $CPU_FLAGS"
   GIMG=$S/gbn.img OFF_INT=$(off bench_int) OFF_CALLS=$(off bench_calls) OFF_FLOAT=$(off bench_float) OFF_IND=$(off bench_indirect) "$S/bench_prove"
 }
 
@@ -161,7 +161,7 @@ probe_bdsp() {   # Gate-1 runtime (scripts/recomp/rt-bdsp), Mach API via scripts
   [ -d "$RTD" ] || die "scripts/recomp/rt-bdsp is missing."
   ls "$OBJ"/*.o > /dev/null 2>&1 || die "No objects in $OBJ (run build_all.sh first)."
   mkdir -p "$O"
-  export O CF2="-O1 -g -w -fPIC -march=x86-64-v3 -Wno-error=implicit-function-declaration -I scripts/recomp/linux/compat -I scripts/recomp/rt -I $LAS/runtime -I $RTD"
+  export O CF2="-O1 -g -w -fPIC $CPU_FLAGS -Wno-error=implicit-function-declaration -I scripts/recomp/linux/compat -I scripts/recomp/rt -I $LAS/runtime -I $RTD"
   ls "$RTD"/*.c scripts/recomp/linux/compat/nvn_stub.c | xargs -P "$JOBS" -I{} bash -c 'clang $CF2 -c "{}" -o "$O/$(basename "{}" .c).o"' || die "Compilation of the runtime failed (working state of ap-recomp-3 or Mach replacement in linux/compat incomplete; see errors above). From Gate 2 (NVN/Metal) the Linux probe is no longer intended."
   clang -o "$O/bdsp_boot" "$O"/*.o "$OBJ"/*.o -lm -lpthread -ldl || die "Link failed (runtime needs symbols that do not exist under Linux)."
   bash "$RTD/mkimages.sh" > /dev/null

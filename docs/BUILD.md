@@ -213,7 +213,13 @@ Work in progress. Not playable yet. See section 6.4 for the known limits.
 
 ### 6.1 Requirements
 
-Use a Linux x86-64-v3 (AVX2) machine for the build, with a Vulkan-capable GPU and its driver.
+Use a Linux x86-64 machine with a Vulkan-capable GPU and its driver. AVX2 is optional.
+Local game builds default to `BDSP_CPU_TARGET=native`: the compiler enables the build CPU's
+supported instructions, including AVX/AVX2 where available. An older CPU builds without
+unsupported extensions. This does not guarantee compatibility with a different, older CPU.
+Set `BDSP_CPU_TARGET=portable` for the x86-64 baseline (AArch64: ARMv8-A).
+Changing CPU profiles or moving native builds between hosts invalidates generated-code and
+Vulkan object caches. Distributed installer binaries keep their portable compiler defaults.
 
 `./install-linux.sh` (see "Quick start") installs the packages below for you after you confirm; by hand, install
 them yourself. The build and check scripts (`deps.sh` and the scripts in `scripts/recomp/linux/local/`) only check and do not

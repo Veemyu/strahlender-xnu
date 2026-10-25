@@ -20,7 +20,7 @@ mkdir -p "$OBJ" logs
 FLAGS=$(cflags_x86)
 export FLAGS OBJ TIMES
 # Headers and flags are not dependencies of the individual chunks: change → full rebuild
-STAMP=$( (cat scripts/recomp/rt/cpu.h $LAS/runtime/cpu.h $LAS/runtime/simd.h $LAS/runtime/simd_fp.h 2>/dev/null; echo "$FLAGS $THRESH_O0") | sha256sum | cut -c1-16)
+STAMP=$( (cat scripts/recomp/rt/cpu.h $LAS/runtime/cpu.h $LAS/runtime/simd.h $LAS/runtime/simd_fp.h 2>/dev/null; echo "$FLAGS $THRESH_O0"; bdsp_cpu_signature clang) | sha256sum | cut -c1-16)
 if [ -f "$OBJ/.stamp" ] && [ "$(cat "$OBJ/.stamp")" != "$STAMP" ]; then echo "Header or flags changed: full rebuild"; rm -f "$OBJ"/*.o "$OBJ"/*.so; fi
 echo "$STAMP" > "$OBJ/.stamp"
 

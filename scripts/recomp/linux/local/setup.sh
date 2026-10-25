@@ -12,7 +12,7 @@ command -v ccache >/dev/null || echo "NOTE: ccache is missing (optional)."
 echo "== Tools"
 { uname -srm; clang --version | head -1; python3 --version; nproc; free -g | sed -n 2p; df -h "$R" | tail -1; } 2>&1
 echo "AArch64 target of clang: $(clang --target=aarch64-linux-gnu -x c -c /dev/null -o /dev/null 2>&1 && echo ok)"
-echo "x86-64-v3 (AVX2/FMA): $(grep -o -w -E 'avx2|fma|bmi2' /proc/cpuinfo | sort -u | tr '\n' ' ')"
+echo "Local game CPU target: $CPU_FLAGS (${BDSP_CPU_TARGET:-native})"
 echo "== Python packages"
 python3 -c "import lz4, capstone, unicorn; from importlib.metadata import version as v; print('lz4', v('lz4'), 'capstone', v('capstone'), 'unicorn', v('unicorn'))" \
   || die "Install the Python build dependencies yourself: lz4, capstone, unicorn. See docs/BUILD.md."

@@ -20,7 +20,6 @@ step lx_st_system
 if [ -z "${BDSP_INSTALL_FAKE_OS:-}" ]; then
   [ "$(uname -s)" = Linux ] || die lx_not_linux
   [ "$(uname -m)" = x86_64 ] || die lx_not_x86
-  for f in avx2 fma bmi2; do grep -qw "$f" /proc/cpuinfo || die lx_cpu_flag "$f"; done
 fi
 ok lx_cpu_ok
 
