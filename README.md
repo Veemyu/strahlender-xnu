@@ -8,7 +8,8 @@ The repository contains **no game data**, no keys, no save files, and no generat
 
 ## Building and documentation
 
-- Quick start: `./install.command` (macOS, double-click in the Finder) or `./install-linux.sh` (Linux) checks the tools, asks for your game files and builds.
+- GUI installer: [macOS apps and Linux AppImages](https://github.com/Veemyu/strahlender-xnu/releases) guide you through keys, game files and building. Python is included. Initial downloads are development builds; see [installer details](installer/README.md).
+- CLI quick start: `./install.command` (macOS, double-click in the Finder) or `./install-linux.sh` (Linux) checks the tools, asks for your game files and builds.
 - Build guide: [docs/BUILD.md](docs/BUILD.md) (German version: [docs/BUILD.de.md](docs/BUILD.de.md))
 - More documents are in [docs/](docs/): start with [docs/README.md](docs/README.md), for example `docs/architecture.md`, `docs/recomp-macapp.md`, `docs/recomp-linux.md` and `docs/changelog.md`.
 

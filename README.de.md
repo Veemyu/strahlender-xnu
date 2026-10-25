@@ -8,7 +8,8 @@ Das Repository enthält **keine Spieldaten**, keine Schlüssel, keine Speicherst
 
 ## Bauen und Dokumentation
 
-- Schnellstart: `./install.command` (macOS, Doppelklick im Finder) oder `./install-linux.sh` (Linux) prüft die Werkzeuge, fragt nach deinen Spieldateien und baut.
+- GUI-Installer: [macOS-Apps und Linux-AppImages](https://github.com/Veemyu/strahlender-xnu/releases) führen durch Schlüssel, Spieldateien und den Build. Python ist enthalten. Die ersten Downloads sind Entwicklungsversionen; siehe [Installer-Details](installer/README.md).
+- CLI-Schnellstart: `./install.command` (macOS, Doppelklick im Finder) oder `./install-linux.sh` (Linux) prüft die Werkzeuge, fragt nach deinen Spieldateien und baut.
 - Bauanleitung: [docs/BUILD.de.md](docs/BUILD.de.md) (englische Fassung: [docs/BUILD.md](docs/BUILD.md))
 - Weitere Dokumente liegen im Ordner [docs/](docs/) (nur Englisch): Einstieg in [docs/README.md](docs/README.md), zum Beispiel `docs/architecture.md`, `docs/recomp-macapp.md`, `docs/recomp-linux.md` und `docs/changelog.md`.
 

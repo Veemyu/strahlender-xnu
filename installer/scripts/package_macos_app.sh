@@ -16,7 +16,8 @@ if [[ ! -f "$PRIVATE_RUNTIME/runtime.json" || ! -x "$PRIVATE_RUNTIME/python/bin/
   exit 1
 fi
 
-cargo build --locked --release --bins --manifest-path "$HERE/Cargo.toml"
+"$PRIVATE_RUNTIME/python/bin/python3" -I -B -c 'import json,sys; from pathlib import Path; assert json.loads((Path(sys.executable).resolve().parents[2]/"runtime.json").read_text())["profile"] == "shaders", "Full shader runtime required"'
+RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME=/build --remap-path-prefix=$ROOT=." cargo build --locked --release --bins --manifest-path "$HERE/Cargo.toml"
 
 APP="$ROOT/work/installer-packages/macos/Strahlender Installer.app"
 CONTENTS="$APP/Contents"
@@ -26,6 +27,12 @@ rm -rf "$APP"
 mkdir -p "$MACOS" "$RESOURCES"
 cp "$HERE/target/release/strahlender-xnu-installer" "$MACOS/strahlender-xnu-installer"
 cp "$HERE/target/release/ips_patch" "$MACOS/ips_patch"
+cp "$HERE/target/release/installer_update" "$MACOS/installer_update"
+cp "$HERE/target/release/installer_setup" "$MACOS/installer_setup"
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$RESOURCES/THIRD_PARTY_NOTICES.md"
+cp -R "$HERE/assets/lucide" "$RESOURCES/lucide"
+cp "$HERE/assets/FIRA-LICENSE" "$HERE/assets/OCTICONS-LICENSE" "$RESOURCES/"
+cp "$HERE/vendor/iced_winit/LICENSE" "$RESOURCES/ICED-WINIT-LICENSE"
 ditto "$PRIVATE_RUNTIME" "$RESOURCES/runtime"
 chmod 755 "$MACOS/strahlender-xnu-installer" "$MACOS/ips_patch"
 
@@ -50,6 +57,13 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 PLIST
 
 plutil -lint "$CONTENTS/Info.plist"
+VERSION="$("$PRIVATE_RUNTIME/python/bin/python3" -I -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1],"rb"))["package"]["version"])' "$HERE/Cargo.toml")"
+plutil -replace CFBundleShortVersionString -string "$VERSION" "$CONTENTS/Info.plist"
+plutil -replace CFBundleVersion -string "$VERSION" "$CONTENTS/Info.plist"
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
+ditto -c -k --keepParent "$APP" "$ROOT/work/installer-packages/macos/installer-macos-$RUNTIME_ARCH.zip"
+tar -czf "$ROOT/work/installer-packages/macos/installer-macos-$RUNTIME_ARCH.tar.gz" -C "$(dirname "$APP")" "$(basename "$APP")"
+cd "$ROOT/work/installer-packages/macos"
+shasum -a 256 "installer-macos-$RUNTIME_ARCH.zip" "installer-macos-$RUNTIME_ARCH.tar.gz" > SHA256SUMS
 printf 'Packaged %s (%s)\n' "$APP" "$ARCH"

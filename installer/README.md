@@ -1,8 +1,20 @@
 # strahlender · Installer
 
-Rust/Iced UI prototype. Flat dark theme by default, manually selectable light
+Cross-platform Rust/Iced installer. Download the development builds from
+[GitHub Releases](https://github.com/Veemyu/strahlender-xnu/releases): a macOS app
+or Linux AppImage for aarch64 and x86_64. End users do not need Rust or Python to
+open the installer. Building the game requires your own prod.keys, base game,
+optional update and the platform tools listed by guided setup. Full native Mac
+and Linux GUI builds have passed desktop testing; fresh-system dependency
+installation remains under validation. macOS downloads are ad-hoc signed and
+not notarized. See [release controls](docs/releases.md) for deliberate nightly
+and stable publication.
+
+Flat dark theme by default, manually selectable light
 theme, bundled Fira Sans, a compact 440 × 480 desktop window, rounded grayscale surfaces and separate keys → game → update views. All hosts start with target selection. Mac offers Mac and a combined iPad / iPhone target; Windows and Linux additionally offer their native desktop target. Android is visible as a disabled future placeholder. Native Mac → iPhone/iPad build and device deployment are connected; Apple builds from non-Mac hosts remain planned backend work.
-A pinned, segmented step strip shows the current phase without tabs. Longer phases have wider slots and simulated progress in this preview.
+A pinned, segmented step strip shows the current phase without tabs. Longer
+phases have wider slots and live generator/compiler counters. Simulation is
+available explicitly with `--demo`; real builds use backend progress.
 Progress uses a damped spring at the display refresh rate; it never runs ahead
 of the reported value.
 All Cargo files and build artifacts stay in this directory.
@@ -46,12 +58,13 @@ session log. This development connection uses `python3`; it does not install
 Python or change files. Native Mac and Linux builds, plus Mac-hosted iPhone/iPad builds, stream real
 extract, generator, compile, packaging and installation phases. Other host/target
 combinations remain previews until their backend support is added.
-The released installer will use its own verified Python runtime instead of
-requiring system Python.
+Packaged installers use their own verified Python runtime instead of requiring
+system Python.
 The first private runtime assembly and its tested host matrix are documented
 in [runtime/README.md](runtime/README.md). A development build uses that runtime
 when `BDSP_INSTALLER_RUNTIME` points to its verified directory. Release builds
-will require it; automatic first-run provisioning is still pending.
+require it. Release preparation bundles the complete shader profile; end users
+never install Python packages or invoke pip.
 
 ## Build and open
 
@@ -71,8 +84,9 @@ Build a locally signed macOS `.app` for visual and startup checks with
 `work/installer-packages/macos/Strahlender Installer.app` and includes both the
 GUI, native `ips_patch` helper and the verified private Python runtime for the
 current Mac architecture. The bundle finds that runtime beside its executable.
-This remains a development bundle: the build backend still needs the source
-checkout, so end-to-end builds must be started from the checkout.
+The backend downloads current `main` into an isolated per-build workspace.
+For local backend development only, set `BDSP_INSTALLER_DEV_CHECKOUT=1` in a
+debug build to use the current checkout. Release builds ignore that switch.
 
 Simulate host-specific target choices locally:
 
@@ -174,24 +188,32 @@ and Fira Sans is embedded by Iced. No CDN, system icon theme or emoji is require
 See [asset sources and licenses](assets/README.md); `--licenses` prints the bundled
 asset license texts offline.
 
-The planned `Installer native build matrix` workflow will run formatting, Rust
-tests and native GUI/helper builds on macOS, Linux and Windows for both x86_64
-and aarch64. Development smoke artifacts will not include the private Python
-runtime or platform installer packaging and will not be end-user releases.
-Release packaging will follow after all runtime targets and the Linux/Windows
-package formats have native verification.
+The manual `Installer packages` workflow prepares macOS and Linux packages on
+native x86_64 and aarch64 runners. It includes the complete private Python
+runtime and does not publish releases. Windows packaging is follow-up work.
+See [release preparation and verification](docs/releases.md).
 
-The released GUI will bundle its matching UI/backend bridge, native helpers,
-assets and hash-verified private Python runtime. When the user starts a build,
-it will fetch the current `main` branch source into the app's managed cache and
-show the resolved commit in the build log. The installer itself will check
-GitHub Releases for updates and offer the latest installer release. Source
-updates always follow `main`; they are separate from installer self-updates.
-The current development prototype still runs from a local source checkout, so
-remote source fetching and release self-updates remain to be implemented.
+Every build resolves current `main` once, downloads that commit, and keeps the
+revision fixed throughout the build. The backend JSONL protocol is checked;
+an incompatible backend stops with an explanation. Network failure never silently
+selects stale source. Each run owns its generated files; old workspaces are retained.
 
-End users will download packaged installers from GitHub Releases once the full
-native packaging and signing matrix is verified.
+When built with `BDSP_INSTALLER_UPDATE_PUBLIC_KEY`, the GUI checks stable GitHub
+Releases, verifies separately signed update metadata, and offers an update.
+Download and restart require confirmation. Updates cannot interrupt a build.
+Without a configured key, update checking is disabled. Public macOS updates
+require Apple signing/notarization; current packages are development artifacts.
+
+The setup view explains missing tools and offers guided terminal installation
+using Homebrew, apt, dnf or pacman, followed by a fresh check. The installer never
+reads administrator passwords. `installer_setup` exposes the same Rust dependency
+catalog to CLI users; `--install` explicitly opens guided setup. The older shell
+installers retain their existing independent checks for compatibility.
+
+End users download packaged installers from GitHub Releases. The manual workflow
+builds all four macOS/Linux architectures; a regular branch push publishes
+nothing. Initial nightlies remain development builds while fresh-system and
+downloaded-package acceptance coverage is completed.
 
 Game region metadata is not wired to the prototype yet. Original icons are
 extracted during a real build through `scripts/recomp/app/game_icons.py`, including its existing
