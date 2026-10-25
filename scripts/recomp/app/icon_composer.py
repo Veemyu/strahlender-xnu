@@ -7,7 +7,6 @@ import shutil
 from pathlib import Path
 
 import game_icons
-from icon_artwork import background, square, superellipse
 
 STYLE = "liquid-glass-full-bleed-v1"
 
@@ -54,6 +53,8 @@ def compile_icons(documents, primary, output, platform):
 
 
 def document(data, specular=True):
+    from icon_artwork import background, square
+
     color = background(square(data))
     return {
         "fill": {"solid": "srgb:" + ",".join(f"{c / 255:.6f}" for c in color) + ",1.000000"},
@@ -72,6 +73,8 @@ def document(data, specular=True):
 
 def foreground(data, size=1024, layout="inset"):
     """Create an inset or full-bleed source, without baked lighting or shadows."""
+    from icon_artwork import square, superellipse
+
     Image = game_icons.image_module()[0]
     if layout == "full-bleed":
         # The system supplies the outer mask; leave every source corner opaque.

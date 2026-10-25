@@ -95,7 +95,7 @@ jobs:
           cargo +1.88 fmt --manifest-path installer/Cargo.toml -- --check
           cargo +1.88 test --locked --manifest-path installer/Cargo.toml
           cargo +1.88 clippy --locked --manifest-path installer/Cargo.toml -- -D warnings
-          python3 -m unittest scripts.tests.test_installer_driver scripts.tests.test_installer_release_runtime scripts.tests.test_installer_runtime_sources scripts.tests.test_installer_release
+          python3 -m unittest scripts.tests.test_installer_driver scripts.tests.test_installer_release_runtime scripts.tests.test_installer_runtime_sources scripts.tests.test_installer_release scripts.tests.test_installer_icons
       - name: Build pure Python shader dependency from pinned source
         run: python3 installer/scripts/build_source_wheel.py tpk_ar --fetch-source --output work/installer-runtime-release/${{ matrix.target }}/wheels
       - name: Build missing Linux ARM64 wheel from pinned source
