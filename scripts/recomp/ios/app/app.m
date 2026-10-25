@@ -578,6 +578,7 @@ static void *RuntimeThread(void *arg) {
     [NSNotificationCenter.defaultCenter addObserverForName:GCControllerDidDisconnectNotification object:nil queue:NSOperationQueue.mainQueue
                                                 usingBlock:^(NSNotification *n) {
         atomic_store(&g_pad_mask, 0);
+        for (int i = 0; i < 4; i++) atomic_store(&g_ext_stick[i], 0);   // a stick held while the pad went away would stay deflected
         publish_buttons();
         GameView *v = gView;
         v.overlayHidden = GCController.controllers.count > 0;

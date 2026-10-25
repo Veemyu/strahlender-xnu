@@ -1567,7 +1567,10 @@ void ui_window_init(void) {
     // (no SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS here: on macOS reading controllers in the background opens them
     // as HID devices, for which the system asks for Input Monitoring - "receive keystrokes from any application")
     settings_load();
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) FATAL("SDL_Init: %s\n", SDL_GetError());
+    // Controllers belong to GameController.framework here (app/app_ui.m). SDL's gamepad subsystem would open the same devices through HIDAPI and
+    // fight with Apple's driver over them, as Ryujinx does, so the window gets the video subsystem only and SDL's HIDAPI joystick drivers stay off.
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
+    if (!SDL_Init(SDL_INIT_VIDEO)) FATAL("SDL_Init: %s\n", SDL_GetError());
     int win_w = 1280, win_h = 720;
     if (getenv("BDSP_WINDOW")) sscanf(getenv("BDSP_WINDOW"), "%dx%d", &win_w, &win_h);
     // BDSP_HIDDEN=1: never shown (automated test runs render off screen without taking the user's focus)
