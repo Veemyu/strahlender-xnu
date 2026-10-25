@@ -86,6 +86,12 @@ CATALOG = [
       notes="Single header, MIT or public domain at the user's choice. Rasterizes the user's own firmware fonts for the on-screen keyboard; "
             "not meant for untrusted font files."),
 
+    C("lz4-native-codegen", "LZ4 (native generator)", "1.9.4",
+      "pkg:github/lz4/lz4@v1.9.4", "BSD-2-Clause", BUILD, TRACKED,
+      ["scripts/recomp/native-generator/vendor/lz4/LICENSE", "scripts/recomp/native-generator/vendor/lz4/source.json"],
+      download="https://github.com/lz4/lz4/tree/v1.9.4", category="vendored-source",
+      notes="Unchanged LZ4 C block decoder source, compiled into the standalone native generator. Per-file SHA-256 values are in source.json."),
+
     # Assets bundled into the installer (uncommitted installer/ directory).
     C("octicons-mark-github-16", "GitHub Octicons: mark-github-16", "unversioned (retrieved 2026-10-23)",
       "pkg:generic/octicons-mark-github-16", "MIT", SHIPPED, TRACKED,
