@@ -4,6 +4,11 @@ These assets are embedded in the executable during compilation. The installed
 application never downloads UI icons, fonts, scripts or styles from a CDN.
 No system icon theme, emoji renderer or installed icon font is required.
 
+- `brand/icon.svg`: approved installer identity, color artwork on a white rounded
+  tile. Rust renders it at build time for Linux and window icons; native Apple
+  tools add the macOS material treatment. See `brand/README.md` for provenance
+  and platform details. No alternate installer branding is shipped.
+
 - `github.svg`: GitHub's Primer Octicons `mark-github-16.svg`, retrieved from
   https://github.com/primer/octicons/blob/main/icons/mark-github-16.svg on
   2026-10-23. License: `OCTICONS-LICENSE` (MIT).
@@ -36,5 +41,5 @@ Third-party asset licenses are embedded as well and can be read with `--licenses
 Release artifacts must include everything needed to render the installer without
 a network connection. Backend downloads (source/toolchains) are separate,
 explicit installation activities. End users download prebuilt installers; they
-do not build Rust or fetch UI assets. Release automation is future work; do not
-add GitHub Actions workflows during the current UI development phase.
+do not build Rust or fetch UI assets. Installer packaging and explicit
+publication controls are documented in `../docs/releases.md`.

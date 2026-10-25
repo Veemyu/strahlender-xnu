@@ -81,6 +81,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libvulkan-dev squashfs-tools
+      - name: Select Xcode for native installer icons
+        if: runner.os == 'macOS'
+        run: |
+          XCODE_DEVELOPER=/Applications/Xcode_26.3.app/Contents/Developer
+          test -d "$XCODE_DEVELOPER" || { echo 'Xcode 26.3 is required for installer Glass icons'; exit 1; }
+          echo "DEVELOPER_DIR=$XCODE_DEVELOPER" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$XCODE_DEVELOPER" xcodebuild -version
       - name: Prepare Rust
         run: rustup toolchain install 1.88 --profile minimal --component rustfmt --component clippy
       - name: Validate native code
@@ -117,7 +124,13 @@ jobs:
           if [[ "$RUNNER_OS" == macOS ]]; then
             "$GITHUB_WORKSPACE/work/installer-packages/macos/Strahlender Installer.app/Contents/MacOS/strahlender-xnu-installer" --check-runtime
           else
-            "$GITHUB_WORKSPACE/work/installer-packages/linux-$(uname -m)/Strahlender.AppDir/AppRun" --check-runtime
+            APPDIR="$GITHUB_WORKSPACE/work/installer-packages/linux-$(uname -m)/Strahlender.AppDir"
+            cmp "$GITHUB_WORKSPACE/installer/assets/brand/icon.svg" "$APPDIR/strahlender.svg"
+            test -s "$APPDIR/.DirIcon"
+            for size in 16 32 48 64 128 256 512 1024; do
+              test -s "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/strahlender.png"
+            done
+            "$APPDIR/AppRun" --check-runtime
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -179,6 +192,11 @@ jobs:
             lipo "$APP/Contents/MacOS/$binary" -verify_arch x86_64
           done
           codesign --verify --deep --strict "$APP"
+          test "$(plutil -extract CFBundleIconName raw -o - "$APP/Contents/Info.plist")" = Installer
+          test "$(plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Info.plist")" = 12.0
+          for resource in Installer.icns Assets.car installer-icon.svg; do
+            test -s "$APP/Contents/Resources/$resource"
+          done
           cd "$RUNNER_TEMP"
           env -i HOME="$HOME" PATH=/usr/bin:/bin "$APP/Contents/MacOS/strahlender-xnu-installer" --check-runtime
   publish:

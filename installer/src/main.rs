@@ -76,6 +76,19 @@ fn main() -> iced::Result {
     .window(iced::window::Settings {
         size: iced::Size::new(window_layout::WIDTH, window_layout::HEIGHT),
         resizable: false,
+        // macOS uses the app bundle's native icon, including Liquid Glass.
+        icon: if cfg!(target_os = "macos") {
+            None
+        } else {
+            Some(
+                iced::window::icon::from_rgba(
+                    include_bytes!(concat!(env!("OUT_DIR"), "/brand/64.rgba")).to_vec(),
+                    64,
+                    64,
+                )
+                .expect("Build-time installer icon has valid dimensions"),
+            )
+        },
         ..Default::default()
     })
     .default_font(iced::Font::with_name("Fira Sans"))

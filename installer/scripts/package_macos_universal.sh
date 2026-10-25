@@ -26,13 +26,21 @@ ditto -x -k "$ARM_ZIP" "$STAGE/arm"
 ditto -x -k "$INTEL_ZIP" "$STAGE/intel"
 ARM_APP="$STAGE/arm/Strahlender Installer.app"
 INTEL_APP="$STAGE/intel/Strahlender Installer.app"
-for key in CFBundleIdentifier CFBundleShortVersionString CFBundleVersion; do
+for key in CFBundleIdentifier CFBundleShortVersionString CFBundleVersion CFBundleIconFile CFBundleIconName; do
   [[ "$(plutil -extract "$key" raw -o - "$ARM_APP/Contents/Info.plist")" == \
      "$(plutil -extract "$key" raw -o - "$INTEL_APP/Contents/Info.plist")" ]] || {
     echo "Native installer bundle metadata differs: $key" >&2; exit 1;
   }
 done
 cmp "$ARM_APP/Contents/Resources/installer-revision" "$INTEL_APP/Contents/Resources/installer-revision"
+cmp "$ARM_APP/Contents/Resources/installer-icon.svg" "$INTEL_APP/Contents/Resources/installer-icon.svg"
+for native_app in "$ARM_APP" "$INTEL_APP"; do
+  for icon_resource in Installer.icns Assets.car installer-icon.svg; do
+    [[ -s "$native_app/Contents/Resources/$icon_resource" ]] || {
+      echo "Missing installer icon resource: $icon_resource" >&2; exit 1;
+    }
+  done
+done
 for pair in "arm macos-aarch64" "intel macos-x86_64"; do
   read -r side target <<< "$pair"
   marker="$STAGE/$side/Strahlender Installer.app/Contents/Resources/runtime/runtime.json"

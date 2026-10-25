@@ -29,7 +29,6 @@ cp "$ROOT/THIRD_PARTY_NOTICES.md" "$HERE/assets/FIRA-LICENSE" "$HERE/assets/OCTI
 cp "$HERE/vendor/iced_winit/LICENSE" "$APPDIR/usr/Resources/ICED-WINIT-LICENSE"
 cp -R "$HERE/assets/lucide" "$APPDIR/usr/Resources/lucide"
 cp -a "$PRIVATE_RUNTIME" "$APPDIR/usr/Resources/runtime"
-cp "$HERE/assets/lucide/monitor.svg" "$APPDIR/strahlender.svg"
 cat > "$APPDIR/strahlender.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -46,6 +45,18 @@ exec "$APPDIR/usr/bin/strahlender-xnu-installer" "$@"
 LAUNCHER
 chmod 755 "$APPDIR/AppRun"
 fi
+ICON_STAGE="$OUTPUT/icons"
+"$HERE/target/release/installer_icons" --output "$ICON_STAGE"
+cp "$ICON_STAGE/icon.svg" "$APPDIR/strahlender.svg"
+cp "$ICON_STAGE/256.png" "$APPDIR/.DirIcon"
+for size in 16 32 48 64 128 256 512 1024; do
+  ICON_DIR="$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps"
+  mkdir -p "$ICON_DIR"
+  cp "$ICON_STAGE/$size.png" "$ICON_DIR/strahlender.png"
+done
+mkdir -p "$APPDIR/usr/share/icons/hicolor/scalable/apps" "$APPDIR/usr/share/applications"
+cp "$ICON_STAGE/icon.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/strahlender.svg"
+cp "$APPDIR/strahlender.desktop" "$APPDIR/usr/share/applications/strahlender.desktop"
 TOOL="$OUTPUT/tools/appimagetool-$ARCH.AppImage"
 RUNTIME="$OUTPUT/tools/runtime-$ARCH"
 fetch_verified() {
