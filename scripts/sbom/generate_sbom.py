@@ -79,6 +79,13 @@ CATALOG = [
       notes="Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and "
             "third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included."),
 
+    C("stb-truetype", "stb_truetype (as shipped by Dear ImGui; on-screen keyboard text)", "1.26",
+      "pkg:github/nothings/stb@stb_truetype-1.26", "MIT OR Unlicense", SHIPPED, TRACKED,
+      ["scripts/recomp/rt-bdsp/third_party/stb_truetype.h", "scripts/recomp/rt-bdsp/NOTICE.md", "scripts/recomp/rt-bdsp/NOTICE.de.md"],
+      download="https://github.com/nothings/stb", copyright_text="Copyright (c) 2017 Sean Barrett", category="vendored-source",
+      notes="Single header, MIT or public domain at the user's choice. Rasterizes the user's own firmware fonts for the on-screen keyboard; "
+            "not meant for untrusted font files."),
+
     # Assets bundled into the installer (uncommitted installer/ directory).
     C("octicons-mark-github-16", "GitHub Octicons: mark-github-16", "unversioned (retrieved 2026-10-23)",
       "pkg:generic/octicons-mark-github-16", "MIT", SHIPPED, TRACKED,
