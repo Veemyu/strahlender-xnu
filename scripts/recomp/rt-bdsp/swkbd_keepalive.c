@@ -1,3 +1,6 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #include "swkbd_keepalive.h"
 #include "swkbd_ui.h"
 
@@ -15,7 +18,11 @@ static const SwkbdKeepalive *g_k;
 static void *run(void *arg) {
     (void)arg;
     const SwkbdKeepalive *k = g_k;
+#if defined(__APPLE__)
     pthread_setname_np("swkbd-present");
+#elif defined(__linux__)
+    pthread_setname_np(pthread_self(), "swkbd-present");
+#endif
     unsigned seen = swkbd_ui_revision() - 1;
     uint64_t last = 0;
     for (;;) {
