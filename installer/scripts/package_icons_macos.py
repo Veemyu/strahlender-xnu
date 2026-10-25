@@ -45,7 +45,7 @@ def generate(artwork, output, scratch):
     bundle = scratch / "Installer.icon"
     (bundle / "Assets").mkdir(parents=True)
     shutil.copyfile(artwork / "foreground.png", bundle / "Assets/artwork.png")
-    # Match the BDSP material settings, with our white surface kept separate.
+    # Keep the brand artwork flat; Apple owns the outer white surface and mask.
     white = {"solid": "srgb:1.000000,1.000000,1.000000,1.000000"}
     document = {
         # Prevent automatic dark backgrounds from obscuring the charcoal artwork.
@@ -53,11 +53,12 @@ def generate(artwork, output, scratch):
         "groups": [{
             "name": "Installer artwork",
             "layers": [{"image-name": "artwork.png", "name": "Vee and installation mark",
+                        "glass": False,
                         "position": {"scale": 1, "translation-in-points": [0, 0]}}],
-            "specular": True,
+            "specular": False,
             "blur-material": 0,
             "translucency": {"enabled": False, "value": 0},
-            "shadow": {"kind": "neutral", "opacity": 0.15},
+            "shadow": {"kind": "none", "opacity": 0},
         }],
         "supported-platforms": {"squares": "shared"},
     }

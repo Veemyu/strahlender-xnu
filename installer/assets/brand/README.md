@@ -28,9 +28,10 @@ locally with the same Apple tool integration as the game. The reviewed binaries
 in `macos/` are versioned, so CI does not need to run the native icon compiler.
 Packaging verifies their checksums and the hash of the approved SVG before use.
 Apple supplies the native
-outer mask and lighting; the foreground input is transparent, without a second
-rounded tile. The background stays explicitly white in default and dark
-appearances, and the material settings match BDSP. User-selected tinted rendering
+outer mask and surface; the foreground input is transparent, without a second
+rounded tile. The Vee and installation mark opt out of Liquid Glass, specular
+highlights and shadows, so their inner contours stay flat. The background stays
+explicitly white in default and dark appearances. User-selected tinted rendering
 remains controlled by the OS.
 
 Generated PNGs, `.icon` documents and compiler scratch output live under Cargo's
