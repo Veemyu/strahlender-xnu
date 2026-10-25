@@ -26,6 +26,8 @@ pub enum Appearance {
 struct Preferences {
     #[serde(default)]
     appearance: Appearance,
+    #[serde(default)]
+    portable_cpu: bool,
     #[serde(default, with = "stored_path")]
     keys_path: Option<PathBuf>,
     #[serde(default, with = "stored_path")]
@@ -86,6 +88,16 @@ mod stored_path {
 fn path() -> Option<PathBuf> {
     ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
         .map(|dirs| dirs.config_dir().join("preferences.json"))
+}
+
+pub fn portable_cpu() -> bool {
+    load_preferences().portable_cpu
+}
+
+pub fn save_portable_cpu(portable: bool) -> io::Result<()> {
+    let mut preferences = load_preferences();
+    preferences.portable_cpu = portable;
+    write(preferences)
 }
 
 pub fn load() -> Appearance {

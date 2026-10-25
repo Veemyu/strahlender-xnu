@@ -91,6 +91,7 @@ pub enum Message {
     RepositoryOpened(Result<(), ()>),
     ToggleTheme,
     SelectTarget(InstallTarget),
+    OptimizeCpu(bool),
     AnimationFrame(Instant),
     #[cfg(target_os = "macos")]
     LayoutApplied,
@@ -179,6 +180,7 @@ pub struct Installer {
     log: Vec<String>,
     demo: bool,
     target: InstallTarget,
+    portable_cpu: bool,
     host: Platform,
     simulated_platform: bool,
     motion: crate::motion::ProgressMotion,
@@ -306,6 +308,7 @@ impl Installer {
         let capture = options
             .capture
             .map(|path| Capture::new(path, options.scenes));
+        let portable_cpu = capture.is_none() && preferences::portable_cpu();
         let mut app = Self {
             appearance: if capture.is_some() {
                 Appearance::Dark
@@ -342,6 +345,7 @@ impl Installer {
             log: Vec::new(),
             demo,
             target: InstallTarget::native(host),
+            portable_cpu,
             host,
             simulated_platform: options.platform.is_some(),
             motion: crate::motion::ProgressMotion::default(),
@@ -624,6 +628,14 @@ impl Installer {
                 self.selected_mod = None;
                 self.mods_scan_id += 1;
                 self.mods_scanning = false;
+            }
+            Message::OptimizeCpu(enabled)
+                if self.page == Page::Review && self.target == InstallTarget::Linux =>
+            {
+                self.portable_cpu = !enabled;
+                if !self.demo && self.capture.is_none() {
+                    let _ = preferences::save_portable_cpu(self.portable_cpu);
+                }
             }
             Message::AnimationFrame(now) if self.page == Page::Progress => {
                 let dt = self
@@ -1105,6 +1117,7 @@ impl Installer {
                             self.selected_mod.clone(),
                             crate::backend::BuildRequest {
                                 target,
+                                portable_cpu: self.portable_cpu,
                                 base: base.path.clone(),
                                 prod_keys: keys.path.clone(),
                                 update: self.update.as_ref().map(|source| source.path.clone()),
@@ -1464,6 +1477,7 @@ impl Installer {
     fn capture_scenario(&mut self) -> Task<Message> {
         let index = self.capture.as_ref().expect("capture enabled").index;
         self.appearance = Appearance::Dark;
+        self.portable_cpu = false;
         let scenario = self.capture.as_ref().expect("capture enabled").scenes[index];
         self.base = None;
         self.update = None;
@@ -1608,6 +1622,10 @@ impl Installer {
                     .push("002 [BACKEND] Next step: Free up disk space before continuing.".into());
             }
             "review" | "demo-review" => self.page = Page::Review,
+            "review-portable" => {
+                self.page = Page::Review;
+                self.portable_cpu = true;
+            }
             "review-skip-mods" => {
                 self.page = Page::Review;
                 self.mods_skipped = true;
@@ -1722,6 +1740,27 @@ fn compact_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpu_choice_is_editable_only_in_linux_review() {
+        let (mut app, _) = Installer::new();
+        app.demo = true;
+        app.target = InstallTarget::Linux;
+        app.page = Page::Review;
+        app.portable_cpu = false;
+        let _ = app.update(Message::OptimizeCpu(false));
+        assert!(app.portable_cpu);
+        app.page = Page::Progress;
+        let _ = app.update(Message::OptimizeCpu(true));
+        assert!(app.portable_cpu);
+        app.page = Page::Review;
+        app.target = InstallTarget::Mac;
+        let _ = app.update(Message::OptimizeCpu(true));
+        assert!(app.portable_cpu);
+        app.target = InstallTarget::Linux;
+        let _ = app.update(Message::OptimizeCpu(true));
+        assert!(!app.portable_cpu);
+    }
 
     #[test]
     fn backend_log_paths_hide_the_home_directory() {

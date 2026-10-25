@@ -81,11 +81,24 @@ enum ProtocolEvent {
 
 pub struct BuildRequest {
     pub target: &'static str,
+    pub portable_cpu: bool,
     pub base: PathBuf,
     pub prod_keys: PathBuf,
     pub update: Option<PathBuf>,
     pub mod_root: Option<PathBuf>,
     pub mod_name: Option<String>,
+}
+
+fn set_cpu_target(command: &mut Command, target: &str, portable: bool) {
+    // Inherited shell state must not override the UI, including Apple cross targets.
+    if target == "linux" {
+        command.env(
+            "BDSP_CPU_TARGET",
+            if portable { "portable" } else { "native" },
+        );
+    } else {
+        command.env_remove("BDSP_CPU_TARGET");
+    }
 }
 
 fn ips_helper() -> Option<PathBuf> {
@@ -353,12 +366,14 @@ fn run_driver(
         match action {
             Action::Build(BuildRequest {
                 target,
+                portable_cpu,
                 base,
                 prod_keys,
                 update,
                 mod_root,
                 mod_name,
             }) => {
+                set_cpu_target(&mut command, target, portable_cpu);
                 command
                     .arg("build")
                     .arg("--root")
@@ -572,7 +587,30 @@ fn run_driver(
 
 #[cfg(test)]
 mod tests {
-    use super::ProtocolEvent;
+    use super::{ProtocolEvent, set_cpu_target};
+    use tokio::process::Command;
+
+    #[test]
+    fn cpu_choice_reaches_linux_and_does_not_leak_to_apple_builds() {
+        for (target, portable, expected) in [
+            ("linux", false, Some("native")),
+            ("linux", true, Some("portable")),
+            ("macos", true, None),
+            ("ios", false, None),
+        ] {
+            let mut command = Command::new("unused");
+            command.env("BDSP_CPU_TARGET", "inherited");
+            set_cpu_target(&mut command, target, portable);
+            let actual = command
+                .as_std()
+                .get_envs()
+                .find(|(key, _)| *key == "BDSP_CPU_TARGET")
+                .unwrap()
+                .1
+                .and_then(|value| value.to_str());
+            assert_eq!(actual, expected);
+        }
+    }
 
     #[test]
     fn private_runtime_requires_matching_host_and_python_marker() {

@@ -10,7 +10,7 @@ use crate::{
 };
 use iced::widget::{
     button, column, container, mouse_area, progress_bar, row, scrollable, space, stack, text,
-    tooltip,
+    toggler, tooltip,
 };
 use iced::{Center, Element, Fill, Size, Task, window};
 
@@ -713,21 +713,25 @@ impl Installer {
                 self.language.t(L::Keys),
                 self.keys.as_ref().map(Source::name).unwrap_or_default()
             ),
-            self.summary(
-                self.language.t(L::Computer),
-                format!(
-                    "{} · {}",
-                    self.host.label(),
-                    if self.simulated_platform {
-                        self.language.t(L::Simulation)
-                    } else {
-                        std::env::consts::ARCH
-                    }
+            if self.target == InstallTarget::Linux {
+                space().height(0).into()
+            } else {
+                self.summary(
+                    self.language.t(L::Computer),
+                    format!(
+                        "{} · {}",
+                        self.host.label(),
+                        if self.simulated_platform {
+                            self.language.t(L::Simulation)
+                        } else {
+                            std::env::consts::ARCH
+                        }
+                    ),
                 )
-            ),
+            },
             self.summary(self.language.t(L::Target), self.target.label().into()),
         ]
-        .spacing(6);
+        .spacing(4);
         let summary = if let Some(name) = &self.selected_mod {
             if self
                 .mods
@@ -738,6 +742,26 @@ impl Installer {
             } else {
                 summary.push(self.summary(self.language.t(L::Mods), name.clone()))
             }
+        } else {
+            summary
+        };
+        let summary = if self.target == InstallTarget::Linux {
+            summary.push(
+                column![
+                    toggler(!self.portable_cpu)
+                        .label(self.language.t(L::OptimizeCpu))
+                        .text_size(14)
+                        .on_toggle(Message::OptimizeCpu),
+                    text(self.language.t(if self.portable_cpu {
+                        L::PortableCpuHint
+                    } else {
+                        L::OptimizeCpuHint
+                    }))
+                    .size(12)
+                    .color(c.muted),
+                ]
+                .spacing(4),
+            )
         } else {
             summary
         };

@@ -247,3 +247,12 @@ localized Lumi artwork) also passed a 90-second M2 iPad run, reaching the player
 house and exiting normally at the test time limit. Lumi and the original BDSP
 app remain installed side by side with separate identities and containers.
 Battle and extended gameplay validation, plus a fresh-input GUI run, remain open.
+
+### Linux CPU optimization
+
+The review page offers **Optimize for this computer**, enabled by default.
+The selection is remembered and passed explicitly to the build as
+`BDSP_CPU_TARGET=native` (off: `portable`). Native builds use supported CPU
+features including AVX/AVX2; AVX2 is not a minimum requirement. Turn this off
+when building for other computers. This option currently applies to Linux game
+builds; it does not change the distributed installer or Apple build targets.
