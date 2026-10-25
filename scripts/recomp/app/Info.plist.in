@@ -47,6 +47,8 @@
 	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.role-playing-games</string>
+	<key>LSSupportsGameMode</key>
+	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
