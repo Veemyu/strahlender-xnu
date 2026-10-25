@@ -66,7 +66,7 @@ The deploy helper supports:
 | shots | Copy device captures into ignored work/visual/ipad-recomp |
 
 RUN_ENV supplies launch environment as JSON. Logs go to
-work/builds/ipad-recomp-<timestamp>.log. Do not use repeated iPad launch loops.
+work/builds/logs/ipad-recomp-<timestamp>.log. Do not use repeated iPad launch loops.
 Back up device saves before installation. Recent in-place installs preserved
 saves and RomFS; verify rather than assuming preservation or blindly overwriting
 them. Data/save commands can replace user state and are not routine test steps.
@@ -285,7 +285,7 @@ areas was 3,583 MiB, below the iPad's measured 4,096 MiB `maxBufferLength`;
 model A had 5,069 MiB. BC texture compression was supported on M2
 (`supportsBCTextureCompression == 1`), so no BC decoder was needed.
 
-On the Mac model-B run (`work/builds/mac-b-run9.log`), the game reached the
+On the Mac model-B run (`work/builds/logs/mac-b-run9.log`), the game reached the
 title as in model A, at 45–47 fps (model A: 45), with 39 threads, peak RSS of
 1,153 MiB, and 2.0–2.2 GiB of Metal buffer occupied. The extra `g_base`
 address calculation was not visible in this measurement; the only
@@ -346,7 +346,7 @@ by `install`/`run`. It required `DEVELOPER_DIR` pointed at Xcode,
 ### Deployment and measured iPad run
 
 The deployment helper's `run [seconds]` used `devicectl … --console`, wrote
-`work/builds/ipad-recomp-<timestamp>.log`, and accepted its environment as
+`work/builds/logs/ipad-recomp-<timestamp>.log`, and accepted its environment as
 `RUN_ENV` JSON, including `BDSP_INPUT_SCRIPT` and `BDSP_SCREENSHOT_EVERY`.
 The `data` command copied the 4.7 GB RomFS (18,028 files) to
 `Documents/GameData/romfs` using `devicectl copy to`; USB transfer took under
@@ -405,7 +405,7 @@ timed-wait path. No system crash or Jetsam report was found via
 than crashed, and the entitlement was signed.
 
 A separate, earlier zero-frame freeze remained unresolved. After the race fix,
-two logs (`work/builds/ipad-recomp-20261019-171301.log` and
+two logs (`work/builds/logs/ipad-recomp-20261019-171301.log` and
 `…-171815.log`) showed a 526 MiB footprint; main thread 80 and audio thread
 113 were both in `SendSyncRequest`. The main thread was in the touch-query
 `hid` call, with no SVC for 31–36 seconds; other threads were queued. SVC

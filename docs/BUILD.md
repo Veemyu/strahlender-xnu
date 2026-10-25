@@ -189,8 +189,8 @@ Environment variables for the script:
 - `BUNDLE_ID`: default `dev.local.xnubdsp`.
 - `RUN_ENV`: JSON with environment variables for `run`, for example `{"BDSP_TIMEOUT":"130"}`.
 
-The log of each `run` goes to `work/builds/ipad-recomp-<time>.log`. The build log goes to
-`work/builds/ios-recomp-xcodebuild.log`.
+The log of each `run` goes to `work/builds/logs/ipad-recomp-<time>.log`. The build log goes to
+`work/builds/logs/ios-recomp-xcodebuild.log`.
 
 ### 5.3 Signing
 
@@ -420,7 +420,7 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 | Not enough disk space (exit 8) | Free space or deliberately lower the requirement with `--min-free-gb N`. The macOS build needs tens of GB. |
 | Compile fails (exit 4), memory error | Use `--recomp-jobs 2`. Check `work/logs/recomp-compile.log`. |
 | `No connected, unlocked iPad found.` | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
-| Build fails in `xcodebuild` (signing) | Read `work/builds/ios-recomp-xcodebuild.log`. Set `TEAM_ID` and sign in with your account in Xcode. |
+| Build fails in `xcodebuild` (signing) | Read `work/builds/logs/ios-recomp-xcodebuild.log`. Set `TEAM_ID` and sign in with your account in Xcode. |
 | macOS app blocked on first start | Right-click the app, then Open. |
 
 ## 9. More documentation

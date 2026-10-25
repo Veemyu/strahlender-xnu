@@ -162,8 +162,8 @@ Umgebungsvariablen des Skripts:
 - `BUNDLE_ID`: Standard `dev.local.xnubdsp`.
 - `RUN_ENV`: JSON mit Umgebungsvariablen für `run`, zum Beispiel `{"BDSP_TIMEOUT":"130"}`.
 
-Das Protokoll jedes `run` landet in `work/builds/ipad-recomp-<Zeit>.log`. Das Bau-Protokoll steht in
-`work/builds/ios-recomp-xcodebuild.log`.
+Das Protokoll jedes `run` landet in `work/builds/logs/ipad-recomp-<Zeit>.log`. Das Bau-Protokoll steht in
+`work/builds/logs/ios-recomp-xcodebuild.log`.
 
 ### 5.3 Signierung
 
@@ -277,7 +277,7 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 | Zu wenig Platz (Exit 8) | Platz freimachen oder mit `--min-free-gb N` die Anforderung senken. Der macOS-Bau braucht mehrere zehn GB. |
 | Übersetzen schlägt fehl (Exit 4), Speicherfehler | `--recomp-jobs 2` verwenden. Log: `work/logs/recomp-compile.log`. |
 | `Kein verbundenes, entsperrtes iPad gefunden.` | iPad verbinden, entsperren und dem Mac vertrauen. Prüfen mit `xcrun devicectl list devices`. |
-| `xcodebuild` bricht ab (Signierung) | Log `work/builds/ios-recomp-xcodebuild.log` lesen. `TEAM_ID` setzen und in Xcode mit deinem Konto signieren. |
+| `xcodebuild` bricht ab (Signierung) | Log `work/builds/logs/ios-recomp-xcodebuild.log` lesen. `TEAM_ID` setzen und in Xcode mit deinem Konto signieren. |
 | macOS-App wird beim ersten Start blockiert | Rechtsklick auf die App, dann Öffnen. |
 
 ## 9. Weitere Dokumentation
