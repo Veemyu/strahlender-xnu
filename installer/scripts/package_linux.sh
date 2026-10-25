@@ -35,6 +35,7 @@ Type=Application
 Name=Strahlender Installer
 Exec=strahlender-xnu-installer
 Icon=strahlender
+StartupWMClass=strahlender
 Categories=Utility;
 Terminal=false
 DESKTOP

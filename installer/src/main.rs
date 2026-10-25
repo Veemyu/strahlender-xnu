@@ -76,6 +76,11 @@ fn main() -> iced::Result {
     .window(iced::window::Settings {
         size: iced::Size::new(window_layout::WIDTH, window_layout::HEIGHT),
         resizable: false,
+        #[cfg(target_os = "linux")]
+        platform_specific: iced::window::settings::PlatformSpecific {
+            application_id: "strahlender".into(),
+            ..Default::default()
+        },
         // macOS uses the app bundle's native icon, including Liquid Glass.
         icon: if cfg!(target_os = "macos") {
             None

@@ -22,6 +22,7 @@ exports these build-time resources for packaging; this tool is not shipped.
 
 Linux uses the flat rounded SVG/PNGs in the AppImage, hicolor theme hierarchy
 and window icon. There are no painted reflections, glass materials or shadows.
+The Wayland app ID and X11 window class match the `strahlender.desktop` entry.
 macOS uses a classic ICNS fallback and an Icon Composer asset catalog compiled
 with the same Apple tool integration as the game. Apple supplies the native
 outer mask and lighting; the foreground input is transparent, without a second
