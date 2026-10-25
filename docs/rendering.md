@@ -131,9 +131,17 @@ Known: Metal validation reports one start-up message (a 1D texture used as a ren
   Share of intervals within 16.67 ± 0.3 ms at 60 fps rose from 71 to 94 % to 98.4 to 99.5 %. The remaining outliers (one image a
   tick late, on a roughly one-second grid) also occur in a minimal empty-window Metal test program, so they are the ProMotion
   compositor's limit, not the game. Rejected variants: `afterMinimumDuration`, `grid`, `CADisplayLink` with a 60 fps range, double
-  presentation, `maximumDrawableCount` 2.
-- **HUD:** macOS `MTL_HUD_ENABLED=1` at launch (FPS, GPU time, frame interval); iPad: "Show Metal HUD" in the app settings (key
-  `bdsp_metal_hud`). `BDSP_PRESENT_STATS=1` and `BDSP_PRESENT_OUT=1` log presentation statistics and every outlier interval.
+  presentation.
+- **Drawables and delay (Mac):** `maximumDrawableCount` was 3 and is 2 on the Mac now (`BDSP_DRAWABLES` overrides; the iPad keeps 3). With 3 the game
+  ran up to three frames ahead of the screen: from the pad read to the picture (`BDSP_PRESENT_STATS=1` prints "Eingabe bis Anzeige") 40 to
+  53 ms in the overworld at 60 fps, 34 ms with 2, 28 ms at 120 fps. With the `lock` schedule 2 drawables hold 60.0 fps with 96 to 98 % of
+  the intervals in the target band, the same as 3 (an earlier test with another schedule had rejected 2). The rest is the game's own frame
+  (about 28 ms of CPU) and the compositor.
+- **Presentation menu (Mac, debug):** View > Debug > Presentation sets the buffering (Double = 2 drawables, the default; Triple = 3) and VSync
+  (on, the default; off = `displaySyncEnabled = NO`). Both apply at once, without a restart, and are kept in the defaults keys
+  `bdsp_drawables` and `bdsp_vsync_off`; `BDSP_DRAWABLES` and `BDSP_DISPLAYSYNC` win at the start. VSync off measured 29.0 instead of 34.4 ms from
+  the pad read to the picture at 60 fps, with larger spikes (47 instead of 36 ms); no tearing was seen in a window. The self-test actions
+  `buf2`, `buf3`, `vsync0`, `vsync1` (`BDSP_UI_SELFTEST`) call the same methods as the menu items.
 - **Animation speed (open):** at 60 fps the original under an emulator runs the game at 1x but NPCs and water twice as fast,
   because the engine ties them to the 30 fps design (`Application.targetFrameRate(30)`); the runtime's time sources are real-time
   exact, so there is no runtime-only correction. Not measured at 30/60/120 in the recompilation.

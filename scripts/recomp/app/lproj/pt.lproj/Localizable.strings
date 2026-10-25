@@ -20,6 +20,11 @@
 "Window Size %d × %d" = "Tamanho da janela %d × %d";
 "Debug" = "Depuração";
 "Show Metal HUD" = "Mostrar HUD do Metal";
+"Presentation" = "Apresentação";
+"Double Buffering (less delay)" = "Buffer duplo (menos atraso)";
+"Triple Buffering" = "Buffer triplo";
+"VSync On" = "VSync ligado";
+"VSync Off (less delay, may tear)" = "VSync desligado (menos atraso, pode haver tearing)";
 "Window" = "Janela";
 "Minimize" = "Minimizar";
 "Help" = "Ajuda";
