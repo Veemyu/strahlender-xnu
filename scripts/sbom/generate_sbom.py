@@ -42,7 +42,6 @@ OPTIONAL = "optional"        # profile or tool not yet shipped / not always used
 
 # Repository state.
 TRACKED = "tracked"
-UNCOMMITTED = "uncommitted"
 IGNORED = "git-ignored (tools/)"
 EXTERNAL = "external"
 
@@ -82,23 +81,23 @@ CATALOG = [
 
     # Assets bundled into the installer (uncommitted installer/ directory).
     C("octicons-mark-github-16", "GitHub Octicons: mark-github-16", "unversioned (retrieved 2026-10-23)",
-      "pkg:generic/octicons-mark-github-16", "MIT", SHIPPED, UNCOMMITTED,
+      "pkg:generic/octicons-mark-github-16", "MIT", SHIPPED, TRACKED,
       ["installer/assets/OCTICONS-LICENSE", "installer/assets/README.md", "installer/assets/github.svg"],
       download="https://github.com/primer/octicons", category="asset"),
     C("lucide-icons", "Lucide icons (sun, moon, monitor, laptop, tablet, smartphone)", "c32d98db",
-      "pkg:generic/lucide-icons@c32d98db9b8e11ac5aa7db58d70d17b662679461", "ISC AND MIT", SHIPPED, UNCOMMITTED,
+      "pkg:generic/lucide-icons@c32d98db9b8e11ac5aa7db58d70d17b662679461", "ISC AND MIT", SHIPPED, TRACKED,
       ["installer/assets/lucide/LICENSE", "installer/assets/README.md"],
       download="https://github.com/lucide-icons/lucide", copyright_text="Copyright (c) 2026 Lucide Icons and Contributors",
       category="asset", notes="ISC for Lucide, MIT for the Feather parts (see lucide/LICENSE)."),
     C("fira-sans", "Fira Sans Regular (embedded by iced feature fira-sans)", "unversioned",
-      "pkg:generic/fira-sans", "OFL-1.1", SHIPPED, UNCOMMITTED,
+      "pkg:generic/fira-sans", "OFL-1.1", SHIPPED, TRACKED,
       ["installer/assets/FIRA-LICENSE", "installer/assets/README.md", "installer/Cargo.toml"],
       download="https://github.com/mozilla/Fira", copyright_text="Digitized data copyright (c) 2012-2015, The Mozilla Foundation and Telefonica S.A.",
       category="font", notes="Font bytes are embedded in the installer binary via the iced crate."),
 
-    # Private Python runtime of the installer (uncommitted installer/runtime/).
+    # Private Python runtime of the installer (pinned in installer/runtime/).
     C("cpython", "CPython (python-build-standalone install_only)", "3.13.15",
-      "pkg:generic/cpython@3.13.15", "PSF-2.0", SHIPPED, UNCOMMITTED, ["installer/runtime/manifest.json"],
+      "pkg:generic/cpython@3.13.15", "PSF-2.0", SHIPPED, TRACKED, ["installer/runtime/manifest.json"],
       download="https://github.com/astral-sh/python-build-standalone/releases/tag/20260901", category="runtime",
       notes="Archive SHA-256 per host: see properties. Build 20260901."),
 
@@ -286,28 +285,32 @@ def cargo_components(installer):
 
     if meta is None:
         crates = [C(f"crate-{name}-{version}", name, version, f"pkg:cargo/{name}@{version}", "NOASSERTION", SHIPPED,
-                    UNCOMMITTED, ["installer/Cargo.lock"], download=f"https://crates.io/crates/{name}/{version}",
+                    TRACKED, ["installer/Cargo.lock"], download=f"https://crates.io/crates/{name}/{version}",
                     category="rust-crate", sha256=checksum)
                   for (name, version), checksum in checksums.items()]
         return crates, {}, None
 
-    purl_of = {p["id"]: f"pkg:cargo/{p['name']}@{p['version']}" for p in meta["packages"] if p["source"] is not None}
+    purl_of = {p["id"]: f"pkg:cargo/{p['name']}@{p['version']}" for p in meta["packages"]
+               if p["name"] != "strahlender-xnu-installer"}
     crates = []
     for pkg in meta["packages"]:
-        if pkg["source"] is None:
+        if pkg["name"] == "strahlender-xnu-installer":
             continue
+        vendored = pkg["source"] is None
+        location = str(Path(pkg["manifest_path"]).parent.relative_to(ROOT)) if vendored else "installer/Cargo.lock"
         crates.append(C(f"crate-{pkg['name']}-{pkg['version']}", pkg["name"], pkg["version"], purl_of[pkg["id"]],
-                        normalize_license(pkg.get("license")), SHIPPED, UNCOMMITTED, ["installer/Cargo.lock"],
+                        normalize_license(pkg.get("license")), SHIPPED, TRACKED, [location],
                         download=f"https://crates.io/crates/{pkg['name']}/{pkg['version']}", category="rust-crate",
                         sha256=checksums.get((pkg["name"], pkg["version"])),
-                        notes=(f"Repository: {pkg['repository']}" if pkg.get("repository") else "")))
+                        notes=(f"Repository: {pkg['repository']}" if pkg.get("repository") else "")
+                        + ("; locally patched source; see PATCHES.md in the component directory." if vendored else "")))
     edges = {}
     installer_pkg = next(p for p in meta["packages"] if p["source"] is None and p["name"] == "strahlender-xnu-installer")
     for node in meta["resolve"]["nodes"]:
         if node["id"] in purl_of:
             edges[purl_of[node["id"]]] = [purl_of[d] for d in node["dependencies"] if d in purl_of]
     installer = C("installer", "strahlender-xnu-installer", installer_pkg["version"],
-                  f"pkg:cargo/strahlender-xnu-installer@{installer_pkg['version']}", "MIT", SHIPPED, UNCOMMITTED,
+                  f"pkg:cargo/strahlender-xnu-installer@{installer_pkg['version']}", "MIT", SHIPPED, TRACKED,
                   ["installer/Cargo.toml", "installer/Cargo.lock"], category="application",
                   notes="Rust/Iced setup helper (installer/README.md).")
     installer["depends_on"] = [purl_of[d] for d in next(n for n in meta["resolve"]["nodes"]
@@ -371,11 +374,11 @@ def build_components():
         hashes = "; ".join(f"wheel sha256 {t}: {h}" for t, h in sorted(per_target.items()))
         if purl in components:
             comp = components[purl]
-            comp["distribution"], comp["tracked"] = SHIPPED, UNCOMMITTED
+            comp["distribution"], comp["tracked"] = SHIPPED, TRACKED
             comp["evidence"] = sorted(set(comp["evidence"]) | {"installer/runtime/wheels.lock.json"})
             comp["notes"] = merge_notes(comp["notes"], "Installer runtime (base profile).", hashes)
         else:
-            components[purl] = C(f"py-{key}", name, version, purl, PY_LICENSE.get(key, "NOASSERTION"), SHIPPED, UNCOMMITTED,
+            components[purl] = C(f"py-{key}", name, version, purl, PY_LICENSE.get(key, "NOASSERTION"), SHIPPED, TRACKED,
                                  ["installer/runtime/wheels.lock.json"], download=f"https://pypi.org/project/{name}/{version}/",
                                  category="python-package", notes=merge_notes("Installer runtime (base profile).", hashes))
 

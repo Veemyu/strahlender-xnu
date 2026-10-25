@@ -51,6 +51,11 @@ class SbomGeneratorTest(unittest.TestCase):
         purls = [c["purl"] for c in gen.CATALOG]
         self.assertEqual(len(purls), len(set(purls)))
 
+    def test_patched_window_runtime_is_included_with_its_license_and_location(self):
+        runtime = self.components["pkg:cargo/iced_winit@0.14.1"]
+        self.assertEqual(runtime["license"], "MIT")
+        self.assertIn("installer/vendor/iced_winit", runtime["evidence"])
+
     def test_licence_expressions_use_spdx_operators(self):
         for comp in self.components.values():
             # Cargo's 'MIT/Apache-2.0' must have been turned into 'MIT OR Apache-2.0'.
@@ -67,9 +72,9 @@ class SbomGeneratorTest(unittest.TestCase):
             for target in dep["dependsOn"]:
                 self.assertIn(target, known)
 
-    def test_uncommitted_installer_is_marked_as_uncommitted(self):
+    def test_installer_is_marked_as_tracked(self):
         installer = self.components["pkg:cargo/strahlender-xnu-installer@0.1.0"]
-        self.assertEqual(installer["tracked"], gen.UNCOMMITTED)
+        self.assertEqual(installer["tracked"], gen.TRACKED)
         self.assertEqual(installer["license"], "MIT")
 
 

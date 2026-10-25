@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:1c739982-505f-55b7-a5e2-fd3a6a4c3dc9",
+  "serialNumber": "urn:uuid:4b7767f1-e546-5ef6-b017-6274e45a1bbb",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-24T22:21:14Z",
+    "timestamp": "2026-10-25T12:37:54Z",
     "tools": {
       "components": [
         {
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "root",
       "name": "strahlender-xnu",
-      "version": "50c072d-dirty",
+      "version": "6d50e0b-dirty",
       "licenses": [
         {
           "license": {
@@ -25,7 +25,7 @@
           }
         }
       ],
-      "description": "Repository commit 50c072d2540b6f5a859b47296eff2d0b9dc40400. Uncommitted files at generation: sbom/README.md, sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/recomp/ios/build_rt32.sh, scripts/recomp/rt-bdsp/kernel.c, scripts/recomp/rt-bdsp/nvn/src/nvn/metal.m, scripts/recomp/rt-bdsp/nvn/swkbd_overlay.m, scripts/recomp/rt-bdsp/swkbd_ui.c, scripts/recomp/rt-bdsp/swkbd_ui.h, scripts/sbom/generate_sbom.py, scripts/tests/test_generate_sbom.py, .github/, scripts/tests/test_installer_driver.py, scripts/tests/test_installer_runtime_sources.py."
+      "description": "Repository commit 6d50e0be56f60d004462194d3184c9e3f0f91937. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py, scripts/tests/test_generate_sbom.py."
     }
   },
   "components": [
@@ -52,7 +52,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -84,7 +84,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -121,7 +121,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -160,7 +160,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1174,7 +1174,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1308,7 +1308,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1346,7 +1346,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1480,7 +1480,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1550,7 +1550,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1588,7 +1588,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1632,7 +1632,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1676,7 +1676,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1720,7 +1720,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1764,7 +1764,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1808,7 +1808,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1852,7 +1852,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1896,7 +1896,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1940,7 +1940,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -1984,7 +1984,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2028,7 +2028,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2072,7 +2072,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2116,7 +2116,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2160,7 +2160,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2204,7 +2204,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2248,7 +2248,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2292,7 +2292,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2336,7 +2336,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2356,6 +2356,94 @@
         }
       ],
       "description": "Repository: https://github.com/marshallpierce/rust-base64"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/base64@0.23.1",
+      "name": "base64",
+      "version": "0.23.1",
+      "purl": "pkg:cargo/base64@0.23.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/base64/0.23.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+        }
+      ],
+      "description": "Repository: https://github.com/marshallpierce/rust-base64"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/base64ct@1.8.3",
+      "name": "base64ct",
+      "version": "1.8.3",
+      "purl": "pkg:cargo/base64ct@1.8.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/base64ct/1.8.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/formats"
     },
     {
       "type": "library",
@@ -2380,7 +2468,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2424,7 +2512,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2468,7 +2556,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2512,7 +2600,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2556,7 +2644,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2576,6 +2664,50 @@
         }
       ],
       "description": "Repository: http://github.com/SSheldon/rust-block"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/block-buffer@0.10.4",
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "purl": "pkg:cargo/block-buffer@0.10.4",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/block-buffer/0.10.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/utils"
     },
     {
       "type": "library",
@@ -2600,7 +2732,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2644,7 +2776,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2688,7 +2820,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2732,7 +2864,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2776,7 +2908,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2820,7 +2952,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2864,7 +2996,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2908,7 +3040,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2952,7 +3084,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -2996,7 +3128,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3040,7 +3172,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3084,7 +3216,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3128,7 +3260,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3172,7 +3304,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3192,6 +3324,50 @@
         }
       ],
       "description": "Repository: https://github.com/katharostech/cfg_aliases"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/chacha20@0.10.2",
+      "name": "chacha20",
+      "version": "0.10.2",
+      "purl": "pkg:cargo/chacha20@0.10.2",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/chacha20/0.10.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/stream-ciphers"
     },
     {
       "type": "library",
@@ -3216,7 +3392,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3260,7 +3436,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3304,7 +3480,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3348,7 +3524,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3392,7 +3568,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3436,7 +3612,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3480,7 +3656,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3524,7 +3700,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3544,6 +3720,50 @@
         }
       ],
       "description": "Repository: https://github.com/smol-rs/concurrent-queue"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/const-oid@0.9.6",
+      "name": "const-oid",
+      "version": "0.9.6",
+      "purl": "pkg:cargo/const-oid@0.9.6",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/const-oid/0.9.6"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/formats/tree/master/const-oid"
     },
     {
       "type": "library",
@@ -3568,7 +3788,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3612,7 +3832,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3656,7 +3876,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3700,7 +3920,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3744,7 +3964,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3788,7 +4008,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3832,7 +4052,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3876,7 +4096,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3896,6 +4116,94 @@
         }
       ],
       "description": "Repository: https://github.com/pop-os/cosmic-text"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cpufeatures@0.2.17",
+      "name": "cpufeatures",
+      "version": "0.2.17",
+      "purl": "pkg:cargo/cpufeatures@0.2.17",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/cpufeatures/0.2.17"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/utils"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cpufeatures@0.3.1",
+      "name": "cpufeatures",
+      "version": "0.3.1",
+      "purl": "pkg:cargo/cpufeatures@0.3.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/cpufeatures/0.3.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/utils"
     },
     {
       "type": "library",
@@ -3920,7 +4228,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -3964,7 +4272,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4008,7 +4316,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4052,7 +4360,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4072,6 +4380,50 @@
         }
       ],
       "description": "Repository: https://github.com/iced-rs/cryoglyph"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/crypto-common@0.1.7",
+      "name": "crypto-common",
+      "version": "0.1.7",
+      "purl": "pkg:cargo/crypto-common@0.1.7",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/crypto-common/0.1.7"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/traits"
     },
     {
       "type": "library",
@@ -4096,7 +4448,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4140,7 +4492,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4160,6 +4512,94 @@
         }
       ],
       "description": "Repository: https://github.com/rust-windowing/cursor-icon"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/curve25519-dalek@4.1.3",
+      "name": "curve25519-dalek",
+      "version": "4.1.3",
+      "purl": "pkg:cargo/curve25519-dalek@4.1.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/curve25519-dalek/4.1.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
+        }
+      ],
+      "description": "Repository: https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/curve25519-dalek-derive@0.1.1",
+      "name": "curve25519-dalek-derive",
+      "version": "0.1.1",
+      "purl": "pkg:cargo/curve25519-dalek-derive@0.1.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/curve25519-dalek-derive/0.1.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
+        }
+      ],
+      "description": "Repository: https://github.com/dalek-cryptography/curve25519-dalek"
     },
     {
       "type": "library",
@@ -4184,7 +4624,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4204,6 +4644,94 @@
         }
       ],
       "description": "Repository: https://github.com/servo/rust-url"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/der@0.7.10",
+      "name": "der",
+      "version": "0.7.10",
+      "purl": "pkg:cargo/der@0.7.10",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/der/0.7.10"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/formats/tree/master/der"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/digest@0.10.7",
+      "name": "digest",
+      "version": "0.10.7",
+      "purl": "pkg:cargo/digest@0.10.7",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/digest/0.10.7"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/traits"
     },
     {
       "type": "library",
@@ -4228,7 +4756,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4272,7 +4800,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4316,7 +4844,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4360,7 +4888,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4404,7 +4932,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4448,7 +4976,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4492,7 +5020,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4536,7 +5064,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4580,7 +5108,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4624,7 +5152,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4644,6 +5172,94 @@
         }
       ],
       "description": "Repository: https://github.com/mmastrac/rust-ctor"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ed25519@2.2.3",
+      "name": "ed25519",
+      "version": "2.2.3",
+      "purl": "pkg:cargo/ed25519@2.2.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/ed25519/2.2.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/signatures/tree/master/ed25519"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ed25519-dalek@2.2.0",
+      "name": "ed25519-dalek",
+      "version": "2.2.0",
+      "purl": "pkg:cargo/ed25519-dalek@2.2.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/ed25519-dalek/2.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
+        }
+      ],
+      "description": "Repository: https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek"
     },
     {
       "type": "library",
@@ -4668,7 +5284,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4712,7 +5328,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4756,7 +5372,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4800,7 +5416,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4844,7 +5460,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4888,7 +5504,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4932,7 +5548,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -4976,7 +5592,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5020,7 +5636,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5064,7 +5680,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5108,7 +5724,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5152,7 +5768,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5196,7 +5812,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5216,6 +5832,94 @@
         }
       ],
       "description": "Repository: https://github.com/image-rs/fdeflate"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/fiat-crypto@0.2.9",
+      "name": "fiat-crypto",
+      "version": "0.2.9",
+      "purl": "pkg:cargo/fiat-crypto@0.2.9",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0 OR BSD-1-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/fiat-crypto/0.2.9"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+        }
+      ],
+      "description": "Repository: https://github.com/mit-plv/fiat-crypto"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/filetime@0.2.29",
+      "name": "filetime",
+      "version": "0.2.29",
+      "purl": "pkg:cargo/filetime@0.2.29",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/filetime/0.2.29"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+        }
+      ],
+      "description": "Repository: https://github.com/alexcrichton/filetime"
     },
     {
       "type": "library",
@@ -5240,7 +5944,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5284,7 +5988,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5328,7 +6032,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5372,7 +6076,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5416,7 +6120,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5460,7 +6164,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5504,7 +6208,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5548,7 +6252,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5592,7 +6296,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5636,7 +6340,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5680,7 +6384,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5724,7 +6428,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5768,7 +6472,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5812,7 +6516,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5856,7 +6560,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5900,7 +6604,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5944,7 +6648,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -5988,7 +6692,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6032,7 +6736,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6076,7 +6780,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6120,7 +6824,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6164,7 +6868,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6208,7 +6912,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6228,6 +6932,50 @@
         }
       ],
       "description": "Repository: https://github.com/rust-lang/futures-rs"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/generic-array@0.14.7",
+      "name": "generic-array",
+      "version": "0.14.7",
+      "purl": "pkg:cargo/generic-array@0.14.7",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/generic-array/0.14.7"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+        }
+      ],
+      "description": "Repository: https://github.com/fizyk20/generic-array.git"
     },
     {
       "type": "library",
@@ -6252,7 +7000,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6272,6 +7020,50 @@
         }
       ],
       "description": "Repository: https://codeberg.org/swsnr/gethostname.rs.git"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/getrandom@0.2.17",
+      "name": "getrandom",
+      "version": "0.2.17",
+      "purl": "pkg:cargo/getrandom@0.2.17",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/getrandom/0.2.17"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
+        }
+      ],
+      "description": "Repository: https://github.com/rust-random/getrandom"
     },
     {
       "type": "library",
@@ -6296,7 +7088,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6340,7 +7132,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6384,7 +7176,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6428,7 +7220,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6472,7 +7264,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6516,7 +7308,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6560,7 +7352,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6604,7 +7396,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6648,7 +7440,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6692,7 +7484,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6736,7 +7528,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6780,7 +7572,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6824,7 +7616,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6868,7 +7660,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6912,7 +7704,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -6956,7 +7748,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7000,7 +7792,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7044,7 +7836,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7088,7 +7880,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7132,7 +7924,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7176,7 +7968,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7196,6 +7988,314 @@
         }
       ],
       "description": "Repository: https://github.com/lifthrasiir/hexf"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/http@1.5.0",
+      "name": "http",
+      "version": "1.5.0",
+      "purl": "pkg:cargo/http@1.5.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/http/1.5.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "918d3568bebf352712bc2ef3d46a8bcf1a75b373be6539de198e9105cbbf9ce0"
+        }
+      ],
+      "description": "Repository: https://github.com/hyperium/http"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/http-body@1.1.0",
+      "name": "http-body",
+      "version": "1.1.0",
+      "purl": "pkg:cargo/http-body@1.1.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/http-body/1.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ca2a8f2913ee65f60facd6a5905613afaa448497a0230cc41ce022d93290bc2c"
+        }
+      ],
+      "description": "Repository: https://github.com/hyperium/http-body"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/http-body-util@0.1.5",
+      "name": "http-body-util",
+      "version": "0.1.5",
+      "purl": "pkg:cargo/http-body-util@0.1.5",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/http-body-util/0.1.5"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "23169fe34a5fbcdd3f3862e78fb9b6fccd5f02a6dc6f732547005d45631ce71c"
+        }
+      ],
+      "description": "Repository: https://github.com/hyperium/http-body"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/httparse@1.10.1",
+      "name": "httparse",
+      "version": "1.10.1",
+      "purl": "pkg:cargo/httparse@1.10.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/httparse/1.10.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
+        }
+      ],
+      "description": "Repository: https://github.com/seanmonstar/httparse"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/hyper@1.12.0",
+      "name": "hyper",
+      "version": "1.12.0",
+      "purl": "pkg:cargo/hyper@1.12.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/hyper/1.12.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2c3e324da4c95177d6291d4c8730197c0d1822f8a9766814a4a44fa5ab797c9c"
+        }
+      ],
+      "description": "Repository: https://github.com/hyperium/hyper"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/hyper-rustls@0.27.10",
+      "name": "hyper-rustls",
+      "version": "0.27.10",
+      "purl": "pkg:cargo/hyper-rustls@0.27.10",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR ISC OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/hyper-rustls/0.27.10"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "dfa8e654703247911e29c23fbeaa261834bd9bb74efba2f9acddc37bfb127f53"
+        }
+      ],
+      "description": "Repository: https://github.com/rustls/hyper-rustls"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/hyper-util@0.1.21",
+      "name": "hyper-util",
+      "version": "0.1.21",
+      "purl": "pkg:cargo/hyper-util@0.1.21",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/hyper-util/0.1.21"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ddc03d96684f9226b8a787cdb71488417b53ab5ea8fdb1dac946cb9431cc8bff"
+        }
+      ],
+      "description": "Repository: https://github.com/hyperium/hyper-util"
     },
     {
       "type": "library",
@@ -7220,7 +8320,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7264,7 +8364,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7308,7 +8408,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7352,7 +8452,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7396,7 +8496,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7440,7 +8540,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7484,7 +8584,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7528,7 +8628,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7572,7 +8672,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7616,7 +8716,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7660,7 +8760,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7704,11 +8804,11 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
-          "value": "installer/Cargo.lock"
+          "value": "installer/vendor/iced_winit"
         }
       ],
       "externalReferences": [
@@ -7717,13 +8817,7 @@
           "url": "https://crates.io/crates/iced_winit/0.14.1"
         }
       ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "7589888c8e951899cc688247a69933bb7a0511f0b4b2e122ac3fcd5dacb37f72"
-        }
-      ],
-      "description": "Repository: https://github.com/iced-rs/iced"
+      "description": "Repository: https://github.com/iced-rs/iced; locally patched source; see PATCHES.md in the component directory."
     },
     {
       "type": "library",
@@ -7748,7 +8842,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7792,7 +8886,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7836,7 +8930,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7880,7 +8974,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7924,7 +9018,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -7968,7 +9062,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8012,7 +9106,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8056,7 +9150,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8100,7 +9194,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8144,7 +9238,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8188,7 +9282,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8232,7 +9326,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8276,7 +9370,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8296,6 +9390,50 @@
         }
       ],
       "description": "Repository: https://github.com/indexmap-rs/indexmap"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ipnet@2.12.2",
+      "name": "ipnet",
+      "version": "2.12.2",
+      "purl": "pkg:cargo/ipnet@2.12.2",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/ipnet/2.12.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
+        }
+      ],
+      "description": "Repository: https://github.com/krisprice/ipnet"
     },
     {
       "type": "library",
@@ -8320,7 +9458,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8364,7 +9502,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8408,7 +9546,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8452,7 +9590,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8496,7 +9634,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8540,7 +9678,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8584,7 +9722,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8628,7 +9766,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8672,7 +9810,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8716,7 +9854,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8760,7 +9898,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8804,7 +9942,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8848,7 +9986,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8892,7 +10030,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8936,7 +10074,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -8980,7 +10118,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9024,7 +10162,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9068,7 +10206,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9112,7 +10250,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9156,7 +10294,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9200,7 +10338,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9244,7 +10382,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9288,7 +10426,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9332,7 +10470,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9376,7 +10514,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9420,7 +10558,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9440,6 +10578,50 @@
         }
       ],
       "description": "Repository: https://github.com/jeromefroe/lru-rs.git"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/lru-slab@0.1.3",
+      "name": "lru-slab",
+      "version": "0.1.3",
+      "purl": "pkg:cargo/lru-slab@0.1.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0 OR Zlib"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/lru-slab/0.1.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
+        }
+      ],
+      "description": "Repository: https://github.com/Ralith/lru-slab"
     },
     {
       "type": "library",
@@ -9464,7 +10646,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9508,7 +10690,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9552,7 +10734,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9596,7 +10778,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9640,7 +10822,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9684,7 +10866,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9728,7 +10910,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9772,7 +10954,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9816,7 +10998,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9860,7 +11042,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9904,7 +11086,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9948,7 +11130,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -9992,7 +11174,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10036,7 +11218,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10080,7 +11262,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10124,7 +11306,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10168,7 +11350,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10212,7 +11394,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10256,7 +11438,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10300,7 +11482,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10344,7 +11526,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10388,7 +11570,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10432,7 +11614,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10476,7 +11658,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10520,7 +11702,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10564,7 +11746,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10608,7 +11790,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10652,7 +11834,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10696,7 +11878,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10740,7 +11922,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10784,7 +11966,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10828,7 +12010,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10872,7 +12054,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10916,7 +12098,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -10960,7 +12142,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11004,7 +12186,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11048,7 +12230,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11092,7 +12274,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11136,7 +12318,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11180,7 +12362,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11224,7 +12406,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11268,7 +12450,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11312,7 +12494,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11356,7 +12538,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11400,7 +12582,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11444,7 +12626,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11488,7 +12670,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11532,7 +12714,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11576,7 +12758,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11620,7 +12802,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11664,7 +12846,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11708,7 +12890,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11752,7 +12934,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11796,7 +12978,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11840,7 +13022,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11884,7 +13066,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11928,7 +13110,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -11972,7 +13154,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12016,7 +13198,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12036,6 +13218,50 @@
         }
       ],
       "description": "Repository: https://github.com/rust-lang/pin-utils"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pkcs8@0.10.2",
+      "name": "pkcs8",
+      "version": "0.10.2",
+      "purl": "pkg:cargo/pkcs8@0.10.2",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/pkcs8/0.10.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/formats/tree/master/pkcs8"
     },
     {
       "type": "library",
@@ -12060,7 +13286,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12104,7 +13330,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12148,7 +13374,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12192,7 +13418,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12236,7 +13462,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12280,7 +13506,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12324,7 +13550,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12368,7 +13594,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12412,7 +13638,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12456,7 +13682,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12500,7 +13726,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12544,7 +13770,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12588,7 +13814,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12632,7 +13858,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12676,7 +13902,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12720,7 +13946,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12764,7 +13990,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12784,6 +14010,138 @@
         }
       ],
       "description": "Repository: https://github.com/tafia/quick-xml"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/quinn@0.11.12",
+      "name": "quinn",
+      "version": "0.11.12",
+      "purl": "pkg:cargo/quinn@0.11.12",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/quinn/0.11.12"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4051e23e9185c255a7e33ef59cdbca87a22d359052eecd22fc6b901fb37d9d11"
+        }
+      ],
+      "description": "Repository: https://github.com/quinn-rs/quinn"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/quinn-proto@0.11.19",
+      "name": "quinn-proto",
+      "version": "0.11.19",
+      "purl": "pkg:cargo/quinn-proto@0.11.19",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/quinn-proto/0.11.19"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0e750cca55fe4f0439a15d0bb529da9651e79993e8e72c61a899a36d462befbe"
+        }
+      ],
+      "description": "Repository: https://github.com/quinn-rs/quinn"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/quinn-udp@0.5.16",
+      "name": "quinn-udp",
+      "version": "0.5.16",
+      "purl": "pkg:cargo/quinn-udp@0.5.16",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/quinn-udp/0.5.16"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "af66907df18639dcf4db56ca65490cabc4b27a97dbadd96f2926cca73298f016"
+        }
+      ],
+      "description": "Repository: https://github.com/quinn-rs/quinn"
     },
     {
       "type": "library",
@@ -12808,7 +14166,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12852,7 +14210,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12896,7 +14254,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12940,7 +14298,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -12957,6 +14315,50 @@
         {
           "alg": "SHA-256",
           "content": "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
+        }
+      ],
+      "description": "Repository: https://github.com/rust-random/rand"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rand@0.10.3",
+      "name": "rand",
+      "version": "0.10.3",
+      "purl": "pkg:cargo/rand@0.10.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/rand/0.10.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
         }
       ],
       "description": "Repository: https://github.com/rust-random/rand"
@@ -12984,7 +14386,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13001,6 +14403,50 @@
         {
           "alg": "SHA-256",
           "content": "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
+        }
+      ],
+      "description": "Repository: https://github.com/rust-random/rand"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rand_core@0.6.4",
+      "name": "rand_core",
+      "version": "0.6.4",
+      "purl": "pkg:cargo/rand_core@0.6.4",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/rand_core/0.6.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
         }
       ],
       "description": "Repository: https://github.com/rust-random/rand"
@@ -13028,7 +14474,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13048,6 +14494,94 @@
         }
       ],
       "description": "Repository: https://github.com/rust-random/rand"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rand_core@0.10.1",
+      "name": "rand_core",
+      "version": "0.10.1",
+      "purl": "pkg:cargo/rand_core@0.10.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/rand_core/0.10.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
+        }
+      ],
+      "description": "Repository: https://github.com/rust-random/rand_core"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rand_pcg@0.10.2",
+      "name": "rand_pcg",
+      "version": "0.10.2",
+      "purl": "pkg:cargo/rand_pcg@0.10.2",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/rand_pcg/0.10.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a"
+        }
+      ],
+      "description": "Repository: https://github.com/rust-random/rngs"
     },
     {
       "type": "library",
@@ -13072,7 +14606,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13116,7 +14650,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13160,7 +14694,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13204,7 +14738,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13248,7 +14782,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13292,7 +14826,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13336,7 +14870,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13380,7 +14914,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13424,7 +14958,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13468,7 +15002,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13488,6 +15022,50 @@
         }
       ],
       "description": "Repository: https://github.com/ebkalderon/renderdoc-rs"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/reqwest@0.12.28",
+      "name": "reqwest",
+      "version": "0.12.28",
+      "purl": "pkg:cargo/reqwest@0.12.28",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/reqwest/0.12.28"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
+        }
+      ],
+      "description": "Repository: https://github.com/seanmonstar/reqwest"
     },
     {
       "type": "library",
@@ -13512,7 +15090,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13556,7 +15134,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13600,7 +15178,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13620,6 +15198,50 @@
         }
       ],
       "description": "Repository: https://github.com/kornelski/rust-rgb"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ring@0.17.14",
+      "name": "ring",
+      "version": "0.17.14",
+      "purl": "pkg:cargo/ring@0.17.14",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 AND ISC"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/ring/0.17.14"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a4689e6c2294d81e88dc6261c768b63bc4fcdb852be6d1352498b114f61383b7"
+        }
+      ],
+      "description": "Repository: https://github.com/briansmith/ring"
     },
     {
       "type": "library",
@@ -13644,7 +15266,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13688,7 +15310,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13732,7 +15354,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13776,7 +15398,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13820,7 +15442,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13864,7 +15486,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13884,6 +15506,138 @@
         }
       ],
       "description": "Repository: https://github.com/bytecodealliance/rustix"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rustls@0.23.46",
+      "name": "rustls",
+      "version": "0.23.46",
+      "purl": "pkg:cargo/rustls@0.23.46",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR ISC OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/rustls/0.23.46"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
+        }
+      ],
+      "description": "Repository: https://github.com/rustls/rustls"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rustls-pki-types@1.15.1",
+      "name": "rustls-pki-types",
+      "version": "1.15.1",
+      "purl": "pkg:cargo/rustls-pki-types@1.15.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/rustls-pki-types/1.15.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2f4925028c7eb5d1fcdaf196971378ed9d2c1c4efc7dc5d011256f76c99c0a96"
+        }
+      ],
+      "description": "Repository: https://github.com/rustls/pki-types"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rustls-webpki@0.103.16",
+      "name": "rustls-webpki",
+      "version": "0.103.16",
+      "purl": "pkg:cargo/rustls-webpki@0.103.16",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "ISC"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/rustls-webpki/0.103.16"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
+        }
+      ],
+      "description": "Repository: https://github.com/rustls/webpki"
     },
     {
       "type": "library",
@@ -13908,7 +15662,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13952,7 +15706,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -13972,6 +15726,50 @@
         }
       ],
       "description": "Repository: https://github.com/harfbuzz/rustybuzz"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ryu@1.0.23",
+      "name": "ryu",
+      "version": "1.0.23",
+      "purl": "pkg:cargo/ryu@1.0.23",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR BSL-1.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/ryu/1.0.23"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+        }
+      ],
+      "description": "Repository: https://github.com/dtolnay/ryu"
     },
     {
       "type": "library",
@@ -13996,7 +15794,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14040,7 +15838,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14084,7 +15882,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14128,7 +15926,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14172,7 +15970,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14216,7 +16014,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14260,7 +16058,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14304,7 +16102,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14348,7 +16146,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14392,7 +16190,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14436,7 +16234,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14456,6 +16254,94 @@
         }
       ],
       "description": "Repository: https://github.com/dtolnay/serde-repr"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serde_urlencoded@0.7.1",
+      "name": "serde_urlencoded",
+      "version": "0.7.1",
+      "purl": "pkg:cargo/serde_urlencoded@0.7.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/serde_urlencoded/0.7.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
+        }
+      ],
+      "description": "Repository: https://github.com/nox/serde_urlencoded"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/sha2@0.10.9",
+      "name": "sha2",
+      "version": "0.10.9",
+      "purl": "pkg:cargo/sha2@0.10.9",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/sha2/0.10.9"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/hashes"
     },
     {
       "type": "library",
@@ -14480,7 +16366,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14524,7 +16410,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14544,6 +16430,50 @@
         }
       ],
       "description": "Repository: https://github.com/vorner/signal-hook"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/signature@2.2.0",
+      "name": "signature",
+      "version": "2.2.0",
+      "purl": "pkg:cargo/signature@2.2.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/signature/2.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/traits/tree/master/signature"
     },
     {
       "type": "library",
@@ -14568,7 +16498,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14612,7 +16542,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14656,7 +16586,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14700,7 +16630,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14744,7 +16674,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14788,7 +16718,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14832,7 +16762,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14876,7 +16806,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14920,7 +16850,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -14964,7 +16894,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15008,7 +16938,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15052,7 +16982,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15096,7 +17026,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15140,7 +17070,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15184,7 +17114,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15228,7 +17158,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15272,7 +17202,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15292,6 +17222,50 @@
         }
       ],
       "description": "Repository: https://github.com/gfx-rs/rspirv"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/spki@0.7.3",
+      "name": "spki",
+      "version": "0.7.3",
+      "purl": "pkg:cargo/spki@0.7.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/spki/0.7.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/formats/tree/master/spki"
     },
     {
       "type": "library",
@@ -15316,7 +17290,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15360,7 +17334,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15404,7 +17378,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15424,6 +17398,50 @@
         }
       ],
       "description": "Repository: https://github.com/RazrFalcon/strict-num"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/subtle@2.6.1",
+      "name": "subtle",
+      "version": "2.6.1",
+      "purl": "pkg:cargo/subtle@2.6.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/subtle/2.6.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+        }
+      ],
+      "description": "Repository: https://github.com/dalek-cryptography/subtle"
     },
     {
       "type": "library",
@@ -15448,7 +17466,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15492,7 +17510,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15536,7 +17554,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15580,7 +17598,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15624,7 +17642,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15644,6 +17662,50 @@
         }
       ],
       "description": "Repository: https://github.com/dtolnay/syn"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/sync_wrapper@1.0.2",
+      "name": "sync_wrapper",
+      "version": "1.0.2",
+      "purl": "pkg:cargo/sync_wrapper@1.0.2",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/sync_wrapper/1.0.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
+        }
+      ],
+      "description": "Repository: https://github.com/Actyx/sync_wrapper"
     },
     {
       "type": "library",
@@ -15668,7 +17730,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15712,7 +17774,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15732,6 +17794,50 @@
         }
       ],
       "description": "Repository: https://github.com/1Password/sys-locale"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tar@0.4.46",
+      "name": "tar",
+      "version": "0.4.46",
+      "purl": "pkg:cargo/tar@0.4.46",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/tar/0.4.46"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+        }
+      ],
+      "description": "Repository: https://github.com/composefs/tar-rs"
     },
     {
       "type": "library",
@@ -15756,7 +17862,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15800,7 +17906,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15844,7 +17950,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15888,7 +17994,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15932,7 +18038,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -15976,7 +18082,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16020,7 +18126,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16064,7 +18170,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16108,7 +18214,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16152,7 +18258,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16196,7 +18302,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16240,7 +18346,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16284,7 +18390,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16328,7 +18434,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16348,6 +18454,50 @@
         }
       ],
       "description": "Repository: https://github.com/tokio-rs/tokio"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tokio-rustls@0.26.6",
+      "name": "tokio-rustls",
+      "version": "0.26.6",
+      "purl": "pkg:cargo/tokio-rustls@0.26.6",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/tokio-rustls/0.26.6"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
+        }
+      ],
+      "description": "Repository: https://github.com/rustls/tokio-rustls"
     },
     {
       "type": "library",
@@ -16372,7 +18522,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16416,7 +18566,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16460,7 +18610,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16480,6 +18630,182 @@
         }
       ],
       "description": "Repository: https://github.com/toml-rs/toml"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tower@0.5.3",
+      "name": "tower",
+      "version": "0.5.3",
+      "purl": "pkg:cargo/tower@0.5.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/tower/0.5.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
+        }
+      ],
+      "description": "Repository: https://github.com/tower-rs/tower"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tower-http@0.6.11",
+      "name": "tower-http",
+      "version": "0.6.11",
+      "purl": "pkg:cargo/tower-http@0.6.11",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/tower-http/0.6.11"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
+        }
+      ],
+      "description": "Repository: https://github.com/tower-rs/tower-http"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tower-layer@0.3.3",
+      "name": "tower-layer",
+      "version": "0.3.3",
+      "purl": "pkg:cargo/tower-layer@0.3.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/tower-layer/0.3.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
+        }
+      ],
+      "description": "Repository: https://github.com/tower-rs/tower"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tower-service@0.3.3",
+      "name": "tower-service",
+      "version": "0.3.3",
+      "purl": "pkg:cargo/tower-service@0.3.3",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/tower-service/0.3.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+        }
+      ],
+      "description": "Repository: https://github.com/tower-rs/tower"
     },
     {
       "type": "library",
@@ -16504,7 +18830,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16548,7 +18874,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16592,7 +18918,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16612,6 +18938,50 @@
         }
       ],
       "description": "Repository: https://github.com/tokio-rs/tracing"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/try-lock@0.2.5",
+      "name": "try-lock",
+      "version": "0.2.5",
+      "purl": "pkg:cargo/try-lock@0.2.5",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/try-lock/0.2.5"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+        }
+      ],
+      "description": "Repository: https://github.com/seanmonstar/try-lock"
     },
     {
       "type": "library",
@@ -16636,7 +19006,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16656,6 +19026,50 @@
         }
       ],
       "description": "Repository: https://github.com/harfbuzz/ttf-parser"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/typenum@1.20.1",
+      "name": "typenum",
+      "version": "1.20.1",
+      "purl": "pkg:cargo/typenum@1.20.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/typenum/1.20.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+        }
+      ],
+      "description": "Repository: https://github.com/paholg/typenum"
     },
     {
       "type": "library",
@@ -16680,7 +19094,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16724,7 +19138,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16768,7 +19182,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16812,7 +19226,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16856,7 +19270,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16900,7 +19314,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16944,7 +19358,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -16988,7 +19402,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17032,7 +19446,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17076,7 +19490,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17120,7 +19534,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17140,6 +19554,50 @@
         }
       ],
       "description": "Repository: https://github.com/unicode-rs/unicode-width"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/untrusted@0.9.0",
+      "name": "untrusted",
+      "version": "0.9.0",
+      "purl": "pkg:cargo/untrusted@0.9.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "ISC"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/untrusted/0.9.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+        }
+      ],
+      "description": "Repository: https://github.com/briansmith/untrusted"
     },
     {
       "type": "library",
@@ -17164,7 +19622,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17208,7 +19666,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17252,7 +19710,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17296,7 +19754,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17340,7 +19798,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17384,7 +19842,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17428,7 +19886,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17448,6 +19906,50 @@
         }
       ],
       "description": "Repository: https://github.com/BurntSushi/walkdir"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/want@0.3.2",
+      "name": "want",
+      "version": "0.3.2",
+      "purl": "pkg:cargo/want@0.3.2",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/want/0.3.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ec4cdd0dd910afe868b7ef477227d8d538b46b3075031afee8a9f2acb0a2ed0b"
+        }
+      ],
+      "description": "Repository: https://github.com/seanmonstar/want"
     },
     {
       "type": "library",
@@ -17472,7 +19974,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17516,7 +20018,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17560,7 +20062,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17604,7 +20106,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17648,7 +20150,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17692,7 +20194,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17736,7 +20238,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17780,7 +20282,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17824,7 +20326,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17868,7 +20370,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17912,7 +20414,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -17956,7 +20458,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18000,7 +20502,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18044,7 +20546,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18088,7 +20590,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18132,7 +20634,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18176,7 +20678,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18220,7 +20722,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18264,7 +20766,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18308,7 +20810,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18352,7 +20854,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18372,6 +20874,50 @@
         }
       ],
       "description": "Repository: https://github.com/daxpedda/web-time"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/webpki-roots@1.0.11",
+      "name": "webpki-roots",
+      "version": "1.0.11",
+      "purl": "pkg:cargo/webpki-roots@1.0.11",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "CDLA-Permissive-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/webpki-roots/1.0.11"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
+        }
+      ],
+      "description": "Repository: https://github.com/rustls/webpki-roots"
     },
     {
       "type": "library",
@@ -18396,7 +20942,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18440,7 +20986,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18484,7 +21030,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18528,7 +21074,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18572,7 +21118,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18616,7 +21162,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18660,7 +21206,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18704,7 +21250,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18748,7 +21294,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18792,7 +21338,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18836,7 +21382,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18880,7 +21426,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18924,7 +21470,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -18968,7 +21514,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19012,7 +21558,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19056,7 +21602,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19100,7 +21646,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19144,7 +21690,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19188,7 +21734,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19232,7 +21778,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19276,7 +21822,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19320,7 +21866,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19364,7 +21910,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19408,7 +21954,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19452,7 +21998,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19496,7 +22042,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19540,7 +22086,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19584,7 +22130,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19628,7 +22174,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19672,7 +22218,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19716,7 +22262,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19760,7 +22306,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19804,7 +22350,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19848,7 +22394,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19892,7 +22438,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19936,7 +22482,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -19980,7 +22526,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20024,7 +22570,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20068,7 +22614,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20112,7 +22658,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20156,7 +22702,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20200,7 +22746,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20244,7 +22790,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20288,7 +22834,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20332,7 +22878,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20376,7 +22922,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20396,6 +22942,50 @@
         }
       ],
       "description": "Repository: https://github.com/psychon/x11rb"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/xattr@1.6.1",
+      "name": "xattr",
+      "version": "1.6.1",
+      "purl": "pkg:cargo/xattr@1.6.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/xattr/1.6.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+        }
+      ],
+      "description": "Repository: https://github.com/Stebalien/xattr"
     },
     {
       "type": "library",
@@ -20420,7 +23010,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20464,7 +23054,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20508,7 +23098,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20552,7 +23142,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20596,7 +23186,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20640,7 +23230,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20684,7 +23274,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20728,7 +23318,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20772,7 +23362,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20816,7 +23406,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20860,7 +23450,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20904,7 +23494,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20948,7 +23538,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -20992,7 +23582,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21036,7 +23626,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21080,7 +23670,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21124,7 +23714,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21144,6 +23734,50 @@
         }
       ],
       "description": "Repository: https://github.com/unicode-org/icu4x"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zeroize@1.9.1",
+      "name": "zeroize",
+      "version": "1.9.1",
+      "purl": "pkg:cargo/zeroize@1.9.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/zeroize/1.9.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
+        }
+      ],
+      "description": "Repository: https://github.com/RustCrypto/utils"
     },
     {
       "type": "library",
@@ -21168,7 +23802,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21212,7 +23846,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21256,7 +23890,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21300,7 +23934,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21344,7 +23978,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21388,7 +24022,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21431,7 +24065,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21475,7 +24109,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21519,7 +24153,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -21563,7 +24197,7 @@
         },
         {
           "name": "bdsp:repository-state",
-          "value": "uncommitted"
+          "value": "tracked"
         },
         {
           "name": "bdsp:evidence",
@@ -22431,8 +25065,11 @@
     {
       "ref": "pkg:cargo/strahlender-xnu-installer@0.1.0",
       "dependsOn": [
+        "pkg:cargo/base64@0.22.1",
         "pkg:cargo/cc@1.10.0",
         "pkg:cargo/directories@6.0.0",
+        "pkg:cargo/ed25519-dalek@2.2.0",
+        "pkg:cargo/flate2@1.1.10",
         "pkg:cargo/iced@0.14.0",
         "pkg:cargo/image@0.25.9",
         "pkg:cargo/libc@0.2.191",
@@ -22441,10 +25078,13 @@
         "pkg:cargo/objc2-app-kit@0.3.2",
         "pkg:cargo/objc2-foundation@0.3.2",
         "pkg:cargo/png@0.18.1",
+        "pkg:cargo/reqwest@0.12.28",
         "pkg:cargo/rfd@0.16.1",
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/serde_json@1.0.154",
+        "pkg:cargo/sha2@0.10.9",
         "pkg:cargo/sys-locale@0.3.2",
+        "pkg:cargo/tar@0.4.46",
         "pkg:cargo/tokio@1.54.1"
       ]
     },
@@ -22755,6 +25395,14 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:cargo/base64@0.23.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/base64ct@1.8.3",
+      "dependsOn": []
+    },
+    {
       "ref": "pkg:cargo/bit-set@0.8.0",
       "dependsOn": [
         "pkg:cargo/bit-vec@0.8.0"
@@ -22775,6 +25423,12 @@
     {
       "ref": "pkg:cargo/block@0.1.6",
       "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/block-buffer@0.10.4",
+      "dependsOn": [
+        "pkg:cargo/generic-array@0.14.7"
+      ]
     },
     {
       "ref": "pkg:cargo/block2@0.5.1",
@@ -22870,6 +25524,14 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:cargo/chacha20@0.10.2",
+      "dependsOn": [
+        "pkg:cargo/cfg-if@1.0.5",
+        "pkg:cargo/cpufeatures@0.3.1",
+        "pkg:cargo/rand_core@0.10.1"
+      ]
+    },
+    {
       "ref": "pkg:cargo/clipboard-win@5.4.3",
       "dependsOn": [
         "pkg:cargo/error-code@3.4.0"
@@ -22920,6 +25582,10 @@
       "dependsOn": [
         "pkg:cargo/crossbeam-utils@0.8.23"
       ]
+    },
+    {
+      "ref": "pkg:cargo/const-oid@0.9.6",
+      "dependsOn": []
     },
     {
       "ref": "pkg:cargo/core-foundation@0.9.4",
@@ -22993,6 +25659,18 @@
       ]
     },
     {
+      "ref": "pkg:cargo/cpufeatures@0.2.17",
+      "dependsOn": [
+        "pkg:cargo/libc@0.2.191"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/cpufeatures@0.3.1",
+      "dependsOn": [
+        "pkg:cargo/libc@0.2.191"
+      ]
+    },
+    {
       "ref": "pkg:cargo/crc32fast@1.5.3",
       "dependsOn": [
         "pkg:cargo/cfg-if@1.0.5"
@@ -23017,6 +25695,13 @@
       ]
     },
     {
+      "ref": "pkg:cargo/crypto-common@0.1.7",
+      "dependsOn": [
+        "pkg:cargo/generic-array@0.14.7",
+        "pkg:cargo/typenum@1.20.1"
+      ]
+    },
+    {
       "ref": "pkg:cargo/ctor@0.10.1",
       "dependsOn": [
         "pkg:cargo/dtor@0.8.1"
@@ -23027,8 +25712,43 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:cargo/curve25519-dalek@4.1.3",
+      "dependsOn": [
+        "pkg:cargo/cfg-if@1.0.5",
+        "pkg:cargo/cpufeatures@0.2.17",
+        "pkg:cargo/curve25519-dalek-derive@0.1.1",
+        "pkg:cargo/digest@0.10.7",
+        "pkg:cargo/fiat-crypto@0.2.9",
+        "pkg:cargo/rustc_version@0.4.1",
+        "pkg:cargo/subtle@2.6.1",
+        "pkg:cargo/zeroize@1.9.1"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/curve25519-dalek-derive@0.1.1",
+      "dependsOn": [
+        "pkg:cargo/proc-macro2@1.0.107",
+        "pkg:cargo/quote@1.0.47",
+        "pkg:cargo/syn@2.0.119"
+      ]
+    },
+    {
       "ref": "pkg:cargo/data-url@0.3.2",
       "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/der@0.7.10",
+      "dependsOn": [
+        "pkg:cargo/const-oid@0.9.6",
+        "pkg:cargo/zeroize@1.9.1"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/digest@0.10.7",
+      "dependsOn": [
+        "pkg:cargo/block-buffer@0.10.4",
+        "pkg:cargo/crypto-common@0.1.7"
+      ]
     },
     {
       "ref": "pkg:cargo/directories@6.0.0",
@@ -23089,6 +25809,24 @@
     {
       "ref": "pkg:cargo/dtor@0.8.1",
       "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/ed25519@2.2.3",
+      "dependsOn": [
+        "pkg:cargo/pkcs8@0.10.2",
+        "pkg:cargo/signature@2.2.0"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/ed25519-dalek@2.2.0",
+      "dependsOn": [
+        "pkg:cargo/curve25519-dalek@4.1.3",
+        "pkg:cargo/ed25519@2.2.3",
+        "pkg:cargo/serde@1.0.229",
+        "pkg:cargo/sha2@0.10.9",
+        "pkg:cargo/subtle@2.6.1",
+        "pkg:cargo/zeroize@1.9.1"
+      ]
     },
     {
       "ref": "pkg:cargo/endi@1.1.1",
@@ -23163,6 +25901,17 @@
       "ref": "pkg:cargo/fdeflate@0.3.7",
       "dependsOn": [
         "pkg:cargo/simd-adler32@0.3.10"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/fiat-crypto@0.2.9",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/filetime@0.2.29",
+      "dependsOn": [
+        "pkg:cargo/cfg-if@1.0.5",
+        "pkg:cargo/libc@0.2.191"
       ]
     },
     {
@@ -23319,10 +26068,27 @@
       ]
     },
     {
+      "ref": "pkg:cargo/generic-array@0.14.7",
+      "dependsOn": [
+        "pkg:cargo/typenum@1.20.1",
+        "pkg:cargo/version_check@0.9.5"
+      ]
+    },
+    {
       "ref": "pkg:cargo/gethostname@1.1.0",
       "dependsOn": [
         "pkg:cargo/rustix@1.1.5",
         "pkg:cargo/windows-link@0.2.1"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/getrandom@0.2.17",
+      "dependsOn": [
+        "pkg:cargo/cfg-if@1.0.5",
+        "pkg:cargo/js-sys@0.3.106",
+        "pkg:cargo/libc@0.2.191",
+        "pkg:cargo/wasi@0.11.1+wasi-snapshot-preview1",
+        "pkg:cargo/wasm-bindgen@0.2.129"
       ]
     },
     {
@@ -23338,8 +26104,11 @@
       "ref": "pkg:cargo/getrandom@0.4.3",
       "dependsOn": [
         "pkg:cargo/cfg-if@1.0.5",
+        "pkg:cargo/js-sys@0.3.106",
         "pkg:cargo/libc@0.2.191",
-        "pkg:cargo/r-efi@6.0.0"
+        "pkg:cargo/r-efi@6.0.0",
+        "pkg:cargo/rand_core@0.10.1",
+        "pkg:cargo/wasm-bindgen@0.2.129"
       ]
     },
     {
@@ -23465,6 +26234,84 @@
     {
       "ref": "pkg:cargo/hexf-parse@0.2.1",
       "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/http@1.5.0",
+      "dependsOn": [
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/itoa@1.0.18"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/http-body@1.1.0",
+      "dependsOn": [
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/http@1.5.0"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/http-body-util@0.1.5",
+      "dependsOn": [
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/futures-core@0.3.34",
+        "pkg:cargo/http@1.5.0",
+        "pkg:cargo/http-body@1.1.0",
+        "pkg:cargo/pin-project-lite@0.2.17"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/httparse@1.10.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/hyper@1.12.0",
+      "dependsOn": [
+        "pkg:cargo/atomic-waker@1.1.2",
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/futures-core@0.3.34",
+        "pkg:cargo/http@1.5.0",
+        "pkg:cargo/http-body@1.1.0",
+        "pkg:cargo/httparse@1.10.1",
+        "pkg:cargo/itoa@1.0.18",
+        "pkg:cargo/pin-project-lite@0.2.17",
+        "pkg:cargo/smallvec@1.16.3",
+        "pkg:cargo/tokio@1.54.1",
+        "pkg:cargo/want@0.3.2"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/hyper-rustls@0.27.10",
+      "dependsOn": [
+        "pkg:cargo/http@1.5.0",
+        "pkg:cargo/hyper@1.12.0",
+        "pkg:cargo/hyper-util@0.1.21",
+        "pkg:cargo/rustls@0.23.46",
+        "pkg:cargo/tokio@1.54.1",
+        "pkg:cargo/tokio-rustls@0.26.6",
+        "pkg:cargo/tower-service@0.3.3",
+        "pkg:cargo/webpki-roots@1.0.11"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/hyper-util@0.1.21",
+      "dependsOn": [
+        "pkg:cargo/base64@0.23.1",
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/futures-channel@0.3.34",
+        "pkg:cargo/futures-util@0.3.34",
+        "pkg:cargo/http@1.5.0",
+        "pkg:cargo/http-body@1.1.0",
+        "pkg:cargo/httparse@1.10.1",
+        "pkg:cargo/hyper@1.12.0",
+        "pkg:cargo/ipnet@2.12.2",
+        "pkg:cargo/libc@0.2.191",
+        "pkg:cargo/percent-encoding@2.3.2",
+        "pkg:cargo/pin-project-lite@0.2.17",
+        "pkg:cargo/socket2@0.6.5",
+        "pkg:cargo/tokio@1.54.1",
+        "pkg:cargo/tower-service@0.3.3",
+        "pkg:cargo/tracing@0.1.44"
+      ]
     },
     {
       "ref": "pkg:cargo/iced@0.14.0",
@@ -23727,6 +26574,10 @@
       ]
     },
     {
+      "ref": "pkg:cargo/ipnet@2.12.2",
+      "dependsOn": []
+    },
+    {
       "ref": "pkg:cargo/itoa@1.0.18",
       "dependsOn": []
     },
@@ -23883,6 +26734,10 @@
     },
     {
       "ref": "pkg:cargo/lru@0.16.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/lru-slab@0.1.3",
       "dependsOn": []
     },
     {
@@ -24333,6 +27188,13 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:cargo/pkcs8@0.10.2",
+      "dependsOn": [
+        "pkg:cargo/der@0.7.10",
+        "pkg:cargo/spki@0.7.3"
+      ]
+    },
+    {
       "ref": "pkg:cargo/pkg-config@0.3.34",
       "dependsOn": []
     },
@@ -24432,6 +27294,53 @@
       ]
     },
     {
+      "ref": "pkg:cargo/quinn@0.11.12",
+      "dependsOn": [
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/cfg_aliases@0.2.2",
+        "pkg:cargo/pin-project-lite@0.2.17",
+        "pkg:cargo/quinn-proto@0.11.19",
+        "pkg:cargo/quinn-udp@0.5.16",
+        "pkg:cargo/rustc-hash@2.1.3",
+        "pkg:cargo/rustls@0.23.46",
+        "pkg:cargo/socket2@0.6.5",
+        "pkg:cargo/thiserror@2.0.21",
+        "pkg:cargo/tokio@1.54.1",
+        "pkg:cargo/tracing@0.1.44",
+        "pkg:cargo/web-time@1.1.0"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/quinn-proto@0.11.19",
+      "dependsOn": [
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/getrandom@0.4.3",
+        "pkg:cargo/lru-slab@0.1.3",
+        "pkg:cargo/rand@0.10.3",
+        "pkg:cargo/rand_pcg@0.10.2",
+        "pkg:cargo/ring@0.17.14",
+        "pkg:cargo/rustc-hash@2.1.3",
+        "pkg:cargo/rustls@0.23.46",
+        "pkg:cargo/rustls-pki-types@1.15.1",
+        "pkg:cargo/slab@0.4.12",
+        "pkg:cargo/thiserror@2.0.21",
+        "pkg:cargo/tinyvec@1.13.3",
+        "pkg:cargo/tracing@0.1.44",
+        "pkg:cargo/web-time@1.1.0"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/quinn-udp@0.5.16",
+      "dependsOn": [
+        "pkg:cargo/cfg_aliases@0.2.2",
+        "pkg:cargo/libc@0.2.191",
+        "pkg:cargo/once_cell@1.21.4",
+        "pkg:cargo/socket2@0.6.5",
+        "pkg:cargo/tracing@0.1.44",
+        "pkg:cargo/windows-sys@0.61.2"
+      ]
+    },
+    {
       "ref": "pkg:cargo/quote@1.0.47",
       "dependsOn": [
         "pkg:cargo/proc-macro2@1.0.107"
@@ -24453,6 +27362,14 @@
       ]
     },
     {
+      "ref": "pkg:cargo/rand@0.10.3",
+      "dependsOn": [
+        "pkg:cargo/chacha20@0.10.2",
+        "pkg:cargo/getrandom@0.4.3",
+        "pkg:cargo/rand_core@0.10.1"
+      ]
+    },
+    {
       "ref": "pkg:cargo/rand_chacha@0.9.0",
       "dependsOn": [
         "pkg:cargo/ppv-lite86@0.2.21",
@@ -24460,9 +27377,25 @@
       ]
     },
     {
+      "ref": "pkg:cargo/rand_core@0.6.4",
+      "dependsOn": [
+        "pkg:cargo/getrandom@0.2.17"
+      ]
+    },
+    {
       "ref": "pkg:cargo/rand_core@0.9.5",
       "dependsOn": [
         "pkg:cargo/getrandom@0.3.4"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/rand_core@0.10.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/rand_pcg@0.10.2",
+      "dependsOn": [
+        "pkg:cargo/rand_core@0.10.1"
       ]
     },
     {
@@ -24523,6 +27456,43 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:cargo/reqwest@0.12.28",
+      "dependsOn": [
+        "pkg:cargo/base64@0.22.1",
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/futures-channel@0.3.34",
+        "pkg:cargo/futures-core@0.3.34",
+        "pkg:cargo/futures-util@0.3.34",
+        "pkg:cargo/http@1.5.0",
+        "pkg:cargo/http-body@1.1.0",
+        "pkg:cargo/http-body-util@0.1.5",
+        "pkg:cargo/hyper@1.12.0",
+        "pkg:cargo/hyper-rustls@0.27.10",
+        "pkg:cargo/hyper-util@0.1.21",
+        "pkg:cargo/js-sys@0.3.106",
+        "pkg:cargo/log@0.4.34",
+        "pkg:cargo/percent-encoding@2.3.2",
+        "pkg:cargo/pin-project-lite@0.2.17",
+        "pkg:cargo/quinn@0.11.12",
+        "pkg:cargo/rustls@0.23.46",
+        "pkg:cargo/rustls-pki-types@1.15.1",
+        "pkg:cargo/serde@1.0.229",
+        "pkg:cargo/serde_json@1.0.154",
+        "pkg:cargo/serde_urlencoded@0.7.1",
+        "pkg:cargo/sync_wrapper@1.0.2",
+        "pkg:cargo/tokio@1.54.1",
+        "pkg:cargo/tokio-rustls@0.26.6",
+        "pkg:cargo/tower@0.5.3",
+        "pkg:cargo/tower-http@0.6.11",
+        "pkg:cargo/tower-service@0.3.3",
+        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/wasm-bindgen@0.2.129",
+        "pkg:cargo/wasm-bindgen-futures@0.4.79",
+        "pkg:cargo/web-sys@0.3.106",
+        "pkg:cargo/webpki-roots@1.0.11"
+      ]
+    },
+    {
       "ref": "pkg:cargo/resvg@0.45.1",
       "dependsOn": [
         "pkg:cargo/gif@0.13.3",
@@ -24564,6 +27534,17 @@
       ]
     },
     {
+      "ref": "pkg:cargo/ring@0.17.14",
+      "dependsOn": [
+        "pkg:cargo/cc@1.10.0",
+        "pkg:cargo/cfg-if@1.0.5",
+        "pkg:cargo/getrandom@0.2.17",
+        "pkg:cargo/libc@0.2.191",
+        "pkg:cargo/untrusted@0.9.0",
+        "pkg:cargo/windows-sys@0.52.0"
+      ]
+    },
+    {
       "ref": "pkg:cargo/roxmltree@0.20.0",
       "dependsOn": []
     },
@@ -24602,6 +27583,32 @@
       ]
     },
     {
+      "ref": "pkg:cargo/rustls@0.23.46",
+      "dependsOn": [
+        "pkg:cargo/once_cell@1.21.4",
+        "pkg:cargo/ring@0.17.14",
+        "pkg:cargo/rustls-pki-types@1.15.1",
+        "pkg:cargo/rustls-webpki@0.103.16",
+        "pkg:cargo/subtle@2.6.1",
+        "pkg:cargo/zeroize@1.9.1"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/rustls-pki-types@1.15.1",
+      "dependsOn": [
+        "pkg:cargo/web-time@1.1.0",
+        "pkg:cargo/zeroize@1.9.1"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/rustls-webpki@0.103.16",
+      "dependsOn": [
+        "pkg:cargo/ring@0.17.14",
+        "pkg:cargo/rustls-pki-types@1.15.1",
+        "pkg:cargo/untrusted@0.9.0"
+      ]
+    },
+    {
       "ref": "pkg:cargo/rustversion@1.0.23",
       "dependsOn": []
     },
@@ -24619,6 +27626,10 @@
         "pkg:cargo/unicode-properties@0.1.4",
         "pkg:cargo/unicode-script@0.5.8"
       ]
+    },
+    {
+      "ref": "pkg:cargo/ryu@1.0.23",
+      "dependsOn": []
     },
     {
       "ref": "pkg:cargo/same-file@1.0.6",
@@ -24692,6 +27703,23 @@
       ]
     },
     {
+      "ref": "pkg:cargo/serde_urlencoded@0.7.1",
+      "dependsOn": [
+        "pkg:cargo/form_urlencoded@1.2.2",
+        "pkg:cargo/itoa@1.0.18",
+        "pkg:cargo/ryu@1.0.23",
+        "pkg:cargo/serde@1.0.229"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/sha2@0.10.9",
+      "dependsOn": [
+        "pkg:cargo/cfg-if@1.0.5",
+        "pkg:cargo/cpufeatures@0.2.17",
+        "pkg:cargo/digest@0.10.7"
+      ]
+    },
+    {
       "ref": "pkg:cargo/shlex@2.0.1",
       "dependsOn": []
     },
@@ -24700,6 +27728,12 @@
       "dependsOn": [
         "pkg:cargo/errno@0.3.14",
         "pkg:cargo/libc@0.2.191"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/signature@2.2.0",
+      "dependsOn": [
+        "pkg:cargo/rand_core@0.6.4"
       ]
     },
     {
@@ -24857,6 +27891,13 @@
       ]
     },
     {
+      "ref": "pkg:cargo/spki@0.7.3",
+      "dependsOn": [
+        "pkg:cargo/base64ct@1.8.3",
+        "pkg:cargo/der@0.7.10"
+      ]
+    },
+    {
       "ref": "pkg:cargo/stable_deref_trait@1.2.1",
       "dependsOn": []
     },
@@ -24869,6 +27910,10 @@
       "dependsOn": [
         "pkg:cargo/float-cmp@0.9.0"
       ]
+    },
+    {
+      "ref": "pkg:cargo/subtle@2.6.1",
+      "dependsOn": []
     },
     {
       "ref": "pkg:cargo/svg_fmt@0.4.5",
@@ -24906,6 +27951,12 @@
       ]
     },
     {
+      "ref": "pkg:cargo/sync_wrapper@1.0.2",
+      "dependsOn": [
+        "pkg:cargo/futures-core@0.3.34"
+      ]
+    },
+    {
       "ref": "pkg:cargo/synstructure@0.14.0",
       "dependsOn": [
         "pkg:cargo/proc-macro2@1.0.107",
@@ -24917,6 +27968,14 @@
       "ref": "pkg:cargo/sys-locale@0.3.2",
       "dependsOn": [
         "pkg:cargo/libc@0.2.191"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/tar@0.4.46",
+      "dependsOn": [
+        "pkg:cargo/filetime@0.2.29",
+        "pkg:cargo/libc@0.2.191",
+        "pkg:cargo/xattr@1.6.1"
       ]
     },
     {
@@ -25038,6 +28097,13 @@
       ]
     },
     {
+      "ref": "pkg:cargo/tokio-rustls@0.26.6",
+      "dependsOn": [
+        "pkg:cargo/rustls@0.23.46",
+        "pkg:cargo/tokio@1.54.1"
+      ]
+    },
+    {
       "ref": "pkg:cargo/toml_datetime@1.1.2+spec-1.1.0",
       "dependsOn": [
         "pkg:cargo/serde_core@1.0.229"
@@ -25057,6 +28123,41 @@
       "dependsOn": [
         "pkg:cargo/winnow@1.0.4"
       ]
+    },
+    {
+      "ref": "pkg:cargo/tower@0.5.3",
+      "dependsOn": [
+        "pkg:cargo/futures-core@0.3.34",
+        "pkg:cargo/futures-util@0.3.34",
+        "pkg:cargo/pin-project-lite@0.2.17",
+        "pkg:cargo/sync_wrapper@1.0.2",
+        "pkg:cargo/tokio@1.54.1",
+        "pkg:cargo/tower-layer@0.3.3",
+        "pkg:cargo/tower-service@0.3.3"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/tower-http@0.6.11",
+      "dependsOn": [
+        "pkg:cargo/bitflags@2.13.2",
+        "pkg:cargo/bytes@1.12.1",
+        "pkg:cargo/futures-util@0.3.34",
+        "pkg:cargo/http@1.5.0",
+        "pkg:cargo/http-body@1.1.0",
+        "pkg:cargo/pin-project-lite@0.2.17",
+        "pkg:cargo/tower@0.5.3",
+        "pkg:cargo/tower-layer@0.3.3",
+        "pkg:cargo/tower-service@0.3.3",
+        "pkg:cargo/url@2.5.8"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/tower-layer@0.3.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/tower-service@0.3.3",
+      "dependsOn": []
     },
     {
       "ref": "pkg:cargo/tracing@0.1.44",
@@ -25082,10 +28183,18 @@
       ]
     },
     {
+      "ref": "pkg:cargo/try-lock@0.2.5",
+      "dependsOn": []
+    },
+    {
       "ref": "pkg:cargo/ttf-parser@0.25.1",
       "dependsOn": [
         "pkg:cargo/core_maths@0.1.1"
       ]
+    },
+    {
+      "ref": "pkg:cargo/typenum@1.20.1",
+      "dependsOn": []
     },
     {
       "ref": "pkg:cargo/uds_windows@1.2.1",
@@ -25133,6 +28242,10 @@
     },
     {
       "ref": "pkg:cargo/unicode-width@0.2.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:cargo/untrusted@0.9.0",
       "dependsOn": []
     },
     {
@@ -25194,6 +28307,12 @@
       "dependsOn": [
         "pkg:cargo/same-file@1.0.6",
         "pkg:cargo/winapi-util@0.1.11"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/want@0.3.2",
+      "dependsOn": [
+        "pkg:cargo/try-lock@0.2.5"
       ]
     },
     {
@@ -25372,6 +28491,12 @@
       "dependsOn": [
         "pkg:cargo/js-sys@0.3.106",
         "pkg:cargo/wasm-bindgen@0.2.129"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/webpki-roots@1.0.11",
+      "dependsOn": [
+        "pkg:cargo/rustls-pki-types@1.15.1"
       ]
     },
     {
@@ -25778,6 +28903,13 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:cargo/xattr@1.6.1",
+      "dependsOn": [
+        "pkg:cargo/libc@0.2.191",
+        "pkg:cargo/rustix@1.1.5"
+      ]
+    },
+    {
       "ref": "pkg:cargo/xcursor@0.3.11",
       "dependsOn": []
     },
@@ -25909,6 +29041,10 @@
         "pkg:cargo/syn@3.0.9",
         "pkg:cargo/synstructure@0.14.0"
       ]
+    },
+    {
+      "ref": "pkg:cargo/zeroize@1.9.1",
+      "dependsOn": []
     },
     {
       "ref": "pkg:cargo/zerotrie@0.2.5",
