@@ -17,6 +17,7 @@
 #import "../../app/icon_variants.h"
 #include <strings.h>
 #include "../../rt-bdsp/mods.h"
+#include "../../rt-bdsp/pad_apple.h"
 #include "../../rt-bdsp/swkbd_ui.h"
 
 static BOOL sceneActive;   // state of the scene, set by SceneDelegate
@@ -373,15 +374,17 @@ static void BindController(GCController *c) {
     GCExtendedGamepad *g = c.extendedGamepad;
     if (!g) return;
     __weak GCExtendedGamepad *wg = g;
-    // Button layout of the console (by position): A = right, B = bottom, X = top, Y = left; GameController calls the bottom one "A"
+    // Button layout of the console (by position): A = right, B = bottom, X = top, Y = left. GameController calls the bottom button "A" on
+    // Xbox and PlayStation pads, but a Nintendo pad already names its buttons like the console.
+    BOOL nintendo = pad_is_nintendo(c);
     void (^update)(void) = ^{
         GCExtendedGamepad *p = wg;
         if (!p) return;
         uint64_t m = 0;
-        if (p.buttonB.pressed) m |= BIT(PB_A);
-        if (p.buttonA.pressed) m |= BIT(PB_B);
-        if (p.buttonY.pressed) m |= BIT(PB_X);
-        if (p.buttonX.pressed) m |= BIT(PB_Y);
+        if ((nintendo ? p.buttonA : p.buttonB).pressed) m |= BIT(PB_A);
+        if ((nintendo ? p.buttonB : p.buttonA).pressed) m |= BIT(PB_B);
+        if ((nintendo ? p.buttonX : p.buttonY).pressed) m |= BIT(PB_X);
+        if ((nintendo ? p.buttonY : p.buttonX).pressed) m |= BIT(PB_Y);
         if (p.leftShoulder.pressed) m |= BIT(PB_L);
         if (p.rightShoulder.pressed) m |= BIT(PB_R);
         if (p.leftTrigger.pressed) m |= BIT(PB_ZL);

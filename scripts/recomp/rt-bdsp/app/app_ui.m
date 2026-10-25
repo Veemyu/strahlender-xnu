@@ -5,6 +5,7 @@
 // UI texts: the English text is the key (NSLocalizedString, development language en); German is in lproj/de.lproj.
 #import <AppKit/AppKit.h>
 #import <GameController/GameController.h>
+#include "../pad_apple.h"
 #include <SDL3/SDL.h>
 #include <spawn.h>
 #include <stdatomic.h>
@@ -97,11 +98,13 @@ static void pad_poll(void) {
     for (GCController *c in [GCController controllers]) {
         GCExtendedGamepad *g = c.extendedGamepad;
         if (!g) continue;
-        // Nintendo layout: A is on the right (GameController: buttonB), B at the bottom (buttonA), X at the top (buttonY), Y on the left (buttonX)
-        if ((nintendo ? g.buttonB : g.buttonA).pressed) b |= 1ull << PB_A;
-        if ((nintendo ? g.buttonA : g.buttonB).pressed) b |= 1ull << PB_B;
-        if ((nintendo ? g.buttonY : g.buttonX).pressed) b |= 1ull << PB_X;
-        if ((nintendo ? g.buttonX : g.buttonY).pressed) b |= 1ull << PB_Y;
+        // Nintendo layout: A is on the right (GameController: buttonB), B at the bottom (buttonA), X at the top (buttonY), Y on the left (buttonX).
+        // A Nintendo pad already names its buttons like the console (buttonA is the right one), so it needs no swap.
+        BOOL swap = nintendo && !pad_is_nintendo(c);
+        if ((swap ? g.buttonB : g.buttonA).pressed) b |= 1ull << PB_A;
+        if ((swap ? g.buttonA : g.buttonB).pressed) b |= 1ull << PB_B;
+        if ((swap ? g.buttonY : g.buttonX).pressed) b |= 1ull << PB_X;
+        if ((swap ? g.buttonX : g.buttonY).pressed) b |= 1ull << PB_Y;
         if (g.leftShoulder.pressed) b |= 1ull << PB_L;
         if (g.rightShoulder.pressed) b |= 1ull << PB_R;
         if (g.leftTrigger.pressed) b |= 1ull << PB_ZL;
