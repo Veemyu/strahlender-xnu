@@ -325,6 +325,8 @@ fn run_driver(
             return;
         };
         let mut command = Command::new(&python);
+        // LLVM still leads PATH; select Git separately so Brew cannot shadow Apple Git.
+        command.env("BDSP_GIT", crate::dependencies::git());
         let inherited = std::env::var_os("PATH").unwrap_or_default();
         let mut search_paths: Vec<PathBuf> = if cfg!(target_os = "macos") {
             crate::dependencies::mac_tool_paths()

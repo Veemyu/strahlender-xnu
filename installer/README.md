@@ -25,6 +25,13 @@ Linux AppImages and window icons use its flat rendering; Mac bundles include a
 classic ICNS and a native Liquid Glass asset catalog, generated before signing.
 All artwork is local and rendered during the build. See [icon sources](assets/brand/README.md).
 
+On macOS, Apple's working `/usr/bin/git` satisfies the Git requirement and is
+selected separately from the Homebrew LLVM search path. A Homebrew Git formula
+is not required. Public extraction-tool downloads disable credential helpers
+for those commands only, so they do not request access to the login keychain.
+Source/build workspaces under `~/Library/Application Support/` are supported;
+the tilde in diagnostic paths abbreviates the user's home directory.
+
 Details can be expanded on every view, including after failure or completion.
 Normal views keep the same window size. Only opening the log extends the window,
 to at most 630 logical pixels. On Mac the complete window is additionally capped

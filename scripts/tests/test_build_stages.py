@@ -138,6 +138,14 @@ class EnvFileTests(unittest.TestCase):
 
 
 class PreflightTests(unittest.TestCase):
+    def test_selected_git_is_checked_instead_of_a_shadowing_path_entry(self):
+        with patch.dict(os.environ, BDSP_GIT="/selected/system/git"):
+            items = self.run_pf(["tools"], target="linux",
+                                which=lambda name: name if name == "/selected/system/git" else None)
+        git = next(item for item in items if item["name"] == "git (for hactool)")
+        self.assertTrue(git["ok"])
+        self.assertEqual(git["detail"], "/selected/system/git")
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         t = self.tmp.name

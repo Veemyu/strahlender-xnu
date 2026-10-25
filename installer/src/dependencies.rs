@@ -81,6 +81,18 @@ pub fn brew() -> String {
         .find(|p| std::path::Path::new(p).is_file())
         .unwrap_or_else(|| "brew".into())
 }
+
+fn select_git(mac: bool, mut probe: impl FnMut(&str, &[&str]) -> bool) -> String {
+    if mac && probe("/usr/bin/git", &["--version"]) {
+        "/usr/bin/git".into()
+    } else {
+        "git".into()
+    }
+}
+
+pub fn git() -> String {
+    select_git(cfg!(target_os = "macos"), succeeds)
+}
 fn mac_prefixes(architecture: &str) -> [&'static str; 2] {
     if architecture == "x86_64" {
         ["/usr/local", "/opt/homebrew"]
@@ -167,7 +179,10 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
             "dnf" => &component.dnf,
             _ => &component.pacman,
         };
-        let present = if mac {
+        let present = if mac && component.id == "git" {
+            // Git is provided by Apple's tools; it need not be a Brew formula.
+            succeeds(&git(), &["--version"])
+        } else if mac {
             names
                 .iter()
                 .all(|p| succeeds(&brew(), &["list", "--versions", p]))
@@ -345,6 +360,20 @@ fn return_success() -> std::process::ExitStatus {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn apple_git_is_accepted_without_a_homebrew_formula() {
+        let selected = super::select_git(true, |program, args| {
+            assert_eq!(program, "/usr/bin/git");
+            assert_eq!(args, &["--version"]);
+            true
+        });
+        assert_eq!(selected, "/usr/bin/git");
+        assert_eq!(super::select_git(true, |_, _| false), "git");
+        assert_eq!(
+            super::select_git(false, |_, _| panic!("No Apple probe on Linux")),
+            "git"
+        );
+    }
     #[test]
     fn homebrew_prefix_order_matches_each_mac_architecture() {
         assert_eq!(

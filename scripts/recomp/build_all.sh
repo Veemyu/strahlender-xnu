@@ -27,16 +27,16 @@ for f in "$GEN"/*/*.c; do
 done
 echo "O1: $(wc -l < "$OBJ/list_O1.txt") files, O0: $(wc -l < "$OBJ/list_O0.txt") files, jobs $JOBS"
 start=$(date +%s)
-OPT=-O0 xargs -P "$JOBS" -n 1 -I{} scripts/recomp/test/compile_chunk.sh {} "$OBJ" < "$OBJ/list_O0.txt"
-OPT=-O1 xargs -P "$JOBS" -n 1 -I{} scripts/recomp/test/compile_chunk.sh {} "$OBJ" < "$OBJ/list_O1.txt"
+tr '\n' '\000' < "$OBJ/list_O0.txt" | OPT=-O0 xargs -0 -P "$JOBS" -I{} scripts/recomp/test/compile_chunk.sh {} "$OBJ"
+tr '\n' '\000' < "$OBJ/list_O1.txt" | OPT=-O1 xargs -0 -P "$JOBS" -I{} scripts/recomp/test/compile_chunk.sh {} "$OBJ"
 # Hot functions (hot_o2.txt): recompile their files with -O2 if the object is not already -O2 (marker *.o2)
 while read -r fn; do
   case "$fn" in ""|"#"*) continue ;; esac
-  for f in $(grep -l "^void $fn(.*{\$" "$GEN"/*/*.c); do
+  while IFS= read -r f; do
     o="$OBJ/$(basename "$(dirname "$f")")_$(basename "$f" .c).o"
     [ -e "$o.o2" ] && [ "$o.o2" -nt "$f" ] && continue
     rm -f "$o"; OPT=-O2 scripts/recomp/test/compile_chunk.sh "$f" "$OBJ" && : > "$o.o2"
-  done
+  done < <(grep -l "^void $fn(.*{\$" "$GEN"/*/*.c || true)
 done < scripts/recomp/hot_o2.txt
 echo "Total compile time: $(( $(date +%s) - start )) s"
 du -sh "$OBJ"

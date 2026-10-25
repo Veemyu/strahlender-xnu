@@ -41,6 +41,7 @@ TOOLS_DIR="${TOOLS_DIR:-$ROOT/tools}"
 HACTOOL_DIR="$TOOLS_DIR/hactool"
 HACTOOL="$HACTOOL_DIR/hactool"
 HACTOOL_REPO="https://github.com/SciresM/hactool"
+GIT_BIN="${BDSP_GIT:-git}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 MIN_FREE_GB="${MIN_FREE_GB:-25}"
 PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-40}"
@@ -72,18 +73,18 @@ hactool_runs() {
 check_hactool() {
   if hactool_runs; then ok "hactool ($HACTOOL)"; return 0; fi
   local c
-  for c in git make cc; do
+  for c in "$GIT_BIN" make cc; do
     command -v "$c" >/dev/null 2>&1 || { miss "hactool: '$c' missing (Xcode Command Line Tools?)"; return 1; }
   done
   if [ ! -f "$HACTOOL_DIR/Makefile" ]; then
     if [ -e "$HACTOOL_DIR" ] && [ -n "$(ls -A "$HACTOOL_DIR")" ]; then
       miss "hactool: $HACTOOL_DIR is not a hactool source folder"; return 1
     fi
-    log "hactool: cloning $HACTOOL_REPO"
+    log "hactool: cloning $HACTOOL_REPO with $GIT_BIN"
     mkdir -p "$TOOLS_DIR"
-    git clone --quiet --recursive "$HACTOOL_REPO" "$HACTOOL_DIR" >/dev/null 2>&1 || { miss "hactool: git clone failed (network?)"; return 1; }
+    GIT_TERMINAL_PROMPT=0 "$GIT_BIN" -c credential.helper= clone --quiet --recursive "$HACTOOL_REPO" "$HACTOOL_DIR" >"$TOOLS_DIR/hactool-clone.log" 2>&1 || { tail -n 8 "$TOOLS_DIR/hactool-clone.log" >&2; miss "hactool: tool-source download failed (log: $TOOLS_DIR/hactool-clone.log)"; return 1; }
   elif [ ! -f "$HACTOOL_DIR/mbedtls/Makefile" ] && [ -e "$HACTOOL_DIR/.git" ]; then
-    git -C "$HACTOOL_DIR" submodule update --init --recursive >/dev/null 2>&1 || { miss "hactool: submodule mbedtls missing"; return 1; }
+    GIT_TERMINAL_PROMPT=0 "$GIT_BIN" -c credential.helper= -C "$HACTOOL_DIR" submodule update --init --recursive >/dev/null 2>&1 || { miss "hactool: submodule mbedtls missing"; return 1; }
   fi
   [ -f "$HACTOOL_DIR/config.mk" ] || cp "$HACTOOL_DIR/config.mk.template" "$HACTOOL_DIR/config.mk"
   log "hactool: building (make, log: $HACTOOL_DIR/build.log)"

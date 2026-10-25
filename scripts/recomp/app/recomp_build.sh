@@ -17,7 +17,7 @@ R="${RECOMP_DIR:-$WORK/recomp}"
 EXEFS_DIR="${BDSP_EXEFS_DIR:-$ROOT/work/exefs}"
 case "$R" in /*) ;; *) R="$PWD/$R" ;; esac
 JOBS=auto O0_KB=300 DRY=0 FORCE=0 HARDENED=0 INSTALL_DATA=1 OUT="$WORK/builds/macos-recomp/BDSP.app"
-SP="python3 $ROOT/scripts/build_stages.py"
+SP=(python3 "$ROOT/scripts/build_stages.py")
 log() { echo "[$(date +%H:%M:%S)] recomp: $*"; }
 die() { local c="$1"; shift; echo "ERROR: $*" >&2; exit "$c"; }
 while [ $# -gt 0 ]; do
@@ -46,9 +46,9 @@ O0_BYTES=$((O0_KB * 1000))
 [ -f "$ROOT/scripts/recomp/upstream/generator/gen.py" ] \
   || die 10 "scripts/recomp/upstream missing: git checkout -- scripts/recomp/upstream (vendored generator, MIT; see THIRD_PARTY_NOTICES.md)"
 
-hash_of() { $SP stage-hash --stage "$1" --root "$ROOT" --work "$WORK" | tail -n 1; }
-marker_ok() { $SP marker-check --work "$WORK" --stage "$1" --hash "$2"; }
-marker_put() { local st="$1" h="$2" args=() n; shift 2; for n in "$@"; do args+=(--note "$n"); done; $SP marker-write --work "$WORK" --stage "$st" --hash "$h" ${args[@]+"${args[@]}"}; }
+hash_of() { "${SP[@]}" stage-hash --stage "$1" --root "$ROOT" --work "$WORK" | tail -n 1; }
+marker_ok() { "${SP[@]}" marker-check --work "$WORK" --stage "$1" --hash "$2"; }
+marker_put() { local st="$1" h="$2" args=() n; shift 2; for n in "$@"; do args+=(--note "$n"); done; "${SP[@]}" marker-write --work "$WORK" --stage "$st" --hash "$h" ${args[@]+"${args[@]}"}; }
 doit() {  # description, command…  (with --dry-run only show)
   local what="$1"; shift
   if [ "$DRY" -eq 1 ]; then printf '    [dry-run] %s:' "$what"; printf ' %q' "$@"; printf '\n'; return 0; fi

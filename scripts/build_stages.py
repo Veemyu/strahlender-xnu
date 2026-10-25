@@ -314,7 +314,9 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
     hactool = os.path.join(tools_dir, "hactool", "hactool")
     if "tools" in s:
         for c in ("git", "make", "cc"):
-            add(c + " (for hactool)", which(c), "", "xcode-select --install (Command Line Tools)")
+            executable = os.environ.get("BDSP_GIT", "git") if c == "git" else c
+            add(c + " (for hactool)", which(executable), executable if c == "git" else "",
+                "xcode-select --install (Command Line Tools)")
     elif "extract" in s:
         add("hactool", os.access(hactool, os.X_OK), hactool,
             "scripts/build_all.sh tools (clones and builds hactool locally, without sudo)")

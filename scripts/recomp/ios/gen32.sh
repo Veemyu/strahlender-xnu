@@ -86,8 +86,8 @@ do_build() {
   echo "O1: $(wc -l < "$OBJ/list_O1.txt"), O0: $(wc -l < "$OBJ/list_O0.txt"), Jobs $jobs"
   export OBJ sdk
   local start; start=$(date +%s)
-  OPT=-O0 xargs -P "$jobs" -n 1 scripts/recomp/ios/compile_chunk_ios.sh < "$OBJ/list_O0.txt"
-  OPT=-O1 xargs -P "$jobs" -n 1 scripts/recomp/ios/compile_chunk_ios.sh < "$OBJ/list_O1.txt"
+  tr '\n' '\000' < "$OBJ/list_O0.txt" | OPT=-O0 xargs -0 -P "$jobs" -I{} scripts/recomp/ios/compile_chunk_ios.sh {}
+  tr '\n' '\000' < "$OBJ/list_O1.txt" | OPT=-O1 xargs -0 -P "$jobs" -I{} scripts/recomp/ios/compile_chunk_ios.sh {}
   echo "Total compile time: $(( $(date +%s) - start )) s"
   do_hot
 }
@@ -102,12 +102,12 @@ do_hot() {
   while read -r fn; do
     case "$fn" in ""|"#"*) continue ;; esac
     n=$(printf 'f_%x' $(( 0x${fn#f_} - 0x7000000000 + $(base_of main) )))
-    for f in $(grep -l "^void $n(.*{\$" "$GEN"/main/*.c); do
+    while IFS= read -r f; do
       o="$OBJ/main_$(basename "$f" .c).o"
       [ -e "$o.o2" ] && [ "$o.o2" -nt "$f" ] && continue
       rm -f "$o"; OPT=-O2 scripts/recomp/ios/compile_chunk_ios.sh "$f" && : > "$o.o2"
       echo "-O2: $n in $(basename "$f")"
-    done
+    done < <(grep -l "^void $n(.*{\$" "$GEN"/main/*.c || true)
   done < scripts/recomp/hot_o2.txt
 }
 
