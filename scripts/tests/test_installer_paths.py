@@ -56,3 +56,26 @@ class InstallerPathTests(unittest.TestCase):
             self.assertTrue((objects / "main_O'Brien hot chunk.o").is_file())
             self.assertTrue((objects / "main_O'Brien hot chunk.o.o2").is_file())
             self.assertTrue((objects / "main_cold chunk.o").is_file())
+
+    @unittest.skipUnless(sys.platform == "darwin", "Apple Objective-C compiler")
+    def test_native_runtime_includes_preserve_application_support_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "Library/Application Support/O'Brien installer"
+            here = root / "scripts/recomp/rt-bdsp/nvn"
+            here.mkdir(parents=True)
+            for name in ("build_nvn.sh", "flags.inc.sh"):
+                shutil.copyfile(ROOT / "scripts/recomp/rt-bdsp/nvn" / name, here / name)
+            source = root / "work/native sources"
+            (source / "nvn/maxwell").mkdir(parents=True)
+            (source / "nvn/path_probe.h").write_text("#define PATH_PROBE 7\n")
+            for name in ("objects.c", "cmdbuf.c", "formats.c", "tegra.c", "astc.c", "bctc.c",
+                         "maxwell/translate.c", "renderer.m", "metal.m"):
+                (source / "nvn" / name).write_text('#include "path_probe.h"\nint probe(void) { return PATH_PROBE; }\n')
+            for name in ("nvn_glue.c", "swkbd_overlay.m", "debug_thread.c", "movie_glue.c"):
+                (here / name).write_text('#include "path_probe.h"\nint probe(void) { return PATH_PROBE; }\n')
+            objects = root / "work/native objects"
+            environment = dict(os.environ, NVN_SRC=str(source), RT=str(objects), NVN_KEEP="1")
+            result = subprocess.run(["bash", str(here / "build_nvn.sh")], env=environment,
+                                    capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(len(list((objects / "nvn").glob("*.o"))), 13)

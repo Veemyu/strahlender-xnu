@@ -10,7 +10,12 @@ mkdir -p "$RT/nvn"
 if [ -z "${NVN_KEEP:-}" ]; then
   NVN_SRC="$SRC" "$HERE/prepare.sh" > /dev/null   # copies only when the stamp differs
 fi
-INC="-I $SRC -I $SRC/nvn -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/rt-bdsp $(pkg-config --cflags sdl3)"
+# Paths are arguments, not a whitespace-delimited flag string. Installer
+# checkouts live under Library/Application Support by default.
+INC=(-I "$SRC" -I "$SRC/nvn" -I scripts/recomp/rt
+     -I scripts/recomp/upstream/runtime -I scripts/recomp/rt-bdsp)
+SDL_FLAGS=($(pkg-config --cflags sdl3))
+INC+=("${SDL_FLAGS[@]}")
 . "$HERE/flags.inc.sh"
 W="$BDSP_NOWARN"
 build() {  # Quelle Objekt [Zusatzflags]
@@ -18,7 +23,7 @@ build() {  # Quelle Objekt [Zusatzflags]
   if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/src" \( -name '*.h' -o -name '*.inc' \) -newer "$o" -print -quit)" ]; then
     # Objective-C with the Apple compiler: the Homebrew LLVM generates class stubs that the Apple linker does not resolve
     local cc=clang; case "$f" in *.m) cc=/usr/bin/clang;; esac
-    $cc $BDSP_OPT "$BDSP_PATHMAP" $W $INC "$@" -c "$f" -o "$o"
+    $cc $BDSP_OPT "$BDSP_PATHMAP" $W "${INC[@]}" "$@" -c "$f" -o "$o"
   fi
 }
 for f in objects cmdbuf formats tegra astc bctc; do build "$SRC/nvn/$f.c" "$RT/nvn/$f.o" "$@"; done
