@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT
- * C port of LASRecomp lifter.py immediate/control families plus our EH returns.
+ * C port of LASRecomp lifter.py scalar families plus our EH overrides.
  * Further families report CG_PENDING, never a fabricated supported instruction. */
 #include "lifter.h"
 #include <inttypes.h>
@@ -168,10 +168,212 @@ static Instruction control(uint32_t w, uint64_t pc, bool portable, bool has_prev
     if (bits(w, 22, 10) == 0x354) return system_instruction(w, pc, portable);
     return unsupported(pc, cg_format("branch_sys %08x", w));
 }
+static const char *extend(unsigned r, unsigned option, unsigned shift) {
+    const char *value = reg(true, r, false);
+    const char *formats[] = {"(uint64_t)(uint8_t)%s", "(uint64_t)(uint16_t)%s", "(uint64_t)(uint32_t)%s", "%s",
+        "(uint64_t)(int64_t)(int8_t)%s", "(uint64_t)(int64_t)(int16_t)%s", "(uint64_t)(int64_t)(int32_t)%s", "%s"};
+    const char *expression = cg_format(formats[option], value);
+    return shift ? cg_format("(%s << %u)", expression, shift) : expression;
+}
+static const char *offset(const char *base, int64_t displacement) {
+    return cg_format("%s %s %" PRIu64, base, displacement < 0 ? "-" : "+", (uint64_t)(displacement < 0 ? -displacement : displacement));
+}
+static Instruction load_store(uint32_t w, uint64_t pc) {
+    unsigned rn = bits(w, 5, 5), rt = bits(w, 0, 5), rt2 = bits(w, 10, 5);
+    const char *base = reg(true, rn, true);
+    /* EH generator override: pair exclusives use our reservation helpers. */
+    if ((w & 0xbfa00000) == 0x88200000) {
+        bool sf = bits(w, 30, 1) != 0;
+        unsigned width = sf ? 64u : 32u;
+        if (bits(w, 22, 1)) return op(cg_format("{ uint64_t ea = %s; uint64_t lo, hi; ldxp%u(c, ea, GPTR(ea), &lo, &hi); %s %s }",
+            base, width, set(sf, rt, "lo", false), set(sf, rt2, "hi", false)));
+        return op(cg_format("{ uint64_t ea = %s; uint32_t st = stxp%u(c, ea, GPTR(ea), %s, %s); %s }",
+            base, width, reg(true, rt, false), reg(true, rt2, false), set(false, bits(w, 16, 5), "st", false)));
+    }
+    if (bits(w, 26, 1)) return (Instruction){.kind = CG_PENDING}; /* SIMD is a separate milestone. */
+    if (bits(w, 24, 6) == 8) {
+        unsigned width = 8u << bits(w, 30, 2);
+        bool acquire = bits(w, 23, 1) != 0, load = bits(w, 22, 1) != 0;
+        if (bits(w, 21, 1)) return unsupported(pc, "exclusive pair / CAS");
+        if (!acquire) {
+            if (load) return op(set(true, rt, cg_format("ldx%u(c, %s)", width, base), false));
+            return op(cg_format("{ uint32_t st = stx%u(c, %s, %s); %s }", width, base,
+                reg(true, rt, false), set(false, bits(w, 16, 5), "st", false)));
+        }
+        if (load) return op(set(true, rt, cg_format("lda%u(%s)", width, base), false));
+        return op(cg_format("stl%u(%s, %s);", width, base, reg(true, rt, false)));
+    }
+    if (bits(w, 27, 3) == 3 && !bits(w, 24, 2)) {
+        unsigned opc = bits(w, 30, 2);
+        int64_t displacement = sext(bits(w, 5, 19), 19) * 4;
+        uint64_t magnitude = displacement < 0 ? (uint64_t)(-displacement) : 0;
+        const char *address = displacement < 0 && pc < magnitude
+            ? cg_format("0x-%" PRIx64 "ull", magnitude - pc) : hex(pc + (uint64_t)displacement);
+        if (opc == 0) return op(set(false, rt, cg_format("LD32(%s)", address), false));
+        if (opc == 1) return op(set(true, rt, cg_format("LD64(%s)", address), false));
+        if (opc == 2) return op(set(true, rt, cg_format("(int64_t)(int32_t)LD32(%s)", address), false));
+        return op("/* prfm */");
+    }
+    if (bits(w, 27, 3) == 5) {
+        unsigned opc = bits(w, 30, 2), mode = bits(w, 23, 2);
+        bool load = bits(w, 22, 1) != 0, post = mode == 1, wb = mode == 1 || mode == 3;
+        if (opc == 3) return unsupported(pc, "pair opc 3");
+        int64_t displacement = sext(bits(w, 15, 7), 7) * (opc == 2 ? 8 : 4);
+        const char *code = cg_format("{ uint64_t ea = %s;", post ? base : offset(base, displacement));
+        if (load) {
+            const char *loads[] = {"uint64_t a = LD32(ea), b = LD32(ea + 4);",
+                "uint64_t a = (int64_t)(int32_t)LD32(ea), b = (int64_t)(int32_t)LD32(ea + 4);",
+                "uint64_t a = LD64(ea), b = LD64(ea + 8);"};
+            code = cg_format("%s %s", code, loads[opc]);
+        } else {
+            code = cg_format("%s ST%u(ea, %s); ST%u(ea + %u, %s);", code, opc == 2 ? 64u : 32u,
+                reg(opc == 2, rt, false), opc == 2 ? 64u : 32u, opc == 2 ? 8u : 4u, reg(opc == 2, rt2, false));
+        }
+        if (wb) code = cg_format("%s %s = %s;", code, base, post ? offset("ea", displacement) : "ea");
+        if (load) code = cg_format("%s %s %s", code, set(true, rt, "a", false), set(true, rt2, "b", false));
+        return op(cg_format("%s }", code));
+    }
+    if (bits(w, 27, 3) == 7) {
+        unsigned size = bits(w, 30, 2), opc = bits(w, 22, 2), width = 8u << size;
+        const char *ea = NULL, *wb = NULL;
+        if (bits(w, 24, 2) == 1) ea = cg_format("%s + %s", base, hex((uint64_t)bits(w, 10, 12) << size));
+        else {
+            unsigned kind = bits(w, 10, 2);
+            if (bits(w, 21, 1)) {
+                if (kind != 2) return unsupported(pc, "ldst reg atomic/pac");
+                unsigned option = bits(w, 13, 3);
+                if (option != 2 && option != 3 && option != 6 && option != 7) return unsupported(pc, "ldst reg option");
+                ea = cg_format("%s + %s", base, extend(bits(w, 16, 5), option, bits(w, 12, 1) ? size : 0));
+            } else {
+                ea = offset(base, sext(bits(w, 12, 9), 9));
+                if (kind == 1) { wb = ea; ea = base; }
+                else if (kind == 3) wb = "ea";
+            }
+        }
+        const char *body = NULL, *load = NULL;
+        if (opc == 0) body = cg_format("ST%u(ea, %s);", width, reg(size == 3, rt, false));
+        else if (opc == 1) { body = cg_format("uint64_t v = LD%u(ea);", width); load = set(true, rt, "v", false); }
+        else if (size == 3) return op("/* prfm */");
+        else if (size == 2 && opc == 3) return unsupported(pc, "ldst size2 opc3");
+        else { body = cg_format("uint64_t v = (uint64_t)(int64_t)(int%u_t)LD%u(ea);", width, width); load = set(opc == 2, rt, "v", false); }
+        const char *code = cg_format("{ uint64_t ea = %s; %s", ea, body);
+        if (wb) code = cg_format("%s %s = %s;", code, base, wb);
+        if (load) code = cg_format("%s %s", code, load);
+        return op(cg_format("%s }", code));
+    }
+    return unsupported(pc, cg_format("ldst %08x", w));
+}
+static const char *shift(bool sf, const char *value, unsigned type, unsigned amount) {
+    unsigned size = sf ? 64u : 32u;
+    if (!amount && type != 3) return value;
+    if (type == 0 || type == 1) return cg_format("(%s %s %u)", value, type == 0 ? "<<" : ">>", amount);
+    if (type == 2) return cg_format("(uint%u_t)((int%u_t)%s >> %u)", size, size, value, amount);
+    return cg_format("ROR%u(%s, %u)", size, value, amount);
+}
+static const char *condition(unsigned cond) {
+    const char *const names[] = {"EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC", "HI", "LS", "GE", "LT", "GT", "LE"};
+    return cond >= 14 ? "1" : cg_format("COND_%s(c)", names[cond]);
+}
+static Instruction register_instruction(uint32_t w, uint64_t pc, bool portable) {
+    bool sf = bits(w, 31, 1) != 0;
+    unsigned rd = bits(w, 0, 5), rn = bits(w, 5, 5), rm = bits(w, 16, 5), size = sf ? 64u : 32u;
+    const char *a = reg(sf, rn, false), *b = reg(sf, rm, false);
+    if (!bits(w, 28, 1)) {
+        if (bits(w, 24, 4) == 10) {
+            unsigned opc = bits(w, 29, 2), amount = bits(w, 10, 6);
+            if (!sf && amount >= 32) return unsupported(pc, "logical shift amount");
+            b = shift(sf, b, bits(w, 22, 2), amount);
+            if (bits(w, 21, 1)) b = cg_format("(uint%u_t)~%s", size, b);
+            const char *expression = cg_format("%s %s %s", a, (const char *const[]){"&", "|", "^", "&"}[opc], b);
+            if (opc == 3) expression = cg_format("logic%u(c, (uint%u_t)(%s))", size, size, expression);
+            return op(set(sf, rd, expression, false));
+        }
+        if (bits(w, 24, 4) == 11) {
+            bool subtract = bits(w, 30, 1) != 0, flags = bits(w, 29, 1) != 0, sp = false;
+            if (!bits(w, 21, 1)) {
+                unsigned type = bits(w, 22, 2);
+                if (type == 3) return unsupported(pc, "add shift ror");
+                b = shift(sf, b, type, bits(w, 10, 6));
+            } else {
+                if (bits(w, 22, 2)) return unsupported(pc, "add ext opt");
+                a = reg(sf, rn, true);
+                b = extend(rm, bits(w, 13, 3), bits(w, 10, 3));
+                if (!sf) b = cg_format("(uint32_t)(%s)", b);
+                sp = !flags;
+            }
+            if (flags) return op(set(sf, rd, cg_format("%s%u(c, %s, (uint%u_t)(%s))", subtract ? "subs" : "adds", size, a, size, b), false));
+            return op(set(sf, rd, cg_format("%s %s %s", a, subtract ? "-" : "+", b), sp));
+        }
+        return unsupported(pc, cg_format("dp_reg %08x", w));
+    }
+    if (bits(w, 24, 4) == 11) {
+        unsigned op31 = bits(w, 21, 3), ra = bits(w, 10, 5);
+        const char *sign = bits(w, 15, 1) ? "-" : "+";
+        if (bits(w, 29, 2)) return unsupported(pc, "dp3 op54");
+        if (op31 == 0) return op(set(sf, rd, cg_format("%s %s %s * %s", reg(sf, ra, false), sign, a, b), false));
+        if (op31 == 1) return op(set(true, rd, cg_format("%s %s (uint64_t)((int64_t)(int32_t)%s * (int64_t)(int32_t)%s)",
+            reg(true, ra, false), sign, reg(false, rn, false), reg(false, rm, false)), false));
+        if (op31 == 5) return op(set(true, rd, cg_format("%s %s (uint64_t)%s * (uint64_t)%s",
+            reg(true, ra, false), sign, reg(false, rn, false), reg(false, rm, false)), false));
+        if (op31 == 2) return op(set(true, rd, cg_format("(uint64_t)(((__int128)(int64_t)%s * (__int128)(int64_t)%s) >> 64)",
+            reg(true, rn, false), reg(true, rm, false)), false));
+        if (op31 == 6) return op(set(true, rd, cg_format("(uint64_t)(((unsigned __int128)%s * %s) >> 64)",
+            reg(true, rn, false), reg(true, rm, false)), false));
+        return unsupported(pc, "dp3");
+    }
+    unsigned op2 = bits(w, 21, 4);
+    if (op2 == 0) return op(set(sf, rd, cg_format("%s%s%u(c, %s, %s)", bits(w, 30, 1) ? "sbc" : "adc", bits(w, 29, 1) ? "s" : "", size, a, b), false));
+    if (op2 == 2) return op(cg_format("if (%s) (void)%s%u(c, %s, %s); else c->nzcv = %s;",
+        condition(bits(w, 12, 4)), bits(w, 30, 1) ? "subs" : "adds", size, a,
+        bits(w, 11, 1) ? hex(rm) : b, hex((uint64_t)bits(w, 0, 4) << 28)));
+    if (op2 == 4) {
+        unsigned o2 = bits(w, 10, 2); bool negate = bits(w, 30, 1) != 0;
+        if (o2 > 1) return unsupported(pc, "csel variant");
+        const char *alternative = negate ? cg_format("%s%s", o2 ? "-" : "~", b) : (o2 ? cg_format("%s + 1", b) : b);
+        return op(set(sf, rd, cg_format("(%s) ? %s : (uint%u_t)(%s)", condition(bits(w, 12, 4)), a, size, alternative), false));
+    }
+    if (op2 == 6) {
+        unsigned opcode = bits(w, 10, 6);
+        const char *expression = NULL;
+        if (bits(w, 30, 1)) {
+            if (rm) return unsupported(pc, "dp1 opcode2");
+            switch (opcode) {
+                case 0: expression = cg_format("rbit%u(%s)", size, a); break;
+                case 1: expression = cg_format("rev16_%u(%s)", size, a); break;
+                case 2: expression = cg_format(sf ? "rev32_64(%s)" : "__builtin_bswap32(%s)", a); break;
+                case 3: if (sf) expression = cg_format("__builtin_bswap64(%s)", a); break;
+                case 4: expression = cg_format("clz%u(%s)", size, a); break;
+                case 5: expression = cg_format("cls%u(%s)", size, a); break;
+            }
+            if (!expression) return unsupported(pc, "dp1");
+        } else {
+            if (opcode >= 16 && opcode <= 23) {
+                if (!portable) return (Instruction){.kind = CG_PENDING}; /* Native ASM IR follows separately. */
+                unsigned crc_size = bits(w, 10, 2);
+                if ((crc_size == 3) != sf) return unsupported(pc, "crc size");
+                return op(set(false, rd, cg_format("%s(%s, %s, %u)", bits(w, 12, 1) ? "CRC32C" : "CRC32",
+                    reg(false, rn, false), reg(crc_size == 3, rm, false), 1u << crc_size), false));
+            }
+            switch (opcode) {
+                case 2: expression = cg_format("udiv%u(%s, %s)", size, a, b); break;
+                case 3: expression = cg_format("sdiv%u(%s, %s)", size, a, b); break;
+                case 8: expression = cg_format("%s << (%s & %u)", a, b, size - 1); break;
+                case 9: expression = cg_format("%s >> (%s & %u)", a, b, size - 1); break;
+                case 10: expression = cg_format("(uint%u_t)((int%u_t)%s >> (%s & %u))", size, size, a, b, size - 1); break;
+                case 11: expression = cg_format("ROR%u(%s, %s & %u)", size, a, b, size - 1); break;
+            }
+            if (!expression) return unsupported(pc, "dp2");
+        }
+        return op(set(sf, rd, expression, false));
+    }
+    return unsupported(pc, cg_format("dp_reg %08x", w));
+}
 Instruction cg_lift_basic(uint32_t w, uint64_t pc, bool portable, bool has_previous, uint32_t previous) {
     unsigned op0 = bits(w, 25, 4);
     if ((op0 & 14) == 8) return immediate(w, pc);
     if ((op0 & 14) == 10) return control(w, pc, portable, has_previous, previous);
-    if ((op0 & 5) == 4 || (op0 & 7) == 5 || (op0 & 7) == 7) return (Instruction){.kind = CG_PENDING};
+    if ((op0 & 5) == 4) return load_store(w, pc);
+    if ((op0 & 7) == 5) return register_instruction(w, pc, portable);
+    if ((op0 & 7) == 7) return (Instruction){.kind = CG_PENDING};
     return (Instruction){.kind = CG_TRAP, .code = cg_format("rt_udf(c, %s);", hex(pc))};
 }

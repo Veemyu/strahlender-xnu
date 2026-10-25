@@ -1,9 +1,9 @@
 # Native BDSP generator
 
 C17 replacement for the Python generator and module-image builder, introduced in
-independently checked stages. **This milestone implements images and the initial
-analysis checkpoint. It does not implement `gen` or replace the production Python
-C emitter yet.** No game bytes or generated game output belong in this directory.
+independently checked stages. **This milestone implements images, the initial
+analysis checkpoint and scalar instruction decoding. It does not implement `gen`
+or replace the production Python C emitter yet.** No game bytes or generated game output belong in this directory.
 
 ## Build
 
@@ -68,7 +68,8 @@ behind this command.
 
 `decode` reads one hexadecimal instruction per line on stdin and emits diagnostic
 IR as JSONL. `--pc` selects the guest address; `--simd asm|c` selects system-register
-semantics; `--previous-word` supplies context for EH-aware return handling.
+semantics and portable CRC emission; `--previous-word` supplies context for
+EH-aware return handling.
 
 ```sh
 printf '91000400\nd65f03c0\n' | work/native-generator/bdsp_codegen decode \
@@ -77,10 +78,20 @@ printf '91000400\nd65f03c0\n' | work/native-generator/bdsp_codegen decode \
 
 Immediate arithmetic/logical/bitfield/move instructions, PC-relative operations,
 branches, system registers, exception instructions and EH return overrides are
-ported. The test exhausts immediate bit-mask encodings and adds seeded invalid
-and control encodings, comparing over 33,000 IR records with the frozen lifter.
-Pending load/store, register and SIMD families explicitly emit `handled: false`;
-this is a development checkpoint, not a partial production `gen` command.
+ported. Scalar load/store, exclusive pairs, register arithmetic, multiply/divide,
+conditional operations and portable CRC emission are also implemented. Addressing,
+writeback order, sign extension and generated expressions match the frozen Python
+reference, including its handling of reserved encodings.
+
+Tests exhaust immediate bit-mask encodings and add seeded scalar encodings,
+comparing over 69,000 IR records plus CRC cases. A local differential check also
+matched 44,012 sampled scalar instructions from existing Vanilla/Lumi modules;
+no game data or samples are checked in. GCC builds on Linux x86-64 and AArch64
+matched a further 12,007 synthetic instruction records against frozen-reference
+outputs. macOS tests also pass with ASan/UBSan and the bundled Python runtime.
+
+SIMD and native CRC assembly metadata still emit `handled: false`; this is a
+development checkpoint, not a partial production `gen` command.
 Temporary expression strings are reclaimed after each diagnostic instruction.
 The current arena/error context is single-threaded; worker-owned contexts must be
 introduced before enabling the future native thread pool.

@@ -217,7 +217,7 @@ class NativeCodegenTests(unittest.TestCase):
                 self.assertNotIn(str(folder), result.stdout + result.stderr)
                 self.assertFalse(out.exists())
 
-    def test_immediate_and_control_ir_matches_frozen_lifter(self):
+    def test_scalar_ir_matches_frozen_lifter(self):
         compare_spec = importlib.util.spec_from_file_location("native_codegen_compare", HERE / "compare.py")
         compare = importlib.util.module_from_spec(compare_spec)
         compare_spec.loader.exec_module(compare)
@@ -229,6 +229,16 @@ class NativeCodegenTests(unittest.TestCase):
                      0xd53b4400, 0xd53b4420, 0xd51b4400, 0xd51b4420]
             words += [(rng.getrandbits(32) & ~(15 << 25)) | rng.choice((8, 9, 10, 11)) << 25
                       for _ in range(3000)]
+            # Scalar load/store families: addressing, writeback, signed loads and exclusive pairs.
+            words += [(rng.getrandbits(32) & ~((15 << 25) | (1 << 26))) | rng.choice((4, 12)) << 25
+                      for _ in range(6000)]
+            words += [0xf9400020, 0xa9bf7bfd, 0xa8c17bfd, 0xc87f0440, 0xc8200440,
+                      0x887f0440, 0x88200440, 0xf85f8c00, 0x98000000, 0x18ffffe0]
+            # Register arithmetic; CRC pass-through assembly is still a pending IR family.
+            reg_words = [(rng.getrandbits(32) & ~(15 << 25)) | rng.choice((5, 13)) << 25
+                         for _ in range(6000)]
+            words += [w for w in reg_words if not (w >> 28 & 1 and w >> 24 & 15 != 11
+                       and w >> 21 & 15 == 6 and not w >> 30 & 1 and 16 <= (w >> 10 & 63) <= 23)]
             # Exhaust every immediate bit-mask encoding, including reserved forms.
             words += [0xd2000000 | n << 22 | r << 16 | s << 10 | 31 << 5 | 3
                       for n in range(2) for r in range(64) for s in range(64)]
@@ -256,8 +266,21 @@ class NativeCodegenTests(unittest.TestCase):
                 new = subprocess.run([str(self.binary), "decode", *arguments], input="d65f03c0\n",
                                      capture_output=True, text=True, check=True)
                 self.assertEqual(json.loads(old.stdout), json.loads(new.stdout))
+            # CRC is C code in portable SIMD mode; native ASM metadata is a later checkpoint.
+            crc_words = [0x1ac00000 | sf << 31 | opc << 10 | rm << 16 | rn << 5 | rd
+                         for sf in range(2) for opc in range(16, 24)
+                         for rm, rn, rd in ((3, 4, 5), (31, 31, 31))]
+            crc_stream = "".join(f"{w:08x}\n" for w in crc_words)
+            arguments = ["--pc", "0x801001000", "--simd", "c"]
+            old = subprocess.run([sys.executable, str(HERE / "reference_decode.py"),
+                                  "--reference", str(reference), *arguments], input=crc_stream,
+                                 capture_output=True, text=True, check=True)
+            new = subprocess.run([str(self.binary), "decode", *arguments], input=crc_stream,
+                                 capture_output=True, text=True, check=True)
+            self.assertEqual([json.loads(x) for x in old.stdout.splitlines()],
+                             [json.loads(x) for x in new.stdout.splitlines()])
             pending = subprocess.run([str(self.binary), "decode", "--pc", "0x801001000"],
-                                     input="f9400020\n", capture_output=True, text=True, check=True)
+                                     input="3dc00020\n", capture_output=True, text=True, check=True)
             self.assertFalse(json.loads(pending.stdout)["handled"])
 
     def test_failed_publish_preserves_existing_output_and_removes_owned_temporary(self):
