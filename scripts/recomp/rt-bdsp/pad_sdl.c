@@ -10,6 +10,10 @@
 #include <string.h>
 #include <time.h>
 #include "input.h"
+#ifdef __linux__
+#include <dirent.h>
+#include <unistd.h>
+#endif
 
 #define DEADZONE 4000       // about 12 % of the range, as on the Mac
 #define TRIGGER_ON 10000    // analog trigger counted as pressed (the Pro Controller's ZL/ZR report 0 or full)
@@ -77,9 +81,39 @@ static void hotplug(void) {
     SDL_free(ids);
 }
 
+#ifdef __linux__
+// A Nintendo or Sony pad is connected, but SDL sees no gamepad and the pad's /dev/hidraw node is not readable: say once what to do.
+// (Most pads need nothing: the kernel's own drivers expose them as input devices. The rules file adds hidraw access for SDL's own drivers.)
+static void hint_missing_access(void) {
+    DIR *d = opendir("/sys/class/hidraw");
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (strncmp(e->d_name, "hidraw", 6)) continue;
+        char path[160], line[200];
+        snprintf(path, sizeof path, "/sys/class/hidraw/%s/device/uevent", e->d_name);
+        FILE *f = fopen(path, "r");
+        int ours = 0;
+        while (f && fgets(line, sizeof line, f))
+            if (!strncmp(line, "HID_ID=", 7) && (strstr(line, ":0000057E:") || strstr(line, ":0000054C:"))) ours = 1;
+        if (f) fclose(f);
+        snprintf(path, sizeof path, "/dev/%s", e->d_name);
+        if (ours && access(path, R_OK) != 0) {
+            fprintf(stderr, "[pad] A Nintendo or Sony controller is connected, but %s is not readable for you. Install udev/70-bdsp-controllers.rules "
+                            "(from the app folder or scripts/recomp/rt-bdsp/app/linux/udev/; the commands are in the file) and reconnect the pad.\n", path);
+            break;
+        }
+    }
+    closedir(d);
+}
+#endif
+
 static void *pad_thread(void *arg) {
     (void)arg;
     uint64_t last_b = ~0ull;
+#ifdef __linux__
+    int ticks = 0;
+#endif
     int32_t last_s[4] = {0, 0, 0, 0};
     for (;;) {
         SDL_UpdateGamepads();   // events are off, state and the device list are refreshed here
@@ -88,6 +122,13 @@ static void *pad_thread(void *arg) {
         poll_pads(&s);
         input_pad_set(&s);
         input_tick();
+#ifdef __linux__
+        if (++ticks == 750) {   // 3 s after the start
+            int n = 0;
+            SDL_free(SDL_GetGamepads(&n));
+            if (n == 0) hint_missing_access();
+        }
+#endif
         if (pad_log) {
             // log on a change of the buttons or of a stick by more than a quarter of its range (names for the manual check of a pad)
             int moved = 0;

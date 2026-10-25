@@ -1,0 +1,16 @@
+# Lets the logged-in user read game controllers without root. Most pads work without this file (the kernel drivers hid-nintendo and
+# hid-playstation expose them as input devices); it adds access to /dev/hidraw*, which SDL's own Switch and PlayStation drivers need for
+# the pad's motion sensor, LEDs and rumble, and for pads the kernel has no driver for (Switch 2).
+#
+# Install (needs root once; the app never does this itself):
+#   sudo install -m 644 70-bdsp-controllers.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+# Reconnect the controller afterwards.
+
+# Nintendo (057e) and Sony (054c): USB, then Bluetooth (the vendor is part of the parent's name there)
+KERNEL=="hidraw*", ATTRS{idVendor}=="057e", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="0005:057E:*", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="054c", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="0005:054C:*", MODE="0660", TAG+="uaccess"
+# the same pads as input devices (Bluetooth pads have no USB vendor attribute)
+SUBSYSTEM=="input", ATTRS{id/vendor}=="057e", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="input", ATTRS{id/vendor}=="054c", MODE="0660", TAG+="uaccess"
