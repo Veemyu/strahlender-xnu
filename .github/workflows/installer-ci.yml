@@ -81,13 +81,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libvulkan-dev squashfs-tools
-      - name: Select Xcode for native installer icons
-        if: runner.os == 'macOS'
-        run: |
-          XCODE_DEVELOPER=/Applications/Xcode_26.3.app/Contents/Developer
-          test -d "$XCODE_DEVELOPER" || { echo 'Xcode 26.3 is required for installer Glass icons'; exit 1; }
-          echo "DEVELOPER_DIR=$XCODE_DEVELOPER" >> "$GITHUB_ENV"
-          DEVELOPER_DIR="$XCODE_DEVELOPER" xcodebuild -version
       - name: Prepare Rust
         run: rustup toolchain install 1.88 --profile minimal --component rustfmt --component clippy
       - name: Validate native code

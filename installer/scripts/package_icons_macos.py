@@ -1,8 +1,8 @@
-"""Compile the installer artwork with the game's native Icon Composer pipeline."""
+"""Regenerate or verify the vendored native Mac installer icons."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
-import plistlib
 import shutil
 import subprocess
 import sys
@@ -12,11 +12,26 @@ sys.path.insert(0, str(ROOT / "scripts/recomp/app"))
 from icon_composer import compile_icons  # noqa: E402
 
 
-def package(artwork, app, scratch):
-    resources = app / "Contents/Resources"
-    info_path = app / "Contents/Info.plist"
-    if not resources.is_dir() or not info_path.is_file():
-        raise ValueError("Expected an existing installer .app bundle")
+SOURCE = ROOT / "installer/assets/brand/icon.svg"
+ASSETS = ROOT / "installer/assets/brand/macos"
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify(assets, source=SOURCE):
+    metadata = json.loads((assets / "metadata.json").read_text())
+    if metadata["source_sha256"] != digest(source):
+        raise ValueError("Mac installer icons are stale; regenerate them from the approved SVG")
+    for name in ("Installer.icns", "Assets.car"):
+        if metadata["files"][name] != digest(assets / name):
+            raise ValueError(f"Mac installer icon checksum mismatch: {name}")
+
+
+def generate(artwork, output, scratch):
+    if digest(artwork / "icon.svg") != digest(SOURCE):
+        raise ValueError("Exported artwork is stale; rerun installer_icons first")
     # Scratch is a new dedicated directory, never a game or application directory.
     scratch.mkdir(parents=True, exist_ok=False)
     iconset = scratch / "Installer.iconset"
@@ -54,28 +69,38 @@ def package(artwork, app, scratch):
         raise ValueError("Native icon compiler did not produce the installer icon and asset catalog")
     if partial.get("CFBundleIconName") != "Installer":
         raise ValueError("Native icon compiler returned unexpected icon metadata")
-    shutil.copyfile(classic, resources / "Installer.icns")
-    shutil.copyfile(catalog, resources / "Assets.car")
-    shutil.copyfile(artwork / "icon.svg", resources / "installer-icon.svg")
-    info = plistlib.loads(info_path.read_bytes())
-    # Never copy a compiler-generated deployment target over macOS 12 support.
-    info.update({key: value for key, value in partial.items()
-                 if key in ("CFBundleIconName", "CFBundleIcons", "CFBundleIcons~ipad")})
-    info["CFBundleIconFile"] = "Installer"
-    info_path.write_bytes(plistlib.dumps(info))
-    print("Installer icons: native Glass asset catalog and classic macOS fallback ready.")
+    output.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(classic, output / "Installer.icns")
+    shutil.copyfile(catalog, output / "Assets.car")
+    metadata = {
+        "source_sha256": digest(SOURCE),
+        "xcode": subprocess.check_output(["xcodebuild", "-version"], text=True).strip(),
+        "minimum_catalog_target": "13.0",
+        "classic_fallback_target": "12.0",
+        "files": {name: digest(output / name) for name in ("Installer.icns", "Assets.car")},
+    }
+    (output / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    verify(output)
+    print("Native Mac icons regenerated and verified. Review the artwork before committing.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--artwork", type=Path, required=True)
-    parser.add_argument("--app", type=Path, required=True)
-    parser.add_argument("--scratch", type=Path, required=True)
+    parser.add_argument("--artwork", type=Path)
+    parser.add_argument("--output", type=Path, default=ASSETS)
+    parser.add_argument("--scratch", type=Path)
+    parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
     try:
-        package(args.artwork.resolve(), args.app.resolve(), args.scratch.resolve())
-    except (OSError, ValueError, subprocess.SubprocessError) as error:
-        raise SystemExit(f"Installer icon packaging failed: {error}") from error
+        if args.verify:
+            verify(args.output.resolve())
+            print("Vendored Mac installer icons match the approved SVG and checksums.")
+        else:
+            if not args.artwork or not args.scratch:
+                parser.error("Regeneration requires --artwork and a new --scratch directory")
+            generate(args.artwork.resolve(), args.output.resolve(), args.scratch.resolve())
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        raise SystemExit(f"Installer icon preparation failed: {error}") from error
 
 
 if __name__ == "__main__":
