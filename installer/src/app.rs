@@ -105,6 +105,14 @@ pub enum Message {
     Back,
     SkipMods,
     Preview,
+    RequirementsChecked(u64, Result<crate::dependencies::Plan, String>),
+    InstallRequirements,
+    RequirementsOpened(Result<(), String>),
+    UpdateChecked(Result<Option<crate::updates::Release>, String>),
+    UpdateInstaller,
+    ShowUpdateDetails,
+    UpdateDownloaded(Result<PathBuf, String>),
+    UpdateApplied(Result<(), String>),
     BackendEvent(u64, crate::backend::Event),
     Tick,
     ToggleDetails,
@@ -180,6 +188,13 @@ pub struct Installer {
     backend_cancel: Option<Arc<AtomicBool>>,
     backend_run_id: u64,
     backend_failure_detail: Option<String>,
+    requirements: Option<crate::dependencies::Plan>,
+    requirements_busy: bool,
+    available_update: Option<crate::updates::Release>,
+    updating: bool,
+    update_confirmation: bool,
+    setup_log_length: usize,
+    requirements_run_id: u64,
 }
 
 impl Page {
@@ -251,6 +266,34 @@ fn disk_space_error(detail: &str, language: Language) -> Option<String> {
     )
 }
 
+fn build_error_notice(detail: &str, language: Language) -> String {
+    if detail.contains("Prerequisite checker internal error:") {
+        return language.t(L::PrerequisiteInternalError).into();
+    }
+    if let Some(failure) = detail.strip_prefix("Build step failed: ")
+        && let Some((stage, cause)) = failure.split_once('\n')
+    {
+        let label = match crate::progress::Stage::from_id(stage) {
+            Some(crate::progress::Stage::Source) => L::FetchSource,
+            Some(crate::progress::Stage::Requirements) => L::Tools,
+            Some(crate::progress::Stage::Extract) => L::Prepare,
+            Some(crate::progress::Stage::Exefs) => L::ExeFS,
+            Some(crate::progress::Stage::Generate) => L::Generate,
+            Some(crate::progress::Stage::Compile) => L::Compile,
+            Some(crate::progress::Stage::Images) => L::Images,
+            Some(crate::progress::Stage::Runtime) => L::Runtime,
+            Some(crate::progress::Stage::Package) => L::Package,
+            Some(crate::progress::Stage::Install) => L::Install,
+            None => return detail.into(),
+        };
+        return language
+            .t(L::BuildStepError)
+            .replace("{stage}", language.t(label))
+            .replace("{cause}", cause);
+    }
+    disk_space_error(detail, language).unwrap_or_else(|| detail.into())
+}
+
 impl Installer {
     #[cfg(test)]
     pub fn new() -> (Self, Task<Message>) {
@@ -308,6 +351,13 @@ impl Installer {
             backend_cancel: None,
             backend_run_id: 0,
             backend_failure_detail: None,
+            requirements: None,
+            requirements_busy: false,
+            available_update: None,
+            updating: false,
+            update_confirmation: false,
+            setup_log_length: 0,
+            requirements_run_id: 0,
         };
         if demo {
             app.keys = Some(Source::fixture("prod.keys", app.language.t(L::DemoData)));
@@ -335,6 +385,21 @@ impl Installer {
             )
         } else {
             Task::none()
+        };
+        let task = if !app.demo && app.capture.is_none() {
+            Task::batch([
+                task,
+                Task::perform(
+                    async {
+                        tokio::task::spawn_blocking(crate::updates::check)
+                            .await
+                            .unwrap_or_else(|e| Err(e.to_string()))
+                    },
+                    Message::UpdateChecked,
+                ),
+            ])
+        } else {
+            task
         };
         (app, task)
     }
@@ -379,6 +444,109 @@ impl Installer {
 
     fn handle(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::UpdateChecked(result) => match result {
+                Ok(release) => self.available_update = release,
+                Err(error) => self.record("UPDATE", &error),
+            },
+            Message::ShowUpdateDetails => {
+                if let Some(release) = &self.available_update {
+                    self.update_confirmation = true;
+                    self.notice = Some(format!(
+                        "{} {}. {}",
+                        self.language.t(L::UpdateAvailable),
+                        release.version,
+                        self.language.t(L::UpdateRestartHint)
+                    ));
+                }
+            }
+            Message::UpdateInstaller
+                if self.backend_status != BackendStatus::Running && !self.updating =>
+            {
+                if let Some(release) = self.available_update.clone() {
+                    self.notice = None;
+                    self.update_confirmation = false;
+                    self.updating = true;
+                    self.record("UPDATE", "Downloading the verified installer update. The app will restart when ready.");
+                    return Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || crate::updates::download(&release))
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()))
+                        },
+                        Message::UpdateDownloaded,
+                    );
+                }
+            }
+            Message::UpdateDownloaded(result) => match result {
+                Ok(path) => {
+                    return Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || crate::updates::apply(&path))
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()))
+                        },
+                        Message::UpdateApplied,
+                    );
+                }
+                Err(error) => {
+                    self.updating = false;
+                    self.notice = Some(error);
+                }
+            },
+            Message::UpdateApplied(result) => {
+                self.updating = false;
+                match result {
+                    Ok(()) => return iced::exit(),
+                    Err(error) => self.notice = Some(error),
+                }
+            }
+            Message::RequirementsChecked(run_id, result)
+                if run_id == self.requirements_run_id && self.page == Page::Setup =>
+            {
+                self.requirements_busy = false;
+                let log = crate::dependencies::read_setup_log();
+                if log.len() != self.setup_log_length {
+                    let new = log.get(self.setup_log_length..).unwrap_or(&log);
+                    for line in new.lines() {
+                        self.record("SETUP", &redact_home_path(line));
+                    }
+                    self.setup_log_length = log.len();
+                }
+                match result {
+                    Ok(plan) if plan.ready() => {
+                        self.requirements = Some(plan);
+                        return self.handle(Message::Preview);
+                    }
+                    Ok(plan) => {
+                        self.record("SETUP", &plan.description());
+                        self.requirements = Some(plan);
+                    }
+                    Err(error) => self.notice = Some(error),
+                }
+            }
+            Message::InstallRequirements => {
+                self.setup_log_length = 0;
+                if let Some(plan) = self.requirements.clone() {
+                    return Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || crate::dependencies::install(&plan))
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()))
+                        },
+                        Message::RequirementsOpened,
+                    );
+                }
+            }
+            Message::RequirementsOpened(result) => match result {
+                Ok(()) => {
+                    self.record(
+                        "SETUP",
+                        "Complete the installation in the terminal, then check again here.",
+                    );
+                    self.requirements = None;
+                }
+                Err(error) => self.notice = Some(error),
+            },
             Message::InputsRestored(restored) => {
                 let keys_restored = restored.keys.is_some();
                 self.saved_input_missing = [
@@ -420,7 +588,10 @@ impl Installer {
                     self.record("Files", self.language.t(L::SavedInputMissing));
                 }
             }
-            Message::DismissNotice => self.notice = None,
+            Message::DismissNotice => {
+                self.notice = None;
+                self.update_confirmation = false;
+            }
             Message::ShowNoticeDetails => {
                 self.notice = None;
                 self.details = true;
@@ -461,7 +632,9 @@ impl Installer {
                     .unwrap_or(1.0 / 60.0);
                 self.last_frame = Some(now);
                 let target = if self.demo || self.capture.is_some() {
-                    self.tick as f32 / 10.0
+                    let stages = self.build_stages();
+                    stages[((self.tick / 10) as usize).min(stages.len() - 1)].index() as f32
+                        + (self.tick % 10) as f32 / 10.0
                 } else {
                     let stage = self.build_progress.active;
                     stage.index() as f32 + self.build_progress.stages[stage.index()].fraction()
@@ -819,6 +992,9 @@ impl Installer {
                 self.drag_active = false;
             }
             Message::Back => {
+                self.requirements_run_id += 1;
+                self.requirements_busy = false;
+                self.requirements = None;
                 if self.page == Page::Progress && !self.demo && self.capture.is_none() {
                     if self.backend_status == BackendStatus::Running {
                         if let Some(cancel) = &self.backend_cancel {
@@ -863,19 +1039,39 @@ impl Installer {
                 }
             }
             Message::Preview if self.page == Page::Setup => {
+                if self.updating {
+                    return Task::none();
+                }
                 if !self.demo {
                     if !self.backend_supported() {
                         self.record("BACKEND", self.language.t(L::BackendUnavailable));
                         self.notice = Some(self.language.t(L::BackendUnavailable).into());
                         return Task::none();
                     }
-                    let Some(root) = crate::backend::project_root() else {
-                        self.page = Page::Progress;
-                        self.backend_status = BackendStatus::Failed;
-                        self.record("BACKEND", self.language.t(L::CheckoutMissing));
-                        self.notice = Some(self.language.t(L::CheckoutMissing).into());
+                    if self.requirements_busy {
                         return Task::none();
-                    };
+                    }
+                    if !self.requirements.as_ref().is_some_and(|p| p.ready()) {
+                        self.requirements_busy = true;
+                        self.requirements_run_id += 1;
+                        let requirements_run_id = self.requirements_run_id;
+                        let target = if self.target == InstallTarget::Ios {
+                            "ios"
+                        } else {
+                            "native"
+                        };
+                        return Task::perform(
+                            async move {
+                                tokio::task::spawn_blocking(move || {
+                                    crate::dependencies::inspect(target)
+                                })
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()))
+                            },
+                            move |result| Message::RequirementsChecked(requirements_run_id, result),
+                        );
+                    }
+                    self.requirements = None;
                     self.details = false;
                     self.page = Page::Progress;
                     self.backend_status = BackendStatus::Running;
@@ -903,7 +1099,6 @@ impl Installer {
                     };
                     return Task::run(
                         crate::backend::build(
-                            root,
                             run_id,
                             cancelled,
                             self.mods_folder.clone(),
@@ -993,8 +1188,7 @@ impl Installer {
                             .backend_failure_detail
                             .take()
                             .unwrap_or_else(|| self.language.t(L::CheckFailed).into());
-                        self.notice =
-                            Some(disk_space_error(&detail, self.language).unwrap_or(detail));
+                        self.notice = Some(build_error_notice(&detail, self.language));
                     } else {
                         self.backend_failure_detail = None;
                     }
@@ -1003,7 +1197,7 @@ impl Installer {
                         &format!(
                             "{} (exit code {code})",
                             self.language
-                                .t(if ok { L::CheckPassed } else { L::CheckFailed })
+                                .t(if ok { L::BuildPassed } else { L::BuildFailed })
                         ),
                     );
                 }
@@ -1020,11 +1214,12 @@ impl Installer {
                         || self.backend_status == BackendStatus::Idle) =>
             {
                 self.tick += 1;
-                if self.tick >= crate::progress::Stage::ALL.len() as u32 * 10 {
+                if self.tick >= self.build_stages().len() as u32 * 10 {
                     self.record("PREVIEW", self.language.t(L::LogComplete));
                     self.page = Page::Finished;
                 } else if self.tick.is_multiple_of(10) {
-                    let label = self.build_labels()[(self.tick / 10) as usize];
+                    let stage = self.build_stages()[(self.tick / 10) as usize];
+                    let label = self.build_labels()[stage.index()];
                     self.record("PREVIEW", self.language.t(label));
                 }
             }
@@ -1139,12 +1334,28 @@ impl Installer {
             labels.extend([L::ModsLocation, L::Mods]);
         }
         labels.extend([L::CheckSelection, L::Setup]);
-        labels.extend(self.build_labels());
+        labels.extend(
+            self.build_stages()
+                .iter()
+                .map(|stage| self.build_labels()[stage.index()]),
+        );
         labels
     }
 
-    fn build_labels(&self) -> [L; 9] {
+    fn build_stages(&self) -> Vec<crate::progress::Stage> {
+        let code_mod = !self.mods_skipped
+            && self.mods.iter().any(|entry| {
+                self.selected_mod.as_deref() == Some(entry.name.as_str()) && entry.has_exefs
+            });
+        crate::progress::Stage::ALL
+            .into_iter()
+            .filter(|stage| *stage != crate::progress::Stage::Exefs || code_mod)
+            .collect()
+    }
+
+    fn build_labels(&self) -> [L; 10] {
         [
+            L::FetchSource,
             L::Tools,
             L::Prepare,
             L::ExeFS,
@@ -1172,9 +1383,12 @@ impl Installer {
                 offset
                     + if self.mods_skipped { 5 } else { 7 }
                     + if self.demo || self.capture.is_some() {
-                        ((self.tick / 10) as usize).min(crate::progress::Stage::ALL.len() - 1)
+                        ((self.tick / 10) as usize).min(self.build_stages().len() - 1)
                     } else {
-                        self.build_progress.active.index()
+                        self.build_stages()
+                            .iter()
+                            .position(|stage| *stage == self.build_progress.active)
+                            .unwrap_or(0)
                     }
             }
             Page::Finished => self.step_labels().len() - 1,
@@ -1270,6 +1484,8 @@ impl Installer {
         self.log.clear();
         self.backend_status = BackendStatus::Idle;
         self.backend_cancel = None;
+        self.requirements = None;
+        self.available_update = None;
         if !matches!(scenario, "empty" | "keys-empty" | "keys-not-found") {
             self.base = Some(Source::fixture(
                 self.language.t(L::DemoGameFile),
@@ -1371,6 +1587,15 @@ impl Installer {
                 );
                 self.details = scenario == "error-details";
             }
+            "error-prerequisite" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Failed;
+                self.build_progress.step("prerequisites", "started");
+                self.tick = (crate::progress::Stage::Requirements.index() * 10) as u32;
+                let error = "Prerequisite checker internal error: KeyError: 'detail'";
+                self.notice = Some(build_error_notice(error, self.language));
+                self.record("ERROR", error);
+            }
             "error-disk" => {
                 self.page = Page::Progress;
                 self.notice = disk_space_error(
@@ -1388,6 +1613,35 @@ impl Installer {
                 self.mods_skipped = true;
             }
             "setup" => self.page = Page::Setup,
+            "setup-dependencies" => {
+                self.page = Page::Setup;
+                self.requirements = Some(crate::dependencies::Plan {
+                    manager: "dnf".into(),
+                    packages: vec!["clang".into(), "SDL3-devel".into()],
+                    missing: vec![
+                        crate::dependencies::Missing {
+                            id: "clang".into(),
+                            purpose: "Compile the game code".into(),
+                        },
+                        crate::dependencies::Missing {
+                            id: "SDL3".into(),
+                            purpose: "Window, audio and controller support".into(),
+                        },
+                    ],
+                    ..Default::default()
+                });
+            }
+            "update-available" | "update-confirmation" => {
+                self.page = Page::Target;
+                self.available_update = Some(crate::updates::Release {
+                    tag: None,
+                    version: "0.2.0".into(),
+                    assets: vec![],
+                });
+                if scenario == "update-confirmation" {
+                    let _ = self.handle(Message::ShowUpdateDetails);
+                }
+            }
             "review-ios" => {
                 self.page = Page::Review;
                 self.target = InstallTarget::Ios;
@@ -1399,7 +1653,8 @@ impl Installer {
             "progress" | "progress-details" => {
                 self.page = Page::Progress;
                 self.tick = 38;
-                self.motion.snap(3.8);
+                self.motion
+                    .snap(self.build_stages()[3].index() as f32 + 0.8);
                 self.details = scenario == "progress-details";
                 self.record("PREVIEW", self.language.t(L::LogPreview));
                 self.record("PREVIEW", self.language.t(L::Tools));
@@ -1407,6 +1662,9 @@ impl Installer {
             }
             "preflight-running" | "preflight-details" => {
                 self.page = Page::Progress;
+                self.build_progress = crate::progress::BuildProgress::default();
+                self.build_progress.step("prerequisites", "started");
+                self.tick = (crate::progress::Stage::Requirements.index() * 10) as u32;
                 self.backend_status = if scenario == "preflight-running" {
                     BackendStatus::Running
                 } else {
@@ -1434,6 +1692,9 @@ impl Installer {
             _ => {}
         }
         let size = self.preferred_size();
+        #[cfg(not(target_os = "macos"))]
+        return window::latest().and_then(move |id| crate::window_layout::resize(id, size));
+        #[cfg(target_os = "macos")]
         window::latest().and_then(move |id| window::resize(id, size))
     }
 }
@@ -1488,6 +1749,47 @@ mod tests {
                 "Für diesen Build ist nicht genug Speicherplatz frei. Verfügbar: 21,7 GB · Benötigt: 40 GB. Gib Speicher frei und prüfe erneut."
             )
         );
+    }
+
+    #[test]
+    fn internal_prerequisite_error_explains_failure_and_keeps_technical_log() {
+        let (mut app, _) = Installer::new();
+        app.language = Language::English;
+        let error = "Prerequisite checker internal error: KeyError: 'detail'";
+        let _ = app.update(Message::BackendEvent(
+            app.backend_run_id,
+            crate::backend::Event::Log {
+                level: "error".into(),
+                message: error.into(),
+            },
+        ));
+        let _ = app.update(Message::BackendEvent(
+            app.backend_run_id,
+            crate::backend::Event::Finished { ok: false, code: 1 },
+        ));
+        assert_eq!(
+            app.notice.as_deref(),
+            Some(Language::English.t(L::PrerequisiteInternalError))
+        );
+        assert!(app.log.iter().any(|line| line.contains(error)));
+        assert_eq!(
+            build_error_notice(error, Language::German),
+            Language::German.t(L::PrerequisiteInternalError)
+        );
+    }
+
+    #[test]
+    fn compiler_failure_names_the_stage_and_actual_cause() {
+        let error = "Build step failed: runtime\nkernel.c:12:10: fatal error: 'sys/sysctl.h' file not found";
+        for (language, stage) in [
+            (Language::English, "Build runtime"),
+            (Language::German, "Runtime bauen"),
+        ] {
+            let notice = build_error_notice(error, language);
+            assert!(notice.contains(stage));
+            assert!(notice.contains("sys/sysctl.h"));
+            assert!(!notice.contains("missing requirements"));
+        }
     }
 
     #[test]
@@ -1560,8 +1862,44 @@ mod tests {
         assert_eq!(app.target, InstallTarget::Mac);
         assert_eq!(
             app.step_labels().len(),
-            8 + crate::progress::Stage::ALL.len()
+            8 + crate::progress::Stage::ALL.len() - 1
         );
+    }
+
+    #[test]
+    fn patch_step_is_only_visible_for_the_selected_code_mod() {
+        use crate::progress::Stage;
+        let (mut app, _) = Installer::new();
+        assert!(!app.build_stages().contains(&Stage::Exefs));
+        app.mods = vec![
+            ModEntry {
+                name: "Artwork only".into(),
+                root: PathBuf::from("example"),
+                has_romfs: true,
+                has_exefs: false,
+            },
+            ModEntry {
+                name: "Code mod".into(),
+                root: PathBuf::from("example-code"),
+                has_romfs: true,
+                has_exefs: true,
+            },
+        ];
+        app.selected_mod = Some("Artwork only".into());
+        assert!(!app.build_stages().contains(&Stage::Exefs));
+        app.selected_mod = Some("Code mod".into());
+        assert!(app.build_stages().contains(&Stage::Exefs));
+        app.mods_skipped = true;
+        assert!(!app.build_stages().contains(&Stage::Exefs));
+        app.page = Page::Progress;
+        app.backend_status = BackendStatus::Running;
+        app.build_progress.step("exefs", "skipped");
+        app.build_progress.step("eh_gen", "started");
+        let active = app.active_step();
+        assert!(matches!(app.step_labels()[active], L::Generate));
+        assert_eq!(app.step_labels().len(), 6 + 9);
+        app.page = Page::Finished;
+        assert_eq!(app.active_step(), app.step_labels().len() - 1);
     }
 
     #[test]
@@ -1679,7 +2017,7 @@ mod tests {
         ));
         assert_eq!(
             app.active_step(),
-            8 + crate::progress::Stage::Compile.index()
+            8 + crate::progress::Stage::Compile.index() - 1
         );
         let clang = app.build_progress.stages[crate::progress::Stage::Compile.index()];
         assert_eq!((clang.completed, clang.total), (2368, 2369));

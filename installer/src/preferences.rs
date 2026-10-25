@@ -136,6 +136,26 @@ pub fn save_mod_folder(path: &Path) -> io::Result<()> {
     write(preferences)
 }
 
+fn load_preferences() -> Preferences {
+    path()
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice::<Preferences>(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn write(preferences: Preferences) -> io::Result<()> {
+    let path = path().ok_or_else(|| io::Error::other("Configuration directory is unavailable"))?;
+    let parent = path.parent().expect("preferences has parent");
+    fs::create_dir_all(parent)?;
+    let temporary = parent.join("preferences.json.tmp");
+    fs::write(&temporary, serde_json::to_vec_pretty(&preferences)?)?;
+    #[cfg(windows)]
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    fs::rename(temporary, path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,24 +177,4 @@ mod tests {
         assert_eq!(restored.keys_path, preferences.keys_path);
         assert_eq!(restored.last_directory, preferences.last_directory);
     }
-}
-
-fn load_preferences() -> Preferences {
-    path()
-        .and_then(|path| fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice::<Preferences>(&bytes).ok())
-        .unwrap_or_default()
-}
-
-fn write(preferences: Preferences) -> io::Result<()> {
-    let path = path().ok_or_else(|| io::Error::other("Kein Konfigurationsordner verfügbar"))?;
-    let parent = path.parent().expect("preferences has parent");
-    fs::create_dir_all(parent)?;
-    let temporary = parent.join("preferences.json.tmp");
-    fs::write(&temporary, serde_json::to_vec_pretty(&preferences)?)?;
-    #[cfg(windows)]
-    if path.exists() {
-        fs::remove_file(&path)?;
-    }
-    fs::rename(temporary, path)
 }

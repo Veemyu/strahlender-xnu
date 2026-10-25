@@ -17,6 +17,12 @@ serde_json = "1"
 tokio = { version = "1", features = ["time", "process", "io-util", "macros"] }
 png = "0.18"
 sys-locale = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+flate2 = "1"
+tar = "0.4"
+sha2 = "0.10"
+ed25519-dalek = "2"
+base64 = "0.22"
 lz4_flex = { version = "0.11", default-features = false }
 
 [build-dependencies]
@@ -33,3 +39,6 @@ libc = "0.2"
 [profile.release]
 lto = "thin"
 strip = "debuginfo"
+
+[patch.crates-io]
+iced_winit = { path = "vendor/iced_winit" }

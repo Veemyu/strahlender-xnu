@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import threading
+import traceback
 from pathlib import Path
 
 PROTOCOL_VERSION = 2
@@ -42,6 +43,14 @@ def safe_detail(item):
         match = re.search(r"([\d.]+)\s+GB\s+free", detail)
         return (match.group(1) + " GB free") if match else ""
     return ""
+
+
+def prerequisite_exception(error, args):
+    # Keep the traceback in the expandable protocol, not in the user dialog.
+    for line in traceback.format_exc().splitlines():
+        emit("log", level="diagnostic", message=_safe_line(line, args))
+    emit("error", message=("Prerequisite checker internal error: " + type(error).__name__
+                           + ": " + _safe_line(str(error), args)), code=1)
 
 
 def preflight(args):
@@ -79,7 +88,7 @@ def preflight(args):
         emit("result", ok=ok, code=code)
         return code
     except Exception as error:
-        emit("error", message="Prerequisite check failed: " + str(error), code=1)
+        prerequisite_exception(error, args)
         return 1
 
 
@@ -129,6 +138,7 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     done = False
     last_progress = None
     generated = 0
+    first_failure = None
     module_total = 4 + int((Path(environment.get("BDSP_EXEFS_DIR", Path(args.root) / "work/exefs")) / "subsdk1").is_file())
     try:
         while not done or proc.poll() is None:
@@ -142,6 +152,9 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                 message = _safe_line(line, args)
                 if message:
                     emit("log", level="diagnostic", message=message)
+                    if first_failure is None and re.search(
+                            r"fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:", message):
+                        first_failure = message.strip()
                     if "maximum number of installed apps using a free developer profile" in message:
                         args.command_failure_hint = ("Apple's free signing limit is full on this device. Remove an unused development-signed app "
                                                      "to make room for the separate mod app. The installer does not replace your original game.")
@@ -169,6 +182,9 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
         proc.stdout.close()
     if emit_steps:
         emit("step", id=active, status="complete" if code == 0 else "failed")
+    if code:
+        cause = args.command_failure_hint or first_failure or ("Command exited with code " + str(code))
+        emit("error", message="Build step failed: " + active + "\n" + cause, code=code)
     return code
 
 
@@ -228,13 +244,13 @@ def check_build_dependencies(args):
             missing_modules = missing_generator_modules()
             items.append({"name": ("Generator Python modules missing: " + ", ".join(missing_modules)
                                     if missing_modules else "Generator Python modules (Capstone, Unicorn, LZ4, Pillow)"),
-                          "ok": not missing_modules, "level": "missing",
+                          "ok": not missing_modules, "level": "missing", "detail": "",
                           "hint": "This development environment needs the generator packages. The packaged installer includes its private Python runtime."})
         if getattr(args, "mod_root", None):
             artwork = subprocess.run([sys.executable, str(Path(args.root) / "scripts/recomp/app/game_icons.py"),
                                       "check-mod-artwork", "--mod-root", str(args.mod_root)],
                                      cwd=args.root, capture_output=True, text=True, check=False)
-            items.append({"name": "Mod artwork reader", "ok": artwork.returncode == 0, "level": "missing",
+            items.append({"name": "Mod artwork reader", "ok": artwork.returncode == 0, "level": "missing", "detail": "",
                           "hint": "Prepare the existing UnityPy shader profile in the build runtime for embedded mod title logos."})
         if args.target == "linux":
             packages = subprocess.run(
@@ -242,21 +258,26 @@ def check_build_dependencies(args):
                 cwd=args.root, capture_output=True, text=True, check=False,
             )
             items.append({"name": "Vulkan and Qt development packages",
-                          "ok": packages.returncode == 0, "level": "missing",
+                          "ok": packages.returncode == 0, "level": "missing", "detail": "",
                           "hint": "Install the distribution packages listed in docs/BUILD.md, section 6."})
+            if packages.returncode:
+                for line in (packages.stdout + "\n" + packages.stderr).splitlines():
+                    if line.strip():
+                        emit("log", level="diagnostic", message=_safe_line(line, args))
         if args.target == "ios":
             sdk = subprocess.run(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], capture_output=True, check=False)
-            items.append({"name": "Xcode iPhoneOS SDK", "ok": sdk.returncode == 0, "level": "missing",
+            items.append({"name": "Xcode iPhoneOS SDK", "ok": sdk.returncode == 0, "level": "missing", "detail": "",
                           "hint": "Install and open Xcode once, then select its developer directory."})
             libraries = Path(args.root) / "work/ios/ffmpeg-ios/lib"
             items.append({"name": "iPhoneOS FFmpeg static libraries",
                           "ok": all((libraries / ("lib" + name + ".a")).is_file() for name in ("avformat", "avcodec", "avutil")),
-                          "level": "missing", "hint": "Prepare scripts/recomp/ios/build_ffmpeg_ios.sh as documented in docs/recomp-ios.md."})
+                          "level": "missing", "detail": "", "hint": "Prepare scripts/recomp/ios/build_ffmpeg_ios.sh as documented in docs/recomp-ios.md."})
         _, missing, disk_missing = stages.format_preflight(items)
         for item in items:
             ok = item["ok"]
             emit("log", level="ok" if ok else "warning",
-                 message=("OK  " if ok else "MISSING  ") + item["name"])
+                 message=("OK  " if ok else "MISSING  ") + item["name"]
+                 + (" (" + safe_detail(item) + ")" if safe_detail(item) else ""))
             if not ok and item.get("hint"):
                 emit("log", level="hint", message="Next step: " + item["hint"])
         emit("step", id="prerequisites", status="complete" if not missing else "needs attention")
@@ -265,7 +286,7 @@ def check_build_dependencies(args):
         return stages.EX_DISK if disk_missing and all(
             item["name"].startswith("Disk space") for item in missing) else stages.EX_TOOLS
     except Exception as error:
-        emit("error", message="Prerequisite check failed: " + str(error), code=1)
+        prerequisite_exception(error, args)
         return 1
 
 

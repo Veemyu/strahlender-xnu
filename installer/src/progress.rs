@@ -1,6 +1,7 @@
 //! Build progress comes from backend events. An unknown total stays indeterminate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
+    Source,
     Requirements,
     Extract,
     Exefs,
@@ -13,7 +14,8 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
+        Self::Source,
         Self::Requirements,
         Self::Extract,
         Self::Exefs,
@@ -27,6 +29,7 @@ impl Stage {
 
     pub fn from_id(id: &str) -> Option<Self> {
         Some(match id {
+            "source" => Self::Source,
             "prerequisites" => Self::Requirements,
             "extract" => Self::Extract,
             "exefs" => Self::Exefs,
@@ -67,15 +70,15 @@ impl StageProgress {
 
 #[derive(Debug, Clone)]
 pub struct BuildProgress {
-    pub stages: [StageProgress; 9],
+    pub stages: [StageProgress; 10],
     pub active: Stage,
 }
 
 impl Default for BuildProgress {
     fn default() -> Self {
         Self {
-            stages: [StageProgress::default(); 9],
-            active: Stage::Requirements,
+            stages: [StageProgress::default(); 10],
+            active: Stage::Source,
         }
     }
 }

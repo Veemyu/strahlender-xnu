@@ -12,6 +12,8 @@ import struct
 import subprocess
 
 SCENARIOS = (
+    "error-prerequisite",
+    "setup-dependencies", "update-available", "update-confirmation",
     "target", "target-ios", "target-mac", "demo-target-ios", "review-ios", "setup-ios",
     "keys-empty", "keys-selected", "keys-not-found", "game-empty", "game-selected",
     "nca", "update-empty", "update-selected", "mods-folder", "mods-folder-ios", "mods-empty",
@@ -55,7 +57,7 @@ def main():
         command += ["--platform", args.platform]
     subprocess.run(command, env=environment, check=True, timeout=90)
     rows = []
-    baseline = next((scene for scene in scenes if scene not in ("error-details", "progress-details")), None)
+    baseline = next((scene for scene in scenes if scene not in ("error-details", "progress-details", "preflight-details")), None)
     standard_size = dimensions(destination / f"dark-{baseline}.png") if baseline else None
     for scenario in scenes:
         sizes = [dimensions(destination / f"dark-{scenario}.png")]

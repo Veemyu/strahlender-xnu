@@ -365,7 +365,8 @@ def format_preflight(items):
             tag = "OK    " if it["level"] != "note" else "NOTE   "
         else:
             tag = "MISSING " if it["level"] == "missing" else "NOTE   "
-        lines.append("  %s %s%s" % (tag, it["name"], " (%s)" % it["detail"] if it["detail"] else ""))
+        detail = it.get("detail", "")
+        lines.append("  %s %s%s" % (tag, it["name"], " (%s)" % detail if detail else ""))
         if not it["ok"] and it["level"] == "missing":
             missing.append(it)
             if it["name"].startswith("Disk space"):

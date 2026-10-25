@@ -113,7 +113,10 @@ enum Action {
 }
 
 pub fn project_root() -> Option<PathBuf> {
-    let mut starts = vec![std::env::current_dir().ok()?, std::env::current_exe().ok()?];
+    let starts = vec![std::env::current_dir().ok()?, std::env::current_exe().ok()?];
+    #[cfg(debug_assertions)]
+    let mut starts = starts;
+    #[cfg(debug_assertions)]
     if let Some(manifest) = option_env!("CARGO_MANIFEST_DIR") {
         starts.push(PathBuf::from(manifest));
     }
@@ -173,6 +176,30 @@ fn backend_python() -> Option<(PathBuf, bool)> {
     cfg!(debug_assertions).then(|| (PathBuf::from("python3"), false))
 }
 
+pub fn runtime_smoke() -> Result<(), String> {
+    let (python, private) = backend_python().ok_or("The bundled Python runtime is missing.")?;
+    if !private {
+        return Err("Runtime smoke checks require private Python.".into());
+    }
+    let status = std::process::Command::new(python)
+        .args([
+            "-I",
+            "-B",
+            "-c",
+            concat!(
+                include_str!("../runtime/native_smoke.py"),
+                "\nimport UnityPy, UnityPy.UnityPyBoost\n"
+            ),
+        ])
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Private runtime smoke check failed.".into())
+    }
+}
+
 fn find_root_from(start: &Path) -> Option<PathBuf> {
     let mut current = if start.is_file() {
         start.parent()?.to_path_buf()
@@ -192,7 +219,6 @@ fn find_root_from(start: &Path) -> Option<PathBuf> {
 }
 
 pub fn build(
-    root: PathBuf,
     run_id: u64,
     cancelled: Arc<AtomicBool>,
     mods_folder: Option<PathBuf>,
@@ -200,7 +226,6 @@ pub fn build(
     request: BuildRequest,
 ) -> impl iced::futures::Stream<Item = (u64, Event)> + 'static {
     run_driver(
-        root,
         run_id,
         cancelled,
         mods_folder,
@@ -210,7 +235,6 @@ pub fn build(
 }
 
 fn run_driver(
-    root: PathBuf,
     run_id: u64,
     cancelled: Arc<AtomicBool>,
     mods_folder: Option<PathBuf>,
@@ -218,7 +242,65 @@ fn run_driver(
     action: Action,
 ) -> impl iced::futures::Stream<Item = (u64, Event)> + 'static {
     iced::stream::channel(32, async move |mut output| {
+        let _ = output
+            .send((
+                run_id,
+                Event::Step {
+                    id: "source".into(),
+                    status: "started".into(),
+                },
+            ))
+            .await;
+        let root = match crate::workspace::prepare(run_id, &mut output, cancelled.clone()).await {
+            Ok(root) => root,
+            Err(_) if cancelled.load(Ordering::Acquire) => {
+                let _ = output.send((run_id, Event::Stopped)).await;
+                return;
+            }
+            Err(message) => {
+                let _ = output
+                    .send((
+                        run_id,
+                        Event::Log {
+                            level: "error".into(),
+                            message,
+                        },
+                    ))
+                    .await;
+                let _ = output
+                    .send((
+                        run_id,
+                        Event::Finished {
+                            ok: false,
+                            code: -3,
+                        },
+                    ))
+                    .await;
+                return;
+            }
+        };
+        let _ = output
+            .send((
+                run_id,
+                Event::Log {
+                    level: "info".into(),
+                    message: format!(
+                        "Source revision: {}",
+                        root.file_name().unwrap_or_default().to_string_lossy()
+                    ),
+                },
+            ))
+            .await;
         let driver = root.join("scripts/install/driver.py");
+        let _ = output
+            .send((
+                run_id,
+                Event::Step {
+                    id: "source".into(),
+                    status: "complete".into(),
+                },
+            ))
+            .await;
         let Some((python, private)) = backend_python() else {
             let _ = output.send((run_id, Event::RuntimeMissing)).await;
             let _ = output
@@ -233,20 +315,33 @@ fn run_driver(
             return;
         };
         let mut command = Command::new(&python);
+        let inherited = std::env::var_os("PATH").unwrap_or_default();
+        let mut search_paths: Vec<PathBuf> = if cfg!(target_os = "macos") {
+            [
+                "/opt/homebrew/opt/llvm/bin",
+                "/usr/local/opt/llvm/bin",
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+            ]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect()
+        } else {
+            Vec::new()
+        };
+        if private && let Some(directory) = python.parent() {
+            search_paths.insert(0, directory.to_path_buf());
+        }
+        search_paths.extend(std::env::split_paths(&inherited));
+        if let Ok(path) = std::env::join_paths(search_paths) {
+            command.env("PATH", path);
+        }
         command.env("BDSP_MOD", selected_mod.unwrap_or_else(|| "none".into()));
         if let Some(folder) = &mods_folder {
             command.env("BDSP_MODS_DIR", folder);
         }
         if private {
             command.arg("-I").env("BDSP_INSTALLER_PRIVATE_RUNTIME", "1");
-            if let Some(directory) = python.parent() {
-                let inherited = std::env::var_os("PATH").unwrap_or_default();
-                let paths = std::iter::once(directory.to_path_buf())
-                    .chain(std::env::split_paths(&inherited));
-                if let Ok(path) = std::env::join_paths(paths) {
-                    command.env("PATH", path);
-                }
-            }
         } else {
             command.env_remove("BDSP_INSTALLER_PRIVATE_RUNTIME");
         }

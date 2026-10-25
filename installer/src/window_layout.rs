@@ -3,6 +3,19 @@ pub const WIDTH: f32 = 440.0;
 pub const HEIGHT: f32 = 480.0;
 pub const LOG_HEIGHT: f32 = 630.0;
 
+#[cfg(not(target_os = "macos"))]
+pub fn resize<Message: Send + 'static>(
+    id: iced::window::Id,
+    size: iced::Size,
+) -> iced::Task<Message> {
+    // Non-resizable Wayland windows carry fixed min/max compositor hints.
+    // Move those bounds with the requested size, including when closing the log.
+    iced::window::set_min_size(id, None)
+        .chain(iced::window::set_max_size(id, Some(size)))
+        .chain(iced::window::set_min_size(id, Some(size)))
+        .chain(iced::window::resize(id, size))
+}
+
 // Keep the compact Mac window inside NSScreen.visibleFrame (menu bar and Dock excluded).
 #[cfg(target_os = "macos")]
 pub fn fit(window: &dyn iced::window::Window, content: iced::Size) {

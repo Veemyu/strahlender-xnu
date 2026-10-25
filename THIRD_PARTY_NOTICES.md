@@ -21,5 +21,9 @@ This repository contains original code and the components listed below. It conta
 
 ## Other third-party dependencies (references only)
 
+The installer vendors **iced_winit 0.14.1** under the MIT license in
+`installer/vendor/iced_winit/`. The original license is included there. A local
+fix for synchronous window resizing is documented in `PATCHES.md` beside it.
+
 - **FFmpeg** (LGPL/GPL depending on its build configuration): Linked for video playback, not distributed here. Check the build configuration as described in `docs/BUILD.md`.
 - **Build tools** `capstone`, `unicorn`, and `lz4` (`tools/pydeps`): Used locally, not distributed.

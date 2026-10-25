@@ -38,12 +38,12 @@ impl Installer {
             })
             .map(|_| Message::LayoutApplied);
         #[cfg(not(target_os = "macos"))]
-        window::latest().and_then(move |id| window::resize(id, size))
+        window::latest().and_then(move |id| crate::window_layout::resize(id, size))
     }
 
     pub fn view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
-        let header = row![
+        let mut header = row![
             text("strahlender").size(15).color(c.muted),
             space().width(Fill),
             self.icon_action(
@@ -63,6 +63,22 @@ impl Installer {
         ]
         .align_y(Center)
         .spacing(8);
+        if let Some(release) = &self.available_update {
+            let mut action = button(
+                text(if self.updating {
+                    self.language.t(L::UpdateDownloading).to_owned()
+                } else {
+                    format!("{} {}", self.language.t(L::UpdateShort), release.version)
+                })
+                .size(11),
+            )
+            .padding([6, 9])
+            .style(move |_, status| style::action(c, false, status));
+            if !self.updating && self.backend_status != super::BackendStatus::Running {
+                action = action.on_press(Message::ShowUpdateDetails);
+            }
+            header = header.push(action);
+        }
         let body = match self.page {
             Page::Target => self.target_view(),
             Page::Keys | Page::Game | Page::Update => self.input_view(),
@@ -165,8 +181,17 @@ impl Installer {
             )
             .on_press(Message::DismissNotice);
             let mut dialog = column![
-                text(self.language.t(L::ErrorTitle)).size(18),
-                text(notice).size(13).color(c.error),
+                text(self.language.t(if self.update_confirmation {
+                    L::UpdateAvailable
+                } else {
+                    L::ErrorTitle
+                }))
+                .size(18),
+                text(notice).size(13).color(if self.update_confirmation {
+                    c.text
+                } else {
+                    c.error
+                }),
             ]
             .spacing(12);
             if self.page == super::Page::Progress {
@@ -177,6 +202,14 @@ impl Installer {
                 );
             }
             let mut actions = row![].spacing(8).align_y(Center);
+            if self.update_confirmation {
+                actions = actions.push(
+                    button(text(self.language.t(L::UpdateInstaller)).size(12))
+                        .padding([8, 12])
+                        .on_press(Message::UpdateInstaller)
+                        .style(move |_, status| style::action(c, true, status)),
+                );
+            }
             if self.page == super::Page::Progress {
                 actions = actions.push(
                     button(text(self.language.t(L::ShowErrorDetails)).size(12))
@@ -724,6 +757,19 @@ impl Installer {
 
     fn setup_view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
+        if let Some(plan) = &self.requirements
+            && !plan.ready()
+        {
+            return column![
+                self.title(
+                    self.language.t(L::DependenciesTitle),
+                    self.language.t(L::DependenciesHint)
+                ),
+                scrollable(text(plan.description()).size(12)).height(130),
+            ]
+            .spacing(12)
+            .into();
+        }
         column![
             self.title(
                 self.language.t(L::SetupTitle),
@@ -829,7 +875,8 @@ impl Installer {
             .spacing(14)
             .into();
         }
-        let stage = ((self.tick / 10) as usize).min(crate::progress::Stage::ALL.len() - 1);
+        let stages = self.build_stages();
+        let stage = stages[((self.tick / 10) as usize).min(stages.len() - 1)].index();
         let counter = if stage == crate::progress::Stage::Compile.index() {
             format!(
                 "{} / 2369 {}",
@@ -886,26 +933,33 @@ impl Installer {
         let c = style::colors(self.appearance);
         let labels = self.build_labels();
         let mut context = column![].spacing(10);
-        if stage > 0 {
+        let stages = self.build_stages();
+        let previous = stages.iter().rev().find(|item| {
+            item.index() < stage
+                && (self.demo
+                    || self.capture.is_some()
+                    || self.build_progress.stages[item.index()].done)
+        });
+        if let Some(previous) = previous {
             context = context.push(
                 row![
                     text(self.language.t(L::CompletedStage))
                         .size(12)
                         .color(c.muted)
                         .width(105),
-                    text(self.language.t(labels[stage - 1])).size(12),
+                    text(self.language.t(labels[previous.index()])).size(12),
                 ]
                 .spacing(8),
             );
         }
-        if stage + 1 < labels.len() {
+        if let Some(next) = stages.iter().find(|item| item.index() > stage) {
             context = context.push(
                 row![
                     text(self.language.t(L::NextStage))
                         .size(12)
                         .color(c.muted)
                         .width(105),
-                    text(self.language.t(labels[stage + 1])).size(12),
+                    text(self.language.t(labels[next.index()])).size(12),
                 ]
                 .spacing(8),
             );
@@ -919,6 +973,10 @@ impl Installer {
             actions = actions.push(self.text_action(self.language.t(L::Back), Message::Back));
         }
         actions = actions.push(space().width(Fill));
+        if self.page == Page::Setup && self.requirements.as_ref().is_some_and(|p| !p.ready()) {
+            actions =
+                actions.push(self.text_action(self.language.t(L::CheckAgain), Message::Preview));
+        }
         let (label, message, primary) = match self.page {
             Page::Progress if self.backend_status == super::BackendStatus::Running => (
                 if self.demo { L::Stop } else { L::CancelBuild },
@@ -930,6 +988,13 @@ impl Installer {
             }
             Page::Progress => (L::Stop, Some(Message::Back), false),
             Page::Setup if self.demo => (L::StartPreview, Some(Message::Preview), true),
+            Page::Setup if self.updating => (L::UpdateDownloading, None, false),
+            Page::Setup if self.requirements_busy => (L::CheckingRequirements, None, false),
+            Page::Setup if self.requirements.is_some() => (
+                L::InstallDependencies,
+                Some(Message::InstallRequirements),
+                true,
+            ),
             Page::Setup if self.backend_supported() => {
                 (L::StartBuild, Some(Message::Preview), true)
             }
@@ -971,10 +1036,11 @@ impl Installer {
             )
         };
         let mut segments = row![].spacing(5);
-        let build_start = labels.len() - crate::progress::Stage::ALL.len();
+        let build_stages = self.build_stages();
+        let build_start = labels.len() - build_stages.len();
         for i in 0..labels.len() {
             let value = if self.page == Page::Progress && i >= build_start {
-                let stage = i - build_start;
+                let stage = build_stages[i - build_start].index();
                 if self.demo || self.backend_status == super::BackendStatus::Idle {
                     (self.motion.value - stage as f32).clamp(0.0, 1.0)
                 } else if self.build_progress.stages[stage].done {
@@ -997,13 +1063,19 @@ impl Installer {
                         .style(move |_| style::progress(c)),
                 )
                 .padding(3)
-                .width(iced::Length::FillPortion(if i == build_start + 2 {
-                    3
-                } else if i == build_start + 1 {
-                    2
-                } else {
-                    1
-                }))
+                .width(iced::Length::FillPortion(
+                    if i >= build_start
+                        && build_stages[i - build_start] == crate::progress::Stage::Compile
+                    {
+                        3
+                    } else if i >= build_start
+                        && build_stages[i - build_start] == crate::progress::Stage::Generate
+                    {
+                        2
+                    } else {
+                        1
+                    },
+                ))
                 .style(move |_| container::Style {
                     border: iced::Border {
                         color: if current { c.accent } else { c.background },
