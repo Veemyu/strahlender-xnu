@@ -221,7 +221,7 @@ def stage_hash(stage, root, work, target="all", env=None):
         rec = os.path.join(scripts, "recomp")
         parts["modules"] = {m: hash_file(os.path.join(work, "exefs", m)) for m in ("main", "sdk", "subsdk0", "rtld")}
         parts["generator"] = {n: hash_file(os.path.join(rec, n)) for n in
-                              ("eh_gen.py", "eh_lsda.py", "eh_pick.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
+                              ("eh_gen.py", "eh_parallel.py", "parallel_jobs.py", "eh_lsda.py", "eh_pick.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
         parts["las_tools"] = hash_tree_content(os.path.join(rec, "upstream", "generator"), (".py",), skip_dirs=("__pycache__",))
         if stage == "recomp":
             # runtime, NVN layer (vendored + patches), translator, app shell; the partial markers cover generator and objects

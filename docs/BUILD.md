@@ -114,6 +114,15 @@ scripts/build_all.sh --only recomp --target macos
 
 Result: `work/builds/macos-recomp/BDSP.app` (arm64, Metal, ad hoc signed).
 
+C generation automatically chooses a process count from the host CPU/RAM budget.
+Modules run sequentially; analysis and emission within a large module use bounded
+spawn workers on macOS, Linux and Windows. Stateful Unicorn jump-table discovery
+stays in address order so generated code remains reproducible. Set
+`BDSP_GEN_JOBS=1` for the serial reference path, or `BDSP_GEN_JOBS=N` to override
+the generator process count independently of `--recomp-jobs` (Clang). Direct
+`eh_gen.py gen ... --jobs N` invocations accept the same override. Small modules
+use fewer workers automatically. Scheduling changes do not change chunk boundaries.
+
 Original icons and their language variants are generated only from user-provided
 game data. Artwork and generated assets remain under ignored `work/`.
 See [recomp-icons.md](recomp-icons.md) for extraction, selection, and platform styling.

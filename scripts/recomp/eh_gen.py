@@ -18,6 +18,7 @@ Usage like `gen.py`:  eh_gen.py gen <name> <nso> <base> <output folder> [--chunk
 Additionally: --las-dir <folder with gen.py> (default scripts/recomp/upstream/generator).
 """
 import atexit
+from array import array
 import bisect
 import os
 import re
@@ -62,6 +63,8 @@ def install(las_dir):
     class EhModule(gen.Module):
         def __init__(self, name, path, base, simd="asm"):
             super().__init__(name, path, base, simd)
+            # Compact instruction storage matters when spawn workers each load a module.
+            self.words = array("I", self.words)
             n = self.nso
             img = n.image
             # Homebrew NSOs can have an empty unwind range whose relative
@@ -206,10 +209,11 @@ def is_jumptable_base_adr(words, i):
 
 
 def generate(gen, args):
-    """Like gen.main (LASRecomp, MIT), with one change: ADR targets that are jump table bases do not become
-    function starts. Output: chunks `<name>_NNN.c` and `<name>_table.c`."""
-    import io
-    import os
+    """Discover EH-aware function boundaries, then scan and emit stable C chunks.
+
+    ADR jump-table bases stay within their function. Independent work uses spawn
+    processes; stateful jump-table emulation retains the serial reference order.
+    """
     import time
     t0 = time.time()
     m = gen.Module(args.name, args.nso, args.base, args.simd)
@@ -255,16 +259,52 @@ def generate(gen, args):
                 t = adrp_regs[rn][0] + ((w >> 10) & 0xFFF)
                 if m.in_text(t):
                     start_set.add(t)
+    if args.jobs != "auto":
+        jobs = int(args.jobs)
+    else:
+        from parallel_jobs import choose_jobs, cpu_count, memory_bytes
+        jobs = choose_jobs(cpu_count(), memory_bytes())
+    # Tiny modules do not amortize process startup. Modules stay sequential;
+    # the CPU budget belongs to the currently active module.
+    if args.jobs == "auto":
+        jobs = min(jobs, max(1, (m.hi - m.lo) // 0x80000))
+    workers = None
+    print(f"{args.name}: generator workers {jobs}", file=sys.stderr, flush=True)
+    if jobs > 1:
+        from eh_parallel import Workers
+        workers = Workers(jobs, args.las_dir, args, hle)
+    try:
+        return generate_functions(gen, args, m, starts, start_set, hle, workers, t0)
+    finally:
+        if workers:
+            workers.close()
+
+
+def generate_functions(gen, args, m, starts, start_set, hle, workers, t0):
+    import io
+    import time
     scanned, rounds = {}, 0
     while True:
         rounds += 1
         order = sorted(start_set)
         new = set()
-        for i, a in enumerate(order):
-            end = order[i + 1] if i + 1 < len(order) else m.hi
-            key = (a, end)
-            if key not in scanned:
-                scanned[key] = m.scan(a, end)
+        ranges = [(a, order[i + 1] if i + 1 < len(order) else m.hi)
+                  for i, a in enumerate(order)]
+        missing = [key for key in ranges if key not in scanned]
+        done = 0
+        if workers:
+            for result, stats, eh_stats in workers.map("scan", missing):
+                m.stats.update(stats)
+                STATS.update(eh_stats)
+                for a, end, scanned_range in result:
+                    scanned[(a, end)] = m.scan(a, end) if scanned_range is None else scanned_range
+                done += len(result)
+                print(f"{args.name}: scan round {rounds} progress {done}/{len(missing)}",
+                      file=sys.stderr, flush=True)
+        else:
+            for a, end in missing:
+                scanned[(a, end)] = m.scan(a, end)
+        for key in ranges:
             new |= scanned[key][1] - start_set
         if not new:
             break
@@ -286,6 +326,22 @@ def generate(gen, args):
         missing = want - set(order)
         if missing:
             print(f"{args.name}: --only: {len(missing)} starts are not function starts", file=sys.stderr)
+
+    def emitted_functions():
+        if workers:
+            items = ((a, *entries[a]) for a in order)
+            for result, stats, eh_stats in workers.map("emit", items):
+                STATS.update(eh_stats)
+                yield from result
+        else:
+            for a in order:
+                end, labels, tables = entries[a]
+                m._refs = set()
+                lines = m.emit_function(a, end, labels, tables, hle)
+                yield a, lines, m._refs
+                m._refs = set()
+
+    emitted = iter(emitted_functions())
     nchunks, ci, pending = 0, 0, None
     all_refs = set()
     written, last_win, sub = set(), None, 0
@@ -299,12 +355,8 @@ def generate(gen, args):
                 a, lines, r = pending
                 pending = None
             else:
-                a = order[ci]
+                a, lines, r = next(emitted)
                 ci += 1
-                end, labels, tables = entries[a]
-                lines = m.emit_function(a, end, labels, tables, hle)
-                r = getattr(m, "_refs", set())
-                m._refs = set()
             n = sum(len(l) + 1 for l in lines)
             if n > args.big_fn and fns:
                 pending = (a, lines, r)
@@ -383,7 +435,12 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--entry-offsets", help="module-relative cross-module branch targets from native ExeFS staging")
     ap.add_argument("--simd", choices=("asm", "c"), default="asm" if platform.machine().lower() in ("arm64", "aarch64") else "c")
+    ap.add_argument("--jobs", default=os.environ.get("BDSP_GEN_JOBS", "auto"),
+                    help="generator processes (default: CPU/RAM-based auto; 1 = serial)")
     args = ap.parse_args(argv)
+    if args.jobs != "auto" and (not args.jobs.isdecimal() or int(args.jobs) < 1):
+        ap.error("--jobs must be auto or a positive integer")
+    args.las_dir = las
     EXTRA_SETJMP.extend(args.setjmp_at)
     atexit.register(lambda: print("eh_gen:", dict(STATS), file=sys.stderr))
     generate(gen, args)

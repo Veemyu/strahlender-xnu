@@ -72,6 +72,37 @@ class ModCodegenTests(unittest.TestCase):
                 self.assertIn("f_806708028", table)
                 self.assertIn("f_806708030", table)
 
+    def test_spawn_workers_preserve_chunks_tables_and_partial_stubs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "O'Brien parallel build"
+            folder.mkdir()
+            words = (0x14000002, 0x1000, 0x7100041f, 0x540000e8, 0x10000141, 0x100000a2,
+                     0x38604820, 0x8b20c840, 0xd61f0000, 0xd503201f, 0x52800160, 0xd65f03c0,
+                     0x528002c0, 0xd65f03c0, 0x00000200, 0)
+            nso = self.fixture_nso(folder, bytearray(struct.pack("<16I", *words)))
+            entries = folder / "entries"
+            entries.write_text("0\n")
+            only = folder / "only"
+            only.write_text("0\n28\n")
+            for simd, extra in (("asm", ["--window", "0", "--chunk-bytes", "16"]),
+                                ("c", ["--window", "0x20", "--big-fn", "1"]),
+                                ("c", ["--only", str(only)])):
+                expected = None
+                for jobs in ("1", "2"):
+                    out = folder / ("out-" + jobs)
+                    command = [sys.executable, str(ROOT / "scripts/recomp/eh_gen.py"), "gen", "subsdk1",
+                               str(nso), "0x806708000", str(out), "--simd", simd,
+                               "--entry-offsets", str(entries), "--jobs", jobs, *extra]
+                    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("generator workers " + jobs, result.stderr)
+                    actual = {file.name: file.read_bytes() for file in out.glob("*.c")}
+                    if expected is None:
+                        expected = actual
+                    else:
+                        self.assertEqual(expected, actual)
+
+
 
 if __name__ == "__main__":
     unittest.main()
