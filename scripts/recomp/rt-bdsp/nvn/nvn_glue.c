@@ -218,6 +218,16 @@ typedef struct { double at, len; uint32_t mask; } ScriptStep;
 static ScriptStep script[MAX_SCRIPT];
 static int nscript = -1;
 
+// Decimal number with a point, whatever the locale (sscanf "%lf" reads "0.4" as 0 under a comma locale such as de_DE, which Qt applies)
+static double script_num(const char *s) {
+    double v = 0, f = 1;
+    int neg = 0;
+    if (*s == '-') { neg = 1; s++; }
+    for (; *s >= '0' && *s <= '9'; s++) v = v * 10 + (*s - '0');
+    if (*s == '.') for (s++; *s >= '0' && *s <= '9'; s++) { f /= 10; v += (*s - '0') * f; }
+    return neg ? -v : v;
+}
+
 static void script_load(void) {
     nscript = 0;
     const char *spec = getenv("BDSP_INPUT_SCRIPT");
@@ -234,7 +244,16 @@ static void script_load(void) {
     for (char *tok = strtok_r(buf, ",", &save1); tok && nscript < MAX_SCRIPT; tok = strtok_r(NULL, ",", &save1)) {
         double at = 0, len = 0.3;
         char names[96] = "";
-        if (sscanf(tok, "%lf:%95[A-Z+]:%lf", &at, names, &len) < 2) continue;
+        char *c1 = strchr(tok, ':');
+        if (!c1) continue;
+        at = script_num(tok);
+        char *c2 = strchr(c1 + 1, ':');
+        size_t nl = strspn(c1 + 1, "ABCDEFGHIJKLMNOPQRSTUVWXYZ+");
+        if (nl >= sizeof names) nl = sizeof names - 1;
+        memcpy(names, c1 + 1, nl);
+        names[nl] = 0;
+        if (!*names) continue;
+        if (c2) len = script_num(c2 + 1);
         uint32_t m = 0;
         char *save2 = NULL;
         for (char *n = strtok_r(names, "+", &save2); n; n = strtok_r(NULL, "+", &save2))
