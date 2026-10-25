@@ -12,6 +12,10 @@ on:
           - artifacts
           - nightly
           - release
+      draft:
+        description: 'Keep downloads in a draft so you can edit the message before publishing'
+        type: boolean
+        default: false
   push:
     tags:
       - 'installer-v*'
@@ -35,10 +39,11 @@ jobs:
         id: plan
         env:
           REQUESTED_CHANNEL: ${{ inputs.channel || 'artifacts' }}
+          DRAFT_RELEASE: ${{ inputs.draft && 'true' || 'false' }}
         run: |
           python3 installer/scripts/release.py plan \
             --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF_NAME" \
-            --channel "$REQUESTED_CHANNEL" --revision "$GITHUB_SHA" \
+            --channel "$REQUESTED_CHANNEL" --draft "$DRAFT_RELEASE" --revision "$GITHUB_SHA" \
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
             --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

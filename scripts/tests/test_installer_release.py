@@ -92,6 +92,24 @@ class InstallerReleaseTests(unittest.TestCase):
             self.assertIn("--draft=false", edit)
             self.assertIn("--latest=false", edit)
 
+    def test_draft_uploads_downloads_without_publishing(self):
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(release.subprocess, "run", return_value=SimpleNamespace(stdout="")) as run:
+            draft = self.plan("release")
+            draft["draft"] = True
+            release.publish(Path(temporary), draft, "Veemyu/strahlender-xnu")
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args.args[0][:3], ["gh", "release", "create"])
+            self.assertIn("--draft", run.call_args.args[0])
+
+    def test_release_message_comes_from_versioned_markdown(self):
+        notes = release.release_notes(self.plan("nightly"), "Veemyu/strahlender-xnu")
+        self.assertIn("Luminescent Platinum", notes)
+        self.assertIn("Full Lumi playthrough validation remains in progress", notes)
+        self.assertIn(SHA, notes)
+        self.assertIn("**nightly**", notes)
+        self.assertIn("/releases/download/installer-nightly-123-1/installer-linux-aarch64.AppImage", notes)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ("macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64")
 
 
-def plan(version, event, ref, channel, revision, run_id, attempt):
+def plan(version, event, ref, channel, revision, run_id, attempt, draft=False):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("Installer Cargo version must be a stable three-part version.")
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
@@ -35,7 +35,7 @@ def plan(version, event, ref, channel, revision, run_id, attempt):
         tag = "installer-v" + version
     else:
         tag = ""
-    return {"channel": channel, "version": version, "tag": tag, "revision": revision}
+    return {"channel": channel, "version": version, "tag": tag, "revision": revision, "draft": draft}
 
 
 def collect(artifacts, output, release):
@@ -69,6 +69,24 @@ def collect(artifacts, output, release):
         {"schema": 1, **release, "targets": TARGETS}, indent=2) + "\n")
 
 
+def release_notes(release, repository):
+    version = release["version"]
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise ValueError("Invalid release version.")
+    path = ROOT / "installer/releases" / (version + ".md")
+    if not path.is_file():
+        raise ValueError(f"Write installer/releases/{version}.md before publishing this version.")
+    notes = path.read_text().rstrip()
+    for target in TARGETS:
+        suffix = "zip" if target.startswith("macos") else "AppImage"
+        name = f"installer-{target}.{suffix}"
+        link = f"https://github.com/{repository}/releases/download/{release['tag']}/{name}"
+        notes = notes.replace(f"`{name}`", f"[{name}]({link})")
+    return notes + (
+        f"\n\n---\nChannel: **{release['channel']}** · "
+        f"[Installer source](https://github.com/{repository}/commit/{release['revision']})\n")
+
+
 def publish(folder, release, repository):
     if release["channel"] == "artifacts":
         raise ValueError("Artifact-only runs must never publish a GitHub release.")
@@ -85,25 +103,7 @@ def publish(folder, release, repository):
     prerelease = release["channel"] == "nightly"
     title = ("Installer nightly · " + release["revision"][:8] if prerelease
              else "Strahlender Installer " + release["version"])
-    notes = f"""Download the installer for your computer. No Rust, Python or source build is needed to open it.
-
-| Platform | Download |
-| --- | --- |
-| Mac · Apple Silicon | `installer-macos-aarch64.zip` |
-| Mac · Intel | `installer-macos-x86_64.zip` |
-| Linux · x86_64 | `installer-linux-x86_64.AppImage` |
-| Linux · ARM64 | `installer-linux-aarch64.AppImage` |
-
-On macOS, unzip the download and open Strahlender Installer.app. This build is ad-hoc signed and is not notarized; Gatekeeper may require an explicit allowance in Privacy & Security.
-On Linux, mark the AppImage as executable and open it. The portable tar.gz is available when AppImage mounting is unavailable.
-
-The installer includes its own Python runtime. Building the game still needs platform build tools; setup checks list any missing requirements. Fresh-system dependency installation and the full four-host acceptance matrix remain under test. Windows installer downloads are not available yet.
-
-Bring your own prod.keys, base game and optional update. Game files and keys are never included in these downloads. Game builds resolve the current main source at build time.
-
-Source revision: `{release['revision']}`. Channel: **{release['channel']}**.
-The updater is enabled only in builds configured with signed update metadata; these initial downloads can be updated manually through Releases.
-"""
+    notes = release_notes(release, repository)
     with tempfile.TemporaryDirectory(prefix="installer-release-notes-") as temporary:
         path = Path(temporary) / "notes.md"
         path.write_text(notes)
@@ -114,6 +114,8 @@ The updater is enabled only in builds configured with signed update metadata; th
             command.append("--prerelease")
         command.extend(str(path) for path in sorted(folder.iterdir()) if path.is_file())
         subprocess.run(command, check=True)
+    if release.get("draft", False):
+        return
     # Upload every artifact before exposing the release. Stable releases become
     # latest explicitly; nightly builds never replace the stable latest link.
     subprocess.run(["gh", "release", "edit", tag, "--repo", repository,
@@ -127,6 +129,7 @@ def main():
     planning.add_argument("--event", required=True)
     planning.add_argument("--ref", required=True)
     planning.add_argument("--channel", default="artifacts")
+    planning.add_argument("--draft", choices=("true", "false"), default="false")
     planning.add_argument("--revision", required=True)
     planning.add_argument("--run-id", required=True)
     planning.add_argument("--attempt", required=True)
@@ -142,7 +145,10 @@ def main():
     args = parser.parse_args()
     if args.command == "plan":
         version = tomllib.loads((ROOT / "installer/Cargo.toml").read_text())["package"]["version"]
-        release = plan(version, args.event, args.ref, args.channel, args.revision, args.run_id, args.attempt)
+        release = plan(version, args.event, args.ref, args.channel, args.revision, args.run_id, args.attempt,
+                       args.draft == "true")
+        if release["channel"] != "artifacts":
+            release_notes(release, "Veemyu/strahlender-xnu")
         Path("installer-release-plan.json").write_text(json.dumps(release) + "\n")
         with args.github_output.open("a") as file:
             for key, value in release.items():

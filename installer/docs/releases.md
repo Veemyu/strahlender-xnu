@@ -51,6 +51,30 @@ Gatekeeper acceptance remains a manual user action. Unconfigured signed update
 metadata does not prevent manual downloads or game builds; automatic installer
 replacement is disabled until that separate setup is completed.
 
+### Release messages and draft review
+
+Each installer version has an editable English release message at
+`installer/releases/<version>.md`. Commit that message with the version change;
+publication checks for it before starting the native jobs. The workflow adds
+the exact installer commit and channel automatically. Release text remains
+editable on GitHub after publication and changing it does not require rebuilding
+the downloads.
+
+For a build whose downloads should remain unpublished until the message is
+reviewed, select **draft** in the workflow form or pass `-f draft=true`:
+
+```sh
+gh workflow run installer-ci.yml --ref main -f channel=release -f draft=true
+
+# After the build: edit the prepared draft, then deliberately publish it.
+gh release edit installer-v0.1.0 --notes-file installer/releases/0.1.0.md
+gh release edit installer-v0.1.0 --draft=false --latest=true
+```
+
+Nightly drafts can be published the same way, with `--latest=false` so they do
+not replace the stable latest release. An explicit `installer-v*` Git tag still
+requests direct stable publication; use the manual draft route for a review step.
+
 ## Private Python
 
 `runtime/manifest.json` pins CPython archives. `wheels.lock.json` pins base wheels;
