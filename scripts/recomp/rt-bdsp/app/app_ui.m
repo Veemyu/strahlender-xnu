@@ -70,6 +70,7 @@ static void release_all(void) {
 // ---- Controller (GameController.framework: Xbox, PlayStation, Switch Pro, among others; see pad_gc.h)
 static void pad_poll(void) {
     g_pad_by_position = !strcmp(g_app.pad_layout, "nintendo");
+    pad_gc_bind_new();   // handlers deliver the changes at once; this per-frame update is the safety net
     pad_gc_update();
 }
 
