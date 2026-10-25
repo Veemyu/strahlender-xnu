@@ -528,6 +528,8 @@ static void *RuntimeThread(void *arg) {
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"bdsp_metal_hud"]) setenv("MTL_HUD_ENABLED", "1", 1);
     fprintf(stderr, "[ipad] Metal-HUD %s\n", getenv("MTL_HUD_ENABLED") ? "an" : "aus");
     app.idleTimerDisabled = YES;
+    // The system's screenshot preview takes the foreground for a few seconds; without this the pad is silent meanwhile (issue #3)
+    GCController.shouldMonitorBackgroundEvents = YES;
     for (GCController *c in GCController.controllers) BindController(c);
     [NSNotificationCenter.defaultCenter addObserverForName:GCControllerDidConnectNotification object:nil queue:NSOperationQueue.mainQueue
                                                 usingBlock:^(NSNotification *n) {
