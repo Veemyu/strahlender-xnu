@@ -179,6 +179,17 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(m["exefs"]["main"]["sha1"], hashlib.sha1(b"main-bytes").hexdigest())
         self.assertTrue(bh.manifest_matches(self.work, 10, 20))
 
+    def test_finder_metadata_does_not_trigger_another_romfs_export(self):
+        self.write()
+        metadata = os.path.join(self.work, "romfs", "Data", ".DS_Store")
+        with open(metadata, "wb") as file:
+            file.write(b"Finder metadata")
+        self.assertEqual(bh.romfs_stats(os.path.join(self.work, "romfs")), (2, 7))
+        self.assertTrue(bh.manifest_matches(self.work, 10, 20))
+        with open(metadata, "wb") as file:
+            file.write(b"changed Finder metadata")
+        self.assertTrue(bh.manifest_matches(self.work, 10, 20))
+
     def test_mismatch_cases(self):
         self.assertFalse(bh.manifest_matches(self.work, 10, 20))  # no manifest
         self.write()

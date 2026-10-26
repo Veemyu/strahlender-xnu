@@ -174,6 +174,8 @@ def _walk_files(root):
 def romfs_stats(romfs):
     count = total = 0
     for p in _walk_files(romfs):
+        if os.path.basename(p) == ".DS_Store":
+            continue
         count += 1
         total += os.path.getsize(p)
     return count, total
