@@ -109,10 +109,7 @@ fn size_label(bytes: u64, language: Language) -> String {
     } else {
         format!("{} KB", bytes.div_ceil(1024))
     };
-    match language {
-        Language::German => size.replace('.', ","),
-        Language::English => size,
-    }
+    language.decimal(&size)
 }
 
 #[cfg(test)]
@@ -123,6 +120,8 @@ mod tests {
     fn file_sizes_use_the_ui_decimal_separator() {
         assert_eq!(size_label(1 << 30, Language::German), "1,0 GB");
         assert_eq!(size_label(1 << 30, Language::English), "1.0 GB");
+        assert_eq!(size_label(1 << 30, Language::Spanish), "1,0 GB");
+        assert_eq!(size_label(1 << 30, Language::Portuguese), "1,0 GB");
     }
 
     #[test]

@@ -268,16 +268,12 @@ fn disk_space_error(detail: &str, language: Language) -> Option<String> {
     if !valid_number(required) || !valid_number(available) {
         return None;
     }
-    let available = if language == Language::German {
-        available.replace('.', ",")
-    } else {
-        available.to_owned()
-    };
+    let available = language.decimal(available);
     Some(
         language
             .t(L::DiskSpaceError)
             .replace("{available}", &available)
-            .replace("{required}", required),
+            .replace("{required}", &language.decimal(required)),
     )
 }
 
@@ -1979,6 +1975,12 @@ mod tests {
     fn disk_space_failure_is_specific_and_localized() {
         let detail =
             "MISSING  Disk space >= 40 GB free (21.7 GB free)\nNext step: Free up disk space.";
+        for language in [Language::Spanish, Language::Portuguese] {
+            let notice = disk_space_error(detail, language).unwrap();
+            assert!(notice.contains("21,7 GB"));
+            assert!(notice.contains("40 GB"));
+            assert!(!notice.contains("{available}"));
+        }
         assert_eq!(
             disk_space_error(detail, Language::English).as_deref(),
             Some(
@@ -2052,7 +2054,7 @@ mod tests {
     fn native_generator_error_dialog_keeps_module_phase_and_cause() {
         let cause = "bdsp_codegen [analyze/subsdk1]: error: cross-module entry outside module text";
         let detail = format!("Build step failed: eh_gen\n{cause}");
-        for language in [Language::English, Language::German] {
+        for language in Language::ALL {
             let notice = build_error_notice(&detail, language);
             assert!(notice.contains(language.t(L::Generate)));
             assert!(notice.contains(cause));
@@ -2065,6 +2067,8 @@ mod tests {
         for (language, stage) in [
             (Language::English, "Build runtime"),
             (Language::German, "Runtime bauen"),
+            (Language::Spanish, "Compilar entorno de ejecución"),
+            (Language::Portuguese, "Compilar ambiente de execução"),
         ] {
             let notice = build_error_notice(error, language);
             assert!(notice.contains(stage));

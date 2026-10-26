@@ -2,20 +2,26 @@
 
 ## Installer interface
 
-- **Current status:** only German and English are implemented. Keep the broad
-  translation pass until the UX and build flow are stable. The default follows
-  the operating-system locale. `de-*` selects German; other languages currently
-  fall back to English. `BDSP_LANG` is a development/test override, not a
-  build-language selector.
-- All translatable interface text goes through `i18n::Label`. The current macro
-  requires both translations for every label; a test rejects empty translations.
-- **Planned final translation pass:** add one Spanish catalog (`es`) and one
-  Portuguese catalog (`pt`). Map `es-ES`, `es-419`, `es-MX` and other `es-*`
-  locales to `es`; map `pt-PT`, `pt-BR` and other `pt-*` locales to `pt`.
-  Do not create separate Latin American UI catalogs. Keep English as the
-  fallback for unsupported languages. Update locale detection and the central
-  `i18n::Label` catalog together, then review every view and message in all four
-  languages before calling localization complete.
+- **Current status:** German, English, Spanish and Portuguese are implemented.
+  The default follows the operating-system locale. `BDSP_LANG` is a development/
+  test override, not a build-language selector.
+- All translatable interface text goes through `i18n::Label`. Every one of the
+  188 labels has four required translations in the same catalog in `i18n.rs`.
+  New labels must provide all four translations; tests reject empty strings or
+  changed interpolation parameters.
+- Regional UI locales share exactly one base-language catalog: `es-ES`, `es-419`,
+  `es-MX`, `es-AR` and all other `es-*` variants use Spanish; `pt-PT`, `pt-BR`,
+  `pt-AO` and all other `pt-*` variants use Portuguese. There are no separate
+  Latin American UI files or regional overrides. The Portuguese catalog uses
+  European Portuguese vocabulary. Unknown languages fall back to English.
+- Locale parsing accepts hyphens, underscores, codesets and POSIX modifiers,
+  case-insensitively. File sizes and disk-space dialogs use decimal commas for
+  German, Spanish and Portuguese; English uses a decimal point.
+- Dark-mode captures cover the translated primary views, mod builds, build
+  options, generator progress, error dialogs and completion. Linux CPU options
+  are additionally checked using the platform simulation. Raw external tool
+  diagnostics retain their original language; interface labels, explanations,
+  sample filenames and error wrappers are localized.
 - Technical names (prod.keys, XCI, NSP, GitHub, iPhone) stay unchanged. Sizes use
   the UI decimal separator; file counts distinguish singular/plural. Future
   download/time/error messages need parameterized messages rather than fragments.
