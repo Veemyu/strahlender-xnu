@@ -820,6 +820,39 @@ impl Installer {
 
     fn setup_view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
+        if self.build_options_open {
+            return column![
+                self.title(
+                    self.language.t(L::BuildOptions),
+                    self.language.t(L::BuildOptionsHint)
+                ),
+                column![
+                    toggler(self.clean_build)
+                        .label(self.language.t(L::CleanBuild))
+                        .text_size(14)
+                        .on_toggle(Message::CleanBuild),
+                    text(self.language.t(L::CleanBuildHint))
+                        .size(12)
+                        .color(c.muted),
+                ]
+                .spacing(5),
+                column![
+                    toggler(self.auto_cleanup)
+                        .label(self.language.t(L::AutoCleanup))
+                        .text_size(14)
+                        .on_toggle(Message::AutoCleanup),
+                    text(self.language.t(L::AutoCleanupHint))
+                        .size(12)
+                        .color(c.muted),
+                ]
+                .spacing(5),
+                text(self.language.t(L::FailedBuildKept))
+                    .size(11)
+                    .color(c.muted),
+            ]
+            .spacing(16)
+            .into();
+        }
         if let Some(plan) = &self.requirements
             && !plan.ready()
         {
@@ -862,6 +895,10 @@ impl Installer {
             }))
             .size(12)
             .color(c.muted),
+            self.text_action(
+                self.language.t(L::BuildOptions),
+                Message::BuildOptions(true)
+            ),
         ]
         .spacing(18)
         .into()
@@ -872,7 +909,11 @@ impl Installer {
         if !self.demo && self.backend_status != super::BackendStatus::Idle {
             let stage = self.build_progress.active;
             let state = self.build_progress.stages[stage.index()];
-            let status = self.build_labels()[stage.index()];
+            let status = if self.cleanup_busy {
+                L::Cleanup
+            } else {
+                self.build_labels()[stage.index()]
+            };
             let detail = match self.backend_status {
                 super::BackendStatus::Running if stage == crate::progress::Stage::Requirements => {
                     L::CheckingRequirements
@@ -1096,6 +1137,7 @@ impl Installer {
                 actions.push(self.text_action(self.language.t(L::CheckAgain), Message::Preview));
         }
         let (label, message, primary) = match self.page {
+            Page::Progress if self.cleanup_busy => (L::Cleanup, None, false),
             Page::Progress if self.backend_status == super::BackendStatus::Running => (
                 if self.demo { L::Stop } else { L::CancelBuild },
                 Some(Message::Back),

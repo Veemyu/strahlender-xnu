@@ -516,6 +516,80 @@ class InstallerDriverTests(unittest.TestCase):
                 self.assertIn("renewing its installation receipt", output.getvalue())
                 self.assertFalse(list(applications.glob("*.app-staging-*")))
 
+    def test_clean_build_removes_generated_outputs_but_keeps_game_data_and_unknown_files(self):
+        for target, generated in (("macos", ("gen4", "obj4", "rt-bdsp-app", "img_app")),
+                                  ("linux", ("gen4-c", "obj4-c", "rt-bdsp-vk", "img_gfx")),
+                                  ("ios", ("gen", "obj", "rt", "derived"))):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                work = root / "work"
+                directory = work / "recomp"
+                for name in (*generated, "icons", "mods", "unknown"):
+                    (directory / name).mkdir(parents=True)
+                    (directory / name / "sentinel").write_text(name)
+                for name in ("exefs", "romfs", "saves"):
+                    (work / name).mkdir()
+                    (work / name / "sentinel").write_text(name)
+                keys = root / "prod.keys"
+                keys.write_text("keys")
+                args = SimpleNamespace(root=root, work=work, target=target, base=root / "game.xci", prod_keys=keys)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    driver._clean_game_build(args, directory)
+                for name in generated:
+                    self.assertFalse((directory / name).exists())
+                for name in ("icons", "mods", "unknown"):
+                    self.assertEqual((directory / name / "sentinel").read_text(), name)
+                for name in ("exefs", "romfs", "saves"):
+                    self.assertEqual((work / name / "sentinel").read_text(), name)
+                self.assertEqual(keys.read_text(), "keys")
+
+    def test_clean_build_rejects_external_directories_and_selected_inputs_before_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            work = root / "work"
+            directory = work / "recomp"
+            (directory / "gen4").mkdir(parents=True)
+            (directory / "obj4").mkdir()
+            key = directory / "obj4/prod.keys"
+            key.write_text("private key")
+            args = SimpleNamespace(root=root, work=work, target="macos", base=root / "game.xci", prod_keys=key)
+            with self.assertRaises(ValueError):
+                driver._clean_game_build(args, directory)
+            self.assertTrue((directory / "gen4").is_dir())
+            self.assertEqual(key.read_text(), "private key")
+            with self.assertRaises(ValueError):
+                driver._clean_game_build(args, root / "external")
+            with self.assertRaises(ValueError):
+                driver._clean_game_build(args, work)
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "Symbolic links are unavailable")
+    def test_clean_build_refuses_a_recomp_link_outside_work(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            work = root / "work"
+            work.mkdir()
+            outside = root / "originals"
+            (outside / "gen4").mkdir(parents=True)
+            (outside / "gen4/save").write_text("untouched")
+            (work / "recomp").symlink_to(outside, target_is_directory=True)
+            args = SimpleNamespace(root=root, work=work, target="macos", base=root / "game.xci", prod_keys=root / "prod.keys")
+            with self.assertRaises(ValueError):
+                driver._clean_game_build(args, work / "recomp")
+            self.assertEqual((outside / "gen4/save").read_text(), "untouched")
+
+    def test_ios_failed_extraction_never_resets_build_outputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = SimpleNamespace(root=root, work=root / "work", target="ios", clean_build=True)
+            with patch.object(driver, "_ios_device", return_value={"name": "test device"}), \
+                    patch.object(driver, "required_free_gb", return_value=40), \
+                    patch.object(driver, "_run_command", return_value=4), \
+                    patch.object(driver, "_clean_game_build") as clean, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                code, _ = driver._build_ios(args, [])
+            self.assertEqual(code, 4)
+            clean.assert_not_called()
+
     def test_linux_install_isolated_package_keeps_saves_and_refuses_foreign_app(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = os.path.join(temporary, "repo")

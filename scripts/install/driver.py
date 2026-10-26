@@ -574,6 +574,35 @@ def _ios_compile_count(build_dir):
     return completed, total
 
 
+def _clean_game_build(args, directory):
+    """Reset only known generated outputs; keep extraction, icons and user inputs."""
+    directory = Path(directory).resolve()
+    work = Path(args.work).resolve()
+    if directory == work or not directory.is_relative_to(work):
+        raise ValueError("The clean build directory must be inside this checkout's work folder.")
+    names = ("gen4", "gen4-c", "obj4", "obj4-c", "img_app", "img_gfx",
+             "rt-bdsp-app", "rt-bdsp", "rt-bdsp-vk", "nvn-src", "bdsp_app",
+             "bdsp_boot_vk", "bdsp_boot_vk_qt")
+    if args.target == "ios":
+        names = ("gen", "obj", "img", "rt", "nvn-base", "nvn-ios", "res",
+                 "derived", "export", ".generator-hash", "BDSP.ipa")
+    candidates = [directory / name for name in names]
+    # Validate every candidate before removing anything, including selected mods.
+    for value in (args.base, args.prod_keys, getattr(args, "update", None),
+                  getattr(args, "mod_root", None), getattr(args, "mods_dir", None)):
+        if value:
+            selected = Path(value).resolve()
+            for candidate in candidates:
+                if selected == candidate or selected.is_relative_to(candidate) or candidate.is_relative_to(selected):
+                    raise ValueError("A selected input is inside generated build output; move it before using clean build.")
+    emit("log", level="diagnostic", message="Clean build: regenerating game code, module images and runtime; extracted game data is kept.")
+    for candidate in candidates:
+        if candidate.is_symlink() or candidate.is_file():
+            candidate.unlink()
+        elif candidate.is_dir():
+            shutil.rmtree(candidate)
+
+
 def _build_ios(args, common):
     root, work = Path(args.root), Path(args.work)
     input_work = work / "installer-inputs/ios"
@@ -585,6 +614,8 @@ def _build_ios(args, common):
     code = _run_command(extract, args, "extract")
     mod_build = _prepare_code_mod(args, input_work, build_cache=work / "recomp") if code == 0 else None
     build_dir = mod_build["build_dir"] if mod_build else work / "recomp/ios-installer/vanilla"
+    if code == 0 and getattr(args, "clean_build", False):
+        _clean_game_build(args, build_dir)
     environment = {"BDSP_IOS_BUILD_DIR": str(build_dir),
                    "BDSP_EXEFS_DIR": str(mod_build["staged"] if mod_build else input_work / "exefs")}
     builder = str(root / "scripts/recomp/ios/installer_build.sh")
@@ -817,6 +848,8 @@ def build(args):
                 code = 4
         artifact = work / "builds/macos-recomp" / (mod_build["app_name"] if code == 0 and mod_build else "BDSP.app")
         if code == 0:
+            if getattr(args, "clean_build", False):
+                _clean_game_build(args, mod_build["build_dir"] if mod_build else work / "recomp")
             environment = ({"BDSP_EXEFS_DIR": str(mod_build["staged"]),
                             "RECOMP_DIR": str(mod_build["build_dir"]),
                             "BDSP_MOD_NAME": mod_build["name"],
@@ -848,6 +881,8 @@ def build(args):
         code = 0
         for stage, command, progress in stages:
             if stage == "eh_gen" and code == 0:
+                if getattr(args, "clean_build", False):
+                    _clean_game_build(args, work / "recomp")
                 emit("step", id="exefs", status="skipped")
             image_env = {"IMG": "work/recomp/img_gfx",
                          "HLE_LIST": "scripts/recomp/rt-bdsp/hle_nvn.txt"} if stage == "images" else None
@@ -893,6 +928,7 @@ def main(argv=None):
     build_parser.add_argument("--base", required=True)
     build_parser.add_argument("--prod-keys", required=True)
     build_parser.add_argument("--update")
+    build_parser.add_argument("--clean-build", action="store_true", help="Regenerate and recompile game code without discarding extracted game data")
     build_parser.add_argument("--mod-root")
     build_parser.add_argument("--mod-name")
     build_parser.add_argument("--mods-dir")

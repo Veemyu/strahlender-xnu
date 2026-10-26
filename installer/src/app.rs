@@ -94,6 +94,9 @@ pub enum Message {
     ToggleTheme,
     SelectTarget(InstallTarget),
     OptimizeCpu(bool),
+    BuildOptions(bool),
+    CleanBuild(bool),
+    AutoCleanup(bool),
     AnimationFrame(Instant),
     #[cfg(target_os = "macos")]
     LayoutApplied,
@@ -185,6 +188,10 @@ pub struct Installer {
     demo: bool,
     target: InstallTarget,
     portable_cpu: bool,
+    clean_build: bool,
+    auto_cleanup: bool,
+    build_options_open: bool,
+    cleanup_busy: bool,
     host: Platform,
     simulated_platform: bool,
     motion: crate::motion::ProgressMotion,
@@ -351,6 +358,10 @@ impl Installer {
             demo,
             target: InstallTarget::native(host),
             portable_cpu: false,
+            clean_build: false,
+            auto_cleanup: true,
+            build_options_open: false,
+            cleanup_busy: false,
             host,
             simulated_platform: options.platform.is_some(),
             motion: crate::motion::ProgressMotion::default(),
@@ -654,6 +665,15 @@ impl Installer {
                 self.selected_mod = None;
                 self.mods_scan_id += 1;
                 self.mods_scanning = false;
+            }
+            Message::BuildOptions(open) if self.page == Page::Setup => {
+                self.build_options_open = open;
+            }
+            Message::CleanBuild(enabled) if self.page == Page::Setup => {
+                self.clean_build = enabled;
+            }
+            Message::AutoCleanup(enabled) if self.page == Page::Setup => {
+                self.auto_cleanup = enabled;
             }
             Message::OptimizeCpu(enabled)
                 if self.page == Page::Review && self.target == InstallTarget::Linux =>
@@ -1028,6 +1048,10 @@ impl Installer {
                 self.hovered = None;
                 self.drag_active = false;
             }
+            Message::Back if self.page == Page::Progress && self.cleanup_busy => {}
+            Message::Back if self.page == Page::Setup && self.build_options_open => {
+                self.build_options_open = false;
+            }
             Message::Back => {
                 self.requirements_run_id += 1;
                 self.requirements_busy = false;
@@ -1116,6 +1140,8 @@ impl Installer {
                     self.notice = None;
                     self.build_progress = crate::progress::BuildProgress::default();
                     self.installed_app = None;
+                    self.build_options_open = false;
+                    self.cleanup_busy = false;
                     self.motion.snap(0.0);
                     self.last_frame = None;
                     self.backend_run_id += 1;
@@ -1144,6 +1170,8 @@ impl Installer {
                             crate::backend::BuildRequest {
                                 target,
                                 portable_cpu: self.portable_cpu,
+                                clean_build: self.clean_build,
+                                auto_cleanup: self.auto_cleanup,
                                 base: base.path.clone(),
                                 prod_keys: keys.path.clone(),
                                 update: self.update.as_ref().map(|source| source.path.clone()),
@@ -1170,6 +1198,12 @@ impl Installer {
             }
             Message::BackendEvent(run_id, event) if run_id == self.backend_run_id => match event {
                 crate::backend::Event::Step { id, status } => {
+                    if id == "cleanup" {
+                        self.cleanup_busy = status == "started";
+                        if status == "needs attention" {
+                            self.notice = Some(self.language.t(L::CleanupFailed).into());
+                        }
+                    }
                     self.build_progress.step(&id, &status);
                     self.record("BACKEND", &format!("{id}: {status}"));
                 }
@@ -1550,6 +1584,10 @@ impl Installer {
         let index = self.capture.as_ref().expect("capture enabled").index;
         self.appearance = Appearance::Dark;
         self.portable_cpu = false;
+        self.clean_build = false;
+        self.auto_cleanup = true;
+        self.build_options_open = false;
+        self.cleanup_busy = false;
         let scenario = self.capture.as_ref().expect("capture enabled").scenes[index];
         self.base = None;
         self.update = None;
@@ -1705,6 +1743,10 @@ impl Installer {
                 self.mods_skipped = true;
             }
             "setup" => self.page = Page::Setup,
+            "build-options" => {
+                self.page = Page::Setup;
+                self.build_options_open = true;
+            }
             "setup-dependencies" => {
                 self.page = Page::Setup;
                 self.requirements = Some(crate::dependencies::Plan {
@@ -1867,6 +1909,36 @@ fn compact_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_options_are_explicit_and_do_not_change_navigation() {
+        let (mut app, _) = Installer::new();
+        assert!(!app.clean_build);
+        assert!(app.auto_cleanup);
+        let _ = app.update(Message::CleanBuild(true));
+        assert!(!app.clean_build);
+        app.page = Page::Setup;
+        let _ = app.update(Message::BuildOptions(true));
+        let _ = app.update(Message::CleanBuild(true));
+        let _ = app.update(Message::AutoCleanup(false));
+        assert!(app.clean_build);
+        assert!(!app.auto_cleanup);
+        let _ = app.update(Message::Back);
+        assert_eq!(app.page, Page::Setup);
+        assert!(!app.build_options_open);
+    }
+
+    #[test]
+    fn copy_feedback_timer_cannot_clear_a_newer_copy() {
+        let (mut app, _) = Installer::new();
+        let older = Instant::now();
+        let newer = older + Duration::from_millis(1);
+        app.copied_log_line = Some((0, newer));
+        let _ = app.update(Message::ClearCopiedLogLine(0, older));
+        assert_eq!(app.copied_log_line, Some((0, newer)));
+        let _ = app.update(Message::ClearCopiedLogLine(0, newer));
+        assert!(app.copied_log_line.is_none());
+    }
 
     #[test]
     fn cpu_choice_is_editable_only_in_linux_review() {

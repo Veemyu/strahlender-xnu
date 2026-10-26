@@ -25,20 +25,26 @@ pub fn client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|error| error.to_string())
 }
 
+pub struct Prepared {
+    pub root: PathBuf,
+    pub owner: Option<crate::workspace_cleanup::OwnedWorkspace>,
+}
+
 pub fn source_smoke() -> Result<PathBuf, String> {
-    fetch(&data_dir()?.join("sources"), &AtomicBool::new(false))
+    fetch(&data_dir()?.join("sources"), &AtomicBool::new(false)).map(|workspace| workspace.root)
 }
 
 pub async fn prepare(
     run: u64,
     output: &mut Sender<(u64, Event)>,
     cancelled: Arc<AtomicBool>,
-) -> Result<PathBuf, String> {
+) -> Result<Prepared, String> {
     if cfg!(debug_assertions)
         && std::env::var_os("BDSP_INSTALLER_DEV_CHECKOUT").as_deref()
             == Some(std::ffi::OsStr::new("1"))
     {
         return crate::backend::project_root()
+            .map(|root| Prepared { root, owner: None })
             .ok_or_else(|| "Development checkout not found.".into());
     }
     let _ = output.send((run, Event::Log { level: "info".into(), message: "Downloading the current main source. Your build keeps this revision until completion.".into() })).await;
@@ -55,7 +61,7 @@ pub async fn prepare(
     }
 }
 
-fn fetch(parent: &Path, cancelled: &AtomicBool) -> Result<PathBuf, String> {
+fn fetch(parent: &Path, cancelled: &AtomicBool) -> Result<Prepared, String> {
     let client = client()?;
     let revision: serde_json::Value = client
         .get("https://api.github.com/repos/Veemyu/strahlender-xnu/commits/main")
@@ -103,7 +109,11 @@ fn fetch(parent: &Path, cancelled: &AtomicBool) -> Result<PathBuf, String> {
         }
         let destination = parent.join(format!("{sha}-{unique}"));
         std::fs::rename(&root, &destination).map_err(|e| e.to_string())?;
-        Ok(destination)
+        let owner = crate::workspace_cleanup::OwnedWorkspace::register(&destination, parent)?;
+        Ok(Prepared {
+            root: destination,
+            owner: Some(owner),
+        })
     })();
     let _ = std::fs::remove_dir_all(&staging);
     result

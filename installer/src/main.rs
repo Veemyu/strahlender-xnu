@@ -17,6 +17,7 @@ mod style;
 mod updates;
 mod window_layout;
 mod workspace;
+mod workspace_cleanup;
 
 use app::Installer;
 

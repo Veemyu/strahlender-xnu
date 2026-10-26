@@ -137,6 +137,8 @@ pub fn reveal_installed_application(path: PathBuf) -> Result<(), String> {
 pub struct BuildRequest {
     pub target: &'static str,
     pub portable_cpu: bool,
+    pub clean_build: bool,
+    pub auto_cleanup: bool,
     pub base: PathBuf,
     pub prod_keys: PathBuf,
     pub update: Option<PathBuf>,
@@ -340,34 +342,42 @@ fn run_driver(
                 },
             ))
             .await;
-        let root = match crate::workspace::prepare(run_id, &mut output, cancelled.clone()).await {
-            Ok(root) => root,
-            Err(_) if cancelled.load(Ordering::Acquire) => {
-                let _ = output.send((run_id, Event::Stopped)).await;
-                return;
-            }
-            Err(message) => {
-                let _ = output
-                    .send((
-                        run_id,
-                        Event::Log {
-                            level: "error".into(),
-                            message,
-                        },
-                    ))
-                    .await;
-                let _ = output
-                    .send((
-                        run_id,
-                        Event::Finished {
-                            ok: false,
-                            code: -3,
-                        },
-                    ))
-                    .await;
-                return;
-            }
+        let cleanup_requested = match &action {
+            Action::Build(request) => request.auto_cleanup,
         };
+        let device_target = match &action {
+            Action::Build(request) => request.target == "ios",
+        };
+        let workspace =
+            match crate::workspace::prepare(run_id, &mut output, cancelled.clone()).await {
+                Ok(root) => root,
+                Err(_) if cancelled.load(Ordering::Acquire) => {
+                    let _ = output.send((run_id, Event::Stopped)).await;
+                    return;
+                }
+                Err(message) => {
+                    let _ = output
+                        .send((
+                            run_id,
+                            Event::Log {
+                                level: "error".into(),
+                                message,
+                            },
+                        ))
+                        .await;
+                    let _ = output
+                        .send((
+                            run_id,
+                            Event::Finished {
+                                ok: false,
+                                code: -3,
+                            },
+                        ))
+                        .await;
+                    return;
+                }
+            };
+        let root = workspace.root.clone();
         let _ = output
             .send((
                 run_id,
@@ -433,6 +443,8 @@ fn run_driver(
             Action::Build(BuildRequest {
                 target,
                 portable_cpu,
+                clean_build,
+                auto_cleanup: _,
                 base,
                 prod_keys,
                 update,
@@ -452,6 +464,9 @@ fn run_driver(
                     .arg(base)
                     .arg("--prod-keys")
                     .arg(prod_keys);
+                if clean_build {
+                    command.arg("--clean-build");
+                }
                 #[cfg(debug_assertions)]
                 set_development_install_root(
                     &mut command,
@@ -523,6 +538,8 @@ fn run_driver(
         let mut result_seen = false;
         let mut result_ok = false;
         let mut result_code = -1;
+        let mut installed_application = None;
+        let mut device_package = None;
 
         while stdout_open || stderr_open {
             if cancelled.load(Ordering::Acquire) {
@@ -586,6 +603,8 @@ fn run_driver(
                                 result_code = code;
                             }
                             Ok(ProtocolEvent::Artifact { kind, path }) => {
+                                if kind == "installed_application" { installed_application = Some(path.clone()); }
+                                if kind == "ipa" { device_package = Some(path.clone()); }
                                 let _ = output.send((run_id, Event::Artifact { kind, path })).await;
                             }
                             Err(error) => {
@@ -651,6 +670,70 @@ fn run_driver(
                 .await;
         } else {
             let ok = protocol_seen && process_ok && result_ok;
+            if ok && cleanup_requested {
+                if let Some(owner) = workspace.owner {
+                    let _ = output
+                        .send((
+                            run_id,
+                            Event::Step {
+                                id: "cleanup".into(),
+                                status: "started".into(),
+                            },
+                        ))
+                        .await;
+                    let _ = output.send((run_id, Event::Log { level: "info".into(), message:
+                        "Removing this run's temporary files. Installed game data, saves and original inputs are kept.".into() })).await;
+                    let cleaned = tokio::task::spawn_blocking(move || {
+                        let anchor = if device_target {
+                            owner.export_ipa(&device_package.ok_or(
+                                "The device package is missing; temporary files were kept.",
+                            )?)?
+                        } else {
+                            installed_application.ok_or(
+                                "The installed application is missing; temporary files were kept.",
+                            )?
+                        };
+                        owner.finish(&anchor)?;
+                        Ok::<_, String>(if device_target { Some(anchor) } else { None })
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()));
+                    let status = if cleaned.is_ok() {
+                        "complete"
+                    } else {
+                        "needs attention"
+                    };
+                    match cleaned {
+                        Ok(Some(path)) => {
+                            let _ = output
+                                .send((
+                                    run_id,
+                                    Event::Artifact {
+                                        kind: "ipa".into(),
+                                        path,
+                                    },
+                                ))
+                                .await;
+                        }
+                        Ok(None) => {}
+                        Err(detail) => {
+                            let _ = output.send((run_id, Event::Log { level: "warning".into(), message: format!("The app was installed, but temporary files could not all be removed: {detail}") })).await;
+                        }
+                    }
+                    let _ = output
+                        .send((
+                            run_id,
+                            Event::Step {
+                                id: "cleanup".into(),
+                                status: status.into(),
+                            },
+                        ))
+                        .await;
+                } else {
+                    let _ = output.send((run_id, Event::Log { level: "info".into(), message:
+                        "Development checkout preserved. Automatic cleanup only removes this installer's downloaded workspaces.".into() })).await;
+                }
+            }
             let _ = output
                 .send((
                     run_id,

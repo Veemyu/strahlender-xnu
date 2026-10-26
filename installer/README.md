@@ -288,3 +288,25 @@ progress display without flooding diagnostics; raw native module logs remain
 available. Detailed generator resource profiling is opt-in with
 `BDSP_CODEGEN_PROFILE=1`. Compiler inventory from a previous run is ignored until
 the current build publishes its inventory.
+
+### Clean builds and automatic housekeeping
+
+Setup offers a compact **Build options** view. Clean build defaults off and
+regenerates C, compiled objects, module images and runtime without discarding
+extracted game data, icons or mod inputs. It resets only known generated paths
+inside this checkout's work folder and refuses selected inputs inside them.
+
+Automatic cleanup defaults on. After a successful installation and backend exit,
+the live owner of a downloaded workspace verifies its ownership receipt and the
+external installed artifact, retains bounded compiler diagnostics, then retires
+that run's source/build tree. Installed game data, saves, mod libraries, original
+containers and keys are outside this scope. Symlinks into external game data are
+not followed. Installed resource links back into the workspace prevent cleanup.
+For device builds, the finished IPA is retained under installer data `exports/`
+before removing temporary files. Failed or cancelled runs remain for diagnosis;
+disabling cleanup keeps successful workspaces too. No old or unknown directories
+are swept. Local development checkouts are never automatically removed.
+
+See [build pipeline status](docs/build-pipeline.md) for measurements, remaining
+Python orchestration and parallelism limits. End-to-end release cleanup still
+needs clean-system Mac/Linux acceptance; fixture tests are not that acceptance.
