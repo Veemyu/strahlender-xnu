@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:653229cb-b9ef-587c-be2d-976a4d37834a",
+  "serialNumber": "urn:uuid:9182bb60-4fba-56a9-89a5-a3e1b4a10b6f",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-25T17:07:19Z",
+    "timestamp": "2026-10-26T02:06:12Z",
     "tools": {
       "components": [
         {
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "root",
       "name": "strahlender-xnu",
-      "version": "a3a242e-dirty",
+      "version": "36a7ff7-dirty",
       "licenses": [
         {
           "license": {
@@ -25,7 +25,7 @@
           }
         }
       ],
-      "description": "Repository commit a3a242e5dd63cb7318d406dfd7a4684d8862f7cb. Uncommitted files at generation: scripts/recomp/ios/app/app.m, scripts/recomp/rt-bdsp/NOTICE.de.md, scripts/sbom/generate_sbom.py."
+      "description": "Repository commit 36a7ff7c444868498a6c02a3b78835c26a13b10e. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py."
     }
   },
   "components": [
@@ -1157,7 +1157,7 @@
       "name": "capstone",
       "version": "5.0.9",
       "purl": "pkg:pypi/capstone@5.0.9",
-      "scope": "required",
+      "scope": "optional",
       "licenses": [
         {
           "expression": "BSD-3-Clause"
@@ -1170,7 +1170,7 @@
         },
         {
           "name": "bdsp:distribution",
-          "value": "shipped"
+          "value": "build-tool"
         },
         {
           "name": "bdsp:repository-state",
@@ -1178,7 +1178,7 @@
         },
         {
           "name": "bdsp:evidence",
-          "value": "installer/runtime/wheels.lock.json, tools/pydeps"
+          "value": "installer/runtime/reference-wheels.lock.json, tools/pydeps"
         }
       ],
       "externalReferences": [
@@ -1187,7 +1187,7 @@
           "url": "https://pypi.org/project/capstone/5.0.9/"
         }
       ],
-      "description": "Installer runtime (base profile). wheel sha256 linux-aarch64: 41772ad0c71aa5d3e97d541e802593c2e71fb94ac7e20d4202f97ce2a3eb8ed5; wheel sha256 linux-x86_64: 273fd8d747d2e35c88f91450be51a603ecfaafb00d96d9f315dcb8689c86193e; wheel sha256 macos-aarch64: fc269c5082e17d7f9f265cd6980e2fdc6ab572df913951d76db0357e06b8001d; wheel sha256 macos-x86_64: 8c4a1d7134d7d5290e5d77066500385f2c7a4bf66835ccbfde5180042d508b3c; wheel sha256 windows-x86_64: 732cedbbb56d42e723f14d7af6387f1454194a820b4b96b56d1e53f865ef85d0 Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy."
+      "description": "Frozen Python oracle dependency for development/CI only; excluded from release runtime. oracle wheel sha256 linux-aarch64: 41772ad0c71aa5d3e97d541e802593c2e71fb94ac7e20d4202f97ce2a3eb8ed5; oracle wheel sha256 linux-x86_64: 273fd8d747d2e35c88f91450be51a603ecfaafb00d96d9f315dcb8689c86193e; oracle wheel sha256 macos-aarch64: fc269c5082e17d7f9f265cd6980e2fdc6ab572df913951d76db0357e06b8001d; oracle wheel sha256 macos-x86_64: 8c4a1d7134d7d5290e5d77066500385f2c7a4bf66835ccbfde5180042d508b3c; oracle wheel sha256 windows-x86_64: 732cedbbb56d42e723f14d7af6387f1454194a820b4b96b56d1e53f865ef85d0 Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy."
     },
     {
       "type": "library",
@@ -1484,7 +1484,7 @@
         },
         {
           "name": "bdsp:evidence",
-          "value": "installer/runtime/wheels.lock.json, tools/pydeps"
+          "value": "installer/runtime/reference-wheels.lock.json, installer/runtime/wheels.lock.json, installer/scripts/assemble_runtime.py, scripts/recomp/native-generator/NOTICE.md, tools/pydeps"
         }
       ],
       "externalReferences": [
@@ -1493,7 +1493,7 @@
           "url": "https://pypi.org/project/unicorn/2.1.4/"
         }
       ],
-      "description": "Installer runtime (base profile). wheel sha256 linux-aarch64: bd1fb0c9af5f57e356d8a96928b4fe045b2e18f308ef23b481d5f970008aa722; wheel sha256 linux-x86_64: 9d6e6dea140560de4ebd8446661f7ef84a357d428c14a3ef09dacd306ec8c239; wheel sha256 macos-aarch64: d6c93e0f60328d8f4a1792af3f834137a28050fcc2305f2ec01efe8558a9844e; wheel sha256 macos-x86_64: 2a6f738fab5fabffa56af1e7bbf16ea1e91466c342f8dc64f125bd70f36c6b80; wheel sha256 windows-x86_64: d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5 Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy. Licence: the wheel metadata says 'BSD License', the upstream metadata says 'Distributed under free software license GPLv2'. Verify before shipping."
+      "description": "Installer runtime (base profile). wheel sha256 linux-aarch64: bd1fb0c9af5f57e356d8a96928b4fe045b2e18f308ef23b481d5f970008aa722; wheel sha256 linux-x86_64: 9d6e6dea140560de4ebd8446661f7ef84a357d428c14a3ef09dacd306ec8c239; wheel sha256 macos-aarch64: d6c93e0f60328d8f4a1792af3f834137a28050fcc2305f2ec01efe8558a9844e; wheel sha256 macos-x86_64: 2a6f738fab5fabffa56af1e7bbf16ea1e91466c342f8dc64f125bd70f36c6b80; wheel sha256 windows-x86_64: d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5 Frozen Python oracle dependency for development/CI only; excluded from release runtime. Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy. Retained production payload is the Unicorn 2.1.4 C shared library and headers. The native generator links this library directly; Python bindings are removed during runtime assembly. GPL-2.0-only follows upstream's GPLv2 declaration despite the wheel's BSD classifier."
     },
     {
       "type": "library",
@@ -24988,7 +24988,7 @@
         },
         {
           "name": "bdsp:evidence",
-          "value": "THIRD_PARTY_NOTICES.md, shader_translator/NOTICE.md, scripts/recomp/rt-bdsp/NOTICE.md, scripts/recomp/upstream/LICENSE"
+          "value": "THIRD_PARTY_NOTICES.md, shader_translator/NOTICE.md, scripts/recomp/rt-bdsp/NOTICE.md, scripts/recomp/upstream/LICENSE, scripts/recomp/native-generator/NOTICE.md"
         }
       ],
       "externalReferences": [
@@ -24998,7 +24998,45 @@
         }
       ],
       "copyright": "Copyright (c) 2026 Peiikai",
-      "description": "Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included."
+      "description": "Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included. The native generator adapts the analysis/lifter/emitter algorithms and preserves attribution."
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/lz4/lz4@v1.9.4",
+      "name": "LZ4 (native generator)",
+      "version": "1.9.4",
+      "purl": "pkg:github/lz4/lz4@v1.9.4",
+      "scope": "optional",
+      "licenses": [
+        {
+          "expression": "BSD-2-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "vendored-source"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "build-tool"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "scripts/recomp/native-generator/vendor/lz4/LICENSE, scripts/recomp/native-generator/vendor/lz4/source.json"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/lz4/lz4/tree/v1.9.4"
+        }
+      ],
+      "description": "Unchanged LZ4 C block decoder source, compiled into the standalone native generator. Per-file SHA-256 values are in source.json."
     },
     {
       "type": "library",
@@ -25099,6 +25137,7 @@
         "pkg:generic/vulkan-memory-allocator",
         "pkg:generic/xcode",
         "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5",
+        "pkg:github/lz4/lz4@v1.9.4",
         "pkg:github/nothings/stb@stb_truetype-1.26"
       ]
     },
@@ -29256,6 +29295,10 @@
     },
     {
       "ref": "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:github/lz4/lz4@v1.9.4",
       "dependsOn": []
     },
     {

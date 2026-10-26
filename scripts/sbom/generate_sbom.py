@@ -74,10 +74,11 @@ CATALOG = [
     C("lasrecomp", "LASRecomp (vendored parts: shader_translator, scripts/recomp/upstream, scripts/recomp/rt-bdsp)",
       "09f8e5e", "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5", "MIT", SHIPPED, TRACKED,
       ["THIRD_PARTY_NOTICES.md", "shader_translator/NOTICE.md", "scripts/recomp/rt-bdsp/NOTICE.md",
-       "scripts/recomp/upstream/LICENSE"],
+       "scripts/recomp/upstream/LICENSE", "scripts/recomp/native-generator/NOTICE.md"],
       download="https://github.com/peiikai/LASRecomp", copyright_text="Copyright (c) 2026 Peiikai", category="vendored-source",
       notes="Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and "
-            "third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included."),
+            "third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included. "
+            "The native generator adapts the analysis/lifter/emitter algorithms and preserves attribution."),
 
     C("stb-truetype", "stb_truetype (as shipped by Dear ImGui; on-screen keyboard text)", "1.26",
       "pkg:github/nothings/stb@stb_truetype-1.26", "MIT OR Unlicense", SHIPPED, TRACKED,
@@ -331,9 +332,9 @@ def cargo_components(installer):
     return crates, edges, installer
 
 
-def python_runtime_wheels(installer):
+def python_runtime_wheels(installer, filename="wheels.lock.json"):
     """Pinned wheels of the private runtime (installer/runtime/wheels.lock.json)."""
-    lock = json.loads((installer / "runtime" / "wheels.lock.json").read_text(encoding="utf-8"))
+    lock = json.loads((installer / "runtime" / filename).read_text(encoding="utf-8"))
     found = {}
     for target, pins in lock["targets"].items():
         for spec, info in pins.items():
@@ -395,6 +396,22 @@ def build_components():
                                  ["installer/runtime/wheels.lock.json"], download=f"https://pypi.org/project/{name}/{version}/",
                                  category="python-package", notes=merge_notes("Installer runtime (base profile).", hashes))
 
+    # Oracle-only wheels are verified during CI and never copied into the installer.
+    for (name, version), per_target in python_runtime_wheels(ROOT / "installer", "reference-wheels.lock.json").items():
+        key = purl_name(name)
+        purl = f"pkg:pypi/{key}@{version}"
+        evidence = "installer/runtime/reference-wheels.lock.json"
+        note = "Frozen Python oracle dependency for development/CI only; excluded from release runtime."
+        if purl in components:
+            comp = components[purl]
+            comp["notes"] = merge_notes(comp["notes"], note)
+            comp["evidence"] = sorted(set(comp["evidence"]) | {evidence})
+        else:
+            hashes = "; ".join(f"oracle wheel sha256 {t}: {h}" for t, h in sorted(per_target.items()))
+            components[purl] = C(f"py-{key}", name, version, purl, PY_LICENSE.get(key, "NOASSERTION"), BUILD, TRACKED,
+                                 [evidence], download=f"https://pypi.org/project/{name}/{version}/",
+                                 category="python-package", notes=merge_notes(note, hashes))
+
     # Locally installed packages (git-ignored tools/pydeps); skipped when absent.
     pyd = ROOT / "tools" / "pydeps"
     if pyd.is_dir():
@@ -420,8 +437,10 @@ def build_components():
 
     if "pkg:pypi/unicorn@2.1.4" in components:
         comp = components["pkg:pypi/unicorn@2.1.4"]
-        comp["notes"] = merge_notes(comp["notes"], "Licence: the wheel metadata says 'BSD License', the upstream metadata says "
-                                                   "'Distributed under free software license GPLv2'. Verify before shipping.")
+        comp["notes"] = merge_notes(comp["notes"], "Retained production payload is the Unicorn 2.1.4 C shared library and headers. "
+                                                   "The native generator links this library directly; Python bindings are removed during runtime assembly. "
+                                                   "GPL-2.0-only follows upstream's GPLv2 declaration despite the wheel's BSD classifier.")
+        comp["evidence"] = sorted(set(comp["evidence"]) | {"installer/scripts/assemble_runtime.py", "scripts/recomp/native-generator/NOTICE.md"})
     return components
 
 
