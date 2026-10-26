@@ -8,10 +8,10 @@ OBJ=${OBJ:-work/recomp/obj4}
 mkdir -p $S
 declare_base() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; esac; }
 rm -f $S/hle.txt
-for m in main sdk subsdk0; do python3 scripts/recomp/mkimg.py work/exefs/$m $m --base "$(declare_base $m)" --out $S > /dev/null; done
+for m in main sdk subsdk0; do bash scripts/recomp/codegen.sh image work/exefs/$m $m --base "$(declare_base $m)" --out $S > /dev/null; done
 rm -f $S/hle.txt
 for m in main sdk subsdk0; do
-  python3 scripts/recomp/mkimg.py work/exefs/$m $m --base "$(declare_base $m)" --out $S \
+  bash scripts/recomp/codegen.sh image work/exefs/$m $m --base "$(declare_base $m)" --out $S \
     --link $S/main.syms.json --link $S/sdk.syms.json --link $S/subsdk0.syms.json
 done
 clang -O1 -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c scripts/recomp/test/boot_probe.c -o $S/boot_probe.o

@@ -21,7 +21,7 @@ Zwei geführte Installer erledigen alles aus dieser Anleitung für dich. Mit `--
 
 - **macOS:** Doppelklick auf `install.command` im Finder oder `./install.command`. Er prüft Xcode, Homebrew (und bietet den
   offiziellen Homebrew-Installer an, falls es fehlt), die Homebrew-Pakete, Python und eine private Python-Umgebung `work/venv`
-  (Pillow, capstone, unicorn). Danach ziehst du deine `.xci`, optional das Update `.nsp` und deine `prod.keys` in das Fenster,
+  (Pillow, LZ4, native Unicorn-Dateien). Danach ziehst du deine `.xci`, optional das Update `.nsp` und deine `prod.keys` in das Fenster,
   und er führt die Stufen `tools`, `extract` und `recomp` von `scripts/build_all.sh` aus (Abschnitt 4). Plane mindestens 40 GB freien
   Platz ein; ein gemessener Lauf auf einem vorbereiteten Mac mit acht CPU-Threads dauerte etwa acht Minuten (Abschnitt 4.2).
 - **Linux:** `./install-linux.sh` starten. Er erkennt `apt`, `dnf` oder `pacman`, listet die fehlenden Entwicklungspakete und
@@ -44,14 +44,14 @@ Abschnitte beschreiben dieselben Schritte von Hand.
 | Python 3.9 oder neuer | `build_all.sh`, Hilfsskripte | `python3 --version` |
 | Pillow | Originalicons konvertieren und deterministisch gestalten | `python3 -c 'from PIL import Image'` |
 | Homebrew-Pakete `llvm`, `sdl3`, `ffmpeg`, `pkg-config` | macOS-App (Stufe `recomp`) | `pkg-config --exists sdl3 libavcodec libavformat libavutil` |
-| Python-Pakete `capstone`, `unicorn` in `tools/pydeps` | Generator (Stufe `recomp`) | `ls tools/pydeps` |
+| Unicorn-2.1.4-C-Header/Bibliothek in `tools/pydeps` oder `BDSP_UNICORN_ROOT` | Generator (Stufe `recomp`) | `ls tools/pydeps` |
 | `git`, `make`, `cc` | Stufe `tools` (baut `hactool`) | `command -v git make cc` |
 
 Homebrew- und Python-Pakete installieren:
 
 ```sh
 brew install llvm sdl3 ffmpeg pkg-config
-python3 -m pip install --target tools/pydeps capstone unicorn
+python3 -m pip install --target tools/pydeps unicorn==2.1.4
 ```
 
 Für die Stufe `recomp` muss das Homebrew-LLVM vor `/usr/bin` im `PATH` stehen:
@@ -188,7 +188,7 @@ Build verwendet Systempakete über pkg-config; alte include-vk- oder deps/includ
 Verzeichnisse werden nicht automatisch bevorzugt. Es werden keine zusätzlichen
 Qt-/SDL-/Vulkan-/FFmpeg-Bibliotheken ins Repository aufgenommen.
 
-Installiere zusätzlich das Paket `time` (liefert `/usr/bin/time`) und die Python-Abhängigkeiten `lz4`, `capstone` und `unicorn`.
+Installiere zusätzlich das Paket `time` (liefert `/usr/bin/time`) und die Asset-Abhängigkeit `lz4` und `unicorn==2.1.4` (liefert C-Header und native Bibliothek).
 Die installierten Pakete prüfst du ohne Kopieren, Download oder Installation mit
 `bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`
 (ohne `linux_require_qt`, wenn du die Qt-Hülle nicht baust).
@@ -292,3 +292,9 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 - `docs/saves.md`: Save-Format, Prüfskript, Ablageorte.
 
 (Die Dokumente außer `README` und `BUILD` gibt es nur auf Englisch.)
+
+Der produktive Generator und Image-Bauer laufen als C17-Programm. Der Einstieg
+für die CLI ist `bash scripts/recomp/codegen.sh gen ...` bzw. `image ...`.
+`BDSP_GEN_JOBS=N` oder `--jobs N` steuert die nativen Threads. Unicorn wird über
+seine C-API genutzt; Capstone und die Unicorn-Python-Bindings bleiben ausschließlich
+für Entwicklungsvergleiche. Details: [Native generator](../scripts/recomp/native-generator/README.md).

@@ -23,7 +23,7 @@ Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus. D
 | `services_fs.c` | `romfs_build.c`, `services/fs.c` | Aufbau des RomFS-Abbilds (Kopf 0x50, Daten ab 0x200, Tabellen danach), IFileSystem/IFile/IDirectory-Befehlssatz; neu: virtuelles Abbild ohne 5-GB-Datei |
 | `dispatch.c`, `loader.c`, `main.c` | `dispatch.c`, `loader.c`, `main.c` | Idee des Verteilers mit Cache und HLE-Slots, Start über `nn::init::Start`; neu: vier Tabellen, Wiedereinstieg, Überwachung |
 
-Der Generator (`../eh_gen.py`) nutzt die vendorten Werkzeuge in `scripts/recomp/upstream/generator/` (gen.py, lifter.py, analyze.py, nso.py, patches.py, simd_c.py; vollständiger Stand von `tools/`, ohne `__pycache__`, Lizenz `scripts/recomp/upstream/LICENSE`). `patches.py` enthält spielspezifische Hooks.
+Der native Generator (`../native-generator/`) adaptiert Analyse, Lifter und Emitter aus den vendorten Werkzeugen in `scripts/recomp/upstream/generator/` (gen.py, lifter.py, analyze.py, nso.py, patches.py, simd_c.py; vollständiger Stand von `tools/`, ohne `__pycache__`, Lizenz `scripts/recomp/upstream/LICENSE`). `patches.py` enthält spielspezifische Hooks.
 
 ## NVN-Schicht (Gate 2, `nvn/`)
 

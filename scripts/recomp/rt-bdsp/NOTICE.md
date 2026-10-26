@@ -23,7 +23,7 @@ The upstream license excludes Nintendo property and third-party components. None
 | `services_fs.c` | `romfs_build.c`, `services/fs.c` | RomFS image layout (0x50 header, data at 0x200, tables afterward), IFileSystem/IFile/IDirectory commands. New: virtual image without a 5-GB file. |
 | `dispatch.c`, `loader.c`, `main.c` | `dispatch.c`, `loader.c`, `main.c` | Cached dispatch with HLE slots, startup through `nn::init::Start`. New: four tables, re-entry, watchdog. |
 
-The generator (`../eh_gen.py`) uses vendored tools in `scripts/recomp/upstream/generator/`: gen.py, lifter.py, analyze.py, nso.py, patches.py, and simd_c.py; the complete `tools/` revision, excluding `__pycache__`, under `scripts/recomp/upstream/LICENSE`. `patches.py` contains game-specific hooks.
+The native generator (`../native-generator/`) adapts the analysis, lifter and emitter from the vendored tools in `scripts/recomp/upstream/generator/`: gen.py, lifter.py, analyze.py, nso.py, patches.py, and simd_c.py; the complete `tools/` revision, excluding `__pycache__`, under `scripts/recomp/upstream/LICENSE`. `patches.py` contains game-specific hooks.
 
 ## NVN layer (Gate 2, `nvn/`)
 

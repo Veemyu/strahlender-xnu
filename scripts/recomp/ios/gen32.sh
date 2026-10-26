@@ -28,19 +28,20 @@ obj_stamp() {
 }
 
 do_gen() {
+  local CODEGEN; CODEGEN="$(python3 scripts/recomp/native-generator/build.py --require-unicorn)"
   mkdir -p "$GEN" work/recomp/spike2
   for m in rtld "${modules[@]}"; do
     extra=()
     [ ! -f "$EXEFS_DIR/$m.entries" ] || extra+=(--entry-offsets "$EXEFS_DIR/$m.entries")
     # The base only enters the adrp/adr constants, the rest is unchanged compared to variant A.
-    python3 scripts/recomp/eh_gen.py gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$GEN/$m" --simd $SIMD ${extra[@]+"${extra[@]}"} > "$GEN/gen_$m.log" 2>&1 \
+    "$CODEGEN" gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$GEN/$m" --simd $SIMD ${extra[@]+"${extra[@]}"} 2>&1 | tee "$GEN/gen_$m.log" \
       || { tail -n 25 "$GEN/gen_$m.log" >&2; return 4; }
-    tail -1 "$GEN/gen_$m.log"
     echo "module=$m generated"
   done
 }
 
 do_img() {
+  local CODEGEN; CODEGEN="$(python3 scripts/recomp/native-generator/build.py)"
   mkdir -p "$IMG"
   rm -f "$IMG/hle.txt"
   links=()
@@ -48,9 +49,9 @@ do_img() {
   for pass in 1 2; do
     for m in "${modules[@]}"; do
       if [ $pass = 1 ]; then
-        python3 scripts/recomp/mkimg.py "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" > /dev/null
+        "$CODEGEN" image "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" > /dev/null
       else
-        python3 scripts/recomp/mkimg.py "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" \
+        "$CODEGEN" image "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" \
           "${links[@]}" \
           --interpose-from "$IMG/main.syms.json" --hle-list scripts/recomp/rt-bdsp/hle_nvn.txt
       fi

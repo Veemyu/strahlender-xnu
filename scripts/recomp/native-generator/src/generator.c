@@ -126,7 +126,7 @@ int cg_generate(int argc,char **argv) {
     Addresses only=offsets(only_file,base);
     for(size_t i=0;i<available;i++)if(!only_file||member(&only,plan.functions[i]->entry))order[count++]=plan.functions[i];
     if(only_file&&only.size>count)fprintf(stderr,"%s: --only: %zu starts are not function starts\n",module,only.size-count);
-    cg_phase="emit";cg_mkdirs(out);size_t ci=0,nchunks=0,sub=0,eh_count=0;uint64_t last_window=UINT64_MAX;
+    cg_phase="emit";cg_mkdirs(out);size_t ci=0,nchunks=0,sub=0,eh_count=0,reported=0;uint64_t last_window=UINT64_MAX;
     EmitWork work={&n,base,portable,order,&nle,&hle_map,&hle_names,module,cg_events};
     CgPool *pool=jobs>1&&count?cg_pool_open(jobs,count,emit_work,&work,dispose_work):NULL;
     OwnedFunction pending={0};Addresses all_refs={0};Strings written={0};uint64_t text_lo=base+n.segments[0].offset;
@@ -153,7 +153,10 @@ int cg_generate(int argc,char **argv) {
         for(size_t i=0;i<refs.size;i++) {cg_printf(&header,"void f_%" PRIx64 "(Cpu *c);\n",refs.items[i]);address(&all_refs,refs.items[i]);}
         for(size_t i=0;i<functions.size;i++) {const char *hle=hle_at(&hle_map,&hle_names,functions.items[i]);if(hle)cg_printf(&header,"void %s(Cpu *c);\n",cg_hle_name(hle));}
         cg_buffer(&header,body.data,body.size);cg_write(cg_join(out,filename),header.data,header.size);
-        nchunks++;fprintf(stderr,"%s: progress %zu/%zu files %zu\n",module,ci,count,nchunks);
+        nchunks++;
+        if(ci>reported&&(ci-reported>=1024||ci==count)) {
+            fprintf(stderr,"%s: progress %zu/%zu files %zu\n",module,ci,count,nchunks);reported=ci;
+        }
         free(body.data);free(refs.items);free(functions.items);cg_rewind(mark);
     }
     cg_pool_close(pool);

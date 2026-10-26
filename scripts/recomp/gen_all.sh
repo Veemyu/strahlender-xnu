@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 OUT=${OUT:-work/recomp/gen4}
 EXEFS_DIR=${BDSP_EXEFS_DIR:-work/exefs}
+CODEGEN="$(python3 scripts/recomp/native-generator/build.py --require-unicorn)"
 mods=()
 while [ $# -gt 0 ] && [ "$1" != "--" ]; do mods+=("$1"); shift; done
 [ "${1:-}" = "--" ] && shift
@@ -15,7 +16,6 @@ mkdir -p "$OUT" work/recomp/spike2
 for m in "${mods[@]}"; do
   extra=()
   [ ! -f "$EXEFS_DIR/$m.entries" ] || extra+=(--entry-offsets "$EXEFS_DIR/$m.entries")
-  /usr/bin/time -l python3 scripts/recomp/eh_gen.py gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$OUT/$m" --simd asm ${extra[@]+"${extra[@]}"} "$@" \
-    > "work/recomp/spike2/gen4_$m.log" 2>&1
-  grep -E "real|eh_gen:|wrote|maximum resident" "work/recomp/spike2/gen4_$m.log" | tail -4
+  /usr/bin/time -l "$CODEGEN" gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$OUT/$m" --simd asm ${extra[@]+"${extra[@]}"} "$@" \
+    2>&1 | tee "work/recomp/spike2/gen4_$m.log"
 done

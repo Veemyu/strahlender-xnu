@@ -161,7 +161,7 @@ class PreflightTests(unittest.TestCase):
         write(os.path.join(self.tools, "pydeps", "lz4", "block.py"), "")
         os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
         os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
-        write(os.path.join(self.root, "scripts", "recomp", "upstream", "generator", "gen.py"))
+        write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"))
         write(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
 
     def tearDown(self):
@@ -241,9 +241,9 @@ class RecompStageTests(unittest.TestCase):
         write(os.path.join(self.work, "exefs", "main.npdm"), "npdm")
         os.makedirs(os.path.join(self.tools, "pydeps", "capstone"))
         os.makedirs(os.path.join(self.tools, "pydeps", "unicorn"))
-        write(os.path.join(self.root, "scripts", "recomp", "upstream", "generator", "gen.py"))
+        write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"))
         write(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
-        write(os.path.join(self.root, "scripts", "recomp", "eh_gen.py"), "gen")
+        write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"), "gen")
         write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){}")
         write(os.path.join(self.root, "scripts", "recomp", "app", "make_app.sh"), "#!/bin/sh")
 
@@ -278,14 +278,14 @@ class RecompStageTests(unittest.TestCase):
     def test_missing_clone_and_packages_get_hints(self):
         os.remove(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
         def run(cmd, env=None, timeout=60):
-            return ("import unicorn" not in cmd[-1], "")
+            return (cmd[-1] != "--check-unicorn", "")
 
         items = self.pf(run=run)
-        self.assertEqual(sorted(self.missing(items)), ["Python packages capstone, unicorn, lz4 (generator)",
-                                                       "Vendored LASRecomp parts (generator, headers; MIT)"])
+        self.assertEqual(sorted(self.missing(items)), ["Native generator sources and runtime headers",
+                                                       "Unicorn 2.1.4 C engine and headers (native generator)"])
         _, missing, _ = bs.format_preflight(items)
         text = "\n".join(bs.install_list(missing))
-        self.assertIn("git checkout -- scripts/recomp/upstream", text)
+        self.assertIn("git checkout -- scripts/recomp/native-generator", text)
         self.assertNotIn("sudo ", text)
 
     def test_generator_packages_are_imported_with_pydeps_on_pythonpath(self):
@@ -293,11 +293,11 @@ class RecompStageTests(unittest.TestCase):
 
         def run(cmd, env=None, timeout=60):
             commands.append((cmd, env))
-            return ("import lz4.block" not in cmd[-1], "")
+            return (cmd[-1] != "--check-unicorn", "")
 
         items = self.pf(run=run)
-        self.assertIn("Python packages capstone, unicorn, lz4 (generator)", self.missing(items))
-        generator = next(env for cmd, env in commands if "import capstone" in cmd[-1])
+        self.assertIn("Unicorn 2.1.4 C engine and headers (native generator)", self.missing(items))
+        generator = next(env for cmd, env in commands if cmd[-1] == "--check-unicorn")
         self.assertEqual(generator["PYTHONPATH"].split(os.pathsep)[0], os.path.join(self.tools, "pydeps"))
 
     def test_private_runtime_checks_only_its_isolated_interpreter(self):
@@ -353,7 +353,7 @@ class RecompStageTests(unittest.TestCase):
         h0, _ = bs.stage_hash("recomp-gen", self.root, self.work)
         write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){return 2;}")
         self.assertEqual(h0, bs.stage_hash("recomp-gen", self.root, self.work)[0])
-        write(os.path.join(self.root, "scripts", "recomp", "eh_gen.py"), "gen v2")
+        write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"), "gen v2")
         self.assertNotEqual(h0, bs.stage_hash("recomp-gen", self.root, self.work)[0])
 
 

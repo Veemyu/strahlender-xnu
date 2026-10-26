@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Picks real LSDA functions from `main` for the throw test (docs/architecture.md, section exceptions).
 
-Own code. Reads the local dump (work/exefs/main, relocated image work/recomp/spike2/main.img from mkimg.py)
+Own code. Reads the local dump (work/exefs/main, relocated image work/recomp/spike2/main.img from the native image command)
 and writes only to work/recomp/spike2/:
-  real_only.txt   function starts (hex, relative to the module base) for `eh_gen.py ... --only`
+  real_only.txt   function starts (hex, relative to the module base) for `codegen.sh gen ... --only`
   real_spec.txt   check job per function for the test run: start, type info for the throw, call sites with landing pad
 
 Selection: small to medium functions (24 to 400 instructions) with at least one landing pad and one call,

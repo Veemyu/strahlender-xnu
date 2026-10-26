@@ -122,6 +122,35 @@ class NativeCodegenTests(unittest.TestCase):
         self.assertEqual(cached.stat().st_mtime_ns, before)
         self.assertEqual(len(version["source"]), 64)
 
+    def test_native_library_relocation_and_corrupt_cache_recovery(self):
+        dependency = builder.unicorn_dependency()
+        if dependency is None:
+            self.skipTest("native Unicorn package unavailable")
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            root = Path(temporary)
+            original = builder.build(root / "original" / "codegen")
+            relocated = root / "moved installation" / "codegen"
+            relocated.parent.mkdir()
+            shutil.copy2(original, relocated)
+            deps = original.parent / (original.name + ".deps")
+            if sys.platform == "win32":
+                shutil.copy2(original.parent / dependency["library"].name, relocated.parent)
+            else:
+                shutil.copytree(deps, relocated.parent / deps.name)
+            result = subprocess.run([str(relocated), "--version"], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["unicorn"], "2.1.4")
+            metadata = original.with_suffix(original.suffix + ".json")
+            record = json.loads(metadata.read_text())
+            copied_library = original.parent / record["unicorn"]["library"]
+            copied_library.write_bytes(b"damaged cached library")
+            metadata.write_text("invalid cached metadata")
+            builder.build(original)
+            self.assertEqual(copied_library.read_bytes(), dependency["library"].read_bytes())
+            self.assertEqual(self.run_native("--version").returncode, 0)
+            checked = subprocess.run([str(original), "--version"], capture_output=True, text=True, timeout=10)
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+
     def test_image_matches_python_for_all_binding_branches_and_lz4(self):
         for compressed in (False, True):
             with self.subTest(compressed=compressed), tempfile.TemporaryDirectory(dir=self.folder) as tmp:

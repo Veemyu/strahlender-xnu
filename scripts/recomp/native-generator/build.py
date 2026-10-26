@@ -69,13 +69,17 @@ def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unic
     fingerprint.update((dependency["fingerprint"] if dependency else "without-unicorn").encode())
     fingerprint.update(identity)
     fingerprint.update(str(sanitize).encode())
+    fingerprint.update(output.name.encode())
     digest = fingerprint.hexdigest()
     output = output.resolve()
     metadata = output.with_suffix(output.suffix + ".json")
     dep_target = (output.parent if sys.platform == "win32" else output.parent / (output.name + ".deps")) / dependency["library"].name if dependency else None
     dependency_valid = not dependency or (dep_target.is_file() and hashlib.sha256(dep_target.read_bytes()).hexdigest() == dependency["sha256"])
     if output.is_file() and metadata.is_file():
-        record = json.loads(metadata.read_text())
+        try:
+            record = json.loads(metadata.read_text())
+        except (ValueError, OSError):
+            record = {}
         if dependency_valid and record.get("source_hash") == digest and record.get("binary_sha256") == hashlib.sha256(output.read_bytes()).hexdigest():
             return output
     output.parent.mkdir(parents=True, exist_ok=True)

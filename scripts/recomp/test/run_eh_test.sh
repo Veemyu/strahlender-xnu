@@ -11,15 +11,15 @@ CFLAGS="-O1 -fno-strict-aliasing -fvisibility=hidden -w -I scripts/recomp/rt -I 
 mkdir -p $S $G
 
 rm -f $S/hle.txt
-python3 scripts/recomp/mkimg.py work/exefs/sdk sdk --base 0x7004000000 --out $S
-python3 scripts/recomp/eh_gen.py gen sdk work/exefs/sdk 0x7004000000 $G/sdk --simd asm --hle scripts/recomp/test/hle_symbols.txt
+bash scripts/recomp/codegen.sh image work/exefs/sdk sdk --base 0x7004000000 --out $S
+bash scripts/recomp/codegen.sh gen sdk work/exefs/sdk 0x7004000000 $G/sdk --simd asm --hle scripts/recomp/test/hle_symbols.txt
 # The Switch guest ABI uses 32-bit EH encodings (sdata4); this Clang writes sdata8. Rewrite in the assembler.
 clang --target=aarch64-linux-gnu -O1 -fexceptions -fno-rtti -fno-pic -fno-asynchronous-unwind-tables -nostdinc++ -S scripts/recomp/test/eh_guest.cpp -o - \
   | python3 scripts/recomp/test/eh_sdata4.py > $S/eh_guest.s
 clang --target=aarch64-linux-gnu -c $S/eh_guest.s -o $S/eh_guest.o
 python3 scripts/recomp/mini_link.py $S/eh_guest.o $S/eht --base 0x7008000000 --syms $S/sdk.syms.json
 SJ=$(python3 -c "import json; print(json.load(open('$S/eht.json'))['syms']['setjmp'])")
-python3 scripts/recomp/eh_gen.py gen eht $S/eht.nso 0x7008000000 $G/eht --simd asm --setjmp-at "$SJ"
+bash scripts/recomp/codegen.sh gen eht $S/eht.nso 0x7008000000 $G/eht --simd asm --setjmp-at "$SJ"
 
 rm -rf $S/obj; mkdir -p $S/obj
 ls $G/sdk/*.c $G/eht/*.c scripts/recomp/test/eh_harness.c | xargs -P "$JOBS" -n 1 scripts/recomp/test/compile_chunk.sh

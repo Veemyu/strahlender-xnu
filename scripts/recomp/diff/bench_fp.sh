@@ -14,7 +14,7 @@ run() { # name, guest flags, native flags, C flags of the recompilation
   mkdir -p $D/gen && rm -f $D/gen/*
   clang --target=aarch64-linux-gnu -O2 $gf -ffreestanding -fno-pic -fno-asynchronous-unwind-tables -funwind-tables -c $T/bench_guest.c -o $D/g.o
   python3 scripts/recomp/mini_link.py $D/g.o $D/gbn --base 0x7008000000 --syms $S/empty.json > /dev/null
-  python3 scripts/recomp/eh_gen.py gen gbn $D/gbn.nso 0x7008000000 $D/gen --simd c > /dev/null 2>&1
+  bash scripts/recomp/codegen.sh gen gbn $D/gbn.nso 0x7008000000 $D/gen --simd c > /dev/null 2>&1
   for f in $D/gen/*.c; do clang -O1 $cf -fno-strict-aliasing -w -march=x86-64-v3 -I scripts/recomp/rt -I $LAS/runtime -c $f -o ${f%.c}.o; done
   clang -O2 $nf -w -march=x86-64-v3 -I scripts/recomp/rt -I $LAS/runtime -I $T -I scripts/recomp/diff -c scripts/recomp/diff/bench_fp.c -o $D/bench_fp.o
   clang -o $D/bench_fp $D/bench_fp.o $D/gen/*.o -lm

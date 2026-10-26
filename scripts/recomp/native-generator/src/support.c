@@ -119,7 +119,7 @@ _Noreturn void cg_fail(int code, const char *format, ...) {
         cg_printf(&b, ",\"message\":"); cg_json_string(&b, message);
         cg_printf(&b, ",\"code\":%d}\n", code); fwrite(b.data, 1, b.size, stdout); fflush(stdout);
     }
-    fprintf(stderr, "bdsp_codegen [%s%s%s]: %s\n", cg_phase, *cg_module ? "/" : "", cg_module, message);
+    fprintf(stderr, "bdsp_codegen [%s%s%s]: error: %s\n", cg_phase, *cg_module ? "/" : "", cg_module, message);
     exit(code);
 }
 void cg_buffer(Buffer *b, const void *data, size_t n) {

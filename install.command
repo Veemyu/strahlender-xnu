@@ -83,7 +83,7 @@ else
   fi
 fi
 use_venv || die venv_failed
-for pair in lz4:lz4 capstone:capstone unicorn:unicorn PIL:Pillow; do
+for pair in lz4:lz4 unicorn:unicorn==2.1.4 PIL:Pillow; do
   venv_pip "${pair%%:*}" "${pair##*:}" || die pip_failed
 done
 check_space 60

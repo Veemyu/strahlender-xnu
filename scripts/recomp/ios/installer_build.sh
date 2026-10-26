@@ -18,9 +18,9 @@ run_script() {
 }
 gen_hash() {
   { echo "model=$MODEL org=$ORG"
-    shasum -a 256 "$BDSP_EXEFS_DIR"/{rtld,main,sdk,subsdk0} scripts/recomp/{eh_gen.py,eh_lsda.py} scripts/recomp/ios/gen32.sh
+    shasum -a 256 "$BDSP_EXEFS_DIR"/{rtld,main,sdk,subsdk0} scripts/recomp/native-generator/build.py scripts/recomp/ios/gen32.sh installer/runtime/wheels.lock.json
     [ ! -f "$BDSP_EXEFS_DIR/subsdk1" ] || shasum -a 256 "$BDSP_EXEFS_DIR/subsdk1" "$BDSP_EXEFS_DIR/"*.entries
-    find scripts/recomp/upstream/generator -name '*.py' -type f | LC_ALL=C sort | while IFS= read -r file; do shasum -a 256 "$file"; done
+    find scripts/recomp/native-generator/src scripts/recomp/native-generator/vendor -type f | LC_ALL=C sort | while IFS= read -r file; do shasum -a 256 "$file"; done
   } | shasum -a 256 | cut -c1-64
 }
 case "${1:-}" in

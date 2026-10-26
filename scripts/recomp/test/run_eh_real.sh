@@ -9,9 +9,9 @@ JOBS=${JOBS:-3}
 MAINBASE=0x7040000000
 PER_KIND=${PER_KIND:-15}
 
-python3 scripts/recomp/mkimg.py work/exefs/main main --base $MAINBASE --out $S --link $S/sdk.syms.json
+bash scripts/recomp/codegen.sh image work/exefs/main main --base $MAINBASE --out $S --link $S/sdk.syms.json
 python3 scripts/recomp/eh_pick.py --base $MAINBASE --per-kind "$PER_KIND"
-python3 scripts/recomp/eh_gen.py gen main work/exefs/main $MAINBASE $G/mainsub --only $S/real_only.txt --simd asm
+bash scripts/recomp/codegen.sh gen main work/exefs/main $MAINBASE $G/mainsub --only $S/real_only.txt --simd asm
 mkdir -p $S/obj_real
 for f in $G/mainsub/*.c; do scripts/recomp/test/compile_chunk.sh "$f" $S/obj_real; done
 clang -o $S/eh_real $S/obj/sdk_*.o $S/obj/eht_*.o $S/obj/test_eh_harness.o $S/obj_real/*.o

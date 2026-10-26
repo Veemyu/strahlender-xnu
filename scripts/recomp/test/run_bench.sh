@@ -9,7 +9,7 @@ mkdir -p $S/gen
 echo '{}' > $S/empty.json
 clang --target=aarch64-linux-gnu -O2 -ffreestanding -fno-pic -fno-asynchronous-unwind-tables -funwind-tables -c scripts/recomp/test/bench_guest.c -o $S/bench_guest.o
 python3 scripts/recomp/mini_link.py $S/bench_guest.o $S/gbn --base 0x7008000000 --syms $S/empty.json
-python3 scripts/recomp/eh_gen.py gen gbn $S/gbn.nso 0x7008000000 $S/gen --simd asm 2>&1 | grep -E "wrote|eh_gen"
+bash scripts/recomp/codegen.sh gen gbn $S/gbn.nso 0x7008000000 $S/gen --simd asm 2>&1 | grep -E "wrote|eh_gen"
 rm -f $S/gen/*.o
 for f in $S/gen/*.c; do clang $OPT -fno-strict-aliasing -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c $f -o ${f%.c}.o; done
 clang -O2 -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -I scripts/recomp/test -c scripts/recomp/test/bench_prove.c -o $S/bench_prove.o

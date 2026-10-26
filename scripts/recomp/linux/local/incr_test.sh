@@ -21,7 +21,7 @@ for f in $files; do touch "$f"; echo "// geaendert" >> "$f"; done
 bash "$(dirname "$0")/compile.sh" c > /dev/null; res "B 5 chunks (main, medium-sized)"
 
 echo "== C: 7 SDK functions as HLE stubs (generator change)"
-python3 scripts/recomp/eh_gen.py gen sdk work/exefs/sdk 0x7006000000 "$W/incr/sdk" --simd c --hle scripts/recomp/test/hle_symbols.txt 2>&1 | grep wrote
+bash scripts/recomp/codegen.sh gen sdk work/exefs/sdk 0x7006000000 "$W/incr/sdk" --simd c --hle scripts/recomp/test/hle_symbols.txt 2>&1 | grep wrote
 changed=$(for f in "$W"/incr/sdk/*.c; do cmp -s "$f" "$GEN/sdk/$(basename "$f")" || echo "$f"; done | wc -l)
 rsync -rc --delete "$W/incr/sdk/" "$GEN/sdk/"   # without -t: only changed files get a new timestamp
 bash "$(dirname "$0")/compile.sh" c > /dev/null; res "C SDK with HLE: $changed of $(ls "$W/incr/sdk" | wc -l) SDK chunks changed"

@@ -58,7 +58,7 @@ class InstallerDriverTests(unittest.TestCase):
             module = command[-1].removeprefix("import ")
             return SimpleNamespace(returncode=0 if module == "PIL.Image" else 1)
 
-        self.assertEqual(driver.missing_generator_modules(run), ["Capstone", "Unicorn", "LZ4"])
+        self.assertEqual(driver.missing_generator_modules(run), ["Unicorn 2.1.4 native engine and headers", "LZ4"])
 
     def test_relative_project_root_redaction_preserves_dotted_values(self):
         args = SimpleNamespace(root=".")
@@ -105,12 +105,45 @@ class InstallerDriverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             tool = root / "python3"
-            tool.write_text("#!/bin/sh\nexit 0\n")
+            tool.write_text('#!/bin/sh\nprintf \'%s\\n\' "$CODEGEN_TEST_NATIVE"\n')
             tool.chmod(0o755)
-            environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ.get("PATH", ""), IMG=str(root / "images"))
+            native = root / "native-generator"
+            native.write_text('#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$CODEGEN_TEST_CALLS"\n')
+            native.chmod(0o755)
+            calls = root / "calls"
+            environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ.get("PATH", ""),
+                               IMG=str(root / "images"), BDSP_EXEFS_DIR=str(root / "exefs"),
+                               CODEGEN_TEST_NATIVE=str(native), CODEGEN_TEST_CALLS=str(calls))
             result = subprocess.run(["bash", str(Path(ROOT) / "scripts/recomp/ios/gen32.sh"), "img"],
                                     env=environment, capture_output=True, text=True, check=False)
             self.assertEqual(result.returncode, 0, result.stderr)
+            rows = calls.read_text().splitlines()
+            self.assertEqual(len(rows), 6)
+            self.assertTrue(all(row.startswith("image ") for row in rows))
+            self.assertTrue(all("--interpose-from" not in row for row in rows[:3]))
+            self.assertTrue(all("--interpose-from" in row for row in rows[3:]))
+
+    def test_native_generator_error_keeps_the_exact_phase_and_cause(self):
+        args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
+        message = "bdsp_codegen [analyze/subsdk1]: error: cross-module entry outside module text"
+        command = [sys.executable, "-c", "import sys; print(" + repr(message) + "); sys.exit(4)"]
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(driver._run_command(command, args, "eh_gen"), 4)
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        error = next(e for e in events if e["event"] == "error")
+        self.assertIn(message, error["message"])
+
+    def test_generator_live_logs_do_not_count_a_module_twice(self):
+        args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
+        text = "main: progress 1024/2000 files 8\nmain: wrote 16 chunks\nmodule=main generated\nsdk: wrote 2 chunks\n"
+        command = [sys.executable, "-c", "print(" + repr(text) + ")"]
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(driver._run_command(command, args, "eh_gen"), 0)
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual([e["completed"] for e in events if e["event"] == "progress"], [1, 2])
+        self.assertTrue(any("1024/2000" in e.get("message", "") for e in events))
 
     def test_build_commands_do_not_inherit_a_previous_mod_build_source(self):
         args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)

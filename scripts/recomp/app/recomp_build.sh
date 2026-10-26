@@ -43,8 +43,8 @@ O0_BYTES=$((O0_KB * 1000))
 [ -s "$EXEFS_DIR/main" ] || die 10 "$EXEFS_DIR/main missing: run the extract stage first"
 [ -d "$ROOT/work/romfs/Data" ] || die 10 "work/romfs/Data missing: run the extract stage first"
 [ -f "$ROOT/work/exefs/main.npdm" ] || die 10 "work/exefs/main.npdm missing: extract stage incomplete"
-[ -f "$ROOT/scripts/recomp/upstream/generator/gen.py" ] \
-  || die 10 "scripts/recomp/upstream missing: git checkout -- scripts/recomp/upstream (vendored generator, MIT; see THIRD_PARTY_NOTICES.md)"
+[ -f "$ROOT/scripts/recomp/native-generator/src/generator.c" ] \
+  || die 10 "Native generator sources missing: restore scripts/recomp/native-generator"
 
 hash_of() { "${SP[@]}" stage-hash --stage "$1" --root "$ROOT" --work "$WORK" | tail -n 1; }
 marker_ok() { "${SP[@]}" marker-check --work "$WORK" --stage "$1" --hash "$2"; }
@@ -66,7 +66,7 @@ fi
 if [ "$FORCE" -eq 0 ] && [ -d "$GEN/main" ] && marker_ok recomp-gen "$H_GEN"; then
   log "1/6 generator: marker matches, C present ($(ls "$GEN"/*/*.c | wc -l | tr -d ' ') files), skipped"
 else
-  log "1/6 generator: generating C from the four modules (about 75 s, up to 5 GB memory, about 1 GB space)"
+  log "1/6 generator: generating C with native workers (about 1 GB generated source)"
   if [ -d "$GEN/main" ] && [ "$FORCE" -eq 0 ]; then
     # incremental: regenerate and transfer only files with changed content (timestamps stay, the compiler runs only for changes)
     NEW="$R/gen4.new"

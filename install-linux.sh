@@ -119,7 +119,7 @@ fi
 step st_python
 if python_ok; then ok py_ok "$(python3 --version 2>&1 | cut -d' ' -f2)"; elif [ "$INSTALL_DRY" = 0 ]; then die lx_py_missing; fi
 use_venv || die venv_failed
-for pair in lz4:lz4 capstone:capstone unicorn:unicorn PIL:Pillow; do
+for pair in lz4:lz4 unicorn:unicorn==2.1.4 PIL:Pillow; do
   venv_pip "${pair%%:*}" "${pair##*:}" || die pip_failed
 done
 

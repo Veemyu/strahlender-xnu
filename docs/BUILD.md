@@ -21,7 +21,7 @@ Two guided installers do everything in this guide for you. Run `--dry-run` first
 
 - **macOS:** double-click `install.command` in the Finder or run `./install.command`. It checks Xcode, Homebrew (and offers
   the official Homebrew installer if it is missing), the Homebrew packages, Python, and a private Python environment
-  `work/venv` (Pillow, capstone, unicorn). Then you drag your `.xci`, optionally the update `.nsp`, and your `prod.keys`
+  `work/venv` (Pillow, LZ4, Unicorn native assets). Then you drag your `.xci`, optionally the update `.nsp`, and your `prod.keys`
   into the window, and it runs the stages `tools`, `extract` and `recomp` of `scripts/build_all.sh` (section 4).
   Plan for at least 40 GB of free space; a measured run on a prepared 8-thread Mac took about 8 minutes (section 4.2).
 - **Linux:** run `./install-linux.sh`. It detects `apt`, `dnf` or `pacman`, lists the missing development packages and installs
@@ -44,14 +44,14 @@ same steps by hand.
 | Python 3.9 or newer | `build_all.sh`, helper scripts | `python3 --version` |
 | Pillow in the selected Python environment | Deterministic original-icon conversion | `python3 -c 'from PIL import Image'` |
 | Homebrew packages `llvm`, `sdl3`, `ffmpeg`, `pkg-config` | macOS app (`recomp` stage) | `pkg-config --exists sdl3 libavcodec libavformat libavutil` |
-| Python packages `capstone`, `unicorn` in `tools/pydeps` | Code generator (`recomp` stage) | `ls tools/pydeps` |
+| Unicorn 2.1.4 C headers/library in `tools/pydeps` or `BDSP_UNICORN_ROOT` | Code generator (`recomp` stage) | `ls tools/pydeps` |
 | `git`, `make`, `cc` | Stage `tools` (builds `hactool`) | `command -v git make cc` |
 
 Install the Homebrew packages and the Python packages:
 
 ```sh
 brew install llvm sdl3 ffmpeg pkg-config
-python3 -m pip install --target tools/pydeps capstone unicorn
+python3 -m pip install --target tools/pydeps unicorn==2.1.4
 ```
 
 The `recomp` stage needs the Homebrew LLVM first in `PATH`, before `/usr/bin`:
@@ -114,14 +114,17 @@ scripts/build_all.sh --only recomp --target macos
 
 Result: `work/builds/macos-recomp/BDSP.app` (arm64, Metal, ad hoc signed).
 
-C generation automatically chooses a process count from the host CPU/RAM budget.
-Modules run sequentially; analysis and emission within a large module use bounded
-spawn workers on macOS, Linux and Windows. Stateful Unicorn jump-table discovery
-stays in address order so generated code remains reproducible. Set
-`BDSP_GEN_JOBS=1` for the serial reference path, or `BDSP_GEN_JOBS=N` to override
-the generator process count independently of `--recomp-jobs` (Clang). Direct
-`eh_gen.py gen ... --jobs N` invocations accept the same override. Small modules
-use fewer workers automatically. Scheduling changes do not change chunk boundaries.
+C generation uses the native C17 tool in `scripts/recomp/native-generator/`.
+It chooses a thread count from the host CPU/RAM budget. Modules run sequentially;
+classification, independent large scans and emission use bounded pthread/Win32
+workers. Stateful Unicorn jump-table discovery stays in address order.
+`BDSP_GEN_JOBS=1` selects serial C execution; `BDSP_GEN_JOBS=N` or
+`bash scripts/recomp/codegen.sh gen ... --jobs N` overrides the generator threads
+independently of `--recomp-jobs` (Clang). Scheduling does not change file contents.
+Unicorn is called through its existing C API. Capstone and Unicorn's Python
+bindings are development-only oracle dependencies, excluded from new installer
+runtimes. Python remains for build orchestration and asset tools such as Pillow,
+LZ4 and UnityPy. See [the native generator README](../scripts/recomp/native-generator/README.md).
 
 Original icons and their language variants are generated only from user-provided
 game data. Artwork and generated assets remain under ignored `work/`.
@@ -278,8 +281,8 @@ official Arch binary package and is never installed by these scripts.
 
 The Linux build runs directly on the Linux machine, from the repository root; its scripts are in `scripts/recomp/linux/local/` (the dependency checks are in `scripts/recomp/linux/deps.sh`).
 
-1. Install the Linux development packages above and the Python generator
-   dependencies `lz4`, `capstone`, and `unicorn`.
+1. Install the Linux development packages above, asset dependency `lz4` and
+   `unicorn==2.1.4` (provides the native C headers/library; no Python code generation).
 2. Check the installed packages (no copying, downloads, or installation):
    `bash -c 'source scripts/recomp/linux/deps.sh && linux_require_runtime && linux_require_qt'`.
    Leave out `linux_require_qt` if you do not build the Qt frontend.

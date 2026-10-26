@@ -19,7 +19,7 @@ class InstallerPathTests(unittest.TestCase):
             script.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / "scripts/recomp/app/recomp_build.sh", script)
             for name in ("work/exefs/main", "work/exefs/main.npdm",
-                         "scripts/recomp/upstream/generator/gen.py", "scripts/recomp/hot_o2.txt"):
+                         "scripts/recomp/native-generator/src/generator.c", "scripts/recomp/hot_o2.txt"):
                 file = root / name
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text("synthetic\n")

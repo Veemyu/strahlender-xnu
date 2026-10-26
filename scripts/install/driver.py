@@ -100,7 +100,7 @@ def _safe_line(line, args):
     # Resolve relative roots before redaction. Replacing a literal "." corrupts
     # every decimal point in diagnostics and version strings.
     project_root = str(Path(args.root).resolve())
-    return line.replace(project_root, "<project>").rstrip()
+    return line.replace(project_root, "<project>").replace(str(Path.home()), "~").rstrip()
 
 
 def _run_command(command, args, stage, progress=None, phase_from_line=None, extra_env=None, emit_steps=True):
@@ -137,7 +137,7 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     reader_thread.start()
     done = False
     last_progress = None
-    generated = 0
+    generated_modules = set()
     first_failure = None
     module_total = 4 + int((Path(environment.get("BDSP_EXEFS_DIR", Path(args.root) / "work/exefs")) / "subsdk1").is_file())
     try:
@@ -164,9 +164,13 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                             emit("step", id=active, status="complete")
                             active = next_phase
                             emit("step", id=active, status="started")
-                    if active == "eh_gen" and (" wrote " in message or message.startswith("module=")):
-                        generated = min(generated + 1, module_total)
-                        emit("progress", id="eh_gen", completed=generated, total=module_total)
+                    if active == "eh_gen":
+                        module_done = re.match(r"^([A-Za-z_][A-Za-z_0-9]*): wrote ", message)
+                        module_marker = re.match(r"^module=([A-Za-z_][A-Za-z_0-9]*)\b", message)
+                        completed_module = module_done or module_marker
+                        if completed_module and completed_module[1] not in generated_modules:
+                            generated_modules.add(completed_module[1])
+                            emit("progress", id="eh_gen", completed=min(len(generated_modules), module_total), total=module_total)
             if progress:
                 current = progress(active)
                 if current and current != last_progress:
@@ -226,12 +230,15 @@ def required_free_gb(args):
 
 
 def missing_generator_modules(run=subprocess.run):
-    modules = (("capstone", "Capstone"), ("unicorn", "Unicorn"),
-               ("lz4.block", "LZ4"), ("PIL.Image", "Pillow"))
-    return [label for module, label in modules if run(
-        [sys.executable, "-I", "-c", "import " + module],
-        capture_output=True, check=False,
-    ).returncode != 0]
+    checker = Path(__file__).resolve().parents[1] / "recomp/native-generator/build.py"
+    missing = []
+    if run([sys.executable, "-I", str(checker), "--check-unicorn"],
+           capture_output=True, check=False).returncode:
+        missing.append("Unicorn 2.1.4 native engine and headers")
+    for module, label in (("lz4.block", "LZ4"), ("PIL.Image", "Pillow")):
+        if run([sys.executable, "-I", "-c", "import " + module], capture_output=True, check=False).returncode:
+            missing.append(label)
+    return missing
 
 
 def check_build_dependencies(args):
@@ -246,10 +253,10 @@ def check_build_dependencies(args):
         )
         if not mac:
             missing_modules = missing_generator_modules()
-            items.append({"name": ("Generator Python modules missing: " + ", ".join(missing_modules)
-                                    if missing_modules else "Generator Python modules (Capstone, Unicorn, LZ4, Pillow)"),
+            items.append({"name": ("Build runtime components missing: " + ", ".join(missing_modules)
+                                    if missing_modules else "Native Unicorn engine, LZ4 and Pillow"),
                           "ok": not missing_modules, "level": "missing", "detail": "",
-                          "hint": "This development environment needs the generator packages. The packaged installer includes its private Python runtime."})
+                          "hint": "This development environment needs the native engine and asset packages. The packaged installer includes its private Python runtime."})
         if getattr(args, "mod_root", None):
             artwork = subprocess.run([sys.executable, str(Path(args.root) / "scripts/recomp/app/game_icons.py"),
                                       "check-mod-artwork", "--mod-root", str(args.mod_root)],

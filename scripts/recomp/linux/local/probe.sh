@@ -44,12 +44,12 @@ build_eh_common() {   # <S> <sdk-basis> <eht-basis> <extra-flags> <rt-pfad-flags
   local G=$S/gen
   mkdir -p "$S/obj" "$G"
   rm -f "$S/hle.txt"
-  python3 scripts/recomp/mkimg.py work/exefs/sdk sdk --base "$SDKB" --out "$S" ${HLEB:+--hle-base $HLEB} > /dev/null
-  python3 scripts/recomp/eh_gen.py gen sdk work/exefs/sdk "$SDKB" "$G/sdk" --simd c --hle $T/hle_symbols.txt 2>&1 | grep -E "wrote|eh_gen"
+  bash scripts/recomp/codegen.sh image work/exefs/sdk sdk --base "$SDKB" --out "$S" ${HLEB:+--hle-base $HLEB} > /dev/null
+  bash scripts/recomp/codegen.sh gen sdk work/exefs/sdk "$SDKB" "$G/sdk" --simd c --hle $T/hle_symbols.txt 2>&1 | grep -E "wrote|eh_gen"
   guest_aarch64 $T/eh_guest.cpp "$S/eh_guest.s"
   clang --target=aarch64-linux-gnu -c "$S/eh_guest.s" -o "$S/eh_guest.o"
   python3 scripts/recomp/mini_link.py "$S/eh_guest.o" "$S/eht" --base "$EHTB" --syms "$S/sdk.syms.json" > /dev/null
-  python3 scripts/recomp/eh_gen.py gen eht "$S/eht.nso" "$EHTB" "$G/eht" --simd c 2>&1 | grep -E "wrote|eh_gen"
+  bash scripts/recomp/codegen.sh gen eht "$S/eht.nso" "$EHTB" "$G/eht" --simd c 2>&1 | grep -E "wrote|eh_gen"
   export EXTRA="${EXTRA:-} -Dweak_import=weak"
   cc_all "$S/obj" -O1 "$G"/sdk/*.c "$G"/eht/*.c $T/eh_harness.c
 }
@@ -68,9 +68,9 @@ probe_eh() {
 probe_eh_real() {
   local S=$W/spike2 G=$W/spike2/gen MAINBASE=0x7040000000 PER=${PER_KIND:-60}
   [ -f "$S/eh_test" ] || die "Run 'probe.sh eh' first (SDK objects, test module)."
-  python3 scripts/recomp/mkimg.py work/exefs/main main --base $MAINBASE --out "$S" --link "$S/sdk.syms.json" > /dev/null
+  bash scripts/recomp/codegen.sh image work/exefs/main main --base $MAINBASE --out "$S" --link "$S/sdk.syms.json" > /dev/null
   python3 scripts/recomp/eh_pick.py --base $MAINBASE --per-kind "$PER"
-  python3 scripts/recomp/eh_gen.py gen main work/exefs/main $MAINBASE "$G/mainsub" --only "$S/real_only.txt" --simd c 2>&1 | grep -E "wrote|eh_gen"
+  bash scripts/recomp/codegen.sh gen main work/exefs/main $MAINBASE "$G/mainsub" --only "$S/real_only.txt" --simd c 2>&1 | grep -E "wrote|eh_gen"
   export EXTRA="-Dweak_import=weak"
   cc_all "$S/obj_real" -O1 "$G"/mainsub/*.c
   clang -o "$S/eh_real" "$S"/obj/sdk_*.o "$S"/obj/eht_*.o "$S/obj/test_eh_harness.o" "$S"/obj_real/*.o -lm -lpthread || die "Link failed."
@@ -82,12 +82,12 @@ probe_eh_real() {
 probe_rebase32() {
   local S=$P/r32 G=$P/r32/gen SDKB=0x01000000 EHTB=0x02000000
   mkdir -p "$S/obj" "$G"; rm -f "$S/hle.txt"
-  python3 scripts/recomp/mkimg.py work/exefs/sdk sdk --base $SDKB --out "$S" --hle-base 0x08000000 > /dev/null
-  python3 scripts/recomp/eh_gen.py gen sdk work/exefs/sdk $SDKB "$G/sdk" --simd c --hle $T/hle_symbols.txt 2>&1 | grep -E "wrote|eh_gen"
+  bash scripts/recomp/codegen.sh image work/exefs/sdk sdk --base $SDKB --out "$S" --hle-base 0x08000000 > /dev/null
+  bash scripts/recomp/codegen.sh gen sdk work/exefs/sdk $SDKB "$G/sdk" --simd c --hle $T/hle_symbols.txt 2>&1 | grep -E "wrote|eh_gen"
   guest_aarch64 $T/eh_guest.cpp "$S/eh_guest.s"
   clang --target=aarch64-linux-gnu -c "$S/eh_guest.s" -o "$S/eh_guest.o"
   python3 scripts/recomp/mini_link.py "$S/eh_guest.o" "$S/eht" --base $EHTB --syms "$S/sdk.syms.json" > /dev/null
-  python3 scripts/recomp/eh_gen.py gen eht "$S/eht.nso" $EHTB "$G/eht" --simd c 2>&1 | grep -E "wrote|eh_gen"
+  bash scripts/recomp/codegen.sh gen eht "$S/eht.nso" $EHTB "$G/eht" --simd c 2>&1 | grep -E "wrote|eh_gen"
   export EXTRA="-DREBASE32 -I scripts/recomp/rt32 -Dweak_import=weak"
   cc_all "$S/obj" -O1 "$G"/sdk/*.c "$G"/eht/*.c $T/eh_harness.c
   clang -o "$S/eh_test32" "$S"/obj/*.o -lm -lpthread || die "Link failed."
@@ -102,7 +102,7 @@ probe_gc() {
   local S=$P/gc; mkdir -p "$S/gen"; echo '{}' > "$S/empty.json"
   clang --target=aarch64-linux-gnu -O1 -ffreestanding -fno-pic -fno-asynchronous-unwind-tables -funwind-tables -c $T/gc_guest.c -o "$S/gc_guest.o"
   python3 scripts/recomp/mini_link.py "$S/gc_guest.o" "$S/gct" --base 0x7008000000 --syms "$S/empty.json" > /dev/null
-  python3 scripts/recomp/eh_gen.py gen gct "$S/gct.nso" 0x7008000000 "$S/gen" --simd c 2>&1 | grep -E "wrote|eh_gen"
+  bash scripts/recomp/codegen.sh gen gct "$S/gct.nso" 0x7008000000 "$S/gen" --simd c 2>&1 | grep -E "wrote|eh_gen"
   EXTRA="" cc_all "$S/obj" -O1 "$S"/gen/*.c scripts/recomp/linux/gc_prove_linux.c
   clang -o "$S/gc_prove" "$S"/obj/*.o -lpthread || die "Link failed."
   CHURN_OFF=$(python3 -c "import json; print(hex(json.load(open('$S/gct.json'))['syms']['churn']))") tm "$S/gc_prove"
@@ -112,7 +112,7 @@ probe_bench() {
   local S=$P/bench OPT=${OPT:--O1}; mkdir -p "$S/gen"; echo '{}' > "$S/empty.json"
   clang --target=aarch64-linux-gnu -O2 -ffreestanding -fno-pic -fno-asynchronous-unwind-tables -funwind-tables -c $T/bench_guest.c -o "$S/bench_guest.o"
   python3 scripts/recomp/mini_link.py "$S/bench_guest.o" "$S/gbn" --base 0x7008000000 --syms "$S/empty.json" > /dev/null
-  python3 scripts/recomp/eh_gen.py gen gbn "$S/gbn.nso" 0x7008000000 "$S/gen" --simd c 2>&1 | grep -E "wrote|eh_gen"
+  bash scripts/recomp/codegen.sh gen gbn "$S/gbn.nso" 0x7008000000 "$S/gen" --simd c 2>&1 | grep -E "wrote|eh_gen"
   EXTRA="" cc_all "$S/obj" "$OPT" "$S"/gen/*.c
   clang -O2 -w $CPU_FLAGS -I scripts/recomp/rt -I $LAS/runtime -I $T -c $T/bench_prove.c -o "$S/bench_prove.o"
   clang -o "$S/bench_prove" "$S/bench_prove.o" "$S"/obj/*.o -lm
@@ -125,10 +125,10 @@ boot_images() {
   local S=$P/boot; mkdir -p "$S"
   bb() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; esac; }
   rm -f "$S/hle.txt"
-  for m in main sdk subsdk0; do python3 scripts/recomp/mkimg.py work/exefs/$m $m --base "$(bb $m)" --out "$S" > /dev/null; done
+  for m in main sdk subsdk0; do bash scripts/recomp/codegen.sh image work/exefs/$m $m --base "$(bb $m)" --out "$S" > /dev/null; done
   rm -f "$S/hle.txt"
   for m in main sdk subsdk0; do
-    python3 scripts/recomp/mkimg.py work/exefs/$m $m --base "$(bb $m)" --out "$S" --link "$S/main.syms.json" --link "$S/sdk.syms.json" --link "$S/subsdk0.syms.json" > /dev/null
+    bash scripts/recomp/codegen.sh image work/exefs/$m $m --base "$(bb $m)" --out "$S" --link "$S/main.syms.json" --link "$S/sdk.syms.json" --link "$S/subsdk0.syms.json" > /dev/null
   done
 }
 START_ADDR() { python3 -c "

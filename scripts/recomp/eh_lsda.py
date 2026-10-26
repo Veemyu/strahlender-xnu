@@ -5,7 +5,7 @@ Own code. Reads only local files (work/exefs, NSO) and writes numbers to work/re
 No game bytes, no generated code and no addresses are written to the repo; the output
 contains counters, shapes of call site tables and (only on the console or under work/) module addresses.
 
-The module also provides the building blocks for the generator (`eh_gen.py`):
+Development reference helpers (the productive generator now uses native C):
   parse_module(image, eh_hdr_off)  ->  list of FDE descriptions with LSDA call sites
   landing_pads(fdes)               ->  {function start: [landing pad addresses]}
 

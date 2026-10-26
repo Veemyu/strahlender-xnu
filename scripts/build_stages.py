@@ -217,12 +217,13 @@ def stage_hash(stage, root, work, target="all", env=None):
         return {n: hash_file(os.path.join(scripts, n)) for n in names}
 
     if stage in ("recomp-gen", "recomp"):
-        # Generator: modules of the dump, own generator scripts and the clone whose tools it imports at run time
+        # Generator inputs and native source/tool dependency contracts.
         rec = os.path.join(scripts, "recomp")
         parts["modules"] = {m: hash_file(os.path.join(work, "exefs", m)) for m in ("main", "sdk", "subsdk0", "rtld")}
         parts["generator"] = {n: hash_file(os.path.join(rec, n)) for n in
-                              ("eh_gen.py", "eh_parallel.py", "parallel_jobs.py", "eh_lsda.py", "eh_pick.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
-        parts["las_tools"] = hash_tree_content(os.path.join(rec, "upstream", "generator"), (".py",), skip_dirs=("__pycache__",))
+                              ("native-generator/build.py", "parallel_jobs.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
+        parts["native_codegen"] = hash_tree_content(os.path.join(rec, "native-generator"), (".c", ".h", ".json"), skip_dirs=("__pycache__",))
+        parts["native_dependencies"] = hash_file(os.path.join(root, "installer/runtime/wheels.lock.json"))
         if stage == "recomp":
             # runtime, NVN layer (vendored + patches), translator, app shell; the partial markers cover generator and objects
             skip = ("test", "vulkan", "__pycache__")
@@ -284,7 +285,7 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
     def add(name, ok, detail="", hint="", level="missing"):
         items.append({"name": name, "ok": bool(ok), "detail": detail, "hint": hint, "level": level})
 
-    def python_imports(modules, pydeps=None):
+    def python_imports(modules, pydeps=None, command=None):
         """Use the same import paths as the build, including an existing CLI venv."""
         private_runtime = os.environ.get("BDSP_INSTALLER_PRIVATE_RUNTIME") == "1"
         candidates = ([sys.executable] if private_runtime else [
@@ -297,7 +298,7 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         for python in candidates:
             if python != sys.executable and not os.access(python, os.X_OK):
                 continue
-            ok, _ = run([python, "-I" if private_runtime else "-B", "-c", code], env=env)
+            ok, _ = run([python, "-I" if private_runtime else "-B", *(command or ["-c", code])], env=env)
             if ok:
                 return True
         return False
@@ -348,13 +349,14 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         add("SDL3 and FFmpeg libraries (pkg-config)", ok, "", "brew install sdl3 ffmpeg")
         add("Pillow (app icons)", python_imports(("PIL.Image",)), "", "python3 -m pip install Pillow")
         pyd = os.path.join(tools_dir, "pydeps")
-        add("Python packages capstone, unicorn, lz4 (generator)",
-            python_imports(("capstone", "unicorn", "lz4.block"), pyd), "",
-            "python3 -m pip install --target tools/pydeps capstone unicorn lz4")
+        native = os.path.join(root, "scripts", "recomp", "native-generator")
+        add("Unicorn 2.1.4 C engine and headers (native generator)",
+            python_imports((), pyd, [os.path.join(native, "build.py"), "--check-unicorn"]), "",
+            "Use the installer runtime, or install unicorn==2.1.4 in the CLI environment; BDSP_UNICORN_ROOT can provide include/ and lib/ directly")
         up = os.path.join(root, "scripts", "recomp", "upstream")
-        add("Vendored LASRecomp parts (generator, headers; MIT)",
-            os.path.isfile(os.path.join(up, "generator", "gen.py")) and os.path.isfile(os.path.join(up, "runtime", "cpu.h")), up,
-            "git checkout -- scripts/recomp/upstream (folder missing in the working tree)")
+        add("Native generator sources and runtime headers",
+            os.path.isfile(os.path.join(native, "src", "generator.c")) and os.path.isfile(os.path.join(up, "runtime", "cpu.h")), "",
+            "git checkout -- scripts/recomp/native-generator scripts/recomp/upstream/runtime")
 
     return items
 
