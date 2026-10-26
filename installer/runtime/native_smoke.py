@@ -1,32 +1,37 @@
-"""Exercise the native engines used by the generator without game data."""
-
-import capstone
+"""Check shipped native assets without importing the removed generator bindings."""
+import ctypes
+import importlib.util
+from pathlib import Path
+import sys
 import lz4.block
-import unicorn
-from unicorn import arm64_const
 from PIL import Image
 
 
 def main():
     payload = b"native runtime smoke test" * 8
-    packed = lz4.block.compress(payload)
-    assert lz4.block.decompress(packed) == payload
-
-    # MOV W0, #7; ADD W0, W0, #5. Exercise both the disassembler and CPU engine.
-    instructions = bytes.fromhex("e000805200140011")
-    decoder = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM)
-    decoded = list(decoder.disasm(instructions, 0x1000))
-    assert len(decoded) == 2 and decoded[0].mnemonic == "mov"
-
-    cpu = unicorn.Uc(unicorn.UC_ARCH_ARM64, unicorn.UC_MODE_ARM)
-    cpu.mem_map(0x1000, 0x1000)
-    cpu.mem_write(0x1000, instructions)
-    cpu.emu_start(0x1000, 0x1008)
-    assert cpu.reg_read(arm64_const.UC_ARM64_REG_X0) == 12
-
+    assert lz4.block.decompress(lz4.block.compress(payload)) == payload
+    spec = importlib.util.find_spec("unicorn")
+    assert spec and spec.submodule_search_locations
+    root = Path(next(iter(spec.submodule_search_locations)))
+    assert (root / "include/unicorn/unicorn.h").is_file()
+    filenames = ("unicorn.dll", "libunicorn.dll") if sys.platform == "win32" else ("libunicorn.2.dylib",) if sys.platform == "darwin" else ("libunicorn.so.2",)
+    filename = next(name for name in filenames if (root / "lib" / name).is_file())
+    library = ctypes.CDLL(str(root / "lib" / filename))
+    library.uc_version.argtypes = [ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    library.uc_version.restype = ctypes.c_uint
+    major, minor = ctypes.c_uint(), ctypes.c_uint()
+    version = library.uc_version(ctypes.byref(major), ctypes.byref(minor))
+    assert (major.value, minor.value, (version >> 8) & 255) == (2, 1, 4)
+    library.uc_open.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)]
+    library.uc_open.restype = ctypes.c_int
+    library.uc_close.argtypes = [ctypes.c_void_p]
+    library.uc_close.restype = ctypes.c_int
+    engine = ctypes.c_void_p()
+    assert library.uc_open(2, 0, ctypes.byref(engine)) == 0  # UC_ARCH_ARM64, UC_MODE_ARM
+    assert library.uc_close(engine) == 0
     icon = Image.new("RGB", (2, 2), (17, 23, 31))
     assert icon.getpixel((1, 1)) == (17, 23, 31)
-    print("Native engines: LZ4, Capstone, Unicorn ARM64 and Pillow OK")
+    print("Native assets: LZ4, Unicorn 2.1.4 C engine/headers and Pillow OK")
 
 
 if __name__ == "__main__":

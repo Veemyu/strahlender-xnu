@@ -21,11 +21,10 @@ running the installer does not invoke pip or change system Python.
 
 The macOS aarch64 and Linux aarch64 base runtimes have now been executed. The
 Linux test ran on headless Fedora Asahi Remix 44, using private CPython and
-actual LZ4, Capstone, Unicorn and Pillow operations. macOS also ran the JSONL
+actual LZ4, Unicorn and Pillow operations. macOS also ran the JSONL
 preflight with Python's isolated `-I` mode. Other archives still need native
 execution and packaging tests. `wheels.lock.json` intentionally has no
-Windows aarch64 entry: [Capstone](https://pypi.org/project/capstone/5.0.9/) and
-[Unicorn](https://pypi.org/project/unicorn/2.1.4/) lack `win_arm64` wheels at
+Windows aarch64 entry: [Unicorn](https://pypi.org/project/unicorn/2.1.4/) lack `win_arm64` wheels at
 these versions. A native build or another verified packaging route is needed.
 
 The shader profile is separate. [UnityPy 1.25.4](https://pypi.org/project/UnityPy/1.25.4/)
@@ -183,3 +182,15 @@ discovery took 2.30 seconds under cProfile, with 1.88 seconds in its Python
 `discover` routine; the larger generator sample reached the Python lifter but
 was stopped due to its memory and run time. That evidence does not justify
 replacing the generator's semantics with a new native implementation yet.
+
+The C generator uses Unicorn's pinned C headers and shared library directly.
+New runtime assembly excludes Capstone and removes Unicorn's Python binding files,
+retaining its native `include/` and `lib/` namespace and wheel provenance. Unused
+Unix static archives are omitted; Windows DLL import libraries remain. The
+smoke test loads the C engine directly. LZ4, Pillow and UnityPy still serve asset
+work; the small Python build driver remains.
+
+Frozen-reference comparisons use `reference-wheels.lock.json` and
+`installer/scripts/prepare_codegen_reference.py` in a separate ignored directory.
+CI adds that directory to PYTHONPATH only during oracle tests; these packages are
+not copied into release runtimes. No release is triggered by ordinary pushes.

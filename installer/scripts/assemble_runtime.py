@@ -43,6 +43,24 @@ def python_path(directory, name):
             directory / "python" / "bin" / "python3")
 
 
+def strip_unicorn_bindings(runtime):
+    """Keep the verified C headers/library as a namespace; remove Python bindings."""
+    count = 0
+    for package in runtime.glob("python/**/site-packages/unicorn"):
+        for path in package.rglob("*"):
+            if path.is_file() and (path.suffix in (".py", ".pyi", ".pyc") or path.name == "py.typed"):
+                path.unlink()
+                count += 1
+        # Unix links the shared library; the wheel's static engine archive is unused.
+        # Keep Windows import libraries, which are needed to link a DLL.
+        if os.name != "nt":
+            for archive in (package / "lib").glob("*.a"):
+                archive.unlink()
+    if not count:
+        raise ValueError("Verified Unicorn wheel did not contain the expected bindings")
+    return count
+
+
 def assemble(name, archive, output, wheelhouse, fetch, profile="base", source_builds=None):
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     validate_manifest(manifest)
@@ -127,6 +145,7 @@ def assemble(name, archive, output, wheelhouse, fetch, profile="base", source_bu
              "--find-links", str(wheels), *(str(wheels / entry["wheel"]) for entry in expected.values())], env=env)
         run([str(python), "-I", "-B", "-c",
              "import sys; assert sys.version_info[:3] == (3, 13, 15)"], env=env)
+        removed_bindings = strip_unicorn_bindings(runtime)
         run([str(python), "-I", "-B", str(ROOT / "runtime" / "native_smoke.py")], env=env)
         run([str(python), "-I", "-B", "-m", "pip", "check"], env=env)
         if profile == "shaders":
@@ -143,6 +162,8 @@ def assemble(name, archive, output, wheelhouse, fetch, profile="base", source_bu
             "schema": 1, "target": name, "python": manifest["python"]["version"],
             "python_sha256": expected_archive,
             "profile": profile, "wheels": expected,
+            "unicorn_python_files_removed": removed_bindings,
+            "unicorn_native_linkage": "shared",
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         runtime.rename(output)
     return output

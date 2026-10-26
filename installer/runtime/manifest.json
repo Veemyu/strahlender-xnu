@@ -6,8 +6,14 @@
     "source": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260901"
   },
   "packages": {
-    "base": ["lz4==4.4.5", "capstone==5.0.9", "unicorn==2.1.4", "Pillow==13.0.0"],
-    "shaders": ["UnityPy==1.25.4"]
+    "base": [
+      "lz4==4.4.5",
+      "unicorn==2.1.4",
+      "Pillow==13.0.0"
+    ],
+    "shaders": [
+      "UnityPy==1.25.4"
+    ]
   },
   "targets": {
     "macos-aarch64": {
@@ -21,12 +27,18 @@
       "python_sha256": "f712a9143c8a5d248438ec7921a0b48d548bca4f1337d33c690d28c2d0504137"
     },
     "linux-aarch64": {
-      "pip_platform": ["manylinux_2_28_aarch64", "manylinux_2_17_aarch64"],
+      "pip_platform": [
+        "manylinux_2_28_aarch64",
+        "manylinux_2_17_aarch64"
+      ],
       "python_asset": "cpython-3.13.15+20260901-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
       "python_sha256": "01ce0ce9189feaead3298abf10d4efe998c55a489b3d5d38ca4f83dda7e7977e"
     },
     "linux-x86_64": {
-      "pip_platform": ["manylinux_2_28_x86_64", "manylinux_2_17_x86_64"],
+      "pip_platform": [
+        "manylinux_2_28_x86_64",
+        "manylinux_2_17_x86_64"
+      ],
       "python_asset": "cpython-3.13.15+20260901-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
       "python_sha256": "8a689a077337bea6d1c4bc0b7df1d52fcaa28f5f67e50df8bf417c1e3f9d8874"
     },
