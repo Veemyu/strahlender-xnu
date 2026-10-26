@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "codegen.h"
+#include "workers.h"
+#include <stdatomic.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -7,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef __APPLE__
+#include <xlocale.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #include <direct.h>
@@ -15,38 +20,80 @@
 #include <unistd.h>
 #endif
 
-const char *cg_phase = "arguments", *cg_module = "";
-bool cg_events = false;
-/* Process-lifetime arena; registered cleanup also covers rejected inputs. */
+_Thread_local const char *cg_phase = "arguments", *cg_module = "";
+_Thread_local bool cg_events = false;
+/* Thread-local bump arena. Checkpoints reclaim temporary expressions without
+ * sending every small allocation through the process-wide malloc allocator. */
 typedef union Allocation Allocation;
-union Allocation { struct { Allocation *next; } link; max_align_t alignment; };
-static Allocation *allocations;
-static bool registered;
-static void release(void) {
-    while (allocations) { Allocation *next = allocations->link.next; free(allocations); allocations = next; }
+union Allocation { struct { Allocation *previous; size_t used, capacity; } block; max_align_t alignment; };
+typedef struct { Allocation *block; size_t used; } Checkpoint;
+static _Thread_local Allocation *allocations;
+static atomic_bool registered;
+static _Thread_local bool allocation_ready;
+static _Thread_local CgFailure *failure_target;
+void cg_failure_target(CgFailure *target) { failure_target = target; }
+#ifdef __APPLE__
+static _Thread_local locale_t numeric_locale;
+#endif
+void cg_thread_finish(void) {
+    cg_rewind(NULL);
+#ifdef __APPLE__
+    if(numeric_locale) {freelocale(numeric_locale);numeric_locale=NULL;}
+#endif
+}
+static void release(void) { cg_thread_finish(); }
+static int format_text(char *out,size_t size,const char *format,va_list arguments) {
+#ifdef __APPLE__
+    /* Darwin localeconv_l serializes the shared global locale even for integer
+     * formats. Each worker owns its locale and never changes process locale. */
+    if(!numeric_locale) {
+        numeric_locale=duplocale(LC_GLOBAL_LOCALE);
+        if(!numeric_locale)cg_fail(4,"cannot create native worker formatting locale");
+    }
+    return vsnprintf_l(out,size,numeric_locale,format,arguments);
+#else
+    return vsnprintf(out,size,format,arguments);
+#endif
 }
 void *cg_alloc(size_t count, size_t size) {
     int saved_errno = errno;
-    if (!registered) { if (atexit(release)) cg_fail(4, "cannot register allocation cleanup"); registered = true; }
-    if (size && count > (SIZE_MAX - sizeof(Allocation)) / size) cg_fail(4, "allocation size overflow");
-    Allocation *a = calloc(1, sizeof(*a) + count * size);
-    if (!a) cg_fail(4, "not enough memory");
-    a->link.next = allocations; allocations = a;
-    errno = saved_errno;
-    return a + 1;
-}
-void *cg_mark(void) { return allocations; }
-void cg_rewind(void *mark) {
-    while (allocations != mark) {
-        if (!allocations) cg_fail(4, "invalid allocation checkpoint");
-        Allocation *next = allocations->link.next; free(allocations); allocations = next;
+    if (!allocation_ready) {
+        if (!atomic_exchange(&registered, true)) { if (atexit(release)) cg_fail(4, "cannot register allocation cleanup"); }
+        allocation_ready = true;
     }
+    if (size && count > (SIZE_MAX - sizeof(Allocation)) / size) cg_fail(4, "allocation size overflow");
+    size_t bytes=count*size,alignment=_Alignof(max_align_t);
+    if(bytes>SIZE_MAX-(alignment-1))cg_fail(4,"allocation alignment overflow");
+    size_t padded=(bytes+alignment-1)/alignment*alignment;
+    if(!padded)padded=alignment;
+    if(!allocations||padded>allocations->block.capacity-allocations->block.used) {
+        size_t capacity=padded>65536?padded:65536;
+        if(capacity>SIZE_MAX-sizeof(Allocation))cg_fail(4,"arena allocation overflow");
+        Allocation *next=malloc(sizeof(*next)+capacity);
+        if(!next)cg_fail(4,"not enough memory");
+        next->block.previous=allocations;next->block.used=0;next->block.capacity=capacity;allocations=next;
+    }
+    unsigned char *data=(unsigned char*)(allocations+1)+allocations->block.used;
+    allocations->block.used+=padded;memset(data,0,bytes);errno=saved_errno;return data;
+}
+void *cg_mark(void) {
+    Allocation *block=allocations;size_t used=block?block->block.used:0;
+    Checkpoint *mark=cg_alloc(1,sizeof(*mark));
+    *mark=(Checkpoint){block?block:allocations,used};return mark;
+}
+void cg_rewind(void *mark) {
+    Checkpoint target=mark?*(Checkpoint*)mark:(Checkpoint){0};
+    while(allocations!=target.block) {
+        if(!allocations)cg_fail(4,"invalid allocation checkpoint");
+        Allocation *previous=allocations->block.previous;free(allocations);allocations=previous;
+    }
+    if(allocations)allocations->block.used=target.used;
 }
 char *cg_format(const char *format, ...) {
     va_list ap, copy; va_start(ap, format); va_copy(copy, ap);
-    int n = vsnprintf(NULL, 0, format, copy); va_end(copy);
+    int n = format_text(NULL, 0, format, copy); va_end(copy);
     if (n < 0) cg_fail(4, "text formatting failed");
-    char *s = cg_alloc((size_t)n + 1, 1); vsnprintf(s, (size_t)n + 1, format, ap); va_end(ap);
+    char *s = cg_alloc((size_t)n + 1, 1); format_text(s, (size_t)n + 1, format, ap); va_end(ap);
     return s;
 }
 char *cg_string(const char *s, size_t n) {
@@ -54,7 +101,15 @@ char *cg_string(const char *s, size_t n) {
     char *p = cg_alloc(n + 1, 1); memcpy(p, s, n); return p;
 }
 _Noreturn void cg_fail(int code, const char *format, ...) {
-    static bool failing;
+    if (failure_target) {
+        va_list arguments; va_start(arguments, format);
+        vsnprintf(failure_target->message, sizeof(failure_target->message), format, arguments); va_end(arguments);
+        failure_target->code = code;
+        snprintf(failure_target->phase, sizeof(failure_target->phase), "%s", cg_phase);
+        snprintf(failure_target->module, sizeof(failure_target->module), "%s", cg_module);
+        longjmp(failure_target->jump, 1);
+    }
+    static _Thread_local bool failing;
     if (failing) { fputs("bdsp_codegen: error reporting failed\n", stderr); exit(code); }
     failing = true;
     char message[1024]; va_list ap; va_start(ap, format); vsnprintf(message, sizeof(message), format, ap); va_end(ap);
@@ -82,9 +137,9 @@ void cg_buffer(Buffer *b, const void *data, size_t n) {
 }
 void cg_printf(Buffer *b, const char *format, ...) {
     va_list ap, copy; va_start(ap, format); va_copy(copy, ap);
-    int n = vsnprintf(NULL, 0, format, copy); va_end(copy);
+    int n = format_text(NULL, 0, format, copy); va_end(copy);
     if (n < 0) cg_fail(4, "text formatting failed");
-    char *s = cg_alloc((size_t)n + 1, 1); vsnprintf(s, (size_t)n + 1, format, ap); va_end(ap);
+    char *s = cg_alloc((size_t)n + 1, 1); format_text(s, (size_t)n + 1, format, ap); va_end(ap);
     cg_buffer(b, s, (size_t)n);
 }
 uint16_t cg_u16(const unsigned char *p) { return (uint16_t)(p[0] | (uint16_t)p[1] << 8); }

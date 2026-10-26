@@ -1,22 +1,33 @@
 # Native BDSP generator
 
-C17 replacement for the Python generator and module-image builder, introduced in
-independently checked stages. **This milestone implements images, the initial
-analysis checkpoint, scalar/AArch64 assembly decoding and function C emission.
-It does not implement the complete `gen` pipeline or replace the production
-Python generator yet.** No game bytes or generated game output belong in this directory.
+C17 replacement for the instruction analysis, code emission and module-image
+builder. `gen` implements the complete iterative analysis, ordered native Unicorn
+jump-table resolution, EH-aware function emission, deterministic chunking,
+registration tables and partial-build stubs. Python only compiles/caches the C
+tool and orchestrates the surrounding build. No game bytes or generated game
+output belong in this directory.
 
 ## Build
 
 ```sh
-python3 scripts/recomp/native-generator/build.py
+python3 scripts/recomp/native-generator/build.py --require-unicorn
 work/native-generator/bdsp_codegen --version --json
 ```
 
 A C17 compiler is required (`clang`, or `--cc gcc`). The small Python build helper
 only invokes the compiler and verifies/caches the result; the resulting executable
 has no Python dependency. It builds without CMake, pip, pkg-config or network access.
-Vendored LZ4 1.9.4 is checked against `vendor/lz4/source.json` before compiling.
+The complete generator requires the pinned Unicorn 2.1.4 C headers and shared
+library from the existing runtime package. Its Python bindings are not called.
+The helper finds the package without importing it; `--unicorn-root PATH` or
+`BDSP_UNICORN_ROOT` can supply just `include/` and `lib/` on CLI-only systems.
+`--require-unicorn` rejects a missing engine before compilation. Without it,
+image/lifter checkpoints can still be built without Unicorn.
+
+The cached tool includes hashes of the compiler, C sources/headers, LZ4 provenance
+and native Unicorn headers/library. The shared library is copied next to the tool
+and located using a relative loader path; moving the tool and its `.deps` directory
+together preserves execution. Vendored LZ4 1.9.4 is checked against `vendor/lz4/source.json` before compiling.
 Build output, temporary files and comparisons default to ignored `work/`.
 `--output PATH` selects another output. `--sanitize` enables AddressSanitizer/UBSan.
 No build files are added to the repository root.
@@ -101,16 +112,15 @@ load/store forms supported by the frozen generator. Over 90,000 additional
 portable IR comparisons cover seeded and systematic size/opcode/immediate fields.
 A compiled mixed memory/vector/FP probe matches native AArch64 execution on macOS
 and Linux ARM64. Existing SIMD runtime helpers are reused unchanged.
-This is still a development checkpoint, not a production whole-module `gen` command.
-Temporary expression strings are reclaimed after each diagnostic instruction.
-The current arena/error context is single-threaded; worker-owned contexts must be
-introduced before enabling the future native thread pool.
+Temporary expression strings use thread-local checkpoint arenas. Each worker owns
+its error context and formatting state; Darwin workers use private locales to
+avoid contention in the system text formatter.
 
 ## Function C-emission checkpoint
 
 `emit-function NSO --base N --entry N --end N` emits one function from an
 **explicitly supplied analysis result**. It does not discover final partitions or
-jump tables and is not yet a replacement for the whole-module generator.
+jump tables. Use `gen` for the complete pipeline.
 All addresses are absolute guest addresses; the function range is half-open.
 
 - `--simd asm|c`: native AArch64 assembly or portable C semantics.
@@ -175,23 +185,49 @@ python3 -m unittest scripts.tests.test_native_codegen
 They use the existing development Python packages for reference comparisons.
 For the sanitizer executable, set `BDSP_CODEGEN_TEST_BINARY` to its absolute path.
 
-## Migration gates
+## CLI entry point
 
-1. Frozen reference, NSO loader and image parity — implemented.
-2. Initial EH/entry discovery — implemented.
-3. Instruction classification/lifting — scalar and native AArch64 assembly families
-   and portable SIMD/FP families implemented and differentially checked.
-   Analysis fixpoint and ordered Unicorn jump-table behavior remain pending.
-4. Function C emission, inline ARM64 ASM batching and EH frame insertion —
-   implemented as explicit-analysis checkpoints. Whole-module chunk/registration
-   output and partial-build stubs remain pending.
-5. Native worker pool, GUI/CLI integration, stage hashes and source-matched
-   packaging — pending.
-6. Complete platform/mod acceptance; remove replaced Python implementations and
-   their unused bindings; regenerate shipped SBOMs — pending.
+`bash scripts/recomp/codegen.sh gen ...` builds/caches the tool and forwards
+arguments and exit status. `image ...` runs the native image builder. The former
+owned `eh_gen.py`, `eh_parallel.py` and `mkimg.py` implementations are removed;
+comparison tests obtain them only from the frozen Git revision. Vendored upstream
+Python remains for development analysis/probes, outside the productive build path.
 
-The existing Rust/Iced UI, native IPS helper, game runtime and saves are unaffected.
-See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for the LZ4 license.
+## Complete generation
+
+```sh
+work/native-generator/bdsp_codegen gen main work/exefs/main 0x7000000000 \
+  work/native-generator/generated/main --simd asm --jobs auto
+```
+
+`--simd c` emits the portable SIMD/FP helpers used on x86_64. Other options match
+the former generator: `--entry-offsets`, repeatable `--setjmp-at`, `--hle`,
+`--only`, `--limit`, `--chunk`, `--chunk-bytes`, `--big-fn` and `--window`.
+`--jobs N` or `BDSP_GEN_JOBS=N` overrides automatic CPU/affinity/quota and memory
+selection. Classification, independent large scans and C emission use a bounded
+ordered pthread/Win32 pool. Unicorn runs on the coordinator in the original order:
+its register/memory state affects later table probes and cannot be reordered.
+Workers propagate errors to the coordinator, which joins all workers before
+reporting the failing phase and module. Output ordering is independent of jobs.
+Identical files retain their timestamps. Only this module's obsolete generated
+chunk filenames are pruned; symlinks are unlinked without following their target.
+
+For full local output parity, use a new ignored comparison directory:
+
+```sh
+python3 scripts/recomp/native-generator/compare.py --stage generate \
+  --exefs work/exefs --out work/native-generator/full-generation-check \
+  --native work/native-generator/bdsp_codegen --simd c --jobs auto
+```
+
+`--layout compact-a` also verifies already-staged Lumi modules and `.entries`
+without modifying inputs. Every C filename and SHA-256 is recorded alongside
+separate native/reference timings. This check needs development oracle packages;
+the native executable does not execute Python. The frozen reference is extracted
+from Git commit `a26bc12e4188fb69d6cd96f3271a07bfc9e475ab`.
+
+The Rust/Iced UI, IPS helper, runtime and saves are unaffected by the generator.
+See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for LZ4.
 
 ## Validated checkpoints (2026-10-25)
 
@@ -209,5 +245,12 @@ See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for the LZ4 lice
   macOS ARM64 also executes the generated SIMD addition successfully.
 - CI matrix tests prepared after private-runtime assembly; no CI run dispatched.
 
-These results do not establish full native C generation, a new complete game build,
-Windows support, or a complete Linux ARM64 game run.
+- Complete vanilla generation in native ARM64 and portable SIMD modes: every
+  chunk and registration table matches the frozen reference.
+- Complete staged Lumi generation in compact-A layout, including `subsdk1` and
+  `.entries`: every generated C file matches the frozen reference.
+- Linux ARM64 additionally passes native Unicorn scan/whole-module output parity
+  at 1, 3 and automatic workers, plus worker ordering/error-cleanup probes.
+
+These generator results do not establish Windows support or a complete Linux
+ARM64 game run. Full application build acceptance is recorded separately.

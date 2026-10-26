@@ -96,6 +96,10 @@ class NativeCodegenTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.folder = Path(cls.temporary.name) / "Library/Application Support/O'Brien 日本語"
         cls.folder.mkdir(parents=True)
+        spec = importlib.util.spec_from_file_location("native_frozen_reference", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compare)
+        cls.reference = compare.snapshot(cls.folder)
         cls.binary = Path(os.environ["BDSP_CODEGEN_TEST_BINARY"]).resolve() if os.environ.get("BDSP_CODEGEN_TEST_BINARY") else builder.build(cls.folder / "bdsp_codegen")
 
     @classmethod
@@ -110,7 +114,7 @@ class NativeCodegenTests(unittest.TestCase):
 
     def test_version_and_cached_compiler_output(self):
         version = json.loads(self.run_native("--version", "--json").stdout)
-        self.assertEqual(version["capabilities"], ["image", "inspect", "decode-basic", "emit-function"])
+        self.assertEqual(version["capabilities"], ["image", "inspect", "decode-basic", "emit-function", "analyze", "gen"])
         self.assertEqual(version["lz4"], "1.9.4")
         cached = builder.build(self.folder / "cached_codegen")
         before = cached.stat().st_mtime_ns
@@ -137,7 +141,7 @@ class NativeCodegenTests(unittest.TestCase):
                     common = [str(nso), module, "--base", "0x807000000", "--hle-base", "0x80a000000",
                               "--link", str(links), "--interpose-from", str(override), "--hle-list", str(forced)]
                     self.run_native("image", *common, "--out", native)
-                    old = subprocess.run([sys.executable, str(ROOT / "scripts/recomp/mkimg.py"),
+                    old = subprocess.run([sys.executable, str(self.reference / "scripts/recomp/mkimg.py"),
                                           *common, "--out", str(reference)], capture_output=True, text=True, timeout=30)
                     self.assertEqual(old.returncode, 0, old.stderr)
                     actual = {p.name: p.read_bytes() for p in native.iterdir()}
@@ -158,7 +162,7 @@ class NativeCodegenTests(unittest.TestCase):
             common = [str(nso), "main", "--base", "0x801000000", "--link", str(symbols)]
             out, reference = folder / "native", folder / "reference"
             self.run_native("image", *common, "--out", out)
-            result = subprocess.run([sys.executable, str(ROOT / "scripts/recomp/mkimg.py"),
+            result = subprocess.run([sys.executable, str(self.reference / "scripts/recomp/mkimg.py"),
                                      *common, "--out", str(reference)], capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual({p.name: p.read_bytes() for p in out.iterdir()},
@@ -377,6 +381,111 @@ class NativeCodegenTests(unittest.TestCase):
             self.assertEqual(len(right), len(words))
             for w, a, b in zip(words, left, right):
                 self.assertEqual(a, b, f"vector IR {w:08x}")
+
+    @unittest.skipUnless(shutil.which("clang"), "worker probe requires Clang")
+    def test_native_worker_ordering_arena_lifetime_and_failure_cleanup(self):
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            binary = Path(temporary) / "workers"
+            src = HERE / "src"
+            command = ["clang", "-std=c17", "-O2", "-pthread", "-I", str(src),
+                       str(ROOT / "scripts/tests/native_codegen_workers.c"),
+                       *(str(src / name) for name in ("workers.c", "support.c", "json.c")),
+                       "-o", str(binary)]
+            subprocess.run(command, check=True, capture_output=True, text=True)
+            for args in ([], ["fail"]):
+                result = subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_full_analysis_matches_frozen_unicorn_scan(self):
+        if self.run_native("--version", "--json").stdout.find('"unicorn":"2.1.4"') < 0:
+            self.skipTest("native Unicorn dependency unavailable in this checkpoint build")
+        spec = importlib.util.spec_from_file_location("scan_compare", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compare)
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            folder = Path(temporary)
+            reference = compare.snapshot(folder)
+            source = synthetic_nso(folder / "scan.nso")
+            raw = bytearray(source.read_bytes())
+            # cmp w0,#2; b.hi default; adr table; ldr relative offset; adr cases; add; br.
+            words = [0x7100081f, 0x54000168, 0x100001c1, 0xb8605822,
+                     0x10000083, 0x8b22c063, 0xd61f0060, 0xd503201f,
+                     0xd65f03c0, 0xd65f03c0, 0xd65f03c0, 0xd503201f, 0xd65f03c0]
+            base = 0x7000000000
+            for taken in (False, True):
+                words[1] = 0x54000029 if taken else 0x54000168
+                struct.pack_into("<13I", raw, 0x120, *words)
+                struct.pack_into("<3I", raw, 0x160, 0, 4, 8)
+                source.write_bytes(raw)
+                for extra in ((0x20,), (0x20, 0x34, 0x44)):
+                    offsets = folder / "entries"
+                    offsets.write_text(" ".join(f"{v:x}" for v in extra))
+                    for mode in ("asm", "c"):
+                        args = [str(source), "synthetic", "--base", hex(base), "--simd", mode,
+                                "--entry-offsets", str(offsets)]
+                        old = subprocess.run([sys.executable, str(HERE / "reference_scan.py"),
+                                              "--reference", str(reference), *args], text=True, capture_output=True)
+                        self.assertEqual(old.returncode, 0, old.stderr)
+                        new = self.run_native("analyze", *args, "--jobs", "1" if taken else "3")
+                        expected = json.loads(old.stdout)
+                        self.assertGreater(expected["jumptables"], 0)
+                        self.assertEqual(json.loads(new.stdout), expected,
+                                         f"taken={taken}, entries={extra}, mode={mode}")
+
+    def test_whole_module_chunk_files_match_frozen_generator(self):
+        if json.loads(self.run_native("--version", "--json").stdout).get("unicorn") is None:
+            self.skipTest("native Unicorn dependency unavailable")
+        spec = importlib.util.spec_from_file_location("chunk_compare", HERE / "compare.py")
+        compare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compare)
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            folder = Path(temporary)
+            reference = compare.snapshot(folder)
+            source = synthetic_nso(folder / "chunks.nso")
+            raw = bytearray(source.read_bytes())
+            words = [0x7100081f, 0x54000168, 0x100001c1, 0xb8605822, 0x10000083,
+                     0x8b22c063, 0xd61f0060, 0xd503201f, 0xd65f03c0, 0xd65f03c0,
+                     0xd65f03c0, 0xd503201f, 0xd65f03c0]
+            struct.pack_into("<13I", raw, 0x120, *words)
+            struct.pack_into("<3I", raw, 0x160, 0, 4, 8)
+            source.write_bytes(raw)
+            entries = folder / "entries"
+            entries.write_text("20 34 44")
+            only = folder / "only"
+            only.write_text("20 84 99")
+            hle = folder / "hle"
+            hle.write_text("local\n日本語🧩\n")
+            cases = [[], ["--chunk", "1"], ["--chunk-bytes", "80"], ["--big-fn", "0"],
+                     ["--window", "16"], ["--limit", "3"], ["--only", str(only)],
+                     ["--hle", str(hle)]]
+            for mode in ("asm", "c"):
+                for index, options in enumerate(cases):
+                    old_out = folder / f"old-{mode}-{index}"
+                    new_out = folder / f"new-{mode}-{index}"
+                    common = ["synthetic", str(source), "0x7000000000"]
+                    flags = ["--simd", mode, "--entry-offsets", str(entries), *options]
+                    old = subprocess.run([sys.executable, str(reference / "scripts/recomp/eh_gen.py"),
+                                          "--las-dir", str(reference / "scripts/recomp/upstream/generator"),
+                                          "gen", *common, str(old_out), *flags], text=True, capture_output=True)
+                    self.assertEqual(old.returncode, 0, old.stderr)
+                    self.run_native("gen", *common, new_out, *flags, "--jobs", "3")
+                    expected = {p.name: p.read_bytes() for p in old_out.iterdir()}
+                    actual = {p.name: p.read_bytes() for p in new_out.iterdir()}
+                    self.assertEqual(actual, expected, f"mode={mode}, options={options}")
+                    before = {p.name: p.stat().st_mtime_ns for p in new_out.iterdir()}
+                    self.run_native("gen", *common, new_out, *flags, "--jobs", "1")
+                    self.assertEqual({p.name: p.stat().st_mtime_ns for p in new_out.iterdir()}, before)
+            # Prune only matching chunk files and unlink symlinks without touching their targets.
+            outside = folder / "keep.c"
+            outside.write_text("preserve")
+            (new_out / "synthetic_99999_0.c").symlink_to(outside)
+            (new_out / "unrelated.c").write_text("unrelated")
+            (new_out / "synthetic_notes.c").write_text("notes")
+            self.run_native("gen", *common, new_out, *flags)
+            self.assertFalse((new_out / "synthetic_99999_0.c").exists())
+            self.assertEqual(outside.read_text(), "preserve")
+            self.assertEqual((new_out / "unrelated.c").read_text(), "unrelated")
+            self.assertEqual((new_out / "synthetic_notes.c").read_text(), "notes")
 
     def test_function_emitter_matches_frozen_eh_emitter(self):
         spec = importlib.util.spec_from_file_location("emitter_compare", HERE / "compare.py")

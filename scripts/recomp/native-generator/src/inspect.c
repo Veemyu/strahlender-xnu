@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT
  * Read-only analysis checkpoint used to validate native generator stages. */
-#include "codegen.h"
+#include "analysis.h"
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -79,21 +79,8 @@ static void address_json(Buffer *out, const char *key, const Addresses *a, bool 
     for (size_t i = 0; i < a->size; i++) cg_printf(out, "%s%" PRIu64, i ? "," : "", a->items[i]);
     cg_buffer(out, "]", 1);
 }
-int cg_inspect(int argc, char **argv) {
-    if (argc < 2) cg_fail(2, "inspect requires an NSO and module name");
-    const char *path = argv[0], *entry_offsets = NULL; cg_module = argv[1];
-    uint64_t base = 0; bool have_base = false; Addresses extra = {0};
-    for (int i = 2; i < argc; i++) {
-        const char *option = argv[i];
-        if (!strcmp(option, "--events=jsonl")) { cg_events = true; continue; }
-        if (++i == argc) cg_fail(2, "missing inspect option value");
-        if (!strcmp(option, "--base")) { base = cg_number(argv[i]); have_base = true; }
-        else if (!strcmp(option, "--entry-offsets")) entry_offsets = argv[i];
-        else if (!strcmp(option, "--setjmp-at")) cg_address(&extra, cg_number(argv[i]));
-        else cg_fail(2, "unknown inspect option");
-    }
-    if (!have_base) cg_fail(2, "inspect requires --base");
-    Nso n = cg_nso(path); cg_phase = "analyze";
+InitialAnalysis cg_initial_analysis(const Nso *input, uint64_t base, const Addresses *extra, const char *entry_offsets) {
+    Nso n = *input;
     if (base > UINT64_MAX - n.size) cg_fail(4, "module base address overflow");
     if (n.segments[0].size % 4) cg_fail(4, "unaligned AArch64 text length");
     Addresses boundaries = {0}, landing_pads = {0}, returns = {0}, entries = {0};
@@ -148,12 +135,30 @@ int cg_inspect(int argc, char **argv) {
             }
         }
     }
-    cg_unique(&entries); setjmp_returns(&n, base, &extra, &returns);
+    cg_unique(&entries); setjmp_returns(&n, base, extra, &returns);
+    return (InitialAnalysis){boundaries, entries, landing_pads, returns, kept};
+}
+int cg_inspect(int argc, char **argv) {
+    if (argc < 2) cg_fail(2, "inspect requires an NSO and module name");
+    const char *path = argv[0], *entry_offsets = NULL; cg_module = argv[1];
+    uint64_t base = 0; bool have_base = false; Addresses extra = {0};
+    for (int i = 2; i < argc; i++) {
+        const char *option = argv[i];
+        if (!strcmp(option, "--events=jsonl")) { cg_events = true; continue; }
+        if (++i == argc) cg_fail(2, "missing inspect option value");
+        if (!strcmp(option, "--base")) { base = cg_number(argv[i]); have_base = true; }
+        else if (!strcmp(option, "--entry-offsets")) entry_offsets = argv[i];
+        else if (!strcmp(option, "--setjmp-at")) cg_address(&extra, cg_number(argv[i]));
+        else cg_fail(2, "unknown inspect option");
+    }
+    if (!have_base) cg_fail(2, "inspect requires --base");
+    Nso n = cg_nso(path); cg_phase = "analyze";
+    InitialAnalysis result = cg_initial_analysis(&n, base, &extra, entry_offsets);
     Buffer output = {0}; cg_buffer(&output, "{", 1);
-    address_json(&output, "boundaries", &boundaries, false);
-    address_json(&output, "initial_entries", &entries, true);
-    address_json(&output, "landing_pads", &landing_pads, true);
-    address_json(&output, "setjmp_returns", &returns, true);
-    cg_printf(&output, ",\"adr_bases_kept_inside\":%zu}\n", kept);
+    address_json(&output, "boundaries", &result.boundaries, false);
+    address_json(&output, "initial_entries", &result.entries, true);
+    address_json(&output, "landing_pads", &result.landing_pads, true);
+    address_json(&output, "setjmp_returns", &result.returns, true);
+    cg_printf(&output, ",\"adr_bases_kept_inside\":%zu}\n", result.adr_bases_kept);
     fwrite(output.data, 1, output.size, stdout); return 0;
 }

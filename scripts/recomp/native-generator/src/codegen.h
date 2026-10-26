@@ -26,14 +26,15 @@ typedef struct {
     Relocation *relocations; size_t relocation_count;
 } Nso;
 
-extern const char *cg_phase, *cg_module;
-extern bool cg_events;
+extern _Thread_local const char *cg_phase, *cg_module;
+extern _Thread_local bool cg_events;
 _Noreturn void cg_fail(int code, const char *format, ...);
 void *cg_alloc(size_t count, size_t size);
 char *cg_string(const char *source, size_t size);
 char *cg_format(const char *format, ...);
 void *cg_mark(void);
 void cg_rewind(void *mark);
+void cg_thread_finish(void);
 void cg_buffer(Buffer *buffer, const void *data, size_t size);
 void cg_printf(Buffer *buffer, const char *format, ...);
 void cg_json_string(Buffer *buffer, const char *string);
@@ -54,6 +55,8 @@ uint64_t cg_u64(const unsigned char *p);
 void cg_put64(unsigned char *p, uint64_t value);
 void cg_range(size_t size, uint64_t offset, uint64_t length, const char *what);
 Nso cg_nso(const char *path);
+int cg_generate(int argc, char **argv);
+void cg_prune_chunks(const char *directory, const char *module, const Strings *written);
 int cg_image(int argc, char **argv);
 typedef struct { uint64_t *items; size_t size, capacity; } Addresses;
 void cg_address(Addresses *a, uint64_t value);

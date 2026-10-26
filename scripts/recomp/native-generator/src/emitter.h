@@ -13,6 +13,7 @@ typedef struct {
     size_t table_count;
 } EmitFunction;
 typedef struct { Buffer code; Addresses refs; } EmittedFunction;
+const char *cg_hle_name(const char *name);
 EmittedFunction cg_emit_function(const EmitFunction *function);
 int cg_emit_checkpoint(int argc, char **argv);
 #endif

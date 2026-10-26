@@ -39,7 +39,7 @@ static const JumpTable *table_at(const EmitFunction *f, uint64_t pc) {
     while (lo < hi) { size_t mid = lo + (hi - lo) / 2; if (f->tables[mid].pc < pc) lo = mid + 1; else hi = mid; }
     return lo < f->table_count && f->tables[lo].pc == pc ? &f->tables[lo] : NULL;
 }
-static const char *sanitize(const char *name) {
+const char *cg_hle_name(const char *name) {
     Buffer b = {0}; cg_buffer(&b, "hle_", 4);
     /* Python's ASCII whitelist replaces each non-ASCII Unicode character once. */
     for (const unsigned char *p = (const unsigned char *)name; *p; p++) {
@@ -78,7 +78,7 @@ EmittedFunction cg_emit_function(const EmitFunction *f) {
     }
     cg_unique(&pads); bool eh = pads.size && !f->hle;
     line(b, cg_format("void f_%" PRIx64 "(Cpu *c) {", f->entry));
-    if (f->hle) { line(b, cg_format("    %s(c);", sanitize(f->hle))); line(b, "}"); return out; }
+    if (f->hle) { line(b, cg_format("    %s(c);", cg_hle_name(f->hle))); line(b, "}"); return out; }
     for (size_t i = 0; i < f->table_count; i++) {
         const JumpTable *table = &f->tables[i]; validate_address(f, table->pc);
         uint32_t w = cg_u32(f->nso->image + (size_t)(table->pc - f->base));

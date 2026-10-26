@@ -127,6 +127,52 @@ def compare_analysis(exefs, output, binary, layout="macos", reference=REFERENCE)
     return record
 
 
+def compare_generation(exefs, output, binary, layout="macos", reference=REFERENCE, simd="asm", jobs="auto"):
+    exefs, output, binary = exefs.resolve(), output.resolve(), binary.resolve()
+    if output.exists() or output == exefs or exefs in output.parents:
+        raise ValueError("Generation output must be a new directory separate from ExeFS")
+    modules = ["rtld", "main", "sdk", "subsdk0"]
+    if (exefs / "subsdk1").is_file():
+        modules.append("subsdk1")
+    for module in modules:
+        if not (exefs / module).is_file():
+            raise ValueError("Missing ExeFS module: " + module)
+    offsets = dict(main=0, sdk=0x6000000, subsdk0=0x7000000, rtld=0x8000000, subsdk1=0x5708000)
+    origin = 0x7000000000
+    if layout != "macos":
+        offsets = dict(main=0x1000000, sdk=0x7000000, subsdk0=0x8000000, rtld=0x9000000, subsdk1=0x6708000)
+        origin = 0x800000000 if layout == "compact-a" else 0
+    output.mkdir(parents=True)
+    source = snapshot(output, reference)
+    record = dict(schema=1, reference_revision=reference, layout=layout, simd=simd, jobs=jobs, equal=True, modules={})
+    for module in modules:
+        values = {}
+        for mode in ("reference", "native"):
+            target = output / mode / module
+            prefix = [str(binary)] if mode == "native" else [sys.executable, str(source / "scripts/recomp/eh_gen.py"),
+                      "--las-dir", str(source / "scripts/recomp/upstream/generator")]
+            command = [*prefix, "gen", module, str(exefs / module), hex(origin + offsets[module]), str(target), "--simd", simd]
+            if (exefs / (module + ".entries")).is_file():
+                command += ["--entry-offsets", str(exefs / (module + ".entries"))]
+            if mode == "native":
+                command += ["--jobs", jobs]
+            start = time.perf_counter()
+            with (output / (module + "-" + mode + ".log")).open("w") as log:
+                subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)
+            elapsed = round(time.perf_counter() - start, 3)
+            values[mode] = dict(seconds=elapsed, files=tree(target))
+        left, right = values["reference"]["files"], values["native"]["files"]
+        different = sorted(name for name in left.keys() | right.keys() if left.get(name) != right.get(name))
+        record["modules"][module] = dict(equal=not different, different=different, results=values)
+        record["equal"] &= not different
+        (output / "comparison.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        print(json.dumps(dict(module=module, equal=not different, files=len(left),
+                              reference_seconds=values["reference"]["seconds"], native_seconds=values["native"]["seconds"])), flush=True)
+        if different:
+            raise ValueError("Native/reference generation differs for " + module + ": " + ", ".join(different[:10]))
+    return record
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exefs", required=True, type=Path)
@@ -134,15 +180,18 @@ def main():
     parser.add_argument("--native", required=True, type=Path)
     parser.add_argument("--layout", choices=("macos", "compact", "compact-a"), default="macos")
     parser.add_argument("--reference", default=REFERENCE)
-    parser.add_argument("--stage", choices=("images", "analysis"), default="images")
+    parser.add_argument("--stage", choices=("images", "analysis", "generate"), default="images")
+    parser.add_argument("--simd", choices=("asm", "c"), default="asm")
+    parser.add_argument("--jobs", default="auto")
     args = parser.parse_args()
     try:
-        function = compare_images if args.stage == "images" else compare_analysis
-        record = function(args.exefs, args.out, args.native, args.layout, args.reference)
+        function = {"images": compare_images, "analysis": compare_analysis, "generate": compare_generation}[args.stage]
+        extra = (args.simd, args.jobs) if args.stage == "generate" else ()
+        record = function(args.exefs, args.out, args.native, args.layout, args.reference, *extra)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, "Image comparison failed: " + str(error) + "\n")
-    if args.stage == "analysis":
-        print(json.dumps(record))
+    if args.stage in ("analysis", "generate"):
+        print(json.dumps({"equal": record["equal"], "modules": list(record["modules"])}))
         return
     print(json.dumps({"equal": record["equal"], "modules": record["modules"],
                       "reference_seconds": record["results"]["reference"]["seconds"],

@@ -12,6 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ModCodegenTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from scripts.tests.test_native_codegen import builder
+        cls.binary = builder.build(ROOT / "work/native-generator/bdsp_codegen", require_unicorn=True)
+
     def fixture_nso(self, folder, text, unwind=False):
         ro = bytearray(0x40)
         ro[:4] = b"MOD0"
@@ -39,7 +44,7 @@ class ModCodegenTests(unittest.TestCase):
             nso = self.fixture_nso(folder, text)
             entries = folder / "subsdk1.entries"
             entries.write_text("0\n")
-            command = [sys.executable, str(ROOT / "scripts/recomp/eh_gen.py"), "gen", "subsdk1",
+            command = [str(self.binary), "gen", "subsdk1",
                        str(nso), "0x806708000", str(folder / "gen"), "--simd", "c",
                        "--entry-offsets", str(entries)]
             result = subprocess.run(command, cwd=ROOT, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
@@ -50,7 +55,7 @@ class ModCodegenTests(unittest.TestCase):
             entries.write_text("1000\n")
             rejected = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
             self.assertNotEqual(rejected.returncode, 0)
-            self.assertIn("Cross-module entry outside subsdk1 text", rejected.stderr)
+            self.assertIn("cross-module entry outside module text", rejected.stderr)
 
     def test_jump_table_targets_across_inferred_partitions_are_compiled(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -64,7 +69,7 @@ class ModCodegenTests(unittest.TestCase):
                 nso = self.fixture_nso(folder, bytearray(struct.pack("<16I", *words)), unwind=unwind)
                 entries = folder / "entries"
                 entries.write_text("0\n")
-                result = subprocess.run([sys.executable, str(ROOT / "scripts/recomp/eh_gen.py"), "gen", "subsdk1",
+                result = subprocess.run([str(self.binary), "gen", "subsdk1",
                                          str(nso), "0x806708000", str(folder / "gen"), "--simd", "c",
                                          "--entry-offsets", str(entries)], cwd=ROOT, capture_output=True, text=True, check=False)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -72,7 +77,7 @@ class ModCodegenTests(unittest.TestCase):
                 self.assertIn("f_806708028", table)
                 self.assertIn("f_806708030", table)
 
-    def test_spawn_workers_preserve_chunks_tables_and_partial_stubs(self):
+    def test_native_workers_preserve_chunks_tables_and_partial_stubs(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary) / "O'Brien parallel build"
             folder.mkdir()
@@ -90,7 +95,7 @@ class ModCodegenTests(unittest.TestCase):
                 expected = None
                 for jobs in ("1", "2"):
                     out = folder / ("out-" + jobs)
-                    command = [sys.executable, str(ROOT / "scripts/recomp/eh_gen.py"), "gen", "subsdk1",
+                    command = [str(self.binary), "gen", "subsdk1",
                                str(nso), "0x806708000", str(out), "--simd", simd,
                                "--entry-offsets", str(entries), "--jobs", jobs, *extra]
                     result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=30)
