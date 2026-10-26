@@ -154,7 +154,7 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
             .push("Install Apple's Command Line Tools in the system dialog, then retry.".into());
     }
     if target == "ios" && !succeeds("xcrun", &["--sdk", "iphoneos", "--show-sdk-path"]) {
-        plan.manual.push("Install and open Xcode, accept its license, and install the iOS platform. Signing is configured with your own Apple account.".into());
+        plan.manual.push("Install and open Xcode, accept its license, and install the iOS platform. An Apple signing team is needed only for direct device installation.".into());
     }
     let mut packages = BTreeSet::new();
     if target == "ios"
@@ -274,7 +274,7 @@ pub fn installation_script(plan: &Plan) -> Result<String, String> {
     }
     script.push_str("echo 'Return to Strahlender Installer and check again.'\nread -r -p 'Press Enter to close.'\n");
     if cfg!(target_os = "macos") && plan.manual.iter().any(|s| s.contains("Xcode")) {
-        script = script.replace("echo 'Return to Strahlender", "echo 'Finish Xcode setup, install its iOS platform, then add your Apple account in Settings > Accounts.'\nopen -a Xcode || open 'macappstore://itunes.apple.com/app/id497799835'\necho 'Return to Strahlender");
+        script = script.replace("echo 'Return to Strahlender", "echo 'Finish Xcode setup, install its iOS platform, add your Apple account in Settings > Accounts only for direct device installation.'\nopen -a Xcode || open 'macappstore://itunes.apple.com/app/id497799835'\necho 'Return to Strahlender");
     }
     Ok(script)
 }

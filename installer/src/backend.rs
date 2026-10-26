@@ -134,8 +134,23 @@ pub fn reveal_installed_application(path: PathBuf) -> Result<(), String> {
         .ok_or("Could not show the installation folder.".into())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IosDelivery {
+    Device,
+    Ipa,
+}
+impl IosDelivery {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Device => "device",
+            Self::Ipa => "ipa",
+        }
+    }
+}
+
 pub struct BuildRequest {
     pub target: &'static str,
+    pub ios_delivery: IosDelivery,
     pub portable_cpu: bool,
     pub clean_build: bool,
     pub auto_cleanup: bool,
@@ -348,6 +363,7 @@ fn run_driver(
         let device_target = match &action {
             Action::Build(request) => request.target == "ios",
         };
+        let ipa_export = matches!(&action, Action::Build(request) if request.target == "ios" && request.ios_delivery == IosDelivery::Ipa);
         let workspace =
             match crate::workspace::prepare(run_id, &mut output, cancelled.clone()).await {
                 Ok(root) => root,
@@ -442,6 +458,7 @@ fn run_driver(
         match action {
             Action::Build(BuildRequest {
                 target,
+                ios_delivery,
                 portable_cpu,
                 clean_build,
                 auto_cleanup: _,
@@ -464,6 +481,39 @@ fn run_driver(
                     .arg(base)
                     .arg("--prod-keys")
                     .arg(prod_keys);
+                if target == "ios" {
+                    command.arg("--ios-delivery").arg(ios_delivery.as_str());
+                    if ios_delivery == IosDelivery::Ipa {
+                        match crate::workspace::data_dir() {
+                            Ok(data) => {
+                                command
+                                    .arg("--ios-export-dir")
+                                    .arg(data.join("exports/ios"));
+                            }
+                            Err(message) => {
+                                let _ = output
+                                    .send((
+                                        run_id,
+                                        Event::Log {
+                                            level: "error".into(),
+                                            message,
+                                        },
+                                    ))
+                                    .await;
+                                let _ = output
+                                    .send((
+                                        run_id,
+                                        Event::Finished {
+                                            ok: false,
+                                            code: -1,
+                                        },
+                                    ))
+                                    .await;
+                                return;
+                            }
+                        }
+                    }
+                }
                 if clean_build {
                     command.arg("--clean-build");
                 }
@@ -684,7 +734,10 @@ fn run_driver(
                     let _ = output.send((run_id, Event::Log { level: "info".into(), message:
                         "Removing this run's temporary files. Installed game data, saves and original inputs are kept.".into() })).await;
                     let cleaned = tokio::task::spawn_blocking(move || {
-                        let anchor = if device_target {
+                        let anchor = if ipa_export {
+                            device_package
+                                .ok_or("The exported IPA is missing; temporary files were kept.")?
+                        } else if device_target {
                             owner.export_ipa(&device_package.ok_or(
                                 "The device package is missing; temporary files were kept.",
                             )?)?
@@ -717,7 +770,7 @@ fn run_driver(
                         }
                         Ok(None) => {}
                         Err(detail) => {
-                            let _ = output.send((run_id, Event::Log { level: "warning".into(), message: format!("The app was installed, but temporary files could not all be removed: {detail}") })).await;
+                            let _ = output.send((run_id, Event::Log { level: "warning".into(), message: format!("The build succeeded, but temporary files could not all be removed: {detail}") })).await;
                         }
                     }
                     let _ = output

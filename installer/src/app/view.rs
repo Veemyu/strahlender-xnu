@@ -373,6 +373,25 @@ impl Installer {
         } else {
             L::TargetDesktopHint
         };
+        let mut delivery = column![].spacing(8);
+        if self.target == InstallTarget::Ios && self.host == Platform::Mac {
+            use crate::backend::IosDelivery;
+            let mut buttons = row![].spacing(8).width(Fill);
+            for (value, label) in [
+                (IosDelivery::Ipa, L::ExportIpa),
+                (IosDelivery::Device, L::InstallOnDevice),
+            ] {
+                let selected = self.ios_delivery == value;
+                buttons = buttons.push(
+                    button(text(self.language.t(label)).size(13))
+                        .padding([10, 12])
+                        .width(Fill)
+                        .on_press(Message::IosDelivery(value))
+                        .style(move |_, status| style::action(c, selected, status)),
+                );
+            }
+            delivery = delivery.push(buttons);
+        }
         column![
             self.title(
                 self.language.t(L::TargetTitle),
@@ -380,6 +399,7 @@ impl Installer {
             ),
             column![choices, android].spacing(10),
             text(self.language.t(hint)).size(13).color(c.muted),
+            delivery,
         ]
         .spacing(12)
         .into()
@@ -880,7 +900,11 @@ impl Installer {
                 } else if self.target == InstallTarget::Mac {
                     L::SetupMac
                 } else if self.target == InstallTarget::Ios {
-                    L::SetupMobile
+                    if self.ios_delivery == crate::backend::IosDelivery::Ipa {
+                        L::IpaExportHint
+                    } else {
+                        L::SetupMobile
+                    }
                 } else {
                     L::SetupDesktop
                 }
@@ -995,6 +1019,29 @@ impl Installer {
                 .width(Fill)
                 .style(move |_| style::surface(c, false)),
                 if self.backend_status == super::BackendStatus::Passed
+                    && self.exported_ipa.is_some()
+                    && self.ios_delivery == crate::backend::IosDelivery::Ipa
+                    && self.target == InstallTarget::Ios
+                {
+                    column![
+                        text(self.language.t(L::IpaInstallSteps))
+                            .size(12)
+                            .color(c.muted),
+                        row![
+                            self.text_action(
+                                self.language.t(L::ShowIpa),
+                                Message::ShowInstalledApp
+                            ),
+                            self.text_action(
+                                self.language.t(L::ShowGameLibrary),
+                                Message::ShowGameLibrary
+                            )
+                        ]
+                        .spacing(12),
+                    ]
+                    .spacing(8)
+                    .into()
+                } else if self.backend_status == super::BackendStatus::Passed
                     && self.installed_app.is_some()
                 {
                     let app = self.installed_app.as_ref().unwrap();

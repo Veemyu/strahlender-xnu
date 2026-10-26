@@ -88,6 +88,8 @@ impl InstallTarget {
 #[derive(Debug, Clone)]
 pub enum Message {
     ShowInstalledApp,
+    ShowGameLibrary,
+    IosDelivery(crate::backend::IosDelivery),
     InstallationRevealed(Result<(), String>),
     OpenRepository,
     RepositoryOpened(Result<(), ()>),
@@ -202,6 +204,9 @@ pub struct Installer {
     backend_run_id: u64,
     backend_failure_detail: Option<String>,
     installed_app: Option<PathBuf>,
+    exported_ipa: Option<PathBuf>,
+    game_library: Option<PathBuf>,
+    ios_delivery: crate::backend::IosDelivery,
     copied_log_line: Option<(usize, Instant)>,
     requirements: Option<crate::dependencies::Plan>,
     requirements_busy: bool,
@@ -302,7 +307,7 @@ fn disk_space_error(detail: &str, language: Language) -> Option<String> {
     )
 }
 
-fn build_error_notice(detail: &str, language: Language) -> String {
+fn build_error_notice(detail: &str, language: Language, exporting: bool) -> String {
     if detail.contains("Prerequisite checker internal error:") {
         return language.t(L::PrerequisiteInternalError).into();
     }
@@ -319,7 +324,13 @@ fn build_error_notice(detail: &str, language: Language) -> String {
             Some(crate::progress::Stage::Images) => L::Images,
             Some(crate::progress::Stage::Runtime) => L::Runtime,
             Some(crate::progress::Stage::Package) => L::Package,
-            Some(crate::progress::Stage::Install) => L::Install,
+            Some(crate::progress::Stage::Install) => {
+                if exporting {
+                    L::ExportOutput
+                } else {
+                    L::Install
+                }
+            }
             None => return detail.into(),
         };
         return language
@@ -393,6 +404,9 @@ impl Installer {
             backend_run_id: 0,
             backend_failure_detail: None,
             installed_app: None,
+            exported_ipa: None,
+            game_library: None,
+            ios_delivery: crate::backend::IosDelivery::Ipa,
             copied_log_line: None,
             requirements: None,
             requirements_busy: false,
@@ -639,8 +653,17 @@ impl Installer {
                 self.notice = None;
                 self.details = true;
             }
-            Message::ShowInstalledApp if self.backend_status == BackendStatus::Passed => {
-                if let Some(path) = self.installed_app.clone() {
+            Message::ShowInstalledApp | Message::ShowGameLibrary
+                if self.backend_status == BackendStatus::Passed =>
+            {
+                let path = if matches!(message, Message::ShowGameLibrary) {
+                    self.game_library.clone()
+                } else {
+                    self.exported_ipa
+                        .clone()
+                        .or_else(|| self.installed_app.clone())
+                };
+                if let Some(path) = path {
                     return Task::perform(
                         async move {
                             tokio::task::spawn_blocking(move || {
@@ -689,6 +712,11 @@ impl Installer {
             }
             Message::BuildOptions(open) if self.page == Page::Setup => {
                 self.build_options_open = open;
+            }
+            Message::IosDelivery(delivery)
+                if self.page == Page::Target && self.target == InstallTarget::Ios =>
+            {
+                self.ios_delivery = delivery;
             }
             Message::CleanBuild(enabled) if self.page == Page::Setup => {
                 self.clean_build = enabled;
@@ -1161,6 +1189,8 @@ impl Installer {
                     self.notice = None;
                     self.build_progress = crate::progress::BuildProgress::default();
                     self.installed_app = None;
+                    self.exported_ipa = None;
+                    self.game_library = None;
                     self.build_options_open = false;
                     self.cleanup_busy = false;
                     self.motion.snap(0.0);
@@ -1190,6 +1220,7 @@ impl Installer {
                             self.selected_mod.clone(),
                             crate::backend::BuildRequest {
                                 target,
+                                ios_delivery: self.ios_delivery,
                                 portable_cpu: self.portable_cpu,
                                 clean_build: self.clean_build,
                                 auto_cleanup: self.auto_cleanup,
@@ -1274,6 +1305,12 @@ impl Installer {
                 crate::backend::Event::Artifact { kind, path } => {
                     let name = path.file_name().unwrap_or_default().to_string_lossy();
                     self.record("BACKEND", &format!("{kind}: {name}"));
+                    if kind == "ipa" {
+                        self.exported_ipa = Some(path.clone());
+                    }
+                    if kind == "game_library" {
+                        self.game_library = Some(path.clone());
+                    }
                     if kind == "installed_application" && self.target != InstallTarget::Ios {
                         let folder = path
                             .parent()
@@ -1309,7 +1346,12 @@ impl Installer {
                             .backend_failure_detail
                             .take()
                             .unwrap_or_else(|| self.language.t(L::CheckFailed).into());
-                        self.notice = Some(build_error_notice(&detail, self.language));
+                        self.notice = Some(build_error_notice(
+                            &detail,
+                            self.language,
+                            self.target == InstallTarget::Ios
+                                && self.ios_delivery == crate::backend::IosDelivery::Ipa,
+                        ));
                     } else {
                         self.backend_failure_detail = None;
                     }
@@ -1502,7 +1544,13 @@ impl Installer {
             L::Images,
             L::Runtime,
             L::Package,
-            L::Install,
+            if self.target == InstallTarget::Ios
+                && self.ios_delivery == crate::backend::IosDelivery::Ipa
+            {
+                L::ExportOutput
+            } else {
+                L::Install
+            },
         ]
     }
 
@@ -1630,6 +1678,8 @@ impl Installer {
         self.copied_log_line = None;
         self.backend_status = BackendStatus::Idle;
         self.installed_app = None;
+        self.exported_ipa = None;
+        self.game_library = None;
         self.backend_cancel = None;
         self.requirements = None;
         self.available_update = None;
@@ -1746,7 +1796,7 @@ impl Installer {
                 self.build_progress.step("prerequisites", "started");
                 self.tick = (crate::progress::Stage::Requirements.index() * 10) as u32;
                 let error = "Prerequisite checker internal error: KeyError: 'detail'";
-                self.notice = Some(build_error_notice(error, self.language));
+                self.notice = Some(build_error_notice(error, self.language, false));
                 self.record("ERROR", error);
             }
             "error-disk" => {
@@ -1811,7 +1861,7 @@ impl Installer {
                 self.page = Page::Setup;
                 self.target = InstallTarget::Ios;
             }
-            "installed" | "installed-test" => {
+            "installed" | "installed-test" | "ipa-exported" => {
                 self.page = Page::Progress;
                 self.backend_status = BackendStatus::Passed;
                 self.build_progress = crate::progress::BuildProgress::default();
@@ -1826,6 +1876,13 @@ impl Installer {
                 });
                 self.motion
                     .snap(crate::progress::Stage::Install.index() as f32 + 1.0);
+                if scenario == "ipa-exported" {
+                    self.target = InstallTarget::Ios;
+                    self.ios_delivery = crate::backend::IosDelivery::Ipa;
+                    self.installed_app = None;
+                    self.exported_ipa = Some(PathBuf::from("exports/game.ipa"));
+                    self.game_library = Some(PathBuf::from("exports/Game Library"));
+                }
             }
             "generator-analyze" | "generator-emit" => {
                 self.page = Page::Progress;
@@ -1941,6 +1998,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ios_delivery_is_explicit_and_cannot_change_during_a_build() {
+        let (mut app, _) = Installer::new();
+        app.target = InstallTarget::Ios;
+        app.page = Page::Target;
+        assert_eq!(app.ios_delivery, crate::backend::IosDelivery::Ipa);
+        let _ = app.update(Message::IosDelivery(crate::backend::IosDelivery::Device));
+        assert_eq!(app.ios_delivery, crate::backend::IosDelivery::Device);
+        app.page = Page::Progress;
+        let _ = app.update(Message::IosDelivery(crate::backend::IosDelivery::Ipa));
+        assert_eq!(app.ios_delivery, crate::backend::IosDelivery::Device);
+    }
+
+    #[test]
+    fn ipa_export_errors_name_the_export_stage() {
+        for language in [
+            Language::English,
+            Language::German,
+            Language::Spanish,
+            Language::Portuguese,
+            Language::Russian,
+        ] {
+            let notice = build_error_notice(
+                "Build step failed: install\nExisting output differs",
+                language,
+                true,
+            );
+            assert!(notice.contains(language.t(L::ExportOutput)));
+            assert!(notice.contains("Existing output differs"));
+        }
+    }
+
+    #[test]
     fn build_options_are_explicit_and_do_not_change_navigation() {
         let (mut app, _) = Installer::new();
         assert!(!app.clean_build);
@@ -2054,7 +2143,7 @@ mod tests {
         );
         assert!(app.log.iter().any(|line| line.contains(error)));
         assert_eq!(
-            build_error_notice(error, Language::German),
+            build_error_notice(error, Language::German, false),
             Language::German.t(L::PrerequisiteInternalError)
         );
     }
@@ -2112,7 +2201,7 @@ mod tests {
         let cause = "bdsp_codegen [analyze/subsdk1]: error: cross-module entry outside module text";
         let detail = format!("Build step failed: eh_gen\n{cause}");
         for language in Language::ALL {
-            let notice = build_error_notice(&detail, language);
+            let notice = build_error_notice(&detail, language, false);
             assert!(notice.contains(language.t(L::Generate)));
             assert!(notice.contains(cause));
         }
@@ -2128,7 +2217,7 @@ mod tests {
             (Language::Portuguese, "Compilar ambiente de execução"),
             (Language::Russian, "Собрать среду выполнения"),
         ] {
-            let notice = build_error_notice(error, language);
+            let notice = build_error_notice(error, language, false);
             assert!(notice.contains(stage));
             assert!(notice.contains("sys/sysctl.h"));
             assert!(!notice.contains("missing requirements"));
