@@ -913,7 +913,39 @@ impl Installer {
                 .padding(16)
                 .width(Fill)
                 .style(move |_| style::surface(c, false)),
-                if stage == crate::progress::Stage::Requirements {
+                if self.backend_status == super::BackendStatus::Passed
+                    && self.installed_app.is_some()
+                {
+                    let app = self.installed_app.as_ref().unwrap();
+                    let folder = app
+                        .parent()
+                        .and_then(|p| p.file_name())
+                        .unwrap_or_default()
+                        .to_string_lossy();
+                    column![
+                        text(self.language.t(L::InstalledIn).replace("{folder}", &folder))
+                            .size(13)
+                            .color(c.muted),
+                        text(
+                            app.file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .into_owned()
+                        )
+                        .size(15),
+                        self.text_action(
+                            self.language
+                                .t(if self.host == crate::platform::Platform::Mac {
+                                    L::ShowInFinder
+                                } else {
+                                    L::ShowInFolder
+                                }),
+                            Message::ShowInstalledApp
+                        ),
+                    ]
+                    .spacing(8)
+                    .into()
+                } else if stage == crate::progress::Stage::Requirements {
                     column![].into()
                 } else {
                     self.progress_context(stage.index())

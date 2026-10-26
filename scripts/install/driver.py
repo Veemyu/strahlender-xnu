@@ -93,6 +93,15 @@ def preflight(args):
         return 1
 
 
+def _login_home():
+    # A developer can isolate HOME; the login home still needs redaction in tool paths.
+    try:
+        import pwd
+        return pwd.getpwuid(os.getuid()).pw_dir
+    except (ImportError, KeyError, OSError):
+        return str(Path.home())
+
+
 def _safe_line(line, args):
     for value in (getattr(args, "prod_keys", None), getattr(args, "base", None),
                   getattr(args, "update", None), getattr(args, "mod_root", None)):
@@ -101,13 +110,14 @@ def _safe_line(line, args):
     # Resolve relative roots before redaction. Replacing a literal "." corrupts
     # every decimal point in diagnostics and version strings.
     project_root = str(Path(args.root).resolve())
-    return line.replace(project_root, "<project>").replace(str(Path.home()), "~").rstrip()
+    return line.replace(project_root, "<project>").replace(str(Path.home()), "~").replace(_login_home(), "~").rstrip()
 
 
 def _run_command(command, args, stage, progress=None, phase_from_line=None, extra_env=None, emit_steps=True):
     args.command_failure_hint = None
     active = stage
     stage_started = time.monotonic()
+    args.compile_epoch_ns = time.time_ns()
     # A long-running bash script must not keep reading a file being edited by a
     # parallel development session. Preserve $0 and argv while freezing its text.
     script = Path(command[0])
@@ -153,7 +163,10 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
             elif line:
                 message = _safe_line(line, args)
                 if message:
-                    emit("log", level="diagnostic", message=message)
+                    live_counter = re.fullmatch(
+                        r"[A-Za-z_][A-Za-z_0-9]*: (?:progress \d+/\d+ files \d+|scan round \d+ progress \d+/\d+)", message)
+                    if not live_counter:
+                        emit("log", level="diagnostic", message=message)
                     if first_failure is None and re.search(
                             r"fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:|Directory not empty|Permission denied|No space left on device", message):
                         first_failure = message.strip()
@@ -210,14 +223,17 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     return code
 
 
-def _compile_count(work, target, recomp_dir=None):
+def _compile_count(work, target, recomp_dir=None, not_before_ns=None):
     obj = Path(recomp_dir) if recomp_dir else Path(work) / "recomp"
     obj = obj / ("obj4" if target == "macos" else "obj4-c")
     lists = [obj / "list_O0.txt", obj / "list_O1.txt"]
     if not all(path.is_file() for path in lists):
         return None
     try:
-        total = int((obj / ".compile-total").read_text().strip())
+        marker = obj / ".compile-total"
+        if not_before_ns is not None and marker.stat().st_mtime_ns < not_before_ns:
+            return None
+        total = int(marker.read_text().strip())
         inventory = sum(len(path.read_text().splitlines()) for path in lists)
     except (OSError, ValueError):
         return None
@@ -617,7 +633,7 @@ def install_artifact(args, artifact):
             raise FileExistsError("An installation staging folder already exists: " + str(staging))
         if backup.exists():
             raise FileExistsError("An installation backup already exists: " + str(backup))
-        emit("log", level="diagnostic", message="Copying the signed app bundle to Applications.")
+        emit("log", level="diagnostic", message="Installing the signed app in " + _safe_line(str(applications), args) + ".")
         try:
             subprocess.run(["ditto", str(artifact), str(staging)], check=True)
             new_hash = _sha256(staging / "Contents/MacOS/BDSP")
@@ -811,7 +827,8 @@ def build(args):
             if mod_build:
                 command += ["--out", str(artifact)]
             code = _run_command(command, args, "eh_gen",
-                                lambda phase: _compile_count(work, "macos", mod_build["build_dir"] if mod_build else None)
+                                lambda phase: _compile_count(work, "macos", mod_build["build_dir"] if mod_build else None,
+                                                             not_before_ns=getattr(args, "compile_epoch_ns", None))
                                 if phase == "clang" else None, _mac_phase, extra_env=environment)
     elif args.target == "ios":
         code, artifact = _build_ios(args, common)
@@ -822,7 +839,7 @@ def build(args):
             ("extract", extract, None),
             ("eh_gen", ["bash", "scripts/recomp/linux/local/gen.sh", "c"], None),
             ("clang", ["bash", "scripts/recomp/linux/local/compile.sh", "c"],
-             lambda _phase: _compile_count(work, "linux")),
+             lambda _phase: _compile_count(work, "linux", not_before_ns=getattr(args, "compile_epoch_ns", None))),
             ("images", ["bash", "scripts/recomp/rt-bdsp/mkimages.sh"], None),
             ("runtime", ["bash", "scripts/recomp/linux/local/vk_build.sh", "--qt"], None),
         ]

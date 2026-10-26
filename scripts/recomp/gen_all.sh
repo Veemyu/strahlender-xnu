@@ -13,9 +13,12 @@ while [ $# -gt 0 ] && [ "$1" != "--" ]; do mods+=("$1"); shift; done
 [ ! -f "$EXEFS_DIR/subsdk1" ] || [[ " ${mods[*]} " = *" subsdk1 "* ]] || mods+=(subsdk1)
 base_of() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; rtld) echo 0x7008000000;; subsdk1) echo 0x7005708000;; *) return 2;; esac; }
 mkdir -p "$OUT" work/recomp/spike2
+runner=("$CODEGEN")
+# Detailed resource accounting is opt-in; normal installer logs use stage timings.
+[ "${BDSP_CODEGEN_PROFILE:-0}" != 1 ] || runner=(/usr/bin/time -l "$CODEGEN")
 for m in "${mods[@]}"; do
   extra=()
   [ ! -f "$EXEFS_DIR/$m.entries" ] || extra+=(--entry-offsets "$EXEFS_DIR/$m.entries")
-  /usr/bin/time -l "$CODEGEN" gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$OUT/$m" --simd asm ${extra[@]+"${extra[@]}"} "$@" \
+  "${runner[@]}" gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$OUT/$m" --simd asm ${extra[@]+"${extra[@]}"} "$@" \
     2>&1 | tee "work/recomp/spike2/gen4_$m.log"
 done

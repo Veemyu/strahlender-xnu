@@ -95,6 +95,45 @@ enum ProtocolEvent {
     },
 }
 
+pub fn reveal_installed_application(path: PathBuf) -> Result<(), String> {
+    if !path.exists() {
+        return Err("The installed app is no longer available.".into());
+    }
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = std::process::Command::new("open");
+        command.arg("-R").arg(&path);
+        command
+    };
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(
+            path.parent()
+                .ok_or("The installation folder is unavailable.")?,
+        );
+        command
+    };
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = std::process::Command::new("explorer.exe");
+        command.arg(
+            path.parent()
+                .ok_or("The installation folder is unavailable.")?,
+        );
+        command
+    };
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|error| error.to_string())?
+        .success()
+        .then_some(())
+        .ok_or("Could not show the installation folder.".into())
+}
+
 pub struct BuildRequest {
     pub target: &'static str,
     pub portable_cpu: bool,
@@ -629,6 +668,15 @@ fn run_driver(
 mod tests {
     use super::{ProtocolEvent, set_cpu_target};
     use tokio::process::Command;
+
+    #[test]
+    fn reveal_does_not_launch_or_create_a_missing_application() {
+        let missing = std::env::temp_dir()
+            .join(format!("missing-installer-app-{}", std::process::id()))
+            .join("BDSP.app");
+        assert!(super::reveal_installed_application(missing.clone()).is_err());
+        assert!(!missing.exists());
+    }
 
     #[test]
     #[cfg(debug_assertions)]

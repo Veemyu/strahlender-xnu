@@ -80,6 +80,59 @@ class InstallerDriverTests(unittest.TestCase):
                 (obj / "first.o").touch()
                 self.assertEqual(driver._compile_count(work, target), (1, 2))
 
+    def test_previous_run_objects_cannot_finish_a_new_compile_stage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            for target, name in (("macos", "obj4"), ("linux", "obj4-c")):
+                obj = work / "recomp" / name
+                obj.mkdir(parents=True)
+                (obj / "list_O0.txt").write_text("")
+                (obj / "list_O1.txt").write_text("first.c\nsecond.c\n")
+                marker = obj / ".compile-total"
+                marker.write_text("2\n")
+                for file in ("first.o", "second.o"):
+                    (obj / file).touch()
+                epoch = marker.stat().st_mtime_ns + 100
+                self.assertIsNone(driver._compile_count(work, target, not_before_ns=epoch))
+                for file in obj.glob("*.o"):
+                    file.unlink()
+                os.utime(marker, ns=(epoch + 1, epoch + 1))
+                self.assertEqual(driver._compile_count(work, target, not_before_ns=epoch), (0, 2))
+                (obj / "first.o").touch()
+                self.assertEqual(driver._compile_count(work, target, not_before_ns=epoch), (1, 2))
+
+    def test_mac_phase_does_not_publish_old_completion_before_inventory_reset(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            obj = work / "recomp/obj4"
+            obj.mkdir(parents=True)
+            (obj / "list_O0.txt").write_text("")
+            (obj / "list_O1.txt").write_text("first.c\nsecond.c\n")
+            (obj / ".compile-total").write_text("2\n")
+            for name in ("first.o", "second.o"):
+                (obj / name).touch()
+            args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
+            code = ("from pathlib import Path; import time; p=Path(" + repr(str(obj)) + "); "
+                    "print('2/6 compile: fixture',flush=True); time.sleep(.1); "
+                    "[f.unlink() for f in p.glob('*.o')]; (p/'.compile-total').write_text(str(2)); "
+                    "time.sleep(.35); (p/'first.o').touch(); print('compile checkpoint',flush=True)")
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                result = driver._run_command([sys.executable, "-c", code], args, "eh_gen",
+                    progress=lambda phase: driver._compile_count(work, "macos", not_before_ns=args.compile_epoch_ns)
+                    if phase == "clang" else None, phase_from_line=driver._mac_phase)
+            self.assertEqual(result, 0, output.getvalue())
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            counts = [e["completed"] for e in events if e["event"] == "progress" and e["id"] == "clang"]
+            self.assertTrue(counts)
+            self.assertNotIn(2, counts)
+            self.assertEqual(counts[-1], 1)
+
+    def test_development_home_isolation_does_not_expose_the_login_home(self):
+        args = SimpleNamespace(root="/isolated/project")
+        with patch.object(driver, "_login_home", return_value="/Users/example"):
+            self.assertEqual(driver._safe_line("hactool (/Users/example/Work/tools/hactool)", args),
+                             "hactool (~/Work/tools/hactool)")
+
     def test_ios_compile_progress_waits_for_the_complete_inventory(self):
         with tempfile.TemporaryDirectory() as temporary:
             build = Path(temporary)
@@ -143,7 +196,8 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertEqual(driver._run_command(command, args, "eh_gen"), 0)
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertEqual([e["completed"] for e in events if e["event"] == "progress" and "module" not in e], [1, 2])
-        self.assertTrue(any("1024/2000" in e.get("message", "") for e in events))
+        self.assertFalse(any("1024/2000" in e.get("message", "") for e in events))
+        self.assertTrue(any(e.get("module") == "main" and e["completed"] == 1024 for e in events))
 
     def test_filesystem_failure_keeps_its_actual_cause(self):
         args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
@@ -418,11 +472,14 @@ class InstallerDriverTests(unittest.TestCase):
             os.makedirs(os.path.join(artifact, "Contents/MacOS"))
             with open(os.path.join(artifact, "Contents/MacOS/BDSP"), "wb") as file:
                 file.write(b"binary")
-            applications = os.path.join(temporary, "Applications")
+            applications = os.path.join(temporary, "Test installs")
             args = SimpleNamespace(root=temporary, work=temporary, target="macos",
                                    install_root=applications)
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
                 destination = driver.install_artifact(args, artifact)
+            self.assertIn(driver._safe_line(applications, args), output.getvalue())
+            self.assertNotIn("Copying the signed app bundle to Applications", output.getvalue())
+            self.assertEqual(destination.parent, Path(applications))
             self.assertTrue((destination / "Contents/MacOS/BDSP").is_file())
             with contextlib.redirect_stdout(io.StringIO()):
                 driver.install_artifact(args, artifact)

@@ -280,3 +280,11 @@ For an isolated interactive development run, a debug build with
 redirect the existing backend installation destination. Both settings are required;
 release builds do not compile this override. This leaves the normal Applications
 installation and remote-main source policy unchanged.
+
+Successful desktop installations retain the actual destination and offer a folder
+reveal action (Show in Finder on macOS). Development destinations are shown as
+such rather than being labelled Applications. Function counters update the live
+progress display without flooding diagnostics; raw native module logs remain
+available. Detailed generator resource profiling is opt-in with
+`BDSP_CODEGEN_PROFILE=1`. Compiler inventory from a previous run is ignored until
+the current build publishes its inventory.

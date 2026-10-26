@@ -87,6 +87,8 @@ impl InstallTarget {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    ShowInstalledApp,
+    InstallationRevealed(Result<(), String>),
     OpenRepository,
     RepositoryOpened(Result<(), ()>),
     ToggleTheme,
@@ -190,6 +192,7 @@ pub struct Installer {
     backend_cancel: Option<Arc<AtomicBool>>,
     backend_run_id: u64,
     backend_failure_detail: Option<String>,
+    installed_app: Option<PathBuf>,
     requirements: Option<crate::dependencies::Plan>,
     requirements_busy: bool,
     available_update: Option<crate::updates::Release>,
@@ -354,6 +357,7 @@ impl Installer {
             backend_cancel: None,
             backend_run_id: 0,
             backend_failure_detail: None,
+            installed_app: None,
             requirements: None,
             requirements_busy: false,
             available_update: None,
@@ -599,6 +603,25 @@ impl Installer {
                 self.notice = None;
                 self.details = true;
             }
+            Message::ShowInstalledApp if self.backend_status == BackendStatus::Passed => {
+                if let Some(path) = self.installed_app.clone() {
+                    return Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                crate::backend::reveal_installed_application(path)
+                            })
+                            .await
+                            .unwrap_or_else(|error| Err(error.to_string()))
+                        },
+                        Message::InstallationRevealed,
+                    );
+                }
+            }
+            Message::InstallationRevealed(Err(error)) => {
+                self.record("ERROR", &error);
+                self.notice = Some(self.language.t(L::ShowInstallationFailed).into());
+            }
+            Message::InstallationRevealed(Ok(())) => {}
             Message::OpenRepository => {
                 return Task::perform(
                     async {
@@ -1088,6 +1111,7 @@ impl Installer {
                     self.backend_failure_detail = None;
                     self.notice = None;
                     self.build_progress = crate::progress::BuildProgress::default();
+                    self.installed_app = None;
                     self.motion.snap(0.0);
                     self.last_frame = None;
                     self.backend_run_id += 1;
@@ -1169,9 +1193,6 @@ impl Installer {
                     total,
                 } => {
                     self.build_progress.count(&id, completed, total);
-                    if completed == total || completed.is_multiple_of(100) {
-                        self.record("BACKEND", &format!("{id}: {completed}/{total}"));
-                    }
                 }
                 crate::backend::Event::Log { level, message } => {
                     let message = redact_home_path(&message);
@@ -1194,6 +1215,18 @@ impl Installer {
                 crate::backend::Event::Artifact { kind, path } => {
                     let name = path.file_name().unwrap_or_default().to_string_lossy();
                     self.record("BACKEND", &format!("{kind}: {name}"));
+                    if kind == "installed_application" && self.target != InstallTarget::Ios {
+                        let folder = path
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .unwrap_or_default()
+                            .to_string_lossy();
+                        self.record(
+                            "BACKEND",
+                            &self.language.t(L::InstalledIn).replace("{folder}", &folder),
+                        );
+                        self.installed_app = Some(path);
+                    }
                 }
                 crate::backend::Event::PythonMissing => {
                     self.record("BACKEND", self.language.t(L::PythonMissing));
@@ -1515,6 +1548,7 @@ impl Installer {
         self.tick = 0;
         self.log.clear();
         self.backend_status = BackendStatus::Idle;
+        self.installed_app = None;
         self.backend_cancel = None;
         self.requirements = None;
         self.available_update = None;
@@ -1685,6 +1719,22 @@ impl Installer {
             "setup-ios" => {
                 self.page = Page::Setup;
                 self.target = InstallTarget::Ios;
+            }
+            "installed" | "installed-test" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Passed;
+                self.build_progress = crate::progress::BuildProgress::default();
+                for stage in crate::progress::Stage::ALL {
+                    self.build_progress.stages[stage.index()].done = true;
+                }
+                self.build_progress.active = crate::progress::Stage::Install;
+                self.installed_app = Some(if scenario == "installed-test" {
+                    PathBuf::from("test-build/gui-installed-apps/BDSP.app")
+                } else {
+                    PathBuf::from("/Applications/BDSP.app")
+                });
+                self.motion
+                    .snap(crate::progress::Stage::Install.index() as f32 + 1.0);
             }
             "generator-analyze" | "generator-emit" => {
                 self.page = Page::Progress;
@@ -1871,6 +1921,34 @@ mod tests {
             build_error_notice(error, Language::German),
             Language::German.t(L::PrerequisiteInternalError)
         );
+    }
+
+    #[test]
+    fn installation_result_keeps_the_real_destination_and_progress_does_not_spam_logs() {
+        let (mut app, _) = Installer::new();
+        app.target = InstallTarget::Mac;
+        let initial = app.log.len();
+        for completed in [0, 100, 200, 300] {
+            let _ = app.update(Message::BackendEvent(
+                app.backend_run_id,
+                crate::backend::Event::Progress {
+                    id: "clang".into(),
+                    completed,
+                    total: 300,
+                },
+            ));
+        }
+        assert_eq!(app.log.len(), initial);
+        let destination = PathBuf::from("isolated/gui-installed-apps/BDSP.app");
+        let _ = app.update(Message::BackendEvent(
+            app.backend_run_id,
+            crate::backend::Event::Artifact {
+                kind: "installed_application".into(),
+                path: destination.clone(),
+            },
+        ));
+        assert_eq!(app.installed_app, Some(destination));
+        assert!(app.log.last().unwrap().contains("gui-installed-apps"));
     }
 
     #[test]

@@ -18,7 +18,7 @@ SCENARIOS = (
     "keys-empty", "keys-selected", "keys-not-found", "game-empty", "game-selected",
     "nca", "update-empty", "update-selected", "mods-folder", "mods-folder-ios", "mods-empty",
     "mods-selected", "mods-exefs-only", "mods-ips-ready", "mods-ips-ios-ready", "review-mod", "error", "error-details", "error-disk",
-    "review", "review-portable", "demo-review", "setup", "generator-analyze", "generator-emit", "progress", "progress-details",
+    "review", "review-portable", "demo-review", "setup", "installed", "installed-test", "generator-analyze", "generator-emit", "progress", "progress-details",
     "preflight-running", "preflight-details", "finished", "long-name", "demo",
 )
 INSTALLER = Path(__file__).resolve().parents[1]
@@ -50,7 +50,7 @@ def main():
     destination.mkdir(parents=True, exist_ok=True)
     if not args.skip_build:
         subprocess.run(["cargo", "build", "--locked", "--manifest-path", str(INSTALLER / "Cargo.toml")], check=True)
-    binary = INSTALLER / "target" / "debug" / ("strahlender-xnu-installer.exe" if os.name == "nt" else "strahlender-xnu-installer")
+    binary = Path(os.environ.get("CARGO_TARGET_DIR", str(INSTALLER / "target"))) / "debug" / ("strahlender-xnu-installer.exe" if os.name == "nt" else "strahlender-xnu-installer")
     environment = dict(os.environ, ICED_BACKEND=args.backend, BDSP_LANG=args.language)
     command = [str(binary), "--capture-dir", str(destination), "--scenes", ",".join(scenes)]
     if args.platform:
