@@ -24,14 +24,16 @@
 #endif
 #ifdef BDSP_WITH_UNICORN
 #define CODEGEN_UNICORN "\"2.1.4\""
+#define CODEGEN_FULL_CAPABILITIES ",\"analyze\",\"gen\""
 #else
 #define CODEGEN_UNICORN "null"
+#define CODEGEN_FULL_CAPABILITIES ""
 #endif
 _Static_assert(sizeof(void *) == 8, "The generator requires a 64-bit host");
 static int run(int argc, char **argv) {
     for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "--events=jsonl")) cg_events = true;
     if (argc >= 2 && !strcmp(argv[1], "--version")) {
-        printf("{\"tool\":\"bdsp_codegen\",\"version\":\"0.1.0\",\"interface\":1,\"host\":\"" CODEGEN_OS "-" CODEGEN_ARCH "\",\"source\":\"%s\",\"lz4\":\"%s\",\"capabilities\":[\"image\",\"inspect\",\"decode-basic\",\"emit-function\",\"analyze\",\"gen\"],\"unicorn\":" CODEGEN_UNICORN "}\n", BDSP_CODEGEN_SOURCE_HASH, LZ4_versionString()); return 0;
+        printf("{\"tool\":\"bdsp_codegen\",\"version\":\"0.1.0\",\"interface\":1,\"host\":\"" CODEGEN_OS "-" CODEGEN_ARCH "\",\"source\":\"%s\",\"lz4\":\"%s\",\"capabilities\":[\"image\",\"inspect\",\"decode-basic\",\"emit-function\"" CODEGEN_FULL_CAPABILITIES "],\"unicorn\":" CODEGEN_UNICORN "}\n", BDSP_CODEGEN_SOURCE_HASH, LZ4_versionString()); return 0;
     }
     if (argc >= 2 && !strcmp(argv[1], "gen")) return cg_generate(argc - 2, argv + 2);
     if (argc >= 2 && !strcmp(argv[1], "analyze")) return cg_analyze_checkpoint(argc - 2, argv + 2);

@@ -114,7 +114,10 @@ class NativeCodegenTests(unittest.TestCase):
 
     def test_version_and_cached_compiler_output(self):
         version = json.loads(self.run_native("--version", "--json").stdout)
-        self.assertEqual(version["capabilities"], ["image", "inspect", "decode-basic", "emit-function", "analyze", "gen"])
+        capabilities = ["image", "inspect", "decode-basic", "emit-function"]
+        if version["unicorn"]:
+            capabilities += ["analyze", "gen"]
+        self.assertEqual(version["capabilities"], capabilities)
         self.assertEqual(version["lz4"], "1.9.4")
         cached = builder.build(self.folder / "cached_codegen")
         before = cached.stat().st_mtime_ns

@@ -112,6 +112,9 @@ int cg_generate(int argc,char **argv) {
         else cg_fail(2,"unknown generator option");
     }
     if(!chunk||!chunk_bytes)cg_fail(2,"chunk size and function count must be positive");
+#ifndef BDSP_WITH_UNICORN
+    cg_fail(10,"complete generation requires Unicorn 2.1.4 C headers and shared library");
+#endif
     size_t jobs=cg_choose_jobs(job_option);
     fprintf(stderr,"%s: generator workers %zu\n",module,jobs);
     Nso n=cg_nso(source);cg_phase="analyze";ModuleAnalysis plan=cg_analyze_module(&n,base,portable,&setjmp,entry_offsets,jobs);

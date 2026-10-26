@@ -23,6 +23,9 @@ int cg_analyze_checkpoint(int argc,char **argv) {
         else cg_fail(2,"unknown analysis option");
     }
     if(!have_base)cg_fail(2,"analyze requires --base");
+#ifndef BDSP_WITH_UNICORN
+    cg_fail(10,"complete analysis requires Unicorn 2.1.4 C headers and shared library");
+#endif
     Nso n=cg_nso(path);cg_phase="analyze";ModuleAnalysis result=cg_analyze_module(&n,base,portable,&extra,offsets,cg_choose_jobs(jobs));
     Buffer out={0};cg_printf(&out,"{\"rounds\":%zu,\"functions\":[",result.rounds);
     for(size_t i=0;i<result.count;i++) {

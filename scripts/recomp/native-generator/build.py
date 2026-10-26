@@ -80,7 +80,7 @@ def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unic
             record = json.loads(metadata.read_text())
         except (ValueError, OSError):
             record = {}
-        if dependency_valid and record.get("source_hash") == digest and record.get("binary_sha256") == hashlib.sha256(output.read_bytes()).hexdigest():
+        if isinstance(record, dict) and dependency_valid and record.get("source_hash") == digest and record.get("binary_sha256") == hashlib.sha256(output.read_bytes()).hexdigest():
             return output
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="codegen-build-", dir=output.parent) as temporary:
