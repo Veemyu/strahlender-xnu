@@ -174,8 +174,8 @@ For ExeFS development, `cargo run --locked --manifest-path installer/Cargo.toml 
 [Atmosphere's loader](https://github.com/Atmosphere-NX/Atmosphere/blob/master/stratosphere/loader/source/ldr_patcher.cpp)
 and its [patch documentation](https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/components/modules/loader.md#nso-patching).
 
-The local Apple Silicon Mac and a Nobara 44 KDE Wayland x86_64 desktop now pass
-their native Cargo builds, tests and Clippy checks. Nobara also assembled and
+The local Apple Silicon Mac and a Fedora-based KDE Wayland Linux x86_64 desktop now pass
+their native Cargo builds, tests and Clippy checks. The Linux host also assembled and
 executed the private Linux x86_64 runtime and captured the native Linux target
 view in dark mode without content overflow. Its desktop portal exposes the file
 chooser, but real picker interaction and drag-and-drop still need manual
@@ -256,3 +256,21 @@ It starts enabled on every app launch. The selection for this run is passed expl
 features including AVX/AVX2; AVX2 is not a minimum requirement. Turn this off
 when building for other computers. This option currently applies to Linux game
 builds; it does not change the distributed installer or Apple build targets.
+
+### Native generator progress and development storage
+
+The build view now distinguishes native module analysis from C emission and
+shows module and function counts, with the existing animated progress bar and
+expandable diagnostics. Native errors retain their module, phase and concrete
+cause. Stage durations are recorded in the build log. English and German dark
+mode captures validate these changed views.
+
+Development runs share one canonical extracted RomFS per game/update combination
+on each host, using links in isolated test workspaces instead of repeated exports.
+Keep different game/update versions separate. Do not mutate the shared original
+RomFS for mods: RomFS overlays remain separate, and ExeFS patches use staged inputs.
+Finder metadata does not trigger another extraction. Device deployment still
+needs its own on-device game data; this rule does not remove those required copies.
+After validation, retire unused Cargo deps/incremental/build outputs and obsolete
+test packages, keeping the current testable installer and diagnostic reports.
+This is development housekeeping, not automatic deletion of user game data.

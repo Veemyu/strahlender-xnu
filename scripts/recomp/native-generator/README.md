@@ -235,9 +235,9 @@ See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for LZ4.
 - Complete vanilla module images: byte-identical in desktop and compact-A layouts.
 - Already-staged Lumi modules including `subsdk1`: byte-identical compact-A images;
   every initial boundary, landing pad and setjmp address matches the frozen oracle.
-- Linux x86_64 (Nobara): native Clang and GCC builds; synthetic compressed/plain
+- Linux x86_64 (Fedora based): native Clang and GCC builds; synthetic compressed/plain
   images and EH analysis match the Mac results, including Unicode/spaced paths.
-- Linux ARM64 (archimedesseal): native GCC and Clang 22.1.8 builds, synthetic
+- Linux ARM64 (Fedora Asahi Remix): native GCC and Clang 22.1.8 builds, synthetic
   image/EH parity, function C-output and assembly-IR goldens pass. The Clang-built
   execution probe also passes scalar branches, EH/longjmp/frame cleanup and native
   AArch64 vector addition. No game data was transferred.
@@ -285,3 +285,33 @@ bytes for C; the Python figure is not aggregate physical memory across workers.
 The final private-runtime native/Mod suite passed 21 tests; backend, path,
 runtime, release and SBOM suites passed 92 tests, plus the CLI pin regression.
 Windows, a new full Linux desktop run and GitHub CI execution remain outstanding.
+
+### Installer integration acceptance
+
+The installer driver continues to use protocol v2 and the existing `eh_gen` stage
+ID. Progress events optionally carry `module`, `phase` (`analyze` / `emit`),
+`unit=functions`, `modules_completed` and `modules_total`. Analysis without a
+known total is displayed without a made-up percentage; C emission reports actual
+function counts. Older module-only progress events remain compatible. Phase
+completion events include `elapsed_seconds`, also written to the expandable log.
+
+macOS now writes directly into the existing generated source tree. The C writer
+preserves unchanged files atomically, so a second generated tree and rsync pass
+are unnecessary. O0 and O1 compiler tasks share the bounded job queue; their
+optimization policies and the existing hot-function O2 policy are unchanged.
+Header, compiler, input-tree and flag signatures invalidate direct CLI outputs.
+The Darwin timestamp fallback handles Bash 3.2's second-resolution comparisons.
+Finder metadata (`.DS_Store`) does not invalidate the extraction manifest.
+
+Acceptance on macOS ARM64 includes a complete driver run through generation,
+images, runtime, packaging and installation into an isolated test destination.
+It reused the verified original RomFS and compiler objects: 93.32 seconds,
+including 9.737 seconds in the generator phase. This is an incremental backend
+run, not a fresh XCI-to-app or complete GUI click-through benchmark. The preceding
+fresh-object build succeeded too; its 663-second compile phase overlapped a Rust
+release build and other validation, so it is not a controlled speed comparison.
+Native Linux ARM64 synthetic generation and compilation/linking also passed.
+Screenshots cover only the changed generator views, dark mode, English/German.
+No game was launched and no real saves were accessed. Packaged source downloads
+still select remote main; local integration is not live until the changes are
+published explicitly.

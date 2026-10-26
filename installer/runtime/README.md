@@ -104,7 +104,7 @@ is enabled yet.
 
 ### Native Linux ARM64 check
 
-This path passed on headless Fedora Asahi Remix 44 via `archimedesseal`. Use a
+This path passed on headless Fedora Asahi Remix 44 on Linux ARM64. Use a
 checkout of this repository and a local work directory (ignored by Git). That
 host has no system pip, so the hash-checked CPython archive also bootstraps the
 assembler. The assembler checks the same hash again and runs `native_smoke.py`.

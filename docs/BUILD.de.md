@@ -206,7 +206,7 @@ Wayland und X11. Die getrennte X11-Hülle bleibt mit `BDSP_QT_PROCESS=1` verfüg
 Modulbilder für `vk_qt.sh` und `vk_run.sh` liegen unter `work/recomp/img_gfx`. Einmal erzeugen: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh` (wie bei der macOS-App, `scripts/recomp/app/recomp_build.sh`).
 Konkrete Sitzungs-IDs und Authentifizierungspfade committe nie.
 
-Am 23.10.2026 wurde ein frischer Nobara-44-x86_64-Checkout mit Basis-XCI und
+Am 23.10.2026 wurde ein frischer Fedora-Linux-x86_64-Checkout mit Basis-XCI und
 Update-NSP als einzigen Spieldaten und den installierten Fedora-Entwicklungspaketen
 gebaut. `eh_gen` dauerte 52,9 s; zwölf parallele Clang-Prozesse übersetzten
 2.369 C-Dateien in 351,3 s (57 mit `-O0`, 2.312 mit `-O1`). Beim ersten

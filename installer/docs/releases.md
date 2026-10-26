@@ -122,7 +122,7 @@ Mac runners. The native intermediate ZIPs are not public release downloads.
 
 The initial Linux GUI build baseline is Ubuntu 22.04 (glibc 2.35). Runtime wheels
 target manylinux 2.28, but that does not lower the GUI's own glibc requirement.
-Desktop acceptance targets supported Ubuntu/Debian releases, Fedora/Nobara and
+Desktop acceptance targets supported Ubuntu/Debian releases, Fedora-based Linux and
 Arch; older distributions are not implicitly covered by the wheel tags.
 
 ## System tools and permissions
@@ -185,20 +185,20 @@ still rejects these bundles; this is separate from manual distribution.
 - Execute `--check-runtime` from outside the checkout with a minimal PATH.
 - Execute `--check-source` to verify current-main acquisition without building a game.
 - Inspect only changed dark-mode scenes: `setup-dependencies`, `update-available`.
-- Test guided dependency installation on a fresh Mac and Ubuntu/Debian, Fedora/Nobara
+- Test guided dependency installation on a fresh Mac and Ubuntu/Debian, Fedora-based Linux
   and Arch desktops. Missing package, denied authentication and interrupted network
   cases must leave a usable retry path.
-- Complete a real game build from the packaged installer on Mac and Nobara, using
+- Complete a real game build from the packaged installer on Mac and Fedora-based Linux, using
   only user-selected keys/game/update. Keep saves and existing installed games intact.
 - Test signed update replacement on Linux and notarized replacement on Mac before
   enabling public updates. Unit tests cover signature tampering and failed-launch rollback.
 
 Native full-runtime assembly passed on macOS ARM64, headless Fedora ARM64 and
-Nobara x86_64. A native Nobara AppImage (approximately 74 MiB) passed its bundled
+Fedora-based Linux x86_64. A native Linux AppImage (approximately 74 MiB) passed its bundled
 runtime check outside the checkout; Wayland captures of changed setup/update and
 log-expansion views were inspected. The user confirmed complete GUI builds on
-Mac and Nobara. The dependency probe reported no missing components, so actual
-host package installation was not exercised. Nobara source fetching passed after
+Mac and Fedora-based Linux. The dependency probe reported no missing components, so actual
+host package installation was not exercised. Linux source fetching passed after
 an initial network outage; no system network settings were changed.
 
 The macOS development bundle passed its runtime smoke check outside the checkout.

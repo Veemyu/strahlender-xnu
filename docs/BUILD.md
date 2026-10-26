@@ -307,7 +307,7 @@ That fallback embeds the SDL X11 window; it needs Xwayland on a Wayland desktop.
 The in-process host creates its own Vulkan surface and supports native Wayland
 or X11 without embedding a foreign window.
 
-On 2026-10-23, a fresh Nobara 44 x86_64 clone was built with only a base XCI
+On 2026-10-23, a fresh Fedora Linux x86_64 clone was built with only a base XCI
 and update NSP supplied as game files, using the installed Fedora development
 packages. `eh_gen` took 52.9 s; 12 parallel Clang processes compiled all
 2,369 generated C files in 351.3 s (57 with `-O0`, 2,312 with `-O1`). The
@@ -376,7 +376,7 @@ Never commit concrete session IDs or authentication paths.
   and skips the upload (guard in `textures.c`). Effect on the picture not verified. Open.
 - **Rare hangs on the loading screen:** open. Cause not known.
 - FFmpeg headers/libraries come from matching installed development packages;
-  the Nobara 44 package-only build and short native Wayland run passed on 2026-10-23.
+  the Fedora Linux package-only build and short native Wayland run passed on 2026-10-23.
 - **Frame rate:** `BDSP_FPS` caps the frame rate (30, 60, 120). Measured in a window only; not verified across sessions.
 - No sound. Input state is not reported. Compute workloads are not supported.
 - Windows is not supported. X11 and full screen (F11) are not tested.
