@@ -2,26 +2,37 @@
 
 ## Installer interface
 
-- **Current status:** German, English, Spanish and Portuguese are implemented.
+- **Current status:** German, English, Spanish, Portuguese and Russian are implemented.
   The default follows the operating-system locale. `BDSP_LANG` is a development/
   test override, not a build-language selector.
 - All translatable interface text goes through `i18n::Label`. Every one of the
-  188 labels has four required translations in the same catalog in `i18n.rs`.
-  New labels must provide all four translations; tests reject empty strings or
+  207 labels has five required translations in the same catalog in `i18n.rs`.
+  New labels must provide all five translations; tests reject empty strings or
   changed interpolation parameters.
 - Regional UI locales share exactly one base-language catalog: `es-ES`, `es-419`,
   `es-MX`, `es-AR` and all other `es-*` variants use Spanish; `pt-PT`, `pt-BR`,
   `pt-AO` and all other `pt-*` variants use Portuguese. There are no separate
   Latin American UI files or regional overrides. The Portuguese catalog uses
-  European Portuguese vocabulary. Unknown languages fall back to English.
+  European Portuguese vocabulary. Every `ru-*` locale uses Russian.
+- `uk` and all `uk-*` installer locales currently fall back to Russian.
+  Ukrainian is a distinct language; this is an explicit product
+  fallback, not a Ukrainian translation or a claim that it is a regional Russian
+  variant. No Ukrainian catalog or regional override is shipped. Unsupported
+  languages otherwise fall back to English. This mapping only affects installer
+  text, not the full system locale used for original game metadata.
 - Locale parsing accepts hyphens, underscores, codesets and POSIX modifiers,
   case-insensitively. File sizes and disk-space dialogs use decimal commas for
-  German, Spanish and Portuguese; English uses a decimal point.
+  German, Spanish, Portuguese and Russian; English uses a decimal point.
+  Russian file counts select singular/few/many forms, including 11–14 exceptions,
+  and file sizes use Cyrillic unit labels.
 - Dark-mode captures cover the translated primary views, mod builds, build
   options, generator progress, error dialogs and completion. Linux CPU options
-  are additionally checked using the platform simulation. Raw external tool
+  are additionally checked using the platform simulation. The embedded Iced
+  Fira Sans font contains the entire Russian alphabet and additional Ukrainian
+  filename characters; no font download or system font is required. Raw external tool
   diagnostics retain their original language; interface labels, explanations,
-  sample filenames and error wrappers are localized.
+  sample filenames, dependency purposes/manual guidance and error wrappers are localized.
+  Package identifiers and package-manager commands remain unchanged.
 - Technical names (prod.keys, XCI, NSP, GitHub, iPhone) stay unchanged. Sizes use
   the UI decimal separator; file counts distinguish singular/plural. Future
   download/time/error messages need parameterized messages rather than fragments.

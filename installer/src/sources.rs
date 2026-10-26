@@ -62,7 +62,7 @@ pub fn inspect(path: PathBuf, slot: Slot, language: Language) -> Result<Source, 
         format!(
             "{} · {count} {}",
             language.t(L::NcaFolder),
-            language.t(if count == 1 { L::SingleFile } else { L::Files })
+            language.files(count)
         )
     } else if metadata.is_file() {
         let extension = path
@@ -101,13 +101,21 @@ pub fn inspect(path: PathBuf, slot: Slot, language: Language) -> Result<Source, 
     Ok(Source { path, description })
 }
 
-fn size_label(bytes: u64, language: Language) -> String {
+pub fn size_label(bytes: u64, language: Language) -> String {
     let size = if bytes >= 1 << 30 {
-        format!("{:.1} GB", bytes as f64 / (1_u64 << 30) as f64)
+        format!(
+            "{:.1} {}",
+            bytes as f64 / (1_u64 << 30) as f64,
+            language.t(L::Gigabytes)
+        )
     } else if bytes >= 1 << 20 {
-        format!("{:.1} MB", bytes as f64 / (1_u64 << 20) as f64)
+        format!(
+            "{:.1} {}",
+            bytes as f64 / (1_u64 << 20) as f64,
+            language.t(L::Megabytes)
+        )
     } else {
-        format!("{} KB", bytes.div_ceil(1024))
+        format!("{} {}", bytes.div_ceil(1024), language.t(L::Kilobytes))
     };
     language.decimal(&size)
 }
@@ -122,6 +130,7 @@ mod tests {
         assert_eq!(size_label(1 << 30, Language::English), "1.0 GB");
         assert_eq!(size_label(1 << 30, Language::Spanish), "1,0 GB");
         assert_eq!(size_label(1 << 30, Language::Portuguese), "1,0 GB");
+        assert_eq!(size_label(1 << 30, Language::Russian), "1,0 ГБ");
     }
 
     #[test]

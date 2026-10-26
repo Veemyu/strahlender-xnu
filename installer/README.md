@@ -189,10 +189,12 @@ position; hit testing uses actual Iced widget bounds and scroll offset. This doe
 not introduce native controls or a separate macOS interface. The Linux/Windows
 hover-event path must be verified on real desktops before release.
 
-The UI supports German, English, Spanish and Portuguese (system locale, optionally
+The UI supports German, English, Spanish, Portuguese and Russian (system locale, optionally
 `BDSP_LANG` for development). All `es-*` variants share the Spanish catalog;
 all `pt-*` variants, including `pt-BR`, share the Portuguese catalog. No separate
-Latin American UI files are maintained. Unsupported languages fall back to English.
+Latin American UI files are maintained. All `ru-*` variants use Russian.
+Ukrainian `uk-*` installer locales currently use an explicit Russian fallback;
+this is not a Ukrainian translation. Other unsupported languages fall back to English.
 The complete separation of installer language, game preview language and universal
 application resources is specified in [docs/localization.md](docs/localization.md).
 The GitHub mark in the header opens the project repository in the system browser.

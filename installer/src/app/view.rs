@@ -861,7 +861,8 @@ impl Installer {
                     self.language.t(L::DependenciesTitle),
                     self.language.t(L::DependenciesHint)
                 ),
-                scrollable(text(plan.description()).size(12)).height(130),
+                scrollable(text(super::localized_plan_description(plan, self.language)).size(12))
+                    .height(130),
             ]
             .spacing(12)
             .into();

@@ -38,7 +38,7 @@ def main():
     parser.add_argument("directory", nargs="?", type=Path)
     parser.add_argument("--backend", choices=("wgpu", "tiny-skia"), default="wgpu")
     parser.add_argument("--skip-build", action="store_true")
-    parser.add_argument("--language", choices=("de", "en", "es", "pt"), default="de")
+    parser.add_argument("--language", choices=("de", "en", "es", "pt", "ru"), default="de")
     parser.add_argument("--platform", choices=("mac", "windows", "linux"))
     parser.add_argument("--scenes", default="target", help="Comma-separated changed scenes; 'all' explicitly requests the full matrix")
     args = parser.parse_args()

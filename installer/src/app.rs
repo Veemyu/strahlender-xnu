@@ -249,6 +249,31 @@ fn restore_source(path: Option<PathBuf>, slot: Slot, language: Language) -> (Opt
     }
 }
 
+fn localized_plan_description(plan: &crate::dependencies::Plan, language: Language) -> String {
+    let mut lines: Vec<String> = plan
+        .missing
+        .iter()
+        .map(|item| {
+            format!(
+                "{}: {}",
+                item.id,
+                language
+                    .dependency_purpose(&item.id)
+                    .unwrap_or(&item.purpose)
+            )
+        })
+        .collect();
+    lines.extend(
+        plan.manual
+            .iter()
+            .map(|note| language.dependency_note(note).unwrap_or(note).to_owned()),
+    );
+    if !plan.packages.is_empty() {
+        lines.push(format!("{}: {}", plan.manager, plan.packages.join(", ")));
+    }
+    lines.join("\n")
+}
+
 fn disk_space_error(detail: &str, language: Language) -> Option<String> {
     let line = detail
         .lines()
@@ -1611,11 +1636,17 @@ impl Installer {
         if !matches!(scenario, "empty" | "keys-empty" | "keys-not-found") {
             self.base = Some(Source::fixture(
                 self.language.t(L::DemoGameFile),
-                "XCI · 4.4 GB",
+                &format!(
+                    "XCI · {}",
+                    sources::size_label(44 * (1 << 30) / 10, self.language)
+                ),
             ));
             self.update = Some(Source::fixture(
                 self.language.t(L::DemoUpdateFile),
-                "NSP · 2.8 GB",
+                &format!(
+                    "NSP · {}",
+                    sources::size_label(28 * (1 << 30) / 10, self.language)
+                ),
             ));
             self.keys = Some(Source::fixture(
                 "prod.keys",
@@ -1694,7 +1725,7 @@ impl Installer {
                     &format!(
                         "{} · 12 {}",
                         self.language.t(L::NcaFolder),
-                        self.language.t(L::Files)
+                        self.language.files(12)
                     ),
                 ));
                 self.update = None;
@@ -1869,7 +1900,10 @@ impl Installer {
                 self.page = Page::Game;
                 self.base = Some(Source::fixture(
                     self.language.t(L::DemoLongName),
-                    "XCI · 4.4 GB",
+                    &format!(
+                        "XCI · {}",
+                        sources::size_label(44 * (1 << 30) / 10, self.language)
+                    ),
                 ));
             }
             _ => {}
@@ -1981,6 +2015,9 @@ mod tests {
             assert!(notice.contains("40 GB"));
             assert!(!notice.contains("{available}"));
         }
+        let russian = disk_space_error(detail, Language::Russian).unwrap();
+        assert!(russian.contains("Доступно: 21,7 ГБ"));
+        assert!(russian.contains("Нужно: 40 ГБ"));
         assert_eq!(
             disk_space_error(detail, Language::English).as_deref(),
             Some(
@@ -2051,6 +2088,26 @@ mod tests {
     }
 
     #[test]
+    fn dependency_view_translates_explanations_without_changing_package_names() {
+        let plan = crate::dependencies::Plan {
+            manager: "dnf".into(),
+            packages: vec!["clang".into(), "SDL3-devel".into()],
+            missing: vec![crate::dependencies::Missing {
+                id: "sdl3".into(),
+                purpose: "Window, audio and controller support".into(),
+            }],
+            manual: vec![Language::English.t(L::FinishXcodeNote).into()],
+            ..Default::default()
+        };
+        for language in Language::ALL {
+            let description = localized_plan_description(&plan, language);
+            assert!(description.contains(language.t(L::WindowAudioControllers)));
+            assert!(description.contains(language.t(L::FinishXcodeNote)));
+            assert!(description.contains("dnf: clang, SDL3-devel"));
+        }
+    }
+
+    #[test]
     fn native_generator_error_dialog_keeps_module_phase_and_cause() {
         let cause = "bdsp_codegen [analyze/subsdk1]: error: cross-module entry outside module text";
         let detail = format!("Build step failed: eh_gen\n{cause}");
@@ -2069,6 +2126,7 @@ mod tests {
             (Language::German, "Runtime bauen"),
             (Language::Spanish, "Compilar entorno de ejecución"),
             (Language::Portuguese, "Compilar ambiente de execução"),
+            (Language::Russian, "Собрать среду выполнения"),
         ] {
             let notice = build_error_notice(error, language);
             assert!(notice.contains(stage));
