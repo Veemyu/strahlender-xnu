@@ -1753,7 +1753,7 @@ impl Installer {
                     completed: if scenario == "generator-analyze" {
                         0
                     } else {
-                        42000
+                        218097
                     },
                     total: if scenario == "generator-analyze" {
                         0

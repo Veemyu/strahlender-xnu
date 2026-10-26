@@ -624,7 +624,9 @@ def install_artifact(args, artifact):
             if not owned or owned.get("path") != str(destination) or owned.get("binary_sha256") != current_hash:
                 raise FileExistsError(app_name + " already exists in " + str(applications) + " and is not this installer's unchanged app.")
         elif receipt.exists():
-            raise FileExistsError("An installer receipt exists without " + app_name + "; inspect it before reinstalling.")
+            # A user may have removed the app in Finder. Keep the old receipt
+            # until the new bundle and replacement receipt are committed below.
+            emit("log", level="diagnostic", message=app_name + " is no longer installed. Reinstalling it and renewing its installation receipt.")
         applications.mkdir(parents=True, exist_ok=True)
         staging = applications / ("." + stem + ".app-staging-" + str(os.getpid()))
         backup = applications / ("." + stem + ".app-backup-" + str(os.getpid()))

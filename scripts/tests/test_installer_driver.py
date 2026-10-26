@@ -489,6 +489,33 @@ class InstallerDriverTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     driver.install_artifact(args, artifact)
 
+    @unittest.skipUnless(sys.platform == "darwin", "ditto is a macOS system tool")
+    def test_macos_missing_app_can_be_reinstalled_with_a_stale_receipt(self):
+        for old_receipt in ('{"path": "old", "binary_sha256": "old"}', "invalid old receipt"):
+            with self.subTest(receipt=old_receipt), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                artifact = root / "build/BDSP.app"
+                (artifact / "Contents/MacOS").mkdir(parents=True)
+                (artifact / "Contents/MacOS/BDSP").write_bytes(b"new binary")
+                applications = root / "Applications"
+                applications.mkdir()
+                receipt = applications / ".BDSP.installer-receipt.json"
+                receipt.write_text(old_receipt)
+                args = SimpleNamespace(root=root, work=root, target="macos", install_root=applications)
+                # A failed copy must preserve the old receipt and leave no app.
+                with patch.object(driver.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "ditto")), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        driver.install_artifact(args, artifact)
+                self.assertEqual(receipt.read_text(), old_receipt)
+                self.assertFalse((applications / "BDSP.app").exists())
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    destination = driver.install_artifact(args, artifact)
+                self.assertEqual((destination / "Contents/MacOS/BDSP").read_bytes(), b"new binary")
+                self.assertEqual(json.loads(receipt.read_text())["path"], str(destination))
+                self.assertIn("renewing its installation receipt", output.getvalue())
+                self.assertFalse(list(applications.glob("*.app-staging-*")))
+
     def test_linux_install_isolated_package_keeps_saves_and_refuses_foreign_app(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = os.path.join(temporary, "repo")

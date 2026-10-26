@@ -895,12 +895,12 @@ impl Installer {
                 self.title(self.language.t(L::ProgressTitle), self.language.t(detail)),
                 container(
                     column![
-                        row![
+                        column![
                             text(self.language.t(status)).size(16).width(Fill),
-                            text(counter).size(12).color(c.muted),
+                            text(counter).size(12).color(c.muted).width(Fill),
                         ]
-                        .spacing(12)
-                        .align_y(Center),
+                        .spacing(8)
+                        .width(Fill),
                         progress_bar(
                             0.0..=1.0,
                             (self.motion.value - stage.index() as f32).clamp(0.0, 1.0)
