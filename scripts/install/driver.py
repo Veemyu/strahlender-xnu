@@ -151,7 +151,7 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     last_progress = None
     generated_modules = set()
     first_failure = None
-    module_total = 4 + int((Path(environment.get("BDSP_EXEFS_DIR", Path(args.root) / "work/exefs")) / "subsdk1").is_file())
+    module_total = (3 if getattr(args, "target", None) == "ios" else 4) + int((Path(environment.get("BDSP_EXEFS_DIR", Path(args.root) / "work/exefs")) / "subsdk1").is_file())
     try:
         while not done or proc.poll() is None:
             try:
@@ -315,8 +315,8 @@ def check_build_dependencies(args):
                           "hint": "Install and open Xcode once, then select its developer directory."})
             libraries = Path(args.root) / "work/ios/ffmpeg-ios/lib"
             items.append({"name": "iPhoneOS FFmpeg static libraries",
-                          "ok": all((libraries / ("lib" + name + ".a")).is_file() for name in ("avformat", "avcodec", "avutil")),
-                          "level": "missing", "detail": "", "hint": "Prepare scripts/recomp/ios/build_ffmpeg_ios.sh as documented in docs/recomp-ios.md."})
+                          "ok": True, "level": "note", "detail": "",
+                          "hint": "The tools stage prepares native iPhoneOS movie libraries from pinned, checksum-verified FFmpeg source when missing."})
         _, missing, disk_missing = stages.format_preflight(items)
         for item in items:
             ok = item["ok"]
@@ -501,25 +501,46 @@ def _prepare_ios(args, mod_build, device):
     romfs = input_work / "romfs"
     if not (romfs / "Data").is_dir():
         raise ValueError("The extracted RomFS is missing its Data folder.")
-    metadata = {"RomFSDirectory": "GameData/" + _tree_digest(romfs) + "/romfs"}
+    manifest = json.loads((input_work / "manifest.json").read_text())
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("title_id"), str):
+        raise ValueError("The extraction manifest has no valid game identity.")
+    game_id = manifest["title_id"].lower()
+    if not re.fullmatch(r"[0-9a-f]{16}", game_id):
+        raise ValueError("Invalid game identity in the extraction manifest.")
+    romfs_digest = _tree_digest(romfs)
+    metadata = {"RomFSDirectory": "GameData/" + romfs_digest + "/romfs",
+                "GameID": game_id, "GameVersion": str(manifest.get("display_version", ""))}
     mod_root = getattr(args, "mod_root", None)
     if mod_root:
         _validate_mod_name(args.mod_name)
         metadata.update({"ModDirectory": "Mods/" + _tree_digest(mod_root), "ModName": args.mod_name,
                          "CompiledExeFS": mod_build is not None})
-    (resources / "install-data.plist").write_bytes(plistlib.dumps(metadata))
     bundle_id = getattr(args, "ios_bundle_id", None) or (mod_build["bundle_id"] if mod_build else "dev.local.xnubdsp.installer")
+    if getattr(args, "ios_delivery", "device") == "ipa":
+        # A new export identity never contains a private machine path. Existing
+        # device installations retain their original identifiers and save layout.
+        profile = hashlib.sha256(args.mod_name.lower().encode("utf-8")).hexdigest()[:20] if mod_root else "vanilla"
+        if not getattr(args, "ios_bundle_id", None):
+            bundle_id = "dev.local.xnubdsp.game." + game_id + "." + profile
+        metadata.update({"ExternalLibrary": True, "SaveProfile": profile})
+        if mod_root:
+            metadata["ModDirectory"] += "/" + args.mod_name
+    data_identity = hashlib.sha256(json.dumps(metadata, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    metadata["DataManifest"] = "Manifests/" + data_identity + ".json"
     if not re.fullmatch(r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)+", bundle_id):
         raise ValueError("The Apple bundle identifier is invalid.")
     if mod_build and bundle_id in ("dev.local.xnubdsp", "dev.local.xnubdsp.installer"):
         raise ValueError("A separate code-mod app cannot use the original game's bundle identifier.")
+    (resources / "install-data.plist").write_bytes(plistlib.dumps(metadata))
     args.ios_install = {"device": device, "bundle_id": bundle_id, "metadata": metadata,
                         "romfs": romfs, "mod_root": mod_root, "build_dir": build_dir}
-    return {"BDSP_IOS_BUILD_DIR": str(build_dir), "BDSP_IOS_UDID": device["udid"],
+    return {"BDSP_IOS_BUILD_DIR": str(build_dir), "BDSP_IOS_UDID": device["udid"] if device else "",
+            "BDSP_IOS_DELIVERY": getattr(args, "ios_delivery", "device"),
+            "BDSP_ROMFS_SOURCE": str(romfs),
             "BDSP_IOS_BUNDLE_ID": bundle_id,
             "BDSP_EXEFS_DIR": str(mod_build["staged"] if mod_build else input_work / "exefs"),
             "BDSP_ICON_SOURCE": str(input_work / "recomp/icons/source"),
-            **({"BDSP_MOD_ROOT": str(mod_root), "BDSP_MOD_NAME": args.mod_name} if mod_build else {})}
+            **({"BDSP_MOD_ROOT": str(mod_root), "BDSP_MOD_NAME": args.mod_name} if mod_root else {})}
 
 
 def _install_ios(args, artifact):
@@ -554,9 +575,52 @@ def _install_ios(args, artifact):
     return Path(artifact)
 
 
-def _ios_compile_count(build_dir):
+def _export_ios(args, artifact):
+    """Export persistent artifacts; no device discovery, profile or account access."""
+    info = args.ios_install
+    destination = getattr(args, "ios_export_dir", None)
+    if not destination:
+        raise ValueError("Choose an export folder for the IPA and game library.")
+    destination = Path(destination).resolve()
+    if destination.is_relative_to(Path(args.root).resolve()):
+        raise ValueError("The export folder must be outside the temporary source checkout.")
+    identity = info["build_dir"] / "res/install-data.plist"
+    packaged = plistlib.loads((Path(artifact) / "Info.plist").read_bytes())
+    if packaged.get("CFBundleIdentifier") != info["bundle_id"]:
+        raise ValueError("IPA identity does not match this build; nothing was exported.")
+    source = info["build_dir"] / "BDSP.ipa"
+    if not source.is_file():
+        raise ValueError("The IPA package is missing.")
+    helper = info["build_dir"] / "ios-data"
+    code = _run_command(["/usr/bin/clang", "-O2", "-fobjc-arc", "-Wno-deprecated-declarations",
+                         "-DBDSP_DATA_TOOL", "-framework", "Foundation",
+                         str(Path(args.root) / "scripts/recomp/ios/app/data_library.m"), "-o", str(helper)],
+                        args, "install", emit_steps=False)
+    if code:
+        raise ValueError("The native game-data exporter could not be built.")
+    library = destination / "Game Library"
+    code = _run_command([str(helper), "export", str(info["romfs"]),
+                         str(info["mod_root"]) if info["mod_root"] else "-", str(identity), str(library)],
+                        args, "install", emit_steps=False)
+    if code:
+        raise ValueError("Game-data export failed verification. Existing data and saves were kept.")
+    # Each output name is immutable and identifies its actual bytes. Refreshing
+    # the same build reuses it; a different build never replaces an older IPA.
+    filename = info["bundle_id"] + "-" + _sha256(source)[:20] + ".ipa"
+    output = destination / filename
+    code = _run_command([str(helper), "publish-ipa", str(source), str(output)], args, "install", emit_steps=False)
+    if code:
+        raise ValueError("IPA export failed verification. Previous output was kept.")
+    emit("artifact", kind="game_library", path=str(library))
+    emit("artifact", kind="ipa", path=str(output))
+    return output
+
+
+def _ios_compile_count(build_dir, started_ns=0):
     obj = Path(build_dir) / "obj"
     try:
+        if (obj / ".compile-total").stat().st_mtime_ns < started_ns:
+            return None
         total = int((obj / ".compile-total").read_text().strip())
         sources = [Path(line) for name in ("list_O0.txt", "list_O1.txt")
                    for line in (obj / name).read_text().splitlines()]
@@ -605,10 +669,15 @@ def _clean_game_build(args, directory):
 
 def _build_ios(args, common):
     root, work = Path(args.root), Path(args.work)
-    input_work = work / "installer-inputs/ios"
+    input_work = work
     args.ios_input_work = input_work
-    device = _ios_device(args)
-    emit("log", level="diagnostic", message="Apple device: " + device["name"])
+    device = _ios_device(args) if getattr(args, "ios_delivery", "device") == "device" else None
+    if device:
+        emit("log", level="diagnostic", message="Apple device: " + device["name"])
+    builder = str(root / "scripts/recomp/ios/installer_build.sh")
+    code = _run_command([builder, "tools"], args, "prerequisites", extra_env={"BDSP_IOS_BUILD_DIR": str(work / "recomp/ios-installer/tools")})
+    if code:
+        return code, work / "recomp/ios-installer/vanilla/derived/Build/Products/Release-iphoneos/BDSP.app"
     extract = [str(root / "scripts/build_all.sh"), "--only", "tools,extract", "--target", "ios",
                "--work", str(input_work), "--min-free-gb", str(required_free_gb(args)), *common]
     code = _run_command(extract, args, "extract")
@@ -618,11 +687,11 @@ def _build_ios(args, common):
         _clean_game_build(args, build_dir)
     environment = {"BDSP_IOS_BUILD_DIR": str(build_dir),
                    "BDSP_EXEFS_DIR": str(mod_build["staged"] if mod_build else input_work / "exefs")}
-    builder = str(root / "scripts/recomp/ios/installer_build.sh")
     for stage, phase in (("eh_gen", "gen"), ("clang", "compile"), ("images", "images"), ("runtime", "runtime")):
         if code:
             break
-        counter = (lambda _phase: _ios_compile_count(build_dir)) if stage == "clang" else None
+        started_ns = time.time_ns()
+        counter = (lambda _phase: _ios_compile_count(build_dir, started_ns)) if stage == "clang" else None
         code = _run_command([builder, phase], args, stage, counter, extra_env=environment)
     if code == 0:
         environment.update(_prepare_ios(args, mod_build, device))
@@ -637,7 +706,10 @@ def install_artifact(args, artifact):
     work = Path(args.work)
     override = getattr(args, "install_root", None)
     if args.target == "ios":
-        destination = _install_ios(args, artifact)
+        if getattr(args, "ios_delivery", "device") == "ipa":
+            destination = _export_ios(args, artifact)
+        else:
+            destination = _install_ios(args, artifact)
     elif args.target == "macos":
         applications = Path(override) if override else Path("/Applications")
         app_name = Path(artifact).name
@@ -755,7 +827,8 @@ def install_artifact(args, artifact):
             if staging.exists():
                 shutil.rmtree(staging)
     emit("step", id="install", status="complete")
-    emit("artifact", kind="installed_application", path=str(destination))
+    if args.target != "ios" or getattr(args, "ios_delivery", "device") != "ipa":
+        emit("artifact", kind="installed_application", path=str(destination))
     return destination
 
 
@@ -899,7 +972,8 @@ def build(args):
             install_artifact(args, artifact)
         except (OSError, ValueError, subprocess.CalledProcessError) as error:
             emit("step", id="install", status="failed")
-            emit("error", message="Installation failed: " + _safe_line(str(error), args), code=5)
+            action = "Export" if args.target == "ios" and getattr(args, "ios_delivery", "device") == "ipa" else "Installation"
+            emit("error", message=action + " failed: " + _safe_line(str(error), args), code=5)
             code = 5
     emit("result", ok=code == 0, code=code)
     return code
@@ -934,6 +1008,8 @@ def main(argv=None):
     build_parser.add_argument("--mods-dir")
     build_parser.add_argument("--ips-helper")
     build_parser.add_argument("--ios-device", help="Connected device identifier, UDID or name")
+    build_parser.add_argument("--ios-delivery", choices=("device", "ipa"), default="device")
+    build_parser.add_argument("--ios-export-dir", help="Persistent destination for the IPA and shared game library")
     build_parser.add_argument("--ios-bundle-id", help="Separate application identifier for device testing")
     build_parser.add_argument("--install-root", help="Override the installation root for local testing")
     args = parser.parse_args(argv)

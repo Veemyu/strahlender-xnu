@@ -7,12 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B10000000000000000000001 = {isa = PBXBuildFile; fileRef = B20000000000000000000001; };
+		B10000000000000000000002 = {isa = PBXBuildFile; fileRef = B20000000000000000000002; };
+		B10000000000000000000003 = {isa = PBXBuildFile; fileRef = B20000000000000000000003; };
 		A10000000000000000000001 /* app.m in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* app.m */; };
 		A10000000000000000000002 /* res in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* res */; };
 		A10000000000000000000003 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Settings.bundle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B20000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = data_library.m; sourceTree = "<group>"; };
+		B20000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = save_archive.m; sourceTree = "<group>"; };
+		B20000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = data_manager.m; sourceTree = "<group>"; };
 		A20000000000000000000001 /* app.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = app.m; sourceTree = "<group>"; };
 		A20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000003 /* BDSP.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BDSP.entitlements; sourceTree = "<group>"; };
@@ -25,6 +31,9 @@
 		A30000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				B20000000000000000000001,
+				B20000000000000000000002,
+				B20000000000000000000003,
 				A20000000000000000000001 /* app.m */,
 				A20000000000000000000002 /* Info.plist */,
 				A20000000000000000000003 /* BDSP.entitlements */,
@@ -129,6 +138,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000001,
+				B10000000000000000000002,
+				B10000000000000000000003,
 				A10000000000000000000001 /* app.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -176,7 +188,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = NO;
-				DEVELOPMENT_TEAM = 7E35PN6NW5;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -188,10 +200,10 @@
 					"-framework",
 					Foundation,
 					"-force_load",
-					"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libgame.a",
+					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libgame.a\"",
 					"-force_load",
-					"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libbdsp_rt.a",
-					"-L$(SRCROOT)/../../../../work/ios/ffmpeg-ios/lib",
+					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libbdsp_rt.a\"",
+					"-L\"$(SRCROOT)/../../../../work/ios/ffmpeg-ios/lib\"",
 					"-lavformat",
 					"-lavcodec",
 					"-lavutil",
@@ -231,7 +243,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = NO;
-				DEVELOPMENT_TEAM = 7E35PN6NW5;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -243,10 +255,10 @@
 					"-framework",
 					Foundation,
 					"-force_load",
-					"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libgame.a",
+					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libgame.a\"",
 					"-force_load",
-					"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libbdsp_rt.a",
-					"-L$(SRCROOT)/../../../../work/ios/ffmpeg-ios/lib",
+					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libbdsp_rt.a\"",
+					"-L\"$(SRCROOT)/../../../../work/ios/ffmpeg-ios/lib\"",
 					"-lavformat",
 					"-lavcodec",
 					"-lavutil",

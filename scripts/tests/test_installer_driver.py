@@ -18,6 +18,68 @@ DRIVER = os.path.join(ROOT, "scripts", "install", "driver.py")
 
 
 class InstallerDriverTests(unittest.TestCase):
+    def test_ios_compile_progress_ignores_inventory_from_an_older_run(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            obj = root / "obj"
+            obj.mkdir()
+            source = root / "main/file.c"
+            source.parent.mkdir()
+            source.write_text("void game(void) {}")
+            (obj / "main_file.o").write_bytes(b"object")
+            (obj / "list_O0.txt").write_text("")
+            (obj / "list_O1.txt").write_text(str(source) + "\n")
+            marker = obj / ".compile-total"
+            marker.write_text("1")
+            self.assertEqual(driver._ios_compile_count(root), (1, 1))
+            self.assertIsNone(driver._ios_compile_count(root, marker.stat().st_mtime_ns + 1))
+
+    def test_ipa_build_never_queries_a_device(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(root=directory, work=Path(directory) / "work", ios_delivery="ipa", clean_build=False)
+            with patch.object(driver, "_ios_device", side_effect=AssertionError("Device discovery in IPA export")), \
+                    patch.object(driver, "_run_command", return_value=0), \
+                    patch.object(driver, "required_free_gb", return_value=40), \
+                    patch.object(driver, "_prepare_code_mod", return_value=None), \
+                    patch.object(driver, "_prepare_ios", return_value={}) as prepare:
+                code, artifact = driver._build_ios(args, [])
+            self.assertEqual(code, 0)
+            self.assertIsNone(prepare.call_args.args[2])
+            self.assertEqual(artifact.name, "BDSP.app")
+
+    def test_ipa_mod_identity_survives_moving_the_mod_and_updating_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            work = root / "work"
+            (work / "romfs/Data").mkdir(parents=True)
+            (work / "romfs/Data/game.bin").write_bytes(b"base")
+            (work / "manifest.json").write_text(json.dumps({"title_id": "0100000011d90000", "display_version": "1.3.0"}))
+            identities = []
+            manifests = []
+            for name, content in (("first-location", b"one"), ("second-location", b"two")):
+                mod = root / name
+                (mod / "romfs").mkdir(parents=True)
+                (mod / "romfs/override.bin").write_bytes(content)
+                build_dir = work / name
+                prepared = {"build_dir": build_dir, "staged": work / "staged", "bundle_id": "dev.legacy.pathdependent"}
+                args = SimpleNamespace(root=root, work=work, mod_root=mod, mod_name="Luminescent Platinum", ios_bundle_id=None, ios_delivery="ipa")
+                with contextlib.redirect_stdout(io.StringIO()):
+                    environment = driver._prepare_ios(args, prepared, None)
+                metadata = driver.plistlib.loads((build_dir / "res/install-data.plist").read_bytes())
+                self.assertTrue(metadata["ExternalLibrary"])
+                self.assertEqual(environment["BDSP_IOS_UDID"], "")
+                identities.append((environment["BDSP_IOS_BUNDLE_ID"], metadata["SaveProfile"]))
+                manifests.append(metadata["DataManifest"])
+                self.assertNotIn(str(root), json.dumps(metadata))
+            self.assertEqual(identities[0], identities[1])
+            self.assertNotEqual(manifests[0], manifests[1])
+
+    def test_ipa_export_rejects_destination_in_temporary_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(root=directory, ios_export_dir=Path(directory) / "exports", ios_install={})
+            with self.assertRaisesRegex(ValueError, "outside"):
+                driver._export_ios(args, Path(directory) / "BDSP.app")
+
     def test_linux_build_check_uses_real_formatter_for_extra_requirements(self):
         stages = driver.load_build_stages(ROOT)
         args = SimpleNamespace(root=ROOT, work="/unused", target="linux", mod_root=None)
@@ -236,6 +298,11 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertTrue(all(e["modules_total"] == 5 for e in progress))
             self.assertEqual(progress[-1]["modules_completed"], 1)
             self.assertEqual(progress[-1]["total"], 0)
+            args.target = "ios"  # iOS omits rtld; a code mod adds subsdk1.
+            with contextlib.redirect_stdout(io.StringIO()) as ios_output:
+                self.assertEqual(driver._run_command(command, args, "eh_gen", extra_env={"BDSP_EXEFS_DIR": folder}), 0)
+            ios_progress = [json.loads(line) for line in ios_output.getvalue().splitlines() if json.loads(line).get("module")]
+            self.assertTrue(all(e["modules_total"] == 4 for e in ios_progress))
 
     def test_build_commands_do_not_inherit_a_previous_mod_build_source(self):
         args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
@@ -275,6 +342,7 @@ class InstallerDriverTests(unittest.TestCase):
             work = root / "work"
             (work / "romfs/Data").mkdir(parents=True)
             (work / "romfs/Data/game.bin").write_bytes(b"base")
+            (work / "manifest.json").write_text(json.dumps({"title_id": "0100000011d90000", "display_version": "1.3.0"}))
             mod = root / "mod"
             (mod / "romfs").mkdir(parents=True)
             (mod / "romfs/game.bin").write_bytes(b"override")

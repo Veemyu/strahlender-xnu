@@ -11,6 +11,10 @@
 #include <strings.h>
 
 #include "bdsp.h"
+#ifdef BDSP_IOS
+#include "save_snapshot.h"
+#endif
+#include <pthread.h>
 #include "mods.h"
 
 void ipc_note(const char *svc, uint32_t cmd, int unhandled);
@@ -434,6 +438,12 @@ void fs_report(FILE *f) { fprintf(f, "RomFS reads: %llu (%llu MiB)\n", (unsigned
 typedef struct { char root[1024]; } HostFs;
 typedef struct { int fd; char path[1100]; } HostFile;
 typedef struct { DIR *d; char path[1024]; int mode; } HostDir;
+static pthread_mutex_t save_io_lock = PTHREAD_MUTEX_INITIALIZER;
+// The iOS shell adds manifest checksums and schedules an external backup.
+__attribute__((weak)) void bdsp_save_committed(const char *root, const char *snapshot, int error) {
+    (void)root; (void)snapshot;
+    if (error) fprintf(stderr, "[save] Local snapshot failed: %s\n", strerror(error));
+}
 
 static const char *in_path(IpcReq *req, int i) {
     if (i < req->nx) return G2HC(req->x[i].addr);
@@ -444,7 +454,13 @@ static void host_path(HostFs *fs, const char *p, char *out, size_t n) { snprintf
 
 // Saves: deleting becomes renaming to _safety/ (outside the save folder). If the run aborts
 // in the middle of saving, the last complete state is kept in <file>.prev.
-static bool is_save_root(const HostFs *fs) { return strstr(fs->root, "save_") != NULL; }
+static bool is_save_root(const HostFs *fs) {
+    const char *slot = strrchr(fs->root, '/');
+    slot = slot ? slot + 1 : fs->root;
+    if (strncmp(slot, "save_", 5) || !slot[5]) return false;
+    for (const char *p = slot + 5; *p; p++) if (*p < '0' || *p > '9') return false;
+    return true;
+}
 static void safety_path(const HostFs *fs, const char *p, const char *suffix, char *out, size_t n) {
     const char *sub = strrchr(fs->root, '/'), *base = strrchr(p, '/');
     snprintf(out, n, "%s/_safety/%s_%s%s", g_save_dir, sub ? sub + 1 : fs->root, base ? base + 1 : p, suffix);
@@ -485,7 +501,7 @@ static uint32_t errno_result(void) {
     return FS_UNEXPECTED;
 }
 
-static void host_file(Service *s, IpcReq *req, IpcResp *resp) {
+static void host_file_impl(Service *s, IpcReq *req, IpcResp *resp) {
     HostFile *f = s->state;
     switch (req->cmd) {
     case 0: {  // Read(option, offset, size) -> B
@@ -500,15 +516,28 @@ static void host_file(Service *s, IpcReq *req, IpcResp *resp) {
     case 1: {  // Write(option, offset, size) <- A
         int64_t off = IN(int64_t, 8), size = IN(int64_t, 16);
         IpcBuf *a = in_buf(req, 0);
-        if (pwrite(f->fd, G2H(a->addr), (size_t)size, off) < 0) resp->result = errno_result();
+        if (off < 0 || size < 0 || (uint64_t)size > a->size) { resp->result = FS_UNEXPECTED; break; }
+        size_t done = 0;
+        while (done < (size_t)size) {
+            ssize_t count = pwrite(f->fd, (char *)G2H(a->addr) + done, (size_t)size - done, off + (int64_t)done);
+            if (count < 0 && errno == EINTR) continue;
+            if (count <= 0) { if (count == 0) errno = EIO; resp->result = errno_result(); break; }
+            done += (size_t)count;
+        }
         break;
     }
-    case 2: fsync(f->fd); break;
+    case 2: if (fsync(f->fd)) resp->result = errno_result(); break;
     case 3: if (ftruncate(f->fd, IN(int64_t, 0))) resp->result = errno_result(); break;
     case 4: { struct stat sb; fstat(f->fd, &sb); OUT(int64_t, 0) = sb.st_size; resp_size(resp, 8); break; }
     case 5: resp_size(resp, 0x20); break;  // OperateRange
     default: ipc_note("IFile", req->cmd, 1);
     }
+}
+
+static void host_file(Service *s, IpcReq *req, IpcResp *resp) {
+    pthread_mutex_lock(&save_io_lock);
+    host_file_impl(s, req, resp);
+    pthread_mutex_unlock(&save_io_lock);
 }
 
 static void host_directory(Service *s, IpcReq *req, IpcResp *resp) {
@@ -574,11 +603,11 @@ static int rm_rf(const char *p, bool keep_root) {
     return keep_root ? 0 : rmdir(p);
 }
 
-static void host_filesystem(Service *s, IpcReq *req, IpcResp *resp) {
+static void host_filesystem_impl(Service *s, IpcReq *req, IpcResp *resp) {
     HostFs *fs = s->state;
     char p[2048], p2[2048];
     host_path(fs, in_path(req, 0), p, sizeof p);
-    if (req->cmd <= 9 && strstr(fs->root, "save_")) {
+    if (req->cmd <= 9 && is_save_root(fs)) {
         static int nlog;
         if (nlog++ < 200) LOG("[fs-save] cmd %u %s\n", req->cmd, p);
     }
@@ -635,13 +664,41 @@ static void host_filesystem(Service *s, IpcReq *req, IpcResp *resp) {
         ipc_return_object(resp, service_new("IDirectory", host_directory, hd));
         break;
     }
-    case 10: break;  // Commit
+    case 10: {  // Commit: host writes and snapshot capture share the same lock.
+#ifdef BDSP_IOS
+        if (is_save_root(fs)) {
+            if (bdsp_save_flush(fs->root)) { int error = errno; resp->result = errno_result(); bdsp_save_committed(fs->root, NULL, error); break; }
+            char directory[4096], snapshot[4096] = "";
+            const char *slot = strrchr(fs->root, '/');
+            snprintf(directory, sizeof directory, "%s/_snapshots", g_save_dir);
+            if (mkdir(directory, 0700) && errno != EEXIST) {
+                bdsp_save_committed(fs->root, NULL, errno);
+                break;
+            }
+            struct stat snapshot_parent;
+            if (lstat(directory, &snapshot_parent) || !S_ISDIR(snapshot_parent.st_mode)) {
+                bdsp_save_committed(fs->root, NULL, EINVAL);
+                break;
+            }
+            snprintf(directory, sizeof directory, "%s/_snapshots/%s", g_save_dir, slot ? slot + 1 : "save");
+            int result = bdsp_save_snapshot(fs->root, directory, snapshot, sizeof snapshot);
+            bdsp_save_committed(fs->root, result ? NULL : snapshot, result ? errno : 0);
+        }
+#endif
+        break;
+    }
     case 11: case 12: OUT(int64_t, 0) = 0x40000000; resp_size(resp, 8); break;
     case 13: rm_rf(p, true); break;
     case 14: memset(resp->data, 0, 0x20); resp_size(resp, 0x20); break;
     case 15: resp_size(resp, 0x10); break;
     default: ipc_note("IFileSystem", req->cmd, 1);
     }
+}
+
+static void host_filesystem(Service *s, IpcReq *req, IpcResp *resp) {
+    pthread_mutex_lock(&save_io_lock);
+    host_filesystem_impl(s, req, resp);
+    pthread_mutex_unlock(&save_io_lock);
 }
 
 static Service *open_host_fs(const char *sub) {

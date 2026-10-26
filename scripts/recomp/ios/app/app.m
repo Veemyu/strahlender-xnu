@@ -15,6 +15,7 @@
 #include <sys/sysctl.h>
 #import <Metal/Metal.h>
 #import "../../app/icon_variants.h"
+#import "data_manager.h"
 #include <strings.h>
 #include "../../rt-bdsp/mods.h"
 #include "../../rt-bdsp/pad_gc.h"
@@ -129,37 +130,8 @@ static NSString *Sha256(NSData *d) {
     return s;
 }
 
-// Take drop files in Documents/ (Files app, devicectl; devicectl creates folders as root, hence files only) over into Documents/Saves/save_1:
-// SaveData.bin, Backup.bin, user_id.hex. An unchanged file (hash in Documents/ImportedDropIn.txt) is not imported again.
-static void ImportSave(void) {
-    NSFileManager *fm = NSFileManager.defaultManager;
-    NSString *docs = Documents(), *slot = [docs stringByAppendingPathComponent:@"Saves/save_1"];
-    NSData *drop = [NSData dataWithContentsOfFile:[docs stringByAppendingPathComponent:@"SaveData.bin"]];
-    [fm createDirectoryAtPath:slot withIntermediateDirectories:YES attributes:nil error:nil];
-    NSString *memo = [docs stringByAppendingPathComponent:@"ImportedDropIn.txt"];
-    if (drop.length) {
-        NSString *h = Sha256(drop), *old = [NSString stringWithContentsOfFile:memo encoding:NSUTF8StringEncoding error:nil];
-        if (![h isEqualToString:old]) {
-            NSString *cur = [slot stringByAppendingPathComponent:@"SaveData.bin"];
-            if ([fm fileExistsAtPath:cur]) {
-                NSString *bk = [docs stringByAppendingFormat:@"/Backups/%lld", (long long)NSDate.date.timeIntervalSince1970];
-                [fm createDirectoryAtPath:bk withIntermediateDirectories:YES attributes:nil error:nil];
-                [fm copyItemAtPath:cur toPath:[bk stringByAppendingPathComponent:@"SaveData.bin"] error:nil];
-            }
-            [drop writeToFile:cur atomically:YES];
-            NSData *b = [NSData dataWithContentsOfFile:[docs stringByAppendingPathComponent:@"Backup.bin"]];
-            if (b.length) [b writeToFile:[slot stringByAppendingPathComponent:@"Backup.bin"] atomically:YES];
-            [h writeToFile:memo atomically:YES encoding:NSUTF8StringEncoding error:nil];
-            fprintf(stderr, "[ipad] Save imported (%lu bytes, sha256 %s)\n", (unsigned long)drop.length, [h substringToIndex:12].UTF8String);
-        }
-    }
-    NSString *uid = [docs stringByAppendingPathComponent:@"user_id.hex"];
-    if ([fm fileExistsAtPath:uid]) {
-        NSString *dst = [[docs stringByAppendingPathComponent:@"Saves"] stringByAppendingPathComponent:@"user_id.hex"];
-        [fm removeItemAtPath:dst error:nil];
-        [fm copyItemAtPath:uid toPath:dst error:nil];
-    }
-}
+// Save imports are confirmed and verified by data_manager; no drop file is
+// allowed to replace a live save automatically.
 
 #pragma mark - Measurement lines
 
@@ -586,30 +558,40 @@ static NSDictionary *InstallerData(void) {
 static NSString *InstallerDocumentPath(NSDictionary *metadata, NSString *key) {
     id relative = metadata[key];
     if (![relative isKindOfClass:NSString.class] || ![relative length] || [relative isAbsolutePath]) return nil;
+    if ([metadata[@"ExternalLibrary"] boolValue]) return BDSPSharedDataPath(relative);
     NSString *docs = Documents().stringByStandardizingPath;
     NSString *path = [[docs stringByAppendingPathComponent:relative] stringByStandardizingPath];
     return [path hasPrefix:[docs stringByAppendingString:@"/"]] ? path : nil;
 }
 
-static void LaunchRuntime(const ModInfo *mod) {
+static void StartSelectedRuntime(const ModInfo *mod) {
     if (getenv("BDSP_PROBE_FIXED")) ProbeFixedWindows();
     NSString *docs = Documents(), *res = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res"];
     NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *saves = BDSPBaseSaveRoot() ?: [docs stringByAppendingPathComponent:@"Saves"];
     [fm createDirectoryAtPath:[docs stringByAppendingPathComponent:@"Shots"] withIntermediateDirectories:YES attributes:nil error:nil];
     if (mod) {
-        if (mods_activate(mod, [docs stringByAppendingPathComponent:@"Saves"].UTF8String) != 0) {
+        if (mods_activate(mod, saves.UTF8String) != 0) {
             fprintf(stderr, "[mods] cannot start \"%s\"\n", mod->name);
+            BDSPShowDataError(@"The mod save folder could not be opened. Existing saves were kept.");
             return;
         }
         setenv("BDSP_SAVE", mods_active_save(), 1);
-    } else {
-        ImportSave();
+        saves = @(mods_active_save());
     }
-    setenv("BDSP_IMG", [res stringByAppendingPathComponent:@"img32"].UTF8String, 0);
-    setenv("BDSP_NPDM", [res stringByAppendingPathComponent:@"main.npdm"].UTF8String, 0);
+    NSString *profile = mod ? [Sha256([[@(mod->name) lowercaseString] dataUsingEncoding:NSUTF8StringEncoding]) substringToIndex:20] : @"vanilla";
+    NSError *saveError = nil;
+    if (!BDSPConfigureSaveRoot(saves, InstallerData(), profile, &saveError)) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Save recovery needs attention" message:saveError.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [gView.window.rootViewController presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+    setenv("BDSP_IMG", [res stringByAppendingPathComponent:@"img32"].UTF8String, 1);
+    setenv("BDSP_NPDM", [res stringByAppendingPathComponent:@"main.npdm"].UTF8String, 1);
     NSString *romfs = InstallerDocumentPath(InstallerData(), @"RomFSDirectory") ?: [docs stringByAppendingPathComponent:@"GameData/romfs"];
-    setenv("BDSP_ROMFS", romfs.UTF8String, 0);
-    setenv("BDSP_SAVE", [docs stringByAppendingPathComponent:@"Saves"].UTF8String, 0);
+    setenv("BDSP_ROMFS", romfs.UTF8String, 1);
+    setenv("BDSP_SAVE", saves.UTF8String, 1);
     {   // firmware files of the on-screen keyboard (layouts, fonts, name check); without them the keyboard is a simple one of our own
         NSString *fw = [docs stringByAppendingPathComponent:@"Firmware"];
         if ([fm fileExistsAtPath:fw]) setenv("BDSP_FIRMWARE_DATA", fw.UTF8String, 0);
@@ -634,6 +616,21 @@ static void LaunchRuntime(const ModInfo *mod) {
     pthread_detach(st);
 }
 
+static void LaunchRuntime(const ModInfo *mod) {
+    NSString *saves = BDSPBaseSaveRoot() ?: [Documents() stringByAppendingPathComponent:@"Saves"];
+    NSString *profile = @"vanilla";
+    if (mod) {
+        saves = [[saves stringByAppendingPathComponent:@"mods"] stringByAppendingPathComponent:@(mod->name)];
+        profile = [Sha256([[@(mod->name) lowercaseString] dataUsingEncoding:NSUTF8StringEncoding]) substringToIndex:20];
+    }
+    NSError *error = nil;
+    if (!BDSPConfigureSaveRoot(saves, InstallerData(), profile, &error)) {
+        BDSPShowDataError(error.localizedDescription);
+        return;
+    }
+    BDSPConfirmStart(^{ StartSelectedRuntime(mod); });
+}
+
 // Documents/Mods holds mods in the layout of Ryujinx and yuzu (<name>/romfs, <name>/exefs), copied there with the Files app. With at least one
 // mod the app asks at launch what to start; the last choice is preselected. BDSP_MOD=<name|none> (devicectl --environment-variables) skips
 // the dialog for automated runs.
@@ -646,6 +643,13 @@ static void StartRuntime(void) {
     int n = mods_scan(modsDir.UTF8String, gMods, MODS_MAX);
     NSDictionary *installed = InstallerData();
     NSString *installedRoot = InstallerDocumentPath(installed, @"ModDirectory");
+    if ([installed[@"ExternalLibrary"] boolValue] && installedRoot) {
+        ModInfo imported[MODS_MAX];
+        int count = mods_scan(installedRoot.stringByDeletingLastPathComponent.UTF8String, imported, MODS_MAX);
+        if ([installed[@"CompiledExeFS"] boolValue]) n = 0;
+        for (int i = 0; i < count && n < MODS_MAX; i++)
+            if (!strcmp(imported[i].root, installedRoot.UTF8String)) gMods[n++] = imported[i];
+    }
     NSString *installedName = installed[@"ModName"];
     BOOL compiled = [installed[@"CompiledExeFS"] boolValue];
     int installedIndex = -1;
@@ -729,7 +733,7 @@ static void StartRuntime(void) {
     ApplyAppIcon();
 }
 - (void)startRuntime {
-    StartRuntime();
+    BDSPPrepareData(gView.window.rootViewController, InstallerData(), ^{ StartRuntime(); });
 }
 @end
 

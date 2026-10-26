@@ -69,7 +69,7 @@ do_build() {
   mkdir -p "$OBJ"
   local stamp; stamp=$(obj_stamp)
   if [ "$(cat "$OBJ/.stamp" 2>/dev/null || true)" != "$stamp" ]; then
-    rm -f "$OBJ"/*.o; echo "$stamp" > "$OBJ/.stamp"; echo "Toolchain stamp missing or does not match: all objects in $OBJ are recompiled"
+    rm -f "$OBJ"/*.o "$OBJ"/*.o.o2; echo "$stamp" > "$OBJ/.stamp"; echo "Toolchain stamp missing or does not match: all objects in $OBJ are recompiled"
   fi
   for o in "$OBJ"/*.o; do
     [ -e "$o" ] || continue
@@ -105,7 +105,7 @@ do_hot() {
     n=$(printf 'f_%x' $(( 0x${fn#f_} - 0x7000000000 + $(base_of main) )))
     while IFS= read -r f; do
       o="$OBJ/main_$(basename "$f" .c).o"
-      [ -e "$o.o2" ] && [ "$o.o2" -nt "$f" ] && continue
+      [ -e "$o" ] && [ -e "$o.o2" ] && [ "$o.o2" -nt "$f" ] && [ "$o.o2" -nt "$o" ] && continue
       rm -f "$o"; OPT=-O2 scripts/recomp/ios/compile_chunk_ios.sh "$f" && : > "$o.o2"
       echo "-O2: $n in $(basename "$f")"
     done < <(grep -l "^void $n(.*{\$" "$GEN"/main/*.c || true)
