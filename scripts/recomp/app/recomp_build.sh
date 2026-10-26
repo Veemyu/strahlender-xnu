@@ -67,28 +67,16 @@ if [ "$FORCE" -eq 0 ] && [ -d "$GEN/main" ] && marker_ok recomp-gen "$H_GEN"; th
   log "1/6 generator: marker matches, C present ($(ls "$GEN"/*/*.c | wc -l | tr -d ' ') files), skipped"
 else
   log "1/6 generator: generating C with native workers (about 1 GB generated source)"
-  if [ -d "$GEN/main" ] && [ "$FORCE" -eq 0 ]; then
-    # incremental: regenerate and transfer only files with changed content (timestamps stay, the compiler runs only for changes)
-    NEW="$R/gen4.new"
-    doit "delete old intermediate folder" rm -rf "$NEW"
-    doit "generator" env OUT="$NEW" "$ROOT/scripts/recomp/gen_all.sh"
-    if [ "$DRY" -eq 0 ]; then
-      for d in "$NEW"/*/; do
-        m=$(basename "$d"); mkdir -p "$GEN/$m"
-        n=$(rsync -rc --delete --itemize-changes "$d" "$GEN/$m/" | { grep -c '^>f' || true; })
-        log "    $m: $n changed files"
-      done
-      rm -rf "$NEW"
-    fi
-  else
-    doit "generator" env OUT="$GEN" "$ROOT/scripts/recomp/gen_all.sh"
-  fi
+  # The native writer atomically replaces changed files and preserves identical
+  # outputs. No second gigabyte-sized C tree or rsync pass is needed.
+  doit "generator" env OUT="$GEN" "$ROOT/scripts/recomp/gen_all.sh"
   [ "$DRY" -eq 1 ] || { [ -d "$GEN/main" ] || die 4 "Generator produced no C (log: work/recomp/spike2/gen4_*.log)"; marker_put recomp-gen "$H_GEN" "files=$(ls "$GEN"/*/*.c | wc -l | tr -d ' ')"; }
 fi
 
 # ---------- 2 Compile ----------
 H_HOT="$(shasum -a 256 < "$ROOT/scripts/recomp/hot_o2.txt" | cut -c1-16)"   # list of the functions built with -O2
-H_OBJ="$(printf '%s|%s|%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" "$H_HOT" "file-prefix-map-v1" | shasum -a 256 | cut -c1-64)"
+H_COMPILE="$(cat "$ROOT/scripts/recomp/rt/cpu.h" "$ROOT/scripts/recomp/upstream/runtime/"{cpu,simd,simd_fp}.h "$ROOT/scripts/recomp/test/compile_chunk.sh" "$ROOT/scripts/recomp/build_all.sh" | shasum -a 256 | cut -c1-64)"
+H_OBJ="$(printf '%s|%s|%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" "$H_HOT" "file-prefix-map-v1:$H_COMPILE:${EXTRA:-}" | shasum -a 256 | cut -c1-64)"
 if [ "$FORCE" -eq 0 ] && [ -d "$OBJ" ] && marker_ok recomp-obj "$H_OBJ"; then
   log "2/6 compile: marker matches ($(ls "$OBJ"/*.o | wc -l | tr -d ' ') objects), skipped"
 else
@@ -161,7 +149,7 @@ if [ "$INSTALL_DATA" -eq 0 ]; then
   log "6/6 data: skipped (--no-install-data); the app expects the RomFS at $HOME_DIR/romfs or via romfs = … in config.ini"
 else
   # Identifier of the dump: main hash plus the RomFS file count (manifest.json does not exist in every work folder)
-  STAMP="$(shasum -a 256 "$ROOT/work/exefs/main" | cut -c1-16) $(find "$ROOT/work/romfs" -type f | wc -l | tr -d ' ')"
+  STAMP="$(shasum -a 256 "$ROOT/work/exefs/main" | cut -c1-16) $(find "$ROOT/work/romfs" -type f ! -name .DS_Store | wc -l | tr -d ' ')"
   if [ -f "$HOME_DIR/romfs.stamp" ] && [ "$(cat "$HOME_DIR/romfs.stamp")" = "$STAMP" ] && [ -d "$HOME_DIR/romfs/Data" ] && [ "$FORCE" -eq 0 ]; then
     log "6/6 data: RomFS at $HOME_DIR/romfs is up to date, skipped"
   else

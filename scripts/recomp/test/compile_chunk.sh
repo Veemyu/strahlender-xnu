@@ -5,9 +5,17 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 src=$1
 S=${2:-work/recomp/spike2/obj}
+OPT=${3:-${OPT:--O1}}
+case "$OPT" in -O0|-O1|-O2) ;; *) echo "Invalid optimization level" >&2; exit 2;; esac
 mkdir -p "$S"
 o="$S/$(basename "$(dirname "$src")")_$(basename "$src" .c).o"
-[ "$o" -nt "$src" ] && exit 0
+if [ -f "$o" ]; then
+  [ "$o" -nt "$src" ] && exit 0
+  # macOS Bash 3.2 truncates -nt comparisons to whole seconds. BSD find
+  # compares nanoseconds too, so fast builds do not repeatedly rebuild a chunk.
+  newer=$(find "$src" -newer "$o" -print -quit)
+  [ -n "$newer" ] || exit 0
+fi
 t0=$(date +%s)
 tmp="$o.tmp.$$"
 trap 'rm -f "$tmp"' EXIT

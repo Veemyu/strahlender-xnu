@@ -56,9 +56,11 @@ echo 0 > "$OBJ/peak_ram_kb.txt"
 
 t0=$(date +%s.%N)
 rc=0
-# Large single functions first (-O0), then everything else by size, descending (better utilization at the end)
-cut -d' ' -f1,2 "$OBJ/list_O0.txt" | xargs -r -P "$JOBS" -L 1 bash -c 'one -O0 "$0" "$1"' || rc=1
-cut -d' ' -f1,2 "$OBJ/list_O1.txt" | xargs -r -P "$JOBS" -L 1 bash -c 'one -O1 "$0" "$1"' || rc=1
+# Share the bounded queue across optimization levels; preserve paths as NUL arguments.
+{
+  while read -r size src; do printf '%s\0%s\0%s\0' -O0 "$size" "$src"; done < "$OBJ/list_O0.txt"
+  while read -r size src; do printf '%s\0%s\0%s\0' -O1 "$size" "$src"; done < "$OBJ/list_O1.txt"
+} | xargs -0 -r -P "$JOBS" -n 3 bash -c 'one "$1" "$2" "$3"' _ || rc=1
 t1=$(date +%s.%N)
 [ "$rc" = 0 ] || die "At least one file was not compiled (see above)."
 
