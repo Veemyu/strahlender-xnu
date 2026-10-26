@@ -123,6 +123,7 @@ pub enum Message {
     ShowNoticeDetails,
     CopyLog,
     CopyLogLine(usize),
+    ClearCopiedLogLine(usize, Instant),
     DemoInput,
     DemoMod,
     CaptureTick,
@@ -194,7 +195,7 @@ pub struct Installer {
     backend_run_id: u64,
     backend_failure_detail: Option<String>,
     installed_app: Option<PathBuf>,
-    copied_log_line: Option<usize>,
+    copied_log_line: Option<(usize, Instant)>,
     requirements: Option<crate::dependencies::Plan>,
     requirements_busy: bool,
     available_update: Option<crate::updates::Release>,
@@ -1291,8 +1292,19 @@ impl Installer {
             Message::ToggleDetails => self.details = !self.details,
             Message::CopyLogLine(index) => {
                 if let Some(line) = self.log.get(index) {
-                    self.copied_log_line = Some(index);
-                    return iced::clipboard::write(line.clone());
+                    let copied_at = Instant::now();
+                    self.copied_log_line = Some((index, copied_at));
+                    return Task::batch([
+                        iced::clipboard::write(line.clone()),
+                        Task::perform(tokio::time::sleep(Duration::from_millis(1800)), move |_| {
+                            Message::ClearCopiedLogLine(index, copied_at)
+                        }),
+                    ]);
+                }
+            }
+            Message::ClearCopiedLogLine(index, copied_at) => {
+                if self.copied_log_line == Some((index, copied_at)) {
+                    self.copied_log_line = None;
                 }
             }
             Message::CopyLog => return iced::clipboard::write(self.log.join("\n")),
@@ -1790,7 +1802,7 @@ impl Installer {
                 self.record("PREVIEW", self.language.t(L::Tools));
                 self.record("PREVIEW", self.language.t(L::Prepare));
                 if self.details {
-                    self.copied_log_line = Some(1);
+                    self.copied_log_line = Some((1, Instant::now()));
                 }
             }
             "preflight-running" | "preflight-details" => {

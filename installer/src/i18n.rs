@@ -195,8 +195,6 @@ messages! {
     Details => ["Show details", "Details anzeigen"],
     HideDetails => ["Hide details", "Details schließen"],
     CopyLog => ["Copy log", "Protokoll kopieren"],
-    CopyLogLine => ["Click to copy this line", "Klicken, um diese Zeile zu kopieren"],
-    LogLineCopied => ["Copied", "Kopiert"],
     LogEmpty => ["No activity yet.", "Noch keine Aktivität."],
     LogSearch => ["Searching standard emulator folders for prod.keys.", "Übliche Emulator-Ordner nach prod.keys durchsuchen."],
     LogInspect => ["Checking readability and file type.", "Lesbarkeit und Dateityp prüfen."],

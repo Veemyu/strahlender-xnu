@@ -141,38 +141,38 @@ impl Installer {
                     .into()
             } else {
                 column(self.log.iter().enumerate().map(|(index, line)| {
-                    let copied = self.copied_log_line == Some(index);
-                    tooltip(
-                        button(text(line).size(11).font(iced::Font::MONOSPACE))
-                            .width(Fill)
-                            .padding([2, 4])
-                            .on_press(Message::CopyLogLine(index))
-                            .style(move |_, status| iced::widget::button::Style {
-                                background: if copied
-                                    || matches!(
-                                        status,
-                                        iced::widget::button::Status::Hovered
-                                            | iced::widget::button::Status::Pressed
-                                    ) {
+                    let copied = self.copied_log_line.is_some_and(|(line, _)| line == index);
+                    row![
+                        text(line).size(11).font(iced::Font::MONOSPACE).width(Fill),
+                        button(icons::view(
+                            if copied { Icon::Check } else { Icon::Copy },
+                            12.0,
+                            if copied { c.text } else { c.muted },
+                        ))
+                        .padding(3)
+                        .on_press(Message::CopyLogLine(index))
+                        .style(move |_, status| {
+                            iced::widget::button::Style {
+                                background: if matches!(
+                                    status,
+                                    iced::widget::button::Status::Hovered
+                                        | iced::widget::button::Status::Pressed
+                                ) {
                                     Some(c.line.into())
                                 } else {
                                     None
                                 },
-                                text_color: c.text,
                                 border: iced::Border {
                                     radius: 3.0.into(),
                                     ..Default::default()
                                 },
                                 ..Default::default()
-                            }),
-                        text(self.language.t(if copied {
-                            L::LogLineCopied
-                        } else {
-                            L::CopyLogLine
-                        }))
-                        .size(11),
-                        tooltip::Position::Top,
-                    )
+                            }
+                        }),
+                    ]
+                    .spacing(8)
+                    .padding([2, 4])
+                    .width(Fill)
                     .into()
                 }))
                 .width(Fill)

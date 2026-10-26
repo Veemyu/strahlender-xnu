@@ -9,6 +9,8 @@ No system icon theme, emoji renderer or installed icon font is required.
   tools add the macOS material treatment. See `brand/README.md` for provenance
   and platform details. No alternate installer branding is shipped.
 
+- `ui/copy.svg` and `ui/check.svg`: original geometric utility icons under
+  the repository MIT license, embedded locally and shared by all platforms.
 - `github.svg`: GitHub's Primer Octicons `mark-github-16.svg`, retrieved from
   https://github.com/primer/octicons/blob/main/icons/mark-github-16.svg on
   2026-10-23. License: `OCTICONS-LICENSE` (MIT).

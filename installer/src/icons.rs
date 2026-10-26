@@ -11,6 +11,8 @@ pub enum Icon {
     Phone,
     GenericPhone,
     Github,
+    Copy,
+    Check,
 }
 
 pub fn view<'a>(icon: Icon, size: f32, color: Color) -> Element<'a, crate::app::Message> {
@@ -41,6 +43,8 @@ pub fn view_for_host<'a>(
         Icon::Phone => include_bytes!("../assets/lucide/smartphone.svg"),
         Icon::GenericPhone => include_bytes!("../assets/lucide/smartphone.svg"),
         Icon::Github => include_bytes!("../assets/github.svg"),
+        Icon::Copy => include_bytes!("../assets/ui/copy.svg"),
+        Icon::Check => include_bytes!("../assets/ui/check.svg"),
     };
     let rotation = if matches!(icon, Icon::Tablet) {
         std::f32::consts::FRAC_PI_2
