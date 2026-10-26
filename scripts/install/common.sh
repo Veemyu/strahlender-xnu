@@ -139,12 +139,22 @@ use_venv() {
   if [ "$INSTALL_DRY" = 0 ]; then PATH="$v/bin:$PATH"; export PATH; fi
 }
 
-# venv_pip <import name> <pip name>: install a package into the venv unless it imports already
+# venv_pip <import name> <pip requirement>: honor exact pins in an existing CLI venv.
 venv_pip() {
   local mod="$1" pkg="$2"
-  if ! fake_missing pip && python3 -c "import $mod" >/dev/null 2>&1; then ok pip_ok "$pkg"; return 0; fi
+  local check='import importlib, importlib.metadata, sys; importlib.import_module(sys.argv[1]); name, sep, wanted = sys.argv[2].partition("=="); assert not sep or importlib.metadata.version(name) == wanted'
+  if ! fake_missing pip && python3 -c "$check" "$mod" "$pkg" >/dev/null 2>&1; then ok pip_ok "$pkg"; return 0; fi
   warn pip_missing "$pkg"
   run python3 -m pip install --quiet --disable-pip-version-check "$pkg" || return 1
+}
+
+# Prefer existing C assets (including BDSP_UNICORN_ROOT) over installing bindings.
+venv_native_unicorn() {
+  if ! fake_missing pip && python3 "$ROOT/scripts/recomp/native-generator/build.py" --check-unicorn >/dev/null 2>&1; then
+    ok pip_ok "Unicorn 2.1.4 (native)"
+    return 0
+  fi
+  venv_pip unicorn unicorn==2.1.4
 }
 
 free_gb() { df -k "$1" | awk 'NR==2 {print int($4 * 1024 / 1000000000)}'; }

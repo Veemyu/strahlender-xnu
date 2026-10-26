@@ -38,6 +38,29 @@ class InstallerPathTests(unittest.TestCase):
             self.assertIn("6/6 data: skipped", result.stdout)
             self.assertFalse((root / "work/recomp/gen4").exists())
 
+    @unittest.skipIf(os.name == "nt", "Bash CLI setup")
+    def test_existing_cli_environment_must_match_the_native_engine_pin(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder / "fixture_native.py").write_text("")
+            metadata = folder / "fixture_native-1.0.dist-info"
+            metadata.mkdir()
+            (metadata / "METADATA").write_text("Metadata-Version: 2.1\nName: fixture-native\nVersion: 1.0\n")
+            calls = folder / "calls"
+            script = r"""
+source "$ROOT/scripts/install/common.sh"
+fake_missing() { return 1; }
+run() { printf '%s\n' "$*" >> "$TEST_INSTALL_CALLS"; }
+venv_pip fixture_native fixture-native==1.0
+venv_pip fixture_native fixture-native==2.1.4
+"""
+            env = dict(os.environ, ROOT=str(ROOT), PYTHONPATH=str(folder), TEST_INSTALL_CALLS=str(calls))
+            result = subprocess.run(["bash", "-s"], input=script, env=env, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rows = calls.read_text().splitlines()
+            self.assertEqual(len(rows), 1)
+            self.assertTrue(rows[0].endswith("fixture-native==2.1.4"))
+
     @unittest.skipUnless(sys.platform == "darwin", "Mac compiler/time flags")
     def test_mac_compiler_preserves_spaced_and_quoted_source_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
