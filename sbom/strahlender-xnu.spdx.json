@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "strahlender-xnu 36a7ff7-dirty SBOM",
-  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-9182bb60-4fba-56a9-89a5-a3e1b4a10b6f",
+  "name": "strahlender-xnu a822605-dirty SBOM",
+  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-ef528db6-abe6-57e4-92db-fbe328da619b",
   "creationInfo": {
-    "created": "2026-10-26T02:06:12Z",
+    "created": "2026-10-26T02:20:43Z",
     "creators": [
       "Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)"
     ]
@@ -17,14 +17,14 @@
     {
       "SPDXID": "SPDXRef-strahlender-xnu",
       "name": "strahlender-xnu",
-      "versionInfo": "36a7ff7-dirty",
+      "versionInfo": "a822605-dirty",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT",
       "copyrightText": "Copyright (c) 2026 Veemyu",
       "primaryPackagePurpose": "APPLICATION",
-      "comment": "Repository commit 36a7ff7c444868498a6c02a3b78835c26a13b10e. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py."
+      "comment": "Repository commit a8226057643553df7db2cf20bb46a2c52e1c7474. Uncommitted files at generation: scripts/recomp/native-generator/README.md."
     },
     {
       "SPDXID": "SPDXRef-installer",

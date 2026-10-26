@@ -1,10 +1,10 @@
 SPDXVersion: SPDX-2.3
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
-DocumentName: strahlender-xnu 36a7ff7-dirty SBOM
-DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-9182bb60-4fba-56a9-89a5-a3e1b4a10b6f
+DocumentName: strahlender-xnu a822605-dirty SBOM
+DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-ef528db6-abe6-57e4-92db-fbe328da619b
 Creator: Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)
-Created: 2026-10-26T02:06:12Z
+Created: 2026-10-26T02:20:43Z
 
 LicenseID: LicenseRef-Apple-SDK
 LicenseName: Apple Xcode and SDK Agreement
@@ -16,14 +16,14 @@ ExtractedText: <text>Proprietary FMOD runtime library (libfmod) inside fmod_tool
 
 PackageName: strahlender-xnu
 SPDXID: SPDXRef-strahlender-xnu
-PackageVersion: 36a7ff7-dirty
+PackageVersion: a822605-dirty
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: NOASSERTION
 PackageLicenseDeclared: MIT
 PackageCopyrightText: <text>Copyright (c) 2026 Veemyu</text>
 PrimaryPackagePurpose: APPLICATION
-PackageComment: <text>Repository commit 36a7ff7c444868498a6c02a3b78835c26a13b10e. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py.</text>
+PackageComment: <text>Repository commit a8226057643553df7db2cf20bb46a2c52e1c7474. Uncommitted files at generation: scripts/recomp/native-generator/README.md.</text>
 
 PackageName: strahlender-xnu-installer
 SPDXID: SPDXRef-installer

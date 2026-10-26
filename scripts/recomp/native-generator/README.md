@@ -254,3 +254,34 @@ See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for LZ4.
 
 These generator results do not establish Windows support or a complete Linux
 ARM64 game run. Full application build acceptance is recorded separately.
+
+## Application acceptance and generation timing (2026-10-26)
+
+A fresh macOS ARM64 compile completed all 2,495 objects (396 s), built native
+images and linked the runtime. Packaging succeeded with a newly assembled private
+Python without Capstone or Unicorn Python bindings. The resulting ad hoc signed
+`.app`, including original language icons, passed strict signature verification.
+This test reused existing extracted inputs; it did not install game data, launch
+the game or access saves. The first development-interpreter packaging attempt
+lacked Pillow and was retried with the verified private runtime.
+
+An x86_64 build of the native tool also passed under Rosetta on macOS ARM64:
+portable IR goldens, actual portable SIMD/FP execution, Unicorn analysis and
+whole-module file parity at 1 and 3 workers. This is a translated x86_64 test,
+not a native Linux/Windows desktop acceptance run.
+
+Three alternating runs compared fresh Main outputs with the already-parallel
+Python implementation at Git `1edb48c`, eight workers and private Python 3.13.15:
+
+| Generator | Run 1 | Run 2 | Run 3 | Median |
+|---|---:|---:|---:|---:|
+| Python, 8 processes | 34.803 s | 33.757 s | 37.010 s | 34.803 s |
+| C, 8 threads | 7.283 s | 7.254 s | 7.688 s | 7.283 s |
+
+Every file hash matched. Main generation was about 4.78 times faster; this does
+not measure the entire installer build or improve game frame rate. Median
+maximum single-process RSS was 1,301,135,360 bytes for Python and 1,048,264,704
+bytes for C; the Python figure is not aggregate physical memory across workers.
+The final private-runtime native/Mod suite passed 21 tests; backend, path,
+runtime, release and SBOM suites passed 92 tests, plus the CLI pin regression.
+Windows, a new full Linux desktop run and GitHub CI execution remain outstanding.
