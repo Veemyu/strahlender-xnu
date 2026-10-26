@@ -752,6 +752,40 @@ impl Installer {
 
     fn review_view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
+        if self.ios_profile_open {
+            let mut body = column![
+                self.title(
+                    self.language.t(L::ModProfileTitle),
+                    self.language.t(L::ModProfileHint)
+                ),
+                row![
+                    self.action(
+                        self.language.t(L::NewModProfile),
+                        Some(Message::NewIosProfile),
+                        self.ios_profile.is_none()
+                    ),
+                    self.action(
+                        self.language.t(L::ChoosePreviousIpa),
+                        Some(Message::ChooseIosProfile),
+                        self.ios_profile.is_some()
+                    ),
+                ]
+                .spacing(12),
+            ]
+            .spacing(16);
+            if let Some(profile) = &self.ios_profile {
+                body = body.push(
+                    text(
+                        self.language
+                            .t(L::ProfileReusedHint)
+                            .replace("{name}", &compact_name(&profile.name)),
+                    )
+                    .size(13)
+                    .color(c.muted),
+                );
+            }
+            return body.into();
+        }
         let summary = column![
             self.summary(
                 self.language.t(L::Base),
@@ -772,7 +806,7 @@ impl Installer {
                 self.language.t(L::Keys),
                 self.keys.as_ref().map(Source::name).unwrap_or_default()
             ),
-            if self.target == InstallTarget::Linux {
+            if matches!(self.target, InstallTarget::Linux | InstallTarget::Ios) {
                 space().height(0).into()
             } else {
                 self.summary(
@@ -824,7 +858,7 @@ impl Installer {
         } else {
             summary
         };
-        column![
+        let mut body = column![
             self.title(
                 self.language.t(L::ReviewTitle),
                 self.language.t(L::ReviewHint)
@@ -834,8 +868,18 @@ impl Installer {
                 .width(Fill)
                 .style(move |_| style::surface(c, false)),
         ]
-        .spacing(14)
-        .into()
+        .spacing(14);
+        if self.target == InstallTarget::Ios
+            && self.host == Platform::Mac
+            && self.ios_delivery == crate::backend::IosDelivery::Ipa
+            && self.selected_mod.is_some()
+        {
+            body = body.push(self.text_action(
+                self.language.t(L::ReuseModProfile),
+                Message::IosProfileView(true),
+            ));
+        }
+        body.into()
     }
 
     fn setup_view(&self) -> Element<'_, Message> {

@@ -22,6 +22,8 @@ int mods_scan(const char *mods_dir, ModInfo *out, int max);
 // Makes m the active mod and creates its own save folder <saves_dir>/mods/<name> (user_id.hex is copied from saves_dir so the
 // account stays the same). The game's own save folder is never touched while a mod is active. Returns 0 on success.
 int mods_activate(const ModInfo *m, const char *saves_dir);
+// Optional stable storage identity; the displayed mod name remains unchanged.
+int mods_activate_profile(const ModInfo *m, const char *saves_dir, const char *profile);
 const ModInfo *mods_active(void);   // NULL: the unmodified game
 const char *mods_active_save(void); // save folder of the active mod, "" if none
 

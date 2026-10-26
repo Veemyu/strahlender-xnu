@@ -131,8 +131,16 @@ static void copy_small_file(const char *src, const char *dst) {
 }
 
 int mods_activate(const ModInfo *m, const char *saves_dir) {
+    return mods_activate_profile(m, saves_dir, NULL);
+}
+
+int mods_activate_profile(const ModInfo *m, const char *saves_dir, const char *profile) {
     char root[1500];
-    if (!m || !saves_dir || !*saves_dir || snprintf(root, sizeof root, "%s/mods/%s", saves_dir, m->name) >= (int)sizeof root) return -1;
+    if (profile) {
+        if (strlen(profile) != 20) return -1;
+        for (const char *p = profile; *p; p++) if (!(*p >= '0' && *p <= '9') && !(*p >= 'a' && *p <= 'f')) return -1;
+    }
+    if (!m || !saves_dir || !*saves_dir || snprintf(root, sizeof root, "%s/mods/%s", saves_dir, profile ? profile : m->name) >= (int)sizeof root) return -1;
     if (mkdir_p(root) != 0) {
         fprintf(stderr, "[mods] cannot create the save folder %s: %s\n", root, strerror(errno));
         return -1;

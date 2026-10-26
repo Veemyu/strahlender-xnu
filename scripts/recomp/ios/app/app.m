@@ -548,8 +548,8 @@ static void *RuntimeThread(void *arg) {
 @end
 
 // Starts the runtime with the game (mod == NULL) or with a mod: the mod's RomFS is merged over the game's and the mod gets a save folder of
-// its own (Saves/mods/<name>). The save of the game is not touched while a mod is active, so a dropped-in SaveData.bin waits (ImportSave)
-// for the next start of the game.
+// its own. Exported installed mods use a stable profile ID; legacy/local mods use their name.
+// Dropped-in saves require explicit import through the save-management menu.
 static NSDictionary *InstallerData(void) {
     NSString *path = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res/install-data.plist"];
     return [NSDictionary dictionaryWithContentsOfFile:path];
@@ -564,6 +564,13 @@ static NSString *InstallerDocumentPath(NSDictionary *metadata, NSString *key) {
     return [path hasPrefix:[docs stringByAppendingString:@"/"]] ? path : nil;
 }
 
+static NSString *StableInstalledProfile(const ModInfo *mod) {
+    NSDictionary *data = InstallerData();
+    NSString *root = InstallerDocumentPath(data, @"ModDirectory");
+    return mod && [data[@"ExternalLibrary"] boolValue] && [data[@"SaveStorageVersion"] intValue] >= 2 && root &&
+        !strcmp(mod->root, root.UTF8String) ? data[@"SaveProfile"] : nil;
+}
+
 static void StartSelectedRuntime(const ModInfo *mod) {
     if (getenv("BDSP_PROBE_FIXED")) ProbeFixedWindows();
     NSString *docs = Documents(), *res = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"res"];
@@ -571,7 +578,8 @@ static void StartSelectedRuntime(const ModInfo *mod) {
     NSString *saves = BDSPBaseSaveRoot() ?: [docs stringByAppendingPathComponent:@"Saves"];
     [fm createDirectoryAtPath:[docs stringByAppendingPathComponent:@"Shots"] withIntermediateDirectories:YES attributes:nil error:nil];
     if (mod) {
-        if (mods_activate(mod, saves.UTF8String) != 0) {
+        NSString *stable = StableInstalledProfile(mod);
+        if (mods_activate_profile(mod, saves.UTF8String, stable.UTF8String) != 0) {
             fprintf(stderr, "[mods] cannot start \"%s\"\n", mod->name);
             BDSPShowDataError(@"The mod save folder could not be opened. Existing saves were kept.");
             return;
@@ -579,7 +587,7 @@ static void StartSelectedRuntime(const ModInfo *mod) {
         setenv("BDSP_SAVE", mods_active_save(), 1);
         saves = @(mods_active_save());
     }
-    NSString *profile = mod ? [Sha256([[@(mod->name) lowercaseString] dataUsingEncoding:NSUTF8StringEncoding]) substringToIndex:20] : @"vanilla";
+    NSString *profile = StableInstalledProfile(mod) ?: (mod ? [Sha256([[@(mod->name) lowercaseString] dataUsingEncoding:NSUTF8StringEncoding]) substringToIndex:20] : @"vanilla");
     NSError *saveError = nil;
     if (!BDSPConfigureSaveRoot(saves, InstallerData(), profile, &saveError)) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Save recovery needs attention" message:saveError.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
@@ -620,8 +628,9 @@ static void LaunchRuntime(const ModInfo *mod) {
     NSString *saves = BDSPBaseSaveRoot() ?: [Documents() stringByAppendingPathComponent:@"Saves"];
     NSString *profile = @"vanilla";
     if (mod) {
-        saves = [[saves stringByAppendingPathComponent:@"mods"] stringByAppendingPathComponent:@(mod->name)];
-        profile = [Sha256([[@(mod->name) lowercaseString] dataUsingEncoding:NSUTF8StringEncoding]) substringToIndex:20];
+        NSString *stable = StableInstalledProfile(mod);
+        saves = [[saves stringByAppendingPathComponent:@"mods"] stringByAppendingPathComponent:stable ?: @(mod->name)];
+        profile = stable ?: [Sha256([[@(mod->name) lowercaseString] dataUsingEncoding:NSUTF8StringEncoding]) substringToIndex:20];
     }
     NSError *error = nil;
     if (!BDSPConfigureSaveRoot(saves, InstallerData(), profile, &error)) {

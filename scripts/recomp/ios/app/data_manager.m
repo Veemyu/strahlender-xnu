@@ -21,6 +21,7 @@ static NSString *T(NSString *en, NSString *de, NSString *es, NSString *pt, NSStr
 @property(nonatomic, copy) NSDictionary *identity;
 @property(nonatomic, copy) NSDictionary *saveIdentity;
 @property(nonatomic, copy) NSString *saveRoot;
+@property(nonatomic, copy) NSString *saveLabel;
 @property(nonatomic, copy) NSString *baseSaveRoot;
 @property(nonatomic, strong) NSURL *library;
 @property(nonatomic, strong) NSData *pendingLibraryBookmark;
@@ -81,7 +82,7 @@ static NSString *ProfileForMod(NSString *name) {
     }
     NSString *status = [NSUserDefaults.standardUserDefaults stringForKey:StatusKey(self.saveIdentity)] ?: T(@"No external backup yet.", @"Noch kein externes Backup.", @"Aún no hay copia externa.", @"Ainda sem cópia externa.", @"Внешней копии пока нет.");
     NSString *hint = T(@"Keep backups outside this app. Deleting an app or its LiveContainer container can delete its local saves.", @"Backups außerhalb dieser App aufbewahren. Das Löschen der App oder ihres LiveContainer-Containers kann lokale Saves löschen.", @"Guarda copias fuera de esta app. Borrar la app o su contenedor de LiveContainer puede borrar las partidas locales.", @"Guarda cópias fora desta aplicação. Apagar a aplicação ou o contentor do LiveContainer pode apagar o progresso local.", @"Храните копии вне приложения. Удаление приложения или контейнера LiveContainer может удалить локальные сохранения.");
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Ready to play", @"Bereit zum Spielen", @"Listo para jugar", @"Pronto para jogar", @"Готово к игре") message:[NSString stringWithFormat:@"%@\n%@\n\n%@", [self.saveIdentity[@"ProfileID"] isEqual:@"vanilla"] ? T(@"Unmodified game", @"Unverändertes Spiel", @"Juego sin modificar", @"Jogo sem alterações", @"Игра без модов") : self.saveRoot.lastPathComponent, status, hint] preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Ready to play", @"Bereit zum Spielen", @"Listo para jugar", @"Pronto para jogar", @"Готово к игре") message:[NSString stringWithFormat:@"%@\n%@\n\n%@", [self.saveIdentity[@"ProfileID"] isEqual:@"vanilla"] ? T(@"Unmodified game", @"Unverändertes Spiel", @"Juego sin modificar", @"Jogo sem alterações", @"Игра без модов") : self.saveLabel, status, hint] preferredStyle:UIAlertControllerStyleAlert];
     BOOL needsLibrary = [self.identity[@"ExternalLibrary"] boolValue];
     if (!needsLibrary && !self.deviceDataReady) [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verifyDeviceData]; }]];
     if (needsLibrary) [alert addAction:[UIAlertAction actionWithTitle:T(@"Choose game library", @"Spieldaten auswählen", @"Elegir biblioteca", @"Escolher biblioteca", @"Выбрать библиотеку") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:1]; }]];
@@ -378,6 +379,7 @@ static NSString *ProfileForMod(NSString *name) {
 
 BOOL BDSPConfigureSaveRoot(NSString *path, NSDictionary *identity, NSString *profile, NSError **error) {
     manager.saveRoot = path;
+    manager.saveLabel = [identity[@"SaveProfile"] isEqual:profile] && [identity[@"ModName"] isKindOfClass:NSString.class] ? identity[@"ModName"] : path.lastPathComponent;
     manager.saveIdentity = @{@"GameID":identity[@"GameID"] ?: @"0100000011d90000", @"ProfileID":profile ?: @"vanilla"};
     return BDSPRecoverRestore([NSURL fileURLWithPath:path], error);
 }
@@ -396,7 +398,7 @@ void BDSPPrepareData(UIViewController *presenter, NSDictionary *identity, void (
     NSString *root = [DocumentsPath() stringByAppendingPathComponent:@"Saves"];
     if ([identity[@"ExternalLibrary"] boolValue]) root = [DocumentsPath() stringByAppendingPathComponent:[NSString stringWithFormat:@"Profiles/%@/%@/Saves", identity[@"GameID"], profile]];
     manager.baseSaveRoot = root;
-    if ([identity[@"CompiledExeFS"] boolValue] && [identity[@"ModName"] isKindOfClass:NSString.class]) root = [[root stringByAppendingPathComponent:@"mods"] stringByAppendingPathComponent:identity[@"ModName"]];
+    if ([identity[@"CompiledExeFS"] boolValue] && [identity[@"ModName"] isKindOfClass:NSString.class]) root = [[root stringByAppendingPathComponent:@"mods"] stringByAppendingPathComponent:[identity[@"SaveStorageVersion"] intValue] >= 2 ? profile : identity[@"ModName"]];
     NSError *error = nil;
     if (!BDSPConfigureSaveRoot(root, identity, profile, &error)) { [manager message:error.localizedDescription]; return; }
     NSURL *library = Resolve(LibraryKey());

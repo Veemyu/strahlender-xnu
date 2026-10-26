@@ -112,6 +112,17 @@ int main(void) {
         CHECK(c0 == 99);
     }
 
+    // Exported app identity survives a display-name change without migrating saves.
+    CHECK(mods_activate_profile(&list[0], saves, "0123456789abcdef0123") == 0);
+    put(PATH("%s/saves/mods/0123456789abcdef0123/sentinel", t), 4, 77);
+    ModInfo renamed = list[0];
+    snprintf(renamed.name, sizeof renamed.name, "Renamed mod");
+    CHECK(mods_activate_profile(&renamed, saves, "0123456789abcdef0123") == 0);
+    CHECK(exists(PATH("%s/saves/mods/0123456789abcdef0123/sentinel", t)));
+    CHECK(!strcmp(mods_active()->name, "Renamed mod"));
+    CHECK(mods_activate_profile(&renamed, saves, "../bad") != 0);
+    CHECK(mods_activate(&list[0], saves) == 0);
+
     // The merged RomFS
     romfs_build_index();
     CHECK(rom.nfiles == 5);   // the game's 4 files, 2 of them replaced, plus New/n.bin

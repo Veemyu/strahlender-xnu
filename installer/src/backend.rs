@@ -45,6 +45,7 @@ pub enum Event {
         kind: String,
         path: PathBuf,
     },
+    IosProfile(crate::ios_profile::Profile),
     PythonMissing,
     RuntimeMissing,
     Finished {
@@ -151,6 +152,8 @@ impl IosDelivery {
 pub struct BuildRequest {
     pub target: &'static str,
     pub ios_delivery: IosDelivery,
+    pub ios_profile: Option<crate::ios_profile::Profile>,
+    pub ios_new_profile: Option<String>,
     pub portable_cpu: bool,
     pub clean_build: bool,
     pub auto_cleanup: bool,
@@ -364,6 +367,8 @@ fn run_driver(
             Action::Build(request) => request.target == "ios",
         };
         let ipa_export = matches!(&action, Action::Build(request) if request.target == "ios" && request.ios_delivery == IosDelivery::Ipa);
+        let remember_profile =
+            matches!(&action, Action::Build(request) if ipa_export && request.mod_root.is_some());
         let workspace =
             match crate::workspace::prepare(run_id, &mut output, cancelled.clone()).await {
                 Ok(root) => root,
@@ -459,6 +464,8 @@ fn run_driver(
             Action::Build(BuildRequest {
                 target,
                 ios_delivery,
+                ios_profile,
+                ios_new_profile,
                 portable_cpu,
                 clean_build,
                 auto_cleanup: _,
@@ -516,6 +523,23 @@ fn run_driver(
                 }
                 if clean_build {
                     command.arg("--clean-build");
+                }
+                if target == "ios"
+                    && ios_delivery == IosDelivery::Ipa
+                    && let Some(profile) = ios_profile
+                {
+                    command
+                        .arg("--ios-profile-id")
+                        .arg(profile.id)
+                        .arg("--ios-profile-game")
+                        .arg(profile.game)
+                        .arg("--ios-bundle-id")
+                        .arg(profile.bundle);
+                } else if target == "ios"
+                    && ios_delivery == IosDelivery::Ipa
+                    && let Some(id) = ios_new_profile
+                {
+                    command.arg("--ios-profile-id").arg(id);
                 }
                 #[cfg(debug_assertions)]
                 set_development_install_root(
@@ -720,6 +744,7 @@ fn run_driver(
                 .await;
         } else {
             let ok = protocol_seen && process_ok && result_ok;
+            let profile_package = device_package.clone();
             if ok && cleanup_requested {
                 if let Some(owner) = workspace.owner {
                     let _ = output
@@ -785,6 +810,26 @@ fn run_driver(
                 } else {
                     let _ = output.send((run_id, Event::Log { level: "info".into(), message:
                         "Development checkout preserved. Automatic cleanup only removes this installer's downloaded workspaces.".into() })).await;
+                }
+            }
+            if ok
+                && remember_profile
+                && let Some(path) = profile_package
+            {
+                let profile = tokio::task::spawn_blocking(move || {
+                    let profile = crate::ios_profile::read_ipa(&path)?;
+                    crate::ios_profile::remember(&profile)?;
+                    Ok::<_, String>(profile)
+                })
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()));
+                match profile {
+                    Ok(profile) => {
+                        let _ = output.send((run_id, Event::IosProfile(profile))).await;
+                    }
+                    Err(detail) => {
+                        let _ = output.send((run_id, Event::Log { level: "warning".into(), message: format!("The IPA was exported, but its update identity could not be remembered. Keep the IPA and select it for future updates: {detail}") })).await;
+                    }
                 }
             }
             let _ = output

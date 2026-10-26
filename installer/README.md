@@ -313,3 +313,9 @@ are swept. Local development checkouts are never automatically removed.
 See [build pipeline status](docs/build-pipeline.md) for measurements, remaining
 Python orchestration and parallelism limits. End-to-end release cleanup still
 needs clean-system Mac/Linux acceptance; fixture tests are not that acceptance.
+
+The iPhone/iPad target now offers **Export IPA** as well as direct device
+installation. IPA export needs no connected device or personal signing team and
+keeps RomFS in a separate, shareable game library. Native save snapshots, external
+backups and recovery are described in [iOS delivery](docs/ios-delivery.md), including
+the still-pending SideStore and LiveContainer device acceptance.

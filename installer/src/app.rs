@@ -90,6 +90,13 @@ pub enum Message {
     ShowInstalledApp,
     ShowGameLibrary,
     IosDelivery(crate::backend::IosDelivery),
+    IosProfileView(bool),
+    ChooseIosProfile,
+    IosProfilePicked(
+        Option<String>,
+        Result<Option<crate::ios_profile::Profile>, String>,
+    ),
+    NewIosProfile,
     InstallationRevealed(Result<(), String>),
     OpenRepository,
     RepositoryOpened(Result<(), ()>),
@@ -207,6 +214,9 @@ pub struct Installer {
     exported_ipa: Option<PathBuf>,
     game_library: Option<PathBuf>,
     ios_delivery: crate::backend::IosDelivery,
+    ios_profile: Option<crate::ios_profile::Profile>,
+    ios_profile_open: bool,
+    ios_new_profile: Option<String>,
     copied_log_line: Option<(usize, Instant)>,
     requirements: Option<crate::dependencies::Plan>,
     requirements_busy: bool,
@@ -342,6 +352,32 @@ fn build_error_notice(detail: &str, language: Language, exporting: bool) -> Stri
 }
 
 impl Installer {
+    fn resolve_ios_profile(&mut self) {
+        if self.target != InstallTarget::Ios
+            || self.ios_profile.is_some()
+            || self.ios_new_profile.is_some()
+        {
+            return;
+        }
+        if let Some(name) = &self.selected_mod {
+            match crate::ios_profile::load() {
+                Ok(profiles) => {
+                    self.ios_profile = crate::ios_profile::matching(&profiles, name).cloned();
+                    if self.ios_profile.is_none() && self.ios_new_profile.is_none() {
+                        self.ios_new_profile = Some(crate::ios_profile::new_id());
+                    }
+                }
+                Err(cause) => {
+                    self.notice = Some(
+                        self.language
+                            .t(L::ProfileReadError)
+                            .replace("{cause}", &cause),
+                    );
+                }
+            }
+        }
+    }
+
     #[cfg(test)]
     pub fn new() -> (Self, Task<Message>) {
         Self::with_options(Options::default())
@@ -407,6 +443,9 @@ impl Installer {
             exported_ipa: None,
             game_library: None,
             ios_delivery: crate::backend::IosDelivery::Ipa,
+            ios_profile: None,
+            ios_profile_open: false,
+            ios_new_profile: None,
             copied_log_line: None,
             requirements: None,
             requirements_busy: false,
@@ -707,6 +746,9 @@ impl Installer {
                 self.select_imported_mod = false;
                 self.mods.clear();
                 self.selected_mod = None;
+                self.ios_profile = None;
+                self.ios_new_profile = None;
+                self.ios_profile_open = false;
                 self.mods_scan_id += 1;
                 self.mods_scanning = false;
             }
@@ -717,6 +759,58 @@ impl Installer {
                 if self.page == Page::Target && self.target == InstallTarget::Ios =>
             {
                 self.ios_delivery = delivery;
+                self.ios_profile = None;
+                self.ios_new_profile = None;
+            }
+            Message::IosProfileView(open) if self.page == Page::Review => {
+                self.ios_profile_open = open;
+            }
+            Message::NewIosProfile if self.page == Page::Review => {
+                self.ios_profile = None;
+                self.ios_new_profile = Some(crate::ios_profile::new_id());
+            }
+            Message::ChooseIosProfile
+                if self.page == Page::Review
+                    && self.target == InstallTarget::Ios
+                    && self.host == Platform::Mac =>
+            {
+                let selection = self.selected_mod.clone();
+                return Task::perform(
+                    async {
+                        let mut dialog =
+                            rfd::AsyncFileDialog::new().add_filter("iPhone / iPad", &["ipa"]);
+                        if let Ok(data) = crate::workspace::data_dir() {
+                            dialog = dialog.set_directory(data.join("exports/ios"));
+                        }
+                        let Some(file) = dialog.pick_file().await else {
+                            return Ok(None);
+                        };
+                        let path = file.path().to_path_buf();
+                        tokio::task::spawn_blocking(move || {
+                            crate::ios_profile::read_ipa(&path).map(Some)
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?
+                    },
+                    move |result| Message::IosProfilePicked(selection.clone(), result),
+                );
+            }
+            Message::IosProfilePicked(selection, result)
+                if self.page == Page::Review
+                    && self.target == InstallTarget::Ios
+                    && selection == self.selected_mod =>
+            {
+                match result {
+                    Ok(Some(profile)) => self.ios_profile = Some(profile),
+                    Ok(None) => {}
+                    Err(cause) => {
+                        self.notice = Some(
+                            self.language
+                                .t(L::ProfileReadError)
+                                .replace("{cause}", &cause),
+                        )
+                    }
+                }
             }
             Message::CleanBuild(enabled) if self.page == Page::Setup => {
                 self.clean_build = enabled;
@@ -802,12 +896,16 @@ impl Installer {
                             self.selected_mod = Some(mods[0].name.clone());
                         }
                         self.mods = mods;
+                        self.resolve_ios_profile();
                         if self
                             .selected_mod
                             .as_ref()
                             .is_some_and(|name| !self.mods.iter().any(|item| &item.name == name))
                         {
                             self.selected_mod = None;
+                            self.ios_profile = None;
+                            self.ios_new_profile = None;
+                            self.ios_profile_open = false;
                         }
                         self.notice = None;
                     }
@@ -872,14 +970,23 @@ impl Installer {
                 self.select_imported_mod = true;
                 self.mods.clear();
                 self.selected_mod = None;
+                self.ios_profile = None;
+                self.ios_new_profile = None;
+                self.ios_profile_open = false;
                 return self.handle(Message::RefreshMods);
             }
             Message::SelectMod(selection) if self.page == Page::Mods => {
+                if selection != self.selected_mod {
+                    self.ios_profile = None;
+                    self.ios_new_profile = None;
+                    self.ios_profile_open = false;
+                }
                 if selection
                     .as_ref()
                     .is_none_or(|name| self.mods.iter().any(|item| &item.name == name))
                 {
                     self.selected_mod = selection;
+                    self.resolve_ios_profile();
                     self.notice = None;
                 }
             }
@@ -1067,6 +1174,10 @@ impl Installer {
                 self.notice = None;
             }
             Message::Review if self.ready() => {
+                if self.page == Page::Review && self.ios_profile_open {
+                    self.ios_profile_open = false;
+                    return Task::none();
+                }
                 self.details = false;
                 self.page = match self.page {
                     Page::Target => Page::Keys,
@@ -1091,6 +1202,9 @@ impl Installer {
             Message::SkipMods if matches!(self.page, Page::ModsFolder | Page::Mods) => {
                 self.mods_skipped = true;
                 self.selected_mod = None;
+                self.ios_profile = None;
+                self.ios_new_profile = None;
+                self.ios_profile_open = false;
                 self.page = Page::Review;
                 self.details = false;
                 self.notice = None;
@@ -1098,6 +1212,9 @@ impl Installer {
                 self.drag_active = false;
             }
             Message::Back if self.page == Page::Progress && self.cleanup_busy => {}
+            Message::Back if self.page == Page::Review && self.ios_profile_open => {
+                self.ios_profile_open = false;
+            }
             Message::Back if self.page == Page::Setup && self.build_options_open => {
                 self.build_options_open = false;
             }
@@ -1153,6 +1270,22 @@ impl Installer {
                     return Task::none();
                 }
                 if !self.demo {
+                    if self.target == InstallTarget::Ios
+                        && self.ios_delivery == crate::backend::IosDelivery::Ipa
+                        && self.selected_mod.is_some()
+                        && self.ios_profile.is_none()
+                        && self.ios_new_profile.is_none()
+                    {
+                        if let Err(cause) = crate::ios_profile::load() {
+                            self.notice = Some(
+                                self.language
+                                    .t(L::ProfileReadError)
+                                    .replace("{cause}", &cause),
+                            );
+                            return Task::none();
+                        }
+                        self.resolve_ios_profile();
+                    }
                     if !self.backend_supported() {
                         self.record("BACKEND", self.language.t(L::BackendUnavailable));
                         self.notice = Some(self.language.t(L::BackendUnavailable).into());
@@ -1221,6 +1354,8 @@ impl Installer {
                             crate::backend::BuildRequest {
                                 target,
                                 ios_delivery: self.ios_delivery,
+                                ios_profile: self.ios_profile.clone(),
+                                ios_new_profile: self.ios_new_profile.clone(),
                                 portable_cpu: self.portable_cpu,
                                 clean_build: self.clean_build,
                                 auto_cleanup: self.auto_cleanup,
@@ -1323,6 +1458,9 @@ impl Installer {
                         );
                         self.installed_app = Some(path);
                     }
+                }
+                crate::backend::Event::IosProfile(profile) => {
+                    self.ios_profile = Some(profile);
                 }
                 crate::backend::Event::PythonMissing => {
                     self.record("BACKEND", self.language.t(L::PythonMissing));
@@ -1664,6 +1802,9 @@ impl Installer {
         self.saved_input_missing = [false; 3];
         self.mods.clear();
         self.selected_mod = None;
+        self.ios_profile = None;
+        self.ios_new_profile = None;
+        self.ios_profile_open = false;
         self.mods_skipped = false;
         self.mods_scanning = false;
         self.notice = None;
@@ -1730,8 +1871,12 @@ impl Installer {
                 self.mods_folder = mod_support::folder_for(self.host, self.target);
             }
             "mods-empty" => self.page = Page::Mods,
-            "mods-ips-ready" | "mods-ips-ios-ready" | "review-mod" => {
-                if scenario == "mods-ips-ios-ready" {
+            "mods-ips-ready" | "mods-ips-ios-ready" | "review-mod" | "review-ios-mod"
+            | "ios-profile" => {
+                if matches!(
+                    scenario,
+                    "mods-ips-ios-ready" | "review-ios-mod" | "ios-profile"
+                ) {
                     self.target = InstallTarget::Ios;
                 }
                 let root = self
@@ -1744,7 +1889,8 @@ impl Installer {
                 std::fs::create_dir_all(&exefs).expect("create screenshot fixture");
                 std::fs::write(exefs.join("0123.ips"), b"PATCHEOF")
                     .expect("write screenshot fixture");
-                self.page = if scenario == "review-mod" {
+                self.ios_profile_open = scenario == "ios-profile";
+                self.page = if matches!(scenario, "review-mod" | "review-ios-mod" | "ios-profile") {
                     Page::Review
                 } else {
                     Page::Mods

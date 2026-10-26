@@ -519,10 +519,18 @@ def _prepare_ios(args, mod_build, device):
     if getattr(args, "ios_delivery", "device") == "ipa":
         # A new export identity never contains a private machine path. Existing
         # device installations retain their original identifiers and save layout.
-        profile = hashlib.sha256(args.mod_name.lower().encode("utf-8")).hexdigest()[:20] if mod_root else "vanilla"
+        profile = os.urandom(10).hex() if mod_root else "vanilla"
+        reused_profile = getattr(args, "ios_profile_id", None)
+        if reused_profile:
+            previous_game = getattr(args, "ios_profile_game", None)
+            if not mod_root or not re.fullmatch(r"[a-f0-9]{20}", reused_profile) or (previous_game and previous_game != game_id):
+                raise ValueError("The previous IPA save profile does not match the selected game or mod build.")
+            profile = reused_profile
+            if previous_game and getattr(args, "ios_bundle_id", None) != "dev.local.xnubdsp.game." + game_id + "." + profile:
+                raise ValueError("The previous IPA application identity does not match its save profile.")
         if not getattr(args, "ios_bundle_id", None):
             bundle_id = "dev.local.xnubdsp.game." + game_id + "." + profile
-        metadata.update({"ExternalLibrary": True, "SaveProfile": profile})
+        metadata.update({"ExternalLibrary": True, "SaveProfile": profile, "SaveStorageVersion": 2})
         if mod_root:
             metadata["ModDirectory"] += "/" + args.mod_name
     data_identity = hashlib.sha256(json.dumps(metadata, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
@@ -681,6 +689,9 @@ def _build_ios(args, common):
     extract = [str(root / "scripts/build_all.sh"), "--only", "tools,extract", "--target", "ios",
                "--work", str(input_work), "--min-free-gb", str(required_free_gb(args)), *common]
     code = _run_command(extract, args, "extract")
+    previous_game = getattr(args, "ios_profile_game", None)
+    if code == 0 and previous_game and json.loads((input_work / "manifest.json").read_text()).get("title_id", "").lower() != previous_game:
+        raise ValueError("The previous IPA belongs to a different game. Choose its matching base game or create a new mod app.")
     mod_build = _prepare_code_mod(args, input_work, build_cache=work / "recomp") if code == 0 else None
     build_dir = mod_build["build_dir"] if mod_build else work / "recomp/ios-installer/vanilla"
     if code == 0 and getattr(args, "clean_build", False):
@@ -1011,6 +1022,8 @@ def main(argv=None):
     build_parser.add_argument("--ios-delivery", choices=("device", "ipa"), default="device")
     build_parser.add_argument("--ios-export-dir", help="Persistent destination for the IPA and shared game library")
     build_parser.add_argument("--ios-bundle-id", help="Separate application identifier for device testing")
+    build_parser.add_argument("--ios-profile-id", help="Reuse a previous installer IPA's mod save identity")
+    build_parser.add_argument("--ios-profile-game", help="Game identity belonging to the reused mod profile")
     build_parser.add_argument("--install-root", help="Override the installation root for local testing")
     args = parser.parse_args(argv)
     if args.command == "preflight":

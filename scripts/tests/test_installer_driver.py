@@ -62,7 +62,7 @@ class InstallerDriverTests(unittest.TestCase):
                 (mod / "romfs/override.bin").write_bytes(content)
                 build_dir = work / name
                 prepared = {"build_dir": build_dir, "staged": work / "staged", "bundle_id": "dev.legacy.pathdependent"}
-                args = SimpleNamespace(root=root, work=work, mod_root=mod, mod_name="Luminescent Platinum", ios_bundle_id=None, ios_delivery="ipa")
+                args = SimpleNamespace(root=root, work=work, mod_root=mod, mod_name="Luminescent Platinum" if name == "first-location" else "Renamed mod", ios_bundle_id="dev.local.xnubdsp.game.0100000011d90000.0123456789abcdef0123", ios_delivery="ipa", ios_profile_id="0123456789abcdef0123", ios_profile_game="0100000011d90000")
                 with contextlib.redirect_stdout(io.StringIO()):
                     environment = driver._prepare_ios(args, prepared, None)
                 metadata = driver.plistlib.loads((build_dir / "res/install-data.plist").read_bytes())
@@ -73,6 +73,13 @@ class InstallerDriverTests(unittest.TestCase):
                 self.assertNotIn(str(root), json.dumps(metadata))
             self.assertEqual(identities[0], identities[1])
             self.assertNotEqual(manifests[0], manifests[1])
+            args.ios_profile_game = "010018e011d92000"
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                driver._prepare_ios(args, prepared, None)
+            args.ios_profile_game = "0100000011d90000"
+            args.ios_bundle_id = "dev.different.app"
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                driver._prepare_ios(args, prepared, None)
 
     def test_ipa_export_rejects_destination_in_temporary_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
