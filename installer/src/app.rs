@@ -122,6 +122,7 @@ pub enum Message {
     DismissNotice,
     ShowNoticeDetails,
     CopyLog,
+    CopyLogLine(usize),
     DemoInput,
     DemoMod,
     CaptureTick,
@@ -193,6 +194,7 @@ pub struct Installer {
     backend_run_id: u64,
     backend_failure_detail: Option<String>,
     installed_app: Option<PathBuf>,
+    copied_log_line: Option<usize>,
     requirements: Option<crate::dependencies::Plan>,
     requirements_busy: bool,
     available_update: Option<crate::updates::Release>,
@@ -358,6 +360,7 @@ impl Installer {
             backend_run_id: 0,
             backend_failure_detail: None,
             installed_app: None,
+            copied_log_line: None,
             requirements: None,
             requirements_busy: false,
             available_update: None,
@@ -1286,6 +1289,12 @@ impl Installer {
                 }
             }
             Message::ToggleDetails => self.details = !self.details,
+            Message::CopyLogLine(index) => {
+                if let Some(line) = self.log.get(index) {
+                    self.copied_log_line = Some(index);
+                    return iced::clipboard::write(line.clone());
+                }
+            }
             Message::CopyLog => return iced::clipboard::write(self.log.join("\n")),
             Message::CaptureTick => {
                 if let Some(capture) = &mut self.capture
@@ -1547,6 +1556,7 @@ impl Installer {
         self.key_hint = None;
         self.tick = 0;
         self.log.clear();
+        self.copied_log_line = None;
         self.backend_status = BackendStatus::Idle;
         self.installed_app = None;
         self.backend_cancel = None;
@@ -1779,6 +1789,9 @@ impl Installer {
                 self.record("PREVIEW", self.language.t(L::LogPreview));
                 self.record("PREVIEW", self.language.t(L::Tools));
                 self.record("PREVIEW", self.language.t(L::Prepare));
+                if self.details {
+                    self.copied_log_line = Some(1);
+                }
             }
             "preflight-running" | "preflight-details" => {
                 self.page = Page::Progress;

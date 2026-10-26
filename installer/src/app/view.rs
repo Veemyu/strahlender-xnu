@@ -134,17 +134,56 @@ impl Installer {
             })
             .into();
         let base = if self.details {
-            let log = if self.log.is_empty() {
-                self.language.t(L::LogEmpty).to_owned()
+            let log: Element<'_, Message> = if self.log.is_empty() {
+                text(self.language.t(L::LogEmpty))
+                    .size(11)
+                    .font(iced::Font::MONOSPACE)
+                    .into()
             } else {
-                self.log.join("\n")
+                column(self.log.iter().enumerate().map(|(index, line)| {
+                    let copied = self.copied_log_line == Some(index);
+                    tooltip(
+                        button(text(line).size(11).font(iced::Font::MONOSPACE))
+                            .width(Fill)
+                            .padding([2, 4])
+                            .on_press(Message::CopyLogLine(index))
+                            .style(move |_, status| iced::widget::button::Style {
+                                background: if copied
+                                    || matches!(
+                                        status,
+                                        iced::widget::button::Status::Hovered
+                                            | iced::widget::button::Status::Pressed
+                                    ) {
+                                    Some(c.line.into())
+                                } else {
+                                    None
+                                },
+                                text_color: c.text,
+                                border: iced::Border {
+                                    radius: 3.0.into(),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }),
+                        text(self.language.t(if copied {
+                            L::LogLineCopied
+                        } else {
+                            L::CopyLogLine
+                        }))
+                        .size(11),
+                        tooltip::Position::Top,
+                    )
+                    .into()
+                }))
+                .width(Fill)
+                .into()
             };
             let log_height = crate::window_layout::LOG_HEIGHT - crate::window_layout::HEIGHT - 8.0;
             container(
                 column![
                     base,
                     container(
-                        scrollable(text(log).size(11).font(iced::Font::MONOSPACE))
+                        scrollable(log)
                             .id("session-log")
                             .anchor_bottom()
                             .height(Fill),
