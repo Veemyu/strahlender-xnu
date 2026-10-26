@@ -105,6 +105,17 @@ pub struct BuildRequest {
     pub mod_name: Option<String>,
 }
 
+#[cfg(debug_assertions)]
+fn set_development_install_root(
+    command: &mut Command,
+    local_checkout: bool,
+    destination: Option<std::ffi::OsString>,
+) {
+    if local_checkout && let Some(destination) = destination {
+        command.arg("--install-root").arg(destination);
+    }
+}
+
 fn set_cpu_target(command: &mut Command, target: &str, portable: bool) {
     // Inherited shell state must not override the UI, including Apple cross targets.
     if target == "linux" {
@@ -402,6 +413,13 @@ fn run_driver(
                     .arg(base)
                     .arg("--prod-keys")
                     .arg(prod_keys);
+                #[cfg(debug_assertions)]
+                set_development_install_root(
+                    &mut command,
+                    std::env::var_os("BDSP_INSTALLER_DEV_CHECKOUT").as_deref()
+                        == Some(std::ffi::OsStr::new("1")),
+                    std::env::var_os("BDSP_INSTALLER_DEV_INSTALL_ROOT"),
+                );
                 if let Some(update) = update {
                     command.arg("--update").arg(update);
                 }
@@ -611,6 +629,22 @@ fn run_driver(
 mod tests {
     use super::{ProtocolEvent, set_cpu_target};
     use tokio::process::Command;
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn development_install_destination_requires_an_explicit_local_checkout() {
+        let mut command = tokio::process::Command::new("python3");
+        super::set_development_install_root(&mut command, false, Some("isolated apps".into()));
+        assert_eq!(command.as_std().get_args().count(), 0);
+        super::set_development_install_root(&mut command, true, Some("isolated apps".into()));
+        assert_eq!(
+            command.as_std().get_args().collect::<Vec<_>>(),
+            vec![
+                std::ffi::OsStr::new("--install-root"),
+                std::ffi::OsStr::new("isolated apps")
+            ]
+        );
+    }
 
     #[test]
     fn progress_protocol_accepts_old_counts_and_native_details() {

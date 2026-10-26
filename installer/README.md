@@ -274,3 +274,9 @@ needs its own on-device game data; this rule does not remove those required copi
 After validation, retire unused Cargo deps/incremental/build outputs and obsolete
 test packages, keeping the current testable installer and diagnostic reports.
 This is development housekeeping, not automatic deletion of user game data.
+
+For an isolated interactive development run, a debug build with
+`BDSP_INSTALLER_DEV_CHECKOUT=1` can also set `BDSP_INSTALLER_DEV_INSTALL_ROOT` to
+redirect the existing backend installation destination. Both settings are required;
+release builds do not compile this override. This leaves the normal Applications
+installation and remote-main source policy unchanged.
