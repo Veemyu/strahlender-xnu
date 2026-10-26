@@ -142,8 +142,26 @@ class InstallerDriverTests(unittest.TestCase):
         with contextlib.redirect_stdout(output):
             self.assertEqual(driver._run_command(command, args, "eh_gen"), 0)
         events = [json.loads(line) for line in output.getvalue().splitlines()]
-        self.assertEqual([e["completed"] for e in events if e["event"] == "progress"], [1, 2])
+        self.assertEqual([e["completed"] for e in events if e["event"] == "progress" and "module" not in e], [1, 2])
         self.assertTrue(any("1024/2000" in e.get("message", "") for e in events))
+
+    def test_native_function_progress_preserves_analysis_and_mod_module_counts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "subsdk1").touch()
+            args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
+            text = "main: analyzing module\nmain: progress 0/2000 files 0\nmain: progress 1024/2000 files 8\nmain: wrote 16 chunks\nsdk: analyzing module\n"
+            command = [sys.executable, "-c", "print(" + repr(text) + ")"]
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                code = driver._run_command(command, args, "eh_gen", extra_env={"BDSP_EXEFS_DIR": folder})
+            self.assertEqual(code, 0)
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            progress = [e for e in events if e.get("module")]
+            self.assertEqual([e["phase"] for e in progress], ["analyze", "emit", "emit", "analyze"])
+            self.assertEqual([e["completed"] for e in progress], [0, 0, 1024, 0])
+            self.assertTrue(all(e["modules_total"] == 5 for e in progress))
+            self.assertEqual(progress[-1]["modules_completed"], 1)
+            self.assertEqual(progress[-1]["total"], 0)
 
     def test_build_commands_do_not_inherit_a_previous_mod_build_source(self):
         args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)

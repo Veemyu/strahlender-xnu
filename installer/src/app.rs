@@ -639,13 +639,15 @@ impl Installer {
                     .map(|last| now.saturating_duration_since(last).as_secs_f32())
                     .unwrap_or(1.0 / 60.0);
                 self.last_frame = Some(now);
-                let target = if self.demo || self.capture.is_some() {
+                let target = if self.demo
+                    || (self.capture.is_some() && self.backend_status == BackendStatus::Idle)
+                {
                     let stages = self.build_stages();
                     stages[((self.tick / 10) as usize).min(stages.len() - 1)].index() as f32
                         + (self.tick % 10) as f32 / 10.0
                 } else {
                     let stage = self.build_progress.active;
-                    stage.index() as f32 + self.build_progress.stages[stage.index()].fraction()
+                    stage.index() as f32 + self.build_progress.fraction(stage)
                 };
                 self.motion.advance(target, dt);
             }
@@ -1143,6 +1145,24 @@ impl Installer {
                     self.build_progress.step(&id, &status);
                     self.record("BACKEND", &format!("{id}: {status}"));
                 }
+                crate::backend::Event::GeneratorProgress {
+                    module,
+                    phase,
+                    completed,
+                    total,
+                    modules_completed,
+                    modules_total,
+                } => {
+                    self.build_progress.active = crate::progress::Stage::Generate;
+                    self.build_progress.generator = crate::progress::GeneratorProgress {
+                        module,
+                        phase,
+                        completed: completed.min(total),
+                        total,
+                        modules_completed,
+                        modules_total,
+                    };
+                }
                 crate::backend::Event::Progress {
                     id,
                     completed,
@@ -1391,7 +1411,9 @@ impl Installer {
             Page::Progress => {
                 offset
                     + if self.mods_skipped { 5 } else { 7 }
-                    + if self.demo || self.capture.is_some() {
+                    + if self.demo
+                        || (self.capture.is_some() && self.backend_status == BackendStatus::Idle)
+                    {
                         ((self.tick / 10) as usize).min(self.build_stages().len() - 1)
                     } else {
                         self.build_stages()
@@ -1663,6 +1685,40 @@ impl Installer {
             "setup-ios" => {
                 self.page = Page::Setup;
                 self.target = InstallTarget::Ios;
+            }
+            "generator-analyze" | "generator-emit" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Running;
+                self.build_progress = crate::progress::BuildProgress::default();
+                self.build_progress.step("eh_gen", "started");
+                self.build_progress.count("eh_gen", 1, 5);
+                self.build_progress.generator = crate::progress::GeneratorProgress {
+                    module: "main".into(),
+                    phase: if scenario == "generator-analyze" {
+                        "analyze"
+                    } else {
+                        "emit"
+                    }
+                    .into(),
+                    completed: if scenario == "generator-analyze" {
+                        0
+                    } else {
+                        42000
+                    },
+                    total: if scenario == "generator-analyze" {
+                        0
+                    } else {
+                        218098
+                    },
+                    modules_completed: 1,
+                    modules_total: 5,
+                };
+                self.motion.snap(
+                    crate::progress::Stage::Generate.index() as f32
+                        + self
+                            .build_progress
+                            .fraction(crate::progress::Stage::Generate),
+                );
             }
             "progress" | "progress-details" => {
                 self.page = Page::Progress;

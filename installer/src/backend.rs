@@ -33,6 +33,14 @@ pub enum Event {
         completed: u64,
         total: u64,
     },
+    GeneratorProgress {
+        module: String,
+        phase: String,
+        completed: u64,
+        total: u64,
+        modules_completed: u64,
+        modules_total: u64,
+    },
     Artifact {
         kind: String,
         path: PathBuf,
@@ -60,6 +68,14 @@ enum ProtocolEvent {
         id: String,
         completed: u64,
         total: u64,
+        #[serde(default)]
+        module: Option<String>,
+        #[serde(default)]
+        phase: Option<String>,
+        #[serde(default)]
+        modules_completed: u64,
+        #[serde(default)]
+        modules_total: u64,
     },
     Log {
         level: String,
@@ -489,8 +505,14 @@ fn run_driver(
                             Ok(ProtocolEvent::Step { id, status }) => {
                                 let _ = output.send((run_id, Event::Step { id, status })).await;
                             }
-                            Ok(ProtocolEvent::Progress { id, completed, total }) => {
-                                let _ = output.send((run_id, Event::Progress { id, completed, total })).await;
+                            Ok(ProtocolEvent::Progress { id, completed, total, module, phase, modules_completed, modules_total }) => {
+                                let event = match (id.as_str(), module, phase) {
+                                    ("eh_gen", Some(module), Some(phase)) => Event::GeneratorProgress {
+                                        module, phase, completed, total, modules_completed, modules_total,
+                                    },
+                                    _ => Event::Progress { id, completed, total },
+                                };
+                                let _ = output.send((run_id, event)).await;
                             }
                             Ok(ProtocolEvent::Log { level, message }) => {
                                 let _ = output.send((run_id, Event::Log { level, message })).await;
@@ -589,6 +611,27 @@ fn run_driver(
 mod tests {
     use super::{ProtocolEvent, set_cpu_target};
     use tokio::process::Command;
+
+    #[test]
+    fn progress_protocol_accepts_old_counts_and_native_details() {
+        let old: super::ProtocolEvent =
+            serde_json::from_str(r#"{"event":"progress","id":"clang","completed":2,"total":3}"#)
+                .unwrap();
+        assert!(matches!(
+            old,
+            super::ProtocolEvent::Progress { module: None, .. }
+        ));
+        let native: super::ProtocolEvent = serde_json::from_str(
+            r#"{"event":"progress","id":"eh_gen","module":"main","phase":"analyze","unit":"functions","completed":0,"total":0,"modules_completed":1,"modules_total":5}"#).unwrap();
+        assert!(matches!(
+            native,
+            super::ProtocolEvent::Progress {
+                module: Some(_),
+                modules_total: 5,
+                ..
+            }
+        ));
+    }
 
     #[test]
     fn cpu_choice_reaches_linux_and_does_not_leak_to_apple_builds() {

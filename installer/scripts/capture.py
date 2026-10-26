@@ -18,7 +18,7 @@ SCENARIOS = (
     "keys-empty", "keys-selected", "keys-not-found", "game-empty", "game-selected",
     "nca", "update-empty", "update-selected", "mods-folder", "mods-folder-ios", "mods-empty",
     "mods-selected", "mods-exefs-only", "mods-ips-ready", "mods-ips-ios-ready", "review-mod", "error", "error-details", "error-disk",
-    "review", "review-portable", "demo-review", "setup", "progress", "progress-details",
+    "review", "review-portable", "demo-review", "setup", "generator-analyze", "generator-emit", "progress", "progress-details",
     "preflight-running", "preflight-details", "finished", "long-name", "demo",
 )
 INSTALLER = Path(__file__).resolve().parents[1]

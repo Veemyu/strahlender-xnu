@@ -165,6 +165,17 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                             active = next_phase
                             emit("step", id=active, status="started")
                     if active == "eh_gen":
+                        analysis = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9]*): analyzing module", message)
+                        functions = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9]*): progress (\d+)/(\d+) files (\d+)", message)
+                        if analysis or functions:
+                            marker = analysis or functions
+                            completed = int(functions[2]) if functions else 0
+                            total = int(functions[3]) if functions else 0
+                            if completed <= total:
+                                emit("progress", id="eh_gen", module=marker[1],
+                                     phase="emit" if functions else "analyze", unit="functions",
+                                     completed=completed, total=total,
+                                     modules_completed=len(generated_modules), modules_total=module_total)
                         module_done = re.match(r"^([A-Za-z_][A-Za-z_0-9]*): wrote ", message)
                         module_marker = re.match(r"^module=([A-Za-z_][A-Za-z_0-9]*)\b", message)
                         completed_module = module_done or module_marker

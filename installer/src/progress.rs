@@ -68,10 +68,21 @@ impl StageProgress {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct GeneratorProgress {
+    pub module: String,
+    pub phase: String,
+    pub completed: u64,
+    pub total: u64,
+    pub modules_completed: u64,
+    pub modules_total: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct BuildProgress {
     pub stages: [StageProgress; 10],
     pub active: Stage,
+    pub generator: GeneratorProgress,
 }
 
 impl Default for BuildProgress {
@@ -79,11 +90,28 @@ impl Default for BuildProgress {
         Self {
             stages: [StageProgress::default(); 10],
             active: Stage::Source,
+            generator: GeneratorProgress::default(),
         }
     }
 }
 
 impl BuildProgress {
+    pub fn fraction(&self, stage: Stage) -> f32 {
+        let state = self.stages[stage.index()];
+        let g = &self.generator;
+        if stage != Stage::Generate || state.done || g.modules_total == 0 {
+            return state.fraction();
+        }
+        let local = if g.phase == "emit" && g.total > 0 {
+            g.completed.min(g.total) as f64 / g.total as f64
+        } else {
+            0.0
+        };
+        // Module-completion events can arrive immediately after the final function count.
+        ((g.modules_completed as f64 + local).max(state.completed as f64) / g.modules_total as f64)
+            .min(1.0) as f32
+    }
+
     pub fn step(&mut self, id: &str, status: &str) {
         let Some(stage) = Stage::from_id(id) else {
             return;
@@ -116,6 +144,37 @@ impl BuildProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_progress_never_rewinds_at_module_boundaries() {
+        let mut p = BuildProgress::default();
+        p.step("eh_gen", "started");
+        p.generator = GeneratorProgress {
+            module: "main".into(),
+            phase: "analyze".into(),
+            modules_total: 5,
+            ..Default::default()
+        };
+        assert_eq!(p.fraction(Stage::Generate), 0.0);
+        p.generator.phase = "emit".into();
+        p.generator.total = 2000;
+        p.generator.completed = 1000;
+        assert!((p.fraction(Stage::Generate) - 0.1).abs() < 0.001);
+        p.generator.completed = 2000;
+        assert!((p.fraction(Stage::Generate) - 0.2).abs() < 0.001);
+        p.count("eh_gen", 1, 5);
+        assert!((p.fraction(Stage::Generate) - 0.2).abs() < 0.001);
+        p.generator = GeneratorProgress {
+            module: "sdk".into(),
+            phase: "analyze".into(),
+            modules_completed: 1,
+            modules_total: 5,
+            ..Default::default()
+        };
+        assert!((p.fraction(Stage::Generate) - 0.2).abs() < 0.001);
+        p.step("eh_gen", "complete");
+        assert_eq!(p.fraction(Stage::Generate), 1.0);
+    }
 
     #[test]
     fn compilation_count_is_real_bounded_and_separate_from_generator() {

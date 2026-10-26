@@ -117,6 +117,7 @@ int cg_generate(int argc,char **argv) {
 #endif
     size_t jobs=cg_choose_jobs(job_option);
     fprintf(stderr,"%s: generator workers %zu\n",module,jobs);
+    fprintf(stderr,"%s: analyzing module\n",module);
     Nso n=cg_nso(source);cg_phase="analyze";ModuleAnalysis plan=cg_analyze_module(&n,base,portable,&setjmp,entry_offsets,jobs);
     Bindings wanted={0},hle_map={0};Strings hle_names={0},requested=lines(hle_file);
     for(size_t i=0;i<requested.size;i++)cg_set(&wanted,requested.items[i],1);
@@ -130,6 +131,7 @@ int cg_generate(int argc,char **argv) {
     for(size_t i=0;i<available;i++)if(!only_file||member(&only,plan.functions[i]->entry))order[count++]=plan.functions[i];
     if(only_file&&only.size>count)fprintf(stderr,"%s: --only: %zu starts are not function starts\n",module,only.size-count);
     cg_phase="emit";cg_mkdirs(out);size_t ci=0,nchunks=0,sub=0,eh_count=0,reported=0;uint64_t last_window=UINT64_MAX;
+    fprintf(stderr,"%s: progress 0/%zu files 0\n",module,count);
     EmitWork work={&n,base,portable,order,&nle,&hle_map,&hle_names,module,cg_events};
     CgPool *pool=jobs>1&&count?cg_pool_open(jobs,count,emit_work,&work,dispose_work):NULL;
     OwnedFunction pending={0};Addresses all_refs={0};Strings written={0};uint64_t text_lo=base+n.segments[0].offset;

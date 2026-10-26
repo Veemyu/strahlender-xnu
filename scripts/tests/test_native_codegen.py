@@ -464,6 +464,33 @@ class NativeCodegenTests(unittest.TestCase):
                         self.assertEqual(json.loads(new.stdout), expected,
                                          f"taken={taken}, entries={extra}, mode={mode}")
 
+    def test_native_generation_reaches_installer_protocol_with_function_counts(self):
+        if json.loads(self.run_native("--version", "--json").stdout).get("unicorn") is None:
+            self.skipTest("native Unicorn dependency unavailable")
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        from scripts.install import driver
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            folder = Path(temporary)
+            source = synthetic_nso(folder / "game.nso")
+            args = SimpleNamespace(root=str(ROOT), base=str(source), prod_keys=None, update=None)
+            command = [str(self.binary), "gen", "main", str(source), "0x7000000000",
+                       str(folder / "output"), "--simd", "c", "--jobs", "3"]
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                code = driver._run_command(command, args, "eh_gen")
+            self.assertEqual(code, 0, output.getvalue())
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            details = [e for e in events if e.get("module") == "main"]
+            self.assertEqual(details[0]["phase"], "analyze")
+            self.assertEqual(details[0]["total"], 0)
+            functions = [e for e in details if e["phase"] == "emit"]
+            self.assertEqual(functions[0]["completed"], 0)
+            self.assertGreater(functions[-1]["total"], 0)
+            self.assertEqual(functions[-1]["completed"], functions[-1]["total"])
+            self.assertTrue(list((folder / "output").glob("*.c")))
+            self.assertNotIn(str(source), output.getvalue())
+
     def test_whole_module_chunk_files_match_frozen_generator(self):
         if json.loads(self.run_native("--version", "--json").stdout).get("unicorn") is None:
             self.skipTest("native Unicorn dependency unavailable")

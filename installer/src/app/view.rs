@@ -851,6 +851,29 @@ impl Installer {
                     state.total,
                     self.language.t(L::FilesCompiled)
                 ),
+                crate::progress::Stage::Generate
+                    if !self.build_progress.generator.module.is_empty() =>
+                {
+                    let g = &self.build_progress.generator;
+                    let phase = if g.phase == "analyze" {
+                        self.language.t(L::AnalyzingModule).to_owned()
+                    } else {
+                        format!(
+                            "{} / {} {}",
+                            g.completed,
+                            g.total,
+                            self.language.t(L::FunctionsGenerated)
+                        )
+                    };
+                    format!(
+                        "{} {} / {} · {}\n{}",
+                        self.language.t(L::Module),
+                        (g.modules_completed + 1).min(g.modules_total),
+                        g.modules_total,
+                        g.module,
+                        phase
+                    )
+                }
                 crate::progress::Stage::Generate if state.total > 0 => format!(
                     "{} / {} {}",
                     state.completed,
