@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:ef528db6-abe6-57e4-92db-fbe328da619b",
+  "serialNumber": "urn:uuid:0205dbf7-07de-505f-9d4e-7b4469e87d30",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-26T02:20:43Z",
+    "timestamp": "2026-10-26T07:34:30Z",
     "tools": {
       "components": [
         {
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "root",
       "name": "strahlender-xnu",
-      "version": "a822605-dirty",
+      "version": "e4e3d8a-dirty",
       "licenses": [
         {
           "license": {
@@ -25,7 +25,7 @@
           }
         }
       ],
-      "description": "Repository commit a8226057643553df7db2cf20bb46a2c52e1c7474. Uncommitted files at generation: scripts/recomp/native-generator/README.md."
+      "description": "Repository commit e4e3d8a3b53b09722dc7b26ebb029d2347a0354f. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py."
     }
   },
   "components": [

@@ -93,6 +93,7 @@ CATALOG = [
       download="https://github.com/lz4/lz4/tree/v1.9.4", category="vendored-source",
       notes="Unchanged LZ4 C block decoder source, compiled into the standalone native generator. Per-file SHA-256 values are in source.json."),
 
+
     # Assets bundled into the installer (uncommitted installer/ directory).
     C("octicons-mark-github-16", "GitHub Octicons: mark-github-16", "unversioned (retrieved 2026-10-23)",
       "pkg:generic/octicons-mark-github-16", "MIT", SHIPPED, TRACKED,
