@@ -145,6 +145,26 @@ class InstallerDriverTests(unittest.TestCase):
         self.assertEqual([e["completed"] for e in events if e["event"] == "progress" and "module" not in e], [1, 2])
         self.assertTrue(any("1024/2000" in e.get("message", "") for e in events))
 
+    def test_filesystem_failure_keeps_its_actual_cause(self):
+        args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
+        message = "rm: generated output: Directory not empty"
+        command = [sys.executable, "-c", "print(" + repr(message) + "); raise SystemExit(1)"]
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(driver._run_command(command, args, "eh_gen"), 1)
+        errors = [json.loads(line) for line in output.getvalue().splitlines() if json.loads(line)["event"] == "error"]
+        self.assertIn(message, errors[-1]["message"])
+
+    def test_stage_durations_are_reported_independently(self):
+        args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
+        command = [sys.executable, "-c", "print('2/6 compile: fixture',flush=True)"]
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(driver._run_command(command, args, "eh_gen", phase_from_line=driver._mac_phase), 0)
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        timed = [e for e in events if "elapsed_seconds" in e]
+        self.assertEqual([e["id"] for e in timed], ["eh_gen", "clang"])
+        self.assertTrue(all(e["elapsed_seconds"] >= 0 for e in timed))
+        self.assertTrue(any("clang:" in e.get("message", "") for e in events))
+
     def test_native_function_progress_preserves_analysis_and_mod_module_counts(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

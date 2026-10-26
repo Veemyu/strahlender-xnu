@@ -1874,6 +1874,17 @@ mod tests {
     }
 
     #[test]
+    fn native_generator_error_dialog_keeps_module_phase_and_cause() {
+        let cause = "bdsp_codegen [analyze/subsdk1]: error: cross-module entry outside module text";
+        let detail = format!("Build step failed: eh_gen\n{cause}");
+        for language in [Language::English, Language::German] {
+            let notice = build_error_notice(&detail, language);
+            assert!(notice.contains(language.t(L::Generate)));
+            assert!(notice.contains(cause));
+        }
+    }
+
+    #[test]
     fn compiler_failure_names_the_stage_and_actual_cause() {
         let error = "Build step failed: runtime\nkernel.c:12:10: fatal error: 'sys/sysctl.h' file not found";
         for (language, stage) in [

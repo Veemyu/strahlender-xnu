@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -106,6 +107,7 @@ def _safe_line(line, args):
 def _run_command(command, args, stage, progress=None, phase_from_line=None, extra_env=None, emit_steps=True):
     args.command_failure_hint = None
     active = stage
+    stage_started = time.monotonic()
     # A long-running bash script must not keep reading a file being edited by a
     # parallel development session. Preserve $0 and argv while freezing its text.
     script = Path(command[0])
@@ -153,7 +155,7 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                 if message:
                     emit("log", level="diagnostic", message=message)
                     if first_failure is None and re.search(
-                            r"fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:", message):
+                            r"fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:|Directory not empty|Permission denied|No space left on device", message):
                         first_failure = message.strip()
                     if "maximum number of installed apps using a free developer profile" in message:
                         args.command_failure_hint = ("Apple's free signing limit is full on this device. Remove an unused development-signed app "
@@ -161,7 +163,10 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                     if phase_from_line:
                         next_phase = phase_from_line(message)
                         if next_phase and next_phase != active:
-                            emit("step", id=active, status="complete")
+                            elapsed = round(time.monotonic() - stage_started, 3)
+                            emit("step", id=active, status="complete", elapsed_seconds=elapsed)
+                            emit("log", level="diagnostic", message=f"{active}: {elapsed:.3f} s")
+                            stage_started = time.monotonic()
                             active = next_phase
                             emit("step", id=active, status="started")
                     if active == "eh_gen":
@@ -196,7 +201,9 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
         reader_thread.join(timeout=5)
         proc.stdout.close()
     if emit_steps:
-        emit("step", id=active, status="complete" if code == 0 else "failed")
+        elapsed = round(time.monotonic() - stage_started, 3)
+        emit("step", id=active, status="complete" if code == 0 else "failed", elapsed_seconds=elapsed)
+        emit("log", level="diagnostic", message=f"{active}: {elapsed:.3f} s")
     if code:
         cause = args.command_failure_hint or first_failure or ("Command exited with code " + str(code))
         emit("error", message="Build step failed: " + active + "\n" + cause, code=code)
