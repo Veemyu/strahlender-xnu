@@ -10,3 +10,11 @@ NSString *BDSPFileSHA256(NSURL *file, NSError **error);
 BOOL BDSPWriteJSON(id value, NSURL *file, NSError **error);
 NSArray *BDSPInventory(NSURL *folder, NSError **error);
 BOOL BDSPExportIPA(NSURL *source, NSURL *destination, NSError **error);
+
+// Fast metadata check only after a successful full verification. forceFull is
+// used for explicit checks/imports. receipt belongs in app-private Library/Caches.
+NSDictionary *BDSPCheckInstalledData(NSURL *library, NSDictionary *identity, NSURL *manifest,
+    NSURL *receipt, BOOL forceFull, BOOL *usedReceipt,
+    void (^progress)(NSUInteger, NSUInteger), NSError **error);
+NSDictionary *BDSPCheckLibrary(NSURL *library, NSDictionary *identity, NSURL *receipt,
+    BOOL forceFull, void (^progress)(NSUInteger, NSUInteger), NSError **error);

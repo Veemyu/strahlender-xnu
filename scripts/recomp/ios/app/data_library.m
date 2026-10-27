@@ -259,6 +259,85 @@ NSDictionary *BDSPVerifyInstalledData(NSURL *library, NSDictionary *identity, NS
     }
     return manifest;
 }
+// A receipt is an optimisation, not a replacement for SHA-256 authentication.
+// It lives outside Documents and records every file's inode, size and nanosecond
+// timestamps. Imports, edits, replaced trees and manifest changes require SHA again.
+static NSDictionary *DataSnapshot(NSURL *library, NSDictionary *identity, NSError **error) {
+    NSMutableDictionary *snapshot = [NSMutableDictionary new];
+    NSArray *roots = identity[@"ModDirectory"] ? @[identity[@"RomFSDirectory"], identity[@"ModDirectory"]] : @[identity[@"RomFSDirectory"]];
+    for (NSString *relative in roots) {
+        NSURL *folder = SafeURL(library, relative, error);
+        if (!folder) return nil;
+        NSMutableDictionary *files = [NSMutableDictionary new];
+        if (!WalkFiles(folder, ^BOOL(NSURL *file, NSString *path, off_t size, NSError **failure) {
+            (void)size;
+            struct stat st;
+            if (lstat(file.fileSystemRepresentation, &st) || !S_ISREG(st.st_mode))
+                return Fail(failure, @"A data file changed while checking it.");
+            files[path] = @[@(st.st_dev), @(st.st_ino), @(st.st_size),
+                @(st.st_mtimespec.tv_sec), @(st.st_mtimespec.tv_nsec),
+                @(st.st_ctimespec.tv_sec), @(st.st_ctimespec.tv_nsec)];
+            return YES;
+        }, error)) return nil;
+        snapshot[relative] = files;
+    }
+    return snapshot;
+}
+
+NSDictionary *BDSPCheckInstalledData(NSURL *library, NSDictionary *identity, NSURL *manifestURL,
+    NSURL *receiptURL, BOOL forceFull, BOOL *usedReceipt,
+    void (^progress)(NSUInteger, NSUInteger), NSError **error) {
+    CFAbsoluteTime started = CFAbsoluteTimeGetCurrent();
+    if (usedReceipt) *usedReceipt = NO;
+    NSNumber *manifestSize = nil;
+    [manifestURL getResourceValue:&manifestSize forKey:NSURLFileSizeKey error:error];
+    if (!manifestSize || manifestSize.unsignedLongLongValue > 32 * 1024 * 1024) {
+        Fail(error, @"Invalid data manifest size."); return nil;
+    }
+    NSString *manifestHash = BDSPFileSHA256(manifestURL, error);
+    if (!manifestHash) return nil;
+    NSDictionary *before = DataSnapshot(library, identity, error);
+    if (!before) return nil;
+    NSString *root = library.URLByResolvingSymlinksInPath.path;
+    NSDictionary *receipt = receiptURL ? [NSDictionary dictionaryWithContentsOfURL:receiptURL] : nil;
+    if (!forceFull && [receipt[@"schema"] isEqual:@1] &&
+        [receipt[@"manifestSHA256"] isEqual:manifestHash] &&
+        [receipt[@"library"] isEqual:root] && [receipt[@"identity"] isEqual:identity] &&
+        [receipt[@"files"] isEqual:before]) {
+        NSData *bytes = [NSData dataWithContentsOfURL:manifestURL options:0 error:error];
+        NSDictionary *manifest = bytes ? [NSJSONSerialization JSONObjectWithData:bytes options:0 error:error] : nil;
+        if ([manifest isKindOfClass:NSDictionary.class] && [manifest[@"schema"] isEqual:@1] && [manifest[@"identity"] isEqual:identity]) {
+            if (usedReceipt) *usedReceipt = YES;
+            fprintf(stderr, "[data] unchanged inventory: metadata check %.3f s\n", CFAbsoluteTimeGetCurrent() - started);
+            return manifest;
+        }
+    }
+    // Invalidate before starting; an interrupted or failed check never leaves a hit.
+    if (receiptURL) [NSFileManager.defaultManager removeItemAtURL:receiptURL error:nil];
+    NSDictionary *manifest = BDSPVerifyInstalledData(library, identity, manifestURL, progress, error);
+    if (!manifest) return nil;
+    NSDictionary *after = DataSnapshot(library, identity, error);
+    if (!after || ![before isEqual:after] || ![manifestHash isEqual:BDSPFileSHA256(manifestURL, error)]) {
+        Fail(error, @"Game data changed during verification. Check again."); return nil;
+    }
+    if (receiptURL) {
+        NSDictionary *value = @{@"schema":@1, @"manifestSHA256":manifestHash, @"library":root,
+            @"identity":identity, @"files":after};
+        NSData *bytes = [NSPropertyListSerialization dataWithPropertyList:value format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+        // Cache failure is harmless: the next launch simply hashes again.
+        [NSFileManager.defaultManager createDirectoryAtURL:receiptURL.URLByDeletingLastPathComponent
+            withIntermediateDirectories:YES attributes:nil error:nil];
+        [bytes writeToURL:receiptURL options:NSDataWritingAtomic error:nil];
+    }
+    fprintf(stderr, "[data] full SHA-256 verification %.3f s\n", CFAbsoluteTimeGetCurrent() - started);
+    return manifest;
+}
+
+NSDictionary *BDSPCheckLibrary(NSURL *library, NSDictionary *identity, NSURL *receipt,
+    BOOL forceFull, void (^progress)(NSUInteger, NSUInteger), NSError **error) {
+    NSURL *manifest = SafeURL(library, identity[@"DataManifest"], error);
+    return manifest ? BDSPCheckInstalledData(library, identity, manifest, receipt, forceFull, NULL, progress, error) : nil;
+}
 NSDictionary *BDSPVerifyLibraryProgress(NSURL *library, NSDictionary *identity, void (^progress)(NSUInteger, NSUInteger), NSError **error) {
     NSURL *manifest = SafeURL(library, identity[@"DataManifest"], error);
     return manifest ? BDSPVerifyInstalledData(library, identity, manifest, progress, error) : nil;

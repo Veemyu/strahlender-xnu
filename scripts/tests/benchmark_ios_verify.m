@@ -14,12 +14,19 @@ int main(int argc, char **argv) { @autoreleasepool {
     NSURL *temporary = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:[@"bdsp-verify-" stringByAppendingString:NSUUID.UUID.UUIDString]];
     NSError *error = nil;
     if (!BDSPWriteJSON(manifest, temporary, &error)) return 2;
+    NSURL *receipt = [temporary URLByAppendingPathExtension:@"plist"];
     double start = Now();
-    BOOL ok = BDSPVerifyInstalledData(romfs.URLByDeletingLastPathComponent, identity, temporary, nil, &error) != nil;
+    BOOL usedReceipt = NO;
+    BOOL ok = BDSPCheckInstalledData(romfs.URLByDeletingLastPathComponent, identity, temporary, receipt, NO, &usedReceipt, nil, &error) != nil;
     double elapsed = Now() - start;
+    double fastStart = Now();
+    BOOL fast = ok && BDSPCheckInstalledData(romfs.URLByDeletingLastPathComponent, identity, temporary, receipt, NO, &usedReceipt, nil, &error) != nil;
+    double fastElapsed = Now() - fastStart;
     struct rusage usage; getrusage(RUSAGE_SELF, &usage);
     [NSFileManager.defaultManager removeItemAtURL:temporary error:nil];
+    [NSFileManager.defaultManager removeItemAtURL:receipt error:nil];
     printf("verified=%d files=%lu seconds=%.3f peak_rss_bytes=%ld\n", ok, (unsigned long)entries.count, elapsed, usage.ru_maxrss);
+    printf("followup_verified=%d used_receipt=%d seconds=%.3f\n", fast, usedReceipt, fastElapsed);
     if (!ok) fprintf(stderr, "%s\n", error.localizedDescription.UTF8String);
-    return ok ? 0 : 1;
+    return ok && fast && usedReceipt ? 0 : 1;
 } }

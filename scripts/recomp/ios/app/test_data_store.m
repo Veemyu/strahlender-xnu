@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 static NSURL *At(NSURL *root, NSString *name) { return [root URLByAppendingPathComponent:name]; }
 static void Put(NSURL *root, NSString *name, NSString *value) {
@@ -35,6 +36,40 @@ int main(void) { @autoreleasepool {
     NSURL *expected = At(root, @"expected-library.json");
     assert(BDSPCreateLibraryManifest(romfs, nil, identity, expected, nil));
     assert(BDSPVerifyInstalledData(library, identity, expected, nil, nil));
+    NSURL *receipt = At(root, @"private-cache/verified.plist");
+    BOOL usedReceipt = YES;
+    assert(BDSPCheckInstalledData(library, identity, expected, receipt, NO, &usedReceipt, nil, nil));
+    assert(!usedReceipt); // First import always hashes.
+    assert(BDSPCheckInstalledData(library, identity, expected, receipt, NO, &usedReceipt, nil, nil));
+    assert(usedReceipt); // Unchanged follow-up uses metadata, not all data bytes.
+    Put(library, @"Saves/unrelated-test-save.bin", @"outside game inventory");
+    assert(BDSPCheckInstalledData(library, identity, expected, receipt, NO, &usedReceipt, nil, nil));
+    assert(usedReceipt); // Saving does not invalidate or involve the data check.
+    assert(BDSPCheckInstalledData(library, identity, expected, receipt, YES, &usedReceipt, nil, nil));
+    assert(!usedReceipt); // Explicit full recheck remains available.
+    struct stat originalMetadata;
+    NSURL *cachedFile = At(library, @"GameData/version1/romfs/Data/game.bin");
+    assert(!stat(cachedFile.fileSystemRepresentation, &originalMetadata));
+    Put(library, @"GameData/version1/romfs/Data/game.bin", @"modified");
+    struct timespec oldTimes[2] = {originalMetadata.st_atimespec, originalMetadata.st_mtimespec};
+    assert(!utimensat(AT_FDCWD, cachedFile.fileSystemRepresentation, oldTimes, 0));
+    assert(!BDSPCheckInstalledData(library, identity, expected, receipt, NO, &usedReceipt, nil, nil));
+    assert(!usedReceipt && ![fm fileExistsAtPath:receipt.path]);
+    Put(library, @"GameData/version1/romfs/Data/game.bin", @"original");
+    assert(BDSPCheckInstalledData(library, identity, expected, receipt, NO, &usedReceipt, nil, nil));
+    assert(!usedReceipt);
+    Put(root, @"private-cache/verified.plist", @"interrupted receipt");
+    assert(BDSPCheckInstalledData(library, identity, expected, receipt, NO, &usedReceipt, nil, nil));
+    assert(!usedReceipt);
+    // Metadata reuse never hides unexpected files or manifest changes.
+    Put(library, @"GameData/version1/romfs/Data/extra.bin", @"extra");
+    assert(!BDSPCheckInstalledData(library, identity, expected, receipt, NO, NULL, nil, nil));
+    assert([fm removeItemAtURL:At(library, @"GameData/version1/romfs/Data/extra.bin") error:nil]);
+    assert(BDSPCheckInstalledData(library, identity, expected, receipt, NO, NULL, nil, nil));
+    NSData *manifestBytes = [NSData dataWithContentsOfURL:expected];
+    Put(root, @"expected-library.json", @"{}");
+    assert(!BDSPCheckInstalledData(library, identity, expected, receipt, NO, NULL, nil, nil));
+    assert([manifestBytes writeToURL:expected atomically:YES]);
     // SHA-256 remains standard, including empty files and multi-buffer payloads.
     Put(root, @"hash-empty", @"");
     Put(root, @"hash-abc", @"abc");
@@ -133,6 +168,11 @@ int main(void) { @autoreleasepool {
     modIdentity[@"DataManifest"] = @"Manifests/mod.json";
     assert(BDSPExportLibrary(romfs, mod, modIdentity, library, nil));
     assert(BDSPVerifyLibrary(library, modIdentity, nil));
+    assert(BDSPCheckLibrary(library, modIdentity, receipt, NO, nil, nil));
+    Put(library, @"Mods/version1/Luminescent Platinum/romfs/Data/overlay.bin", @"changed");
+    assert(!BDSPCheckLibrary(library, modIdentity, receipt, NO, nil, nil));
+    assert(![fm fileExistsAtPath:receipt.path]);
+    Put(library, @"Mods/version1/Luminescent Platinum/romfs/Data/overlay.bin", @"overlay");
     assert(![fm fileExistsAtPath:At(library, @"Mods/version1/Luminescent Platinum/prod.keys").path]);
     assert(![fm fileExistsAtPath:At(library, @"Mods/version1/Luminescent Platinum/Saves").path]);
     // Known build mods are checked; separately added overlays do not alter the base inventory.

@@ -124,8 +124,9 @@ static NSString *ProfileForMod(NSString *name) {
     if (needsLibrary) {
         [alert addAction:[UIAlertAction actionWithTitle:T(@"Choose game library", @"Spieldaten auswählen", @"Elegir biblioteca", @"Escolher biblioteca", @"Выбрать библиотеку") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:1]; }]];
         [self addImportAction:alert];
+        if (self.library) [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verify:self.library]; }]];
     } else {
-        [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verifyDeviceData]; }]];
+        [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verifyDeviceData:YES]; }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:T(@"Back", @"Zurück", @"Volver", @"Voltar", @"Назад") style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { (void)a; [self menu]; }]];
     [self.presenter presentViewController:alert animated:YES completion:nil];
@@ -193,7 +194,8 @@ static NSString *ProfileForMod(NSString *name) {
     }]];
     [self.presenter presentViewController:confirm animated:YES completion:nil];
 }
-- (void)verify:(NSURL *)url {
+- (void)verify:(NSURL *)url { [self verify:url forceFull:YES]; }
+- (void)verify:(NSURL *)url forceFull:(BOOL)forceFull {
     BOOL scoped = [url startAccessingSecurityScopedResource];
     if (!scoped) { [self message:T(@"Folder access failed. Choose the game library again.", @"Ordnerzugriff fehlgeschlagen. Spieldaten erneut auswählen.", @"No se puede acceder. Elige de nuevo la biblioteca.", @"O acesso falhou. Escolhe novamente a biblioteca.", @"Нет доступа. Выберите библиотеку заново.")]; return; }
     NSData *bookmark = [url bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
@@ -202,7 +204,8 @@ static NSString *ProfileForMod(NSString *name) {
     [self.presenter presentViewController:checking animated:YES completion:^{
         dispatch_async(self.backupQueue, ^{
             NSError *error = nil;
-            BOOL ok = BDSPVerifyLibraryProgress(url, self.identity, ^(NSUInteger completed, NSUInteger total) {
+            NSURL *cache = [[NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"verified-external-game-data.plist"];
+            BOOL ok = BDSPCheckLibrary(url, self.identity, cache, forceFull, ^(NSUInteger completed, NSUInteger total) {
                 dispatch_async(dispatch_get_main_queue(), ^{ checking.message = [NSString stringWithFormat:@"%lu / %lu", (unsigned long)completed, (unsigned long)total]; });
             }, &error) != nil;
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -223,7 +226,7 @@ static NSString *ProfileForMod(NSString *name) {
         });
     }];
 }
-- (void)verifyDeviceData {
+- (void)verifyDeviceData:(BOOL)forceFull {
     NSURL *documents = [NSURL fileURLWithPath:DocumentsPath()];
     NSURL *manifest = [NSBundle.mainBundle.resourceURL URLByAppendingPathComponent:@"res/expected-library.json"];
     BOOL hasManifest = [NSFileManager.defaultManager fileExistsAtPath:manifest.path];
@@ -232,7 +235,8 @@ static NSString *ProfileForMod(NSString *name) {
         dispatch_async(self.backupQueue, ^{
             NSError *failure = nil;
             BOOL ok;
-            if (hasManifest) ok = BDSPVerifyInstalledData(documents, self.identity, manifest, ^(NSUInteger completed, NSUInteger total) {
+            NSURL *cache = [[NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"verified-game-data.plist"];
+            if (hasManifest) ok = BDSPCheckInstalledData(documents, self.identity, manifest, cache, forceFull, NULL, ^(NSUInteger completed, NSUInteger total) {
                 dispatch_async(dispatch_get_main_queue(), ^{ checking.message = [NSString stringWithFormat:@"%lu / %lu", (unsigned long)completed, (unsigned long)total]; });
             }, &failure) != nil;
             else {
@@ -431,9 +435,9 @@ void BDSPPrepareData(UIViewController *presenter, NSDictionary *identity, void (
     if (!BDSPConfigureSaveRoot(root, identity, profile, &error)) { [manager message:error.localizedDescription]; return; }
     NSURL *library = Resolve(LibraryKey());
     manager.initialDataPhase = [identity[@"ExternalLibrary"] boolValue];
-    if (manager.initialDataPhase && library) [manager verify:library];
+    if (manager.initialDataPhase && library) [manager verify:library forceFull:NO];
     else if (manager.initialDataPhase) [manager menu];
-    else [manager verifyDeviceData];
+    else [manager verifyDeviceData:NO];
 }
 void BDSPConfirmStart(void (^ready)(void)) { manager.ready = ready; [manager menu]; }
 void BDSPShowDataError(NSString *detail) { manager.running = NO; [manager message:detail]; }
