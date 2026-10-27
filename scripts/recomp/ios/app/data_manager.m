@@ -80,19 +80,10 @@ static NSString *ProfileForMod(NSString *name) {
         [self addImportAction:choose];
         [self.presenter presentViewController:choose animated:YES completion:nil]; return;
     }
-    NSString *status = [NSUserDefaults.standardUserDefaults stringForKey:StatusKey(self.saveIdentity)] ?: T(@"No external backup yet.", @"Noch kein externes Backup.", @"Aún no hay copia externa.", @"Ainda sem cópia externa.", @"Внешней копии пока нет.");
-    NSString *hint = T(@"Keep backups outside this app. Deleting an app or its LiveContainer container can delete its local saves.", @"Backups außerhalb dieser App aufbewahren. Das Löschen der App oder ihres LiveContainer-Containers kann lokale Saves löschen.", @"Guarda copias fuera de esta app. Borrar la app o su contenedor de LiveContainer puede borrar las partidas locales.", @"Guarda cópias fora desta aplicação. Apagar a aplicação ou o contentor do LiveContainer pode apagar o progresso local.", @"Храните копии вне приложения. Удаление приложения или контейнера LiveContainer может удалить локальные сохранения.");
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Ready to play", @"Bereit zum Spielen", @"Listo para jugar", @"Pronto para jogar", @"Готово к игре") message:[NSString stringWithFormat:@"%@\n%@\n\n%@", [self.saveIdentity[@"ProfileID"] isEqual:@"vanilla"] ? T(@"Unmodified game", @"Unverändertes Spiel", @"Juego sin modificar", @"Jogo sem alterações", @"Игра без модов") : self.saveLabel, status, hint] preferredStyle:UIAlertControllerStyleAlert];
     BOOL needsLibrary = [self.identity[@"ExternalLibrary"] boolValue];
-    if (!needsLibrary && !self.deviceDataReady) [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verifyDeviceData]; }]];
-    if (needsLibrary) [alert addAction:[UIAlertAction actionWithTitle:T(@"Choose game library", @"Spieldaten auswählen", @"Elegir biblioteca", @"Escolher biblioteca", @"Выбрать библиотеку") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:1]; }]];
-    if (needsLibrary) [self addImportAction:alert];
-    [alert addAction:[UIAlertAction actionWithTitle:T(@"Choose backup folder", @"Backup-Ordner auswählen", @"Elegir carpeta de copias", @"Escolher pasta de cópias", @"Выбрать папку копий") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:2]; }]];
-    [alert addAction:[UIAlertAction actionWithTitle:T(@"Back up now", @"Jetzt sichern", @"Crear copia ahora", @"Criar cópia agora", @"Создать копию") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self backupNow]; }]];
-    if ([NSFileManager.defaultManager fileExistsAtPath:[DocumentsPath() stringByAppendingPathComponent:@"SaveData.bin"]]) {
-        [alert addAction:[UIAlertAction actionWithTitle:T(@"Import SaveData.bin", @"SaveData.bin importieren", @"Importar SaveData.bin", @"Importar SaveData.bin", @"Импорт SaveData.bin") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self importDroppedSave]; }]];
-    }
-    [alert addAction:[UIAlertAction actionWithTitle:T(@"Restore a backup", @"Backup wiederherstellen", @"Restaurar una copia", @"Restaurar uma cópia", @"Восстановить копию") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self chooseRestore]; }]];
+    BOOL canPlay = needsLibrary ? self.verified : self.deviceDataReady;
+    NSString *profile = [self.saveIdentity[@"ProfileID"] isEqual:@"vanilla"] ? T(@"Unmodified game", @"Unverändertes Spiel", @"Juego sin modificar", @"Jogo sem alterações", @"Игра без модов") : self.saveLabel;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:canPlay ? T(@"Ready to play", @"Bereit zum Spielen", @"Listo para jugar", @"Pronto para jogar", @"Готово к игре") : T(@"Check game files", @"Spieldaten prüfen", @"Comprobar datos", @"Verificar dados", @"Проверка данных") message:profile preferredStyle:UIAlertControllerStyleAlert];
     UIAlertAction *play = [UIAlertAction actionWithTitle:T(@"Play", @"Spielen", @"Jugar", @"Jogar", @"Играть") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         (void)a;
         if (![self protectBeforeUpdate]) return;
@@ -100,9 +91,43 @@ static NSString *ProfileForMod(NSString *name) {
         [self retryBackups];
         self.ready();
     }];
-    play.enabled = needsLibrary ? self.verified : self.deviceDataReady;
+    play.enabled = canPlay;
     [alert addAction:play];
-    alert.preferredAction = play.enabled ? play : nil;
+    [alert addAction:[UIAlertAction actionWithTitle:T(@"Saves & backups…", @"Saves & Backups…", @"Partidas y copias…", @"Progresso e cópias…", @"Сохранения и копии…") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self saveMenu]; }]];
+    if (needsLibrary || !canPlay) [alert addAction:[UIAlertAction actionWithTitle:T(@"Game files…", @"Spieldaten…", @"Datos del juego…", @"Dados do jogo…", @"Файлы игры…") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self gameDataMenu]; }]];
+    alert.preferredAction = canPlay ? play : nil;
+    [self.presenter presentViewController:alert animated:YES completion:nil];
+}
+- (NSString *)backupStatus {
+    return [NSUserDefaults.standardUserDefaults stringForKey:StatusKey(self.saveIdentity)] ?: T(@"No external backup yet.", @"Noch kein externes Backup.", @"Aún no hay copia externa.", @"Ainda sem cópia externa.", @"Внешней копии пока нет.");
+}
+- (void)saveMenu {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Saves & backups", @"Saves & Backups", @"Partidas y copias", @"Progresso e cópias", @"Сохранения и копии") message:[self backupStatus] preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:T(@"Back up…", @"Sichern…", @"Crear copia…", @"Criar cópia…", @"Создать копию…") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self backupMenu]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:T(@"Restore…", @"Wiederherstellen…", @"Restaurar…", @"Restaurar…", @"Восстановить…") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self chooseRestore]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:T(@"Back", @"Zurück", @"Volver", @"Voltar", @"Назад") style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { (void)a; [self menu]; }]];
+    [self.presenter presentViewController:alert animated:YES completion:nil];
+}
+- (void)backupMenu {
+    NSString *hint = T(@"Keep backups outside this app. If you delete the app or its LiveContainer data container, local saves can be lost.", @"Lege deine Backups außerhalb der App ab. Wenn du die App oder den zugehörigen LiveContainer-Datencontainer löschst, können deine lokalen Saves verloren gehen.", @"Guarda copias fuera de esta app. Si borras la app o su contenedor de LiveContainer, puedes perder las partidas locales.", @"Guarda cópias fora desta aplicação. Se apagares a aplicação ou o contentor do LiveContainer, podes perder o progresso local.", @"Храните копии вне приложения. При удалении приложения или контейнера LiveContainer локальные сохранения могут быть потеряны.");
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Back up your save", @"Deinen Save sichern", @"Guardar tu partida", @"Guardar o teu progresso", @"Резервная копия сохранения") message:hint preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:T(@"Choose backup folder", @"Backup-Ordner auswählen", @"Elegir carpeta de copias", @"Escolher pasta de cópias", @"Выбрать папку копий") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:2]; }]];
+    NSString *slot = [self.saveRoot stringByAppendingPathComponent:@"save_1"];
+    BOOL hasSave = [NSFileManager.defaultManager fileExistsAtPath:[slot stringByAppendingPathComponent:@"SaveData.bin"]] || [NSFileManager.defaultManager fileExistsAtPath:[slot stringByAppendingPathComponent:@"Backup.bin"]];
+    if (hasSave) [alert addAction:[UIAlertAction actionWithTitle:T(@"Back up now", @"Jetzt sichern", @"Crear copia ahora", @"Criar cópia agora", @"Создать копию") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self backupNow]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:T(@"Back", @"Zurück", @"Volver", @"Voltar", @"Назад") style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { (void)a; [self saveMenu]; }]];
+    [self.presenter presentViewController:alert animated:YES completion:nil];
+}
+- (void)gameDataMenu {
+    BOOL needsLibrary = [self.identity[@"ExternalLibrary"] boolValue];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Game files", @"Spieldaten", @"Datos del juego", @"Dados do jogo", @"Файлы игры") message:nil preferredStyle:UIAlertControllerStyleAlert];
+    if (needsLibrary) {
+        [alert addAction:[UIAlertAction actionWithTitle:T(@"Choose game library", @"Spieldaten auswählen", @"Elegir biblioteca", @"Escolher biblioteca", @"Выбрать библиотеку") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:1]; }]];
+        [self addImportAction:alert];
+    } else {
+        [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verifyDeviceData]; }]];
+    }
+    [alert addAction:[UIAlertAction actionWithTitle:T(@"Back", @"Zurück", @"Volver", @"Voltar", @"Назад") style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { (void)a; [self menu]; }]];
     [self.presenter presentViewController:alert animated:YES completion:nil];
 }
 - (BOOL)protectBeforeUpdate {
@@ -245,8 +270,11 @@ static NSString *ProfileForMod(NSString *name) {
         if ([snapshot.pathComponents containsObject:@"_upgrade-backups"]) name = [NSString stringWithFormat:@"%@ · %@", name, T(@"Before update", @"Vor Update", @"Antes de actualizar", @"Antes de atualizar", @"До обновления")];
         [choose addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self confirmRestore:snapshot scoped:NO]; }]];
     }
+    if ([NSFileManager.defaultManager fileExistsAtPath:[DocumentsPath() stringByAppendingPathComponent:@"SaveData.bin"]]) {
+        [choose addAction:[UIAlertAction actionWithTitle:T(@"Import SaveData.bin", @"SaveData.bin importieren", @"Importar SaveData.bin", @"Importar SaveData.bin", @"Импорт SaveData.bin") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self importDroppedSave]; }]];
+    }
     [choose addAction:[UIAlertAction actionWithTitle:T(@"Open from Files", @"Aus Dateien öffnen", @"Abrir desde Archivos", @"Abrir de Ficheiros", @"Открыть из Файлов") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:3]; }]];
-    [choose addAction:[UIAlertAction actionWithTitle:T(@"Cancel", @"Abbrechen", @"Cancelar", @"Cancelar", @"Отмена") style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { (void)a; [self menu]; }]];
+    [choose addAction:[UIAlertAction actionWithTitle:T(@"Cancel", @"Abbrechen", @"Cancelar", @"Cancelar", @"Отмена") style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { (void)a; [self saveMenu]; }]];
     [self.presenter presentViewController:choose animated:YES completion:nil];
 }
 - (void)confirmRestore:(NSURL *)url scoped:(BOOL)scoped {

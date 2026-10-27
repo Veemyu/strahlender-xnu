@@ -70,6 +70,18 @@ int main(void) { @autoreleasepool {
     assert(BDSPVerifyLibrary(library, modIdentity, nil));
     assert(![fm fileExistsAtPath:At(library, @"Mods/version1/Luminescent Platinum/prod.keys").path]);
     assert(![fm fileExistsAtPath:At(library, @"Mods/version1/Luminescent Platinum/Saves").path]);
+    // Known build mods are checked; separately added overlays do not alter the base inventory.
+    Put(library, @"Mods/version1/Luminescent Platinum/romfs/Data/overlay.bin", @"changed-overlay");
+    assert(!BDSPVerifyLibrary(library, modIdentity, nil));
+    assert(BDSPVerifyLibrary(library, version2, nil));
+    Put(library, @"Mods/version1/Luminescent Platinum/romfs/Data/overlay.bin", @"overlay");
+    Put(library, @"Mods/manual/romfs/Data/user-mod.bin", @"new-user-overlay");
+    assert(BDSPVerifyLibrary(library, version2, nil));
+    assert(BDSPVerifyLibrary(library, modIdentity, nil));
+    Put(library, @"GameData/version2/romfs/Data/unlisted.bin", @"changed-base");
+    assert(!BDSPVerifyLibrary(library, version2, nil));
+    assert([fm removeItemAtURL:At(library, @"GameData/version2/romfs/Data/unlisted.bin") error:nil]);
+
     Put(root, @"test.ipa", @"package");
     assert(BDSPExportIPA(At(root, @"test.ipa"), At(root, @"export.ipa"), nil));
     assert(BDSPExportIPA(At(root, @"test.ipa"), At(root, @"export.ipa"), nil));

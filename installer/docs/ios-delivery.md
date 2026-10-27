@@ -263,3 +263,33 @@ before calling CoreDevice. Directory symlinks used to share extracted input
 therefore do not become file transfers (`EISDIR`), and no additional local RomFS
 copy is created. Sources/destinations are validated before app installation;
 retrying transfer copies only the selected content paths, never save folders.
+
+## Integrity checks and pre-game menus
+
+Current installer-built iOS apps hash every file in the expected RomFS and
+build-selected mod trees with SHA-256 at startup and compare relative paths,
+sizes and hashes against their build manifest. Missing, changed or extra files
+inside those trees block startup. `.DS_Store` is ignored. Older development apps
+without a manifest only have the documented presence-check fallback.
+
+A newly added standalone RomFS overlay in Documents/Mods is scanned on the next
+launch and does not change the base inventory. It has no reference hash inventory
+in an older app's build manifest; that check cannot authenticate arbitrary new
+user mods. Updating a manifest-bound mod requires a matching installer export
+and data import; ExeFS/IPS changes additionally require a new code build.
+
+The regular pre-game dialog offers Play and Saves & backups. Backup setup and
+restoration are separate views, and Back up now is hidden until a save exists.
+External-library selection/import is a separate Game files view. German copy
+addresses the player with du/dein. This changes navigation only: automatic save
+snapshots, pre-update checkpoints, external retries and restore checks remain.
+
+Real UIKit previews with synthetic state can be captured without the game:
+
+```sh
+bash scripts/tests/preview_ios_data_ui.sh
+# Optional: SIMULATOR_ID for an already booted simulator, or SIMULATOR_RUNTIME.
+```
+
+The runner captures only these changed dialogs in dark mode, with the iPhone
+11 Pro Max landscape dimensions, and removes its own simulator/build products.
