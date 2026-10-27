@@ -536,9 +536,8 @@ def _prepare_ios(args, mod_build, device):
     build_dir = mod_build["build_dir"] if mod_build else work / "recomp/ios-installer/vanilla"
     resources = build_dir / "res"
     resources.mkdir(parents=True, exist_ok=True)
-    emit("step", id="package", status="started")
     emit("log", level="diagnostic", message="Identifying game and mod data for the device container.")
-    romfs = input_work / "romfs"
+    romfs = (input_work / "romfs").resolve(strict=True)
     if not (romfs / "Data").is_dir():
         raise ValueError("The extracted RomFS is missing its Data folder.")
     manifest = json.loads((input_work / "manifest.json").read_text())
@@ -551,6 +550,8 @@ def _prepare_ios(args, mod_build, device):
     metadata = {"RomFSDirectory": "GameData/" + romfs_digest + "/romfs",
                 "GameID": game_id, "GameVersion": str(manifest.get("display_version", ""))}
     mod_root = getattr(args, "mod_root", None)
+    if mod_root:
+        mod_root = Path(mod_root).resolve(strict=True)
     if mod_root:
         _validate_mod_name(args.mod_name)
         metadata.update({"ModDirectory": "Mods/" + _tree_digest(mod_root), "ModName": args.mod_name,
@@ -591,6 +592,24 @@ def _prepare_ios(args, mod_build, device):
             **({"BDSP_MOD_ROOT": str(mod_root), "BDSP_MOD_NAME": args.mod_name} if mod_root else {})}
 
 
+def _ios_data_copies(info):
+    copies = [(info["romfs"], info["metadata"]["RomFSDirectory"])]
+    if info["mod_root"]:
+        copies.append((info["mod_root"], info["metadata"]["ModDirectory"]))
+    resolved = []
+    for source, destination in copies:
+        # CoreDevice treats a directory symlink as a file and fails with EISDIR.
+        # Address the canonical directory without creating another RomFS copy.
+        source = Path(source).resolve(strict=True)
+        if not source.is_dir():
+            raise ValueError("Device data source is not a readable folder.")
+        parts = Path(destination).parts
+        if not parts or parts[0] not in ("GameData", "Mods") or ".." in parts or Path(destination).is_absolute():
+            raise ValueError("Device data destination is invalid; nothing was copied.")
+        resolved.append((source, destination))
+    return resolved
+
+
 def _install_ios(args, artifact):
     info = args.ios_install
     device, bundle = info["device"]["id"], info["bundle_id"]
@@ -603,14 +622,12 @@ def _install_ios(args, artifact):
         raise ValueError("The packaged iOS app identity or mod selection does not match this build; installation was not started.")
     if metadata.get("CompiledExeFS") and bundle in ("dev.local.xnubdsp", "dev.local.xnubdsp.installer"):
         raise ValueError("Installing a separate code mod over the original game is not allowed.")
+    copies = _ios_data_copies(info)
     emit("log", level="diagnostic", message="Installing the signed app on " + info["device"]["name"] + ".")
     code = _run_command(["xcrun", "devicectl", "device", "install", "app", "--device", device, str(artifact)],
                         args, "install", emit_steps=False)
     if code:
         raise ValueError(getattr(args, "command_failure_hint", None) or "Device app installation failed; see the device diagnostics above.")
-    copies = [(info["romfs"], info["metadata"]["RomFSDirectory"])]
-    if info["mod_root"]:
-        copies.append((info["mod_root"], info["metadata"]["ModDirectory"]))
     for source, destination in copies:
         emit("log", level="diagnostic", message="Copying " + ("mod files" if destination.startswith("Mods/") else "game data") + " to the device.")
         code = _run_command(["xcrun", "devicectl", "device", "copy", "to", "--device", device,

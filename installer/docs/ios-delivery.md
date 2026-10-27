@@ -257,3 +257,9 @@ Local signing-team discovery uses the Team ID in the certificate subject's OU
 field as documented in [Apple TN3161](https://developer.apple.com/documentation/technotes/tn3161-inside-code-signing-certificates).
 Account and development-certificate setup remains in
 [Xcode's signing workflow](https://help.apple.com/xcode/mac/current/en.lproj/dev60b6fbbc7.html).
+
+Device transfers resolve the local RomFS/mod root to its canonical directory
+before calling CoreDevice. Directory symlinks used to share extracted input
+therefore do not become file transfers (`EISDIR`), and no additional local RomFS
+copy is created. Sources/destinations are validated before app installation;
+retrying transfer copies only the selected content paths, never save folders.

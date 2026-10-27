@@ -408,6 +408,25 @@ class InstallerDriverTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     driver._ios_device(args)
 
+    def test_device_transfers_resolve_root_directory_links_without_duplicating_data(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            canonical=root / "Canonical game files"; (canonical / "Data").mkdir(parents=True)
+            (canonical / "Data/game.bin").write_bytes(b"game")
+            alias=root / "romfs"; alias.symlink_to(canonical,target_is_directory=True)
+            mod=root / "Mod data"; (mod / "romfs").mkdir(parents=True)
+            mod_alias=root / "selected-mod"; mod_alias.symlink_to(mod,target_is_directory=True)
+            info={"romfs":alias,"mod_root":mod_alias,"metadata":{"RomFSDirectory":"GameData/example/romfs","ModDirectory":"Mods/example"}}
+            copies=driver._ios_data_copies(info)
+            self.assertEqual(copies,[(canonical.resolve(),"GameData/example/romfs"),(mod.resolve(),"Mods/example")])
+            self.assertTrue(alias.is_symlink())
+            self.assertEqual((canonical / "Data/game.bin").read_bytes(),b"game")
+            info["metadata"]["RomFSDirectory"]="GameData/../Saves"
+            with self.assertRaises(ValueError): driver._ios_data_copies(info)
+            info["metadata"]["RomFSDirectory"]="GameData/example/romfs"
+            alias.unlink();alias.symlink_to(root / "missing",target_is_directory=True)
+            with self.assertRaises(FileNotFoundError): driver._ios_data_copies(info)
+
     def test_ios_team_is_explicit_validated_and_legacy_config_is_only_read(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(driver.os.environ, {}, clear=True):
             root = Path(temporary); (root / "work").mkdir()
