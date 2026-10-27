@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <errno.h>
+#import <dispatch/dispatch.h>
 
 static BOOL Fail(NSError **error, NSString *message) {
     if (error) *error = [NSError errorWithDomain:@"GameData" code:1
@@ -21,15 +23,25 @@ NSString *BDSPFileSHA256(NSURL *file, NSError **error) {
     CC_SHA256_CTX context; CC_SHA256_Init(&context);
     unsigned char buffer[65536], hash[CC_SHA256_DIGEST_LENGTH];
     ssize_t count;
-    while ((count = read(fd, buffer, sizeof buffer)) > 0) CC_SHA256_Update(&context, buffer, (CC_LONG)count);
+    do {
+        count = read(fd, buffer, sizeof buffer);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        CC_SHA256_Update(&context, buffer, (CC_LONG)count);
+    } while (YES);
     BOOL valid = count == 0 && fstat(fd, &after) == 0 && before.st_size == after.st_size &&
-        before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec && before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec;
+        before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec && before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec &&
+        before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec && before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec;
     close(fd);
     if (!valid) { Fail(error, @"A data file changed or could not be read completely."); return nil; }
     CC_SHA256_Final(hash, &context);
-    NSMutableString *hex = [NSMutableString string];
-    for (unsigned i = 0; i < sizeof hash; i++) [hex appendFormat:@"%02x", hash[i]];
-    return hex;
+    static const char digits[] = "0123456789abcdef";
+    char hex[CC_SHA256_DIGEST_LENGTH * 2];
+    for (unsigned i = 0; i < sizeof hash; i++) {
+        hex[2 * i] = digits[hash[i] >> 4];
+        hex[2 * i + 1] = digits[hash[i] & 15];
+    }
+    return [[NSString alloc] initWithBytes:hex length:sizeof hex encoding:NSASCIIStringEncoding];
 }
 
 BOOL BDSPWriteJSON(id value, NSURL *file, NSError **error) {
@@ -93,13 +105,14 @@ static BOOL MakeParents(NSURL *root, NSString *relative, NSError **error) {
     close(fd); return YES;
 }
 
-static NSArray *InventoryProgress(NSURL *folder, void (^progress)(void), NSError **error) {
+// One bounded autorelease pool per file, including Foundation traversal/path temporaries.
+// Export builds an inventory; verification consumes entries directly instead of building
+// and sorting a second full inventory of hashes and dictionaries.
+static BOOL WalkFiles(NSURL *folder, BOOL (^visit)(NSURL *, NSString *, off_t, NSError **), NSError **error) {
     struct stat rootStat;
-    if (lstat(folder.fileSystemRepresentation, &rootStat) || !S_ISDIR(rootStat.st_mode)) {
-        Fail(error, @"The data folder is missing or is a symbolic link."); return nil;
-    }
+    if (lstat(folder.fileSystemRepresentation, &rootStat) || !S_ISDIR(rootStat.st_mode))
+        return Fail(error, @"The data folder is missing or is a symbolic link.");
     folder = folder.URLByResolvingSymlinksInPath;
-    NSMutableArray *files = [NSMutableArray array];
     __block BOOL failed = NO;
     __block NSError *walkError = nil;
     NSDirectoryEnumerator *walk = [NSFileManager.defaultManager enumeratorAtURL:folder
@@ -107,31 +120,114 @@ static NSArray *InventoryProgress(NSURL *folder, void (^progress)(void), NSError
             (void)url; failed = YES; walkError = failure; return NO;
         }];
     char *canonical = realpath(folder.fileSystemRepresentation, NULL);
-    if (!canonical) { Fail(error, @"The data folder could not be resolved."); return nil; }
+    if (!canonical) return Fail(error, @"The data folder could not be resolved.");
     NSString *prefix = [[NSString stringWithUTF8String:canonical] stringByAppendingString:@"/"];
     free(canonical);
-    for (NSURL *file in walk) {
+    NSError *failure = nil;
+    for (;;) { @autoreleasepool {
+        NSURL *file = [walk nextObject];
+        if (!file) break;
         struct stat st;
         if (lstat(file.fileSystemRepresentation, &st) || (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))) {
-            Fail(error, @"Game data may contain only files and directories."); return nil;
+            Fail(&failure, @"Game data may contain only files and directories."); break;
         }
         if (S_ISDIR(st.st_mode)) continue;
         if ([file.lastPathComponent isEqual:@".DS_Store"]) continue;
         char *resolvedFile = realpath(file.fileSystemRepresentation, NULL);
         NSString *actualPath = resolvedFile ? [NSString stringWithUTF8String:resolvedFile] : nil;
         free(resolvedFile);
-        if (![actualPath hasPrefix:prefix]) { Fail(error, @"A data path escaped its folder."); return nil; }
-        NSString *hash = BDSPFileSHA256(file, error);
-        if (!hash) return nil;
-        [files addObject:@{@"path":[actualPath substringFromIndex:prefix.length], @"size":@(st.st_size), @"sha256":hash}];
-        if (progress) progress();
-    }
-    if (failed) { if (error) *error = walkError; return nil; }
-    return [files sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-        return [a[@"path"] compare:b[@"path"] options:NSLiteralSearch];
-    }];
+        if (![actualPath hasPrefix:prefix]) { Fail(&failure, @"A data path escaped its folder."); break; }
+        if (!visit(file, [actualPath substringFromIndex:prefix.length], st.st_size, &failure)) {
+            if (!failure) Fail(&failure, @"Game data could not be checked.");
+            break;
+        }
+    } }
+    if (failure) { if (error) *error = failure; return NO; }
+    if (failed) { if (error) *error = walkError; return NO; }
+    return YES;
 }
-NSArray *BDSPInventory(NSURL *folder, NSError **error) { return InventoryProgress(folder, nil, error); }
+NSArray *BDSPInventory(NSURL *folder, NSError **error) {
+    NSMutableArray *files = [NSMutableArray array];
+    BOOL ok = WalkFiles(folder, ^BOOL(NSURL *file, NSString *path, off_t size, NSError **visitError) {
+        NSString *hash = BDSPFileSHA256(file, visitError);
+        if (!hash) return NO;
+        [files addObject:@{@"path":path, @"size":@(size), @"sha256":hash}];
+        return YES;
+    }, error);
+    return ok ? [files sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        return [a[@"path"] compare:b[@"path"] options:NSLiteralSearch];
+    }] : nil;
+}
+
+static BOOL VerifyTree(NSURL *folder, NSArray *expected, void (^progress)(void), NSError **error) {
+    NSMutableDictionary<NSString *, NSDictionary *> *remaining = [NSMutableDictionary dictionaryWithCapacity:expected.count];
+    NSCharacterSet *invalidHashCharacters = [[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"] invertedSet];
+    for (id item in expected) {
+        if (![item isKindOfClass:NSDictionary.class]) return Fail(error, @"Invalid file inventory.");
+        NSDictionary *entry = item;
+        NSString *path = entry[@"path"], *hash = entry[@"sha256"];
+        NSNumber *size = entry[@"size"];
+        if (entry.count != 3 || !Relative(path) || remaining[path] ||
+            ![size isKindOfClass:NSNumber.class] || size.longLongValue < 0 ||
+            ![size isEqual:@(size.longLongValue)] ||
+            ![hash isKindOfClass:NSString.class] || hash.length != 64 ||
+            [hash rangeOfCharacterFromSet:invalidHashCharacters].location != NSNotFound)
+            return Fail(error, @"Invalid or duplicate file inventory entry.");
+        remaining[path] = entry;
+    }
+    // A fixed pool overlaps small-file metadata/I/O with native SHA work. Never
+    // queue one outstanding task per file or retain the complete actual inventory.
+#ifndef BDSP_VERIFY_WORKERS
+#define BDSP_VERIFY_WORKERS 2
+#endif
+    NSUInteger workers = MIN((NSUInteger)4, MAX((NSUInteger)1,
+        MIN((NSUInteger)BDSP_VERIFY_WORKERS, NSProcessInfo.processInfo.activeProcessorCount)));
+    dispatch_semaphore_t slots = dispatch_semaphore_create((long)workers);
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+    NSLock *lock = [NSLock new];
+    __block NSError *hashFailure = nil;
+    NSError *walkFailure = nil;
+    BOOL ok = WalkFiles(folder, ^BOOL(NSURL *file, NSString *path, off_t size, NSError **visitError) {
+        dispatch_semaphore_wait(slots, DISPATCH_TIME_FOREVER);
+        [lock lock];
+        NSError *previousFailure = hashFailure;
+        NSDictionary *entry = remaining[path];
+        [lock unlock];
+        if (previousFailure || !entry || ![entry[@"size"] isEqual:@(size)]) {
+            dispatch_semaphore_signal(slots);
+            if (previousFailure) { if (visitError) *visitError = previousFailure; return NO; }
+            return Fail(visitError, @"Game data is incomplete or its checksums do not match.");
+        }
+        dispatch_group_async(group, queue, ^{ @autoreleasepool {
+            [lock lock];
+            BOOL cancelled = hashFailure != nil;
+            [lock unlock];
+            if (!cancelled) {
+                NSError *failure = nil;
+                NSString *hash = BDSPFileSHA256(file, &failure);
+                if (hash && ![hash isEqual:entry[@"sha256"]])
+                    Fail(&failure, @"Game data is incomplete or its checksums do not match.");
+                [lock lock];
+                if (!hashFailure && (!hash || failure)) {
+                    hashFailure = failure;
+                    if (!hashFailure) Fail(&hashFailure, @"A data file could not be checked.");
+                }
+                if (!hashFailure) {
+                    [remaining removeObjectForKey:path];
+                    if (progress) progress(); // Serialized; file progress never goes backwards.
+                }
+                [lock unlock];
+            }
+            dispatch_semaphore_signal(slots);
+        } });
+        return YES;
+    }, &walkFailure);
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    // All descriptors/tasks have finished before returning either success or error.
+    if (!ok || hashFailure) { if (error) *error = walkFailure ?: hashFailure; return NO; }
+    return remaining.count == 0 || Fail(error, @"Game data is incomplete or its checksums do not match.");
+}
 
 NSDictionary *BDSPVerifyInstalledData(NSURL *library, NSDictionary *identity, NSURL *manifestURL, void (^progress)(NSUInteger, NSUInteger), NSError **error) {
     NSNumber *length = nil;
@@ -156,14 +252,10 @@ NSDictionary *BDSPVerifyInstalledData(NSURL *library, NSDictionary *identity, NS
     if (progress) progress(0, total);
     for (NSString *relative in roots) {
         NSURL *folder = SafeURL(library, relative, error);
-        NSArray *actual = folder ? InventoryProgress(folder, ^{
+        if (!folder || !VerifyTree(folder, manifest[@"trees"][relative], ^{
             checked++;
             if (progress && (checked % 128 == 0 || checked == total)) progress(MIN(checked, total), total);
-        }, error) : nil;
-        if (!actual || ![actual isEqual:manifest[@"trees"][relative]]) {
-            if (actual) Fail(error, @"Game data is incomplete or its checksums do not match.");
-            return nil;
-        }
+        }, error)) return nil;
     }
     return manifest;
 }

@@ -35,6 +35,71 @@ int main(void) { @autoreleasepool {
     NSURL *expected = At(root, @"expected-library.json");
     assert(BDSPCreateLibraryManifest(romfs, nil, identity, expected, nil));
     assert(BDSPVerifyInstalledData(library, identity, expected, nil, nil));
+    // SHA-256 remains standard, including empty files and multi-buffer payloads.
+    Put(root, @"hash-empty", @"");
+    Put(root, @"hash-abc", @"abc");
+    assert([BDSPFileSHA256(At(root, @"hash-empty"), nil) isEqual:@"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]);
+    assert([BDSPFileSHA256(At(root, @"hash-abc"), nil) isEqual:@"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"]);
+    NSMutableData *largeHashInput = [NSMutableData dataWithLength:3 * 65536 + 17];
+    memset(largeHashInput.mutableBytes, 'a', largeHashInput.length);
+    assert([largeHashInput writeToURL:At(root, @"hash-large") atomically:YES]);
+    assert([BDSPFileSHA256(At(root, @"hash-large"), nil) isEqual:@"63525fee49beaab98ee2a8edef9f9e7e378c0100a979ce363a9479dd2a98f9f3"]);
+    // A same-size edit must fail SHA verification, not pass on metadata alone.
+    Put(library, @"GameData/version1/romfs/Data/game.bin", @"modified");
+    failure = nil;
+    assert(!BDSPVerifyInstalledData(library, identity, expected, nil, &failure));
+    assert(failure.localizedDescription.length); // Error survives the per-file pool.
+    Put(library, @"GameData/version1/romfs/Data/game.bin", @"original");
+    // Missing, unexpected and linked files fail without changing the data tree.
+    assert([fm removeItemAtURL:At(library, @"GameData/version1/romfs/Data/game.bin") error:nil]);
+    assert(!BDSPVerifyInstalledData(library, identity, expected, nil, nil));
+    Put(library, @"GameData/version1/romfs/Data/game.bin", @"original");
+    NSURL *verifyLink = At(library, @"GameData/version1/romfs/Data/link.bin");
+    assert(symlink("game.bin", verifyLink.fileSystemRepresentation) == 0);
+    failure = nil;
+    assert(!BDSPVerifyInstalledData(library, identity, expected, nil, &failure));
+    assert(failure.localizedDescription.length);
+    assert([fm removeItemAtURL:verifyLink error:nil]);
+    Put(library, @"GameData/version1/romfs/.DS_Store", @"ignored Finder metadata");
+    assert(BDSPVerifyInstalledData(library, identity, expected, nil, nil));
+    NSDictionary *validManifest = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:expected] options:0 error:nil];
+    NSArray *validEntries = validManifest[@"trees"][identity[@"RomFSDirectory"]];
+    NSMutableDictionary *invalidManifest = validManifest.mutableCopy;
+    NSURL *invalidExpected = At(root, @"invalid-expected.json");
+    NSMutableDictionary *negativeSize = [validEntries[0] mutableCopy]; negativeSize[@"size"] = @(-1);
+    NSMutableDictionary *badPath = [validEntries[0] mutableCopy]; badPath[@"path"] = @"../outside";
+    NSMutableDictionary *badHash = [validEntries[0] mutableCopy]; badHash[@"sha256"] = @"invalid";
+    for (NSArray *entries in @[@[validEntries[0], validEntries[0]], @[negativeSize], @[badPath], @[badHash], @[@"not an entry"]]) {
+        invalidManifest[@"trees"] = @{identity[@"RomFSDirectory"]:entries};
+        assert(BDSPWriteJSON(invalidManifest, invalidExpected, nil));
+        assert(!BDSPVerifyInstalledData(library, identity, invalidExpected, nil, nil));
+    }
+    __block NSUInteger finalCompleted = 0, finalTotal = 0;
+    assert(BDSPVerifyInstalledData(library, identity, expected, ^(NSUInteger completed, NSUInteger total) {
+        assert(completed >= finalCompleted && completed <= total);
+        finalCompleted = completed; finalTotal = total;
+    }, nil));
+    assert(finalCompleted == validEntries.count && finalTotal == validEntries.count);
+    // More than two progress batches exercise the bounded worker pool, final
+    // draining on failure and repeated verification of the same immutable tree.
+    NSURL *parallelRoot = At(root, @"parallel");
+    NSURL *parallelManifest = At(root, @"parallel-manifest.json");
+    NSDictionary *parallelIdentity = @{@"RomFSDirectory":@"parallel"};
+    for (unsigned i = 0; i < 300; i++)
+        Put(parallelRoot, [NSString stringWithFormat:@"group%u/file%u.bin", i % 7, i], @"worker test payload");
+    assert(BDSPCreateLibraryManifest(parallelRoot, nil, parallelIdentity, parallelManifest, nil));
+    __block NSUInteger previous = 0, callbacks = 0;
+    assert(BDSPVerifyInstalledData(root, parallelIdentity, parallelManifest, ^(NSUInteger done, NSUInteger total) {
+        assert(total == 300 && done >= previous && done <= total);
+        previous = done; callbacks++;
+    }, nil));
+    assert(previous == 300 && callbacks == 4); // 0, 128, 256, 300.
+    Put(parallelRoot, @"group0/file0.bin", @"worker TEST payload"); // Same byte length.
+    failure = nil;
+    assert(!BDSPVerifyInstalledData(root, parallelIdentity, parallelManifest, nil, &failure));
+    assert(failure.localizedDescription.length);
+    Put(parallelRoot, @"group0/file0.bin", @"worker test payload");
+    assert(BDSPVerifyInstalledData(root, parallelIdentity, parallelManifest, nil, nil));
     assert(BDSPExportLibrary(romfs, nil, identity, library, nil)); // Reuse without replacement.
     Put(library, @"GameData/version1/romfs/Data/game.bin", @"corruption");
     assert(!BDSPVerifyLibrary(library, identity, nil));
