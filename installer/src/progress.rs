@@ -5,6 +5,7 @@ pub enum Stage {
     Requirements,
     Extract,
     Exefs,
+    Signing,
     Generate,
     Compile,
     Images,
@@ -14,11 +15,12 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Source,
         Self::Requirements,
         Self::Extract,
         Self::Exefs,
+        Self::Signing,
         Self::Generate,
         Self::Compile,
         Self::Images,
@@ -33,6 +35,7 @@ impl Stage {
             "prerequisites" => Self::Requirements,
             "extract" => Self::Extract,
             "exefs" => Self::Exefs,
+            "signing" => Self::Signing,
             "eh_gen" => Self::Generate,
             "clang" => Self::Compile,
             "images" => Self::Images,
@@ -80,7 +83,7 @@ pub struct GeneratorProgress {
 
 #[derive(Debug, Clone)]
 pub struct BuildProgress {
-    pub stages: [StageProgress; 10],
+    pub stages: [StageProgress; 11],
     pub active: Stage,
     pub generator: GeneratorProgress,
 }
@@ -88,7 +91,7 @@ pub struct BuildProgress {
 impl Default for BuildProgress {
     fn default() -> Self {
         Self {
-            stages: [StageProgress::default(); 10],
+            stages: [StageProgress::default(); 11],
             active: Stage::Source,
             generator: GeneratorProgress::default(),
         }

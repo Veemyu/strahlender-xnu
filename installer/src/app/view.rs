@@ -9,8 +9,8 @@ use crate::{
     style,
 };
 use iced::widget::{
-    button, column, container, mouse_area, progress_bar, row, scrollable, space, stack, text,
-    toggler, tooltip,
+    button, column, container, mouse_area, pick_list, progress_bar, row, scrollable, space, stack,
+    text, text_input, toggler, tooltip,
 };
 use iced::{Center, Element, Fill, Size, Task, window};
 
@@ -79,7 +79,9 @@ impl Installer {
             }
             header = header.push(action);
         }
-        let body = if self.ios_devices_open {
+        let body = if self.ios_signing_open {
+            self.ios_signing_view()
+        } else if self.ios_devices_open {
             self.ios_devices_view()
         } else {
             match self.page {
@@ -189,6 +191,7 @@ impl Installer {
                     container(
                         scrollable(log)
                             .id("session-log")
+                            .spacing(8)
                             .anchor_bottom()
                             .height(Fill),
                     )
@@ -407,6 +410,93 @@ impl Installer {
         ]
         .spacing(12)
         .into()
+    }
+
+    fn ios_signing_view(&self) -> Element<'_, Message> {
+        let c = style::colors(self.appearance);
+        let manual = self.ios_team_manual
+            || self.ios_teams.is_empty()
+            || (!self.ios_team.is_empty()
+                && !self.ios_teams.iter().any(|team| team.id == self.ios_team));
+        let chooser: Element<'_, Message> = if manual {
+            text_input(self.language.t(L::SigningTeamId), &self.ios_team)
+                .on_input(Message::IosTeamChanged)
+                .padding(10)
+                .size(14)
+                .style(move |theme, status| {
+                    let mut look = iced::widget::text_input::default(theme, status);
+                    look.border.radius = 10.into();
+                    look.background = c.surface.into();
+                    look
+                })
+                .into()
+        } else {
+            pick_list(
+                self.ios_teams.as_slice(),
+                self.ios_teams
+                    .iter()
+                    .find(|team| team.id == self.ios_team)
+                    .cloned(),
+                Message::SelectIosTeam,
+            )
+            .placeholder(self.language.t(L::SigningChoose))
+            .padding(10)
+            .text_size(13)
+            .width(Fill)
+            .style(move |theme, status| {
+                let mut look = iced::widget::pick_list::default(theme, status);
+                look.border.radius = 10.into();
+                look.background = c.surface.into();
+                look.border.color = c.line;
+                look
+            })
+            .into()
+        };
+        let mut refresh = button(text(self.language.t(L::RefreshDevices)).size(13))
+            .padding([7, 12])
+            .style(move |_, status| style::action(c, false, status));
+        if !self.ios_signing_busy {
+            refresh = refresh.on_press(Message::RefreshIosSigning);
+        }
+        let mut body = column![
+            self.title(
+                self.language.t(L::SigningTitle),
+                self.language.t(L::SigningHint)
+            ),
+            chooser,
+            row![
+                self.text_action(self.language.t(L::OpenXcode), Message::OpenXcode),
+                refresh
+            ]
+            .spacing(16)
+            .align_y(Center),
+        ]
+        .spacing(8);
+        if !self.ios_teams.is_empty() {
+            body = body.push(self.text_action(
+                self.language.t(if manual {
+                    L::SigningDetected
+                } else {
+                    L::SigningManual
+                }),
+                Message::ManualIosTeam,
+            ));
+        }
+        body = body.push(
+            text(self.language.t(if self.ios_signing_failed {
+                L::SigningFailed
+            } else {
+                L::SigningHelp
+            }))
+            .size(12)
+            .color(c.muted),
+        );
+        body = body.push(
+            text(self.language.t(L::SigningPrivacy))
+                .size(11)
+                .color(c.muted),
+        );
+        body.into()
     }
 
     fn ios_devices_view(&self) -> Element<'_, Message> {
@@ -1057,6 +1147,19 @@ impl Installer {
             .spacing(12)
             .into();
         }
+        let device_actions: Element<'_, Message> = if self.target == InstallTarget::Ios
+            && self.ios_delivery == crate::backend::IosDelivery::Device
+            && self.host == Platform::Mac
+        {
+            row![
+                self.text_action(self.language.t(L::ChangeDevice), Message::OpenIosDevices),
+                self.text_action(self.language.t(L::SigningSetup), Message::OpenIosSigning)
+            ]
+            .spacing(14)
+            .into()
+        } else {
+            space().height(0).into()
+        };
         column![
             self.title(
                 self.language.t(L::SetupTitle),
@@ -1090,14 +1193,7 @@ impl Installer {
             }))
             .size(12)
             .color(c.muted),
-            if self.target == InstallTarget::Ios
-                && self.ios_delivery == crate::backend::IosDelivery::Device
-                && self.host == Platform::Mac
-            {
-                self.text_action(self.language.t(L::ChangeDevice), Message::OpenIosDevices)
-            } else {
-                space().height(0).into()
-            },
+            device_actions,
             self.text_action(
                 self.language.t(L::BuildOptions),
                 Message::BuildOptions(true)
@@ -1354,18 +1450,22 @@ impl Installer {
 
     fn navigation(&self) -> Element<'_, Message> {
         let mut actions = row![].spacing(12).align_y(Center);
-        if self.ios_devices_open || (self.page != Page::Target && self.page != Page::Progress) {
+        if self.ios_devices_open
+            || self.ios_signing_open
+            || (self.page != Page::Target && self.page != Page::Progress)
+        {
             actions = actions.push(self.text_action(self.language.t(L::Back), Message::Back));
         }
         actions = actions.push(space().width(Fill));
         if !self.ios_devices_open
+            && !self.ios_signing_open
             && self.page == Page::Setup
             && self.requirements.as_ref().is_some_and(|p| !p.ready())
         {
             actions =
                 actions.push(self.text_action(self.language.t(L::CheckAgain), Message::Preview));
         }
-        let (label, message, primary) = if self.ios_devices_open {
+        let (label, message, primary) = if self.ios_devices_open || self.ios_signing_open {
             (L::Continue, self.ready().then_some(Message::Review), true)
         } else {
             match self.page {

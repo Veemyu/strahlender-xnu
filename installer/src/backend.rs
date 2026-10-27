@@ -153,6 +153,7 @@ pub struct BuildRequest {
     pub target: &'static str,
     pub ios_delivery: IosDelivery,
     pub ios_device: Option<String>,
+    pub ios_team: Option<String>,
     pub ios_profile: Option<crate::ios_profile::Profile>,
     pub ios_new_profile: Option<String>,
     pub portable_cpu: bool,
@@ -466,6 +467,7 @@ fn run_driver(
                 target,
                 ios_delivery,
                 ios_device,
+                ios_team,
                 ios_profile,
                 ios_new_profile,
                 portable_cpu,
@@ -496,6 +498,11 @@ fn run_driver(
                         && let Some(device) = ios_device
                     {
                         command.arg("--ios-device").arg(device);
+                    }
+                    if ios_delivery == IosDelivery::Device
+                        && let Some(team) = ios_team
+                    {
+                        command.arg("--ios-team").arg(team);
                     }
                     if ios_delivery == IosDelivery::Ipa {
                         match crate::workspace::data_dir() {

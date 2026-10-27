@@ -7,6 +7,7 @@ mod i18n;
 mod icons;
 mod ios_devices;
 mod ios_profile;
+mod ios_signing;
 mod key_paths;
 mod mod_support;
 mod motion;

@@ -408,6 +408,42 @@ class InstallerDriverTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     driver._ios_device(args)
 
+    def test_ios_team_is_explicit_validated_and_legacy_config_is_only_read(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(driver.os.environ, {}, clear=True):
+            root = Path(temporary); (root / "work").mkdir()
+            args = SimpleNamespace(root=root, ios_team=None)
+            with self.assertRaisesRegex(ValueError, "Choose an Apple signing team"):
+                driver._ios_signing_team(args)
+            (root / "work/local.env").write_text("export TEAM_ID='LEGACY0001'\n$(touch SHOULD_NEVER_RUN)\n")
+            self.assertEqual(driver._ios_signing_team(args), "LEGACY0001")
+            self.assertFalse((root / "SHOULD_NEVER_RUN").exists())
+            args.ios_team = "TESTTEAM01"
+            self.assertEqual(driver._ios_signing_team(args), "TESTTEAM01")
+            args.ios_team = "not valid"
+            with self.assertRaises(ValueError): driver._ios_signing_team(args)
+
+    def test_ios_missing_team_fails_prerequisites_before_compilation(self):
+        stages = driver.load_build_stages(ROOT)
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(driver.os.environ, {}, clear=True):
+            args = SimpleNamespace(root=temporary, work=temporary, target="ios", ios_delivery="device", ios_team=None)
+            with patch.object(driver, "load_build_stages", return_value=stages), \
+                 patch.object(stages, "preflight", return_value=[]), \
+                 patch.object(driver, "required_free_gb", return_value=40), \
+                 patch.object(driver, "missing_generator_modules", return_value=[]), \
+                 patch.object(driver.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                code = driver.check_build_dependencies(args)
+            self.assertNotEqual(code, 0)
+            self.assertIn("Apple signing team", output.getvalue())
+            args.ios_delivery = "ipa"
+            with patch.object(driver, "load_build_stages", return_value=stages), \
+                 patch.object(stages, "preflight", return_value=[]), \
+                 patch.object(driver, "required_free_gb", return_value=40), \
+                 patch.object(driver, "missing_generator_modules", return_value=[]), \
+                 patch.object(driver.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(driver.check_build_dependencies(args), 0)
+
     def test_ios_explicit_device_reconnects_a_stale_tunnel_and_never_falls_back(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = SimpleNamespace(work=temporary, ios_device="chosen-udid")
@@ -674,10 +710,32 @@ class InstallerDriverTests(unittest.TestCase):
                 driver._clean_game_build(args, work / "recomp")
             self.assertEqual((outside / "gen4/save").read_text(), "untouched")
 
+    def test_signing_probe_failure_stops_before_native_generation_and_compilation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = SimpleNamespace(root=root,work=root / "work",target="ios",ios_team="TESTTEAM01",ios_delivery="device")
+            stages=[]
+            def run(command, _args, stage, *unused, **kwargs):
+                stages.append(stage)
+                if stage == "signing":
+                    self.assertEqual(kwargs["extra_env"]["BDSP_IOS_TEAM_ID"],"TESTTEAM01")
+                    self.assertEqual(kwargs["extra_env"]["BDSP_IOS_BUNDLE_ID"],"dev.test.game")
+                    return 10
+                return 0
+            with patch.object(driver,"_ios_device",return_value={"name":"Test device"}), \
+                 patch.object(driver,"_run_command",side_effect=run), \
+                 patch.object(driver,"required_free_gb",return_value=40), \
+                 patch.object(driver,"_prepare_code_mod",return_value=None), \
+                 patch.object(driver,"_prepare_ios",return_value={"BDSP_IOS_BUNDLE_ID":"dev.test.game"}), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                code,_=driver._build_ios(args,[])
+            self.assertEqual(code,10)
+            self.assertEqual(stages,["prerequisites","extract","signing"])
+
     def test_ios_failed_extraction_never_resets_build_outputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            args = SimpleNamespace(root=root, work=root / "work", target="ios", clean_build=True)
+            args = SimpleNamespace(root=root, work=root / "work", target="ios", clean_build=True, ios_team="TESTTEAM01")
             with patch.object(driver, "_ios_device", return_value={"name": "test device"}), \
                     patch.object(driver, "required_free_gb", return_value=40), \
                     patch.object(driver, "_run_command", return_value=4), \

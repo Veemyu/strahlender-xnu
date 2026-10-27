@@ -12,6 +12,7 @@ import struct
 import subprocess
 
 SCENARIOS = (
+    "signing-check", "signing", "signing-empty", "signing-manual", "setup-ios-device", "log-copy",
     "devices", "devices-many", "devices-empty", "devices-offline", "devices-error",
     "error-prerequisite",
     "setup-dependencies", "update-available", "update-confirmation",

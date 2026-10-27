@@ -54,11 +54,16 @@ case "${1:-}" in
     XCODE_SIGNING=()
     case "$DELIVERY" in
       device)
-        [ ! -f work/local.env ] || source work/local.env
+        if [ -n "${BDSP_IOS_TEAM_ID:-}" ]; then
+          TEAM_ID=$BDSP_IOS_TEAM_ID
+        elif [ -z "${TEAM_ID:-}" ] && [ -f work/local.env ]; then
+          source work/local.env
+        fi
+        [[ "${TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]] || { echo "Configure a valid Apple signing team before building." >&2; exit 10; }
         [ -n "${TEAM_ID:-}" ] || { echo "Configure an Apple signing team for direct device installation." >&2; exit 10; }
         : "${BDSP_IOS_UDID:?Choose a connected iPhone or iPad}"
         DESTINATION="id=$BDSP_IOS_UDID"
-        XCODE_SIGNING=("DEVELOPMENT_TEAM=$TEAM_ID" -allowProvisioningUpdates) ;;
+        XCODE_SIGNING=("DEVELOPMENT_TEAM=$TEAM_ID" -allowProvisioningUpdates -allowProvisioningDeviceRegistration) ;;
       ipa)
         DESTINATION="generic/platform=iOS"
         XCODE_SIGNING=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=) ;;

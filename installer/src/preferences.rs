@@ -25,6 +25,8 @@ pub enum Appearance {
 #[derive(Default, Serialize, Deserialize)]
 struct Preferences {
     #[serde(default)]
+    ios_signing_team: Option<String>,
+    #[serde(default)]
     appearance: Appearance,
     #[serde(default, with = "stored_path")]
     keys_path: Option<PathBuf>,
@@ -95,6 +97,20 @@ pub fn load() -> Appearance {
 pub fn save(appearance: Appearance) -> io::Result<()> {
     let mut preferences = load_preferences();
     preferences.appearance = appearance;
+    write(preferences)
+}
+
+pub fn load_signing_team() -> Option<String> {
+    load_preferences()
+        .ios_signing_team
+        .filter(|id| crate::ios_signing::valid_id(id))
+}
+pub fn save_signing_team(id: &str) -> io::Result<()> {
+    if !crate::ios_signing::valid_id(id) {
+        return Err(io::Error::other("Invalid Apple team ID"));
+    }
+    let mut preferences = load_preferences();
+    preferences.ios_signing_team = Some(id.into());
     write(preferences)
 }
 

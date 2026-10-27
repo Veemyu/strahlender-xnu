@@ -168,7 +168,7 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                     if not live_counter:
                         emit("log", level="diagnostic", message=message)
                     if first_failure is None and re.search(
-                            r"fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:|Directory not empty|Permission denied|No space left on device", message):
+                            r"fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:|Directory not empty|Permission denied|No space left on device|Configure (?:a valid|an) Apple signing team|Apple signing preflight failed|No profiles for|No signing certificate|requires a development team", message):
                         first_failure = message.strip()
                     if "maximum number of installed apps using a free developer profile" in message:
                         args.command_failure_hint = ("Apple's free signing limit is full on this device. Remove an unused development-signed app "
@@ -275,6 +275,22 @@ def missing_generator_modules(run=subprocess.run):
     return missing
 
 
+def _ios_signing_team(args):
+    team = getattr(args, "ios_team", None) or os.environ.get("BDSP_IOS_TEAM_ID") or os.environ.get("TEAM_ID")
+    if not team:
+        config = Path(args.root) / "work/local.env"
+        if config.is_file():
+            # Read only a literal legacy TEAM_ID assignment; never execute private config here.
+            for line in config.read_text().splitlines():
+                match = re.fullmatch(r"\s*(?:export\s+)?TEAM_ID\s*=\s*['\"]?([A-Z0-9]{10})['\"]?\s*(?:#.*)?", line)
+                if match:
+                    team = match.group(1)
+                    break
+    if not team or not re.fullmatch(r"[A-Z0-9]{10}", team):
+        raise ValueError("Choose an Apple signing team in the installer before building. Add your Apple Account in Xcode Settings > Accounts, then refresh teams. CLI: --ios-team TEAM_ID.")
+    return team
+
+
 def check_build_dependencies(args):
     emit("step", id="prerequisites", status="started")
     try:
@@ -310,6 +326,13 @@ def check_build_dependencies(args):
                     if line.strip():
                         emit("log", level="diagnostic", message=_safe_line(line, args))
         if args.target == "ios":
+            if getattr(args, "ios_delivery", "device") == "device":
+                try:
+                    _ios_signing_team(args)
+                    team_ready, team_hint = True, ""
+                except ValueError as error:
+                    team_ready, team_hint = False, str(error)
+                items.append({"name":"Apple signing team", "ok":team_ready, "level":"missing", "detail":"", "hint":team_hint})
             sdk = subprocess.run(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], capture_output=True, check=False)
             items.append({"name": "Xcode iPhoneOS SDK", "ok": sdk.returncode == 0, "level": "missing", "detail": "",
                           "hint": "Install and open Xcode once, then select its developer directory."})
@@ -694,6 +717,7 @@ def _clean_game_build(args, directory):
 
 def _build_ios(args, common):
     root, work = Path(args.root), Path(args.work)
+    team = _ios_signing_team(args) if getattr(args, "ios_delivery", "device") == "device" else None
     input_work = work
     args.ios_input_work = input_work
     device = _ios_device(args) if getattr(args, "ios_delivery", "device") == "device" else None
@@ -715,6 +739,12 @@ def _build_ios(args, common):
         _clean_game_build(args, build_dir)
     environment = {"BDSP_IOS_BUILD_DIR": str(build_dir),
                    "BDSP_EXEFS_DIR": str(mod_build["staged"] if mod_build else input_work / "exefs")}
+    if code == 0:
+        environment.update(_prepare_ios(args, mod_build, device))
+    if team:
+        environment["BDSP_IOS_TEAM_ID"] = team
+        if code == 0:
+            code = _run_command(["/bin/bash", str(root / "scripts/recomp/ios/signing_preflight.sh")], args, "signing", extra_env=environment)
     for stage, phase in (("eh_gen", "gen"), ("clang", "compile"), ("images", "images"), ("runtime", "runtime")):
         if code:
             break
@@ -722,7 +752,6 @@ def _build_ios(args, common):
         counter = (lambda _phase: _ios_compile_count(build_dir, started_ns)) if stage == "clang" else None
         code = _run_command([builder, phase], args, stage, counter, extra_env=environment)
     if code == 0:
-        environment.update(_prepare_ios(args, mod_build, device))
         code = _run_command([builder, "package"], args, "package", extra_env=environment)
     return code, build_dir / "derived/Build/Products/Release-iphoneos/BDSP.app"
 
@@ -1035,6 +1064,7 @@ def main(argv=None):
     build_parser.add_argument("--mod-name")
     build_parser.add_argument("--mods-dir")
     build_parser.add_argument("--ips-helper")
+    build_parser.add_argument("--ios-team", help="Apple development team ID for direct device installation")
     build_parser.add_argument("--ios-device", help="Connected device identifier, UDID or name")
     build_parser.add_argument("--ios-delivery", choices=("device", "ipa"), default="device")
     build_parser.add_argument("--ios-export-dir", help="Persistent destination for the IPA and shared game library")

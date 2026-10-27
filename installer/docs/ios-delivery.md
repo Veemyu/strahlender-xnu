@@ -40,8 +40,24 @@ native libraries are reused. This builds local dependencies without modifying
 system packages. See `scripts/recomp/ios/build_ffmpeg_ios.sh` for its minimal
 decoder configuration and [FFmpeg's license information](https://ffmpeg.org/legal.html).
 
-Direct installation retains its connected-device and private signing-team
-requirements. The GUI lists physical paired iPhones/iPads, including USB and
+Direct installation needs a connected device and an Apple development team.
+After device selection, the installer offers available local Apple Development
+signing identities, or a manually entered ten-character team ID. It reads the
+certificate subject's OU field, not the common-name suffix, and only offers
+unexpired certificates matching valid local signing identities. The chosen team
+ID is remembered privately; account credentials and private keys stay in Xcode
+and Keychain. **Open Xcode** and **Refresh** guide account/certificate setup.
+Missing or malformed team IDs stop prerequisites before compilation. After
+extraction/mod staging resolves the final app identity, a separate **Check Apple
+signing** phase builds and signs a tiny C-only probe with the real bundle ID,
+selected team/device and the same entitlements. It validates provisioning and
+capabilities before native game generation/compilation. The probe is never
+installed and its temporary project/products are removed on success or failure.
+A failed probe keeps existing game build outputs and stops the pipeline. The
+real macOS/iPad signing probe passed during local validation. Team
+selection remains editable from the setup page. IPA export does not need a team.
+CLI callers can use `--ios-team TEAM_ID`; explicit GUI/CLI selection overrides
+legacy `TEAM_ID` environment or literal `work/local.env` configuration. The GUI lists physical paired iPhones/iPads, including USB and
 Finder Wi-Fi connections. A separate device step offers **Refresh** and shows
 connection status; the setup page can reopen it before building. Up to three
 compact device cards fit without scrollbars; larger lists use page controls
@@ -64,6 +80,7 @@ The JSONL build driver adds:
 
 ```text
 --ios-delivery device|ipa     # CLI default: device, preserving old callers
+--ios-team TEAM_ID           # development signing team for direct install
 --ios-export-dir DIRECTORY   # required for IPA export; outside the source checkout
 --ios-profile-id ID          # reuse the opaque mod identity from an earlier IPA
 --ios-profile-game TITLE_ID  # validate its original game
@@ -235,3 +252,8 @@ LiveContainer's own
 [container operations](https://livecontainer.github.io/docs/guides/containers-and-external-data)
 remain host-managed; this implementation does not modify LiveContainer or depend
 on its private directory layout for game data.
+
+Local signing-team discovery uses the Team ID in the certificate subject's OU
+field as documented in [Apple TN3161](https://developer.apple.com/documentation/technotes/tn3161-inside-code-signing-certificates).
+Account and development-certificate setup remains in
+[Xcode's signing workflow](https://help.apple.com/xcode/mac/current/en.lproj/dev60b6fbbc7.html).

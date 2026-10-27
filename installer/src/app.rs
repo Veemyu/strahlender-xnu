@@ -91,6 +91,14 @@ pub enum Message {
     ShowGameLibrary,
     IosDelivery(crate::backend::IosDelivery),
     OpenIosDevices,
+    OpenIosSigning,
+    RefreshIosSigning,
+    IosSigningLoaded(u64, Result<Vec<crate::ios_signing::Team>, String>),
+    SelectIosTeam(crate::ios_signing::Team),
+    IosTeamChanged(String),
+    ManualIosTeam,
+    OpenXcode,
+    XcodeOpened(Result<(), String>),
     RefreshIosDevices,
     SelectIosDevice(String),
     IosDevicesPage(i8),
@@ -226,6 +234,13 @@ pub struct Installer {
     ios_devices_generation: u64,
     ios_devices_failed: bool,
     ios_devices_page: usize,
+    ios_signing_open: bool,
+    ios_signing_busy: bool,
+    ios_signing_generation: u64,
+    ios_teams: Vec<crate::ios_signing::Team>,
+    ios_team: String,
+    ios_team_manual: bool,
+    ios_signing_failed: bool,
     ios_profile: Option<crate::ios_profile::Profile>,
     ios_profile_open: bool,
     ios_new_profile: Option<String>,
@@ -330,6 +345,18 @@ fn disk_space_error(detail: &str, language: Language) -> Option<String> {
 }
 
 fn build_error_notice(detail: &str, language: Language, exporting: bool) -> String {
+    if detail.contains("Build step failed: signing")
+        || detail.to_lowercase().contains("signing team")
+        || detail.contains("No signing certificate")
+        || detail.contains("No profiles for")
+    {
+        return format!(
+            "{}\n\n{}\n\n{}",
+            language.t(L::SigningSetup),
+            language.t(L::SigningHelp),
+            detail
+        );
+    }
     if detail.contains("Prerequisite checker internal error:") {
         return language.t(L::PrerequisiteInternalError).into();
     }
@@ -341,6 +368,7 @@ fn build_error_notice(detail: &str, language: Language, exporting: bool) -> Stri
             Some(crate::progress::Stage::Requirements) => L::Tools,
             Some(crate::progress::Stage::Extract) => L::Prepare,
             Some(crate::progress::Stage::Exefs) => L::ExeFS,
+            Some(crate::progress::Stage::Signing) => L::VerifySigning,
             Some(crate::progress::Stage::Generate) => L::Generate,
             Some(crate::progress::Stage::Compile) => L::Compile,
             Some(crate::progress::Stage::Images) => L::Images,
@@ -462,6 +490,13 @@ impl Installer {
             ios_devices_generation: 0,
             ios_devices_failed: false,
             ios_devices_page: 0,
+            ios_signing_open: false,
+            ios_signing_busy: false,
+            ios_signing_generation: 0,
+            ios_teams: Vec::new(),
+            ios_team: preferences::load_signing_team().unwrap_or_default(),
+            ios_team_manual: false,
+            ios_signing_failed: false,
             ios_profile: None,
             ios_profile_open: false,
             ios_new_profile: None,
@@ -773,6 +808,79 @@ impl Installer {
             }
             Message::BuildOptions(open) if self.page == Page::Setup => {
                 self.build_options_open = open;
+            }
+            Message::OpenIosSigning
+                if self.host == Platform::Mac
+                    && self.target == InstallTarget::Ios
+                    && matches!(self.page, Page::Target | Page::Setup) =>
+            {
+                self.ios_devices_open = false;
+                self.ios_signing_open = true;
+                return self.handle(Message::RefreshIosSigning);
+            }
+            Message::RefreshIosSigning if self.ios_signing_open && !self.ios_signing_busy => {
+                self.ios_signing_busy = true;
+                self.ios_signing_failed = false;
+                self.ios_signing_generation += 1;
+                let generation = self.ios_signing_generation;
+                return Task::perform(crate::ios_signing::scan(), move |result| {
+                    Message::IosSigningLoaded(generation, result)
+                });
+            }
+            Message::IosSigningLoaded(generation, result)
+                if generation == self.ios_signing_generation =>
+            {
+                self.ios_signing_busy = false;
+                match result {
+                    Ok(teams) => {
+                        if self.ios_team.is_empty() && teams.len() == 1 {
+                            self.ios_team = teams[0].id.clone();
+                        }
+                        self.ios_teams = teams;
+                    }
+                    Err(cause) => {
+                        self.ios_signing_failed = true;
+                        self.record("SIGNING", &cause);
+                    }
+                }
+            }
+            Message::SelectIosTeam(team) if self.ios_signing_open => {
+                if self.ios_teams.contains(&team) {
+                    self.ios_team = team.id;
+                }
+            }
+            Message::IosTeamChanged(id) if self.ios_signing_open => {
+                self.ios_team = id.trim().to_ascii_uppercase();
+            }
+            Message::ManualIosTeam if self.ios_signing_open => {
+                let manual = self.ios_team_manual
+                    || !self.ios_teams.iter().any(|team| team.id == self.ios_team);
+                self.ios_team_manual = !manual;
+                if manual && !self.ios_teams.iter().any(|team| team.id == self.ios_team) {
+                    self.ios_team = if self.ios_teams.len() == 1 {
+                        self.ios_teams[0].id.clone()
+                    } else {
+                        String::new()
+                    };
+                }
+            }
+            Message::OpenXcode if self.ios_signing_open => {
+                return Task::perform(
+                    async {
+                        tokio::process::Command::new("/usr/bin/open")
+                            .args(["-a", "Xcode"])
+                            .status()
+                            .await
+                            .map_err(|e| e.to_string())?
+                            .success()
+                            .then_some(())
+                            .ok_or_else(|| "Could not open Xcode.".into())
+                    },
+                    Message::XcodeOpened,
+                );
+            }
+            Message::XcodeOpened(Err(_)) => {
+                self.notice = Some(self.language.t(L::SigningHelp).into());
             }
             Message::OpenIosDevices
                 if self.host == Platform::Mac
@@ -1250,10 +1358,23 @@ impl Installer {
                 self.notice = None;
             }
             Message::Review if self.ready() => {
+                if self.ios_signing_open {
+                    if self.persist_preferences()
+                        && preferences::save_signing_team(&self.ios_team).is_err()
+                    {
+                        self.notice = Some(self.language.t(L::PreferenceError).into());
+                        return Task::none();
+                    }
+                    self.ios_signing_open = false;
+                    if self.page == Page::Target {
+                        self.page = Page::Keys;
+                    }
+                    return Task::none();
+                }
                 if self.ios_devices_open {
                     self.ios_devices_open = false;
                     if self.page == Page::Target {
-                        self.page = Page::Keys;
+                        return self.handle(Message::OpenIosSigning);
                     }
                     return Task::none();
                 }
@@ -1301,6 +1422,12 @@ impl Installer {
                 self.notice = None;
                 self.hovered = None;
                 self.drag_active = false;
+            }
+            Message::Back if self.ios_signing_open => {
+                self.ios_signing_open = false;
+                if self.page == Page::Target {
+                    self.ios_devices_open = true;
+                }
             }
             Message::Back if self.ios_devices_open => {
                 self.ios_devices_open = false;
@@ -1369,6 +1496,12 @@ impl Installer {
                         && !self.ios_device_ready()
                     {
                         return self.handle(Message::OpenIosDevices);
+                    }
+                    if self.target == InstallTarget::Ios
+                        && self.ios_delivery == crate::backend::IosDelivery::Device
+                        && !crate::ios_signing::valid_id(&self.ios_team)
+                    {
+                        return self.handle(Message::OpenIosSigning);
                     }
                     if self.target == InstallTarget::Ios
                         && self.ios_delivery == crate::backend::IosDelivery::Ipa
@@ -1455,6 +1588,8 @@ impl Installer {
                                 target,
                                 ios_delivery: self.ios_delivery,
                                 ios_device: self.ios_device.clone(),
+                                ios_team: crate::ios_signing::valid_id(&self.ios_team)
+                                    .then(|| self.ios_team.clone()),
                                 ios_profile: self.ios_profile.clone(),
                                 ios_new_profile: self.ios_new_profile.clone(),
                                 portable_cpu: self.portable_cpu,
@@ -1769,15 +1904,21 @@ impl Installer {
         crate::progress::Stage::ALL
             .into_iter()
             .filter(|stage| *stage != crate::progress::Stage::Exefs || code_mod)
+            .filter(|stage| {
+                *stage != crate::progress::Stage::Signing
+                    || (self.target == InstallTarget::Ios
+                        && self.ios_delivery == crate::backend::IosDelivery::Device)
+            })
             .collect()
     }
 
-    fn build_labels(&self) -> [L; 10] {
+    fn build_labels(&self) -> [L; 11] {
         [
             L::FetchSource,
             L::Tools,
             L::Prepare,
             L::ExeFS,
+            L::VerifySigning,
             L::Generate,
             L::Compile,
             L::Images,
@@ -1845,6 +1986,9 @@ impl Installer {
     }
 
     fn ready(&self) -> bool {
+        if self.ios_signing_open {
+            return !self.ios_signing_busy && crate::ios_signing::valid_id(&self.ios_team);
+        }
         if self.ios_devices_open {
             return self.ios_device_ready();
         }
@@ -1918,6 +2062,9 @@ impl Installer {
         self.ios_new_profile = None;
         self.ios_profile_open = false;
         self.ios_devices_open = false;
+        self.ios_signing_open = false;
+        self.ios_teams.clear();
+        self.ios_team.clear();
         self.ios_devices.clear();
         self.ios_device = None;
         self.ios_devices_busy = false;
@@ -1963,6 +2110,45 @@ impl Installer {
             ));
         }
         match scenario {
+            "signing-check" => {
+                self.page = Page::Progress;
+                self.target = InstallTarget::Ios;
+                self.ios_delivery = crate::backend::IosDelivery::Device;
+                self.backend_status = BackendStatus::Running;
+                self.build_progress.step("signing", "started");
+                self.motion
+                    .snap(crate::progress::Stage::Signing.index() as f32);
+            }
+
+            "signing" | "signing-empty" | "signing-manual" => {
+                self.page = Page::Target;
+                self.target = InstallTarget::Ios;
+                self.ios_delivery = crate::backend::IosDelivery::Device;
+                self.ios_signing_open = true;
+                if scenario != "signing-empty" {
+                    self.ios_teams = vec![crate::ios_signing::Team {
+                        id: "TESTTEAM01".into(),
+                        name: "Personal Team".into(),
+                    }];
+                    self.ios_team = "TESTTEAM01".into();
+                }
+                self.ios_team_manual = scenario == "signing-manual";
+            }
+            "setup-ios-device" => {
+                self.page = Page::Setup;
+                self.target = InstallTarget::Ios;
+                self.ios_delivery = crate::backend::IosDelivery::Device;
+                self.ios_team = "TESTTEAM01".into();
+            }
+            "log-copy" => {
+                self.page = Page::Progress;
+                self.details = true;
+                for _ in 0..40 {
+                    self.record("BACKEND","Checking Apple signing configuration and device prerequisites. Existing game saves are kept.");
+                }
+                self.copied_log_line = Some((39, Instant::now()));
+            }
+
             "devices" | "devices-many" | "devices-empty" | "devices-offline" | "devices-error" => {
                 self.page = Page::Target;
                 self.target = InstallTarget::Ios;
@@ -2590,10 +2776,7 @@ mod tests {
         assert_eq!(app.target, InstallTarget::Ios);
         let _ = app.update(Message::SelectTarget(InstallTarget::Mac));
         assert_eq!(app.target, InstallTarget::Mac);
-        assert_eq!(
-            app.step_labels().len(),
-            8 + crate::progress::Stage::ALL.len() - 1
-        );
+        assert_eq!(app.step_labels().len(), 8 + app.build_stages().len());
     }
 
     #[test]
@@ -2747,7 +2930,11 @@ mod tests {
         ));
         assert_eq!(
             app.active_step(),
-            8 + crate::progress::Stage::Compile.index() - 1
+            8 + app
+                .build_stages()
+                .iter()
+                .position(|stage| *stage == crate::progress::Stage::Compile)
+                .unwrap()
         );
         let clang = app.build_progress.stages[crate::progress::Stage::Compile.index()];
         assert_eq!((clang.completed, clang.total), (2368, 2369));
@@ -2974,6 +3161,13 @@ mod tests {
         let _ = app.update(Message::IosDevicesLoaded(2, Ok(devices)));
         assert!(app.ready());
         let _ = app.update(Message::Review);
+        assert_eq!(app.page, Page::Target);
+        assert!(app.ios_signing_open);
+        app.ios_signing_busy = false;
+        assert!(!app.ready());
+        let _ = app.update(Message::IosTeamChanged("testteam01".into()));
+        assert!(app.ready());
+        let _ = app.update(Message::Review);
         assert_eq!(app.page, Page::Keys);
         assert!(!app.ios_devices_open);
         app.page = Page::Setup;
@@ -2981,5 +3175,68 @@ mod tests {
         let _ = app.update(Message::Review);
         assert_eq!(app.page, Page::Setup);
         assert!(!app.ios_devices_open);
+    }
+    #[test]
+    fn signing_requires_explicit_valid_team_and_preserves_a_manual_choice_on_refresh() {
+        let (mut app, _) = Installer::new();
+        app.page = Page::Target;
+        app.host = Platform::Mac;
+        app.target = InstallTarget::Ios;
+        app.ios_signing_open = true;
+        app.ios_signing_busy = true;
+        app.ios_signing_generation = 2;
+        let teams = vec![
+            crate::ios_signing::Team {
+                id: "TESTTEAM01".into(),
+                name: "First team".into(),
+            },
+            crate::ios_signing::Team {
+                id: "TESTTEAM02".into(),
+                name: "Second team".into(),
+            },
+        ];
+        app.ios_team.clear();
+        let _ = app.update(Message::IosSigningLoaded(1, Ok(teams.clone())));
+        assert!(app.ios_signing_busy);
+        let _ = app.update(Message::IosSigningLoaded(2, Ok(teams.clone())));
+        assert!(!app.ready());
+        let _ = app.update(Message::SelectIosTeam(teams[1].clone()));
+        assert!(app.ready());
+        let _ = app.update(Message::IosTeamChanged("bad".into()));
+        assert!(!app.ready());
+        let _ = app.update(Message::IosTeamChanged("manual0001".into()));
+        assert!(app.ready());
+        let _ = app.update(Message::IosSigningLoaded(2, Ok(teams)));
+        assert_eq!(app.ios_team, "MANUAL0001");
+        let _ = app.update(Message::ManualIosTeam);
+        assert!(app.ios_team.is_empty());
+        assert!(!app.ready());
+    }
+    #[test]
+    fn signing_preflight_is_only_a_direct_device_build_step_before_generation() {
+        let (mut app, _) = Installer::new();
+        app.target = InstallTarget::Ios;
+        app.ios_delivery = crate::backend::IosDelivery::Ipa;
+        assert!(
+            !app.build_stages()
+                .contains(&crate::progress::Stage::Signing)
+        );
+        app.ios_delivery = crate::backend::IosDelivery::Device;
+        let stages = app.build_stages();
+        assert!(
+            stages
+                .iter()
+                .position(|s| *s == crate::progress::Stage::Signing)
+                .unwrap()
+                < stages
+                    .iter()
+                    .position(|s| *s == crate::progress::Stage::Generate)
+                    .unwrap()
+        );
+        app.target = InstallTarget::Mac;
+        assert!(
+            !app.build_stages()
+                .contains(&crate::progress::Stage::Signing)
+        );
     }
 }

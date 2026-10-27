@@ -98,3 +98,13 @@ GUI views are checked in English/German dark mode. Full clean build plus cleanup
 acceptance on clean macOS/Linux systems remains to be run. Windows cleanup code
 is prepared but has no hardware acceptance. No remote host access or CI dispatch
 is needed for these local changes.
+
+## Direct iPhone/iPad signing preflight
+
+Missing team configuration is checked with the initial prerequisites. Once input
+extraction and optional ExeFS staging determine the final bundle identity, the
+installer runs `scripts/recomp/ios/signing_preflight.sh` before native generation
+and Clang. Its tiny C application uses the actual development team, device,
+bundle ID and app entitlements to exercise Xcode provisioning and signing. It
+is not installed. Temporary probe products are removed, while diagnostics and
+existing game build outputs are retained. IPA export bypasses personal signing.

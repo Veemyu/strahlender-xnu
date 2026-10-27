@@ -116,6 +116,19 @@ macro_rules! messages {
 }
 
 messages! {
+    VerifySigning => ["Check Apple signing", "Apple-Signierung prüfen", "Comprobar firma de Apple", "Verificar assinatura Apple", "Проверка подписи Apple"],
+    SigningTitle => ["Sign for your device", "Für dein Gerät signieren", "Firma para tu dispositivo", "Assina para o teu dispositivo", "Подпись для устройства"],
+    SigningHint => ["Choose your development team. Xcode signs the app.", "Apple-Entwicklungsteam wählen. Xcode signiert die App.", "Elige tu equipo. Xcode firmará la aplicación.", "Escolhe a tua equipa. O Xcode assina a aplicação.", "Выберите команду. Xcode подпишет приложение."],
+    SigningHelp => ["In Xcode: Settings → Accounts → add your Apple Account. Under Manage Certificates, create an Apple Development certificate. Then refresh here.", "In Xcode: Einstellungen → Accounts → Apple Account hinzufügen. Unter Manage Certificates ein Apple-Development-Zertifikat erstellen. Danach hier aktualisieren.", "En Xcode: Settings → Accounts → añade tu cuenta Apple. En Manage Certificates, crea un certificado Apple Development. Después, actualiza aquí.", "No Xcode: Settings → Accounts → adiciona a tua conta Apple. Em Manage Certificates, cria um certificado Apple Development. Depois, atualiza aqui.", "В Xcode: Settings → Accounts → добавьте учётную запись Apple. В Manage Certificates создайте сертификат Apple Development. Затем обновите список здесь."],
+    SigningPrivacy => ["Your Apple Account stays in Xcode. This installer only remembers the team ID.", "Dein Apple Account bleibt in Xcode. Der Installer merkt sich nur die Team-ID.", "Tu cuenta Apple permanece en Xcode. El instalador solo recuerda el ID del equipo.", "A tua conta Apple fica no Xcode. O instalador só guarda o ID da equipa.", "Учётная запись Apple остаётся в Xcode. Установщик запоминает только ID команды."],
+    SigningChoose => ["Choose a team", "Team auswählen", "Elegir equipo", "Escolher equipa", "Выберите команду"],
+    SigningTeamId => ["Team ID · 10 letters or digits", "Team-ID · 10 Buchstaben oder Ziffern", "ID del equipo · 10 letras o cifras", "ID da equipa · 10 letras ou dígitos", "ID команды · 10 букв или цифр"],
+    SigningManual => ["Enter team ID manually", "Team-ID selbst eingeben", "Introducir ID manualmente", "Introduzir ID manualmente", "Ввести ID вручную"],
+    SigningDetected => ["Choose a detected team", "Erkanntes Team auswählen", "Elegir equipo detectado", "Escolher equipa detetada", "Выбрать найденную команду"],
+    OpenXcode => ["Open Xcode", "Xcode öffnen", "Abrir Xcode", "Abrir Xcode", "Открыть Xcode"],
+    SigningSetup => ["Signing team", "Signing-Team", "Equipo de firma", "Equipa de assinatura", "Команда подписи"],
+    SigningFailed => ["No signing team could be read. Open Xcode to set it up, or enter its ID.", "Signing-Team konnte nicht gelesen werden. In Xcode einrichten oder die ID eingeben.", "No se pudo leer el equipo. Configúralo en Xcode o introduce su ID.", "Não foi possível ler a equipa. Configura-a no Xcode ou introduz o ID.", "Не удалось прочитать команду. Настройте её в Xcode или введите ID."],
+
     PreviousDevices => ["Previous", "Zurück", "Anterior", "Anterior", "Назад"],
     NextDevices => ["Next", "Weitere", "Siguiente", "Seguinte", "Далее"],
     DevicesTitle => ["Choose your device", "Gerät auswählen", "Elige tu dispositivo", "Escolhe o teu dispositivo", "Выберите устройство"],
