@@ -16,23 +16,34 @@ command -v xcrun >/dev/null || { echo "xcrun missing" >&2; exit 2; }
 if ! xcrun -sdk "$SDK" metal --version >/dev/null 2>&1; then
   echo "Metal toolchain missing for $SDK: xcodebuild -downloadComponent MetalToolchain" >&2; exit 3
 fi
+case "$SDK" in
+  iphoneos) AIR_TARGET=air64-apple-ios17.0 ;;
+  macosx) AIR_TARGET=air64-apple-macos26.0 ;;
+  *) echo "Unsupported shader SDK: $SDK" >&2; exit 2;;
+esac
+export AIR_TARGET
 mkdir -p "$OUT"
+# The toolchain and target are part of every incremental compilation stamp.
+TOOLCHAIN=$( { xcrun -sdk "$SDK" metal --version; echo "$SDK $AIR_TARGET preserve-invariance=v1"; } | shasum -a 256 | cut -c1-64)
+export TOOLCHAIN
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 one() {
   local src="$1" sdk="$2" out="$3" tmp="$4"
   local base; base="$(basename "$src" .metal)"
+  local stamp
+  stamp=$( { printf '%s\n' "$TOOLCHAIN"; shasum -a 256 "$src"; } | shasum -a 256 | cut -c1-64)
+  if [[ -s "$out/$base.metallib" && "$(cat "$out/$base.stamp" 2>/dev/null || true)" == "$stamp" ]]; then return; fi
   local flags=()
   [[ "$base" == v_* ]] && flags+=(-fpreserve-invariance)
-  # Target OS fixed to 26.0: without -target Xcode 27 produces AIR v29 for iOS 27.1, which iPadOS 26 does not load (the runtime would
-  # silently discard such libraries). 26.0 also works under Xcode 26.
-  case "$sdk" in
-    iphoneos) flags+=(-target air64-apple-ios26.0) ;;
-    macosx)   flags+=(-target air64-apple-macos26.0) ;;
-  esac
+  # Pin the deployment target, rather than inheriting the newest Xcode OS.
+  # iPhoneOS libraries remain loadable on the app's minimum supported iOS 17.
+  flags+=(-target "$AIR_TARGET")
   if xcrun -sdk "$sdk" metal -c "${flags[@]}" "$src" -o "$tmp/$base.air" 2>"$tmp/$base.err" \
-     && xcrun -sdk "$sdk" metallib "$tmp/$base.air" -o "$out/$base.metallib" 2>>"$tmp/$base.err"; then
+     && xcrun -sdk "$sdk" metallib "$tmp/$base.air" -o "$tmp/$base.metallib" 2>>"$tmp/$base.err"; then
+    mv "$tmp/$base.metallib" "$out/$base.metallib"
+    printf '%s\n' "$stamp" > "$out/$base.stamp"
     rm -f "$tmp/$base.air" "$tmp/$base.err"
   else
     echo "ERROR $base:$(head -c 300 "$tmp/$base.err")" >&2
@@ -46,4 +57,5 @@ export -f one
 JOBS=$(python3 scripts/recomp/parallel_jobs.py)
 find "$SRC" -maxdepth 1 -name '[vf]_*.metal' -print0 \
   | xargs -0 -P "$JOBS" -I{} bash -c 'one "$@"' _ {} "$SDK" "$OUT" "$TMP"
+printf '%s\n' "$SDK" > "$OUT/.sdk"
 echo "Shader libraries ($SDK):$(ls "$OUT"/*.metallib 2>/dev/null | wc -l | tr -d ' ') in $OUT"

@@ -76,6 +76,13 @@ case "${1:-}" in
     /usr/bin/clang -O2 -fobjc-arc -Wno-deprecated-declarations -DBDSP_DATA_TOOL -framework Foundation \
       scripts/recomp/ios/app/data_library.m -o "$R/ios-data"
     "$R/ios-data" manifest "${BDSP_ROMFS_SOURCE:-work/romfs}" "${BDSP_MOD_ROOT:--}" "$R/res/install-data.plist" "$R/res/expected-library.json"
+    export BDSP_SHADER_CACHE_DIR=${BDSP_SHADER_CACHE_DIR:-$ROOT/work/recomp/cache}
+    if [ -d "$BDSP_SHADER_CACHE_DIR/shaders" ] && find "$BDSP_SHADER_CACHE_DIR/shaders" -name '[vf]_*.metal' -print -quit | grep -q .; then
+      echo "Preparing iPhone/iPad Metal libraries from the local shader sources."
+      bash scripts/recomp/shader_bin.sh iphoneos "$BDSP_SHADER_CACHE_DIR/shaders" "$BDSP_SHADER_CACHE_DIR/shaders-bin-iphoneos"
+    else
+      echo "No recorded shader sources available. New shaders will compile on the device with a visible status."
+    fi
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release \
       -destination "$DESTINATION" -derivedDataPath "$R/derived" \
       "${XCODE_SIGNING[@]}" PRODUCT_BUNDLE_IDENTIFIER="$BDSP_IOS_BUNDLE_ID" \
@@ -99,7 +106,7 @@ case "${1:-}" in
       /usr/bin/codesign --force --sign - --entitlements scripts/recomp/ios/app/BDSP.entitlements --generate-entitlement-der "$APP"
     fi
     /usr/bin/codesign --verify --deep --strict "$APP"
-    EXPORT=$(mktemp -d "$R/export.XXXXXX")
+    EXPORT=$(mktemp -d "$R/.export.XXXXXX")
     trap 'rm -rf "$EXPORT"' EXIT
     mkdir "$EXPORT/Payload"
     ditto "$APP" "$EXPORT/Payload/BDSP.app"

@@ -1,24 +1,26 @@
 #!/bin/sh
-# Xcode build phase: puts the shader cache, pre-built metallibs and pipelines.bin into the app bundle. The sources live only in work/
-# (gitignored). If a source is missing, the runtime starts by compiling from the source text (slower, but runnable).
+# Copy only platform-identified iPhoneOS libraries. Never retain stale resources
+# from a previous incremental Xcode build, or substitute macOS metallibs.
 set -eu
-SRC="${SRCROOT}/../../../../work/recomp/cache"
+SRC="${BDSP_SHADER_CACHE_DIR:-${SRCROOT}/../../../../work/recomp/cache}"
 DST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
-
+rm -rf "$DST/shaders" "$DST/shaders-bin"
+rm -f "$DST/pipelines.bin"
 if [ -d "$SRC/shaders" ]; then
-  rm -rf "$DST/shaders"
   cp -R "$SRC/shaders" "$DST/shaders"
-  echo "Shader cache: $(ls "$DST/shaders" | wc -l | tr -d ' ') files"
+fi
+if [ "${PLATFORM_NAME:-iphoneos}" = iphoneos ] && [ -f "$SRC/shaders-bin-iphoneos/.sdk" ] &&
+   [ "$(cat "$SRC/shaders-bin-iphoneos/.sdk")" = iphoneos ]; then
+  mkdir -p "$DST/shaders-bin"
+  # Copy just libraries for current source hashes, never orphaned cache entries.
+  for source in "$SRC"/shaders/[vf]_*.metal; do
+    [ -f "$source" ] || continue
+    name=$(basename "$source" .metal)
+    test -s "$SRC/shaders-bin-iphoneos/$name.metallib"
+    cp "$SRC/shaders-bin-iphoneos/$name.metallib" "$DST/shaders-bin/"
+  done
+  echo "Bundled iPhoneOS Metal libraries: $(find "$DST/shaders-bin" -name '*.metallib' | wc -l | tr -d ' ')"
 else
-  echo "Shader cache missing ($SRC/shaders)"
+  echo "No compatible prebuilt Metal libraries; runtime compilation remains available."
 fi
-
-if [ -d "$SRC/shaders-bin-iphoneos" ]; then
-  rm -rf "$DST/shaders-bin"
-  cp -R "$SRC/shaders-bin-iphoneos" "$DST/shaders-bin"
-  echo "Metallibs: $(ls "$DST/shaders-bin" | wc -l | tr -d ' ') files"
-fi
-
-if [ -f "$SRC/pipelines.bin" ]; then
-  cp "$SRC/pipelines.bin" "$DST/pipelines.bin"
-fi
+if [ -f "$SRC/pipelines.bin" ]; then cp "$SRC/pipelines.bin" "$DST/pipelines.bin"; fi

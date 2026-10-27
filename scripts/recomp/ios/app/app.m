@@ -359,6 +359,63 @@ static int KeyBit(UIKeyboardHIDUsage k) {
 
 static GameView *gView;   // game view of the scene (controller overlay)
 
+// Called from the renderer worker. Never wait for UIKit from that worker.
+void bdsp_shader_compile_status(int active) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        static UILabel *label;
+        static NSUInteger version, completed, activeCalls;
+        static BOOL pending;
+        NSUInteger current = ++version;
+        if (!active) {
+            completed++;
+            if (activeCalls) activeCalls--;
+            if (!activeCalls) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 350 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+                if (version == current && !activeCalls) { label.hidden = YES; pending = NO; }
+            });
+            return;
+        }
+        activeCalls++;
+        // Keep one indicator for a burst of short compilations, not thousands of
+        // individually debounced flashes (which could hide a long startup).
+        if (pending) {
+            if (!label.hidden && label.text) {
+                NSRange range = [label.text rangeOfString:@" (" options:NSBackwardsSearch];
+                if (range.location != NSNotFound) label.text = [[label.text substringToIndex:range.location]
+                    stringByAppendingFormat:@" (%lu)  ", (unsigned long)completed];
+            }
+            return;
+        }
+        pending = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (!pending || !gView) return;
+            if (!label) {
+                label = [UILabel new]; label.translatesAutoresizingMaskIntoConstraints = NO;
+                label.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.9];
+                label.textColor = UIColor.whiteColor; label.textAlignment = NSTextAlignmentCenter;
+                label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+                label.layer.cornerRadius = 12; label.clipsToBounds = YES;
+                label.accessibilityTraits = UIAccessibilityTraitUpdatesFrequently;
+                [gView addSubview:label];
+                [NSLayoutConstraint activateConstraints:@[
+                    [label.centerXAnchor constraintEqualToAnchor:gView.centerXAnchor],
+                    [label.topAnchor constraintEqualToAnchor:gView.safeAreaLayoutGuide.topAnchor constant:12],
+                    [label.widthAnchor constraintLessThanOrEqualToAnchor:gView.widthAnchor constant:-32],
+                    [label.heightAnchor constraintEqualToConstant:40],
+                    [label.widthAnchor constraintGreaterThanOrEqualToConstant:260]]];
+            }
+            NSString *lang = NSLocale.preferredLanguages.firstObject.lowercaseString;
+            NSString *text = @"Preparing shaders…";
+            if ([lang hasPrefix:@"de"]) text = @"Shader werden vorbereitet…";
+            else if ([lang hasPrefix:@"es"]) text = @"Preparando sombreadores…";
+            else if ([lang hasPrefix:@"pt"]) text = @"A preparar shaders…";
+            else if ([lang hasPrefix:@"ru"] || [lang hasPrefix:@"uk"]) text = @"Подготовка шейдеров…";
+            label.text = [NSString stringWithFormat:@"  %@ (%lu)  ", text, (unsigned long)completed];
+            label.hidden = NO;
+            [gView bringSubviewToFront:label];
+        });
+    });
+}
+
 #pragma mark - Screen keyboard (text entry)
 
 // System keyboard: a hidden text field becomes first responder when the text field of the on-screen keyboard is tapped; what is typed goes to

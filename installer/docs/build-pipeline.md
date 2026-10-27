@@ -108,3 +108,36 @@ and Clang. Its tiny C application uses the actual development team, device,
 bundle ID and app entitlements to exercise Xcode provisioning and signing. It
 is not installed. Temporary probe products are removed, while diagnostics and
 existing game build outputs are retained. IPA export bypasses personal signing.
+
+### iPhone/iPad shader resources and follow-up verification
+
+Packaging compiles locally recorded MSL sources under `work/recomp/cache/shaders`
+with Apple's **iPhoneOS** Metal compiler, pinned to the app's iOS 17 deployment
+minimum. Vertex libraries preserve invariance. The source hash, SDK and compiler
+version determine incremental reuse. `BDSP_SHADER_CACHE_DIR` can explicitly select
+another local cache; it is not an automatic search through other checkouts.
+A present source cache makes the Metal toolchain a prerequisite before compilation.
+The final bundle only receives libraries matching its current source names and
+platform. Rebuilds remove stale bundle shader resources; device and macOS libraries
+are never substituted for each other or for simulator libraries.
+
+Recorded shaders are user-generated build data, not distributed repository assets.
+A clean checkout without recordings explicitly reports that the device must compile
+new shaders. Matching bundled libraries accelerate known variants; new effects and
+GPU-specific pipelines can still require compilation. iOS shows a small localized
+status independently of the render worker, including bursts of short compilations.
+The existing pipeline warm-up gate retains its numerical progress. Runtime MSL
+recordings live in app-private `Library/Caches/BDSP/shaders` on iOS.
+
+The first verification after import, changed game/mod inventory, or a new expected
+manifest hashes every manifest-bound file with SHA-256. Successful checks write a
+private binary receipt under `Library/Caches`. Unchanged starts compare the complete
+file list, inode, size and nanosecond mtime/ctime instead of rereading all file bytes.
+An explicit **Check game files again** always performs full verification. A missing
+or invalid receipt also hashes again; cache write failure does not block playing.
+Receipts do not depend on the app executable's build ID, so code-only app updates
+can reuse verified data. Relocated containers trigger a fresh check. This is a fast
+change detector, not cryptographic authentication against deliberately forged
+filesystem metadata. Saves are outside the inventory and are never changed.
+Manual mods outside the expected manifest are not authenticated by the base-game
+manifest; ExeFS/IPS changes still require a new build.

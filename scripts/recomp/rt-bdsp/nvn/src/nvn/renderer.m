@@ -1250,14 +1250,23 @@ static uint64_t fnv64(const char *t) {
 }
 
 static void shader_cache_note(const char *vs, const char *fs) {
-    static int made;
-    if (!made) { made = 1; mkdir("work", 0755); mkdir("work/recomp", 0755); mkdir("work/recomp/cache", 0755); mkdir("work/recomp/cache/shaders", 0755); }
+    static NSString *directory;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+#ifdef BDSP_IOS
+        directory = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject]
+            stringByAppendingPathComponent:@"BDSP/shaders"];
+#else
+        directory = @"work/recomp/cache/shaders";
+#endif
+        [NSFileManager.defaultManager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
+    });
     const char *src[2] = {vs, fs};
     for (int i = 0; i < 2; i++) {
-        char path[96];
-        snprintf(path, sizeof path, "work/recomp/cache/shaders/%c_%016llx.metal", i ? 'f' : 'v', (unsigned long long)fnv64(src[i]));
-        if (access(path, F_OK) == 0) continue;
-        FILE *f = fopen(path, "w");
+        NSString *path = [directory stringByAppendingPathComponent:[NSString stringWithFormat:@"%c_%016llx.metal",
+            i ? 'f' : 'v', (unsigned long long)fnv64(src[i])]];
+        if (access(path.fileSystemRepresentation, F_OK) == 0) continue;
+        FILE *f = fopen(path.fileSystemRepresentation, "w");
         if (f) { fputs(src[i], f); fclose(f); }
     }
 }
@@ -1272,7 +1281,9 @@ static NSString *prebuilt_dir(void) {
         prebuilt_libs = [NSMutableDictionary new];
         NSString *b = [[NSBundle mainBundle].resourcePath stringByAppendingPathComponent:@"shaders-bin"];
         if ([[NSFileManager defaultManager] fileExistsAtPath:b]) prebuilt_dir_path = b;
+        #ifndef BDSP_IOS
         else if ([[NSFileManager defaultManager] fileExistsAtPath:@"work/recomp/cache/shaders-bin-macosx"]) prebuilt_dir_path = @"work/recomp/cache/shaders-bin-macosx";
+#endif
         if (getenv("BDSP_SHADER_SALT") || getenv("BDSP_NO_PREBUILT")) prebuilt_dir_path = nil;
         LOG("[shader] pre-compiled libraries: %s\n", prebuilt_dir_path ? prebuilt_dir_path.UTF8String : "none found");
     }
@@ -1301,7 +1312,7 @@ static id<MTLLibrary> prebuilt_library(const char *msl, char kind) {
 // clutter the console; they are placed in front of every shader source.
 #define MSL_QUIET @"#pragma clang diagnostic ignored \"-Wunused-function\"\n#pragma clang diagnostic ignored \"-Wunused-variable\"\n#pragma clang diagnostic ignored \"-Wunused-but-set-variable\"\n#pragma clang diagnostic ignored \"-Wunused-label\"\n"
 
-static void compile_program(Prog *pr) {
+static void compile_program_impl(Prog *pr) {
     NSError *err = nil;
     static MTLCompileOptions *vopts;
     static dispatch_once_t once;
@@ -1310,17 +1321,37 @@ static void compile_program(Prog *pr) {
     // BDSP_SHADER_SALT=<text>: tag sources so Metal's disk cache misses (measure cold first-use compiles)
     NSString *salt = getenv("BDSP_SHADER_SALT") ? [NSString stringWithFormat:@"\n// %s\n", getenv("BDSP_SHADER_SALT")] : @"";
     id<MTLLibrary> vl = prebuilt_library(pr->vi->msl, 'v');
+    BOOL vertexPrebuilt = vl != nil;
     if (!vl) vl = [dev newLibraryWithSource:[MSL_QUIET stringByAppendingString:[@(pr->vi->msl) stringByAppendingString:salt]] options:vopts error:&err];
     if (!vl) { LOG("[shader] VS compile failed: %s\n%s\n", err.localizedDescription.UTF8String, pr->vi->msl); pr->failed = true; return; }
     id<MTLLibrary> fl = prebuilt_library(pr->fi->msl, 'f');
+    BOOL fragmentPrebuilt = fl != nil;
     if (!fl) fl = [dev newLibraryWithSource:[MSL_QUIET stringByAppendingString:[@(pr->fi->msl) stringByAppendingString:salt]] options:nil error:&err];
     if (!fl) { LOG("[shader] FS compile failed: %s\n%s\n", err.localizedDescription.UTF8String, pr->fi->msl); pr->failed = true; return; }
+    static unsigned prebuiltStages, compiledStages;
+    prebuiltStages += vertexPrebuilt + fragmentPrebuilt;
+    compiledStages += !vertexPrebuilt + !fragmentPrebuilt;
+    if ((prebuiltStages + compiledStages) <= 6 || (prebuiltStages + compiledStages) % 512 == 0)
+        LOG("[shader] libraries loaded: %u prebuilt, %u compiled on device\n", prebuiltStages, compiledStages);
     pr->vs = [vl newFunctionWithName:@"main0"];
     pr->fs = [fl newFunctionWithName:@"main0"];
     __atomic_fetch_add(&stat_compiles, 1, __ATOMIC_RELAXED);
     double dt = now_ms() - t0;
     @synchronized(cache) { stat_compile_ms += dt; }
     pr->ready = true;
+}
+
+#ifdef BDSP_IOS
+extern void bdsp_shader_compile_status(int active) __attribute__((weak_import));
+#endif
+static void compile_program(Prog *pr) {
+#ifdef BDSP_IOS
+    if (bdsp_shader_compile_status) bdsp_shader_compile_status(1);
+    @try { compile_program_impl(pr); }
+    @finally { if (bdsp_shader_compile_status) bdsp_shader_compile_status(0); }
+#else
+    compile_program_impl(pr);
+#endif
 }
 
 static void startup_gate(void);
@@ -2253,7 +2284,13 @@ static MTLRenderPipelineDescriptor *pd_from_rec(const PipeRec *r, id<MTLFunction
 
 static id<MTLRenderPipelineState> build_pipeline(const PipeRec *r, id<MTLFunction> vs, id<MTLFunction> fs) {
     NSError *err = nil;
+#ifdef BDSP_IOS
+    if (bdsp_shader_compile_status) bdsp_shader_compile_status(1);
+#endif
     id<MTLRenderPipelineState> p = TIMED_COMPILE([dev newRenderPipelineStateWithDescriptor:pd_from_rec(r, vs, fs) error:&err]);
+#ifdef BDSP_IOS
+    if (bdsp_shader_compile_status) bdsp_shader_compile_status(0);
+#endif
     if (!p) { static int n; if (n++ < 10) LOG("[metal] pipeline failed: %s\n", err.localizedDescription.UTF8String); }
     return p;
 }
