@@ -445,27 +445,44 @@ def _prepare_code_mod(args, work, build_cache=None):
 def _ios_device(args):
     output = Path(args.work) / "installer/ios-devices.json"
     output.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        result = subprocess.run(["xcrun", "devicectl", "list", "devices", "--json-output", str(output)],
-                                capture_output=True, timeout=30, check=False)
-    except subprocess.TimeoutExpired as error:
-        raise ValueError("Apple device discovery timed out. Unlock and reconnect the device.") from error
-    if result.returncode:
-        raise ValueError("Could not query connected Apple devices. Open Xcode and pair the device first.")
-    devices = json.loads(output.read_text()).get("result", {}).get("devices", [])
-    connected = [device for device in devices
-                 if device.get("connectionProperties", {}).get("tunnelState") == "connected"
-                 and device.get("hardwareProperties", {}).get("platform") == "iOS"]
+
+    def discover():
+        output.unlink(missing_ok=True)
+        try:
+            result = subprocess.run(["xcrun", "devicectl", "list", "devices", "--json-output", str(output)],
+                                    capture_output=True, timeout=30, check=False)
+        except subprocess.TimeoutExpired as error:
+            raise ValueError("Apple device discovery timed out. Unlock and reconnect the device, then refresh the device list.") from error
+        if result.returncode:
+            raise ValueError("Could not query Apple devices. Open Xcode to pair your device, then refresh the device list.")
+        return [device for device in json.loads(output.read_text()).get("result", {}).get("devices", [])
+                if device.get("hardwareProperties", {}).get("platform") == "iOS"
+                and device.get("hardwareProperties", {}).get("reality") != "simulated"]
+
+    devices = discover()
     selected = getattr(args, "ios_device", None)
     if selected:
-        connected = [device for device in connected if selected in (
-            device.get("identifier"), device.get("hardwareProperties", {}).get("udid"),
-            device.get("deviceProperties", {}).get("name"))]
+        def matches(device):
+            return selected in (device.get("identifier"), device.get("hardwareProperties", {}).get("udid"),
+                                device.get("deviceProperties", {}).get("name"))
+        candidates = [device for device in devices if matches(device)]
+        if len(candidates) != 1:
+            raise ValueError("The selected Apple device is unavailable or ambiguous. Refresh the device list and choose it again.")
+        if candidates[0].get("connectionProperties", {}).get("tunnelState") != "connected":
+            # Explicitly address the paired device to let CoreDevice reopen its tunnel.
+            try:
+                subprocess.run(["xcrun", "devicectl", "device", "info", "details", "--device",
+                                candidates[0]["identifier"], "--timeout", "10"], capture_output=True, timeout=15, check=False)
+            except subprocess.TimeoutExpired:
+                pass
+            candidates = [device for device in discover() if matches(device)]
+        connected = [device for device in candidates if device.get("connectionProperties", {}).get("tunnelState") == "connected"]
+        if len(connected) != 1:
+            raise ValueError("The selected Apple device is not connected. Unlock it, trust this Mac and reconnect USB or Finder Wi-Fi, then refresh the device list.")
     else:
-        ipads = [device for device in connected if device.get("hardwareProperties", {}).get("productType", "").startswith("iPad")]
-        connected = ipads or connected
-    if len(connected) != 1:
-        raise ValueError("Connect and unlock one iPad/iPhone, or select it explicitly with --ios-device.")
+        connected = [device for device in devices if device.get("connectionProperties", {}).get("tunnelState") == "connected"]
+        if len(connected) != 1:
+            raise ValueError("Choose one connected iPhone/iPad in the installer. For CLI builds, select it with --ios-device.")
     device = connected[0]
     return {"id": device["identifier"], "udid": device["hardwareProperties"]["udid"],
             "name": device.get("deviceProperties", {}).get("name", "iPad / iPhone")}

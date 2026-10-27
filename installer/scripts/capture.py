@@ -12,6 +12,7 @@ import struct
 import subprocess
 
 SCENARIOS = (
+    "devices", "devices-many", "devices-empty", "devices-offline", "devices-error",
     "error-prerequisite",
     "setup-dependencies", "update-available", "update-confirmation",
     "target", "target-ios", "target-mac", "demo-target-ios", "review-ios", "setup-ios", "ipa-exported", "review-ios-mod", "ios-profile",

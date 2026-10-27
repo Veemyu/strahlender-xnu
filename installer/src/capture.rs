@@ -1,7 +1,12 @@
 //! Deterministic screenshots of the actual application renderer, not HTML mocks.
 use std::{fs, io::BufWriter, path::PathBuf};
 
-pub const SCENARIOS: [&str; 49] = [
+pub const SCENARIOS: [&str; 54] = [
+    "devices",
+    "devices-many",
+    "devices-empty",
+    "devices-offline",
+    "devices-error",
     "ipa-exported",
     "review-ios-mod",
     "ios-profile",

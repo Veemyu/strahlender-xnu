@@ -116,6 +116,20 @@ macro_rules! messages {
 }
 
 messages! {
+    PreviousDevices => ["Previous", "Zurück", "Anterior", "Anterior", "Назад"],
+    NextDevices => ["Next", "Weitere", "Siguiente", "Seguinte", "Далее"],
+    DevicesTitle => ["Choose your device", "Gerät auswählen", "Elige tu dispositivo", "Escolhe o teu dispositivo", "Выберите устройство"],
+    DevicesHint => ["iPhones and iPads connected by USB or Wi-Fi.", "iPhones und iPads über USB oder WLAN.", "iPhone y iPad conectados por USB o wifi.", "iPhones e iPads ligados por USB ou Wi-Fi.", "iPhone и iPad, подключённые по USB или Wi-Fi."],
+    RefreshDevices => ["Refresh", "Aktualisieren", "Actualizar", "Atualizar", "Обновить"],
+    SearchingDevices => ["Searching…", "Suche läuft…", "Buscando…", "A procurar…", "Поиск…"],
+    NoDevices => ["No paired devices found.", "Keine gekoppelten Geräte gefunden.", "No se encontraron dispositivos enlazados.", "Não foram encontrados dispositivos emparelhados.", "Сопряжённые устройства не найдены."],
+    DevicesHelp => ["Unlock your device and trust this Mac. For Wi-Fi, enable Finder’s Wi-Fi device option first. Then refresh.", "Gerät entsperren und diesem Mac vertrauen. Für WLAN zuerst die WLAN-Anzeige im Finder aktivieren. Danach aktualisieren.", "Desbloquea el dispositivo y confía en este Mac. Para wifi, activa esa opción en Finder. Después, actualiza.", "Desbloqueia o dispositivo e confia neste Mac. Para Wi-Fi, ativa essa opção no Finder. Depois, atualiza.", "Разблокируйте устройство и доверьтесь этому Mac. Для Wi-Fi включите эту опцию в Finder. Затем обновите список."],
+    DeviceOffline => ["Not connected", "Nicht verbunden", "Sin conexión", "Sem ligação", "Не подключено"],
+    DeviceUsb => ["Connected · USB", "Verbunden · USB", "Conectado · USB", "Ligado · USB", "Подключено · USB"],
+    DeviceWifi => ["Connected · Wi-Fi", "Verbunden · WLAN", "Conectado · wifi", "Ligado · Wi-Fi", "Подключено · Wi-Fi"],
+    DevicesFailed => ["Could not refresh devices. Check Xcode pairing and try again.", "Geräte konnten nicht aktualisiert werden. Kopplung in Xcode prüfen und erneut versuchen.", "No se pudo actualizar la lista. Revisa el enlace en Xcode e inténtalo de nuevo.", "Não foi possível atualizar a lista. Verifica o emparelhamento no Xcode e tenta novamente.", "Не удалось обновить список. Проверьте сопряжение в Xcode и повторите попытку."],
+    ChangeDevice => ["Choose or refresh device", "Gerät wählen oder aktualisieren", "Elegir o actualizar dispositivo", "Escolher ou atualizar dispositivo", "Выбрать или обновить устройство"],
+
     ModProfileTitle => ["Mod app", "Mod-App", "App del mod", "Aplicação do mod", "Приложение мода"],
     ModProfileHint => ["Updating or renaming a mod? Reuse its previous IPA to keep the same app and saves.", "Mod aktualisieren oder umbenennen? Mit der bisherigen IPA bleiben App und Save-Profil dieselben.", "¿Actualizas o renombras un mod? Reutiliza su IPA anterior para mantener la app y las partidas.", "Vais atualizar ou mudar o nome de um mod? Reutiliza a IPA anterior para manter a aplicação e o progresso.", "Обновляете или переименовываете мод? Выберите прежнюю IPA, чтобы сохранить приложение и профиль сохранений."],
     ChoosePreviousIpa => ["Choose previous IPA", "Bisherige IPA wählen", "Elegir IPA anterior", "Escolher IPA anterior", "Выбрать прежнюю IPA"],

@@ -390,7 +390,7 @@ class InstallerDriverTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "original game's bundle identifier"), contextlib.redirect_stdout(io.StringIO()):
                 driver._prepare_ios(args, prepared, device)
 
-    def test_ios_device_selection_prefers_one_connected_ipad_and_requires_unambiguous_selection(self):
+    def test_ios_device_selection_requires_explicit_choice_with_multiple_connected_devices(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = SimpleNamespace(work=temporary, ios_device=None)
             def discover(command, **_kwargs):
@@ -400,11 +400,33 @@ class InstallerDriverTests(unittest.TestCase):
                 Path(command[-1]).write_text(json.dumps({"result": {"devices": devices}}))
                 return SimpleNamespace(returncode=0)
             with patch.object(driver.subprocess, "run", side_effect=discover):
-                self.assertEqual(driver._ios_device(args)["id"], "ipad")
+                with self.assertRaisesRegex(ValueError, "Choose one connected"):
+                    driver._ios_device(args)
                 args.ios_device = "phone"
                 self.assertEqual(driver._ios_device(args)["id"], "phone")
                 args.ios_device = "missing"
                 with self.assertRaises(ValueError):
+                    driver._ios_device(args)
+
+    def test_ios_explicit_device_reconnects_a_stale_tunnel_and_never_falls_back(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(work=temporary, ios_device="chosen-udid")
+            state = {"connected": False}
+            def discover(command, **_kwargs):
+                if "details" in command:
+                    state["connected"] = True
+                    return SimpleNamespace(returncode=0)
+                devices = [{"identifier": "chosen", "hardwareProperties": {"platform": "iOS", "reality": "physical", "udid": "chosen-udid"},
+                            "connectionProperties": {"tunnelState": "connected" if state["connected"] else "disconnected"}},
+                           {"identifier": "other", "hardwareProperties": {"platform": "iOS", "udid": "other-udid"},
+                            "connectionProperties": {"tunnelState": "connected"}}]
+                Path(command[-1]).write_text(json.dumps({"result": {"devices": devices}}))
+                return SimpleNamespace(returncode=0)
+            with patch.object(driver.subprocess, "run", side_effect=discover):
+                self.assertEqual(driver._ios_device(args)["id"], "chosen")
+                self.assertTrue(state["connected"])
+                args.ios_device = "missing"
+                with self.assertRaisesRegex(ValueError, "selected Apple device"):
                     driver._ios_device(args)
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS bundle installation")

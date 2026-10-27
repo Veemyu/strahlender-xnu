@@ -5,8 +5,8 @@
 - **Current status:** German, English, Spanish, Portuguese and Russian are implemented.
   The default follows the operating-system locale. `BDSP_LANG` is a development/
   test override, not a build-language selector.
-- All translatable interface text goes through `i18n::Label`. Every one of the
-  222 labels has five required translations in the same catalog in `i18n.rs`.
+- All translatable interface text goes through `i18n::Label`. Every label
+  has five required translations in the same catalog in `i18n.rs`.
   New labels must provide all five translations; tests reject empty strings or
   changed interpolation parameters.
 - Regional UI locales share exactly one base-language catalog: `es-ES`, `es-419`,

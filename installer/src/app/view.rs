@@ -79,15 +79,19 @@ impl Installer {
             }
             header = header.push(action);
         }
-        let body = match self.page {
-            Page::Target => self.target_view(),
-            Page::Keys | Page::Game | Page::Update => self.input_view(),
-            Page::ModsFolder => self.mods_folder_view(),
-            Page::Mods => self.mods_view(),
-            Page::Review => self.review_view(),
-            Page::Setup => self.setup_view(),
-            Page::Progress => self.progress_view(),
-            Page::Finished => self.finished_view(),
+        let body = if self.ios_devices_open {
+            self.ios_devices_view()
+        } else {
+            match self.page {
+                Page::Target => self.target_view(),
+                Page::Keys | Page::Game | Page::Update => self.input_view(),
+                Page::ModsFolder => self.mods_folder_view(),
+                Page::Mods => self.mods_view(),
+                Page::Review => self.review_view(),
+                Page::Setup => self.setup_view(),
+                Page::Progress => self.progress_view(),
+                Page::Finished => self.finished_view(),
+            }
         };
         let mut top = column![header].spacing(6);
         if self.demo {
@@ -403,6 +407,128 @@ impl Installer {
         ]
         .spacing(12)
         .into()
+    }
+
+    fn ios_devices_view(&self) -> Element<'_, Message> {
+        let c = style::colors(self.appearance);
+        let mut refresh = button(text(self.language.t(L::RefreshDevices)).size(13))
+            .padding([7, 12])
+            .style(move |_, status| style::action(c, false, status));
+        if !self.ios_devices_busy {
+            refresh = refresh.on_press(Message::RefreshIosDevices);
+        }
+        let mut controls = row![refresh].spacing(10).align_y(Center);
+        if self.ios_devices_busy {
+            controls = controls.push(
+                text(self.language.t(L::SearchingDevices))
+                    .size(12)
+                    .color(c.muted),
+            );
+        }
+        let pages = self.ios_devices.len().div_ceil(3);
+        if pages > 1 {
+            controls = controls.push(space().width(Fill));
+            if self.ios_devices_page > 0 {
+                controls = controls.push(self.text_action(
+                    self.language.t(L::PreviousDevices),
+                    Message::IosDevicesPage(-1),
+                ));
+            }
+            controls = controls.push(
+                text(format!("{}/{}", self.ios_devices_page + 1, pages))
+                    .size(12)
+                    .color(c.muted),
+            );
+            if self.ios_devices_page + 1 < pages {
+                controls = controls.push(
+                    self.text_action(self.language.t(L::NextDevices), Message::IosDevicesPage(1)),
+                );
+            }
+        }
+        let mut body = column![
+            self.title(
+                self.language.t(L::DevicesTitle),
+                self.language.t(L::DevicesHint)
+            ),
+            controls,
+        ]
+        .spacing(8);
+        if !self.ios_devices.is_empty() {
+            let devices = column(
+                self.ios_devices
+                    .iter()
+                    .skip(self.ios_devices_page * 3)
+                    .take(3)
+                    .map(|device| {
+                        let selected = self.ios_device.as_deref() == Some(device.id.as_str());
+                        let duplicate = self
+                            .ios_devices
+                            .iter()
+                            .filter(|other| {
+                                other.name == device.name && other.model == device.model
+                            })
+                            .count()
+                            > 1;
+                        let model = if duplicate {
+                            format!(
+                                "{} · …{}",
+                                compact_name(&device.model),
+                                device
+                                    .id
+                                    .chars()
+                                    .rev()
+                                    .take(6)
+                                    .collect::<String>()
+                                    .chars()
+                                    .rev()
+                                    .collect::<String>()
+                            )
+                        } else {
+                            compact_name(&device.model)
+                        };
+                        let state = if !device.connected {
+                            L::DeviceOffline
+                        } else if device.wifi {
+                            L::DeviceWifi
+                        } else {
+                            L::DeviceUsb
+                        };
+                        let label = column![
+                            text(compact_name(&device.name)).size(13),
+                            text(format!("{} · {}", model, self.language.t(state)))
+                                .size(10)
+                                .color(if selected { c.background } else { c.muted }),
+                        ]
+                        .spacing(0);
+                        let mut choice = button(label)
+                            .padding([3, 12])
+                            .width(Fill)
+                            .style(move |_, status| style::action(c, selected, status));
+                        if !self.ios_devices_busy {
+                            choice = choice.on_press(Message::SelectIosDevice(device.id.clone()));
+                        }
+                        choice.into()
+                    }),
+            )
+            .spacing(6);
+            body = body.push(devices);
+        } else if !self.ios_devices_busy {
+            body = body.push(text(self.language.t(L::NoDevices)).size(14));
+        }
+        if self.ios_devices_failed {
+            body = body.push(
+                text(self.language.t(L::DevicesFailed))
+                    .size(12)
+                    .color(c.muted),
+            );
+        } else if !self.ios_devices.iter().any(|d| d.connected) && !self.ios_devices_busy {
+            body = body.push(
+                text(self.language.t(L::DevicesHelp))
+                    .size(12)
+                    .color(c.muted),
+            );
+        }
+        body.into()
     }
 
     fn input_view(&self) -> Element<'_, Message> {
@@ -964,6 +1090,14 @@ impl Installer {
             }))
             .size(12)
             .color(c.muted),
+            if self.target == InstallTarget::Ios
+                && self.ios_delivery == crate::backend::IosDelivery::Device
+                && self.host == Platform::Mac
+            {
+                self.text_action(self.language.t(L::ChangeDevice), Message::OpenIosDevices)
+            } else {
+                space().height(0).into()
+            },
             self.text_action(
                 self.language.t(L::BuildOptions),
                 Message::BuildOptions(true)
@@ -1220,41 +1354,50 @@ impl Installer {
 
     fn navigation(&self) -> Element<'_, Message> {
         let mut actions = row![].spacing(12).align_y(Center);
-        if self.page != Page::Target && self.page != Page::Progress {
+        if self.ios_devices_open || (self.page != Page::Target && self.page != Page::Progress) {
             actions = actions.push(self.text_action(self.language.t(L::Back), Message::Back));
         }
         actions = actions.push(space().width(Fill));
-        if self.page == Page::Setup && self.requirements.as_ref().is_some_and(|p| !p.ready()) {
+        if !self.ios_devices_open
+            && self.page == Page::Setup
+            && self.requirements.as_ref().is_some_and(|p| !p.ready())
+        {
             actions =
                 actions.push(self.text_action(self.language.t(L::CheckAgain), Message::Preview));
         }
-        let (label, message, primary) = match self.page {
-            Page::Progress if self.cleanup_busy => (L::Cleanup, None, false),
-            Page::Progress if self.backend_status == super::BackendStatus::Running => (
-                if self.demo { L::Stop } else { L::CancelBuild },
-                Some(Message::Back),
-                false,
-            ),
-            Page::Progress if self.backend_status != super::BackendStatus::Idle && !self.demo => {
-                (L::ReturnToSetup, Some(Message::Back), false)
+        let (label, message, primary) = if self.ios_devices_open {
+            (L::Continue, self.ready().then_some(Message::Review), true)
+        } else {
+            match self.page {
+                Page::Progress if self.cleanup_busy => (L::Cleanup, None, false),
+                Page::Progress if self.backend_status == super::BackendStatus::Running => (
+                    if self.demo { L::Stop } else { L::CancelBuild },
+                    Some(Message::Back),
+                    false,
+                ),
+                Page::Progress
+                    if self.backend_status != super::BackendStatus::Idle && !self.demo =>
+                {
+                    (L::ReturnToSetup, Some(Message::Back), false)
+                }
+                Page::Progress => (L::Stop, Some(Message::Back), false),
+                Page::Setup if self.demo => (L::StartPreview, Some(Message::Preview), true),
+                Page::Setup if self.updating => (L::UpdateDownloading, None, false),
+                Page::Setup if self.requirements_busy => (L::CheckingRequirements, None, false),
+                Page::Setup if self.requirements.is_some() => (
+                    L::InstallDependencies,
+                    Some(Message::InstallRequirements),
+                    true,
+                ),
+                Page::Setup if self.backend_supported() => {
+                    (L::StartBuild, Some(Message::Preview), true)
+                }
+                Page::Setup => (L::BackendUnavailable, None, false),
+                Page::Update if self.update.is_none() => {
+                    (L::SkipUpdate, self.ready().then_some(Message::Review), true)
+                }
+                _ => (L::Continue, self.ready().then_some(Message::Review), true),
             }
-            Page::Progress => (L::Stop, Some(Message::Back), false),
-            Page::Setup if self.demo => (L::StartPreview, Some(Message::Preview), true),
-            Page::Setup if self.updating => (L::UpdateDownloading, None, false),
-            Page::Setup if self.requirements_busy => (L::CheckingRequirements, None, false),
-            Page::Setup if self.requirements.is_some() => (
-                L::InstallDependencies,
-                Some(Message::InstallRequirements),
-                true,
-            ),
-            Page::Setup if self.backend_supported() => {
-                (L::StartBuild, Some(Message::Preview), true)
-            }
-            Page::Setup => (L::BackendUnavailable, None, false),
-            Page::Update if self.update.is_none() => {
-                (L::SkipUpdate, self.ready().then_some(Message::Review), true)
-            }
-            _ => (L::Continue, self.ready().then_some(Message::Review), true),
         };
         let c = style::colors(self.appearance);
         if matches!(self.page, Page::ModsFolder | Page::Mods) {

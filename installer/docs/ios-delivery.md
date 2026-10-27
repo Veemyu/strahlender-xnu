@@ -41,7 +41,19 @@ system packages. See `scripts/recomp/ios/build_ffmpeg_ios.sh` for its minimal
 decoder configuration and [FFmpeg's license information](https://ffmpeg.org/legal.html).
 
 Direct installation retains its connected-device and private signing-team
-requirements. It uses the existing container-relative data locations. Neither
+requirements. The GUI lists physical paired iPhones/iPads, including USB and
+Finder Wi-Fi connections. A separate device step offers **Refresh** and shows
+connection status; the setup page can reopen it before building. Up to three
+compact device cards fit without scrollbars; larger lists use page controls
+in the refresh row. The window keeps its fixed dimensions. Only a single
+connected device is selected automatically on first discovery. With multiple
+devices, the user must select one. A refresh preserves that selection even if it
+becomes unavailable; installation never falls back to another device. Duplicate
+names/models show a short identifier suffix for disambiguation. Device identities
+remain session-only. Offline paired devices can be selected to retry their
+connection; a connected selection is required before continuing. The backend
+revalidates the explicit `--ios-device` before building and attempts to reopen a
+stale CoreDevice tunnel. Direct installation uses the existing container-relative data locations. Neither
 delivery mode uninstalls the original game to make room for a separate mod app.
 New GUI device builds also embed an expected data manifest and check the copied
 files before starting; an interrupted transfer leaves saves intact and offers a
@@ -194,6 +206,11 @@ restore-journal recovery and injected ENOSPC failures during snapshot write,
 flush and publication. Fault injection is compiled only into test binaries.
 The device host is a distinct `dev.local.xnubdsp.datatests` app and never links
 the game runtime or opens an installed game's saves.
+
+Device selection was checked against a real USB-connected iPad and a known,
+disconnected iPhone. Synthetic tests cover three simultaneous USB/Wi-Fi devices,
+selection retention through disconnects/refreshes, pagination and stale results.
+Real simultaneous multi-device Wi-Fi acceptance remains to be run.
 
 Dark-mode installer captures cover the changed mobile selection, setup and export
 completion views in all five UI languages. The CLI tests cover device-free

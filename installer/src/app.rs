@@ -90,6 +90,11 @@ pub enum Message {
     ShowInstalledApp,
     ShowGameLibrary,
     IosDelivery(crate::backend::IosDelivery),
+    OpenIosDevices,
+    RefreshIosDevices,
+    SelectIosDevice(String),
+    IosDevicesPage(i8),
+    IosDevicesLoaded(u64, Result<Vec<crate::ios_devices::Device>, String>),
     IosProfileView(bool),
     ChooseIosProfile,
     IosProfilePicked(
@@ -214,6 +219,13 @@ pub struct Installer {
     exported_ipa: Option<PathBuf>,
     game_library: Option<PathBuf>,
     ios_delivery: crate::backend::IosDelivery,
+    ios_devices: Vec<crate::ios_devices::Device>,
+    ios_device: Option<String>,
+    ios_devices_open: bool,
+    ios_devices_busy: bool,
+    ios_devices_generation: u64,
+    ios_devices_failed: bool,
+    ios_devices_page: usize,
     ios_profile: Option<crate::ios_profile::Profile>,
     ios_profile_open: bool,
     ios_new_profile: Option<String>,
@@ -443,6 +455,13 @@ impl Installer {
             exported_ipa: None,
             game_library: None,
             ios_delivery: crate::backend::IosDelivery::Ipa,
+            ios_devices: Vec::new(),
+            ios_device: None,
+            ios_devices_open: false,
+            ios_devices_busy: false,
+            ios_devices_generation: 0,
+            ios_devices_failed: false,
+            ios_devices_page: 0,
             ios_profile: None,
             ios_profile_open: false,
             ios_new_profile: None,
@@ -754,6 +773,63 @@ impl Installer {
             }
             Message::BuildOptions(open) if self.page == Page::Setup => {
                 self.build_options_open = open;
+            }
+            Message::OpenIosDevices
+                if self.host == Platform::Mac
+                    && self.target == InstallTarget::Ios
+                    && matches!(self.page, Page::Target | Page::Setup) =>
+            {
+                self.ios_devices_open = true;
+                return self.handle(Message::RefreshIosDevices);
+            }
+            Message::RefreshIosDevices if self.ios_devices_open && !self.ios_devices_busy => {
+                self.ios_devices_busy = true;
+                self.ios_devices_failed = false;
+                self.ios_devices_generation += 1;
+                let generation = self.ios_devices_generation;
+                let selected = self.ios_device.clone();
+                return Task::perform(crate::ios_devices::scan(selected), move |result| {
+                    Message::IosDevicesLoaded(generation, result)
+                });
+            }
+            Message::IosDevicesLoaded(generation, result)
+                if generation == self.ios_devices_generation =>
+            {
+                self.ios_devices_busy = false;
+                match result {
+                    Ok(devices) => {
+                        self.ios_device =
+                            crate::ios_devices::choose(&devices, self.ios_device.as_deref());
+                        self.ios_devices = devices;
+                        self.ios_devices_page = self
+                            .ios_devices_page
+                            .min(self.ios_devices.len().saturating_sub(1) / 3);
+                    }
+                    Err(cause) => {
+                        self.ios_devices_failed = true;
+                        // A failed scan must never leave stale devices marked as connected.
+                        for device in &mut self.ios_devices {
+                            device.connected = false;
+                        }
+                        self.record("DEVICE", &cause);
+                    }
+                }
+            }
+            Message::IosDevicesPage(delta) if self.ios_devices_open => {
+                let last = self.ios_devices.len().saturating_sub(1) / 3;
+                self.ios_devices_page = self
+                    .ios_devices_page
+                    .saturating_add_signed(delta as isize)
+                    .min(last);
+            }
+            Message::SelectIosDevice(id) if self.ios_devices_open && !self.ios_devices_busy => {
+                if let Some(device) = self.ios_devices.iter().find(|d| d.id == id) {
+                    let connected = device.connected;
+                    self.ios_device = Some(id);
+                    if !connected {
+                        return self.handle(Message::RefreshIosDevices);
+                    }
+                }
             }
             Message::IosDelivery(delivery)
                 if self.page == Page::Target && self.target == InstallTarget::Ios =>
@@ -1174,6 +1250,21 @@ impl Installer {
                 self.notice = None;
             }
             Message::Review if self.ready() => {
+                if self.ios_devices_open {
+                    self.ios_devices_open = false;
+                    if self.page == Page::Target {
+                        self.page = Page::Keys;
+                    }
+                    return Task::none();
+                }
+                if self.page == Page::Target
+                    && self.target == InstallTarget::Ios
+                    && self.host == Platform::Mac
+                    && self.ios_delivery == crate::backend::IosDelivery::Device
+                    && !self.demo
+                {
+                    return self.handle(Message::OpenIosDevices);
+                }
                 if self.page == Page::Review && self.ios_profile_open {
                     self.ios_profile_open = false;
                     return Task::none();
@@ -1210,6 +1301,9 @@ impl Installer {
                 self.notice = None;
                 self.hovered = None;
                 self.drag_active = false;
+            }
+            Message::Back if self.ios_devices_open => {
+                self.ios_devices_open = false;
             }
             Message::Back if self.page == Page::Progress && self.cleanup_busy => {}
             Message::Back if self.page == Page::Review && self.ios_profile_open => {
@@ -1270,6 +1364,12 @@ impl Installer {
                     return Task::none();
                 }
                 if !self.demo {
+                    if self.target == InstallTarget::Ios
+                        && self.ios_delivery == crate::backend::IosDelivery::Device
+                        && !self.ios_device_ready()
+                    {
+                        return self.handle(Message::OpenIosDevices);
+                    }
                     if self.target == InstallTarget::Ios
                         && self.ios_delivery == crate::backend::IosDelivery::Ipa
                         && self.selected_mod.is_some()
@@ -1354,6 +1454,7 @@ impl Installer {
                             crate::backend::BuildRequest {
                                 target,
                                 ios_delivery: self.ios_delivery,
+                                ios_device: self.ios_device.clone(),
                                 ios_profile: self.ios_profile.clone(),
                                 ios_new_profile: self.ios_new_profile.clone(),
                                 portable_cpu: self.portable_cpu,
@@ -1735,7 +1836,18 @@ impl Installer {
             Slot::Keys => &mut self.keys,
         }
     }
+    fn ios_device_ready(&self) -> bool {
+        !self.ios_devices_busy
+            && self
+                .ios_devices
+                .iter()
+                .any(|d| Some(&d.id) == self.ios_device.as_ref() && d.connected)
+    }
+
     fn ready(&self) -> bool {
+        if self.ios_devices_open {
+            return self.ios_device_ready();
+        }
         if matches!(self.page, Page::Target | Page::Review | Page::ModsFolder) {
             return true;
         }
@@ -1805,6 +1917,12 @@ impl Installer {
         self.ios_profile = None;
         self.ios_new_profile = None;
         self.ios_profile_open = false;
+        self.ios_devices_open = false;
+        self.ios_devices.clear();
+        self.ios_device = None;
+        self.ios_devices_busy = false;
+        self.ios_devices_failed = false;
+        self.ios_devices_page = 0;
         self.mods_skipped = false;
         self.mods_scanning = false;
         self.notice = None;
@@ -1845,6 +1963,40 @@ impl Installer {
             ));
         }
         match scenario {
+            "devices" | "devices-many" | "devices-empty" | "devices-offline" | "devices-error" => {
+                self.page = Page::Target;
+                self.target = InstallTarget::Ios;
+                self.ios_delivery = crate::backend::IosDelivery::Device;
+                self.ios_devices_open = true;
+                if scenario != "devices-empty" {
+                    self.ios_devices = [
+                        ("one", "iPad Pro", false),
+                        ("two", "iPhone", true),
+                        ("three", "iPad Air", true),
+                    ]
+                    .into_iter()
+                    .map(|(id, name, wifi)| crate::ios_devices::Device {
+                        id: id.into(),
+                        name: name.into(),
+                        model: name.into(),
+                        wifi,
+                        connected: matches!(scenario, "devices" | "devices-many"),
+                    })
+                    .collect();
+                    self.ios_device = Some("two".into());
+                }
+                if scenario == "devices-many" {
+                    self.ios_devices.push(crate::ios_devices::Device {
+                        id: "four".into(),
+                        name: "iPad Pro".into(),
+                        model: "iPad Pro".into(),
+                        connected: true,
+                        wifi: true,
+                    });
+                }
+                self.ios_devices_failed = scenario == "devices-error";
+            }
+
             "target" | "demo" => self.page = Page::Target,
             "target-ios" | "demo-target-ios" => {
                 self.page = Page::Target;
@@ -2772,5 +2924,62 @@ mod tests {
         let _ = app.update(Message::Review);
         assert_eq!(app.page, Page::Update);
         assert_eq!(app.base.as_ref().unwrap().name(), "new.xci");
+    }
+    #[test]
+    fn device_selection_stays_explicit_and_stale_refreshes_cannot_replace_it() {
+        let (mut app, _) = Installer::new();
+        app.host = Platform::Mac;
+        app.target = InstallTarget::Ios;
+        app.page = Page::Target;
+        app.ios_devices_open = true;
+        app.ios_devices_busy = true;
+        app.ios_devices_generation = 2;
+        let devices = vec![
+            crate::ios_devices::Device {
+                id: "one".into(),
+                name: "iPad".into(),
+                model: "Test".into(),
+                connected: true,
+                wifi: false,
+            },
+            crate::ios_devices::Device {
+                id: "two".into(),
+                name: "iPhone".into(),
+                model: "Test".into(),
+                connected: true,
+                wifi: true,
+            },
+        ];
+        let _ = app.update(Message::IosDevicesLoaded(1, Ok(devices.clone())));
+        assert!(app.ios_devices_busy);
+        let _ = app.update(Message::IosDevicesLoaded(2, Ok(devices.clone())));
+        assert!(!app.ready());
+        let _ = app.update(Message::SelectIosDevice("two".into()));
+        assert!(app.ready());
+        for id in ["three", "four"] {
+            let mut device = devices[0].clone();
+            device.id = id.into();
+            app.ios_devices.push(device);
+        }
+        let _ = app.update(Message::IosDevicesPage(1));
+        assert_eq!(app.ios_devices_page, 1);
+        assert_eq!(app.ios_device.as_deref(), Some("two"));
+        let _ = app.update(Message::IosDevicesPage(127));
+        assert_eq!(app.ios_devices_page, 1);
+        let _ = app.update(Message::IosDevicesPage(-1));
+        assert_eq!(app.ios_devices_page, 0);
+        let _ = app.update(Message::IosDevicesLoaded(2, Err("test failure".into())));
+        assert!(!app.ready());
+        assert_eq!(app.ios_device.as_deref(), Some("two"));
+        let _ = app.update(Message::IosDevicesLoaded(2, Ok(devices)));
+        assert!(app.ready());
+        let _ = app.update(Message::Review);
+        assert_eq!(app.page, Page::Keys);
+        assert!(!app.ios_devices_open);
+        app.page = Page::Setup;
+        app.ios_devices_open = true;
+        let _ = app.update(Message::Review);
+        assert_eq!(app.page, Page::Setup);
+        assert!(!app.ios_devices_open);
     }
 }

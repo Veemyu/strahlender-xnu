@@ -5,6 +5,7 @@ mod dependencies;
 mod drop_target;
 mod i18n;
 mod icons;
+mod ios_devices;
 mod ios_profile;
 mod key_paths;
 mod mod_support;
