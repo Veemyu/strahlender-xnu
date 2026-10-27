@@ -119,6 +119,7 @@ static CTFontRef ext_at(float px) {
 
 // Attributed string: button glyphs (private use area) from the button font, everything else from the text font
 static NSAttributedString *make_attr(NSString *str, float px, float kern) {
+    str = str ?: @"\uFFFD";
     CTFontRef f = font_at(px), e = ext_at(px);
     NSMutableAttributedString *as = [[NSMutableAttributedString alloc] initWithString:str attributes:@{(__bridge id)kCTFontAttributeName: (__bridge id)f,
         (__bridge id)kCTForegroundColorFromContextAttributeName: @YES}];

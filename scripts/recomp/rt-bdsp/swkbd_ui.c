@@ -109,6 +109,7 @@ static struct {
     float (*measure)(const char *, float);
     LytScene scene;
     char ok_label[64], space_label[64];
+    char fallback_shown[1100], fallback_count[32]; // scene strings live until swkbd_ui_unlock
     float field[4];                  // text field, canvas pixels (left, top, right, bottom)
     int page;                        // 0 letters, 1 symbols, 2 and 3 accents
     int kata;                        // kana grid: 0 hiragana, 1 katakana
@@ -1083,8 +1084,8 @@ static void fb_scene(Screen *s, const char *shown) {
     fb_text(sc, G.msg[0] ? G.msg : G.p.sub, 131, 87, 1018, 30, 26, 0x01, 215, 0.67f);
     fb_text(sc, G.text[0] ? shown : G.p.guide, 134, 154, 1020, 62, 45, 0x05, G.text[0] ? 255 : 180, G.text[0] ? 1.0f : 0.5f);
     fb_quad(sc, 130, 215, 1020, 3, 255, 255, 255, 1);
-    char cnt[32];
-    if (G.p.maxlen > 0) snprintf(cnt, sizeof cnt, "%d/%d", n, G.p.maxlen); else snprintf(cnt, sizeof cnt, "%d", n);
+    char *cnt = G.fallback_count;
+    if (G.p.maxlen > 0) snprintf(cnt, sizeof G.fallback_count, "%d/%d", n, G.p.maxlen); else snprintf(cnt, sizeof G.fallback_count, "%d", n);
     fb_text(sc, cnt, 950, 226, 200, 32, 28, 0x02, 200, 0.6f);
     for (int i = 0; i < s->nkeys; i++) {
         Key *k = &s->keys[i];
@@ -1233,10 +1234,10 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     G.off[1] = (th - SWKBD_CANVAS_H * sc) / 2;
     *scale = sc; off[0] = G.off[0]; off[1] = G.off[1];
     if (s->fallback) {
-        char shown[1100];
+        char *shown = G.fallback_shown;
         int n0 = u8_count(G.text);
-        if (G.p.password) { int k = n0 < (int)sizeof shown - 1 ? n0 : (int)sizeof shown - 1; memset(shown, '*', (size_t)k); shown[k] = 0; }
-        else snprintf(shown, sizeof shown, "%s", G.text);
+        if (G.p.password) { int k = n0 < (int)sizeof G.fallback_shown - 1 ? n0 : (int)sizeof G.fallback_shown - 1; memset(shown, '*', (size_t)k); shown[k] = 0; }
+        else snprintf(shown, sizeof G.fallback_shown, "%s", G.text);
         fb_scene(s, shown);
         footer_items(&G.scene);
         G.field[0] = 134; G.field[1] = 130; G.field[2] = 1154; G.field[3] = 236;
