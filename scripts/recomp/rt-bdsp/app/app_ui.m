@@ -16,6 +16,63 @@
 #include "../swkbd_ui.h"
 #import "../../app/icon_variants.h"
 
+#import <QuartzCore/QuartzCore.h>
+#import "../../app/shader_status.h"
+
+// In-window AppKit status, not a system notification or a rendered game HUD.
+@interface BDSPShaderBanner : NSVisualEffectView
+@end
+@implementation BDSPShaderBanner
+- (NSView *)hitTest:(NSPoint)point { (void)point; return nil; }
+@end
+
+static void InstallMacShaderStatus(NSView *host) {
+    if (!host) return;
+    BDSPInstallShaderStatus(^(NSString *text) {
+        static BDSPShaderBanner *banner;
+        static NSTextField *label;
+        if (!text) { banner.hidden = YES; return; }
+        if (!banner) {
+            banner = [BDSPShaderBanner new]; banner.translatesAutoresizingMaskIntoConstraints = NO;
+            banner.material = NSVisualEffectMaterialHUDWindow;
+            banner.blendingMode = NSVisualEffectBlendingModeWithinWindow;
+            banner.state = NSVisualEffectStateActive;
+            banner.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+            banner.wantsLayer = YES; banner.layer.cornerRadius = 12; banner.layer.masksToBounds = YES;
+            label = [NSTextField labelWithString:@""]; label.translatesAutoresizingMaskIntoConstraints = NO;
+            label.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+            label.textColor = NSColor.whiteColor; label.alignment = NSTextAlignmentCenter;
+            [banner addSubview:label]; [host addSubview:banner];
+            [NSLayoutConstraint activateConstraints:@[
+                [banner.topAnchor constraintEqualToAnchor:host.topAnchor constant:16],
+                [banner.centerXAnchor constraintEqualToAnchor:host.centerXAnchor],
+                [banner.heightAnchor constraintEqualToConstant:40],
+                [banner.widthAnchor constraintGreaterThanOrEqualToConstant:260],
+                [banner.widthAnchor constraintLessThanOrEqualToAnchor:host.widthAnchor constant:-32],
+                [label.leadingAnchor constraintEqualToAnchor:banner.leadingAnchor constant:16],
+                [label.trailingAnchor constraintEqualToAnchor:banner.trailingAnchor constant:-16],
+                [label.centerYAnchor constraintEqualToAnchor:banner.centerYAnchor]]];
+        }
+        label.stringValue = text; banner.hidden = NO;
+    });
+}
+
+// Called only after the native save/snapshot operation reports its result. macOS
+// has no external-backup exporter here, so never claim an external copy exists.
+void bdsp_save_committed(const char *root, const char *snapshot, int failure) {
+    (void)root;
+    @autoreleasepool {
+        NSString *lang = NSLocale.preferredLanguages.firstObject.lowercaseString;
+        BOOL ok = !failure && snapshot;
+        NSString *message = ok ? @"Saved locally" : @"Save or local backup needs attention";
+        if ([lang hasPrefix:@"de"]) message = ok ? @"Lokal gesichert" : @"Save oder lokales Backup prüfen";
+        else if ([lang hasPrefix:@"es"]) message = ok ? @"Guardado localmente" : @"Revisa la partida o la copia local";
+        else if ([lang hasPrefix:@"pt"]) message = ok ? @"Guardado localmente" : @"Verifica o progresso ou a cópia local";
+        else if ([lang hasPrefix:@"ru"] || [lang hasPrefix:@"uk"]) message = ok ? @"Сохранено локально" : @"Проверьте сохранение или локальную копию";
+        bdsp_native_status_message(ok ? "bdsp_notify_save" : "bdsp_notify_warnings", message.UTF8String, 6);
+    }
+}
+
 #define L(s) NSLocalizedString(@s, nil)
 
 static void ApplyDockIcon(void) {
@@ -242,6 +299,10 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     bdsp_set_fps((int)s.tag);
     [[NSUserDefaults standardUserDefaults] setInteger:s.tag forKey:@"bdsp_fps"];
 }
+- (void)toggleNotice:(NSMenuItem *)sender {
+    NSString *key = sender.representedObject;
+    [NSUserDefaults.standardUserDefaults setBool:!BDSPNoticeEnabled(key) forKey:key];
+}
 - (void)toggleMetalHud:(id)s {
     NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
     [d setBool:![d boolForKey:@"bdsp_metal_hud"] forKey:@"bdsp_metal_hud"];
@@ -268,6 +329,7 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     ApplyDockIcon();
 }
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
+    if (item.action == @selector(toggleNotice:)) item.state = BDSPNoticeEnabled(item.representedObject) ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(togglePause:)) item.state = g_user_paused ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setFps:)) item.state = item.tag == g_bdsp_fps ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(toggleMetalHud:)) item.state = [[NSUserDefaults standardUserDefaults] boolForKey:@"bdsp_metal_hud"] ? NSControlStateValueOn : NSControlStateValueOff;
@@ -303,6 +365,15 @@ static void install_menu(void) {
     NSMenu *am = [[NSMenu alloc] initWithTitle:name];
     ai.submenu = am;
     item(am, L("About BDSP"), @selector(orderFrontStandardAboutPanel:), @"", 0, NSApp);
+    NSMenuItem *noticeItem = [am addItemWithTitle:L("Notifications") action:nil keyEquivalent:@""];
+    NSMenu *notices = [[NSMenu alloc] initWithTitle:noticeItem.title]; noticeItem.submenu = notices;
+    NSArray *noticeTitles = @[L("Shader preparation"), L("Save confirmations"), L("Save and backup warnings")];
+    NSArray *noticeKeys = @[@"bdsp_notify_shaders", @"bdsp_notify_save", @"bdsp_notify_warnings"];
+    for (NSUInteger n = 0; n < noticeTitles.count; n++) {
+        NSMenuItem *toggle = item(notices, noticeTitles[n], @selector(toggleNotice:), @"", 0, g_target);
+        toggle.representedObject = noticeKeys[n];
+    }
+
     NSMenuItem *iconItem = [am addItemWithTitle:L("App icon") action:nil keyEquivalent:@""];
     NSMenu *iconMenu = [[NSMenu alloc] initWithTitle:iconItem.title];
     iconItem.submenu = iconMenu;
@@ -563,6 +634,9 @@ void menu_apply_window_requests(void *window) {
         @autoreleasepool {
             install_menu();
             SDL_Window *w = window;
+            NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(w),
+                SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+            InstallMacShaderStatus(native.contentView);
             char title[300] = "BDSP";
             if (mods_active()) snprintf(title, sizeof title, "BDSP - %s", mods_active()->name);
             SDL_SetWindowTitle(w, title);

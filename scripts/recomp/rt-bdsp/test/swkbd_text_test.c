@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static int fails;
 #define CHECK(x) do { if (!(x)) { printf("ERROR line %d: %s\n", __LINE__, #x); fails++; } } while (0)
@@ -22,6 +25,27 @@ static void blit(unsigned char *img, int W, int H, const SwkbdGlyph *g, int n) {
 }
 
 int main(int argc, char **argv) {
+    // Folder and filenames alone must not enable the Horizon path on iOS.
+    char temporary[] = "/tmp/bdsp-font-readiness-XXXXXX";
+    assert(mkdtemp(temporary));
+    char fonts[1024], text[1100], glyph[1100];
+    snprintf(fonts, sizeof fonts, "%s/fonts", temporary); assert(!mkdir(fonts, 0700));
+    assert(!swkbd_text_firmware_ready(temporary));
+    snprintf(text, sizeof text, "%s/nintendo_udsg-r_std_003.bfttf", fonts);
+    snprintf(glyph, sizeof glyph, "%s/nintendo_ext_003.bfttf", fonts);
+    const char *names[] = {text, glyph};
+    unsigned char corrupt[64] = {0};
+    for (unsigned i = 0; i < 2; i++) {
+        FILE *file = fopen(names[i], "wb"); assert(file);
+        assert(fwrite(corrupt, 1, sizeof corrupt, file) == sizeof corrupt); assert(!fclose(file));
+    }
+    // Reopen after adding files: a cached missing-font result cannot prove success.
+    swkbd_text_close();
+    assert(swkbd_text_available(temporary));
+    assert(!swkbd_text_firmware_ready(temporary));
+    swkbd_text_close();
+    assert(!unlink(text) && !unlink(glyph) && !rmdir(fonts) && !rmdir(temporary));
+    puts("Font readiness: missing and corrupt resources rejected.");
     const char *root = getenv("BDSP_FIRMWARE_DATA");
     if (!root || !swkbd_text_open(root)) { printf("swkbd_text_test: no firmware fonts, skipped\n"); return 0; }
     float w1 = swkbd_text_measure("Hello", 30, 0), w2 = swkbd_text_measure("Hello", 30, 2);

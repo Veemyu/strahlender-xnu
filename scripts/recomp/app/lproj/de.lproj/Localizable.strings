@@ -48,3 +48,7 @@
 "Reset failed" = "Zurücksetzen fehlgeschlagen";
 "The game is closed and restarted. Unsaved progress is lost." = "Das Spiel wird beendet und neu gestartet. Nicht gespeicherter Fortschritt geht verloren.";
 "KEYS_HELP" = "Tastatur (Standard von Ryujinx):\n  Z = A    X = B    C = X    V = Y\n  Return/Leertaste = A    Rücktaste = B (zusätzlich)\n  E = L    U = R    Q = ZL    O = ZR\n  = oder Tab = +    Minus = −    F = L-Stick drücken    H = R-Stick drücken\n  Pfeiltasten = Steuerkreuz\n  W A S D = linker Stick    I J K L = rechter Stick\n\nController (Xbox, PlayStation, Switch Pro): Tastenposition wie bei der Switch (pad_layout = xbox: nach Beschriftung), Menü = +, Ansicht/Optionen = −.\n\nFenster: Cmd+F Vollbild, Cmd+1 bis Cmd+4 Fenstergröße, Cmd+P Pause, Cmd+R Neustart. Kein Ton.";
+"Notifications" = "Einblendungen";
+"Shader preparation" = "Shader vorbereiten";
+"Save confirmations" = "Save bestätigen";
+"Save and backup warnings" = "Hinweise zu Saves und Backups";

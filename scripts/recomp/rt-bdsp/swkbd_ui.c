@@ -2,6 +2,9 @@
 // The layouts are the user's firmware files (BDSP_FIRMWARE_DATA); the key characters below are our own table.
 #include "swkbd_ui.h"
 #include "swkbd_ime.h"
+#if defined(BDSP_IOS) || defined(BDSP_SWKBD_NATIVE_TEST)
+#include "swkbd_text.h"
+#endif
 #include "swkbd_snd.h"
 
 #include <math.h>
@@ -79,6 +82,7 @@ static struct {
     int inited, active, display;
     unsigned rev;                    // counts the inputs (a renderer that only repeats the last picture draws again when it changed)
     int animating;                   // something on screen moves (animations, the focus cursor, the caret fade ...); else only the caret blinks
+    int native_input;
     int fw, li_set;                  // firmware layouts are used (else the simple keyboard) / the layout was chosen once (the globe key's choice outlives a close)
     char root[1024];
     Screen scr[SCR_COUNT];
@@ -464,6 +468,9 @@ static int ensure_built(void) {
         G.fw = 1;
         if (!screen_ready(SCR_QWERTY)) { G.fw = 0; swkbd_snd_set_root(""); }   // (not readable: the simple keyboard)
     }
+#if defined(BDSP_IOS) || defined(BDSP_SWKBD_NATIVE_TEST)
+    G.native_input = !G.fw || !swkbd_text_firmware_ready(G.root);
+#endif
     if (!G.fw) {     // no (readable) firmware layouts: simple keyboard of our own
         screen_ready(SCR_QWERTY);
         trace("simple keyboard", "no firmware layouts");
@@ -846,12 +853,34 @@ const char *swkbd_ui_focus_name(void) { Screen *s = &G.scr[G.cur]; return G.focu
 void swkbd_ui_set_measure(float (*fn)(const char *, float)) { G.measure = fn; }
 const char *swkbd_ui_root(void) { return G.root; }
 
+int swkbd_ui_native_state(SwkbdNativeState *out) {
+    LOCK();
+    int native = G.active && G.native_input;
+    if (native && out) {
+        out->params = G.p; out->busy = G.busy;
+        snprintf(out->text, sizeof out->text, "%s", G.text);
+        snprintf(out->message, sizeof out->message, "%s", G.msg);
+    }
+    pthread_mutex_unlock(&G.lock);
+    return native;
+}
+
+void swkbd_ui_replace_text(const char *utf8) {
+    LOCK();
+    if (G.active && G.native_input && !G.busy) {
+        G.text[0] = 0; G.caret = 0;
+        swkbd_ime_reset(&G.ime); G.comp_len = 0;
+        insert_text(utf8 ? utf8 : ""); G.rev++; // UIKit already committed its own IME.
+    }
+    pthread_mutex_unlock(&G.lock);
+}
+
 // The text field, for tapping it to bring up the system keyboard (canvas pixels, set by the last scene). Only the simple keyboard that stands in
 // when there are no firmware layouts offers that; with the console's own keyboard the tap does nothing (hardware keys work either way).
 int swkbd_ui_field_hit(float nx, float ny) {
     LOCK();
     int hit = 0;
-    if (G.active && G.scale > 0 && cur()->fallback) {
+    if (G.active && G.native_input && G.scale > 0) {
         float x = (nx * G.tw - G.off[0]) / G.scale, y = (ny * G.th - G.off[1]) / G.scale;
         hit = x >= G.field[0] && x < G.field[2] && y >= G.field[1] && y < G.field[3];
     }
@@ -894,6 +923,7 @@ static uint64_t pad_effective(uint64_t buttons, int lx, int ly) {
 
 void swkbd_ui_pad(uint64_t buttons, int lx, int ly) {
     LOCK(); G.rev++;
+    if (G.native_input) { pthread_mutex_unlock(&G.lock); return; }
     if (G.active) {
         uint64_t eff = pad_effective(buttons, lx, ly);
         uint64_t down = eff & ~G.pad_prev;
@@ -929,7 +959,7 @@ static int key_at(float nx, float ny) {
 
 void swkbd_ui_touch(int down, float nx, float ny) {
     LOCK(); G.rev++;
-    if (G.active && !G.closing) {
+    if (G.active && !G.closing && !G.native_input) {
         Screen *s = cur();
         if (down > 0) {
             int i = key_at(nx, ny);
@@ -1233,6 +1263,12 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     G.off[0] = (tw - SWKBD_CANVAS_W * sc) / 2;
     G.off[1] = (th - SWKBD_CANVAS_H * sc) / 2;
     *scale = sc; off[0] = G.off[0]; off[1] = G.off[1];
+    if (G.native_input) {
+        G.scene.n = 0;
+        fb_quad(&G.scene, 0, 0, SWKBD_CANVAS_W, SWKBD_CANVAS_H, 0, 0, 0, 0.15f);
+        G.animating = 0;
+        return &G.scene; // UIKit supplies only the prompt and editable field.
+    }
     if (s->fallback) {
         char *shown = G.fallback_shown;
         int n0 = u8_count(G.text);

@@ -6,6 +6,8 @@
 #include <CommonCrypto/CommonDigest.h>
 #include <sys/stat.h>
 
+extern void bdsp_native_status_message(const char *, const char *, double) __attribute__((weak_import));
+
 static NSString *T(NSString *en, NSString *de, NSString *es, NSString *pt, NSString *ru) {
     NSString *base = [[NSLocale.preferredLanguages.firstObject componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"-_"]] firstObject];
     if ([base isEqual:@"de"]) return de;
@@ -86,10 +88,7 @@ static NSString *ProfileForMod(NSString *name) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:canPlay ? T(@"Ready to play", @"Bereit zum Spielen", @"Listo para jugar", @"Pronto para jogar", @"Готово к игре") : T(@"Check game files", @"Spieldaten prüfen", @"Comprobar datos", @"Verificar dados", @"Проверка данных") message:profile preferredStyle:UIAlertControllerStyleAlert];
     UIAlertAction *play = [UIAlertAction actionWithTitle:T(@"Play", @"Spielen", @"Jugar", @"Jogar", @"Играть") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         (void)a;
-        if (![self protectBeforeUpdate]) return;
-        self.running = YES;
-        [self retryBackups];
-        self.ready();
+        [self startGame];
     }];
     play.enabled = canPlay;
     [alert addAction:play];
@@ -97,6 +96,12 @@ static NSString *ProfileForMod(NSString *name) {
     if (needsLibrary || !canPlay) [alert addAction:[UIAlertAction actionWithTitle:T(@"Game files…", @"Spieldaten…", @"Datos del juego…", @"Dados do jogo…", @"Файлы игры…") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self gameDataMenu]; }]];
     alert.preferredAction = canPlay ? play : nil;
     [self.presenter presentViewController:alert animated:YES completion:nil];
+}
+- (void)startGame {
+    if (self.running || ![self protectBeforeUpdate]) return;
+    self.running = YES;
+    [self retryBackups];
+    self.ready();
 }
 - (NSString *)backupStatus {
     return [NSUserDefaults.standardUserDefaults stringForKey:StatusKey(self.saveIdentity)] ?: T(@"No external backup yet.", @"Noch kein externes Backup.", @"Aún no hay copia externa.", @"Ainda sem cópia externa.", @"Внешней копии пока нет.");
@@ -194,19 +199,23 @@ static NSString *ProfileForMod(NSString *name) {
     }]];
     [self.presenter presentViewController:confirm animated:YES completion:nil];
 }
+- (void)publishCheck:(NSUInteger)completed total:(NSUInteger)total {
+    if (!bdsp_native_status_message) return;
+    NSString *title = T(@"Checking game files…", @"Spieldaten werden geprüft…", @"Comprobando archivos…", @"A verificar ficheiros…", @"Проверка файлов…");
+    NSString *status = [NSString stringWithFormat:@"%@ %lu / %lu", title, (unsigned long)completed, (unsigned long)total];
+    bdsp_native_status_message("bdsp_notify_verification", status.UTF8String, 2);
+}
 - (void)verify:(NSURL *)url { [self verify:url forceFull:YES]; }
 - (void)verify:(NSURL *)url forceFull:(BOOL)forceFull {
     BOOL scoped = [url startAccessingSecurityScopedResource];
     if (!scoped) { [self message:T(@"Folder access failed. Choose the game library again.", @"Ordnerzugriff fehlgeschlagen. Spieldaten erneut auswählen.", @"No se puede acceder. Elige de nuevo la biblioteca.", @"O acesso falhou. Escolhe novamente a biblioteca.", @"Нет доступа. Выберите библиотеку заново.")]; return; }
     NSData *bookmark = [url bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
     self.pendingLibraryBookmark = bookmark;
-    UIAlertController *checking = [UIAlertController alertControllerWithTitle:T(@"Checking game files…", @"Spieldaten werden geprüft…", @"Comprobando archivos…", @"A verificar ficheiros…", @"Проверка файлов…") message:T(@"Checking every file before starting. This may take a moment.", @"Alle Dateien werden vor dem Start geprüft. Das kann einen Moment dauern.", @"Se comprueban todos los archivos antes de empezar.", @"Os ficheiros são verificados antes de iniciar.", @"Перед запуском проверяются все файлы.") preferredStyle:UIAlertControllerStyleAlert];
-    [self.presenter presentViewController:checking animated:YES completion:^{
-        dispatch_async(self.backupQueue, ^{
+    dispatch_async(self.backupQueue, ^{
             NSError *error = nil;
             NSURL *cache = [[NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"verified-external-game-data.plist"];
             BOOL ok = BDSPCheckLibrary(url, self.identity, cache, forceFull, ^(NSUInteger completed, NSUInteger total) {
-                dispatch_async(dispatch_get_main_queue(), ^{ checking.message = [NSString stringWithFormat:@"%lu / %lu", (unsigned long)completed, (unsigned long)total]; });
+                [self publishCheck:completed total:total];
             }, &error) != nil;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (ok && bookmark) {
@@ -219,25 +228,20 @@ static NSString *ProfileForMod(NSString *name) {
                         self.verified = NO; self.initialDataPhase = YES;
                     }
                 }
-                [checking dismissViewControllerAnimated:YES completion:^{
                     if (ok && bookmark) { self.initialDataPhase = NO; self.dataReady(); } else [self message:[NSString stringWithFormat:@"%@\n%@", T(@"The game library is incomplete or does not match this app.", @"Die Spieldaten fehlen oder passen nicht zu dieser App.", @"La biblioteca está incompleta o no corresponde a esta app.", @"A biblioteca está incompleta ou não corresponde à aplicação.", @"Библиотека неполная или не подходит приложению."), error.localizedDescription ?: @""]];
-                }];
             });
-        });
-    }];
+    });
 }
 - (void)verifyDeviceData:(BOOL)forceFull {
     NSURL *documents = [NSURL fileURLWithPath:DocumentsPath()];
     NSURL *manifest = [NSBundle.mainBundle.resourceURL URLByAppendingPathComponent:@"res/expected-library.json"];
     BOOL hasManifest = [NSFileManager.defaultManager fileExistsAtPath:manifest.path];
-    UIAlertController *checking = [UIAlertController alertControllerWithTitle:T(@"Checking game files…", @"Spieldaten werden geprüft…", @"Comprobando archivos…", @"A verificar ficheiros…", @"Проверка файлов…") message:nil preferredStyle:UIAlertControllerStyleAlert];
-    [self.presenter presentViewController:checking animated:YES completion:^{
-        dispatch_async(self.backupQueue, ^{
+    dispatch_async(self.backupQueue, ^{
             NSError *failure = nil;
             BOOL ok;
             NSURL *cache = [[NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"verified-game-data.plist"];
             if (hasManifest) ok = BDSPCheckInstalledData(documents, self.identity, manifest, cache, forceFull, NULL, ^(NSUInteger completed, NSUInteger total) {
-                dispatch_async(dispatch_get_main_queue(), ^{ checking.message = [NSString stringWithFormat:@"%lu / %lu", (unsigned long)completed, (unsigned long)total]; });
+                [self publishCheck:completed total:total];
             }, &failure) != nil;
             else {
                 // Compatibility for development bundles predating integrity manifests.
@@ -248,13 +252,10 @@ static NSString *ProfileForMod(NSString *name) {
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 self.deviceDataReady = ok;
-                [checking dismissViewControllerAnimated:YES completion:^{
                     if (ok) self.dataReady();
                     else [self message:T(@"Game files are missing or incomplete. Finish copying them with the desktop installer, then check again. Your saves are kept.", @"Spieldaten fehlen oder sind unvollständig. Kopiere sie mit dem Desktop-Installer fertig und prüfe erneut. Deine Saves bleiben erhalten.", @"Faltan datos o están incompletos. Termina la copia con el instalador y comprueba de nuevo. Tus partidas se conservan.", @"Os dados estão em falta ou incompletos. Conclui a cópia com o instalador e verifica novamente. O progresso é mantido.", @"Данные отсутствуют или неполные. Завершите копирование установщиком и повторите проверку. Сохранения остаются.")];
-                }];
             });
-        });
-    }];
+    });
 }
 - (NSArray<NSURL *> *)localSnapshots {
     NSMutableArray<NSURL *> *snapshots = [NSMutableArray array];
@@ -375,6 +376,7 @@ static NSString *ProfileForMod(NSString *name) {
     });
 }
 - (void)exportSnapshot:(NSURL *)snapshot identity:(NSDictionary *)identity {
+    if (![NSUserDefaults.standardUserDefaults dataForKey:BackupKey()]) return;
     NSURL *external = Resolve(BackupKey());
     BOOL scoped = [external startAccessingSecurityScopedResource];
     NSError *error = nil;
@@ -387,10 +389,11 @@ static NSString *ProfileForMod(NSString *name) {
         [external stopAccessingSecurityScopedResource];
     }
     NSString *status = ok ? T(@"Saved locally and backed up externally", @"Lokal und extern gesichert", @"Guardado localmente y con copia externa", @"Guardado localmente e com cópia externa", @"Сохранено локально и во внешней копии") : T(@"Saved locally · external backup pending", @"Lokal gesichert · externes Backup ausstehend", @"Guardado localmente · copia externa pendiente", @"Guardado localmente · cópia externa pendente", @"Сохранено локально · внешняя копия ожидает");
-    [self publishStatus:status identity:identity];
+    [self publishStatus:status identity:identity preference:ok ? "bdsp_notify_backup" : "bdsp_notify_warnings"];
 }
-- (void)publishStatus:(NSString *)status identity:(NSDictionary *)identity {
+- (void)publishStatus:(NSString *)status identity:(NSDictionary *)identity preference:(const char *)preference {
     [NSUserDefaults.standardUserDefaults setObject:status forKey:StatusKey(identity)];
+    if (bdsp_native_status_message) { bdsp_native_status_message(preference, status.UTF8String, 6); return; }
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!self.statusLabel) {
             self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, self.presenter.view.safeAreaInsets.top + 8, MIN(420, self.presenter.view.bounds.size.width - 24), 40)];
@@ -439,7 +442,14 @@ void BDSPPrepareData(UIViewController *presenter, NSDictionary *identity, void (
     else if (manager.initialDataPhase) [manager menu];
     else [manager verifyDeviceData:NO];
 }
-void BDSPConfirmStart(void (^ready)(void)) { manager.ready = ready; [manager menu]; }
+void BDSPConfirmStart(void (^ready)(void)) {
+    manager.ready = ready;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    if ([defaults boolForKey:@"bdsp_manage_data_next_launch"]) {
+        [defaults setBool:NO forKey:@"bdsp_manage_data_next_launch"];
+        [manager menu];
+    } else [manager startGame];
+}
 void BDSPShowDataError(NSString *detail) { manager.running = NO; [manager message:detail]; }
 
 void bdsp_save_committed(const char *root, const char *snapshot, int failure) { @autoreleasepool {
@@ -449,10 +459,11 @@ void bdsp_save_committed(const char *root, const char *snapshot, int failure) { 
     NSURL *url = snapshot ? [NSURL fileURLWithPath:@(snapshot)] : nil;
     BOOL sealed = !failure && BDSPSealSnapshot(url, [NSURL fileURLWithPath:@(root)].URLByDeletingLastPathComponent, identity, @(root).lastPathComponent, &error);
     if (!sealed) {
-        [manager publishStatus:T(@"Local backup failed · keep the app installed", @"Lokales Backup fehlgeschlagen · App installiert lassen", @"Falló la copia local · conserva la app instalada", @"A cópia local falhou · mantém a aplicação instalada", @"Ошибка локальной копии · не удаляйте приложение") identity:identity];
+        [manager publishStatus:T(@"Local backup failed · keep the app installed", @"Lokales Backup fehlgeschlagen · App installiert lassen", @"Falló la copia local · conserva la app instalada", @"A cópia local falhou · mantém a aplicação instalada", @"Ошибка локальной копии · не удаляйте приложение") identity:identity preference:"bdsp_notify_warnings"];
         fprintf(stderr, "[save] Snapshot could not be sealed (error %d). Existing saves and backups kept.\n", failure);
         return;
     }
+    [manager publishStatus:T(@"Saved locally", @"Lokal gesichert", @"Guardado localmente", @"Guardado localmente", @"Сохранено локально") identity:identity preference:"bdsp_notify_save"];
     dispatch_async(manager.backupQueue, ^{
         [manager exportSnapshot:url identity:identity];
         // Only verified generated snapshots count toward the ten-generation cap.

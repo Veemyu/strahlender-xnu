@@ -8,3 +8,13 @@
 "DEBUG_GROUP" = "Debug";
 "DEBUG_FOOTER" = "Zeigt das Metal-Performance-HUD (FPS, Frametime, GPU). Wirkt nach einem Neustart der App.";
 "DEBUG_METAL_HUD" = "Metal-HUD anzeigen";
+"DATA_GROUP" = "Spieldaten & Saves";
+"DATA_NEXT_LAUNCH" = "Werkzeuge beim nächsten Start";
+"DATA_FOOTER" = "Schließe das Spiel zuerst. Beim nächsten Start kannst du Backups, Wiederherstellung oder Spieldaten auswählen. Der Schalter wird danach automatisch ausgeschaltet.";
+"NOTIFICATIONS_GROUP" = "Einblendungen";
+"NOTIFICATIONS_FOOTER" = "Statusmeldungen im Spiel. Jede Kategorie lässt sich einzeln ausschalten.";
+"NOTIFY_SHADERS" = "Shader vorbereiten";
+"NOTIFY_SAVE" = "Save bestätigen";
+"NOTIFY_BACKUP" = "Externe Backups bestätigen";
+"NOTIFY_WARNINGS" = "Hinweise zu Saves und Backups";
+"NOTIFY_VERIFICATION" = "Status der vollständigen Datenprüfung";

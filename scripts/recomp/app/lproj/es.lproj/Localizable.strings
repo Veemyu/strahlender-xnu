@@ -48,3 +48,7 @@
 "Reset failed" = "Error al restablecer";
 "The game is closed and restarted. Unsaved progress is lost." = "El juego se cierra y se reinicia. Se perderá el progreso no guardado.";
 "KEYS_HELP" = "Teclado (valores de Ryujinx):\n  Z = A    X = B    C = X    V = Y\n  Intro/Espacio = A    Retroceso = B (adicional)\n  E = L    U = R    Q = ZL    O = ZR\n  = o Tab = +    Menos = −    F = pulsar stick izquierdo    H = pulsar stick derecho\n  Flechas = cruceta\n  W A S D = stick izquierdo    I J K L = stick derecho\n\nMando (Xbox, PlayStation, Switch Pro): posición de botones como en Switch (pad_layout = xbox: según etiqueta), Menú = +, Vista/Opciones = −.\n\nVentana: Cmd+F pantalla completa, Cmd+1 a Cmd+4 tamaño de ventana, Cmd+P pausa, Cmd+R reiniciar. Sin sonido.";
+"Notifications" = "Notificaciones";
+"Shader preparation" = "Preparación de sombreadores";
+"Save confirmations" = "Confirmaciones de guardado";
+"Save and backup warnings" = "Avisos de partidas y copias";

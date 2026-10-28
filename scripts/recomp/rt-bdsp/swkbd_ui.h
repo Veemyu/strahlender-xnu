@@ -48,6 +48,12 @@ int swkbd_ui_visible(void);
 // Opacity (0..1) of the blurred backdrop behind the keyboard: 1 while open, fading out with the closing animation.
 float swkbd_ui_backdrop(void);
 
+// iOS uses native text input when complete Horizon layouts/fonts are absent.
+// Copies state under the keyboard lock; no borrowed scene/string pointers.
+typedef struct { SwkbdParams params; char text[1024], message[256]; int busy; } SwkbdNativeState;
+int swkbd_ui_native_state(SwkbdNativeState *out);
+void swkbd_ui_replace_text(const char *utf8);
+
 // Input. Buttons as bit numbers: 0 A, 1 B, 2 X, 3 Y, 4 LStick, 5 RStick, 6 L, 7 R, 8 ZL, 9 ZR, 10 Plus, 11 Minus, 12 Left, 13 Up, 14 Right, 15 Down.
 void swkbd_ui_pad(uint64_t buttons, int lx, int ly);                 // current state; edges are detected inside
 // Buttons already held when the keyboard opens (the A that answered "yes" to the prompt): they are not presses, only a later press counts.

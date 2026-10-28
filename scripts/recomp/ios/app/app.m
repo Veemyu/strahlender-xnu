@@ -359,113 +359,132 @@ static int KeyBit(UIKeyboardHIDUsage k) {
 
 static GameView *gView;   // game view of the scene (controller overlay)
 
-// Called from the renderer worker. Never wait for UIKit from that worker.
-void bdsp_shader_compile_status(int active) {
-    dispatch_async(dispatch_get_main_queue(), ^{
+#import "../../app/shader_status.h"
+
+static void InstallShaderStatus(void) {
+    BDSPInstallShaderStatus(^(NSString *text) {
         static UILabel *label;
-        static NSUInteger version, completed, activeCalls;
-        static BOOL pending;
-        NSUInteger current = ++version;
-        if (!active) {
-            completed++;
-            if (activeCalls) activeCalls--;
-            if (!activeCalls) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 350 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-                if (version == current && !activeCalls) { label.hidden = YES; pending = NO; }
-            });
-            return;
+        if (!text) { label.hidden = YES; return; }
+        if (!label) {
+            label = [UILabel new]; label.translatesAutoresizingMaskIntoConstraints = NO;
+            label.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.9];
+            label.textColor = UIColor.whiteColor; label.textAlignment = NSTextAlignmentCenter;
+            label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+            label.layer.cornerRadius = 12; label.clipsToBounds = YES;
+            label.accessibilityTraits = UIAccessibilityTraitUpdatesFrequently;
+            [gView addSubview:label];
+            [NSLayoutConstraint activateConstraints:@[
+                [label.centerXAnchor constraintEqualToAnchor:gView.centerXAnchor],
+                [label.topAnchor constraintEqualToAnchor:gView.safeAreaLayoutGuide.topAnchor constant:12],
+                [label.widthAnchor constraintLessThanOrEqualToAnchor:gView.widthAnchor constant:-32],
+                [label.heightAnchor constraintEqualToConstant:40],
+                [label.widthAnchor constraintGreaterThanOrEqualToConstant:260]]];
         }
-        activeCalls++;
-        // Keep one indicator for a burst of short compilations, not thousands of
-        // individually debounced flashes (which could hide a long startup).
-        if (pending) {
-            if (!label.hidden && label.text) {
-                NSRange range = [label.text rangeOfString:@" (" options:NSBackwardsSearch];
-                if (range.location != NSNotFound) label.text = [[label.text substringToIndex:range.location]
-                    stringByAppendingFormat:@" (%lu)  ", (unsigned long)completed];
-            }
-            return;
-        }
-        pending = YES;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-            if (!pending || !gView) return;
-            if (!label) {
-                label = [UILabel new]; label.translatesAutoresizingMaskIntoConstraints = NO;
-                label.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.9];
-                label.textColor = UIColor.whiteColor; label.textAlignment = NSTextAlignmentCenter;
-                label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-                label.layer.cornerRadius = 12; label.clipsToBounds = YES;
-                label.accessibilityTraits = UIAccessibilityTraitUpdatesFrequently;
-                [gView addSubview:label];
-                [NSLayoutConstraint activateConstraints:@[
-                    [label.centerXAnchor constraintEqualToAnchor:gView.centerXAnchor],
-                    [label.topAnchor constraintEqualToAnchor:gView.safeAreaLayoutGuide.topAnchor constant:12],
-                    [label.widthAnchor constraintLessThanOrEqualToAnchor:gView.widthAnchor constant:-32],
-                    [label.heightAnchor constraintEqualToConstant:40],
-                    [label.widthAnchor constraintGreaterThanOrEqualToConstant:260]]];
-            }
-            NSString *lang = NSLocale.preferredLanguages.firstObject.lowercaseString;
-            NSString *text = @"Preparing shaders…";
-            if ([lang hasPrefix:@"de"]) text = @"Shader werden vorbereitet…";
-            else if ([lang hasPrefix:@"es"]) text = @"Preparando sombreadores…";
-            else if ([lang hasPrefix:@"pt"]) text = @"A preparar shaders…";
-            else if ([lang hasPrefix:@"ru"] || [lang hasPrefix:@"uk"]) text = @"Подготовка шейдеров…";
-            label.text = [NSString stringWithFormat:@"  %@ (%lu)  ", text, (unsigned long)completed];
-            label.hidden = NO;
-            [gView bringSubviewToFront:label];
-        });
+        label.text = [NSString stringWithFormat:@"  %@  ", text];
+        label.hidden = NO; [gView bringSubviewToFront:label];
     });
 }
 
 #pragma mark - Screen keyboard (text entry)
 
-// System keyboard: a hidden text field becomes first responder when the text field of the on-screen keyboard is tapped; what is typed goes to
-// swkbd_ui (the field itself stays empty). Hardware keyboards type directly (GameVC pressesBegan).
+// Without complete firmware fonts/layouts UIKit owns the prompt, editing and IME.
+// With them the Horizon keyboard is exclusive; no UIKit keyboard is opened.
 @interface SwkbdNativeField : NSObject <UITextFieldDelegate>
+- (void)valueChanged:(UITextField *)field;
 @end
 static UITextField *gNativeField;
+static UIView *gNativeCard;
+static UILabel *gNativePrompt;
 static SwkbdNativeField *gNativeDelegate;
 @implementation SwkbdNativeField
-- (BOOL)textField:(UITextField *)f shouldChangeCharactersInRange:(NSRange)r replacementString:(NSString *)s {
-    if (s.length == 0) swkbd_ui_key(SWKBD_KEY_BACKSPACE); else swkbd_ui_text(s.UTF8String);
+- (void)valueChanged:(UITextField *)field {
+    if (!field.markedTextRange) swkbd_ui_replace_text(field.text.UTF8String);
+}
+- (BOOL)textFieldShouldReturn:(UITextField *)field {
+    if (!field.markedTextRange) { swkbd_ui_replace_text(field.text.UTF8String); swkbd_ui_key(SWKBD_KEY_ENTER); }
     return NO;
 }
-- (BOOL)textFieldShouldReturn:(UITextField *)f { swkbd_ui_key(SWKBD_KEY_ENTER); return NO; }
 @end
 
 static void SwkbdShowNative(void) {
-    if (!gNativeField) {
+    SwkbdNativeState state;
+    if (!swkbd_ui_native_state(&state)) return;
+    if (!gNativeCard) {
+        gNativeCard = [UIView new]; gNativeCard.translatesAutoresizingMaskIntoConstraints = NO;
+        gNativeCard.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.94];
+        gNativeCard.layer.cornerRadius = 16;
+        gNativePrompt = [UILabel new]; gNativePrompt.translatesAutoresizingMaskIntoConstraints = NO;
+        gNativePrompt.textColor = UIColor.whiteColor; gNativePrompt.numberOfLines = 2;
+        gNativePrompt.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
         gNativeDelegate = [SwkbdNativeField new];
-        gNativeField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
-        gNativeField.alpha = 0.02;
-        gNativeField.delegate = gNativeDelegate;
+        gNativeField = [UITextField new]; gNativeField.translatesAutoresizingMaskIntoConstraints = NO;
+        gNativeField.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        gNativeField.borderStyle = UITextBorderStyleRoundedRect;
+        gNativeField.font = [UIFont systemFontOfSize:18]; gNativeField.delegate = gNativeDelegate;
         gNativeField.autocorrectionType = UITextAutocorrectionTypeNo;
         gNativeField.autocapitalizationType = UITextAutocapitalizationTypeNone;
         gNativeField.returnKeyType = UIReturnKeyDone;
-        [gView addSubview:gNativeField];
+        [gNativeField addTarget:gNativeDelegate action:@selector(valueChanged:) forControlEvents:UIControlEventEditingChanged];
+        [gNativeCard addSubview:gNativePrompt]; [gNativeCard addSubview:gNativeField]; [gView addSubview:gNativeCard];
+        NSLayoutConstraint *preferredWidth = [gNativeCard.widthAnchor constraintEqualToConstant:560];
+        preferredWidth.priority = UILayoutPriorityDefaultHigh; preferredWidth.active = YES;
+        [NSLayoutConstraint activateConstraints:@[
+            [gNativeCard.centerXAnchor constraintEqualToAnchor:gView.centerXAnchor],
+            [gNativeCard.widthAnchor constraintLessThanOrEqualToAnchor:gView.widthAnchor multiplier:0.85],
+            [gNativeCard.widthAnchor constraintGreaterThanOrEqualToConstant:280],
+            [gNativeCard.widthAnchor constraintLessThanOrEqualToConstant:560],
+            [gNativeCard.bottomAnchor constraintEqualToAnchor:gView.keyboardLayoutGuide.topAnchor constant:-12],
+            [gNativeCard.topAnchor constraintGreaterThanOrEqualToAnchor:gView.safeAreaLayoutGuide.topAnchor constant:8],
+            [gNativePrompt.leadingAnchor constraintEqualToAnchor:gNativeCard.leadingAnchor constant:16],
+            [gNativePrompt.trailingAnchor constraintEqualToAnchor:gNativeCard.trailingAnchor constant:-16],
+            [gNativePrompt.topAnchor constraintEqualToAnchor:gNativeCard.topAnchor constant:12],
+            [gNativeField.topAnchor constraintEqualToAnchor:gNativePrompt.bottomAnchor constant:10],
+            [gNativeField.leadingAnchor constraintEqualToAnchor:gNativePrompt.leadingAnchor],
+            [gNativeField.trailingAnchor constraintEqualToAnchor:gNativePrompt.trailingAnchor],
+            [gNativeField.heightAnchor constraintEqualToConstant:42],
+            [gNativeField.bottomAnchor constraintEqualToAnchor:gNativeCard.bottomAnchor constant:-12]]];
     }
-    [gNativeField becomeFirstResponder];
+    NSString *(^string)(const char *) = ^NSString *(const char *s) { return [NSString stringWithUTF8String:s] ?: @""; };
+    NSString *prompt = string(state.params.header);
+    if (!prompt.length) prompt = string(state.params.sub);
+    if (!prompt.length) prompt = string(state.params.guide);
+    gNativePrompt.text = state.message[0] ? string(state.message) : prompt;
+    NSString *guide = string(state.params.guide);
+    gNativeField.placeholder = [guide isEqualToString:prompt] ? nil : guide;
+    BOOL secure = state.params.password != 0;
+    if (gNativeField.secureTextEntry != secure) gNativeField.secureTextEntry = secure;
+    UIKeyboardType type = state.params.mode == 1 ? UIKeyboardTypeNumbersAndPunctuation : UIKeyboardTypeDefault;
+    if (gNativeField.keyboardType != type) gNativeField.keyboardType = type;
+    gNativeField.enabled = !state.busy;
+    NSString *text = string(state.text);
+    if (!gNativeField.markedTextRange && ![gNativeField.text isEqualToString:text]) gNativeField.text = text;
+    BOOL opening = gNativeCard.hidden || !gNativeField.isFirstResponder;
+    gNativeCard.hidden = NO; [gView bringSubviewToFront:gNativeCard];
+    if (opening && !state.busy) [gNativeField becomeFirstResponder];
 }
 
 static void SwkbdHideNative(void) {
     if (gNativeField.isFirstResponder) {
         [gNativeField resignFirstResponder];
-        [gView.window.rootViewController becomeFirstResponder];   // hardware keys again
+        [gView.window.rootViewController becomeFirstResponder];
     }
+    gNativeCard.hidden = YES;
 }
 
-// Called a few times per second: hides the touch gamepad while the on-screen keyboard is open and puts the system keyboard away when it closes
 static void SwkbdPoll(void) {
     static BOOL was;
     BOOL on = swkbd_ui_active() != 0;
-    if (on == was) return;
-    was = on;
-    for (CALayer *l in gView.pads) l.hidden = on;
-    if (!on) SwkbdHideNative();
-    publish_buttons();
-    input_tick();
+    if (on != was) {
+        was = on;
+        for (CALayer *layer in gView.pads) layer.hidden = on;
+        publish_buttons(); input_tick();
+    }
+    if (on && swkbd_ui_native_state(NULL)) SwkbdShowNative();
+    else SwkbdHideNative();
 }
 
 static BOOL SwkbdPresses(NSSet<UIPress *> *presses) {
+    if (swkbd_ui_native_state(NULL)) return NO;
     BOOL handled = NO;
     for (UIPress *p in presses) {
         UIKey *k = p.key;
@@ -512,12 +531,14 @@ static BOOL SwkbdPresses(NSSet<UIPress *> *presses) {
     [self becomeFirstResponder];
     static dispatch_once_t once;
     dispatch_once(&once, ^{
+        InstallShaderStatus();
         [(SceneDelegate *)self.view.window.windowScene.delegate startRuntime];
         [NSTimer scheduledTimerWithTimeInterval:0.15 repeats:YES block:^(NSTimer *t) { SwkbdPoll(); }];
     });
 }
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)e {
-    if (swkbd_ui_active() && SwkbdPresses(presses)) return;   // typing into the on-screen keyboard
+    if (swkbd_ui_active() && !swkbd_ui_native_state(NULL) && SwkbdPresses(presses)) return;   // typing into the on-screen keyboard
+    if (swkbd_ui_native_state(NULL)) { [super pressesBegan:presses withEvent:e]; return; }
     BOOL handled = NO;
     for (UIPress *p in presses) {
         int b = p.key ? KeyBit(p.key.keyCode) : -1;

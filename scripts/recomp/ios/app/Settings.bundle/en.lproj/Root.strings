@@ -8,3 +8,13 @@
 "DEBUG_GROUP" = "Debug";
 "DEBUG_FOOTER" = "Shows the Metal performance HUD (FPS, frame time, GPU). Takes effect after restarting the app.";
 "DEBUG_METAL_HUD" = "Show Metal HUD";
+"DATA_GROUP" = "Game files & saves";
+"DATA_NEXT_LAUNCH" = "Open tools on next launch";
+"DATA_FOOTER" = "Close the game first. On the next launch, choose backups, restore or game files before playing. This switch then turns off automatically.";
+"NOTIFICATIONS_GROUP" = "Notifications";
+"NOTIFICATIONS_FOOTER" = "Show status banners in the game. Each category can be turned off separately.";
+"NOTIFY_SHADERS" = "Shader preparation";
+"NOTIFY_SAVE" = "Save confirmations";
+"NOTIFY_BACKUP" = "External backup confirmations";
+"NOTIFY_WARNINGS" = "Save and backup warnings";
+"NOTIFY_VERIFICATION" = "Full verification status";

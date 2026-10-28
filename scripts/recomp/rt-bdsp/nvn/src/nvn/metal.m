@@ -248,6 +248,8 @@ static void tex_inventory_tick(uint64_t frame) {
         if (count[f]) LOG("[texinv]   f%#04x %5u textures %8.1f MiB\n", f, count[f], bytes[f] / 1048576.0);
 }
 
+#ifndef BDSP_IOS
+// Standalone desktop fallback; Apple app shells use native status views.
 // Start gate display (renderer.m startup_gate): "Shader compilation n / N" as text. The presentation thread
 // calls this at 60 Hz; during the gate it is the only presenter.
 static const char GATE_MSL[] =
@@ -343,6 +345,8 @@ void renderer_gate_present(uint64_t done, uint64_t total) {
     [cb presentDrawable:drawable];
     [cb commit];
 }
+
+#endif // !BDSP_IOS
 
 static uint64_t frames, total_frames, wk_frames;  // wk_frames: frames from the point of view of the translation worker
 bool renderer_on_worker(void);  // renderer.m

@@ -73,7 +73,7 @@ if [ -n "${BDSP_APP:-}" ]; then
     [ -e "$f" ] || continue
     o="$RT/app_$(basename "${f%.*}").o"
     objs+=("$o")
-    if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/app/app.h" -nt "$o" ] || [ scripts/recomp/app/icon_variants.h -nt "$o" ]; then
+    if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/app/app.h" -nt "$o" ] || [ scripts/recomp/app/icon_variants.h -nt "$o" ] || [ scripts/recomp/app/shader_status.h -nt "$o" ]; then
       case "$f" in
         *.m) /usr/bin/clang -O1 -g "$PATHMAP" -Wall -Wno-unused-parameter -fobjc-arc $INC $(pkg-config --cflags sdl3) -c "$f" -o "$o" ;;
         *) clang -O1 -g "$PATHMAP" -Wall -Wextra -Wno-unused-parameter $INC -c "$f" -o "$o" ;;

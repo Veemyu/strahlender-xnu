@@ -1341,17 +1341,12 @@ static void compile_program_impl(Prog *pr) {
     pr->ready = true;
 }
 
-#ifdef BDSP_IOS
 extern void bdsp_shader_compile_status(int active) __attribute__((weak_import));
-#endif
+extern void bdsp_shader_gate_status(uint64_t done, uint64_t total, int active) __attribute__((weak_import));
 static void compile_program(Prog *pr) {
-#ifdef BDSP_IOS
     if (bdsp_shader_compile_status) bdsp_shader_compile_status(1);
     @try { compile_program_impl(pr); }
     @finally { if (bdsp_shader_compile_status) bdsp_shader_compile_status(0); }
-#else
-    compile_program_impl(pr);
-#endif
 }
 
 static void startup_gate(void);
@@ -2284,13 +2279,9 @@ static MTLRenderPipelineDescriptor *pd_from_rec(const PipeRec *r, id<MTLFunction
 
 static id<MTLRenderPipelineState> build_pipeline(const PipeRec *r, id<MTLFunction> vs, id<MTLFunction> fs) {
     NSError *err = nil;
-#ifdef BDSP_IOS
     if (bdsp_shader_compile_status) bdsp_shader_compile_status(1);
-#endif
     id<MTLRenderPipelineState> p = TIMED_COMPILE([dev newRenderPipelineStateWithDescriptor:pd_from_rec(r, vs, fs) error:&err]);
-#ifdef BDSP_IOS
     if (bdsp_shader_compile_status) bdsp_shader_compile_status(0);
-#endif
     if (!p) { static int n; if (n++ < 10) LOG("[metal] pipeline failed: %s\n", err.localizedDescription.UTF8String); }
     return p;
 }
@@ -2350,8 +2341,12 @@ static void *gate_presenter(void *arg) {
     (void)arg;
     double next = now_ms();
     while (!__atomic_load_n(&gate_finished, __ATOMIC_ACQUIRE)) {
-        renderer_gate_present(__atomic_load_n(&gate_done, __ATOMIC_RELAXED), gate_total);
-        next += 1000.0 / 60.0;
+        uint64_t done = __atomic_load_n(&gate_done, __ATOMIC_RELAXED);
+        if (bdsp_shader_gate_status) bdsp_shader_gate_status(done, gate_total, 1);
+#ifndef BDSP_IOS
+        else renderer_gate_present(done, gate_total); // standalone desktop runtime
+#endif
+        next += bdsp_shader_gate_status ? 100.0 : 1000.0 / 60.0;
         double wait = next - now_ms();
         if (wait > 0) usleep((useconds_t)(wait * 1000.0));
         else next = now_ms();
@@ -2396,6 +2391,7 @@ static void startup_gate(void) {
     });
     __atomic_store_n(&gate_finished, true, __ATOMIC_RELEASE);
     pthread_join(th, NULL);
+    if (bdsp_shader_gate_status) bdsp_shader_gate_status(gate_total, gate_total, 0);
     LOG("[gate] %llu Pipelines in %.0f ms vorgebaut\n", (unsigned long long)gate_total, now_ms() - t0);
 }
 

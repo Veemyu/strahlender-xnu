@@ -126,18 +126,54 @@ A clean checkout without recordings explicitly reports that the device must comp
 new shaders. Matching bundled libraries accelerate known variants; new effects and
 GPU-specific pipelines can still require compilation. iOS shows a small localized
 status independently of the render worker, including bursts of short compilations.
-The existing pipeline warm-up gate retains its numerical progress. Runtime MSL
+The pipeline warm-up gate reports numerical progress through the same native status. iOS does not compile or display the renderer HUD; the desktop renderer HUD remains a fallback for standalone builds without an app shell. Runtime MSL
 recordings live in app-private `Library/Caches/BDSP/shaders` on iOS.
 
 The first verification after import, changed game/mod inventory, or a new expected
 manifest hashes every manifest-bound file with SHA-256. Successful checks write a
 private binary receipt under `Library/Caches`. Unchanged starts compare the complete
-file list, inode, size and nanosecond mtime/ctime instead of rereading all file bytes.
+file list, device/inode, size and nanosecond mtime/ctime instead of rereading all file bytes.
+Descriptor-relative native directory traversal avoids resolving a URL for each file.
+Unchanged launches perform this short check silently. Only full verification publishes
+progress through the native banner; it does not open a blocking progress dialog.
 An explicit **Check game files again** always performs full verification. A missing
 or invalid receipt also hashes again; cache write failure does not block playing.
 Receipts do not depend on the app executable's build ID, so code-only app updates
-can reuse verified data. Relocated containers trigger a fresh check. This is a fast
+can reuse verified data. Container relocations that preserve every file identity can reuse the receipt; replaced files still trigger a full check. This is a fast
 change detector, not cryptographic authentication against deliberately forged
 filesystem metadata. Saves are outside the inventory and are never changed.
 Manual mods outside the expected manifest are not authenticated by the base-game
 manifest; ExeFS/IPS changes still require a new build.
+
+
+Normal iOS launches start immediately after data verification and save recovery,
+without a Play/Backup confirmation. To manage or restore saves before the runtime
+starts, enable **Settings → BDSP → Game files & saves → Open tools on next launch**,
+then fully close and reopen the app. The switch resets after showing the tools.
+Automatic pre-update snapshots and external backup retries still run. Restore/import
+remains excluded while the runtime is running.
+
+The UIKit and AppKit shader banners share a coalesced status core: warm-up shows
+completed/total pipelines, and new compilations show a preparation count. They are
+in-window views and do not request system notification permission. The status timer
+updates the view only when the text changes, and suppresses individual fast cache hits.
+
+Save/backup completion messages use the same native banner on Apple platforms.
+iOS reports external success only after a configured external export succeeds.
+A configured but unavailable destination reports an external backup pending; no
+external destination means no unsolicited pending message. macOS currently reports local save/snapshot
+results; it does not claim an external export that its shell does not implement.
+Messages wait for shader preparation instead of producing overlapping banners.
+
+### Notification preferences
+
+iOS/iPadOS Settings → BDSP → Notifications provides independent, persisted switches
+for shader preparation, local save confirmations, external backup confirmations,
+save/backup warnings and full-verification progress. All default to enabled. These
+switches affect status banners, not the underlying verification, save or backup work.
+Explicitly requested operations and errors requiring a decision retain their dialogs.
+
+macOS BDSP → Notifications provides persisted checkmarks for its implemented shader,
+local-save and save/backup-warning banners. Menu changes apply immediately. External
+backup and verification switches can be added when those services exist in the Mac
+shell; the menu does not advertise services it does not perform.

@@ -8,3 +8,13 @@
 "DEBUG_GROUP" = "Depuración";
 "DEBUG_FOOTER" = "Muestra el HUD de rendimiento de Metal (FPS, tiempo de fotograma, GPU). Se aplica al reiniciar la app.";
 "DEBUG_METAL_HUD" = "Mostrar HUD de Metal";
+"DATA_GROUP" = "Datos y partidas";
+"DATA_NEXT_LAUNCH" = "Herramientas al próximo inicio";
+"DATA_FOOTER" = "Cierra el juego primero. Al iniciar de nuevo, podrás gestionar copias, restauraciones y datos antes de jugar. El interruptor se desactiva automáticamente.";
+"NOTIFICATIONS_GROUP" = "Notificaciones";
+"NOTIFICATIONS_FOOTER" = "Avisos de estado dentro del juego. Puedes desactivar cada categoría por separado.";
+"NOTIFY_SHADERS" = "Preparación de sombreadores";
+"NOTIFY_SAVE" = "Confirmaciones de guardado";
+"NOTIFY_BACKUP" = "Confirmaciones de copias externas";
+"NOTIFY_WARNINGS" = "Avisos de partidas y copias";
+"NOTIFY_VERIFICATION" = "Estado de verificación completa";

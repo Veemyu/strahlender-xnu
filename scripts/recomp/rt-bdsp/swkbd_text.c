@@ -110,6 +110,15 @@ int swkbd_text_available(const char *root) {
     return fp != NULL;
 }
 
+int swkbd_text_firmware_ready(const char *root) {
+    pthread_mutex_lock(&T.lock);
+    if (root && strcmp(root, T.root)) { fonts_free(); snprintf(T.root, sizeof T.root, "%s", root); }
+    font_load(F_STD); font_load(F_EXT);
+    int ok = T.font[F_STD].ok && T.font[F_EXT].ok;
+    pthread_mutex_unlock(&T.lock);
+    return ok;
+}
+
 int swkbd_text_open(const char *root) {
     pthread_mutex_lock(&T.lock);
     if (!T.atlas) {

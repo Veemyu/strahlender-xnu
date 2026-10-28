@@ -48,3 +48,7 @@
 "Reset failed" = "Falha ao redefinir";
 "The game is closed and restarted. Unsaved progress is lost." = "O jogo será fechado e reiniciado. O progresso não salvo será perdido.";
 "KEYS_HELP" = "Teclado (padrão do Ryujinx):\n  Z = A    X = B    C = X    V = Y\n  Enter/Espaço = A    Backspace = B (adicional)\n  E = L    U = R    Q = ZL    O = ZR\n  = ou Tab = +    Menos = −    F = pressionar analógico esquerdo    H = pressionar analógico direito\n  Setas = direcional\n  W A S D = analógico esquerdo    I J K L = analógico direito\n\nControle (Xbox, PlayStation, Switch Pro): posição dos botões como no Switch (pad_layout = xbox: pelo rótulo), Menu = +, Visualizar/Opções = −.\n\nJanela: Cmd+F tela cheia, Cmd+1 a Cmd+4 tamanho da janela, Cmd+P pausa, Cmd+R reiniciar. Sem som.";
+"Notifications" = "Notificações";
+"Shader preparation" = "Preparação de shaders";
+"Save confirmations" = "Confirmações de progresso guardado";
+"Save and backup warnings" = "Avisos de progresso e cópias";

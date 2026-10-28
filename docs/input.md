@@ -2,8 +2,9 @@
 
 Updated: 2026-10-24. When the game asks for text (player name, rival name, nicknames, codes) it calls the system's software keyboard,
 a library applet. This project answers that call with its own keyboard, drawn from the keyboard layout files of the Switch **firmware you
-provide**; the repository contains none of those files. Without them the game still gets a simple keyboard of our own (same keys and
-controls, plain colours and shapes, no Switch look). Both need a normal, not scripted, run (see below).
+provide**; the repository contains none of those files. Without them macOS/Linux use a simple independent keyboard. iOS/iPadOS instead show only the prompt, a native editable field and the
+blurred game while UIKit handles text input. Complete readable Horizon layouts plus valid text and button-glyph fonts select Horizon
+exclusively on iOS; UIKit's keyboard is never opened over it. Both need a normal, not scripted, run (see below).
 
 ## What you need
 
@@ -16,10 +17,10 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
   `scripts/swkbd_firmware_extract.py --nca-dir <registered NCAs> --keys <prod.keys> --hactool <hactool> --out <folder>` writes exactly this
   folder from your own firmware dump (it uses hactool and your keys locally and prints no key material).
   The GUI installer does not currently import or extract firmware. On iPhone/iPad, the app reads already extracted keyboard data from
-  `Documents/Firmware`; without it, the independent simple keyboard remains available. Firmware is optional and is not part of the game RomFS.
-- A normal (not scripted) run on macOS or iPadOS. `BDSP_SWKBD_SIMPLE=1` forces the simple keyboard even with firmware files.
+  `Documents/Firmware`; without complete layouts/fonts, UIKit handles input. Firmware is optional and is not part of the game RomFS.
+- A normal (not scripted) run on macOS or iPadOS. `BDSP_SWKBD_SIMPLE=1` forces the fallback even with firmware files (native input on iOS).
 - iPadOS: the app reads the files from `Documents/Firmware` (same folder layout; copy it with the Files app or `devicectl`, without
-  `--remove-existing-content`). Without that folder the simple keyboard is used.
+  `--remove-existing-content`). Without complete layouts/fonts, only a prompt and native field appear above the iOS keyboard.
 
 ## Using it (macOS)
 
