@@ -45,8 +45,19 @@ int main(void) { @autoreleasepool {
     Put(library, @"Saves/unrelated-test-save.bin", @"outside game inventory");
     assert(BDSPCheckInstalledData(library, identity, expected, receipt, NO, &usedReceipt, nil, nil));
     assert(usedReceipt); // Saving does not invalidate or involve the data check.
+    NSURL *unsafeCachedPath = At(library, @"GameData/version1/romfs/Data/unsafe-link");
+    assert(!symlink("game.bin", unsafeCachedPath.fileSystemRepresentation));
+    failure = nil;
+    assert(!BDSPCheckInstalledData(library, identity, expected, receipt, NO, NULL, nil, &failure));
+    assert(failure.localizedDescription.length); // Traversal error survives its autorelease pool.
+    assert([fm removeItemAtURL:unsafeCachedPath error:nil]);
     assert(BDSPCheckInstalledData(library, identity, expected, receipt, YES, &usedReceipt, nil, nil));
     assert(!usedReceipt); // Explicit full recheck remains available.
+    NSURL *relocated = At(root, @"Relocated Library");
+    assert([fm moveItemAtURL:library toURL:relocated error:nil]);
+    assert(BDSPCheckInstalledData(relocated, identity, expected, receipt, NO, &usedReceipt, nil, nil));
+    assert(usedReceipt); // Renaming a parent does not change the verified files.
+    assert([fm moveItemAtURL:relocated toURL:library error:nil]);
     struct stat originalMetadata;
     NSURL *cachedFile = At(library, @"GameData/version1/romfs/Data/game.bin");
     assert(!stat(cachedFile.fileSystemRepresentation, &originalMetadata));

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <dirent.h>
 #import <dispatch/dispatch.h>
 
 static BOOL Fail(NSError **error, NSString *message) {
@@ -262,6 +263,48 @@ NSDictionary *BDSPVerifyInstalledData(NSURL *library, NSDictionary *identity, NS
 // A receipt is an optimisation, not a replacement for SHA-256 authentication.
 // It lives outside Documents and records every file's inode, size and nanosecond
 // timestamps. Imports, edits, replaced trees and manifest changes require SHA again.
+// Descriptor-relative metadata traversal avoids resolving an absolute NSURL and
+// realpath for every file. O_NOFOLLOW / fstatat keep the same symlink boundary.
+// Each recursive call owns its descriptor, including failure paths.
+static BOOL SnapshotDirectory(int fd, NSString *relative, NSMutableDictionary *files,
+    NSUInteger depth, NSError **error) {
+    if (depth > 256) { close(fd); return Fail(error, @"The data folder is nested too deeply."); }
+    DIR *directory = fdopendir(fd);
+    if (!directory) { close(fd); return Fail(error, @"The data folder could not be read."); }
+    BOOL ok = YES;
+    NSError *failure = nil;
+    for (;;) { @autoreleasepool {
+        errno = 0;
+        struct dirent *entry = readdir(directory);
+        if (!entry) {
+            if (errno) ok = Fail(&failure, @"The data folder could not be read completely.");
+            break;
+        }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        struct stat st;
+        if (fstatat(dirfd(directory), entry->d_name, &st, AT_SYMLINK_NOFOLLOW) ||
+            (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))) {
+            ok = Fail(&failure, @"Game data may contain only files and directories."); break;
+        }
+        NSString *name = [NSFileManager.defaultManager stringWithFileSystemRepresentation:entry->d_name length:strlen(entry->d_name)];
+        if (!name) { ok = Fail(&failure, @"A data filename could not be read."); break; }
+        NSString *path = relative.length ? [relative stringByAppendingPathComponent:name] : name;
+        if (S_ISDIR(st.st_mode)) {
+            int child = openat(dirfd(directory), entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+            if (child < 0) { ok = Fail(&failure, @"A data directory changed or could not be opened."); break; }
+            ok = SnapshotDirectory(child, path, files, depth + 1, &failure);
+            if (!ok) break;
+        } else if (![name isEqual:@".DS_Store"]) {
+            files[path] = @[@(st.st_dev), @(st.st_ino), @(st.st_size),
+                @(st.st_mtimespec.tv_sec), @(st.st_mtimespec.tv_nsec),
+                @(st.st_ctimespec.tv_sec), @(st.st_ctimespec.tv_nsec)];
+        }
+    } }
+    closedir(directory);
+    if (!ok && error) *error = failure;
+    return ok;
+}
+
 static NSDictionary *DataSnapshot(NSURL *library, NSDictionary *identity, NSError **error) {
     NSMutableDictionary *snapshot = [NSMutableDictionary new];
     NSArray *roots = identity[@"ModDirectory"] ? @[identity[@"RomFSDirectory"], identity[@"ModDirectory"]] : @[identity[@"RomFSDirectory"]];
@@ -269,16 +312,9 @@ static NSDictionary *DataSnapshot(NSURL *library, NSDictionary *identity, NSErro
         NSURL *folder = SafeURL(library, relative, error);
         if (!folder) return nil;
         NSMutableDictionary *files = [NSMutableDictionary new];
-        if (!WalkFiles(folder, ^BOOL(NSURL *file, NSString *path, off_t size, NSError **failure) {
-            (void)size;
-            struct stat st;
-            if (lstat(file.fileSystemRepresentation, &st) || !S_ISREG(st.st_mode))
-                return Fail(failure, @"A data file changed while checking it.");
-            files[path] = @[@(st.st_dev), @(st.st_ino), @(st.st_size),
-                @(st.st_mtimespec.tv_sec), @(st.st_mtimespec.tv_nsec),
-                @(st.st_ctimespec.tv_sec), @(st.st_ctimespec.tv_nsec)];
-            return YES;
-        }, error)) return nil;
+        int fd = open(folder.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (fd < 0) { Fail(error, @"The data folder could not be opened."); return nil; }
+        if (!SnapshotDirectory(fd, @"", files, 0, error)) return nil;
         snapshot[relative] = files;
     }
     return snapshot;
@@ -298,11 +334,10 @@ NSDictionary *BDSPCheckInstalledData(NSURL *library, NSDictionary *identity, NSU
     if (!manifestHash) return nil;
     NSDictionary *before = DataSnapshot(library, identity, error);
     if (!before) return nil;
-    NSString *root = library.URLByResolvingSymlinksInPath.path;
     NSDictionary *receipt = receiptURL ? [NSDictionary dictionaryWithContentsOfURL:receiptURL] : nil;
     if (!forceFull && [receipt[@"schema"] isEqual:@1] &&
         [receipt[@"manifestSHA256"] isEqual:manifestHash] &&
-        [receipt[@"library"] isEqual:root] && [receipt[@"identity"] isEqual:identity] &&
+        [receipt[@"identity"] isEqual:identity] &&
         [receipt[@"files"] isEqual:before]) {
         NSData *bytes = [NSData dataWithContentsOfURL:manifestURL options:0 error:error];
         NSDictionary *manifest = bytes ? [NSJSONSerialization JSONObjectWithData:bytes options:0 error:error] : nil;
@@ -321,7 +356,7 @@ NSDictionary *BDSPCheckInstalledData(NSURL *library, NSDictionary *identity, NSU
         Fail(error, @"Game data changed during verification. Check again."); return nil;
     }
     if (receiptURL) {
-        NSDictionary *value = @{@"schema":@1, @"manifestSHA256":manifestHash, @"library":root,
+        NSDictionary *value = @{@"schema":@1, @"manifestSHA256":manifestHash,
             @"identity":identity, @"files":after};
         NSData *bytes = [NSPropertyListSerialization dataWithPropertyList:value format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
         // Cache failure is harmless: the next launch simply hashes again.
