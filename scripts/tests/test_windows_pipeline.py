@@ -101,14 +101,14 @@ class WindowsPipelineTests(unittest.TestCase):
                     without_qt = {name: path for name, path in bundles.items() if name != "qt"}
                     with self.assertRaisesRegex(ValueError, "required"):
                         pipeline.write_catalog(root / "no-qt.json", compiler, generator, selected, **without_qt)
-                record = json.loads(catalog.read_text())
-                self.assertIn("llvm/bin/lld.exe", {Path(n).as_posix() for n in record["files"]})
-                record["files"].pop("unicorn.dll")
-                build.atomic_json(catalog, record)
-                with self.assertRaisesRegex(ValueError, "untracked"):
-                    pipeline.read_catalog(catalog, "x86_64")
-                with self.assertRaises(ValueError):
-                    pipeline.read_catalog(catalog, "aarch64")
+                    record = json.loads(catalog.read_text())
+                    self.assertIn("llvm/bin/lld.exe", {Path(n).as_posix() for n in record["files"]})
+                    record["files"].pop("unicorn.dll")
+                    build.atomic_json(catalog, record)
+                    with self.assertRaisesRegex(ValueError, "untracked"):
+                        pipeline.read_catalog(catalog, "x86_64")
+                    with self.assertRaises(ValueError):
+                        pipeline.read_catalog(catalog, "aarch64")
 
     def test_pipeline_stage_order_and_failed_compile_never_publishes_or_installs(self):
         for fail in (False, True):
