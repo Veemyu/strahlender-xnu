@@ -28,6 +28,11 @@ def unicorn_dependency(explicit=None):
         if spec and spec.submodule_search_locations:
             location = next(iter(spec.submodule_search_locations))
     if not location:
+        # The documented dev setup (docs/BUILD.md): pip install --target tools/pydeps unicorn==2.1.4, without PYTHONPATH.
+        bundled = Path(os.environ.get("TOOLS_DIR") or ROOT / "tools") / "pydeps/unicorn"
+        if (bundled / "include/unicorn/unicorn.h").is_file():
+            location = str(bundled)
+    if not location:
         return None
     root = Path(location).resolve()
     header = root / "include/unicorn/unicorn.h"
