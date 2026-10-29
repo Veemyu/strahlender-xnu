@@ -28,7 +28,7 @@ jobs:
       - name: Install the test dependencies
         run: python -m pip install Pillow lz4 unicorn==2.1.4
       - name: Python test suite
-        run: python -m unittest discover -s scripts/tests -t .
+        run: python -m unittest discover -s scripts/tests
   rust:
     strategy:
       fail-fast: false
