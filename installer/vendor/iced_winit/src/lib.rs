@@ -76,9 +76,13 @@ where
     let settings = program.settings();
     let window_settings = program.window();
 
-    let event_loop = EventLoop::with_user_event()
-        .build()
-        .expect("Create event loop");
+    let mut event_loop_builder = EventLoop::with_user_event();
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("BDSP_INSTALLER_BACKGROUND").as_deref() == Some(std::ffi::OsStr::new("1")) {
+        use winit::platform::macos::EventLoopBuilderExtMacOS;
+        let _ = event_loop_builder.with_activate_ignoring_other_apps(false);
+    }
+    let event_loop = event_loop_builder.build().expect("Create event loop");
 
     let graphics_settings = settings.clone().into();
     let display_handle = event_loop.owned_display_handle();

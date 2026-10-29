@@ -13,3 +13,8 @@ the resize exactly as for a native resize event, then request a redraw.
 Without this, KDE Wayland fractional scaling stretches the old framebuffer
 when expanding the installer log instead of laying out the new content.
 Remove this patch when an upstream release handles synchronous resize results.
+
+For explicit macOS background launches, `BDSP_INSTALLER_BACKGROUND=1` disables
+Winit's default activation that ignores other apps. This allows a bundled
+installer launched through `open -g` to respect the active application. Normal
+launches retain the upstream activation behavior.
