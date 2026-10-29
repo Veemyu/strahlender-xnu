@@ -116,7 +116,7 @@ def publish(stage, work):
 
 
 def extract_game(base, prod_keys, work, executable, commands, *, update=None,
-                 title_keys=None, force=False, progress=None):
+                 title_keys=None, force=False, progress=None, icons=None):
     """Read only explicitly selected local inputs; emit stage labels, never tool text."""
     for path in (base, prod_keys, update, title_keys):
         if path:
@@ -136,7 +136,8 @@ def extract_game(base, prod_keys, work, executable, commands, *, update=None,
     sizes = (sum(path.stat().st_size for path in base.iterdir() if path.is_file())
              if kind == "nca" else base.stat().st_size, update.stat().st_size if update else 0)
     arguments = dict(base_kind=kind, base_path=str(base), update_path=str(update) if update else None)
-    if not force and helpers.manifest_matches(work, *sizes, **arguments):
+    if (not force and (not icons or (Path(icons) / "icons.json").is_file())
+            and helpers.manifest_matches(work, *sizes, **arguments)):
         return work / "manifest.json"
     if any(base.is_relative_to(work / name) for name in ("exefs", "romfs")):
         raise ValueError("Choose an original input outside the replaceable extracted game directories")
@@ -163,6 +164,9 @@ def extract_game(base, prod_keys, work, executable, commands, *, update=None,
         meta = related(rows, "Meta", title_id)
         selected = [(base_program, base_dir), (program, update_dir or base_dir)]
         selected += [(row, update_dir or base_dir) for row in (ctl, meta) if row]
+        base_ctl = related(base_rows, "Control", title_id) if update and icons else None
+        if base_ctl:
+            selected.append((base_ctl, base_dir))
         tool.prepare_title_keys(selected, title_keys)
         report("Extracting ExeFS and RomFS" + (" with the selected update" if update else ""))
         tool.run(*(("--basenca=" + base_program["path"],) if update else ()),
@@ -183,6 +187,15 @@ def extract_game(base, prod_keys, work, executable, commands, *, update=None,
             files = list((stage / "control").rglob("control.nacp"))
             if len(files) == 1:
                 display = helpers.nacp_display_version(files[0].read_bytes())
+        if icons:
+            # Original icon variants: the update's Control NCA wins, the base fills missing languages.
+            from scripts.recomp.app import game_icons
+            base_control = stage / "control-base" if update else stage / "control"
+            if base_ctl:
+                tool.run("--romfsdir=" + str(base_control), base_ctl["path"], discard_output=True)
+            game_icons.ingest(base_control if base_control.is_dir() else None,
+                              stage / "control" if update and (stage / "control").is_dir() else None,
+                              icons, title_id)
         report("Publishing verified extraction metadata")
         manifest = helpers.build_manifest(stage, title_id, version, display, bool(update), *sizes, **arguments)
         (stage / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

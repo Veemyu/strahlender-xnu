@@ -37,19 +37,14 @@ A different dump exposes only variants actually present there.
 
 ## Extraction and automatic builds
 
-The normal scripts/build_all.sh extraction stage retains source icons before
-cleaning up control data. Its game-extraction entry point uses a base XCI and an
-optional update NSP. The dedicated icon extractor also accepts a base NSP:
+The extraction stage (scripts/build_all.sh, or `extract_game.py` in the Windows
+installer pipeline) retains the source icons from the base XCI or NSP and the
+optional update NSP in `work/recomp/icons/source` before it cleans up control data.
+There is no separate icon extractor; run the extract stage once and every platform
+build reads the same source:
 
 ```sh
-python3 scripts/recomp/app/game_icons.py extract --xci <game.xci> --prod-keys <prod.keys>
-python3 scripts/recomp/app/game_icons.py extract --nsp <base-game.nsp> --prod-keys <prod.keys>
-
-# Optional update/title keys
-python3 scripts/recomp/app/game_icons.py extract --xci <game.xci> --update-nsp <update.nsp> --prod-keys <prod.keys> --title-keys <title.keys>
-
-# Existing extracted NCAs, without regenerating guest code or RomFS
-python3 scripts/recomp/app/game_icons.py extract --prod-keys <prod.keys>
+scripts/build_all.sh --only extract --xci <game.xci> --nsp <update.nsp> --prod-keys <prod.keys>
 ```
 
 Key values and potentially sensitive hactool output are never logged. Keys are

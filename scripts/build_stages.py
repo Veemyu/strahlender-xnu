@@ -330,7 +330,7 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
             add("Original game icons", True, "created by stage extract", level="note")
         else:
             add("Original game icons", False, icon_source,
-                "scripts/build_all.sh extract ... (reads the icon from your game file) or game_icons.py extract")
+                "scripts/build_all.sh extract ... (reads the icon from your game file)")
         if not (s & HEAVY_STAGES):   # otherwise the general space check (stricter) already covers it
             need = min(RECOMP_MIN_FREE_GB, min_free_gb)
             gb = free(work)

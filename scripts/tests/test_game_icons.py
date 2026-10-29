@@ -300,45 +300,6 @@ class GameIconTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             icons.pick_control(path, "0000000000001000")
 
-    def test_fresh_xci_and_nsp_icon_supply_chain_needs_no_preexisting_work_data(self):
-        import build_helpers
-        from icon_composer import write_documents
-        # Simulate only container decryption; all normalization and composition is real.
-        keys = self.root / "synthetic.keys"
-        keys.write_text("not real keys")
-        picture = self.picture(self.base, "AmericanEnglish", "red").read_bytes()
-        def hactool(tool, keyfile, *args, **kwargs):
-            target = next((str(a) for a in args if str(a).startswith(("--securedir=", "--pfs0dir="))), None)
-            if target:
-                folder = Path(target.split("=", 1)[1]); folder.mkdir()
-                for name in ("program", "control", "other-control"):
-                    (folder / (name + ".nca")).write_bytes(b"synthetic NCA")
-            target = next((str(a) for a in args if str(a).startswith("--romfsdir=")), None)
-            if target:
-                folder = Path(target.split("=", 1)[1]); folder.mkdir()
-                (folder / "icon_AmericanEnglish.dat").write_bytes(picture)
-            return 0, "synthetic header"
-        def info(text, path):
-            name = Path(path).stem
-            return {"content_type": "Program" if name == "program" else "Control",
-                    "title_id": "0000000000002000" if name == "other-control" else "0000000000001000",
-                    "rights_id": "", "path": path}
-        for kind in ("xci", "nsp"):
-            args = SimpleNamespace(prod_keys=str(keys), title_keys=None, title_id=None,
-                npdm=str(self.root / "missing.npdm"), output=self.root / kind,
-                xci="own.xci" if kind == "xci" else None, nsp="own.nsp" if kind == "nsp" else None,
-                update_nsp=None, base_dir=None, update_dir=None, hactool="synthetic-tool")
-            with patch.object(icons, "silent_hactool", side_effect=hactool), \
-                    patch.object(build_helpers, "parse_nca_info", side_effect=info):
-                manifest = icons.extract(args)
-            self.assertEqual([v["id"] for v in manifest["variants"]], ["en-US"])
-            self.assertEqual(manifest["title_id"], "0000000000001000")
-            documents = write_documents(manifest, args.output, self.root / (kind + "-documents"))
-            for package in documents.values():
-                with Image.open(package / "Assets/artwork.png") as image:
-                    self.assertEqual(image.size, (1024, 1024))
-                    self.assertEqual(image.getchannel("A").getextrema(), (255, 255))
-
     def test_ios_catalog_and_settings_include_all_variants(self):
         self.nacp(self.base, {"de": "Diamant", "ja": "ダイヤモンド"})
         self.fixture()

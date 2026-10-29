@@ -163,6 +163,7 @@ def build_game(args, emit):
         value = getattr(args, name, None)
         if value and Path(value).resolve().is_relative_to(output):
             raise ValueError("Selected inputs must remain outside the replaceable native build cache")
+    icons = work / "recomp/icons/source"  # outside the replaceable build cache, like the other pipelines
     generator_progress = GeneratorProgress(4 + int((work / "exefs/subsdk1").is_file()))
     def tool_line(line):
         progress = generator_progress.feed(line)
@@ -190,7 +191,7 @@ def build_game(args, emit):
         stage("extract", lambda: extract_game(
             args.base, args.prod_keys, work, bundles["hactool"] / "hactool.exe", commands,
             update=args.update, title_keys=getattr(args, "title_keys", None),
-            progress=lambda text: emit("log", level="diagnostic", message=text)))
+            progress=lambda text: emit("log", level="diagnostic", message=text), icons=icons))
         def verify_exefs():
             names = build.modules(work / "exefs")
             if not (work / "exefs/main.npdm").is_file():
@@ -198,19 +199,7 @@ def build_game(args, emit):
             generator_progress.total = len(names)
         stage("exefs", verify_exefs)
         def prepare_icons():
-            arguments = [
-                "extract", "--xci" if Path(args.base).suffix.lower() == ".xci" else "--nsp",
-                str(args.base), "--prod-keys", str(args.prod_keys),
-                "--npdm", str(work / "exefs/main.npdm"),
-                "--hactool", str(bundles["hactool"] / "hactool.exe"),
-                "--output", str(output / "icon-source")]
-            if args.update:
-                arguments += ["--update-nsp", str(args.update)]
-            if getattr(args, "title_keys", None):
-                arguments += ["--title-keys", str(args.title_keys)]
-            if game_icons.main(arguments):
-                raise ValueError("Original Windows app icon extraction failed")
-            return game_icons.build_windows(output / "icon-source", output / "icons/windows")
+            return game_icons.build_windows(icons, output / "icons/windows")
         if getattr(args, "clean_build", False) and output.exists():
             # Keep all old outputs recoverable while building a fresh target cache.
             previous = output.with_name(output.name + "-previous-" + uuid.uuid4().hex)

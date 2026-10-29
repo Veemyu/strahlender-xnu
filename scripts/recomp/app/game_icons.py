@@ -355,91 +355,9 @@ def mod_fallback_icon(data):
     return stream.getvalue()
 
 
-def title_from_npdm(path):
-    data = Path(path).read_bytes()
-    if len(data) < 0x80 or data[:4] != b"META":
-        raise ValueError("Invalid main.npdm")
-    aci = struct.unpack_from("<I", data, 0x70)[0]
-    if data[aci:aci + 4] != b"ACI0" or len(data) < aci + 0x18:
-        raise ValueError("ACI0 is missing from main.npdm")
-    return "%016x" % struct.unpack_from("<Q", data, aci + 0x10)[0]
-
-
 def pick_control(tsv, title_id):
     import build_helpers as helpers
     return helpers.pick_related_nca(Path(tsv).read_text().splitlines(), "Control", title_id)
-
-
-def silent_hactool(tool, keys, *args, titlekey=None):
-    command = [str(tool), "-k", str(keys)]
-    if titlekey:
-        command.append("--titlekey=" + titlekey)
-    result = subprocess.run(command + list(map(str, args)), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    return result.returncode, result.stdout.decode("utf-8", errors="replace")
-
-
-def extract(args):
-    """Read only explicitly selected containers/NCA directories; never expose hactool output."""
-    import build_helpers as helpers
-    if not args.prod_keys or not Path(args.prod_keys).is_file():
-        raise ValueError("Provide --prod-keys as a local file path, never key values")
-    title_id = args.title_id or (title_from_npdm(args.npdm) if Path(args.npdm).is_file() else None)
-    output = output_path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="icon-extract-", dir=output.parent) as temporary:
-        temporary = Path(temporary)
-        groups = []
-        for index, (container, kind, directory) in enumerate(((args.xci or args.nsp, "xci" if args.xci else "pfs0", args.base_dir),
-                                                            (args.update_nsp, "pfs0", args.update_dir))):
-            if container:
-                directory = temporary / ("nca-" + str(index))
-                flag = "--securedir=" if kind == "xci" else "--pfs0dir="
-                rc, _ = silent_hactool(args.hactool, args.prod_keys, "-t", kind, flag + str(directory), container)
-                if rc:
-                    raise ValueError("Could not unpack the supplied container for icon extraction")
-            if not directory or not Path(directory).is_dir():
-                groups.append(None)
-                continue
-            infos = []
-            for path in sorted(Path(directory).glob("*.nca")):
-                rc, text = silent_hactool(args.hactool, args.prod_keys, "-i", path)
-                if rc:
-                    continue
-                try:
-                    info = helpers.parse_nca_info(text, str(path))
-                except ValueError:
-                    continue
-                infos.append(info)
-            if title_id is None:
-                families = {int(info["title_id"], 16) & ~0xFFF for info in infos
-                            if info["content_type"].lower() == "program"}
-                if index != 0 or len(families) != 1:
-                    raise ValueError("Cannot identify one base application; provide --title-id")
-                title_id = "%016X" % families.pop()
-            candidates = [info for info in infos if info["content_type"].lower() == "control"
-                          and (int(info["title_id"], 16) & ~0xFFF) == (int(title_id, 16) & ~0xFFF)]
-            if not candidates:
-                groups.append(None)
-                continue
-            # Multiple matching Control NCAs are ambiguous; do not pick another title/version by size.
-            if len(candidates) != 1:
-                raise ValueError("Multiple matching Control NCAs; provide a distinct base/update directory")
-            info = candidates[0]
-            titlekey = None
-            if info["rights_id"]:
-                try:
-                    text = Path(args.title_keys).read_text() if args.title_keys else None
-                    titlekey, _ = helpers.find_title_key(info["rights_id"], str(directory), text)
-                except KeyError:
-                    raise ValueError("Title key for the Control NCA is missing") from None
-            control = temporary / ("control-" + str(index))
-            rc, _ = silent_hactool(args.hactool, args.prod_keys, "--romfsdir=" + str(control), info["path"], titlekey=titlekey)
-            if rc:
-                raise ValueError("Could not decrypt the Control NCA")
-            groups.append(control)
-        if title_id is None:
-            raise ValueError("No base application found; provide a base NSP/XCI or --title-id")
-        return ingest(groups[0], groups[1], output, title_id)
 
 
 def load_source(source):
@@ -485,7 +403,7 @@ def prepared(source, output, mod_root=None, mod_name=None):
     manifest = load_source(source)
     if not manifest["variants"]:
         raise ValueError("No original game icon found in %s: run the extract stage (scripts/build_all.sh extract ...) "
-                         "or game_icons.py extract before building" % source)
+                         "before building" % source)
     for entry in manifest["variants"]:
         shutil.copyfile(Path(source) / entry["image"], output / entry["image"])
     write_json(output / "icons.json", manifest)
@@ -650,19 +568,6 @@ def main(argv=None):
     ingest_parser.add_argument("--update-control")
     ingest_parser.add_argument("--title-id", default="")
     ingest_parser.add_argument("--output", default="work/recomp/icons/source")
-    extraction = sub.add_parser("extract")
-    containers = extraction.add_mutually_exclusive_group()
-    containers.add_argument("--xci")
-    containers.add_argument("--nsp")
-    extraction.add_argument("--update-nsp")
-    extraction.add_argument("--base-dir", default="work/base")
-    extraction.add_argument("--update-dir", default="work/update")
-    extraction.add_argument("--prod-keys", default=os.environ.get("BDSP_PROD_KEYS"))
-    extraction.add_argument("--title-keys")
-    extraction.add_argument("--title-id")
-    extraction.add_argument("--npdm", default="work/exefs/main.npdm")
-    extraction.add_argument("--hactool", default="tools/hactool/hactool")
-    extraction.add_argument("--output", default="work/recomp/icons/source")
     mod_icons = sub.add_parser("overlay-mod")
     mod_icons.add_argument("--source", required=True)
     mod_icons.add_argument("--mod-root", required=True)
@@ -691,9 +596,7 @@ def main(argv=None):
     previewing.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == "extract":
-            extract(args)
-        elif args.command == "ingest":
+        if args.command == "ingest":
             ingest(args.base_control, args.update_control, args.output, args.title_id)
         elif args.command == "overlay-mod":
             overlay_mod(args.source, args.mod_root, args.output, args.mod_name)

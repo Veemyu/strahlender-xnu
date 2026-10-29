@@ -153,5 +153,40 @@ class ExtractionTests(unittest.TestCase):
             self.assertNotEqual(json.loads(manifest.read_text())["inputs"], record["inputs"])
 
 
+    def test_icons_are_ingested_from_the_control_nca_and_missing_icons_defeat_the_cache(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            base, work, icons = root / "input", root / "work", root / "work/icons"
+            base.mkdir()
+            for name in ("program", "control"):
+                (base / (name + ".nca")).write_bytes(name.encode())
+            keys = root / "selected.keys"
+            keys.write_text("synthetic keys")
+            class Commands:
+                def capture(self, arguments, **options):
+                    if "-i" in arguments:
+                        kind = "Program" if Path(str(arguments[-1])).stem == "program" else "Control"
+                        return ("Title ID: 0100000011d90000\nContent Type: %s\nContent Size: 1000\n" % kind).encode()
+                    for argument in arguments:
+                        if str(argument).startswith(("--exefsdir=", "--romfsdir=")):
+                            output = Path(str(argument).split("=", 1)[1])
+                            output.mkdir()
+                            (output / ("main" if "exefs" in str(argument) else "asset.bin")).write_bytes(b"x")
+                    return b""
+            seen = []
+            def ingest(base_control, update_control, destination, title_id):
+                seen.append((base_control.name, update_control, title_id))
+                Path(destination).mkdir(parents=True, exist_ok=True)
+                (Path(destination) / "icons.json").write_text("{}")
+            with patch("scripts.recomp.app.game_icons.ingest", side_effect=ingest):
+                extraction.extract_game(base, keys, work, "tool.exe", Commands(), icons=icons)
+                self.assertEqual(seen, [("control", None, "0100000011d90000")])
+                extraction.extract_game(base, keys, work, "tool.exe", Commands(), icons=icons)
+                self.assertEqual(len(seen), 1)  # manifest and icons match: nothing is extracted again
+                (icons / "icons.json").unlink()
+                extraction.extract_game(base, keys, work, "tool.exe", Commands(), icons=icons)
+                self.assertEqual(len(seen), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
