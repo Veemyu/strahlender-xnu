@@ -86,7 +86,7 @@ pub struct GeneratorProgress {
 
 #[derive(Debug, Clone)]
 pub struct BuildProgress {
-    pub stages: [StageProgress; 11],
+    pub stages: [StageProgress; Stage::ALL.len()],
     pub active: Stage,
     pub generator: GeneratorProgress,
 }
@@ -94,7 +94,7 @@ pub struct BuildProgress {
 impl Default for BuildProgress {
     fn default() -> Self {
         Self {
-            stages: [StageProgress::default(); 11],
+            stages: [StageProgress::default(); Stage::ALL.len()],
             active: Stage::Source,
             generator: GeneratorProgress::default(),
         }
@@ -150,6 +150,34 @@ impl BuildProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_declared_stage_has_storage_including_installation() {
+        let mut progress = BuildProgress::default();
+        for (index, stage) in Stage::ALL.into_iter().enumerate() {
+            assert_eq!(stage.index(), index);
+            assert_eq!(progress.fraction(stage), 0.0);
+        }
+        for id in [
+            "source",
+            "prerequisites",
+            "firmware",
+            "extract",
+            "exefs",
+            "signing",
+            "eh_gen",
+            "clang",
+            "images",
+            "runtime",
+            "package",
+            "install",
+        ] {
+            progress.step(id, "started");
+            progress.count(id, 1, 2);
+            progress.step(id, "complete");
+        }
+        assert!(progress.stages.iter().all(|s| s.done));
+    }
 
     #[test]
     fn native_progress_never_rewinds_at_module_boundaries() {
