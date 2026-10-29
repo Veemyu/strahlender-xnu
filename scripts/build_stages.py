@@ -220,7 +220,7 @@ def stage_hash(stage, root, work, target="all", env=None):
         rec = os.path.join(scripts, "recomp")
         parts["modules"] = {m: hash_file(os.path.join(work, "exefs", m)) for m in ("main", "sdk", "subsdk0", "rtld")}
         parts["generator"] = {n: hash_file(os.path.join(rec, n)) for n in
-                              ("native-generator/build.py", "parallel_jobs.py", "gen_all.sh", "c_exact/fp_env.h", "rt/cpu.h")}
+                              ("native-generator/build.py", "parallel_jobs.py", "gen_all.sh", "module_bases.sh", "c_exact/fp_env.h", "rt/cpu.h")}
         parts["native_codegen"] = hash_tree_content(os.path.join(rec, "native-generator"), (".c", ".h", ".json"), skip_dirs=("__pycache__",))
         parts["native_dependencies"] = hash_file(os.path.join(root, "installer/runtime/wheels.lock.json"))
         if stage == "recomp":

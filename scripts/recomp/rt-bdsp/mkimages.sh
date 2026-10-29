@@ -9,7 +9,7 @@ O=${IMG:-work/recomp/img}
 EXEFS_DIR=${BDSP_EXEFS_DIR:-work/exefs}
 CODEGEN="$(python3 scripts/recomp/native-generator/build.py)"
 mkdir -p "$O"
-base_of() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; rtld) echo 0x7008000000;; subsdk1) echo 0x7005708000;; *) return 2;; esac; }
+source scripts/recomp/module_bases.sh
 modules=(main sdk subsdk0)
 [ ! -f "$EXEFS_DIR/subsdk1" ] || modules+=(subsdk1)
 links=()

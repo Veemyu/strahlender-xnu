@@ -7,8 +7,8 @@ W=${RECOMP_DIR:-work/recomp}
 JOBS=${JOBS:-$(python3 scripts/recomp/parallel_jobs.py)}  # override with JOBS=n
 TIMEV=(/usr/bin/time -f "%e s wall  %U s user  %S s sys  %M KB maxrss")
 
-# Module bases as in the spike's gen_all.sh
-base_of() { case "$1" in main) echo 0x7000000000;; sdk) echo 0x7006000000;; subsdk0) echo 0x7007000000;; rtld) echo 0x7008000000;; subsdk1) echo 0x7005708000;; *) return 2;; esac; }
+# Module bases: one definition for the Mac and Linux scripts
+source scripts/recomp/module_bases.sh
 
 source scripts/recomp/linux/cpu_flags.sh
 CPU_FLAGS=$(bdsp_cpu_flags) || exit $?
