@@ -16,11 +16,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifdef USE_LAS_IPC
-uint32_t ipc_connect_named_port(const char *name);  // LASRecomp runtime/ipc.c (linked only)
-int ipc_handle_request(Cpu *c, uint32_t handle);
-#endif
-
 #define HLE_BASE   0x7080000000ull
 #define STACK_LO   0x7200000000ull
 #define STACK_SZ   0x100000ull          // 1 MiB laut NPDM
@@ -328,21 +323,11 @@ void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x1F: {  // ConnectToNamedPort(name)
         const char *name = (const char *)(uintptr_t)c->x[1];
         printf("  ConnectToNamedPort \"%.12s\"\n", name);
-#ifdef USE_LAS_IPC
-        uint32_t h = ipc_connect_named_port(name);
-        c->x[0] = h ? 0 : 0xF601; c->x[1] = h;
-        return;
-#endif
         if (ipc_seen < 32) { snprintf(ipc_names[ipc_seen++], 32, "%.12s", name); }
         if (!strncmp(name, "sm:", 3)) { c->x[0] = 0; c->x[1] = session_new("sm:"); return; }
         c->x[0] = 0xF601; return;
     }
     case 0x21: case 0x22:
-#ifdef USE_LAS_IPC
-        cnt.ipc++;
-        c->x[0] = (uint32_t)ipc_handle_request(c, (uint32_t)c->x[0]);
-        return;
-#endif
         ipc_request(c); return;
     case 0x26: die("Break (guest aborts, reason %llx): %s", c->x[0], "svcBreak");
     case 0x27: printf("  OutputDebugString: %.*s\n", (int)c->x[1], (const char *)(uintptr_t)c->x[0]); c->x[0] = 0; return;

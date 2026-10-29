@@ -1,6 +1,6 @@
 c_exact: Hilfsdateien für bitgenaue FP-/SIMD-Ausführung im portablen c-Modus (docs/recomp-diff.md)
 
-Alles in diesem Ordner ist eigener Code dieses Projekts. Der c-Modus selbst (scripts/recomp/upstream/generator/{lifter,simd_c}.py,
+Alles in diesem Ordner ist eigener Code dieses Projekts. Der c-Modus selbst (scripts/recomp/upstream/generator/{lifter,simd_c}.py (nur noch in der Git-Historie, Stand a26bc12),
 scripts/recomp/upstream/runtime/{simd,simd_fp}.h) stammt von LASRecomp (MIT-Lizenz, Copyright (c) 2026 Peiikai, Freigabe des
 Nutzers) und bleibt unverändert; er wird nur per #include bzw. Python-Import benutzt. Der Lizenztext liegt in
 scripts/recomp/upstream/LICENSE. Spielbytes (NSO, RomFS) gehören nicht in dieses Repository.

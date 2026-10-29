@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:c3b1a395-4b70-5791-b960-66c8fa731040",
+  "serialNumber": "urn:uuid:15d862a9-9cba-5ca3-b57f-fd574681c067",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-29T16:50:27Z",
+    "timestamp": "2026-10-29T18:12:23Z",
     "tools": {
       "components": [
         {
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "root",
       "name": "strahlender-xnu",
-      "version": "26df251-dirty",
+      "version": "782423f-dirty",
       "licenses": [
         {
           "license": {
@@ -25,7 +25,7 @@
           }
         }
       ],
-      "description": "Repository commit 26df251e98aa3daa967f44e1d966c6fb8fbae136. Uncommitted files at generation: THIRD_PARTY_NOTICES.md, scripts/recomp/native-generator/NOTICE.md, scripts/recomp/native-generator/README.md, scripts/recomp/native-generator/build.py, scripts/recomp/native-generator/vendor/lz4/lz4.c, scripts/recomp/native-generator/vendor/lz4/lz4.h, scripts/recomp/native-generator/vendor/lz4/source.json, scripts/sbom/generate_sbom.py, pico.save, scripts/tests/test_native_lz4_pin.py."
+      "description": "Repository commit 782423f1f72a6794986ac1abe82cdcb29a9fe4d4. Uncommitted files at generation: scripts/recomp/linux/local/las_runtime.sh, scripts/recomp/linux/local/probe.sh, scripts/recomp/test/boot_probe.c, scripts/recomp/test/las_shim.c, scripts/recomp/test/run_boot_probe_las.sh, scripts/sbom/generate_sbom.py, pico.save."
     }
   },
   "components": [
@@ -178,117 +178,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:github/AppImage/type2-runtime@20251108",
-      "name": "AppImage type2-runtime",
-      "version": "20251108",
-      "purl": "pkg:github/AppImage/type2-runtime@20251108",
-      "scope": "required",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "shipped"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/linux/package.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/AppImage/type2-runtime"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:github/AppImage/appimagetool@1.9.1",
-      "name": "appimagetool",
-      "version": "1.9.1",
-      "purl": "pkg:github/AppImage/appimagetool@1.9.1",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "build-tool"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/linux/package.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/AppImage/appimagetool"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:github/ARM-software/astc-encoder",
-      "name": "ARM astc-encoder (reference, cloned for tests)",
-      "version": "unpinned (git clone --depth 1)",
-      "purl": "pkg:github/ARM-software/astc-encoder",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "dev-test"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/test_astc.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/ARM-software/astc-encoder"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:generic/cjson",
       "name": "cJSON (vendored in hactool)",
       "version": "unknown",
@@ -326,46 +215,8 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:generic/cpython@3.12.14",
-      "name": "CPython (macOS generator environment)",
-      "version": "3.12.14+20260924",
-      "purl": "pkg:generic/cpython@3.12.14",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "PSF-2.0"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "build-tool"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/build_deps_macos.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260924"
-        }
-      ],
-      "description": "Differs from the installer runtime (CPython 3.13.15). Not yet aligned."
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:generic/ffmpeg@9.0.2",
-      "name": "FFmpeg (pinned source build for macOS, Linux, Windows and iOS)",
+      "name": "FFmpeg (pinned source build for iOS)",
       "version": "9.0.2",
       "purl": "pkg:generic/ffmpeg@9.0.2",
       "scope": "required",
@@ -389,7 +240,7 @@
         },
         {
           "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/build_deps_macos.sh, scripts/recomp/upstream/generator/linux/build_deps.sh, scripts/recomp/ios/build_ffmpeg_ios.sh"
+          "value": "scripts/recomp/ios/build_ffmpeg_ios.sh"
         }
       ],
       "externalReferences": [
@@ -398,7 +249,7 @@
           "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz"
         }
       ],
-      "description": "License from the comment 'LGPL-only FFmpeg' in linux/build_deps.sh; verify the configure flags. Bundled into the macOS app by scripts/recomp/app/bundle_dylibs.py (make_app.sh) and into the iOS app."
+      "description": "Built from the pinned source by scripts/recomp/ios/build_ffmpeg_ios.sh and bundled into the iOS app; verify the configure flags for the LGPL claim. The macOS app bundles the host's FFmpeg libraries through scripts/recomp/app/bundle_dylibs.py (make_app.sh); Linux uses distribution packages."
     },
     {
       "type": "library",
@@ -550,44 +401,6 @@
       ],
       "copyright": "Copyright (c) 2016 Perfare",
       "description": "Binary in tools/il2cppdumper-bin (Mach-O arm64) is built from this source."
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:github/keystone-engine/keystone@0.9.2",
-      "name": "Keystone assembler engine (seed generator helper)",
-      "version": "0.9.2",
-      "purl": "pkg:github/keystone-engine/keystone@0.9.2",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "GPL-2.0-only"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "dev-test"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/build_deps_macos.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/keystone-engine/keystone"
-        }
-      ],
-      "description": "GPL: not shipped. License to verify against upstream."
     },
     {
       "type": "library",
@@ -806,118 +619,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:github/libsdl-org/SDL@release-3.4.16",
-      "name": "SDL3 (Linux build input)",
-      "version": "3.4.16",
-      "purl": "pkg:github/libsdl-org/SDL@release-3.4.16",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "Zlib"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "build-tool"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/linux/build_deps.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:github/libsdl-org/SDL@release-3.4.18",
-      "name": "SDL3 (macOS build input)",
-      "version": "3.4.18",
-      "purl": "pkg:github/libsdl-org/SDL@release-3.4.18",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "Zlib"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "build-tool"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/build_deps_macos.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz"
-        }
-      ],
-      "description": "Differs from the Linux pin (3.4.16). Not yet aligned."
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:github/google/shaderc@v2026.3",
-      "name": "shaderc (Linux build input)",
-      "version": "v2026.3",
-      "purl": "pkg:github/google/shaderc@v2026.3",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "build-tool"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/linux/build_deps.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/google/shaderc"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:generic/vgmstream",
       "name": "vgmstream",
       "version": "unknown",
@@ -976,7 +677,7 @@
         },
         {
           "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/linux/build_deps.sh, scripts/recomp/rt-bdsp/nvn/vulkan/src/nvn/vulkan/vma.cpp"
+          "value": "scripts/recomp/rt-bdsp/nvn/vulkan/src/nvn/vulkan/vma.cpp"
         }
       ],
       "externalReferences": [
@@ -985,81 +686,6 @@
           "url": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator"
         }
       ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:github/KhronosGroup/Vulkan-Headers@vulkan-sdk-1.4.350.1",
-      "name": "Vulkan-Headers (Linux build input)",
-      "version": "1.4.350.1",
-      "purl": "pkg:github/KhronosGroup/Vulkan-Headers@vulkan-sdk-1.4.350.1",
-      "scope": "optional",
-      "licenses": [
-        {
-          "expression": "Apache-2.0 OR MIT"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "build-tool"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/linux/build_deps.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/KhronosGroup/Vulkan-Headers"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:generic/zig@0.17.0",
-      "name": "Zig compiler (Windows release, zig_slim)",
-      "version": "0.17.0",
-      "purl": "pkg:generic/zig@0.17.0",
-      "scope": "required",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "properties": [
-        {
-          "name": "bdsp:category",
-          "value": "library"
-        },
-        {
-          "name": "bdsp:distribution",
-          "value": "shipped"
-        },
-        {
-          "name": "bdsp:repository-state",
-          "value": "tracked"
-        },
-        {
-          "name": "bdsp:evidence",
-          "value": "scripts/recomp/upstream/generator/fetch_zig.sh, scripts/recomp/upstream/generator/zig_slim.sh"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://ziglang.org/download/0.17.0/"
-        }
-      ],
-      "description": "Pinned by SHA-256 for aarch64-macos, x86_64-linux, aarch64-linux, x86_64-windows."
     },
     {
       "type": "library",
@@ -1910,6 +1536,50 @@
         }
       ],
       "description": "Repository: https://github.com/nical/android_system_properties"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/arbitrary@1.5.0",
+      "name": "arbitrary",
+      "version": "1.5.0",
+      "purl": "pkg:cargo/arbitrary@1.5.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/arbitrary/1.5.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
+        }
+      ],
+      "description": "Repository: https://github.com/rust-fuzz/arbitrary/"
     },
     {
       "type": "library",
@@ -4726,6 +4396,50 @@
         }
       ],
       "description": "Repository: https://github.com/RustCrypto/formats/tree/master/der"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/derive_arbitrary@1.5.0",
+      "name": "derive_arbitrary",
+      "version": "1.5.0",
+      "purl": "pkg:cargo/derive_arbitrary@1.5.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/derive_arbitrary/1.5.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
+        }
+      ],
+      "description": "Repository: https://github.com/rust-fuzz/arbitrary"
     },
     {
       "type": "library",
@@ -23951,6 +23665,50 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/zip@2.6.1",
+      "name": "zip",
+      "version": "2.6.1",
+      "purl": "pkg:cargo/zip@2.6.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "bdsp:category",
+          "value": "rust-crate"
+        },
+        {
+          "name": "bdsp:distribution",
+          "value": "shipped"
+        },
+        {
+          "name": "bdsp:repository-state",
+          "value": "tracked"
+        },
+        {
+          "name": "bdsp:evidence",
+          "value": "installer/Cargo.lock"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://crates.io/crates/zip/2.6.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1dcb24d0152526ae49b9b96c1dcf71850ca1e0b882e4e28ed898a93c41334744"
+        }
+      ],
+      "description": "Repository: https://github.com/zip-rs/zip2.git"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/zlib-rs@0.6.8",
       "name": "zlib-rs",
       "version": "0.6.8",
@@ -25086,30 +24844,20 @@
         "pkg:generic/octicons-mark-github-16",
         "pkg:generic/lucide-icons@c32d98db9b8e11ac5aa7db58d70d17b662679461",
         "pkg:generic/fira-sans",
-        "pkg:github/AppImage/type2-runtime@20251108",
-        "pkg:github/AppImage/appimagetool@1.9.1",
-        "pkg:github/ARM-software/astc-encoder",
         "pkg:generic/cjson",
-        "pkg:generic/cpython@3.12.14",
         "pkg:generic/ffmpeg@9.0.2",
         "pkg:generic/fmod",
         "pkg:generic/ghidra",
         "pkg:github/SciresM/hactool@1d64a83450e025622f3468c28fc4164dad2c5ef6",
         "pkg:github/Perfare/Il2CppDumper@4741d46ba9cd6159c5d853eb9d6fc48b4bfa2b1a",
-        "pkg:github/keystone-engine/keystone@0.9.2",
         "pkg:generic/libogg@1.3.5",
         "pkg:generic/libvorbis@1.3.7",
         "pkg:github/lz4/lz4@v1.9.4",
         "pkg:generic/lz4-c",
         "pkg:generic/mbedtls@2.6.1",
         "pkg:generic/nx2elf",
-        "pkg:github/libsdl-org/SDL@release-3.4.16",
-        "pkg:github/libsdl-org/SDL@release-3.4.18",
-        "pkg:github/google/shaderc@v2026.3",
         "pkg:generic/vgmstream",
         "pkg:github/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@v3.3.0",
-        "pkg:github/KhronosGroup/Vulkan-Headers@vulkan-sdk-1.4.350.1",
-        "pkg:generic/zig@0.17.0",
         "pkg:pypi/capstone@5.0.9",
         "pkg:pypi/unicorn@2.1.4",
         "pkg:pypi/unitypy@1.25.4",
@@ -25165,7 +24913,9 @@
         "pkg:cargo/sha2@0.10.9",
         "pkg:cargo/sys-locale@0.3.2",
         "pkg:cargo/tar@0.4.46",
-        "pkg:cargo/tokio@1.54.1"
+        "pkg:cargo/tokio@1.54.1",
+        "pkg:cargo/ttf-parser@0.25.1",
+        "pkg:cargo/zip@2.6.1"
       ]
     },
     {
@@ -25181,23 +24931,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:github/AppImage/type2-runtime@20251108",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:github/AppImage/appimagetool@1.9.1",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:github/ARM-software/astc-encoder",
-      "dependsOn": []
-    },
-    {
       "ref": "pkg:generic/cjson",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:generic/cpython@3.12.14",
       "dependsOn": []
     },
     {
@@ -25218,10 +24952,6 @@
     },
     {
       "ref": "pkg:github/Perfare/Il2CppDumper@4741d46ba9cd6159c5d853eb9d6fc48b4bfa2b1a",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:github/keystone-engine/keystone@0.9.2",
       "dependsOn": []
     },
     {
@@ -25249,31 +24979,11 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:github/libsdl-org/SDL@release-3.4.16",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:github/libsdl-org/SDL@release-3.4.18",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:github/google/shaderc@v2026.3",
-      "dependsOn": []
-    },
-    {
       "ref": "pkg:generic/vgmstream",
       "dependsOn": []
     },
     {
       "ref": "pkg:github/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@v3.3.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:github/KhronosGroup/Vulkan-Headers@vulkan-sdk-1.4.350.1",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:generic/zig@0.17.0",
       "dependsOn": []
     },
     {
@@ -25406,6 +25116,12 @@
       "ref": "pkg:cargo/android_system_properties@0.1.6",
       "dependsOn": [
         "pkg:cargo/libc@0.2.191"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/arbitrary@1.5.0",
+      "dependsOn": [
+        "pkg:cargo/derive_arbitrary@1.5.0"
       ]
     },
     {
@@ -25825,6 +25541,14 @@
       "dependsOn": [
         "pkg:cargo/const-oid@0.9.6",
         "pkg:cargo/zeroize@1.9.1"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/derive_arbitrary@1.5.0",
+      "dependsOn": [
+        "pkg:cargo/proc-macro2@1.0.107",
+        "pkg:cargo/quote@1.0.47",
+        "pkg:cargo/syn@3.0.9"
       ]
     },
     {
@@ -29152,6 +28876,17 @@
         "pkg:cargo/proc-macro2@1.0.107",
         "pkg:cargo/quote@1.0.47",
         "pkg:cargo/syn@3.0.9"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/zip@2.6.1",
+      "dependsOn": [
+        "pkg:cargo/arbitrary@1.5.0",
+        "pkg:cargo/crc32fast@1.5.3",
+        "pkg:cargo/crossbeam-utils@0.8.23",
+        "pkg:cargo/flate2@1.1.10",
+        "pkg:cargo/indexmap@2.14.2",
+        "pkg:cargo/memchr@2.8.3"
       ]
     },
     {

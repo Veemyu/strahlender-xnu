@@ -17,8 +17,8 @@ exists; treat them as reference values from 2026-10-19/20.
 | `vk_build.sh [--qt]` | builds `rt-bdsp` with the Vulkan backend (`NVN_BACKEND=vulkan`); `--qt` adds the in-process Qt frontend |
 | `vk_run.sh` | runs the Vulkan build, headless by default (`--headless`, `--window WxH`, `--timeout S`, `--screenshot-after N`) |
 | `vk_qt.sh`, `vk_qt_build.sh` | launch the Qt frontend (in-process; `BDSP_QT_PROCESS=1` selects the older separate-process X11 host) and build that host (CMake) |
-| `probe.sh <test>` | Linux counterparts of the spike probes: `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `boot-las`, `bdsp` |
-| `las_runtime.sh`, `incr_test.sh` | compile check of the LAS runtime path; measurement of incremental rebuilds |
+| `probe.sh <test>` | Linux counterparts of the spike probes: `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `bdsp` |
+| `incr_test.sh` | measurement of incremental rebuilds |
 
 `compat/mach/*.h` is a Mach compatibility layer (time, thread suspension by signal, `task_info`, `mach_vm_*`) so that the shared
 runtime compiles on Linux; `deps.sh` holds the dependency checks the scripts use. A final macOS or iPadOS build always comes from the

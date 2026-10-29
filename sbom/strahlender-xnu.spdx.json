@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "strahlender-xnu 26df251-dirty SBOM",
-  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-c3b1a395-4b70-5791-b960-66c8fa731040",
+  "name": "strahlender-xnu 782423f-dirty SBOM",
+  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-15d862a9-9cba-5ca3-b57f-fd574681c067",
   "creationInfo": {
-    "created": "2026-10-29T16:50:27Z",
+    "created": "2026-10-29T18:12:23Z",
     "creators": [
       "Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)"
     ]
@@ -17,14 +17,14 @@
     {
       "SPDXID": "SPDXRef-strahlender-xnu",
       "name": "strahlender-xnu",
-      "versionInfo": "26df251-dirty",
+      "versionInfo": "782423f-dirty",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT",
       "copyrightText": "Copyright (c) 2026 Veemyu",
       "primaryPackagePurpose": "APPLICATION",
-      "comment": "Repository commit 26df251e98aa3daa967f44e1d966c6fb8fbae136. Uncommitted files at generation: THIRD_PARTY_NOTICES.md, scripts/recomp/native-generator/NOTICE.md, scripts/recomp/native-generator/README.md, scripts/recomp/native-generator/build.py, scripts/recomp/native-generator/vendor/lz4/lz4.c, scripts/recomp/native-generator/vendor/lz4/lz4.h, scripts/recomp/native-generator/vendor/lz4/source.json, scripts/sbom/generate_sbom.py, pico.save, scripts/tests/test_native_lz4_pin.py."
+      "comment": "Repository commit 782423f1f72a6794986ac1abe82cdcb29a9fe4d4. Uncommitted files at generation: scripts/recomp/linux/local/las_runtime.sh, scripts/recomp/linux/local/probe.sh, scripts/recomp/test/boot_probe.c, scripts/recomp/test/las_shim.c, scripts/recomp/test/run_boot_probe_las.sh, scripts/sbom/generate_sbom.py, pico.save."
     },
     {
       "SPDXID": "SPDXRef-installer",
@@ -103,63 +103,6 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-type2-runtime",
-      "name": "AppImage type2-runtime",
-      "versionInfo": "20251108",
-      "downloadLocation": "https://github.com/AppImage/type2-runtime",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "MIT",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/package.sh.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/AppImage/type2-runtime@20251108"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-appimagetool",
-      "name": "appimagetool",
-      "versionInfo": "1.9.1",
-      "downloadLocation": "https://github.com/AppImage/appimagetool",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "MIT",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/package.sh.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/AppImage/appimagetool@1.9.1"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-astc-encoder-ref",
-      "name": "ARM astc-encoder (reference, cloned for tests)",
-      "versionInfo": "unpinned (git clone --depth 1)",
-      "downloadLocation": "https://github.com/ARM-software/astc-encoder",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "Apache-2.0",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: dev-test. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/test_astc.sh.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/ARM-software/astc-encoder"
-        }
-      ]
-    },
-    {
       "SPDXID": "SPDXRef-cjson",
       "name": "cJSON (vendored in hactool)",
       "versionInfo": "unknown",
@@ -179,27 +122,8 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-cpython-macos-generator",
-      "name": "CPython (macOS generator environment)",
-      "versionInfo": "3.12.14+20260924",
-      "downloadLocation": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260924",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "PSF-2.0",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh. Differs from the installer runtime (CPython 3.13.15). Not yet aligned.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:generic/cpython@3.12.14"
-        }
-      ]
-    },
-    {
       "SPDXID": "SPDXRef-ffmpeg-source",
-      "name": "FFmpeg (pinned source build for macOS, Linux, Windows and iOS)",
+      "name": "FFmpeg (pinned source build for iOS)",
       "versionInfo": "9.0.2",
       "downloadLocation": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
       "filesAnalyzed": false,
@@ -207,7 +131,7 @@
       "licenseDeclared": "LGPL-2.1-or-later",
       "copyrightText": "NOASSERTION",
       "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh, scripts/recomp/upstream/generator/linux/build_deps.sh, scripts/recomp/ios/build_ffmpeg_ios.sh. License from the comment 'LGPL-only FFmpeg' in linux/build_deps.sh; verify the configure flags. Bundled into the macOS app by scripts/recomp/app/bundle_dylibs.py (make_app.sh) and into the iOS app.",
+      "comment": "Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/ios/build_ffmpeg_ios.sh. Built from the pinned source by scripts/recomp/ios/build_ffmpeg_ios.sh and bundled into the iOS app; verify the configure flags for the LGPL claim. The macOS app bundles the host's FFmpeg libraries through scripts/recomp/app/bundle_dylibs.py (make_app.sh); Linux uses distribution packages.",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
@@ -289,25 +213,6 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:github/Perfare/Il2CppDumper@4741d46ba9cd6159c5d853eb9d6fc48b4bfa2b1a"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-keystone",
-      "name": "Keystone assembler engine (seed generator helper)",
-      "versionInfo": "0.9.2",
-      "downloadLocation": "https://github.com/keystone-engine/keystone",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "GPL-2.0-only",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: dev-test. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh. GPL: not shipped. License to verify against upstream.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/keystone-engine/keystone@0.9.2"
         }
       ]
     },
@@ -426,63 +331,6 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-sdl3-linux",
-      "name": "SDL3 (Linux build input)",
-      "versionInfo": "3.4.16",
-      "downloadLocation": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "Zlib",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/libsdl-org/SDL@release-3.4.16"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-sdl3-macos",
-      "name": "SDL3 (macOS build input)",
-      "versionInfo": "3.4.18",
-      "downloadLocation": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "Zlib",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh. Differs from the Linux pin (3.4.16). Not yet aligned.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/libsdl-org/SDL@release-3.4.18"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-shaderc",
-      "name": "shaderc (Linux build input)",
-      "versionInfo": "v2026.3",
-      "downloadLocation": "https://github.com/google/shaderc",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "Apache-2.0",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/google/shaderc@v2026.3"
-        }
-      ]
-    },
-    {
       "SPDXID": "SPDXRef-vgmstream",
       "name": "vgmstream",
       "versionInfo": "unknown",
@@ -511,50 +359,12 @@
       "licenseDeclared": "MIT",
       "copyrightText": "NOASSERTION",
       "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh, scripts/recomp/rt-bdsp/nvn/vulkan/src/nvn/vulkan/vma.cpp.",
+      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/rt-bdsp/nvn/vulkan/src/nvn/vulkan/vma.cpp.",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:github/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@v3.3.0"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-vulkan-headers",
-      "name": "Vulkan-Headers (Linux build input)",
-      "versionInfo": "1.4.350.1",
-      "downloadLocation": "https://github.com/KhronosGroup/Vulkan-Headers",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "Apache-2.0 OR MIT",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:github/KhronosGroup/Vulkan-Headers@vulkan-sdk-1.4.350.1"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-zig",
-      "name": "Zig compiler (Windows release, zig_slim)",
-      "versionInfo": "0.17.0",
-      "downloadLocation": "https://ziglang.org/download/0.17.0/",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "MIT",
-      "copyrightText": "NOASSERTION",
-      "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/fetch_zig.sh, scripts/recomp/upstream/generator/zig_slim.sh. Pinned by SHA-256 for aarch64-macos, x86_64-linux, aarch64-linux, x86_64-windows.",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:generic/zig@0.17.0"
         }
       ]
     },
@@ -1034,6 +844,31 @@
         {
           "algorithm": "SHA256",
           "checksumValue": "ae221649c9976a6f6c56ae1facf410f3ddb33cc661c4b7b61020a912d4237fbc"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-crate-arbitrary-1.5.0",
+      "name": "arbitrary",
+      "versionInfo": "1.5.0",
+      "downloadLocation": "https://crates.io/crates/arbitrary/1.5.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "primaryPackagePurpose": "LIBRARY",
+      "comment": "Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/rust-fuzz/arbitrary/",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/arbitrary@1.5.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
         }
       ]
     },
@@ -2634,6 +2469,31 @@
         {
           "algorithm": "SHA256",
           "checksumValue": "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-crate-derive-arbitrary-1.5.0",
+      "name": "derive_arbitrary",
+      "versionInfo": "1.5.0",
+      "downloadLocation": "https://crates.io/crates/derive_arbitrary/1.5.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "primaryPackagePurpose": "LIBRARY",
+      "comment": "Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/rust-fuzz/arbitrary",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/derive_arbitrary@1.5.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
         }
       ]
     },
@@ -13557,6 +13417,31 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-crate-zip-2.6.1",
+      "name": "zip",
+      "versionInfo": "2.6.1",
+      "downloadLocation": "https://crates.io/crates/zip/2.6.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "primaryPackagePurpose": "LIBRARY",
+      "comment": "Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/zip-rs/zip2.git",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/zip@2.6.1"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1dcb24d0152526ae49b9b96c1dcf71850ca1e0b882e4e28ed898a93c41334744"
+        }
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-crate-zlib-rs-0.6.8",
       "name": "zlib-rs",
       "versionInfo": "0.6.8",
@@ -14236,27 +14121,7 @@
     {
       "spdxElementId": "SPDXRef-strahlender-xnu",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-type2-runtime"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-appimagetool"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-astc-encoder-ref"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-cjson"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-cpython-macos-generator"
     },
     {
       "spdxElementId": "SPDXRef-strahlender-xnu",
@@ -14282,11 +14147,6 @@
       "spdxElementId": "SPDXRef-strahlender-xnu",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-il2cppdumper"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-keystone"
     },
     {
       "spdxElementId": "SPDXRef-strahlender-xnu",
@@ -14321,37 +14181,12 @@
     {
       "spdxElementId": "SPDXRef-strahlender-xnu",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-sdl3-linux"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-sdl3-macos"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-shaderc"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-vgmstream"
     },
     {
       "spdxElementId": "SPDXRef-strahlender-xnu",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-vma"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-vulkan-headers"
-    },
-    {
-      "spdxElementId": "SPDXRef-strahlender-xnu",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-zig"
     },
     {
       "spdxElementId": "SPDXRef-strahlender-xnu",
@@ -14609,6 +14444,16 @@
       "relatedSpdxElement": "SPDXRef-crate-tokio-1.54.1"
     },
     {
+      "spdxElementId": "SPDXRef-installer",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-ttf-parser-0.25.1"
+    },
+    {
+      "spdxElementId": "SPDXRef-installer",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-zip-2.6.1"
+    },
+    {
       "spdxElementId": "SPDXRef-py-astc-encoder-py",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-py-archspec"
@@ -14767,6 +14612,11 @@
       "spdxElementId": "SPDXRef-crate-android-system-properties-0.1.6",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-crate-libc-0.2.191"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-arbitrary-1.5.0",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-derive-arbitrary-1.5.0"
     },
     {
       "spdxElementId": "SPDXRef-crate-ash-0.38.0-1.3.281",
@@ -15382,6 +15232,21 @@
       "spdxElementId": "SPDXRef-crate-der-0.7.10",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-crate-zeroize-1.9.1"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-derive-arbitrary-1.5.0",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-proc-macro2-1.0.107"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-derive-arbitrary-1.5.0",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-quote-1.0.47"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-derive-arbitrary-1.5.0",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-syn-3.0.9"
     },
     {
       "spdxElementId": "SPDXRef-crate-digest-0.10.7",
@@ -21777,6 +21642,36 @@
       "spdxElementId": "SPDXRef-crate-zerovec-derive-0.11.7",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-crate-syn-3.0.9"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-zip-2.6.1",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-arbitrary-1.5.0"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-zip-2.6.1",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-crc32fast-1.5.3"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-zip-2.6.1",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-crossbeam-utils-0.8.23"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-zip-2.6.1",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-flate2-1.1.10"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-zip-2.6.1",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-indexmap-2.14.2"
+    },
+    {
+      "spdxElementId": "SPDXRef-crate-zip-2.6.1",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-crate-memchr-2.8.3"
     },
     {
       "spdxElementId": "SPDXRef-crate-zune-jpeg-0.4.21",

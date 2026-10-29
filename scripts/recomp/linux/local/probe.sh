@@ -1,13 +1,12 @@
 #!/bin/bash
 # Runs locally on Linux: Linux counterparts of the spike tests from scripts/recomp/test/ (x86 host, c mode, `weak_import` → `weak`).
-# Usage: probe.sh <test>   with test = eh | eh-real | rebase32 | gc | bench | boot | boot-las | all
+# Usage: probe.sh <test>   with test = eh | eh-real | rebase32 | gc | bench | boot | all
 #   eh        exception test (T0-T6) with the real SDK module          (Mac: run_eh_test.sh)
 #   eh-real   throw test with real LSDA functions from main (PER_KIND, default 60)   (run_eh_real.sh; after eh)
 #   rebase32  32-bit guest addresses (rt32)                               (run_eh_rebase32.sh)
 #   gc        stopping a guest thread at any point (Linux: signal instead of Mach)   (run_gc_proof.sh)
 #   bench     micro benchmarks recompiled against native                (run_bench.sh)
 #   boot      boot probe: main+sdk+subsdk0 up to the first blocker      (run_boot_probe.sh; needs compile.sh)
-#   boot-las  like boot, with the IPC/service layer of LASRecomp       (run_boot_probe_las.sh; after boot)
 #   bdsp      build and start the Gate-1 runtime scripts/recomp/rt-bdsp (ap-recomp-3) under Linux; ends at the RomFS (not available on Linux)
 # Everything under work/recomp/probe/. Nothing is played back, no graphics.
 source "$(dirname "$0")/common.sh"
@@ -145,17 +144,6 @@ probe_boot() {
   tm "$S/boot_probe" "$S" "$(START_ADDR)"
 }
 
-probe_boot_las() {
-  local S=$P/boot OBJ=$W/obj4-c L=$LAS/runtime
-  [ -f "$S/boot_probe.o" ] || die "Run 'probe.sh boot' first."
-  clang -O1 $CF -DUSE_LAS_IPC -c $T/boot_probe.c -o "$S/boot_probe_las.o"
-  for f in $L/ipc.c $L/services/am.c $L/services/misc.c $L/services/acc.c $L/services/hid_set.c $L/services/time.c $T/las_shim.c; do
-    clang -O1 -w -fPIC -I $L -c "$f" -o "$S/las_$(basename "$f" .c).o" || die "LAS service source $f cannot be compiled under Linux."
-  done
-  clang -o "$S/boot_probe_las" "$S/boot_probe_las.o" "$S"/las_*.o "$OBJ"/*.o -lm -lpthread || die "Link failed."
-  tm "$S/boot_probe_las" "$S" "$(START_ADDR)"
-}
-
 probe_bdsp() {   # Gate-1 runtime (scripts/recomp/rt-bdsp), Mach API via scripts/recomp/linux/compat
   local RTD=scripts/recomp/rt-bdsp OBJ=$W/obj4-c O=$W/rt-bdsp-x86
   [ -d "$RTD" ] || die "scripts/recomp/rt-bdsp is missing."
@@ -177,8 +165,7 @@ case "${1:-}" in
   gc) run gc gc;;
   bench) run bench bench;;
   boot) run boot boot;;
-  boot-las) run boot-las boot_las;;
   bdsp) run bdsp bdsp;;
-  all) for t in eh eh_real rebase32 gc bench boot boot_las; do run "$t" "$t" || true; done;;
-  *) die "Usage: probe.sh eh|eh-real|rebase32|gc|bench|boot|boot-las|bdsp|all";;
+  all) for t in eh eh_real rebase32 gc bench boot; do run "$t" "$t" || true; done;;
+  *) die "Usage: probe.sh eh|eh-real|rebase32|gc|bench|boot|bdsp|all";;
 esac

@@ -9,7 +9,7 @@ The runtime in this directory follows LASRecomp's design and contains **verbatim
 | Revision | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (the clone's only commit) |
 | Author | Peiikai |
 | License | MIT, “Copyright (c) 2026 Peiikai”. Unchanged text in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Excluded | Upstream `third_party/`, `fonts/`, and clone metadata (`.git`, Makefile, README, `docs/`). The runtime and generator are vendored (`scripts/recomp/upstream/`) except for ten `runtime/nvn` files that are byte-identical to the local copies in `nvn/src/` and `nvn/vulkan/src/` and were removed on 2026-10-29 (`astc.c/h`, `formats.c`, `tegra.c/h`, `output_scale.h`, `renderer.h`, `vulkan/shaders.h`, `vulkan/vk.h`, `vulkan/vma.cpp`); the local copies are the verbatim upstream files from commit 09f8e5e. See the provenance and NVN sections below. |
+| Excluded | Upstream `third_party/`, `fonts/`, and clone metadata (`.git`, Makefile, README, `docs/`). Until 2026-10-29 the runtime and generator were vendored in full under `scripts/recomp/upstream/`; since then only `LICENSE`, `runtime/{cpu,simd,simd_fp}.h` and the Windows preparation files remain there, and the rest (including the ten `runtime/nvn` files that were byte-identical to the local copies) is available from the git history (commits `e43b466`, `2d01ade`, `d1c40e7`). See the provenance and NVN sections below. |
 
 The upstream license excludes Nintendo property and third-party components. None of that content is included here. The repository user explicitly authorized use and further development.
 
@@ -23,11 +23,11 @@ The upstream license excludes Nintendo property and third-party components. None
 | `services_fs.c` | `romfs_build.c`, `services/fs.c` | RomFS image layout (0x50 header, data at 0x200, tables afterward), IFileSystem/IFile/IDirectory commands. New: virtual image without a 5-GB file. |
 | `dispatch.c`, `loader.c`, `main.c` | `dispatch.c`, `loader.c`, `main.c` | Cached dispatch with HLE slots, startup through `nn::init::Start`. New: four tables, re-entry, watchdog. |
 
-The native generator (`../native-generator/`) adapts the analysis, lifter and emitter from the vendored tools in `scripts/recomp/upstream/generator/`: gen.py, lifter.py, analyze.py, nso.py, patches.py, and simd_c.py; the complete `tools/` revision, excluding `__pycache__`, under `scripts/recomp/upstream/LICENSE`. `patches.py` contains game-specific hooks.
+The native generator (`../native-generator/`) adapts the analysis, lifter and emitter from the tools of the former vendored copy in `scripts/recomp/upstream/generator/` (removed 2026-10-29, still in the git history; the test oracle reads them from commit `a26bc12`): gen.py, lifter.py, analyze.py, nso.py, patches.py, and simd_c.py; the complete `tools/` revision, excluding `__pycache__`, under `scripts/recomp/upstream/LICENSE`. `patches.py` contains game-specific hooks.
 
 ## NVN layer (Gate 2, `nvn/`)
 
-The graphics layer **adopts source code from the clone**, with explicit user approval and under its MIT license (Copyright (c) 2026 Peiikai; text in [`../upstream/LICENSE`](../upstream/LICENSE)). Sources in `nvn/src/` (Metal) and `nvn/vulkan/src/` (Vulkan differences) are **modified** from commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`. Changes now live directly in these files, not in patches. The unmodified reference remains in `scripts/recomp/upstream/runtime/`. The translator comes from `shader_translator/`.
+The graphics layer **adopts source code from the clone**, with explicit user approval and under its MIT license (Copyright (c) 2026 Peiikai; text in [`../upstream/LICENSE`](../upstream/LICENSE)). Sources in `nvn/src/` (Metal) and `nvn/vulkan/src/` (Vulkan differences) are **modified** from commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`. Changes now live directly in these files, not in patches. The unmodified reference is in the git history (vendoring commits `e43b466`, `2d01ade`, `d1c40e7`) and in LASRecomp commit `09f8e5e`; `scripts/recomp/upstream/runtime/` keeps only `cpu.h`, `simd.h`, `simd_fp.h` and the Windows files. The translator comes from `shader_translator/`.
 
 The earlier patch-based workflow copied sources to `work/recomp/nvn-src` using `nvn/prepare.sh` and applied `nvn/las-nvn.patch` and `fixes.patch`. Its claim that changes existed only in patches is historical, not a description of the current directly modified source tree.
 

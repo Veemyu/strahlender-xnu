@@ -1,10 +1,10 @@
 SPDXVersion: SPDX-2.3
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
-DocumentName: strahlender-xnu 26df251-dirty SBOM
-DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-c3b1a395-4b70-5791-b960-66c8fa731040
+DocumentName: strahlender-xnu 782423f-dirty SBOM
+DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-15d862a9-9cba-5ca3-b57f-fd574681c067
 Creator: Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)
-Created: 2026-10-29T16:50:27Z
+Created: 2026-10-29T18:12:23Z
 
 LicenseID: LicenseRef-Apple-SDK
 LicenseName: Apple Xcode and SDK Agreement
@@ -16,14 +16,14 @@ ExtractedText: <text>Proprietary FMOD runtime library (libfmod) inside fmod_tool
 
 PackageName: strahlender-xnu
 SPDXID: SPDXRef-strahlender-xnu
-PackageVersion: 26df251-dirty
+PackageVersion: 782423f-dirty
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: NOASSERTION
 PackageLicenseDeclared: MIT
 PackageCopyrightText: <text>Copyright (c) 2026 Veemyu</text>
 PrimaryPackagePurpose: APPLICATION
-PackageComment: <text>Repository commit 26df251e98aa3daa967f44e1d966c6fb8fbae136. Uncommitted files at generation: THIRD_PARTY_NOTICES.md, scripts/recomp/native-generator/NOTICE.md, scripts/recomp/native-generator/README.md, scripts/recomp/native-generator/build.py, scripts/recomp/native-generator/vendor/lz4/lz4.c, scripts/recomp/native-generator/vendor/lz4/lz4.h, scripts/recomp/native-generator/vendor/lz4/source.json, scripts/sbom/generate_sbom.py, pico.save, scripts/tests/test_native_lz4_pin.py.</text>
+PackageComment: <text>Repository commit 782423f1f72a6794986ac1abe82cdcb29a9fe4d4. Uncommitted files at generation: scripts/recomp/linux/local/las_runtime.sh, scripts/recomp/linux/local/probe.sh, scripts/recomp/test/boot_probe.c, scripts/recomp/test/las_shim.c, scripts/recomp/test/run_boot_probe_las.sh, scripts/sbom/generate_sbom.py, pico.save.</text>
 
 PackageName: strahlender-xnu-installer
 SPDXID: SPDXRef-installer
@@ -73,42 +73,6 @@ PrimaryPackagePurpose: FILE
 ExternalRef: PACKAGE-MANAGER purl pkg:generic/fira-sans
 PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: installer/assets/FIRA-LICENSE, installer/assets/README.md, installer/Cargo.toml. Font bytes are embedded in the installer binary via the iced crate.</text>
 
-PackageName: AppImage type2-runtime
-SPDXID: SPDXRef-type2-runtime
-PackageVersion: 20251108
-PackageDownloadLocation: https://github.com/AppImage/type2-runtime
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: MIT
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/AppImage/type2-runtime@20251108
-PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/package.sh.</text>
-
-PackageName: appimagetool
-SPDXID: SPDXRef-appimagetool
-PackageVersion: 1.9.1
-PackageDownloadLocation: https://github.com/AppImage/appimagetool
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: MIT
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/AppImage/appimagetool@1.9.1
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/package.sh.</text>
-
-PackageName: ARM astc-encoder (reference, cloned for tests)
-SPDXID: SPDXRef-astc-encoder-ref
-PackageVersion: unpinned (git clone --depth 1)
-PackageDownloadLocation: https://github.com/ARM-software/astc-encoder
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: Apache-2.0
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/ARM-software/astc-encoder
-PackageComment: <text>Distribution: dev-test. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/test_astc.sh.</text>
-
 PackageName: cJSON (vendored in hactool)
 SPDXID: SPDXRef-cjson
 PackageVersion: unknown
@@ -121,19 +85,7 @@ PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:generic/cjson
 PackageComment: <text>Distribution: local-tool. Repository state: git-ignored (tools/). Evidence: tools/hactool/cJSON.c, tools/hactool/cJSON.h.</text>
 
-PackageName: CPython (macOS generator environment)
-SPDXID: SPDXRef-cpython-macos-generator
-PackageVersion: 3.12.14+20260924
-PackageDownloadLocation: https://github.com/astral-sh/python-build-standalone/releases/tag/20260924
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: PSF-2.0
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:generic/cpython@3.12.14
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh. Differs from the installer runtime (CPython 3.13.15). Not yet aligned.</text>
-
-PackageName: FFmpeg (pinned source build for macOS, Linux, Windows and iOS)
+PackageName: FFmpeg (pinned source build for iOS)
 SPDXID: SPDXRef-ffmpeg-source
 PackageVersion: 9.0.2
 PackageDownloadLocation: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
@@ -143,7 +95,7 @@ PackageLicenseDeclared: LGPL-2.1-or-later
 PackageCopyrightText: <text>NOASSERTION</text>
 PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:generic/ffmpeg@9.0.2
-PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh, scripts/recomp/upstream/generator/linux/build_deps.sh, scripts/recomp/ios/build_ffmpeg_ios.sh. License from the comment 'LGPL-only FFmpeg' in linux/build_deps.sh; verify the configure flags. Bundled into the macOS app by scripts/recomp/app/bundle_dylibs.py (make_app.sh) and into the iOS app.</text>
+PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/ios/build_ffmpeg_ios.sh. Built from the pinned source by scripts/recomp/ios/build_ffmpeg_ios.sh and bundled into the iOS app; verify the configure flags for the LGPL claim. The macOS app bundles the host's FFmpeg libraries through scripts/recomp/app/bundle_dylibs.py (make_app.sh); Linux uses distribution packages.</text>
 
 PackageName: FMOD runtime library (libfmod in fmod_toolkit)
 SPDXID: SPDXRef-fmod-libfmod
@@ -192,18 +144,6 @@ PackageCopyrightText: <text>Copyright (c) 2016 Perfare</text>
 PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:github/Perfare/Il2CppDumper@4741d46ba9cd6159c5d853eb9d6fc48b4bfa2b1a
 PackageComment: <text>Distribution: local-tool. Repository state: git-ignored (tools/). Evidence: tools/Il2CppDumper/LICENSE, tools/il2cppdumper-bin. Binary in tools/il2cppdumper-bin (Mach-O arm64) is built from this source.</text>
-
-PackageName: Keystone assembler engine (seed generator helper)
-SPDXID: SPDXRef-keystone
-PackageVersion: 0.9.2
-PackageDownloadLocation: https://github.com/keystone-engine/keystone
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: GPL-2.0-only
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/keystone-engine/keystone@0.9.2
-PackageComment: <text>Distribution: dev-test. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh. GPL: not shipped. License to verify against upstream.</text>
 
 PackageName: libogg (vendored in vgmstream)
 SPDXID: SPDXRef-libogg
@@ -277,42 +217,6 @@ PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:generic/nx2elf
 PackageComment: <text>Distribution: local-tool. Repository state: git-ignored (tools/). Evidence: tools/nx2elf/README.md. No LICENSE file in the working tree. Licence unknown: needs clarification before any distribution.</text>
 
-PackageName: SDL3 (Linux build input)
-SPDXID: SPDXRef-sdl3-linux
-PackageVersion: 3.4.16
-PackageDownloadLocation: https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: Zlib
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/libsdl-org/SDL@release-3.4.16
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh.</text>
-
-PackageName: SDL3 (macOS build input)
-SPDXID: SPDXRef-sdl3-macos
-PackageVersion: 3.4.18
-PackageDownloadLocation: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: Zlib
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/libsdl-org/SDL@release-3.4.18
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/build_deps_macos.sh. Differs from the Linux pin (3.4.16). Not yet aligned.</text>
-
-PackageName: shaderc (Linux build input)
-SPDXID: SPDXRef-shaderc
-PackageVersion: v2026.3
-PackageDownloadLocation: https://github.com/google/shaderc
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: Apache-2.0
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/google/shaderc@v2026.3
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh.</text>
-
 PackageName: vgmstream
 SPDXID: SPDXRef-vgmstream
 PackageVersion: unknown
@@ -335,31 +239,7 @@ PackageLicenseDeclared: MIT
 PackageCopyrightText: <text>NOASSERTION</text>
 PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:github/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@v3.3.0
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh, scripts/recomp/rt-bdsp/nvn/vulkan/src/nvn/vulkan/vma.cpp.</text>
-
-PackageName: Vulkan-Headers (Linux build input)
-SPDXID: SPDXRef-vulkan-headers
-PackageVersion: 1.4.350.1
-PackageDownloadLocation: https://github.com/KhronosGroup/Vulkan-Headers
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: Apache-2.0 OR MIT
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:github/KhronosGroup/Vulkan-Headers@vulkan-sdk-1.4.350.1
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/linux/build_deps.sh.</text>
-
-PackageName: Zig compiler (Windows release, zig_slim)
-SPDXID: SPDXRef-zig
-PackageVersion: 0.17.0
-PackageDownloadLocation: https://ziglang.org/download/0.17.0/
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: MIT
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: LIBRARY
-ExternalRef: PACKAGE-MANAGER purl pkg:generic/zig@0.17.0
-PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: scripts/recomp/upstream/generator/fetch_zig.sh, scripts/recomp/upstream/generator/zig_slim.sh. Pinned by SHA-256 for aarch64-macos, x86_64-linux, aarch64-linux, x86_64-windows.</text>
+PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/rt-bdsp/nvn/vulkan/src/nvn/vulkan/vma.cpp.</text>
 
 PackageName: archspec
 SPDXID: SPDXRef-py-archspec
@@ -643,6 +523,19 @@ PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:cargo/android_system_properties@0.1.6
 PackageChecksum: SHA256: ae221649c9976a6f6c56ae1facf410f3ddb33cc661c4b7b61020a912d4237fbc
 PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/nical/android_system_properties</text>
+
+PackageName: arbitrary
+SPDXID: SPDXRef-crate-arbitrary-1.5.0
+PackageVersion: 1.5.0
+PackageDownloadLocation: https://crates.io/crates/arbitrary/1.5.0
+FilesAnalyzed: false
+PackageLicenseConcluded: NOASSERTION
+PackageLicenseDeclared: MIT OR Apache-2.0
+PackageCopyrightText: <text>NOASSERTION</text>
+PrimaryPackagePurpose: LIBRARY
+ExternalRef: PACKAGE-MANAGER purl pkg:cargo/arbitrary@1.5.0
+PackageChecksum: SHA256: 3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed
+PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/rust-fuzz/arbitrary/</text>
 
 PackageName: arrayref
 SPDXID: SPDXRef-crate-arrayref-0.3.9
@@ -1475,6 +1368,19 @@ PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:cargo/der@0.7.10
 PackageChecksum: SHA256: e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb
 PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/RustCrypto/formats/tree/master/der</text>
+
+PackageName: derive_arbitrary
+SPDXID: SPDXRef-crate-derive-arbitrary-1.5.0
+PackageVersion: 1.5.0
+PackageDownloadLocation: https://crates.io/crates/derive_arbitrary/1.5.0
+FilesAnalyzed: false
+PackageLicenseConcluded: NOASSERTION
+PackageLicenseDeclared: MIT OR Apache-2.0
+PackageCopyrightText: <text>NOASSERTION</text>
+PrimaryPackagePurpose: LIBRARY
+ExternalRef: PACKAGE-MANAGER purl pkg:cargo/derive_arbitrary@1.5.0
+PackageChecksum: SHA256: 1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac
+PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/rust-fuzz/arbitrary</text>
 
 PackageName: digest
 SPDXID: SPDXRef-crate-digest-0.10.7
@@ -7156,6 +7062,19 @@ ExternalRef: PACKAGE-MANAGER purl pkg:cargo/zerovec-derive@0.11.7
 PackageChecksum: SHA256: c3743ddbf47738d929cd1ae2e199d40d0162979dfe31aef8ae646d2bf00bf97a
 PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/unicode-org/icu4x</text>
 
+PackageName: zip
+SPDXID: SPDXRef-crate-zip-2.6.1
+PackageVersion: 2.6.1
+PackageDownloadLocation: https://crates.io/crates/zip/2.6.1
+FilesAnalyzed: false
+PackageLicenseConcluded: NOASSERTION
+PackageLicenseDeclared: MIT
+PackageCopyrightText: <text>NOASSERTION</text>
+PrimaryPackagePurpose: LIBRARY
+ExternalRef: PACKAGE-MANAGER purl pkg:cargo/zip@2.6.1
+PackageChecksum: SHA256: 1dcb24d0152526ae49b9b96c1dcf71850ca1e0b882e4e28ed898a93c41334744
+PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: installer/Cargo.lock. Repository: https://github.com/zip-rs/zip2.git</text>
+
 PackageName: zlib-rs
 SPDXID: SPDXRef-crate-zlib-rs-0.6.8
 PackageVersion: 0.6.8
@@ -7552,30 +7471,20 @@ Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-installer
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-octicons-mark-github-16
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lucide-icons
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-fira-sans
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-type2-runtime
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-appimagetool
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-astc-encoder-ref
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-cjson
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-cpython-macos-generator
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-ffmpeg-source
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-fmod-libfmod
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-ghidra
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-hactool
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-il2cppdumper
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-keystone
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-libogg
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-libvorbis
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lz4-native-codegen
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lz4-c
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-mbedtls
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-nx2elf
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-sdl3-linux
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-sdl3-macos
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-shaderc
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-vgmstream
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-vma
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-vulkan-headers
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-zig
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-py-capstone
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-py-unicorn
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-py-unitypy
@@ -7627,6 +7536,8 @@ Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-sha2-0.10.9
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-sys-locale-0.3.2
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-tar-0.4.46
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-tokio-1.54.1
+Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-ttf-parser-0.25.1
+Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-zip-2.6.1
 Relationship: SPDXRef-py-astc-encoder-py DEPENDS_ON SPDXRef-py-archspec
 Relationship: SPDXRef-py-etcpak DEPENDS_ON SPDXRef-py-archspec
 Relationship: SPDXRef-py-fmod-toolkit DEPENDS_ON SPDXRef-py-pyfmodex
@@ -7659,6 +7570,7 @@ Relationship: SPDXRef-crate-android-activity-0.6.1 DEPENDS_ON SPDXRef-crate-ndk-
 Relationship: SPDXRef-crate-android-activity-0.6.1 DEPENDS_ON SPDXRef-crate-num-enum-0.7.6
 Relationship: SPDXRef-crate-android-activity-0.6.1 DEPENDS_ON SPDXRef-crate-thiserror-2.0.21
 Relationship: SPDXRef-crate-android-system-properties-0.1.6 DEPENDS_ON SPDXRef-crate-libc-0.2.191
+Relationship: SPDXRef-crate-arbitrary-1.5.0 DEPENDS_ON SPDXRef-crate-derive-arbitrary-1.5.0
 Relationship: SPDXRef-crate-ash-0.38.0-1.3.281 DEPENDS_ON SPDXRef-crate-libloading-0.8.9
 Relationship: SPDXRef-crate-ashpd-0.11.1 DEPENDS_ON SPDXRef-crate-enumflags2-0.7.12
 Relationship: SPDXRef-crate-ashpd-0.11.1 DEPENDS_ON SPDXRef-crate-futures-channel-0.3.34
@@ -7782,6 +7694,9 @@ Relationship: SPDXRef-crate-curve25519-dalek-derive-0.1.1 DEPENDS_ON SPDXRef-cra
 Relationship: SPDXRef-crate-curve25519-dalek-derive-0.1.1 DEPENDS_ON SPDXRef-crate-syn-2.0.119
 Relationship: SPDXRef-crate-der-0.7.10 DEPENDS_ON SPDXRef-crate-const-oid-0.9.6
 Relationship: SPDXRef-crate-der-0.7.10 DEPENDS_ON SPDXRef-crate-zeroize-1.9.1
+Relationship: SPDXRef-crate-derive-arbitrary-1.5.0 DEPENDS_ON SPDXRef-crate-proc-macro2-1.0.107
+Relationship: SPDXRef-crate-derive-arbitrary-1.5.0 DEPENDS_ON SPDXRef-crate-quote-1.0.47
+Relationship: SPDXRef-crate-derive-arbitrary-1.5.0 DEPENDS_ON SPDXRef-crate-syn-3.0.9
 Relationship: SPDXRef-crate-digest-0.10.7 DEPENDS_ON SPDXRef-crate-block-buffer-0.10.4
 Relationship: SPDXRef-crate-digest-0.10.7 DEPENDS_ON SPDXRef-crate-crypto-common-0.1.7
 Relationship: SPDXRef-crate-directories-6.0.0 DEPENDS_ON SPDXRef-crate-dirs-sys-0.5.0
@@ -9061,6 +8976,12 @@ Relationship: SPDXRef-crate-zerovec-0.11.9 DEPENDS_ON SPDXRef-crate-zerovec-deri
 Relationship: SPDXRef-crate-zerovec-derive-0.11.7 DEPENDS_ON SPDXRef-crate-proc-macro2-1.0.107
 Relationship: SPDXRef-crate-zerovec-derive-0.11.7 DEPENDS_ON SPDXRef-crate-quote-1.0.47
 Relationship: SPDXRef-crate-zerovec-derive-0.11.7 DEPENDS_ON SPDXRef-crate-syn-3.0.9
+Relationship: SPDXRef-crate-zip-2.6.1 DEPENDS_ON SPDXRef-crate-arbitrary-1.5.0
+Relationship: SPDXRef-crate-zip-2.6.1 DEPENDS_ON SPDXRef-crate-crc32fast-1.5.3
+Relationship: SPDXRef-crate-zip-2.6.1 DEPENDS_ON SPDXRef-crate-crossbeam-utils-0.8.23
+Relationship: SPDXRef-crate-zip-2.6.1 DEPENDS_ON SPDXRef-crate-flate2-1.1.10
+Relationship: SPDXRef-crate-zip-2.6.1 DEPENDS_ON SPDXRef-crate-indexmap-2.14.2
+Relationship: SPDXRef-crate-zip-2.6.1 DEPENDS_ON SPDXRef-crate-memchr-2.8.3
 Relationship: SPDXRef-crate-zune-jpeg-0.4.21 DEPENDS_ON SPDXRef-crate-zune-core-0.4.12
 Relationship: SPDXRef-crate-zvariant-5.15.1 DEPENDS_ON SPDXRef-crate-endi-1.1.1
 Relationship: SPDXRef-crate-zvariant-5.15.1 DEPENDS_ON SPDXRef-crate-enumflags2-0.7.12

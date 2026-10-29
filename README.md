@@ -29,7 +29,7 @@ This project adopts and modifies parts of **LASRecomp** (https://github.com/peii
 - `shader_translator/`: Maxwell-to-MSL/GLSL translator, derived from the original and modified (`shader_translator/NOTICE.md`, license `shader_translator/LICENSE-LASRecomp`).
 - `scripts/recomp/rt-bdsp/`: runtime based on the original's design, contains parts of it verbatim (`scripts/recomp/rt-bdsp/NOTICE.md`, license `scripts/recomp/rt-bdsp/LICENSE-LASRecomp`).
 - Headers `cpu.h`, `simd.h`, `simd_fp.h`: unchanged, in `scripts/recomp/upstream/runtime/` (license `scripts/recomp/upstream/LICENSE`).
-- NVN graphics layer (Metal and Vulkan): modified relative to LASRecomp; sources under `scripts/recomp/rt-bdsp/nvn/src/`; the original for comparison is in `scripts/recomp/upstream/runtime/`.
+- NVN graphics layer (Metal and Vulkan): modified relative to LASRecomp; sources under `scripts/recomp/rt-bdsp/nvn/src/`; the unmodified originals are in the git history (commits `e43b466`, `2d01ade`, `d1c40e7`) and in LASRecomp commit `09f8e5e`.
 
 Complete list, third-party components, and what was not adopted: `THIRD_PARTY_NOTICES.md`.
 

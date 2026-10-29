@@ -2,6 +2,11 @@
 
 Chronological, newest entries first. Each item records the date, goal, and files.
 
+## 2026-10-29
+
+- **Cleanup and refactoring (log in `todo/refactoring.md`):** LZ4 is no longer in the repository (`build.py` downloads the pinned sources, checks SHA-256); the Unity-era `shaders` stage, the ShaderLab wrapper chain and the HLSL backend of the shader translator are gone (MSL/GLSL output byte-identical on 4,276 game shaders); `base_of()` has one definition (`scripts/recomp/module_bases.sh`); the nested lock file of the vendored `iced_winit` was dropped.
+- **Vendor tree reduced:** `scripts/recomp/upstream/` went from 210 files / 98,025 lines to 9 files / 1,924 lines. Kept: `LICENSE`, `runtime/{cpu,simd,simd_fp}.h` and the Windows preparation files. Removed because no build used them: the Python generator (the test oracle reads its copy from commit `a26bc12`), the Link's Awakening randomizer, `hle/`, `services/`, `ui/`, the unmodified `nvn` reference copies and the packaging and dev scripts. The LAS diagnostic probes (`las_runtime.sh`, `boot-las`) and the SBOM entries that only they evidenced are gone too. Originals: git history (`e43b466`, `2d01ade`, `d1c40e7`).
+
 ## 2026-10-22
 
 - **Docs consolidated (107 → 17 files):** new `architecture.md` (condensed from the feasibility, spike and gate reports, the reference notes and the architecture decision), `development.md` (rules and commands, from the operations manual and the status and plan notes), `rendering.md` (Metal renderer debugging, performance, frame rate, water), `shaders.md` (translator and harness) and `saves.md` (format, validator, locations); the iPad memory-entitlements research moved into `recomp-ios.md`, the Vulkan backend into `recomp-linux.md`. The reimplementation specifications (battle, Pokémon parameters, event scripts, master data, localization, input, data and game-code inventories) and all `.de.md` except `README` and `BUILD` were removed. Everything stays in the git history and on the branch `unity`.
