@@ -94,12 +94,12 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(run(["--only", "recomp", "--from", "tools", "--dry-run"])[0], 2)
         rc, _, err = run(["extract", "--no-preflight", "--work", self.work])
         self.assertEqual(rc, 2)
-        self.assertIn("--xci missing", err)
+        self.assertIn("Base game missing", err)
 
     def test_missing_input_file_has_clear_message(self):
         rc, _, err = run(["extract", "--no-preflight", "--work", self.work, "--xci", "/not/there.xci"])
         self.assertEqual(rc, 3)
-        self.assertIn("XCI not found", err)
+        self.assertIn("Base game not found", err)
 
     def test_dry_run_respects_marker(self):
         write(os.path.join(self.work, "exefs", "main"), "m")
