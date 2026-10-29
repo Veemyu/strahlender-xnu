@@ -7,6 +7,11 @@ run-name: Windows build environment · ${{ github.ref_name }}
 # Qt bundle is pinned.
 on:
   workflow_dispatch:
+  push:
+    branches: [win-integration]
+    paths:
+      - .github/workflows/windows-buildenv.yml
+      - scripts/recomp/fetch_sources.py
 permissions:
   contents: read
 concurrency:
