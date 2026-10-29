@@ -2,6 +2,8 @@
 
 Upstream: https://github.com/iced-rs/iced/tree/0.14.0/winit
 The starting sources are the published crates.io iced_winit 0.14.1 package.
+`Cargo.toml.orig` and the nested `Cargo.lock` of that package are not kept: Cargo ignores the lock file of a path
+dependency, and the original manifest is in the crates.io package.
 
 `src/lib.rs`, `window::Action::Resize`: handle the physical size returned by
 Winit's `request_inner_size`. `Some(size)` is a synchronous resize and Winit
