@@ -231,24 +231,6 @@ bool bdsp_win32_release(void) {
     return true;
 }
 
-static INIT_ONCE clock_once = INIT_ONCE_STATIC_INIT;
-static LARGE_INTEGER frequency;
-static BOOL CALLBACK clock_init(PINIT_ONCE once, PVOID parameter, PVOID *context) {
-    (void)once; (void)parameter; (void)context;
-    return QueryPerformanceFrequency(&frequency) && frequency.QuadPart > 0;
-}
-
-uint64_t bdsp_win32_now_ns(void) {
-    LARGE_INTEGER now;
-    if (!InitOnceExecuteOnce(&clock_once, clock_init, NULL, NULL) ||
-        !QueryPerformanceCounter(&now) || now.QuadPart < 0) {
-        fprintf(stderr, "FATAL: Windows monotonic clock failed (%lu).\n", GetLastError());
-        ExitProcess(1);
-    }
-    return (uint64_t)((unsigned __int128)(uint64_t)now.QuadPart * 1000000000ull /
-                      (uint64_t)frequency.QuadPart);
-}
-
 bool bdsp_win32_memory_usage(uint64_t *current, uint64_t *peak) {
     PROCESS_MEMORY_COUNTERS info = {.cb = sizeof info};
     if (!GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof info)) return false;

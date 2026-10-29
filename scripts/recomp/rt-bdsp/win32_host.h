@@ -21,7 +21,6 @@ bool bdsp_win32_prepare_write(void *address, size_t size);
 bool bdsp_win32_protect(void *address, size_t size, BdspMemoryAccess access);
 bool bdsp_win32_discard(void *address, size_t size);
 bool bdsp_win32_release(void);
-uint64_t bdsp_win32_now_ns(void);
 bool bdsp_win32_memory_usage(uint64_t *current, uint64_t *peak);
 bool bdsp_win32_resident_bytes(void *address, size_t size, uint64_t *resident);
 void bdsp_win32_current_stack(void **low, uint64_t *size);

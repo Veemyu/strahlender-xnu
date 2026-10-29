@@ -8,6 +8,7 @@
 //   FWAV  one wave: encoding (1 = PCM16), sample rate, sample count and the offset of the samples in its DATA block.
 // Only mono PCM16 is played (all keyboard sounds are, apart from one looping waiting sound that the keyboard does not use).
 #include "swkbd_snd.h"
+#include "plat.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -294,7 +295,7 @@ void swkbd_snd_play(const char *name) {
     pthread_mutex_unlock(&g_lock);
     if (!p) return;
     static _Atomic int last_id = -1; static _Atomic uint64_t last_ns;   // (sounds start from several threads)
-    uint64_t now = clock_gettime_nsec_np(CLOCK_MONOTONIC);
+    uint64_t now = plat_now_ns();
     if ((p->id == atomic_load(&last_id) && now - atomic_load(&last_ns) < 40000000ull) || atomic_load(&g_playing) >= MAX_PLAYING) { free(p->pcm); free(p); return; }
     atomic_store(&last_id, p->id); atomic_store(&last_ns, now);
     atomic_fetch_add(&g_playing, 1);

@@ -181,8 +181,8 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             "-D_WIN32_WINNT=0x0A00", "-I", str(sdl / "include"),
             "-I", str(runtime), str(runtime / "test/sdl_runtime_test.c"),
             *(str(runtime / (name + ".c")) for name in
-              ("win32_entry", "win32_files", "win32_host", "audio_output", "pad_sdl")),
-            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi", "-lshell32", "-lole32", "-luuid",
+              ("win32_entry", "win32_files", "win32_host", "plat", "audio_output", "pad_sdl")),
+            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi", "-lbcrypt", "-lshell32", "-lole32", "-luuid",
             "-Wl,-Bstatic,-lwinpthread,-Bdynamic", "-o", str(executable)],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -236,7 +236,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
                           ROOT / "scripts/recomp/upstream/runtime", runtime]
             for index, source in enumerate(("test/nvn_glue_win_test.c", "nvn/nvn_glue.c",
                                             "nvn/vulkan/vk_glue.c", "input.c",
-                                            "win32_files.c", "win32_host.c")):
+                                            "win32_files.c", "win32_host.c", "plat.c")):
                 obj = self.root / f"qt-input-{index}.o"
                 result = subprocess.run([
                     self.compiler, "-std=gnu17", "-O2", "-DQT_INPUT_PROBE", "-D_WIN32_WINNT=0x0A00",
@@ -254,7 +254,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             runtime / "test/qt_controller_menu_test.cpp",
             *objects,
             *(qt / f"lib/libQt6{name}.a" for name in ("Widgets", "Gui", "Core")),
-            sdl / "lib/libSDL3.dll.a", "-lpsapi",
+            sdl / "lib/libSDL3.dll.a", "-lpsapi", "-lbcrypt",
             "-Wl,--gc-sections,-Bstatic,-lwinpthread,-Bdynamic", "-o", executable],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -342,8 +342,8 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         result = subprocess.run([
             *flags, str(fixture), str(second), str(runtime / "nvn/nvn_glue.c"),
             str(runtime / "nvn/vulkan/vk_glue.c"),
-            str(runtime / "win32_files.c"), str(runtime / "win32_host.c"),
-            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi",
+            str(runtime / "win32_files.c"), str(runtime / "win32_host.c"), str(runtime / "plat.c"),
+            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi", "-lbcrypt",
             "-Wl,--gc-sections,-Bstatic,-lwinpthread,-Bdynamic", "-o", str(executable)],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -376,8 +376,8 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             arguments = [self.compiler, "-std=gnu17", "-Wall", "-Wextra", "-Werror",
                          "-D_WIN32_WINNT=0x0A00", "-I", str(runtime),
                          str(runtime / ("test/win32_" + ("entry" if is_entry else "files") + "_test.c")),
-                         str(runtime / "win32_files.c"), str(runtime / "win32_host.c"),
-                         "-lpsapi", "-o", str(executable)]
+                         str(runtime / "win32_files.c"), str(runtime / "win32_host.c"), str(runtime / "plat.c"),
+                         "-lpsapi", "-lbcrypt", "-o", str(executable)]
             if is_entry:
                 arguments += ([str(runtime / "win32_entry.c")] if name == "entry" else ["-DBDSP_ENTRY_PATH_TEST"])
                 arguments += [str(runtime / "runtime_paths.c"),
@@ -482,8 +482,8 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             "-I", str(ROOT / "scripts/recomp/rt"),
             "-I", str(ROOT / "scripts/recomp/upstream/runtime"), "-I", str(runtime),
             str(runtime / "test/kernel_win_test.c"), str(guest), str(runtime / "kernel.c"),
-            str(runtime / "win32_host.c"), "-Wl,-Bstatic,-lwinpthread,-Bdynamic",
-            "-lbcrypt", "-lpsapi", "-o", str(executable)],
+            str(runtime / "win32_host.c"), str(runtime / "win32_files.c"), str(runtime / "plat.c"),
+            "-Wl,-Bstatic,-lwinpthread,-Bdynamic", "-lbcrypt", "-lpsapi", "-o", str(executable)],
             capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=25)
@@ -709,7 +709,8 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             "-I", str(ROOT / "scripts/recomp/rt"),
             "-I", str(ROOT / "scripts/recomp/upstream/runtime"), "-I", str(runtime),
             str(runtime / "test/win32_host_test.c"), str(runtime / "win32_host.c"),
-            str(runtime / "loader.c"), "-lpsapi", "-o", str(executable)],
+            str(runtime / "win32_files.c"), str(runtime / "plat.c"),
+            str(runtime / "loader.c"), "-lpsapi", "-lbcrypt", "-o", str(executable)],
             capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         for mode in ("--memory", "--gpu-memory", "--guard-fault", "--readonly-fault", "--noaccess-fault", "--execute-fault"):

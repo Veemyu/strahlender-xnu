@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "input.h"
+#include "plat.h"
 
 // Nintendo pads (Switch Pro, Joy-Con) arrive with the face buttons named like the labels on the pad: buttonA is the right button, as on the
 // console. Xbox, PlayStation and generic pads name them by position (buttonA is the bottom one). Telling them apart keeps a Switch pad on
@@ -64,7 +65,7 @@ static void pad_gc_update(void) {
     static uint64_t last_b = ~0ull;
     if (log_on && s.buttons != last_b) {
         last_b = s.buttons;
-        fprintf(stderr, "[pad] %.3f buttons %#llx\n", (double)clock_gettime_nsec_np(CLOCK_MONOTONIC) / 1e9, (unsigned long long)s.buttons);
+        fprintf(stderr, "[pad] %.3f buttons %#llx\n", (double)plat_now_ns() / 1e9, (unsigned long long)s.buttons);
     }
 }
 
@@ -88,7 +89,7 @@ __attribute__((unused)) static void pad_gc_bind(GCController *c) {
         if (log_on) {
             static _Atomic unsigned n;
             static _Atomic uint64_t t0;
-            uint64_t now = clock_gettime_nsec_np(CLOCK_MONOTONIC), start = atomic_load(&t0);
+            uint64_t now = plat_now_ns(), start = atomic_load(&t0);
             if (!start) { atomic_store(&t0, now); start = now; }
             atomic_fetch_add(&n, 1);
             if (now - start >= 1000000000ull) {

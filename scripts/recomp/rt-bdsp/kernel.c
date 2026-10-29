@@ -29,15 +29,7 @@ static __thread KThread *t_cur;
 volatile int g_stop;
 uint64_t g_program_id, g_system_resource_size = 0x1000000;
 
-uint64_t rt_now_ns(void) {
-#ifdef _WIN32
-    return bdsp_win32_now_ns();
-#else
-    static mach_timebase_info_data_t tb;
-    if (!tb.denom) mach_timebase_info(&tb);
-    return mach_absolute_time() * tb.numer / tb.denom;
-#endif
-}
+uint64_t rt_now_ns(void) { return plat_now_ns(); }
 uint64_t rt_ticks(void) { return (uint64_t)((__uint128_t)rt_now_ns() * 192 / 10000); }  // 19,2 MHz
 
 // ------------------------------------------------------------------ Handle-Tabelle
@@ -852,12 +844,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         phys_mapped -= x[1] < phys_mapped ? x[1] : phys_mapped;
         g_phys_unmaps++;
         if (getenv("BDSP_TRACE_UNMAP")) LOG("[kernel] UnmapPhysicalMemory %llx + %llx (Nr. %llu)\n", (unsigned long long)x[0], (unsigned long long)x[1], (unsigned long long)g_phys_unmaps);
-#ifdef _WIN32
-        if (!bdsp_win32_discard(G2H(x[0]), x[1]))
-            rt_fatal("Windows guest memory discard failed (%lu)\n", GetLastError());
-#else
-        mmap(G2H(x[0]), x[1], PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
-#endif
+        if (!plat_memory_discard(G2H(x[0]), x[1])) rt_fatal("guest memory discard failed\n");
         x[0] = R_OK;
         break;
     case 0x2F: x[0] = R_NOT_IMPLEMENTED; break;  // GetLastThreadInfo

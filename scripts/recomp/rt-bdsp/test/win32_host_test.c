@@ -64,9 +64,9 @@ static void test_memory(const wchar_t *mode) {
     CHECK(bdsp_win32_reserve(allocation, size, 0, &again));
     CHECK(again == allocation);
     CHECK(bdsp_win32_release());
-    uint64_t start = bdsp_win32_now_ns();
+    uint64_t start = plat_now_ns();
     Sleep(5);
-    CHECK(bdsp_win32_now_ns() > start);
+    CHECK(plat_now_ns() > start);
     uint64_t current, peak;
     CHECK(bdsp_win32_memory_usage(&current, &peak));
     CHECK(current > 0 && peak >= current);

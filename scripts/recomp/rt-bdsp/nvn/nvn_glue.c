@@ -14,20 +14,11 @@
 #include <time.h>
 #include <unistd.h>
 #include "guestmem.h"
+#include "plat.h"
 #include "input.h"
 #include "hle.h"
 #ifdef _WIN32
 #include "win32_files.h"
-#endif
-// Frame-Takt: macOS CLOCK_UPTIME_RAW, sonst CLOCK_MONOTONIC (Linux/Vulkan)
-#ifdef __APPLE__
-static inline uint64_t frame_clock_ns(void) { return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
-#else
-static inline uint64_t frame_clock_ns(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
-}
 #endif
 #include "nvn.h"
 #include "output_scale.h"
@@ -54,15 +45,10 @@ void rt_fatal(const char *fmt, ...);
 BdspSettings g_settings;
 uint64_t g_nvn_mem_base, g_nvn_mem_size;
 
-uint64_t plat_now_ns(void) { return rt_now_ns(); }
 void nvn_fatal(void) {
     rt_fatal_trace();
     bdsp_fatal_report("FATAL in the NVN layer", 3);
     for (;;) sleep(1);   // the main thread/the supervision creates the report and ends the process
-}
-void plat_sleep_until_ns(uint64_t t) {
-    uint64_t now = rt_now_ns();
-    if (t > now) { struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)}; nanosleep(&ts, NULL); }
 }
 
 // Mach-O sections, ordered COFF subsections, or ELF linker-provided bounds.
@@ -470,7 +456,7 @@ static void frame_pace(void) {
     static int pace_pct = -1;   // BDSP_PACE_PCT: pacer shorter than the display (the presentation takes the rest)
     if (pace_pct < 0) pace_pct = getenv("BDSP_PACE_PCT") ? atoi(getenv("BDSP_PACE_PCT")) : 100;
     period_ns = period_ns * (unsigned)pace_pct / 100;
-    uint64_t now = frame_clock_ns();
+    uint64_t now = plat_now_ns();
     if (hist_on) {   // frame time histogram (only with BDSP_FRAMEHIST=1): interval between two frames in ms
         static const double edge[8] = {7.5, 8.0, 8.25, 8.5, 9.0, 10.0, 12.0, 16.0};
         if (last_ns) {

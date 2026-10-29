@@ -5,11 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/stat.h>
 #ifdef _WIN32
 #include "win32_files.h"
 #include <bcrypt.h>
 #else
+#include <sys/mman.h>
 #include <unistd.h>
 #if defined(__linux__)
 #include <sys/random.h>
@@ -89,4 +91,67 @@ bool plat_write_file_atomic(const char *path, const void *data, size_t size) {
     free(temporary);
     errno = error;
     return ok;
+}
+
+#ifdef _WIN32
+static INIT_ONCE clock_once = INIT_ONCE_STATIC_INIT;
+static LARGE_INTEGER frequency;
+static BOOL CALLBACK clock_init(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    (void)once; (void)parameter; (void)context;
+    return QueryPerformanceFrequency(&frequency) && frequency.QuadPart > 0;
+}
+#endif
+
+uint64_t plat_now_ns(void) {
+#if defined(_WIN32)
+    LARGE_INTEGER now;
+    if (!InitOnceExecuteOnce(&clock_once, clock_init, NULL, NULL) || !QueryPerformanceCounter(&now) || now.QuadPart < 0) {
+        fprintf(stderr, "FATAL: Windows monotonic clock failed (%lu).\n", GetLastError());
+        ExitProcess(1);
+    }
+    return (uint64_t)((unsigned __int128)(uint64_t)now.QuadPart * 1000000000ull / (uint64_t)frequency.QuadPart);
+#elif defined(__APPLE__)
+    return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+#endif
+}
+
+void plat_sleep_until_ns(uint64_t t) {
+    uint64_t now = plat_now_ns();
+    if (t > now) {
+        struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)};
+        nanosleep(&ts, NULL);
+    }
+}
+
+bool plat_memory_commit(void *address, size_t size) {
+#ifdef _WIN32
+    return bdsp_win32_commit(address, size);
+#else
+    (void)address; (void)size;
+    return true;
+#endif
+}
+
+bool plat_memory_prepare_write(void *address, size_t size) {
+#ifdef _WIN32
+    return bdsp_win32_prepare_write(address, size);
+#else
+    (void)address; (void)size;
+    return true;
+#endif
+}
+
+bool plat_memory_discard(void *address, size_t size) {
+#ifdef _WIN32
+    return bdsp_win32_discard(address, size);
+#else
+    // Best effort, as before: guest pages are 4 KiB and the host may use larger ones, so a range that is not host-page
+    // aligned simply keeps its old contents.
+    if (size) mmap(address, size, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
+    return true;
+#endif
 }

@@ -22,11 +22,8 @@ static void csrng(Service *s, IpcReq *req, IpcResp *resp) {
     if (req->cmd == 0) {
         IpcBuf *b = out_buf(req, 0);
         if (b) {
-            bool ok = b->size <= SIZE_MAX;
-#ifdef _WIN32
-            ok = ok && bdsp_win32_prepare_write(G2H8(b->addr), (size_t)b->size);  // commit the guest pages first
-#endif
-            if (!ok || !plat_random(G2H8(b->addr), (size_t)b->size)) {
+            if (b->size > SIZE_MAX || !plat_memory_prepare_write(G2H8(b->addr), (size_t)b->size) ||
+                !plat_random(G2H8(b->addr), (size_t)b->size)) {
                 LOG("[csrng] system randomness failed\n");
                 resp->result = MAKE_RESULT(1, 1);
             }

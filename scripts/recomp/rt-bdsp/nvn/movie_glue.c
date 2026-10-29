@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "hle.h"
+#include "plat.h"
 
 extern const char *g_romfs_dir;
 int fs_resolve_rom_path(const char *rel, char *out, size_t n);   // services_fs.c: host path in the merged tree (active mod first)
@@ -41,9 +42,7 @@ static inline int mv_mode(void) {
     return mv_on;
 }
 static inline double mv_ms(void) {
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
+    return (double)plat_now_ns() / 1e6;
 }
 static inline unsigned mv_tid(void) { return (unsigned)(((uintptr_t)pthread_self() >> 4) & 0xFFFFF); }
 typedef struct { double t; unsigned tid; const char *fn; char kind; double extra; } MvRec;
