@@ -155,29 +155,16 @@ this is a checkpoint comparison, not full-game validation.
 Remaining work includes ordered Unicorn scanning,
 whole-module chunk/registration emission, worker contexts and production wiring.
 
-## Frozen-reference comparison
+## Former Python reference
 
-The reference is Git revision `a26bc12e4188fb69d6cd96f3271a07bfc9e475ab`.
-It must exist locally; the harness does not fetch or silently change it.
-The reference requires the existing Python generator dependencies. A verified
-private installer Python can be used with `BDSP_INSTALLER_PRIVATE_RUNTIME=1`.
-
-```sh
-python3 scripts/recomp/native-generator/compare.py \
-  --exefs work/exefs --out work/native-generator/images-check \
-  --native work/native-generator/bdsp_codegen
-python3 scripts/recomp/native-generator/compare.py \
-  --exefs work/exefs --out work/native-generator/analysis-check \
-  --native work/native-generator/bdsp_codegen --stage analysis
-```
-
-`--layout macos|compact|compact-a` selects the existing desktop/compact/iPad
-address layouts. `subsdk1` and per-module `.entries` are included when present.
-Comparison directories must be new and outside the input tree. Images are
-compared byte-for-byte by file inventory and SHA-256; analysis compares every
-address and counter. Logs and reference snapshots remain under the chosen output.
-`reference_analysis.py` cuts the frozen generator AST immediately before its
-iterative scan, so the oracle executes the original initial-analysis algorithm.
+Until 2026-10-29 the generator was checked against the original Python generator
+(analysis, lifter, emitter, image builder) by `compare.py` and four `reference_*.py`
+wrappers, which extracted Git revision `a26bc12e4188fb69d6cd96f3271a07bfc9e475ab`
+into a scratch folder. They, the CI step and the locked oracle wheels were removed once
+the C generator carried the whole pipeline. Everything remains in the Git history; to
+rerun a comparison, check out the parent of the removal commit (`git log --diff-filter=D
+-- scripts/recomp/native-generator/compare.py`) and follow the instructions of that
+README. The results below record what was proven while the reference existed.
 
 Synthetic unit tests need no keys, game data, devices or running game:
 
@@ -185,7 +172,7 @@ Synthetic unit tests need no keys, game data, devices or running game:
 python3 -m unittest scripts.tests.test_native_codegen
 ```
 
-They use the existing development Python packages for reference comparisons.
+The tests compile the emitted C and run it, so they need a C compiler and the pinned Unicorn package.
 For the sanitizer executable, set `BDSP_CODEGEN_TEST_BINARY` to its absolute path.
 
 ## CLI entry point
@@ -193,8 +180,7 @@ For the sanitizer executable, set `BDSP_CODEGEN_TEST_BINARY` to its absolute pat
 `bash scripts/recomp/codegen.sh gen ...` builds/caches the tool and forwards
 arguments and exit status. `image ...` runs the native image builder. The former
 owned `eh_gen.py`, `eh_parallel.py` and `mkimg.py` implementations are removed;
-comparison tests obtain them only from the frozen Git revision. Vendored upstream
-Python remains for development analysis/probes, outside the productive build path.
+they exist only in the Git history (revision `a26bc12`).
 
 ## Complete generation
 
@@ -214,20 +200,6 @@ Workers propagate errors to the coordinator, which joins all workers before
 reporting the failing phase and module. Output ordering is independent of jobs.
 Identical files retain their timestamps. Only this module's obsolete generated
 chunk filenames are pruned; symlinks are unlinked without following their target.
-
-For full local output parity, use a new ignored comparison directory:
-
-```sh
-python3 scripts/recomp/native-generator/compare.py --stage generate \
-  --exefs work/exefs --out work/native-generator/full-generation-check \
-  --native work/native-generator/bdsp_codegen --simd c --jobs auto
-```
-
-`--layout compact-a` also verifies already-staged Lumi modules and `.entries`
-without modifying inputs. Every C filename and SHA-256 is recorded alongside
-separate native/reference timings. This check needs development oracle packages;
-the native executable does not execute Python. The frozen reference is extracted
-from Git commit `a26bc12e4188fb69d6cd96f3271a07bfc9e475ab`.
 
 The Rust/Iced UI, IPS helper, runtime and saves are unaffected by the generator.
 See `NOTICE.md` for source attribution and `vendor/lz4/` (pin and license) for LZ4.

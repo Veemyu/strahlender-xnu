@@ -102,17 +102,13 @@ jobs:
             --fetch-source --repair-linux --output work/installer-runtime-release/linux-aarch64/wheels
       - name: Assemble complete private Python
         run: bash installer/scripts/prepare_runtime.sh '${{ matrix.target }}'
-      - name: Validate native C generator and frozen-reference parity
+      - name: Validate native C generator
         shell: bash
         env:
           BDSP_INSTALLER_PRIVATE_RUNTIME: '1'
         run: |
           CODEGEN_PYTHON="$PWD/work/installer-runtime-release/${{ matrix.target }}/runtime/python/bin/python3"
-          CODEGEN_REFERENCE="$PWD/work/codegen-reference-deps"
-          "$CODEGEN_PYTHON" installer/scripts/prepare_codegen_reference.py \
-            --target '${{ matrix.target }}' --output "$CODEGEN_REFERENCE"
-          PYTHONPATH="$CODEGEN_REFERENCE" "$CODEGEN_PYTHON" -m unittest \
-            scripts.tests.test_native_codegen scripts.tests.test_recomp_mod_codegen
+          "$CODEGEN_PYTHON" -m unittest scripts.tests.test_native_codegen scripts.tests.test_recomp_mod_codegen
       - name: Package
         shell: bash
         run: |

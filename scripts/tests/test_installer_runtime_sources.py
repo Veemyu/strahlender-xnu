@@ -15,7 +15,6 @@ sys.path.insert(0, str(ROOT / "installer" / "scripts"))
 import build_source_wheel  # noqa: E402
 import probe_runtime  # noqa: E402
 import assemble_runtime  # noqa: E402
-import prepare_codegen_reference  # noqa: E402
 
 
 class InstallerRuntimeSourceTests(unittest.TestCase):
@@ -45,25 +44,10 @@ class InstallerRuntimeSourceTests(unittest.TestCase):
             self.assertTrue((package / "include/unicorn/unicorn.h").is_file())
             self.assertEqual((package / "lib/libunicorn.so.2").read_bytes(), b"native fixture")
 
-    def test_reference_packages_are_separate_and_verified_before_extraction(self):
-        runtime = ROOT / "installer/runtime"
-        base = json.loads((runtime / "wheels.lock.json").read_text())
-        oracle = json.loads((runtime / "reference-wheels.lock.json").read_text())
-        for target, wheels in base["targets"].items():
+    def test_release_runtime_has_no_capstone(self):
+        base = json.loads((ROOT / "installer/runtime/wheels.lock.json").read_text())
+        for wheels in base["targets"].values():
             self.assertFalse(any(p.startswith("capstone==") for p in wheels))
-            self.assertEqual(oracle["targets"][target]["unicorn==2.1.4"], wheels["unicorn==2.1.4"])
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            wheel = folder / "test.whl"
-            with zipfile.ZipFile(wheel, "w") as archive:
-                archive.writestr("../escape.py", "untrusted")
-            output = folder / "output"
-            with self.assertRaisesRegex(ValueError, "checksum"):
-                prepare_codegen_reference.extract_verified(wheel, "0" * 64, output)
-            with self.assertRaisesRegex(ValueError, "Unsafe"):
-                prepare_codegen_reference.extract_verified(wheel, hashlib.sha256(wheel.read_bytes()).hexdigest(), output)
-            self.assertFalse(output.exists())
-            self.assertFalse((folder / "escape.py").exists())
 
     def test_corrupt_source_is_rejected_before_output_is_created(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -190,7 +190,6 @@ Unix static archives are omitted; Windows DLL import libraries remain. The
 smoke test loads the C engine directly. LZ4, Pillow and UnityPy still serve asset
 work; the small Python build driver remains.
 
-Frozen-reference comparisons use `reference-wheels.lock.json` and
-`installer/scripts/prepare_codegen_reference.py` in a separate ignored directory.
-CI adds that directory to PYTHONPATH only during oracle tests; these packages are
-not copied into release runtimes. No release is triggered by ordinary pushes.
+CI runs the native generator tests with this runtime's own Python; the former
+frozen-reference packages (`reference-wheels.lock.json`) were removed with the Python
+reference on 2026-10-29. No release is triggered by ordinary pushes.

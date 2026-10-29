@@ -295,5 +295,5 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 Der produktive Generator und Image-Bauer laufen als C17-Programm. Der Einstieg
 für die CLI ist `bash scripts/recomp/codegen.sh gen ...` bzw. `image ...`.
 `BDSP_GEN_JOBS=N` oder `--jobs N` steuert die nativen Threads. Unicorn wird über
-seine C-API genutzt; Capstone und die Unicorn-Python-Bindings bleiben ausschließlich
-für Entwicklungsvergleiche. Details: [Native generator](../scripts/recomp/native-generator/README.md).
+seine C-API genutzt; der Generator braucht weder Capstone noch die Unicorn-Python-Bindings,
+neue Installer-Laufzeiten enthalten sie nicht. Details: [Native generator](../scripts/recomp/native-generator/README.md).

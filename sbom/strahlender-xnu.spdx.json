@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "strahlender-xnu 782423f-dirty SBOM",
-  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-15d862a9-9cba-5ca3-b57f-fd574681c067",
+  "name": "strahlender-xnu e11cae3-dirty SBOM",
+  "documentNamespace": "https://spdx.org/spdxdocs/strahlender-xnu-6d6f2970-93bb-5ab8-9ece-3af7657a7d6c",
   "creationInfo": {
-    "created": "2026-10-29T18:12:23Z",
+    "created": "2026-10-29T19:52:55Z",
     "creators": [
       "Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)"
     ]
@@ -17,14 +17,14 @@
     {
       "SPDXID": "SPDXRef-strahlender-xnu",
       "name": "strahlender-xnu",
-      "versionInfo": "782423f-dirty",
+      "versionInfo": "e11cae3-dirty",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT",
       "copyrightText": "Copyright (c) 2026 Veemyu",
       "primaryPackagePurpose": "APPLICATION",
-      "comment": "Repository commit 782423f1f72a6794986ac1abe82cdcb29a9fe4d4. Uncommitted files at generation: scripts/recomp/linux/local/las_runtime.sh, scripts/recomp/linux/local/probe.sh, scripts/recomp/test/boot_probe.c, scripts/recomp/test/las_shim.c, scripts/recomp/test/run_boot_probe_las.sh, scripts/sbom/generate_sbom.py, pico.save."
+      "comment": "Repository commit e11cae356458688fcd1240d925c9ce168e40f28f. Uncommitted files at generation: .github/workflows/installer-ci.yml, docs/BUILD.de.md, docs/BUILD.md, installer/runtime/README.md, installer/runtime/reference-wheels.lock.json, installer/scripts/prepare_codegen_reference.py, scripts/recomp/native-generator/README.md, scripts/recomp/native-generator/compare.py, scripts/recomp/native-generator/reference_analysis.py, scripts/recomp/native-generator/reference_decode.py, scripts/recomp/native-generator/reference_emit.py, scripts/recomp/native-generator/reference_scan.py, scripts/sbom/generate_sbom.py, scripts/tests/test_installer_runtime_sources.py, scripts/tests/test_native_codegen.py, pico.save."
     },
     {
       "SPDXID": "SPDXRef-installer",
@@ -448,13 +448,13 @@
       "SPDXID": "SPDXRef-py-capstone",
       "name": "capstone",
       "versionInfo": "5.0.9",
-      "downloadLocation": "https://pypi.org/project/capstone/5.0.9/",
+      "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "BSD-3-Clause",
       "copyrightText": "NOASSERTION",
       "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: build-tool. Repository state: tracked. Evidence: installer/runtime/reference-wheels.lock.json, tools/pydeps. Frozen Python oracle dependency for development/CI only; excluded from release runtime. oracle wheel sha256 linux-aarch64: 41772ad0c71aa5d3e97d541e802593c2e71fb94ac7e20d4202f97ce2a3eb8ed5; oracle wheel sha256 linux-x86_64: 273fd8d747d2e35c88f91450be51a603ecfaafb00d96d9f315dcb8689c86193e; oracle wheel sha256 macos-aarch64: fc269c5082e17d7f9f265cd6980e2fdc6ab572df913951d76db0357e06b8001d; oracle wheel sha256 macos-x86_64: 8c4a1d7134d7d5290e5d77066500385f2c7a4bf66835ccbfde5180042d508b3c; oracle wheel sha256 windows-x86_64: 732cedbbb56d42e723f14d7af6387f1454194a820b4b96b56d1e53f865ef85d0 Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy.",
+      "comment": "Distribution: build-tool. Repository state: git-ignored (tools/). Evidence: tools/pydeps. Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy.",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
@@ -625,7 +625,7 @@
       "licenseDeclared": "GPL-2.0-only",
       "copyrightText": "NOASSERTION",
       "primaryPackagePurpose": "LIBRARY",
-      "comment": "Distribution: shipped. Repository state: tracked. Evidence: installer/runtime/reference-wheels.lock.json, installer/runtime/wheels.lock.json, installer/scripts/assemble_runtime.py, scripts/recomp/native-generator/NOTICE.md, tools/pydeps. Installer runtime (base profile). wheel sha256 linux-aarch64: bd1fb0c9af5f57e356d8a96928b4fe045b2e18f308ef23b481d5f970008aa722; wheel sha256 linux-x86_64: 9d6e6dea140560de4ebd8446661f7ef84a357d428c14a3ef09dacd306ec8c239; wheel sha256 macos-aarch64: d6c93e0f60328d8f4a1792af3f834137a28050fcc2305f2ec01efe8558a9844e; wheel sha256 macos-x86_64: 2a6f738fab5fabffa56af1e7bbf16ea1e91466c342f8dc64f125bd70f36c6b80; wheel sha256 windows-x86_64: d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5 Frozen Python oracle dependency for development/CI only; excluded from release runtime. Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy. Retained production payload is the Unicorn 2.1.4 C shared library and headers. The native generator links this library directly; Python bindings are removed during runtime assembly. GPL-2.0-only follows upstream's GPLv2 declaration despite the wheel's BSD classifier.",
+      "comment": "Distribution: shipped. Repository state: tracked. Evidence: installer/runtime/wheels.lock.json, installer/scripts/assemble_runtime.py, scripts/recomp/native-generator/NOTICE.md, tools/pydeps. Installer runtime (base profile). wheel sha256 linux-aarch64: bd1fb0c9af5f57e356d8a96928b4fe045b2e18f308ef23b481d5f970008aa722; wheel sha256 linux-x86_64: 9d6e6dea140560de4ebd8446661f7ef84a357d428c14a3ef09dacd306ec8c239; wheel sha256 macos-aarch64: d6c93e0f60328d8f4a1792af3f834137a28050fcc2305f2ec01efe8558a9844e; wheel sha256 macos-x86_64: 2a6f738fab5fabffa56af1e7bbf16ea1e91466c342f8dc64f125bd70f36c6b80; wheel sha256 windows-x86_64: d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5 Local build environment (tools/pydeps, git-ignored). The shader profile uses UnityPy. Retained production payload is the Unicorn 2.1.4 C shared library and headers. The native generator links this library directly; Python bindings are removed during runtime assembly. GPL-2.0-only follows upstream's GPLv2 declaration despite the wheel's BSD classifier.",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",

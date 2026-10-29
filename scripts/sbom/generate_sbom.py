@@ -368,22 +368,6 @@ def build_components():
                                  ["installer/runtime/wheels.lock.json"], download=f"https://pypi.org/project/{name}/{version}/",
                                  category="python-package", notes=merge_notes("Installer runtime (base profile).", hashes))
 
-    # Oracle-only wheels are verified during CI and never copied into the installer.
-    for (name, version), per_target in python_runtime_wheels(ROOT / "installer", "reference-wheels.lock.json").items():
-        key = purl_name(name)
-        purl = f"pkg:pypi/{key}@{version}"
-        evidence = "installer/runtime/reference-wheels.lock.json"
-        note = "Frozen Python oracle dependency for development/CI only; excluded from release runtime."
-        if purl in components:
-            comp = components[purl]
-            comp["notes"] = merge_notes(comp["notes"], note)
-            comp["evidence"] = sorted(set(comp["evidence"]) | {evidence})
-        else:
-            hashes = "; ".join(f"oracle wheel sha256 {t}: {h}" for t, h in sorted(per_target.items()))
-            components[purl] = C(f"py-{key}", name, version, purl, PY_LICENSE.get(key, "NOASSERTION"), BUILD, TRACKED,
-                                 [evidence], download=f"https://pypi.org/project/{name}/{version}/",
-                                 category="python-package", notes=merge_notes(note, hashes))
-
     # Locally installed packages (git-ignored tools/pydeps); skipped when absent.
     pyd = ROOT / "tools" / "pydeps"
     if pyd.is_dir():

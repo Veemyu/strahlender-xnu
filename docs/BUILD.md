@@ -121,9 +121,8 @@ workers. Stateful Unicorn jump-table discovery stays in address order.
 `BDSP_GEN_JOBS=1` selects serial C execution; `BDSP_GEN_JOBS=N` or
 `bash scripts/recomp/codegen.sh gen ... --jobs N` overrides the generator threads
 independently of `--recomp-jobs` (Clang). Scheduling does not change file contents.
-Unicorn is called through its existing C API. Capstone and Unicorn's Python
-bindings are development-only oracle dependencies, excluded from new installer
-runtimes. Python remains for build orchestration and asset tools such as Pillow,
+Unicorn is called through its existing C API; the generator uses neither Capstone nor
+Unicorn's Python bindings, and new installer runtimes exclude them. Python remains for build orchestration and asset tools such as Pillow,
 LZ4 and UnityPy. See [the native generator README](../scripts/recomp/native-generator/README.md).
 
 Original icons and their language variants are generated only from user-provided
