@@ -215,3 +215,20 @@ dumps, invalid paths/fonts/layouts, navigation and pre-build ordering. Actual
 user-firmware/device keyboard acceptance remains pending; no proprietary fixture
 is distributed. The helper is included in macOS universal and Linux AppImage
 packaging; no CI job or release was dispatched for this change.
+
+Installed firmware discovery reuses the shared emulator-location registry and OS
+roots used for key lookup. It checks `bis/system/Contents/registered` for
+Ryujinx/Ryubing and `nand/system/Contents/registered` for Yuzu-family profiles,
+including Flatpak and historical data roots. Windows uses APPDATA/roaming roots;
+Linux respects XDG roots; macOS uses the registry's Application Support/data roots.
+An explicitly selected or remembered `system/prod.keys` or `keys/prod.keys` can
+also locate a portable installation. No repository directory is a built-in search
+location. Discovery accepts installed `.nca/00` blobs without changing them; empty
+or unavailable locations produce a hint rather than an error. A remembered manual
+firmware choice takes priority. Decryption remains an early build check.
+
+A real registered-directory acceptance run scanned 229 NCAs and produced 58
+validated resource files (about 18.2 MB), including optional CJK fonts and the
+name-check data. No original NCA, key, RomFS or save was changed. Device keyboard
+acceptance is still pending. Progress-state storage derives its length from the
+declared stage list, with regression coverage rendering all real build stages.

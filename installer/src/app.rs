@@ -133,6 +133,8 @@ pub enum Message {
     Review,
     Back,
     SkipMods,
+    FindFirmware,
+    FirmwareFound(u64, Option<Source>),
     ChooseFirmware(bool),
     FirmwarePicked(Option<PathBuf>),
     FirmwareChecked(u64, PathBuf, Result<(), String>),
@@ -198,6 +200,7 @@ pub struct Installer {
     mods_skipped: bool,
     firmware: Option<PathBuf>,
     firmware_pending: Option<u64>,
+    firmware_hint: Option<String>,
     mods_folder: Option<PathBuf>,
     chosen_mod_folder: Option<PathBuf>,
     select_imported_mod: bool,
@@ -458,6 +461,7 @@ impl Installer {
             mods_skipped: false,
             firmware: None,
             firmware_pending: None,
+            firmware_hint: None,
             mods_folder: mod_support::folder_for(host, InstallTarget::native(host)),
             chosen_mod_folder: None,
             select_imported_mod: false,
@@ -1422,9 +1426,53 @@ impl Installer {
                 self.notice = None;
                 self.hovered = None;
                 self.drag_active = false;
+                if self.page == Page::Firmware
+                    && self.firmware.is_none()
+                    && !self.demo
+                    && self.capture.is_none()
+                {
+                    return self.handle(Message::FindFirmware);
+                }
                 if self.page == Page::Mods && !self.demo && self.capture.is_none() {
                     return self.handle(Message::RefreshMods);
                 }
+            }
+            Message::FindFirmware
+                if self.page == Page::Firmware && self.firmware_pending.is_none() =>
+            {
+                self.sequence += 1;
+                let id = self.sequence;
+                self.firmware_pending = Some(id);
+                self.firmware_hint = None;
+                let keys = self.keys.as_ref().map(|s| s.path.clone());
+                let language = self.language;
+                self.record("Firmware", language.t(L::FirmwareSearching));
+                return Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            key_paths::find_firmware(keys, language)
+                        })
+                        .await
+                        .ok()
+                        .flatten()
+                    },
+                    move |source| Message::FirmwareFound(id, source),
+                );
+            }
+            Message::FirmwareFound(id, source) if self.firmware_pending == Some(id) => {
+                self.firmware_pending = None;
+                let hint = if let Some(source) = source {
+                    let hint = self
+                        .language
+                        .t(L::FirmwareDetected)
+                        .replace("{emulator}", &source.description);
+                    self.firmware = Some(source.path);
+                    hint
+                } else {
+                    self.language.t(L::FirmwareNotFound).to_owned()
+                };
+                self.record("Firmware", &hint);
+                self.firmware_hint = Some(hint);
             }
             Message::ChooseFirmware(folder)
                 if self.page == Page::Firmware && self.firmware_pending.is_none() =>
@@ -1470,6 +1518,7 @@ impl Installer {
                 self.firmware_pending = None;
                 match result {
                     Ok(()) => {
+                        self.firmware_hint = None;
                         self.firmware = Some(path.clone());
                         if !self.demo && self.capture.is_none() {
                             let _ = preferences::save_firmware(Some(&path));
@@ -1486,6 +1535,7 @@ impl Installer {
             }
             Message::RemoveFirmware => {
                 self.firmware = None;
+                self.firmware_hint = None;
                 self.firmware_pending = None;
                 if !self.demo && self.capture.is_none() {
                     let _ = preferences::save_firmware(None);
@@ -2313,6 +2363,28 @@ impl Installer {
                 self.page = Page::Firmware;
                 self.firmware = Some(PathBuf::from("Firmware.zip"));
             }
+            "firmware-import-progress" => {
+                self.firmware = Some(PathBuf::from("Firmware.zip"));
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Running;
+                self.build_progress.step("firmware", "started");
+                self.motion
+                    .snap(crate::progress::Stage::Firmware.index() as f32);
+            }
+            "firmware-auto" => {
+                self.page = Page::Firmware;
+                self.firmware = Some(PathBuf::from("registered"));
+                self.firmware_hint = Some(
+                    self.language
+                        .t(L::FirmwareDetected)
+                        .replace("{emulator}", "Ryujinx / Ryubing"),
+                );
+            }
+            "firmware-not-found" => {
+                self.page = Page::Firmware;
+                self.firmware = None;
+                self.firmware_hint = Some(self.language.t(L::FirmwareNotFound).into());
+            }
             "review-firmware" => {
                 self.page = Page::Review;
                 self.firmware = Some(PathBuf::from("Firmware.zip"));
@@ -2595,6 +2667,22 @@ fn compact_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn real_progress_renders_every_stage_with_and_without_firmware() {
+        let (mut app, _) = Installer::new();
+        app.demo = false;
+        app.capture = None;
+        app.page = Page::Progress;
+        app.backend_status = BackendStatus::Running;
+        for firmware in [None, Some(PathBuf::from("firmware.zip"))] {
+            app.firmware = firmware;
+            for stage in crate::progress::Stage::ALL {
+                app.build_progress.active = stage;
+                let _ = app.view();
+            }
+        }
+    }
 
     #[test]
     fn firmware_is_optional_explicit_and_rejects_stale_inspection() {
@@ -3119,6 +3207,9 @@ mod tests {
         assert_eq!(app.page, Page::Update);
         let _ = app.update(Message::Review);
         assert_eq!(app.page, Page::Firmware);
+        if let Some(id) = app.firmware_pending {
+            let _ = app.update(Message::FirmwareFound(id, None));
+        }
         let _ = app.update(Message::SkipFirmware);
         assert_eq!(app.page, Page::ModsFolder);
         let _ = app.update(Message::Review);

@@ -112,3 +112,26 @@ before integrating the registry.
 Path generation and registry coverage are unit-tested for all three operating
 systems. Actual desktop/package validation is currently local macOS only;
 these source findings do not substitute for Windows/Linux acceptance tests.
+
+## Installed firmware discovery
+
+The firmware step derives installed-resource candidates from the same platform
+roots in the registry. This is independent of whether a prod.keys file currently
+exists there. Ryujinx/Ryubing replace the key directory `system` with
+`bis/system/Contents/registered`; Yuzu-family profiles replace `keys` with
+`nand/system/Contents/registered`. Historical Yuzu and Flatpak profiles retain
+their corresponding roots. The standalone `.switch` key directory does not imply
+an installed firmware location.
+
+An explicitly selected or remembered `prod.keys` in a portable emulator's
+`system` or `keys` directory can add that installation's sibling firmware path.
+The installer does not guess a portable application's executable location or scan
+repositories. Mixed-case key-directory names are accepted for Windows inputs.
+A readable nonempty NCA inventory (including `.nca/00` registered blobs) is offered
+without modifying it. No result is a hint, not a prerequisite failure. Full title,
+key and extracted-resource validation runs before game compilation. A remembered
+manual firmware choice takes priority over discovery.
+
+Platform path resolution and registered-blob discovery have synthetic tests. A
+real Ryujinx-format registered-directory import also passed on macOS aarch64.
+Windows-native and Linux-native firmware-import acceptance remain open.

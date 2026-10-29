@@ -837,11 +837,13 @@ impl Installer {
         }
         let card = column![
             heading,
-            text(self.language.t(if busy {
-                L::CheckingRequirements
+            text(if busy {
+                self.language.t(L::FirmwareSearching)
             } else {
-                L::FirmwareFormats
-            }))
+                self.firmware_hint
+                    .as_deref()
+                    .unwrap_or_else(|| self.language.t(L::FirmwareFormats))
+            })
             .size(12)
             .color(c.muted),
             row![choose(L::FirmwareZip, false), choose(L::Folder, true)].spacing(10),
