@@ -70,7 +70,9 @@ Missing tools fail rather than installing software automatically.
 Geometry, interpolation, source hashes, and generated document definitions are
 deterministic. Native rendering/compilation is Apple-toolchain-dependent; this
 does not promise byte-identical Assets.car archives across Xcode versions.
-Without valid originals, the existing neutral placeholder is not Nintendo art.
+There is no placeholder icon: without valid original icons (`work/recomp/icons/source/icons.json` with at least one
+variant, created by the extract stage from your game file) the macOS preflight reports them as missing and every icon
+build stops with "No original game icon found".
 
 ## Approved Apple design
 
@@ -112,8 +114,8 @@ Both Qt hosts share an App icon menu and persisted QSettings choice.
 The generated desktop launcher uses the English default and remains under work/;
 no system installation occurs. BDSP_ICON_DIR overrides the generated directory.
 
-Default preference: US English, British English, German, another valid variant,
-then the neutral placeholder. Identical artwork shares generated assets while
+Default preference: US English, British English, German, then another valid variant.
+Identical artwork shares generated assets while
 remaining selectable by language. Game language is independent.
 Arbitrary runtime image import is not implemented; iPad icons must be registered
 at build time.

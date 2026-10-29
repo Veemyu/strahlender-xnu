@@ -75,7 +75,7 @@ class GameIconTests(unittest.TestCase):
         mod.mkdir()
         Image.new("RGB", (256, 256), "gray").save(mod / "icon.png")
         result = icons.prepared(self.root / "missing-source", self.root / "icons", mod, "Example Mod")
-        self.assertNotEqual(result["default"], "placeholder")
+        self.assertTrue(result["variants"])
         self.assertEqual(result["titles"]["de"]["name"], "Example Mod")
 
     def test_mod_without_artwork_has_a_distinct_offline_icon_in_every_base_language(self):
@@ -214,18 +214,13 @@ class GameIconTests(unittest.TestCase):
         self.assertEqual([v["id"] for v in loaded["variants"]], ["de"])
         self.assertEqual(loaded["default"], "de")
 
-    def test_missing_icons_generate_placeholder_without_reusing_stale_sources(self):
+    def test_missing_icons_fail_instead_of_using_a_placeholder(self):
         self.fixture()
         icons.ingest(None, None, self.source)
-        output = self.root / "linux"
-        icons.build_linux(self.source, output, self.root / "game")
-        metadata = json.loads((output / "icons.json").read_text())
-        self.assertEqual(metadata["default"], "placeholder")
-        self.assertEqual(len(metadata["variants"]), 1)
-        entry = metadata["variants"][0]
-        for size in (16, 32, 48, 64, 128, 256, 512):
-            with Image.open(output / "hicolor" / ("%dx%d" % (size, size)) / "apps" / (entry["icon"] + ".png")) as image:
-                self.assertEqual(image.size, (size, size))
+        for source in (self.source, self.root / "missing-source"):
+            with self.assertRaisesRegex(ValueError, "No original game icon"):
+                icons.build_linux(source, self.root / "linux", self.root / "game")
+        self.assertEqual(icons.load_source(self.root / "missing-source")["variants"], [])
 
     def test_mac_icns_and_incremental_fingerprint(self):
         self.nacp(self.base, {"de": "Diamant", "ja": "ダイヤモンド"})

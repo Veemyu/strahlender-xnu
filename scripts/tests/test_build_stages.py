@@ -174,6 +174,25 @@ class PreflightTests(unittest.TestCase):
         items = self.run_pf(bs.STAGES)
         self.assertEqual(self.names(items, False), [])
 
+    def write_icons(self, variants):
+        source = os.path.join(self.work, "recomp", "icons", "source")
+        write(os.path.join(source, "icons.json"), json.dumps({"schema": 1, "variants": variants}))
+        return source
+
+    def test_recomp_needs_the_original_icons(self):
+        items = self.run_pf(["recomp"], target="macos")
+        self.assertIn("Original game icons", self.names(items, False))
+        self.write_icons([])
+        self.assertIn("Original game icons", self.names(self.run_pf(["recomp"], target="macos"), False))
+        self.write_icons([{"id": "en-US"}])
+        items = self.run_pf(["recomp"], target="macos")
+        self.assertNotIn("Original game icons", self.names(items, False))
+
+    def test_icons_may_come_from_the_extract_stage_of_the_same_run(self):
+        items = self.run_pf(["extract", "recomp"], target="macos")
+        self.assertNotIn("Original game icons", self.names(items, False))
+        self.assertTrue(any(i["name"] == "Original game icons" and i["level"] == "note" for i in items))
+
     def test_disk_requirement(self):
         items = self.run_pf(["extract"], free=lambda p: 32.0)
         self.assertEqual(self.names(items, False), ["Disk space >= 40 GB free"])
@@ -233,6 +252,8 @@ class RecompStageTests(unittest.TestCase):
         write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"), "gen")
         write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){}")
         write(os.path.join(self.root, "scripts", "recomp", "app", "make_app.sh"), "#!/bin/sh")
+        write(os.path.join(self.work, "recomp", "icons", "source", "icons.json"),
+              json.dumps({"schema": 1, "variants": [{"id": "en-US"}]}))
 
     def tearDown(self):
         self.tmp.cleanup()

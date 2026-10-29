@@ -188,7 +188,7 @@ def extract_mod_logos(romfs, title_id=""):
 
 def default_variant(variants):
     ids = {v["id"] for v in variants}
-    return next((x for x in ("en-US", "en-GB", "de") if x in ids), min(ids) if ids else "placeholder")
+    return next((x for x in ("en-US", "en-GB", "de") if x in ids), min(ids) if ids else "")
 
 
 def recommend(variants, preferred):
@@ -453,7 +453,7 @@ def load_source(source):
     try:
         data = json.loads((source / "icons.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return {"schema": 1, "default": "placeholder", "variants": []}
+        return {"schema": 1, "default": "", "variants": []}
     if data.get("schema") != 1:
         raise ValueError("Unknown icon metadata")
     valid = []
@@ -490,16 +490,10 @@ def prepared(source, output, mod_root=None, mod_name=None):
             return prepared(temporary, output)
     manifest = load_source(source)
     if not manifest["variants"]:
-        print("Notice: no original icon available; using a neutral placeholder (run game_icons.py extract to extract it)", file=sys.stderr)
-        from make_icon import png, pixel
-        data = png(256, pixel)
-        digest = hashlib.sha256(data).hexdigest()
-        manifest["variants"] = [{"id": "placeholder", "label": "Placeholder", "image": digest + ".png",
-                                  "sha256": digest, "icon": "BDSP_" + digest[:24]}]
-        (output / (digest + ".png")).write_bytes(data)
+        raise ValueError("No original game icon found in %s: run the extract stage (scripts/build_all.sh extract ...) "
+                         "or game_icons.py extract before building" % source)
     for entry in manifest["variants"]:
-        if entry["id"] != "placeholder":
-            shutil.copyfile(Path(source) / entry["image"], output / entry["image"])
+        shutil.copyfile(Path(source) / entry["image"], output / entry["image"])
     write_json(output / "icons.json", manifest)
     return manifest
 
@@ -601,7 +595,7 @@ def build_ios(source, output, bundle, settings, mod_root=None, mod_name=None):
     default_word = {"de": "Standard", "es": "Predeterminado", "pt": "Padrão"}
     recommended_word = {"de": " (empfohlen)", "es": " (recomendado)", "pt": " (recomendado)"}
     translations = {row[0]: row[1:] for row in texts}
-    for locale in sorted({"de", "en", "es", "pt"} | {v["id"] for v in manifest["variants"] if v["id"] != "placeholder"}):
+    for locale in sorted({"de", "en", "es", "pt"} | {v["id"] for v in manifest["variants"]}):
         lang = locale.split("-")[0]   # pt-BR -> pt, es-419 -> es; English variants -> en
         group, title, default, footer = translations.get(lang, translations["en"])
         if not manifest["default"].startswith("en-"):

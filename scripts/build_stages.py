@@ -317,6 +317,20 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         add("hactool", True, "built by stage tools", level="note")
 
     if "recomp" in s and want_mac:
+        icon_source = os.environ.get("BDSP_ICON_SOURCE") or os.path.join(work, "recomp", "icons", "source")
+        icons_ready = False
+        try:
+            with open(os.path.join(icon_source, "icons.json"), encoding="utf-8") as handle:
+                icons_ready = bool(json.load(handle).get("variants"))
+        except (OSError, ValueError, AttributeError):
+            pass
+        if icons_ready:
+            add("Original game icons", True, icon_source)
+        elif "extract" in s:
+            add("Original game icons", True, "created by stage extract", level="note")
+        else:
+            add("Original game icons", False, icon_source,
+                "scripts/build_all.sh extract ... (reads the icon from your game file) or game_icons.py extract")
         if not (s & HEAVY_STAGES):   # otherwise the general space check (stricter) already covers it
             need = min(RECOMP_MIN_FREE_GB, min_free_gb)
             gb = free(work)
