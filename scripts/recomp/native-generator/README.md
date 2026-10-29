@@ -50,9 +50,7 @@ flags participate in cache identity. PE architecture and Unicorn's recursively
 required DLLs are checked before publication. The generator's DLLs are build
 dependencies and must not enter the game package.
 
-The LZ4 provenance check accepts upstream LF bytes or their exact CRLF-only
-checkout conversion; all other edits still fail the pinned checksum. This does
-not rewrite the checkout. Native LLVM-MinGW UCRT 20261020/Unicorn 2.1.4 checks
+Native LLVM-MinGW UCRT 20261020/Unicorn 2.1.4 checks
 now cover Unicode/apostrophe paths, image relocations and HLE slots, deterministic
 portable C generation, amd64 compilation and a moved generator without a developer
 PATH. Generated C also cross-compiles for ARM64; no ARM64 executable was run.

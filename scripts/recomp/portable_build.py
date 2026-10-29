@@ -545,7 +545,7 @@ def runtime_libraries(compiler, selected):
     prefix = Path(identity["path"]).parent.parent
     directory = prefix / (selected["target"] + "-w64-mingw32") / "lib"
     libraries = [directory / ("lib" + name + ".a")
-                 for name in ("winpthread", "bcrypt", "psapi", "shell32", "ole32", "uuid")]
+                 for name in ("winpthread", "bcrypt", "psapi", "shell32", "ole32", "uuid", "winmm")]
     for path in libraries:
         if not path.is_file():
             raise ValueError("Missing LLVM-MinGW runtime library: " + str(path))

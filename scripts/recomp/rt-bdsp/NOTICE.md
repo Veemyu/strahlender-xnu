@@ -9,7 +9,7 @@ The runtime in this directory follows LASRecomp's design and contains **verbatim
 | Revision | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (the clone's only commit) |
 | Author | Peiikai |
 | License | MIT, “Copyright (c) 2026 Peiikai”. Unchanged text in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Excluded | Upstream `third_party/`, `fonts/`, and clone metadata (`.git`, Makefile, README, `docs/`). Until 2026-10-29 the runtime and generator were vendored in full under `scripts/recomp/upstream/`; since then only `LICENSE`, `runtime/{cpu,simd,simd_fp}.h` and the Windows preparation files remain there, and the rest (including the ten `runtime/nvn` files that were byte-identical to the local copies) is available from the git history (commits `e43b466`, `2d01ade`, `d1c40e7`). See the provenance and NVN sections below. |
+| Excluded | Upstream `third_party/`, `fonts/`, and clone metadata (`.git`, Makefile, README, `docs/`). Until 2026-10-29 the runtime and generator were vendored in full under `scripts/recomp/upstream/`; since then only `LICENSE`, and `runtime/{cpu,simd,simd_fp}.h` remain there, and the rest (including the ten `runtime/nvn` files that were byte-identical to the local copies) is available from the git history (commits `e43b466`, `2d01ade`, `d1c40e7`). See the provenance and NVN sections below. |
 
 The upstream license excludes Nintendo property and third-party components. None of that content is included here. The repository user explicitly authorized use and further development.
 
@@ -27,7 +27,7 @@ The native generator (`../native-generator/`) adapts the analysis, lifter and em
 
 ## NVN layer (Gate 2, `nvn/`)
 
-The graphics layer **adopts source code from the clone**, with explicit user approval and under its MIT license (Copyright (c) 2026 Peiikai; text in [`../upstream/LICENSE`](../upstream/LICENSE)). Sources in `nvn/src/` (Metal) and `nvn/vulkan/src/` (Vulkan differences) are **modified** from commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`. Changes now live directly in these files, not in patches. The unmodified reference is in the git history (vendoring commits `e43b466`, `2d01ade`, `d1c40e7`) and in LASRecomp commit `09f8e5e`; `scripts/recomp/upstream/runtime/` keeps only `cpu.h`, `simd.h`, `simd_fp.h` and the Windows files. The translator comes from `shader_translator/`.
+The graphics layer **adopts source code from the clone**, with explicit user approval and under its MIT license (Copyright (c) 2026 Peiikai; text in [`../upstream/LICENSE`](../upstream/LICENSE)). Sources in `nvn/src/` (Metal) and `nvn/vulkan/src/` (Vulkan differences) are **modified** from commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`. Changes now live directly in these files, not in patches. The unmodified reference is in the git history (vendoring commits `e43b466`, `2d01ade`, `d1c40e7`) and in LASRecomp commit `09f8e5e`; `scripts/recomp/upstream/runtime/` keeps only `cpu.h`, `simd.h` and `simd_fp.h`. The translator comes from `shader_translator/`.
 
 The earlier patch-based workflow copied sources to `work/recomp/nvn-src` using `nvn/prepare.sh` and applied `nvn/las-nvn.patch` and `fixes.patch`. Its claim that changes existed only in patches is historical, not a description of the current directly modified source tree.
 

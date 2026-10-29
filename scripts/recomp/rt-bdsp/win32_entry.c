@@ -2,6 +2,7 @@
 #include "win32_files.h"
 #include <errno.h>
 #include <shlobj.h>
+#include <timeapi.h>
 #include <stdlib.h>
 #include <string.h>
 #ifndef BDSP_NVN_NONE
@@ -132,6 +133,13 @@ int wmain(int argc, wchar_t **wide_argv) {
         fprintf(stderr, "FATAL: Windows crash log could not be opened (%lu).\n", GetLastError());
         goto done;
     }
+    timeBeginPeriod(1);  // 1 ms Sleep/condition-variable timeouts instead of 15.6 ms
+    // Opt out of EcoQoS and of Windows 11 ignoring the timer resolution while the window is occluded.
+    PROCESS_POWER_THROTTLING_STATE throttling = {
+        .Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        .ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED | PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
+    };
+    SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &throttling, sizeof throttling);
 #ifndef BDSP_NVN_NONE
     SDL_SetMainReady();
 #endif

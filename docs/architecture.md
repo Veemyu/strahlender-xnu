@@ -10,7 +10,7 @@ Numbers below were measured on the project's own dump unless marked *inferred* o
 - The repository holds only original code: the generator extensions, the runtime and the build scripts. It never holds game data,
   keys, saves, screenshots or generated C. Everything generated lives under `work/` (gitignored).
 - A built app contains your own game data and is for personal use only; only the repository is shared.
-- The recompiler and the NVN layer are based on LASRecomp (`peiikai/LASRecomp`, MIT; only `LICENSE`, `cpu.h`, `simd.h`, `simd_fp.h` and the Windows files are kept in
+- The recompiler and the NVN layer are based on LASRecomp (`peiikai/LASRecomp`, MIT; only `LICENSE`, `cpu.h`, `simd.h`, `simd_fp.h` are kept in
   `scripts/recomp/upstream/`, the rest of the former full copy is in the git history; changes and provenance in `scripts/recomp/rt-bdsp/NOTICE.md` and `shader_translator/NOTICE.md`).
   `raulzrrs/letsgo-recomp` (a LASRecomp derivative) was read as a second reference. Both target other, non-Unity games on macOS only; iPadOS
   and Boehm GC/exception support are our own work. No code of third-party game ports (for example opendpr) is used.

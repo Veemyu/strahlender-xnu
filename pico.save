@@ -1,0 +1,7 @@
+beim installer fragt er nach git
+getestet mit der universal binary 2 installer ()
+ich habe dann git via brew installiert, aber warum nimmt er nicht einfach system git?
+
+und eh_gen schlägt fehl weil er ~/Library nicht findet hä?
+
+
