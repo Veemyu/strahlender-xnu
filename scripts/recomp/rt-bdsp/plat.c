@@ -121,10 +121,13 @@ uint64_t plat_now_ns(void) {
 
 void plat_sleep_until_ns(uint64_t t) {
     uint64_t now = plat_now_ns();
-    if (t > now) {
-        struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)};
-        nanosleep(&ts, NULL);
-    }
+    if (t <= now) return;
+#ifdef _WIN32
+    Sleep((DWORD)((t - now + 999999) / 1000000));  // 1 ms granularity after timeBeginPeriod(1) in the entry point
+#else
+    struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)};
+    nanosleep(&ts, NULL);
+#endif
 }
 
 bool plat_memory_commit(void *address, size_t size) {

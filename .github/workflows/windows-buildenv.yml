@@ -81,10 +81,16 @@ jobs:
           $env:PYTHONPATH = "$PWD"
           $dir = "$PWD\work\buildenv"
           python scripts/install/windows_pipeline.py --output "$dir\catalog.json" --cc "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe" --generator "$dir\generator\bdsp_codegen.exe" --sdl "$dir\sdl" --vulkan "$dir\vulkan" --ffmpeg "$dir\ffmpeg" --hactool "$dir\hactool" --qt "$dir\qt"
+      - name: Vulkan loader and extract tool for the Windows tests
+        run: |
+          choco install vulkan-runtime --yes --no-progress
+          cargo build --release --manifest-path installer/extract/Cargo.toml
+          Add-Content $env:GITHUB_ENV "BDSP_EXTRACT=$PWD\installer\extract\target\release\bdsp-extract.exe"
       - name: Windows tests against the new toolchain
         continue-on-error: true
         run: |
           $dir = "$PWD\work\buildenv"
+          Remove-Item Env:BDSP_WINDOWS_CONTRACT, Env:BDSP_WINDOWS_SOURCES  # the contract tests check the repository files
           $env:PYTHONPATH = "$PWD;$PWD\work\pydeps"
           $env:BDSP_WINDOWS_NATIVE_CC = "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           $env:CC = $env:BDSP_WINDOWS_NATIVE_CC

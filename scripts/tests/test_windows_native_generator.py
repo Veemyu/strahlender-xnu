@@ -1,5 +1,7 @@
 """Opt-in native LLVM-MinGW/Unicorn checks on synthetic NSOs, without a Git oracle."""
+import hashlib
 import json
+import io
 import os
 from pathlib import Path
 import shutil
@@ -182,7 +184,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             "-I", str(runtime), str(runtime / "test/sdl_runtime_test.c"),
             *(str(runtime / (name + ".c")) for name in
               ("win32_entry", "win32_files", "win32_host", "plat", "audio_output", "pad_sdl")),
-            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi", "-lbcrypt", "-lshell32", "-lole32", "-luuid",
+            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi", "-lbcrypt", "-lwinmm", "-lshell32", "-lole32", "-luuid",
             "-Wl,-Bstatic,-lwinpthread,-Bdynamic", "-o", str(executable)],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -254,7 +256,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             runtime / "test/qt_controller_menu_test.cpp",
             *objects,
             *(qt / f"lib/libQt6{name}.a" for name in ("Widgets", "Gui", "Core")),
-            sdl / "lib/libSDL3.dll.a", "-lpsapi", "-lbcrypt",
+            sdl / "lib/libSDL3.dll.a", "-lpsapi", "-lbcrypt", "-lwinmm",
             "-Wl,--gc-sections,-Bstatic,-lwinpthread,-Bdynamic", "-o", executable],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -343,7 +345,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             *flags, str(fixture), str(second), str(runtime / "nvn/nvn_glue.c"),
             str(runtime / "nvn/vulkan/vk_glue.c"),
             str(runtime / "win32_files.c"), str(runtime / "win32_host.c"), str(runtime / "plat.c"),
-            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi", "-lbcrypt",
+            str(sdl / "lib/libSDL3.dll.a"), "-lpsapi", "-lbcrypt", "-lwinmm",
             "-Wl,--gc-sections,-Bstatic,-lwinpthread,-Bdynamic", "-o", str(executable)],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -377,7 +379,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
                          "-D_WIN32_WINNT=0x0A00", "-I", str(runtime),
                          str(runtime / ("test/win32_" + ("entry" if is_entry else "files") + "_test.c")),
                          str(runtime / "win32_files.c"), str(runtime / "win32_host.c"), str(runtime / "plat.c"),
-                         "-lpsapi", "-lbcrypt", "-o", str(executable)]
+                         "-lpsapi", "-lbcrypt", "-lwinmm", "-o", str(executable)]
             if is_entry:
                 arguments += ([str(runtime / "win32_entry.c")] if name == "entry" else ["-DBDSP_ENTRY_PATH_TEST"])
                 arguments += [str(runtime / "runtime_paths.c"),
@@ -483,7 +485,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             "-I", str(ROOT / "scripts/recomp/upstream/runtime"), "-I", str(runtime),
             str(runtime / "test/kernel_win_test.c"), str(guest), str(runtime / "kernel.c"),
             str(runtime / "win32_host.c"), str(runtime / "win32_files.c"), str(runtime / "plat.c"),
-            "-Wl,-Bstatic,-lwinpthread,-Bdynamic", "-lbcrypt", "-lpsapi", "-o", str(executable)],
+            "-Wl,-Bstatic,-lwinpthread,-Bdynamic", "-lbcrypt", "-lwinmm", "-lpsapi", "-o", str(executable)],
             capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=25)
@@ -642,8 +644,20 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             (exefs / "main.npdm").write_bytes(b"synthetic npdm")
             (args.work / "romfs").mkdir(exist_ok=True)
             (args.work / "romfs/synthetic.bin").write_bytes(b"synthetic game data")
+            from PIL import Image
+            icons = args.work / "recomp/icons/source"
+            icons.mkdir(parents=True, exist_ok=True)
+            buffer = io.BytesIO()
+            Image.new("RGB", (256, 256), "red").save(buffer, "PNG")
+            digest = hashlib.sha256(buffer.getvalue()).hexdigest()
+            (icons / (digest + ".png")).write_bytes(buffer.getvalue())
+            (icons / "icons.json").write_text(json.dumps({
+                "schema": 1, "title_id": "0", "default": "en-US", "titles": {}, "display_version": "",
+                "variants": [{"id": "en-US", "label": "English (US)", "image": digest + ".png", "sha256": digest,
+                              "icon": "BDSP_" + digest[:24]}]}))
         events = []
-        with patch.object(windows_pipeline, "extract_game", side_effect=extracted):
+        with patch.object(windows_pipeline, "extract_game", side_effect=extracted), \
+                patch.object(windows_pipeline.game_icons, "ROOT", self.root):
             executable = windows_pipeline.build_game(args, lambda event, **fields:
                                                      events.append({"event": event, **fields}))
             windows_pipeline.build_game(args, lambda event, **fields:
@@ -696,7 +710,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         self.assertEqual(events[-1], {"event": "result", "ok": False, "code": 4})
         self.assertEqual(sum(event["event"] == "result" for event in events), 1)
         self.assertIn({"event": "step", "id": "extract", "status": "failed"}, events)
-        self.assertTrue(any("metadata is unavailable" in event.get("message", "") for event in events))
+        self.assertTrue(any("NCA" in event.get("message", "") or "unpacked" in event.get("message", "") for event in events))
         self.assertNotIn(b"SYNTHETIC KEY MATERIAL", result.stdout + result.stderr)
         self.assertFalse(any(event["event"] == "artifact" for event in events))
 
@@ -710,7 +724,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
             "-I", str(ROOT / "scripts/recomp/upstream/runtime"), "-I", str(runtime),
             str(runtime / "test/win32_host_test.c"), str(runtime / "win32_host.c"),
             str(runtime / "win32_files.c"), str(runtime / "plat.c"),
-            str(runtime / "loader.c"), "-lpsapi", "-lbcrypt", "-o", str(executable)],
+            str(runtime / "loader.c"), "-lpsapi", "-lbcrypt", "-lwinmm", "-o", str(executable)],
             capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         for mode in ("--memory", "--gpu-memory", "--guard-fault", "--readonly-fault", "--noaccess-fault", "--execute-fault"):
