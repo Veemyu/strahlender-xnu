@@ -9,11 +9,9 @@ import tempfile
 
 if __package__:
     from . import build_helpers as helpers
-    from .container_extract import extract_container
     from .install.filesystem import reject_link
 else:
     import build_helpers as helpers
-    from container_extract import extract_container
     from install.filesystem import reject_link
 
 
@@ -34,6 +32,14 @@ class ExtractionTool:
         except subprocess.CalledProcessError:
             # Neither upstream output nor command arguments are safe error details.
             raise ValueError("Native extraction failed; check the selected dump, update and keys.") from None
+
+    def unpack(self, source, destination, kind):
+        """Unpack an XCI (secure partition) or NSP with hactool, like scripts/build_all.sh."""
+        if kind not in ("xci", "nsp"):
+            raise ValueError("Expected an XCI or NSP container")
+        flag = "--securedir=" if kind == "xci" else "--pfs0dir="
+        self.run("-t", "xci" if kind == "xci" else "pfs0", flag + str(destination), source, discard_output=True)
+        return destination
 
     def classify(self, directory):
         result = []
@@ -148,8 +154,8 @@ def extract_game(base, prod_keys, work, executable, commands, *, update=None,
         stage = Path(temporary)
         tool = ExtractionTool(executable, prod_keys, commands, stage / "key-home")
         report("Unpacking selected game containers")
-        base_dir = base if kind == "nca" else extract_container(base, stage / "base", kind)
-        update_dir = extract_container(update, stage / "update", "nsp") if update else None
+        base_dir = base if kind == "nca" else tool.unpack(base, stage / "base", kind)
+        update_dir = tool.unpack(update, stage / "update", "nsp") if update else None
         report("Identifying Program and Control content")
         base_rows = tool.classify(base_dir)
         base_program = pick(base_rows, "Program")

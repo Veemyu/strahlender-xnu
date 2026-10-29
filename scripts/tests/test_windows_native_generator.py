@@ -14,13 +14,24 @@ from scripts.install import windows_pipeline
 from scripts.recomp import portable_build as build
 from scripts.recomp import windows_support as windows
 from scripts.tests.test_native_codegen import synthetic_nso, synthetic_eh_nso
-from scripts.tests.test_container_extract import container
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def container(files):
+    """Minimal PFS0 (NSP) image for driver tests."""
+    names, table, payload = bytearray(), bytearray(), bytearray()
+    for name, contents in files:
+        table.extend(struct.pack("<QQII", len(payload), len(contents), len(names), 0))
+        names.extend(name.encode("utf-8") + b"\0")
+        payload.extend(contents)
+    return b"PFS0" + struct.pack("<III", len(files), len(names), 0) + table + names + payload
+
+
 @unittest.skipUnless(os.name == "nt" and os.environ.get("BDSP_WINDOWS_NATIVE_BINARY"),
                      "Set BDSP_WINDOWS_NATIVE_BINARY and BDSP_WINDOWS_NATIVE_CC for native checks")
+
+
 class WindowsNativeGeneratorTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
