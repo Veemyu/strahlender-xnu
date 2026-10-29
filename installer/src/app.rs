@@ -1342,6 +1342,13 @@ impl Installer {
                     let target = match self.target {
                         InstallTarget::Mac => "macos",
                         InstallTarget::Linux => "linux",
+                        InstallTarget::Windows => {
+                            if std::env::consts::ARCH == "aarch64" {
+                                "windows-arm64"
+                            } else {
+                                "windows"
+                            }
+                        }
                         InstallTarget::Ios => "ios",
                         _ => unreachable!("unsupported target was checked above"),
                     };
@@ -1770,6 +1777,11 @@ impl Installer {
             (Platform::Mac, InstallTarget::Mac, "aarch64")
                 | (Platform::Mac, InstallTarget::Ios, "aarch64")
                 | (Platform::Linux, InstallTarget::Linux, "x86_64")
+                | (
+                    Platform::Windows,
+                    InstallTarget::Windows,
+                    "x86_64" | "aarch64"
+                )
         ) && self.base.as_ref().is_some_and(|source| {
             source.path.is_dir()
                 || source.path.extension().is_some_and(|ext| {
@@ -1970,23 +1982,33 @@ impl Installer {
                 self.page = Page::Setup;
                 self.build_options_open = true;
             }
-            "setup-dependencies" => {
+            "setup-dependencies" | "setup-dependencies-details" => {
                 self.page = Page::Setup;
-                self.requirements = Some(crate::dependencies::Plan {
-                    manager: "dnf".into(),
-                    packages: vec!["clang".into(), "SDL3-devel".into()],
-                    missing: vec![
-                        crate::dependencies::Missing {
-                            id: "clang".into(),
-                            purpose: "Compile the game code".into(),
-                        },
-                        crate::dependencies::Missing {
-                            id: "SDL3".into(),
-                            purpose: "Window, audio and controller support".into(),
-                        },
-                    ],
-                    ..Default::default()
+                self.details = scenario == "setup-dependencies-details";
+                self.requirements = Some(if self.host == Platform::Windows {
+                    crate::dependencies::windows_plan(std::env::consts::ARCH)
+                        .expect("Embedded Windows dependency contract")
+                } else {
+                    crate::dependencies::Plan {
+                        manager: "dnf".into(),
+                        packages: vec!["clang".into(), "SDL3-devel".into()],
+                        missing: vec![
+                            crate::dependencies::Missing {
+                                id: "clang".into(),
+                                purpose: "Compile the game code".into(),
+                            },
+                            crate::dependencies::Missing {
+                                id: "SDL3".into(),
+                                purpose: "Window, audio and controller support".into(),
+                            },
+                        ],
+                        ..Default::default()
+                    }
                 });
+                if let Some(plan) = &self.requirements {
+                    let description = localized_plan_description(plan, self.language);
+                    self.record("SETUP", &description);
+                }
             }
             "update-available" | "update-confirmation" => {
                 self.page = Page::Target;
@@ -2144,6 +2166,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn windows_dependency_capture_uses_the_real_contract_without_host_mutation() {
+        let (app, _) = Installer::with_options(Options {
+            platform: Some(Platform::Windows),
+            capture: Some(std::env::temp_dir().join("windows-dependency-capture")),
+            scenes: vec!["setup-dependencies"],
+            ..Options::default()
+        });
+        assert_eq!(app.page, Page::Setup);
+        assert_eq!(app.target, InstallTarget::Windows);
+        let plan = app.requirements.expect("Windows requirements");
+        assert_eq!(plan.manager, "private-windows");
+        assert!(!plan.ready());
+        assert!(plan.packages.is_empty());
+        assert!(plan.missing.iter().any(|item| item.id == "llvm-mingw"));
+        assert!(app.log.iter().any(|line| line.contains("llvm-mingw")));
+    }
+
+    #[test]
     fn ios_delivery_is_explicit_and_cannot_change_during_a_build() {
         let (mut app, _) = Installer::new();
         app.target = InstallTarget::Ios;
@@ -2236,7 +2276,7 @@ mod tests {
             let full = home.home_dir().join("private/game.xci");
             let message = redact_home_path(&format!("Cannot read {}", full.display()));
             assert!(!message.contains(&home.home_dir().to_string_lossy().to_string()));
-            assert!(message.contains("~/private/game.xci"));
+            assert!(message.replace('\\', "/").contains("~/private/game.xci"));
         }
     }
 

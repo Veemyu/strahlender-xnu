@@ -20,4 +20,5 @@ bool renderer_format_is_depth(uint32_t f);
 bool renderer_format_has_stencil(uint32_t f);
 void renderer_mark_gpu_owned(NvnTexture *t);
 void input_handle_event(const SDL_Event *e);
+bool input_update_text(SDL_Window *window, bool enabled);
 bool input_user_blocked(const SDL_Event *e);

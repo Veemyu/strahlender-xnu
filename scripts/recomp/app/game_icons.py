@@ -366,14 +366,8 @@ def title_from_npdm(path):
 
 
 def pick_control(tsv, title_id):
-    matches = []
-    for line in Path(tsv).read_text().splitlines():
-        fields = line.split("\t")
-        if len(fields) >= 7 and fields[2].lower() == "control" and (int(fields[1], 16) & ~0xFFF) == (int(title_id, 16) & ~0xFFF):
-            matches.append(fields[0])
-    if len(matches) > 1:
-        raise ValueError("Multiple matching Control NCAs; title association is ambiguous")
-    return matches[0] if matches else ""
+    import build_helpers as helpers
+    return helpers.pick_related_nca(Path(tsv).read_text().splitlines(), "Control", title_id)
 
 
 def silent_hactool(tool, keys, *args, titlekey=None):
@@ -491,7 +485,10 @@ def prepared(source, output, mod_root=None, mod_name=None):
     manifest = load_source(source)
     if not manifest["variants"]:
         print("Notice: no original icon available; using a neutral placeholder (run game_icons.py extract to extract it)", file=sys.stderr)
-        from make_icon import png, pixel
+        if __package__:
+            from .make_icon import png, pixel
+        else:
+            from make_icon import png, pixel
         data = png(256, pixel)
         digest = hashlib.sha256(data).hexdigest()
         manifest["variants"] = [{"id": "placeholder", "label": "Placeholder", "image": digest + ".png",
@@ -537,6 +534,20 @@ def build_mac(source, output, mod_root=None, mod_name=None):
     manifest["mac_style"] = STYLE
     manifest["primary_icon"] = primary
     write_json(output / "AppIcons/icons.json", manifest)
+
+
+def build_windows(source, output, mod_root=None, mod_name=None):
+    """Reuse original variants for Qt and embed the default as a PE icon."""
+    output = output_path(output)
+    manifest = prepared(source, output, mod_root, mod_name)
+    default = next(v for v in manifest["variants"] if v["id"] == manifest["default"])
+    Image, _ = image_module()
+    with Image.open(output / default["image"]) as image:
+        image.convert("RGBA").save(output / "app.ico", format="ICO",
+                                  sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
+    # Relative path keeps Unicode/space-containing build directories out of RC syntax.
+    (output / "app.rc").write_text('1 ICON "app.ico"\n', encoding="ascii")
+    return manifest
 
 
 def build_linux(source, output, executable, mod_root=None, mod_name=None):
@@ -668,7 +679,7 @@ def main(argv=None):
     mod_icons.add_argument("--output", required=True)
     mod_check = sub.add_parser("check-mod-artwork")
     mod_check.add_argument("--mod-root", required=True)
-    for name in ("mac", "ios", "linux"):
+    for name in ("mac", "ios", "linux", "windows"):
         p = sub.add_parser(name)
         p.add_argument("--source", default="work/recomp/icons/source")
         p.add_argument("--output", required=True)
@@ -701,6 +712,8 @@ def main(argv=None):
             build_mac(args.source, args.output, args.mod_root, args.mod_name)
         elif args.command == "ios":
             build_ios(args.source, args.output, args.bundle, args.settings, args.mod_root, args.mod_name)
+        elif args.command == "windows":
+            build_windows(args.source, args.output, args.mod_root, args.mod_name)
         elif args.command == "sign-ios":
             sign_ios(args.bundle)
         elif args.command == "pick-control":

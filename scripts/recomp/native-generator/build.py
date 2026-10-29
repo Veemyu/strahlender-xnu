@@ -9,6 +9,7 @@ import importlib.util
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,6 +18,22 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+
+
+def windows_helper():
+    spec = importlib.util.spec_from_file_location("bdsp_codegen_windows", HERE.parent / "windows_support.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def verify_vendor(path, expected):
+    data = Path(path).read_bytes()
+    # Windows checkouts may convert tracked text to CRLF. Accept only the exact
+    # upstream bytes or that newline-only conversion, never altered source.
+    if (hashlib.sha256(data).hexdigest() != expected and
+            hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest() != expected):
+        raise ValueError("Vendored LZ4 source checksum mismatch: " + Path(path).name)
 
 
 def unicorn_dependency(explicit=None):
@@ -44,10 +61,24 @@ def unicorn_dependency(explicit=None):
         digest.update(path.name.encode() + b"\0" + path.read_bytes())
     sha = hashlib.sha256(library.read_bytes()).hexdigest()
     digest.update(sha.encode())
-    return {"root": root, "library": library, "sha256": sha, "fingerprint": digest.hexdigest()}
+    companions = [library]
+    if sys.platform == "win32":
+        support = windows_helper()
+        companions = support.dll_closure(library, sorted((root / "lib").glob("*.dll")),
+                                         support.architecture(), allow_build_tools=True)
+        for path in companions:
+            digest.update(path.name.encode() + b"\0" + path.read_bytes())
+        for path in sorted((root / "lib").glob("*.lib")) + sorted((root / "lib").glob("*.dll.a")):
+            digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    return {"root": root, "library": library, "companions": companions,
+            "sha256": sha, "fingerprint": digest.hexdigest()}
 
 
-def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unicorn=False):
+def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unicorn=False,
+          command_runner=None):
+    output = Path(output)
+    if sys.platform == "win32" and output.suffix.lower() != ".exe":
+        output = output.with_name(output.name + ".exe")
     compiler = compiler or os.environ.get("CC") or ("clang" if shutil.which("clang") else "cc")
     resolved = shutil.which(compiler)
     if not resolved:
@@ -55,26 +86,44 @@ def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unic
     dependency = unicorn_dependency(unicorn_root)
     if require_unicorn and not dependency:
         raise ValueError("Unicorn 2.1.4 native library and C headers are required; use the private installer runtime or BDSP_UNICORN_ROOT")
-    identity = subprocess.run([resolved, "--version"], check=True, capture_output=True).stdout
+    target_flags = []
+    if sys.platform == "win32":
+        support = windows_helper()
+        selected = support.profile()
+        identity = support.compiler_identity(resolved, selected)
+        target_flags = [*selected["cpu_flags"], "-fuse-ld=lld", "-municode",
+                        "-D_WIN32_WINNT=0x0A00", "-DWINVER=0x0A00"]
+    else:
+        identity = {"version": subprocess.run([resolved, "--version"], check=True, capture_output=True, text=True).stdout,
+                    "triple": subprocess.run([resolved, "-dumpmachine"], check=True, capture_output=True, text=True).stdout,
+                    "path": str(Path(resolved).resolve()),
+                    "sha256": hashlib.sha256(Path(resolved).read_bytes()).hexdigest()}
     vendor = HERE / "vendor/lz4"
     provenance = json.loads((vendor / "source.json").read_text())
     for name, expected in provenance["files"].items():
-        if Path(name).name != name or hashlib.sha256((vendor / name).read_bytes()).hexdigest() != expected:
+        if Path(name).name != name:
             raise ValueError("Vendored LZ4 source checksum mismatch: " + name)
+        verify_vendor(vendor / name, expected)
     sources = sorted((HERE / "src").glob("*.c")) + [HERE / "vendor/lz4/lz4.c"]
     inputs = sorted((HERE / "src").glob("*.h")) + sources + sorted((HERE / "vendor/lz4").glob("*.h"))
     fingerprint = hashlib.sha256()
     for path in [Path(__file__).resolve(), vendor / "source.json", *inputs]:
         fingerprint.update(path.relative_to(HERE).as_posix().encode() + b"\0" + path.read_bytes())
     fingerprint.update((dependency["fingerprint"] if dependency else "without-unicorn").encode())
-    fingerprint.update(identity)
+    fingerprint.update(json.dumps(identity, sort_keys=True).encode())
+    fingerprint.update(json.dumps([sys.platform, platform.machine(), target_flags]).encode())
+    if sys.platform == "win32":
+        fingerprint.update((HERE.parent / "windows_support.py").read_bytes())
     fingerprint.update(str(sanitize).encode())
     fingerprint.update(output.name.encode())
     digest = fingerprint.hexdigest()
     output = output.resolve()
     metadata = output.with_suffix(output.suffix + ".json")
     dep_target = (output.parent if sys.platform == "win32" else output.parent / (output.name + ".deps")) / dependency["library"].name if dependency else None
-    dependency_valid = not dependency or (dep_target.is_file() and hashlib.sha256(dep_target.read_bytes()).hexdigest() == dependency["sha256"])
+    dependency_valid = not dependency or all(
+        (dep_target.parent / path.name).is_file() and
+        hashlib.sha256((dep_target.parent / path.name).read_bytes()).digest() ==
+        hashlib.sha256(path.read_bytes()).digest() for path in dependency["companions"])
     if output.is_file() and metadata.is_file():
         try:
             record = json.loads(metadata.read_text())
@@ -87,32 +136,43 @@ def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unic
         candidate = Path(temporary) / output.name
         flags = ["-std=c17", "-O2", "-g", "-Wall", "-Wextra", "-Werror", "-Wconversion",
                  "-Wno-sign-conversion", f"-ffile-prefix-map={Path.home()}=/build", f"-ffile-prefix-map={ROOT}=.", "-I", str(HERE / "src"), "-I", str(HERE / "vendor/lz4"),
-                 f'-DBDSP_CODEGEN_SOURCE_HASH="{digest}"']
+                 f'-DBDSP_CODEGEN_SOURCE_HASH="{digest}"', *target_flags]
         if sys.platform != "win32":
             flags += ["-pthread"]
         libraries = []
         if dependency:
             flags += ["-DBDSP_WITH_UNICORN=1", "-I", str(dependency["root"] / "include")]
             if sys.platform == "win32":
-                windows_import = dependency["root"] / "lib/unicorn.lib"
-                libraries = [str(windows_import if windows_import.is_file() else dependency["library"])]
+                # The wheel's MSVC .lib contains OLDNAMES directives. LLD's
+                # MinGW driver can import the DLL directly without that ABI mix.
+                candidates = [dependency["root"] / "lib" / "libunicorn.dll.a"]
+                windows_import = next((path for path in candidates if path.is_file()), dependency["library"])
+                libraries = [str(windows_import)]
             else:
                 libraries = [str(dependency["library"])]
                 prefix = "@loader_path" if sys.platform == "darwin" else "$ORIGIN"
                 libraries += [f"-Wl,-rpath,{prefix}/{output.name}.deps"]
         if sanitize:
             flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
-        if sys.platform == "win32":
-            flags += ["-municode"]
-        subprocess.run([resolved, *flags, *(str(p) for p in sources), *libraries, "-o", str(candidate)], check=True)
+        command = [resolved, *flags, *(str(p) for p in sources), *libraries, "-o", str(candidate)]
+        if command_runner:
+            command_runner(command)
+        else:
+            subprocess.run(command, check=True)
         record = {"schema": 1, "source_hash": digest,
                   "binary_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest()}
         if dependency:
             dep_target.parent.mkdir(parents=True, exist_ok=True)
-            copy = Path(temporary) / dependency["library"].name
-            shutil.copyfile(dependency["library"], copy)
-            os.replace(copy, dep_target)
+            for library in dependency["companions"]:
+                copy = Path(temporary) / library.name
+                shutil.copyfile(library, copy)
+                os.replace(copy, dep_target.parent / library.name)
             record["unicorn"] = {"version": "2.1.4", "library": dep_target.relative_to(output.parent).as_posix(), "sha256": dependency["sha256"]}
+        if sys.platform == "win32":
+            if support.PE(candidate).machine != selected["machine"]:
+                raise ValueError("Generator executable has the wrong Windows host architecture")
+            record["compiler"] = identity
+            record["profile"] = selected
         os.replace(candidate, output)
         marker = Path(temporary) / "build.json"
         marker.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")

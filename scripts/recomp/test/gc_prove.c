@@ -1,6 +1,6 @@
 // GC proof (step 2): Shows on recompiled guest code that an asynchronously suspended thread can hold guest values only in the
-// host register state, and that mirroring the Mach register state (plus the upper part of the host stack)
-// into the reported guest context suffices for a conservative GC to lose no object.
+// host register state. Compares marker visibility with additional host registers/stack words;
+// this probe neither exports them through the production guest context nor runs a collector.
 // Own code, macOS/iOS. The guest code (gc_guest.c) is generated with eh_gen.py (module "gct").
 #define _GNU_SOURCE
 #include "cpu.h"

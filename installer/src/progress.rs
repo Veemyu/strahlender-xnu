@@ -36,7 +36,7 @@ impl Stage {
             "eh_gen" => Self::Generate,
             "clang" => Self::Compile,
             "images" => Self::Images,
-            "runtime" => Self::Runtime,
+            "runtime" | "link" => Self::Runtime,
             "package" => Self::Package,
             "install" => Self::Install,
             _ => return None,

@@ -6,6 +6,8 @@
 
 #include <pthread.h>
 #include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
 
 #define TICK_NS 16666667ull           // the thread wakes at a fixed 60 Hz rhythm: sleeping a fixed 16 ms after each draw added the draw time (about 48 fps)
 #define GAME_ACTIVE_NS 50000000ull    // the game presented this recently: it is running, nothing to repeat
@@ -13,6 +15,9 @@
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_running;
+static int g_stopping, g_joinable;
+static pthread_t g_thread;
+static pthread_cond_t g_changed = PTHREAD_COND_INITIALIZER;
 static const SwkbdKeepalive *g_k;
 
 static void *run(void *arg) {
@@ -30,7 +35,14 @@ static void *run(void *arg) {
         if (t < next) usleep((useconds_t)((next - t) / 1000)); else next = t;   // behind schedule: no catching up with a burst
         next += TICK_NS;
         pthread_mutex_lock(&g_lock);
-        if (!swkbd_ui_visible()) { g_running = 0; pthread_mutex_unlock(&g_lock); return NULL; }
+        while (!g_stopping && !swkbd_ui_visible())
+            pthread_cond_wait(&g_changed, &g_lock);
+        if (g_stopping) {
+            g_running = 0;
+            pthread_cond_broadcast(&g_changed);
+            pthread_mutex_unlock(&g_lock);
+            return NULL;
+        }
         pthread_mutex_unlock(&g_lock);
         uint64_t now = k->now_ns();
         if (now - k->game_present_ns() < GAME_ACTIVE_NS) continue;
@@ -43,10 +55,41 @@ static void *run(void *arg) {
 
 void swkbd_keepalive_wake(const SwkbdKeepalive *k) {
     pthread_mutex_lock(&g_lock);
-    if (!g_running) {
+    if (!g_stopping && !g_running) {
         g_k = k;
-        pthread_t th;
-        if (!pthread_create(&th, NULL, run, NULL)) { pthread_detach(th); g_running = 1; }
+        int status = pthread_create(&g_thread, NULL, run, NULL);
+        if (!status) { g_joinable = 1; g_running = 1; }
+        else fprintf(stderr, "[swkbd] keepalive creation failed: %d\n", status);
     }
+    pthread_cond_broadcast(&g_changed);
     pthread_mutex_unlock(&g_lock);
+}
+
+int swkbd_keepalive_stop(const struct timespec *deadline) {
+    pthread_mutex_lock(&g_lock);
+    g_stopping = 1;
+    pthread_cond_broadcast(&g_changed);
+    while (g_running) {
+        int status = pthread_cond_timedwait(&g_changed, &g_lock, deadline);
+        if (status) {
+            pthread_mutex_unlock(&g_lock);
+            fprintf(stderr, "[swkbd] keepalive stop failed: %d%s\n",
+                    status, status == ETIMEDOUT ? " (timeout)" : "");
+            return 0;
+        }
+    }
+    int joinable = g_joinable;
+    pthread_t thread = g_thread;
+    pthread_mutex_unlock(&g_lock);
+    if (joinable) {
+        int status = pthread_join(thread, NULL);
+        if (status) {
+            fprintf(stderr, "[swkbd] keepalive join failed: %d\n", status);
+            return 0;
+        }
+        pthread_mutex_lock(&g_lock);
+        g_joinable = 0;
+        pthread_mutex_unlock(&g_lock);
+    }
+    return 1;
 }

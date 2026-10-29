@@ -378,10 +378,731 @@ Never commit concrete session IDs or authentication paths.
 - FFmpeg headers/libraries come from matching installed development packages;
   the Fedora Linux package-only build and short native Wayland run passed on 2026-10-23.
 - **Frame rate:** `BDSP_FPS` caps the frame rate (30, 60, 120). Measured in a window only; not verified across sessions.
-- No sound. Input state is not reported. Compute workloads are not supported.
+- SDL audio output now shares its bounded queue/lifecycle implementation with Windows;
+  actual device playback is not accepted yet. Input state is not reported. Compute workloads are not supported.
 - Windows is not supported. X11 and full screen (F11) are not tested.
 
 Details: `docs/recomp-linux.md`.
+
+## Windows preparation (not yet a playable release)
+
+The minimum target is **Windows 10 22H2 amd64 (build 19045)** and Windows 11.
+ARM64 has a separate host/target/ABI profile, not an acceptance claim. The first
+playable Windows build must use the existing graphical Rust/iced installer;
+the developer CLI below is not a substitute for that requirement.
+
+`installer/assets/windows-dependencies.json` is the shared requirements contract.
+It specifies LLVM-MinGW **UCRT**, portable SIMD C, amd64 baseline/CX16, an ARM64
+baseline, the OS minimum and release blockers. It references the existing private
+CPython 3.13.15 and Unicorn 2.1.4 wheel locks rather than introducing system Python.
+Windows inspection never reads `/etc/os-release`, offers Unix package managers,
+or silently starts a Linux build. The GUI shows pending qualification instead of
+an actionable download/install button for unqualified packages.
+
+| Requirement | Qualification still needed |
+|---|---|
+| Portable LLVM-MinGW UCRT: Clang, LLD, PE tools, headers/import libraries, compiler-rt, winpthreads | 20261020 archive/hash pinned and privately exercised; full host-tool DLL inventory, notices and Windows 10 execution still needed |
+| Private CPython and Unicorn 2.1.4 native headers/library | Execute the existing pinned amd64 runtime/generator on Windows 10; native ARM64 Unicorn is not locked |
+| Microsoft VC runtime for the locked Unicorn amd64 wheel | App-local `vcruntime140.dll` is required by this build-time DLL; qualify an authorized, versioned redistribution source, not System32 |
+| SDL3 with HIDAPI Nintendo/Sony and Xbox backends | Matching UCRT headers/import library/DLL closure and real USB/Bluetooth acceptance |
+| Vulkan-Headers, VMA and shaderc | Separate pins/source notices, toolchain-compatible libraries and required GPU feature checks |
+| FFmpeg avcodec/avformat/avutil | Configure flags, enabled codecs, matching sources/redistribution obligations and recursive DLL inventory |
+| Native hactool and asset helpers | Version/hash, native Windows extraction and dependency/license inventory |
+| Existing graphical installer release | Built by release maintainers with Rust/Cargo >= 1.88; private runtime included, no Rust/SDK required by users |
+
+There are **no GUI-enabled Windows dependency downloads**: LLVM-MinGW's archive
+and hash are pinned, but its distribution inventory and the other native development
+packages are not qualified. Consented, hash-verified private LLVM-MinGW/Unicorn
+downloads were used for developer probes. Preparation must eventually use approved,
+hash-verified per-user tools or the same verified offline cache, with no global
+PATH changes or administrator requirement. Git, gh, Bash/MSYS2, Visual Studio,
+CMake, Make and Ninja are not intended end-user build prerequisites.
+
+The direct developer pipeline in `scripts/recomp/portable_build.py` now provides
+native generator invocation, optional `subsdk1` entries, portable Vulkan source
+overlay, two-pass images with explicit NVN HLE binding, RAM-bounded compilation,
+hot-O2/O0-outlier selection and explicit-inventory LLD linking/package helpers.
+Windows compiler processes enter an owned Job Object while suspended, so cancellation
+also terminates descendants. Response files handle Unicode, spaces and quoting.
+Caches separate host, target, CRT/SIMD, compiler bytes/triple, headers and flags.
+PE normal/delay imports are resolved only from explicit candidate DLLs; system DLLs
+and the GPU-vendor Vulkan loader are not copied. The package helper excludes
+build tools/Python/Unicorn and requires notices, but is not a legal audit or a
+complete game-data installer.
+
+Read-only developer inspection, from PowerShell in the checkout:
+
+```powershell
+python -B scripts\recomp\portable_build.py inspect --target x86_64
+python -B scripts\install\driver.py preflight --root . --work work --tools-dir tools --target windows
+```
+
+The second command intentionally reports the current release blockers and fails.
+With an explicitly selected LLVM-MinGW UCRT compiler and private Unicorn package,
+developers can run `generator`, `generate`, `images` and `compile` using explicit
+`--host-cc`/`--cc` paths and `--unicorn-root`; these stages are not an end-to-end
+game build and must not be advertised as one.
+
+Verified on the current Windows host with privately prepared LLVM-MinGW UCRT
+20261020 and Unicorn 2.1.4: native deterministic generation/image relocations,
+amd64 generated-C compilation, moved-generator DLL closure without developer PATH,
+paired Windows setjmp/longjmp execution, Job Object descendant cancellation and
+the fake-device SDL lifecycle probe (also checked with the existing MSVC).
+Generated C and the Win32 host/image-loader/entrypoint sources cross-compile
+separately for ARM64; this does not establish ARM64 execution.
+
+The active entrypoint reserves a Win32 guest window. Its data pages commit on
+access; explicit commit, read-only/no-access protection, decommit/zero-on-reuse,
+monotonic time, memory reporting and Unicode/binary image loading have isolated
+native coverage. Guard, write-protected and non-executable pages still fault.
+The loader commits file-I/O destinations explicitly rather than relying on
+user-mode access faults. This is not the complete runtime or GC port.
+
+The active Win32 kernel uses the monotonic clock, stack/working-set queries and
+cryptographic system randomness. Its native probe emits a synthetic ARM64
+function through the real C generator and runs four workers through 32
+stop-the-world cycles (128 suspends/resumes per build) at `-O1`, `-O2` and `-O3`.
+It checks all exported GPRs, 32 SIMD register pairs loaded from guest stacks,
+stack roots, changing register-only root candidates, frozen repeat snapshots,
+idempotent pause/resume and thread completion. A reproduced defect in context
+export is fixed: NZCV, FPCR and FPSR now come from `Cpu`, rather than zero.
+This tests the SVC/context and root-storage boundary, not a collecting guest GC.
+`Cpu` fields are ordinary C storage; arbitrary optimized host temporaries are
+not reconstructed from the captured Windows `CONTEXT` or host stacks. The
+reported guest PC remains the saved guest LR, not a translated host instruction
+address. No whole-game GC/root completeness or ARM64 execution is claimed.
+An additional compiler inspection of an emitted pure EOR/SUB/CBNZ loop confirms
+the limitation: at `-O1`, Clang 23.1.4 keeps x19 in a host GPR and writes it back
+only after the loop; at `-O2`, the loop also uses host SIMD temporaries.
+The passing LDAR-based probe therefore does not establish consistent guest
+register snapshots inside arbitrary optimized arithmetic loops. This is
+concrete deferred-writeback evidence, not proof of a collected live object.
+
+The native `test_optimized_sole_root_is_missing_from_guest_context` now also
+reproduces a live-root omission during real Windows suspension at `-O1`/`-O2`,
+not just in assembly listings. Its emitted guest function loads an encoded
+pointer to a committed 16-byte guest object, erases the source, reveals/hides
+the pointer in a finite arithmetic loop, and uses it after resumption.
+Three workers per optimization must each yield eight captured host-context
+roots while neither `Cpu`, the exported SVC context nor the worker guest stack
+contains any pointer into that object. Sampling is bounded to 256 attempts per
+worker with 1/2/3 ms delays. Context and stack positive controls include an
+interior pointer. This is an executable characterization of the still-unfixed
+root-export gap, not an actual collector/freeing test: no guest Boehm scanner
+is available in the source-only synthetic fixture. Host stack roots are not
+exported either; this fixture demonstrates the host-context case.
+
+A correct production remedy cannot simply overwrite guest context registers
+with unrelated host register values. Publishing additional conservative host
+root ranges requires the actual guest collector's scanning/marking contract;
+cooperative stopping or compiler root maps require their own contracts and
+coverage. None is implemented or qualified by this fixture.
+Checkout integration audit found no registered GC push/mark callback.
+`hle_register`, image forced-import slots and generator `--hle` are generic
+dispatch/replacement mechanisms, not collector contracts. Upstream
+`rt_unwind_point` abandons frames for reboot via longjmp; it cannot park and
+resume a collecting thread. A collector bridge requires an identified,
+version-bound guest hook/signature, verified scan-range and stop/mark lifetime
+rules, and proof the hook is reached. None is available in the permitted
+source-only fixture; alternatively, a new resumable cooperative-stop contract
+must be explicitly chosen rather than inferred from the reboot mechanism.
+
+The later authorized local artifact audit also checked dynamic symbols and
+generated symbol inventories for the actual four-module MVP, bound to their
+NSO build IDs. No `GC_`, `il2cpp_gc`, `GarbageCollect` or `Boehm` entry was
+identified; generated metadata also provides no named collector/root callback.
+This does not prove that the private binary lacks a collector: internal/stripped
+functions need not have exported names. The generated SDK contains SVC0x32/0x33
+sites and public thread-context/suspend wrappers, not a verified collector
+push/mark ABI. Actual collector entry address/signature, root-range semantics,
+scan phase/lifetime, locks and native-frame reentrancy remain unidentified.
+No production root-preservation patch was justified or applied.
+
+The complete **non-graphics diagnostic** runtime now compiles and links directly
+with LLVM-MinGW on amd64 and cross-links for ARM64. A synthetic guest-table
+fixture boots the active loader/dispatcher/kernel from a moved Unicode package
+without developer PATH, then tests a real unhandled Windows exception and its
+original exit status. This is not a Vulkan game link or a game run. The iOS-only
+snapshot publisher is not compiled into this Windows diagnostic.
+
+The Windows `wmain` converts arguments and inherited `BDSP_*` settings strictly
+to UTF-8. Read-only defaults (`img/`, `romfs/`, `exefs/main.npdm`) resolve beside
+the executable, independently of the starting directory. Saves default to
+`%APPDATA%\StrahlenderXnu\save` (Windows RoamingAppData known folder).
+Cache, shots, logs and mods stay under `%LOCALAPPDATA%\StrahlenderXnu`.
+An explicit `BDSP_DATA_DIR` keeps all writable defaults, including saves,
+under that root for portable/isolated runs; explicit `BDSP_SAVE` wins.
+Existing LocalAppData saves are not read, moved or merged automatically; select
+that old directory with `BDSP_SAVE` to continue an existing save, or migrate it
+manually only while the game is closed. Runtime abort messages and unhandled host exception code/PC/SP are
+appended to `logs/crash.log` through a pre-opened native handle; complete
+symbolized crash reporting remains open. Shared filesystem/mod logic remains common: only the
+Windows file boundary converts UTF-8 to UTF-16 and supplies binary, 64-bit
+positional I/O. Native probes include offsets above 4 GiB, unchanged descriptor
+positions, fresh guest-page read destinations and atomic backup replacement.
+The Vulkan pipeline/SPIR-V cache now uses the common `BDSP_CACHE_DIR` helper;
+the full graphics build still needs qualified dependencies.
+
+Linux and Windows share the SDL3 PCM16 output backend and the existing serialized
+output lifecycle; macOS keeps AudioQueue. Its input queue is limited to 200 ms.
+Stub-device probes cover stop, application suspension/resume, bounded writes,
+failed enqueue/open and balanced subsystem lifetime, not audible playback.
+The specifically approved SDL 3.4.18 source and maintainer-only CMake 4.1.2 archives
+were privately downloaded and hash-verified. The offline `sdl` recipe now builds
+separate amd64 and ARM64 UCRT development bundles, including headers, import library,
+DLL closure checks, collected notices, generated configuration and per-file SHA256
+receipts. C/C++/RC compilers are target-explicit; typed CMake paths prevent Windows
+backslash escaping failures. No CMake/Ninja requirement was added to end-user builds.
+Neither bundle is qualified for public installation; further downloads still need consent.
+
+Maintainers can reproduce the recipe using those already approved private archives
+and an existing Ninja executable; it performs no downloads and refuses existing outputs:
+
+```powershell
+$tools = Join-Path (Get-Location) 'work\windows-tools'
+$llvm = Join-Path $tools 'llvm\llvm-mingw-20261020-ucrt-x86_64'
+python scripts\recomp\portable_build.py sdl --host x86_64 --target x86_64 `
+  --cc "$llvm\bin\x86_64-w64-mingw32-clang.exe" `
+  --cmake "$tools\cmake\cmake-4.1.2-windows-x86_64\bin\cmake.exe" `
+  --ninja (Get-Command ninja -ErrorAction Stop).Source `
+  --sdl-archive "$tools\archives\SDL3-3.4.18.tar.gz" `
+  --sdl-prefix "$tools\SDL3-3.4.18-x86_64"
+```
+
+For the separate ARM64 bundle keep `--host x86_64`, choose `--target aarch64`,
+the `aarch64-w64-mingw32-clang.exe` compiler and a new ARM64 prefix. This is a
+cross-build, not native ARM64 execution. Real amd64 SDL integration now exercises
+the production UTF-8 entrypoint, virtual-controller hotplug/buttons/sticks/focus,
+paired/single initialization and worker-thread dummy audio without developer PATH.
+These tests do not validate physical controllers, audible output or Vulkan.
+Set `BDSP_WINDOWS_SDL_ROOT` and optionally `BDSP_WINDOWS_SDL_ARM64_ROOT` alongside
+the existing native-test compiler variables to enable these opt-in checks.
+
+The eight privately approved source archives are pinned by revision, measured
+SHA256 and size in `installer/assets/windows-sources.json`. The offline Vulkan
+recipe builds Vulkan-Headers/VMA/shaderc with the existing maintainer CMake/Ninja
+and explicit target C/C++ tools. Shaderc's and SPIRV-Tools' VCS version probes are
+replaced with the locked revisions in temporary sources, with patch hashes recorded.
+There is no Git invocation or dependency download during preparation.
+
+FFmpeg is **not built from source**. After separate binary-download consent,
+the BtbN `n8.1.3-24-g92611900bb` amd64 LGPL-shared archive was hash-verified.
+Unlike a CLI-only winget installation, this actual archive includes the matching
+headers, GNU/MSVC import libraries and DLLs. Its offline import retains development
+files and documentation but only the measured runtime closure: `avcodec-62.dll`,
+`avformat-62.dll`, `avutil-60.dll` and `swresample-6.dll`; no `ffmpeg.exe` is needed
+to build or play the game. Keep the exact archive cached: this daily producer
+release has limited retention, and the recipe never substitutes `latest`.
+
+Maintainer preparation, using only existing approved archives and tools:
+
+```powershell
+python scripts\recomp\dependency_build.py vulkan `
+  --archives "$tools\archives" --prefix "$tools\vulkan-x86_64" `
+  --cc "$llvm\bin\x86_64-w64-mingw32-clang.exe" `
+  --cmake "$tools\cmake\cmake-4.1.2-windows-x86_64\bin\cmake.exe" `
+  --ninja (Get-Command ninja -ErrorAction Stop).Source --jobs 4
+python scripts\recomp\dependency_build.py ffmpeg --target x86_64 `
+  --archive "$tools\archives\ffmpeg-n8.1.3-24-g92611900bb-win64-lgpl-shared-8.1.zip" `
+  --prefix "$tools\ffmpeg-x86_64"
+python scripts\recomp\portable_build.py runtime --backend vulkan --frontend sdl `
+  --cc "$llvm\bin\x86_64-w64-mingw32-clang.exe" `
+  --sdl-prefix "$tools\SDL3-3.4.18-x86_64" `
+  --vulkan-prefix "$tools\vulkan-x86_64" --ffmpeg-prefix "$tools\ffmpeg-x86_64"
+```
+
+The shared compile/cache queue now selects C17 or target C++17 per source,
+includes both driver identities and source-specific flags, and prioritizes overlay
+headers. The complete active amd64 Vulkan/VMA/SDL/movie runtime compiles and links
+against synthetic guest tables, then boots and reports host crashes from a moved
+Unicode package without developer PATH. This is **not gameplay or GPU acceptance**.
+Actual shaderc generates SPIR-V and returns diagnostics for invalid GLSL. Actual
+FFmpeg headers match the loaded C ABI; VP8 is encoded, muxed/demuxed through a
+Unicode WebM path and decoded, and VP8/VP9/H264 decoders are present.
+
+Set `BDSP_WINDOWS_VULKAN_ROOT` and `BDSP_WINDOWS_FFMPEG_ROOT` alongside the existing
+native/SDL variables to enable these probes. Optional
+`BDSP_WINDOWS_DEPENDENCY_REPORT` records the exact configure flags, reported license,
+compiler, bundle/probe hashes and runtime closure as JSON. Run
+`python -m unittest scripts.tests.test_dependency_build scripts.tests.test_windows_native_generator scripts.tests.test_windows_build scripts.tests.test_recomp_parallel_jobs`.
+The observed FFmpeg license is **LGPL version 3 or later**, with no enabled
+GPL/nonfree configure switch. This is not a redistribution approval: exact
+corresponding FFmpeg/transitive sources, producer recipe identity, notices, CPU
+baseline and Windows 10 execution still need qualification. The previously approved
+FFmpeg 8.0.1 source does not correspond to this 8.1 binary. No prebuilt ARM64 FFmpeg
+is locked; no make download, source build or global winget/PATH change is required.
+
+**Private local installer pipeline (experimental, not release acceptance).** The
+GUI backend now connects selected XCI/NSP/NCA inputs to shell-free extraction,
+native C generation, full Vulkan/movie linking, data/DLL packaging and per-user
+installation. Maintainer preparation of hactool uses the already approved source
+and bundled mbedTLS crypto directly, without Make:
+
+```powershell
+python scripts\recomp\dependency_build.py hactool --target x86_64 `
+  --archives "$tools\archives" --prefix "$tools\hactool-x86_64" `
+  --cc "$llvm\bin\x86_64-w64-mingw32-clang.exe"
+python -m scripts.install.windows_pipeline `
+  --output "$tools\private-catalog.json" `
+  --cc "$llvm\bin\x86_64-w64-mingw32-clang.exe" `
+  --generator "work\native-generator\windows-x86_64\bdsp_codegen.exe" `
+  --sdl "$tools\SDL3-3.4.18-x86_64" --vulkan "$tools\vulkan-x86_64" `
+  --ffmpeg "$tools\ffmpeg-x86_64" --hactool "$tools\hactool-x86_64"
+$env:BDSP_INSTALLER_DEV_CHECKOUT = "1"
+$env:BDSP_WINDOWS_PRIVATE_CATALOG = (Resolve-Path "$tools\private-catalog.json").Path
+```
+
+The two explicit environment settings enable **only a debug installer using this
+existing checkout**; release builds still refuse unqualified preparation. Catalog
+registration never downloads anything or replaces an existing catalog. It records
+the whole private toolchain and generator DLL closure, plus verified per-target
+dependency inventories. Missing or changed inputs fail rather than falling back to
+system tools. The production installer still needs qualified, bundled private
+Python/tools; the debug build may use an existing developer Python.
+
+Container copying validates bounds, Windows-safe filenames, HFS0 hashes and the
+XCI root header. hactool receives only explicit selected key files, with default
+key lookup isolated to a fresh temporary home; raw extraction output is never sent
+to the GUI. The existing metadata/content cache and Control/Meta title-family
+selection are shared with other tooling. File copying, verified inventories,
+rollback-safe Linux/Windows publication and generator progress parsing are common
+installer helpers, not separate platform implementations.
+Generation and image publication are transactional too: removed optional modules
+cannot leave stale C chunks/images, and failed rebuilds retain the prior inventory.
+Shared copies also reject existing destination links/reparse points and nested
+source/destination trees; unreadable subtrees fail rather than disappearing from
+the copy or inventory. Bounded process capture cancels the owned tool on overflow
+or progress-callback failure instead of waiting indefinitely for it.
+
+Packages contain `BDSP.exe`, its measured runtime DLL closure, `img`, `romfs`,
+`exefs/main.npdm` and notices, without generator/Python/Unicorn/build tools. The
+default install is `%LOCALAPPDATA%\StrahlenderXnu\app`; writable saves/cache remain
+outside it. Replacement refuses modified/unowned package files and preserves old
+files if rollback fails. Clean rebuild preserves previous target outputs.
+Mod packaging is explicitly rejected for now rather than silently ignored.
+
+Native synthetic probes exercise the real generator/compiler/image/runtime/link/
+package/install chain **after substituting synthetic extraction**, then relocate
+the installation and reach its deliberately missing game-entry diagnostic without
+developer PATH. A separate isolated-Python JSONL probe invokes the actual native
+extractor on an invalid synthetic NCA and verifies failure/redaction. These do not
+prove genuine NCA extraction, GUI-click-through with real game data or gameplay.
+Use `BDSP_WINDOWS_HACTOOL_ROOT` and `BDSP_WINDOWS_PRIVATE_CATALOG` for these probes;
+shared regression suites include `test_container_extract`, `test_extract_game`,
+`test_windows_pipeline`, `test_installer_filesystem` and `test_installer_driver`.
+
+NVN uses the same HLE lookup and input logic on all platforms, with a small COFF
+linker-boundary alternative to Mach-O/ELF. Optimized multi-object HLE registration,
+UTF-8 committed-text routing and keyboard focus reset have native probes; the same
+glue cross-links against the ARM64 SDL bundle without execution. Focus loss clears
+both the shared keyboard source and its accumulated key mask, preventing stuck keys.
+Full IME composition and game-facing text acceptance remain open.
+
+The installer compiles and its targeted GUI/prerequisite/backend tests run with
+privately prepared Rust/Cargo 1.88.0 and Cargo.lock-pinned crates. Existing Visual
+Studio was used only to link this maintainer build, not made an end-user requirement.
+The real Windows GUI also renders through tiny-skia without Vulkan in English and
+German. Its pending-build view groups tools with readable spacing; technical
+output remains available in the expandable log.
+The pending Windows preparation page now also exposes its dependency/qualification
+details in a spaced, scrollable area; it offers no download/install action.
+Packaged Windows Python is located beside the executable under
+`resources/runtime/<host>/python/python.exe`. Windows runtime assembly records a
+full file hash inventory, including extensions and notices; backend discovery
+rejects changed, extra, missing or linked files. This is integrity checking inside
+the trusted release bundle, not a substitute for authenticating its download.
+
+Maintainers can inspect the closed public gate completely offline:
+`python installer\scripts\release.py windows-readiness`.
+The command emits JSON and exits **1** because Windows packaging/signing is not
+enabled. Release collection and publication explicitly reject
+`installer-windows-*` assets before staging or external commands; they must never
+silently promote or discard an unqualified private package. Exact FFmpeg matching
+sources/transitive notices/producer recipe, authorized VC-runtime redistribution
+and complete toolchain notices remain blockers independently of native probes.
+The local notice audit found the target-specific MinGW `COPYING*` files under
+`<LLVM>/<target>-w64-mingw32/share/mingw32`; private game packages now preserve all
+five files, including runtime and winpthreads notices. The complete compiler
+archive also contains separately licensed host tools (including Make/BusyBox,
+Python, gendef and widl); its root LLVM license is not an audit of those tools.
+The offline evidence audit checked all **30** compiler archive notice files against
+their extracted counterparts and preserved copies in
+`work\windows-tools\license-audit\llvm-notices`. BusyBox includes GPLv2;
+Make/gendef include GPLv3; widl has mixed notices; embedded Python/libffi have
+their own terms. Matching copyleft host-tool source/build evidence is not supplied
+locally. Do not equate including these tools in the maintainer archive with needing
+them for the direct end-user build, or with an approved redistribution.
+
+The shared notice collector now retains complete `LICENSES` directories and
+authorship files, without copying unrelated source trees. hactool additionally
+retains its unmodified cJSON, Unicode ConvertUTF and LZ4 source notice carriers;
+its root ISC notice and mbedTLS license alone were incomplete. Separate
+`*-license-audit` private bundles preserve the original binaries and receipts,
+adding 13 Vulkan notices, one SDL authorship file per architecture, five hactool
+notice carriers, and two generic FFmpeg license texts. Their receipts remain
+`qualified:false`; the original bundles/catalog were not changed.
+`work\windows-tools\license-audit\audit.json` records hashes and evidence gaps;
+`private-catalog-license-audit.json` selects the new amd64 variants for private
+debug GUI tests only.
+
+Reproduce the source-notice repair **offline into a fresh output directory**:
+
+```powershell
+python scripts\recomp\dependency_build.py notices --bundle work\windows-tools\vulkan-x86_64 --archives work\windows-tools\archives --prefix work\windows-tools\vulkan-x86_64-new-notices
+```
+
+The same command supports pinned source-built SDL/hactool bundles; use
+`--target aarch64` for the ARM64 SDL bundle. It rejects changed/untracked inputs,
+unknown source provenance, missing or mismatched archives and existing outputs.
+To import the approved FFmpeg binary into a fresh bundle, supplying `--archives`
+also copies the full generic GPLv3/LGPLv3 texts from the pinned **8.0.1** source
+archive; it neither builds FFmpeg nor identifies that archive as the **8.1**
+binary's corresponding source:
+
+```powershell
+python scripts\recomp\dependency_build.py ffmpeg --archive work\windows-tools\archives\ffmpeg-n8.1.3-24-g92611900bb-win64-lgpl-shared-8.1.zip --archives work\windows-tools\archives --prefix work\windows-tools\ffmpeg-x86_64-new-notices
+```
+
+Matching FFmpeg/transitive sources, producer recipes and component applicability
+remain unqualified. The local Unicorn wheel has **no full license/notice files**:
+its metadata says BSD while its embedded README says GPLv2. Native-engine license
+and source obligations are not removed by stripping Python bindings. The locked
+installer CPython **3.13.15** archive/runtime is not present locally; the compiler's
+Python **3.14** notices do not qualify it. Those are missing evidence/artifacts,
+not findings that a public distribution has violated a license. No public
+Windows release has been qualified.
+
+The real-SDL probe additionally attaches virtual left/right single Joy-Cons with
+explicit SDL types and horizontal mappings matching the pinned SDL mini-mode
+contract. It exercises each face button, Start, stick click, SL/SR shoulders,
+left-stick directions, focus clearing/recovery, detach and reconnect. It does not
+emulate Bluetooth/HID reports or prove physical pairing.
+
+Controller configuration belongs to the **game runtime, never the installer**:
+there are no controller controls, preferences or build parameters in the installer,
+and packages do not contain a selected controller mode. On Windows the runtime
+reads `%LOCALAPPDATA%\StrahlenderXnu\controller-mode.txt` (or
+`BDSP_CONTROLLER_CONFIG`) containing `pair` or `single`; absence defaults to pair.
+`BDSP_JOYCONS=pair|single` explicitly overrides the file. Invalid/unreadable
+configuration is diagnosed, not silently replaced. A runtime settings UI is not
+implemented yet.
+**Shared game frontend:** Qt was selected for Linux with Windows portability in
+mind; simplifying the end-user build did not authorize replacing it with a new
+SDL application UI. The existing in-process `app/linux/qt_ui.cpp` is now the shared
+source for both platforms (its directory name is historical). The separate
+`bdsp_qt_host.cpp`/CMake X11 embedding fallback remains Linux-only. AppKit is
+unchanged. SDL remains the controller/audio layer; the iced installer is separate.
+No new SDL settings menu was added.
+
+The Qt host no longer uses `/proc`/`execv` for restart: the runtime hands it the
+original UTF-8 argument vector, and Qt launches the same application with those
+arguments/current directory, reporting launch failures before exiting the old
+process. Cache/log actions use initialized runtime user paths. Qt's platform
+plugin supplies Vulkan surface extensions rather than a hardcoded platform list.
+Linux Xauthority/KDE-capture/MangoHud initialization stays Linux-specific.
+Windows gamepad initialization, 8 ms polling, focus and shutdown use the existing
+SDL main-thread functions; no second gamepad thread or native HID backend is added.
+
+Direct `runtime`/`link` CLI stages select `--frontend qt` by default, requiring an
+explicit `--qt-prefix`. The old SDL frontend is available explicitly as
+`--frontend sdl` for synthetic diagnostics; `--backend none` is non-graphical.
+Qt/SDL object inventories are separated. A Qt bundle must have the existing exact
+`build.json` inventory/profile and an additional `qt` record declaring exact
+`version` (`6.x.y`), `linkage:"shared"`, `cxx_runtime:"libc++"`,
+`minimum_windows_build` at most 19045 and `cxx_compiler_sha256` matching the actual
+target LLVM-MinGW C++ driver. Required files include Core/Gui/Widgets headers,
+MinGW import libraries/DLLs, `plugins/platforms/qwindows.dll` and notices.
+Architecture and transitive plugin/DLL closure are checked; a random MSVC/GCC
+Qt SDK is not ABI-compatible evidence.
+
+Private catalog creation optionally accepts `--qt <bundle>` and then uses that
+same host for compile/link, packages plugin dependencies, an app-relative
+`qt.conf`, `plugins/platforms/qwindows.dll`, menu translations and Qt notices.
+Old catalogs are explicitly diagnostic SDL catalogs, not Qt acceptance. Missing
+Qt fails before runtime compilation/source-overlay work; no automatic download,
+system-Qt lookup or end-user CMake is introduced.
+**The local MVP now uses the specifically approved existing archives** in the
+isolated `work/windows-tools/qt-mvp-6.12.0` tree, without replacing the existing
+compiler or installing a package manager. The actual shared Qt Windows runtime
+compiled successfully (44 objects) with Qt 6.12.0 and its paired Clang 22.1.7.
+The real user-selected game/update also linked and launched through Qt's Windows
+plugin and Vulkan on an RTX 2080 Ti; the opening scene now renders Rowan.
+This is not whole-game or Windows 10 acceptance; Linux has not been
+revalidated. Redistribution review remains separate.
+
+The Windows Qt game menu now offers **Controllers > Paired Joy-Cons / Individual
+Joy-Cons (mini mode)**. It is not an installer option. Selection reinitializes only
+the owned SDL gamepad subsystem on the Qt/SDL main thread, clears controller
+state, reopens devices through the normal hotplug path and preserves focus and
+audio ownership. This intentionally causes a brief interruption of controller
+input, not a lossless device switch. Another SDL joystick owner blocks the
+startup-only hint change; the old mode is reacquired without changing hints.
+Hint/init failures attempt rollback; failed rollback disables mode actions while
+keyboard input remains available. Disconnected/open-failed devices are retried
+by normal polling rather than silently treated as connected.
+
+Successful selection atomically writes `pair` or `single` to
+`%LOCALAPPDATA%\StrahlenderXnu\controller-mode.txt`, flushing before replacement.
+Write/publish errors restore the previous runtime mode where possible and show
+a Qt error. An explicit `BDSP_JOYCONS` or nonstandard `BDSP_CONTROLLER_CONFIG`
+override disables the menu actions instead of writing preferences elsewhere.
+The isolated currently running MVP therefore stays unchanged. Linux's existing
+poller is unchanged; runtime switching is enabled only on Windows.
+Mini-mode stick-click layers retain stick-to-D-pad hysteresis, Plus-to-Minus,
+L/R-to-ZL/ZR and release/centering suppression. All pads still merge into player1.
+The menu's Mini Controls explanation is localized with the existing EN/DE/ES/PT
+tables. Synthetic rollback tests and real SDL virtual Joy-Con tests are not
+physical USB/Bluetooth/controller acceptance.
+
+Non-invasive follow-up of the original live MVP confirmed `Responding=True`,
+~60fps at145s. Physical keyboard interaction in that live game remains unconfirmed; no input,
+focus or save contents were touched. RSS was6544.54MiB, private commit2356.12MiB,
+plus fixed6400MiB section commitment. Their sum estimates attributed system
+commit, not a directly measured total-process commit peak.
+
+The separate Windows offscreen Qt fixture now verifies synthetic `QKeyEvent`s
+through the **actual KeyForwarder -> SDL event adapter (`input_handle_event`) ->
+`input.c` mixer -> COFF-registered `nn::hid::GetNpadState`**. It checks all20
+mapped keys, combined buttons, press/release, auto-repeat and delayed
+release/press repeat pairs, modifier/unknown-key rejection, popup/inactive
+window gates, focus loss and application/window deactivation. This exposed and
+fixed stuck guest buttons on Qt focus loss: pending release timers and held keys
+are cleared immediately through the existing SDL focus-loss handler. The same
+active-window gate now applies to the software-keyboard text branch.
+Synthetic Unicode key text reaches the existing UTF-8 software-keyboard callback
+without setting HID buttons; releasing a held game key while a prompt is open
+also clears it. That callback is stubbed for this fixture: native Windows
+IME/preedit, the full guest software-keyboard service and physical keyboard
+delivery are not qualified by it.
+
+The fixture uses real Qt6.12.0/SDL3 and production C input/HID code, but no game,
+GPU surface, controller hardware, save/file menu actions or real preferences.
+All45 targeted tests passed; the separate full
+`work\tests\qt-controller-mode\BDSP.exe` was relinked with the focus fix, **not
+started or deployed**. The detached original game remains on its older binary.
+The user subsequently confirmed that Rowan renders and keyboard input works in
+the game. This is user-reported runtime evidence, without independently recorded
+PID/build/layout details, not native IME or controller acceptance.
+The host fix is shared with Linux, but Linux/native Wayland execution was not
+retested here. Windows10 hardware, ARM64 execution, GC and release/license gates
+remain open.
+
+The existing software keyboard is linked, not stubbed, in the Windows Vulkan
+build. Its display gate requires user-supplied firmware fonts and an absolute
+`BDSP_FIRMWARE_DATA` path; the initial MVP launcher omitted this path. The
+user-supplied firmware resources are now prepared locally at
+`work\windows-firmware-20.1.1`, and the existing private MVP launch helper sets
+that variable. No new keyboard code, deployment or game restart was needed.
+Existing native glyph-atlas and layout-reader tests passed with those resources;
+the later isolated game run reached the real applet and the user confirmed
+visible keyboard rendering. In-game text commit/submit/cancel remain unverified. The
+test was closed normally and no BDSP test instance remains; future runs must
+check that no other BDSP instance is running. See
+[`input.md`](input.md#windows-vulkan-build-configuration); do not ship firmware
+or force scripted automatic text as a substitute for interactive input.
+
+The native `test_real_swkbd_applet_submit_cancel` now checks actual existing
+UI/backend callbacks without a game: UTF-8/UTF-16 result serialization,
+minimum-length rejection, Cancel, and interactive checker reject/accept.
+Kernel/storage transport is synthetic; no full guest IPC or game-level text
+acceptance is claimed. Three focused applet/Qt-input/SDL-text tests passed.
+The earlier real run's Exitcode0 remains distinct from its recorded
+`VK_ERROR_SURFACE_LOST_KHR`; diagnostic timing does not establish whether surface
+loss preceded or followed closing. A prior offscreen characterization reproduced
+the missing close/keepalive fence, not that GPU error.
+
+The shared Windows/Linux Qt host now calls idempotent `vk_host_shutdown()` before
+accepting close and after any other event-loop quit. An armed application-level
+surface event filter also runs **before object filters**, including Qt's native
+Vulkan cleanup, on `SurfaceAboutToBeDestroyed`. Native Qt surface destruction is
+terminal; ordinary Vulkan swapchain recreation does not close admission.
+`host_shutdown.c` closes admission to Present/Represent/Clear, requests a terminal
+keepalive stop with no future wakes, joins it without holding renderer/worker
+locks, drains admitted CPU work, then waits for GPU idle. Queue submit/present/
+device-idle share external queue synchronization. The worker sleeps while the
+keyboard is hidden and remains joinable until terminal stop.
+
+Acquire uses a one-second timeout with an explicit diagnostic rather than
+`UINT64_MAX`. The entire host stop/drain/GPU wait has a three-second deadline.
+Vulkan has no cancellable device-idle operation: it runs in a waiter thread.
+Timeout or driver/stop/join failure is logged and terminates with exit1 **before
+close acceptance or surface destruction**, without attempting unsafe cleanup.
+A stuck driver is not declared recovered. Outside terminal shutdown, capability
+query/acquire/present surface-loss errors remain fatal; no cached-size fallback
+or blanket surface-error suppression is used. Guest threads are not globally
+joined: after successful surface shutdown, the existing `_Exit(0)` ends them
+without destroying shared runtime resources underneath them.
+
+`test_real_qt_close_drains_keepalive` replaces the gap characterization. It uses
+real Qt Host/RenderWindow and real production shutdown/keepalive C code with a
+barrier-controlled synthetic present callback and GPU-idle callback. It checks
+close acceptance and direct native surface destruction independently, drainage
+before object-level surface observers, join/no future wake and idempotence.
+Three separate negative processes hold keepalive, CPU ownership or GPU idle
+past a short test deadline; each must log timeout and exit1 before teardown.
+These are native offscreen ordering tests, **not real GPU/game/hardware
+acceptance**. Physical close/driver/controller/IME validation remains with the
+user; no new game instance was started.
+
+Focused command (set the existing verified `BDSP_WINDOWS_NATIVE_BINARY`,
+`BDSP_WINDOWS_NATIVE_CC`, `BDSP_WINDOWS_SDL_ROOT`, `BDSP_WINDOWS_QT_ROOT` and
+`BDSP_WINDOWS_VULKAN_ROOT` first):
+
+```powershell
+$tests = @(
+  'test_real_qt_close_drains_keepalive'
+  'test_real_swkbd_applet_submit_cancel'
+  'test_real_qt_keyboard_to_guest_hid'
+  'test_real_qt_controller_menu_with_synthetic_backend'
+  'test_nvn_coff_hle_registration_focus_reset_and_text'
+)
+python -X utf8 -m unittest -q ($tests | ForEach-Object {
+  "scripts.tests.test_windows_native_generator.WindowsNativeGeneratorTests.$_"
+})
+```
+
+Compile/link uses `portable_build.compile_runtime(..., frontend="qt")` and
+`link_executable` with the existing verified bundles and existing guest object
+inventory, solely into `work\tests\qt-controller-mode` (45 runtime objects);
+the executable is not started or deployed.
+
+Windows game icons reuse `scripts\recomp\app\game_icons.py`: the `windows`
+command produces the existing Qt language-variant manifest/PNGs plus a default
+ICO (16/24/32/48/64/128/256 pixels) and RC file. `link_executable(..., icon=...)`
+uses the paired LLVM-MinGW windres and records the resource inputs in its link
+receipt. The Windows installer prepares icons through the existing authorized
+Control-NCA extractor during the images stage and packages `icons/windows`.
+Qt discovers that directory automatically and reuses the existing App icon menu,
+application/window icon and language preferences; the EXE's embedded Explorer
+icon stays the build-time default. No separate artwork pipeline or downloaded
+icon is used. Original artwork remains local user-derived data, not a public
+release asset. The private MVP was relinked with seven RT_ICON images and one
+RT_GROUP_ICON resource. Offscreen tests verify discovery and QWindow icon
+inheritance; Explorer/taskbar display and pinned-icon caching need user visual
+acceptance, without another agent-started game.
+
+The repeated offline license audit of existing local bundles is at
+`work\windows-tools\license-audit-final-20261027\audit.json`; no downloads or
+live-package changes. It rechecks inventories/notices for SDL, Vulkan, FFmpeg,
+hactool and the original toolchain, plus all four approved Qt archive pins and
+the Qt receipt. Qt's38 top-level license files match the source archive; its
+source also contains93 third-party notice/attribution candidates needing
+applicability review (not93 confirmed shipped dependencies). The paired
+toolchain retains34 notice texts; libc++/libunwind match the runtime reference.
+The receipt does not itself bind the source/toolchain archive pins or producer
+recipe. Complete applicable Qt/runtime attributions and corresponding-source
+evidence, FFmpeg8.1/transitive build/source correspondence, host-tool copyleft
+sources and authorized VC-runtime provenance remain gates. The original audit
+is preserved; neither hashes nor copied generic license texts qualify a release.
+
+Read-only official metadata research subsequently identified an actual prebuilt
+candidate: Qt **6.12.0**, kit `6.12.0-0-202609280346`, paired with
+**LLVM-MinGW 22.1.7**, not our existing 23.1.4 compiler. The private qualification candidate
+in `windows-dependencies.json` records upstream URL/SHA256/byte size for QtBase
+(20,746,701), paired compiler (104,242,456), the kit's runtime reference (738,036)
+and matching QtBase source for notices/correspondence audit only (51,220,268):
+176,947,461 bytes total, about 168.8 MiB. After specific user approval, all four
+archives were downloaded into `work/windows-tools/archives/qt-6.12.0-candidate`
+and their exact sizes/SHA256 verified. Subsequent explicit approval authorized
+isolated extraction and execution for the local MVP, not public redistribution.
+Native archive listings confirm Core/Gui/Widgets DLLs, official `libQt6*.a`
+filenames, `qwindows.dll` and SBOMs. This is not a successful link/GUI test.
+The preparatory receipt validator and link inputs now require
+`libQt6Core.a`, `libQt6Gui.a` and `libQt6Widgets.a`, matching those lists
+rather than the earlier synthetic `.dll.a` convention. The `.a` suffix alone
+does not imply static Qt: shared-linkage/compiler identity, runtime DLLs,
+platform plugin and dependency closure remain required. Synthetic positive
+and wrong-name rejection tests do not validate the actual archive contents.
+The user prioritized the game-launch MVP and deferred the managed-package
+decision; no handwritten dependency manager or package-manager integration was added.
+Qt 6.11.3's LLVM kit instead declares 17.0.6; the generic Windows support table
+alone does not identify a kit's compiler.
+The [official Qt 6.12 baseline](https://doc.qt.io/qt-6.12/supported-platforms.html)
+includes Windows 10 1809+, but also states 6.12 is the last Windows 10 series;
+this is not our physical Windows 10 acceptance of the LLVM kit.
+Use the paired compiler in a separate private qualification tree rather than
+silently swapping the current compiler/runtime. Existing C++ shaderc/runtime
+artifacts need compatible rebuilding/requalification from already approved
+sources. The existing shaderc/FFmpeg compile/link/codec/relocation probe also
+passes using the paired compiler/runtime; that is not complete ABI qualification.
+The private Qt receipt verifies actual headers/import libraries, DLL closure,
+platform plugin and matching source license texts. Qt's runtime-reference DLLs
+match the paired compiler's DLLs byte-for-byte; only the compiler copy is used
+to avoid ambiguous providers. Windows system dependencies include authz, mpr,
+netapi32, uxtheme, d3d9, mscms and shcore; these are not bundled from the SDK.
+Matching source version is not by itself proof of the binary's build options or
+complete corresponding sources. No SDK source build, QtCreator/QML/WebEngine,
+docs/examples or public redistribution has been authorized by this metadata pin.
+
+Native extraction keeps metadata capture bounded, but drains and discards unused
+ExeFS/RomFS/control extraction output instead of retaining one line per file.
+Large real games therefore do not trip the metadata capture limit; extractor
+exit failures remain errors and private output is never forwarded to the log.
+
+The first real Windows run exposed an invisible Rowan: GPU import of the guest
+alias heap failed, so shader global reads returned zero. On the local NVIDIA
+driver, a controlled 64-MiB probe rejects `MEM_PRIVATE` and `SEC_RESERVE`
+allocations even after commit/touch, but accepts a `SEC_COMMIT` pagefile section.
+The graphical Windows runtime therefore backs its alias range with that section,
+keeping other guest ranges private and demand-committed. The current amd64 alias
+window charges **6.25 GiB of system commit**, not necessarily resident RAM;
+insufficient commit fails explicitly at startup. Section-backed discard zeroes
+the range without decommitting GPU-imported backing. Native tests cover guards,
+private/section boundaries, protections, zeroing and release/re-reservation.
+Vulkan import intersects host/buffer memory types, requires coherent memory and
+checks allocation/bind results. A subsequent real 60-second run imported the
+5,069-MiB heap successfully and screenshots show Rowan's model and dialogue.
+This is a local renderer regression result, not general GPU or GC acceptance.
+
+**Package-manager direction remains undecided.** The user explicitly rejected
+MSYS2/pacman; do not install it or hide it inside a new bootstrap. Conan 2 provides
+native dependency graphs, compiler profiles, revision lockfiles, binary caches
+and `--build=never`; it can consume prebuilt vendor packages without imposing a
+new project build system. This does not imply matching ConanCenter binaries:
+read-only enumeration of `qt/6.12.0#b0bc6faf97edf4e1e479f9169db772a0`
+found ten packages, four Windows variants, all MSVC 194 with `with_vulkan=False`,
+and zero Windows Clang/libc++ variants. FFmpeg 8.1.2 binary enumeration returned
+HTTP 403, so its binary coverage is unknown. Its source recipe explicitly
+requires Windows Bash/MSYS2 and Make when built. vcpkg has native manifests,
+version baselines and binary caching, but MinGW triplets are community/untested,
+most ports build from source without a matching cache, and its actual Windows
+FFmpeg port calls `vcpkg_acquire_msys`. Neither manager is therefore approved as
+an automatic source-build fallback. Conan could manage the already selected
+vendor binaries through small standard packaging recipes/private cache, rather
+than a custom resolver; that is still a proposed integration, not implemented.
+Qt-specific `aqtinstall` can manage official prebuilt Qt/LLVM kits without MSYS2,
+but does not by itself manage the whole SDL/Vulkan/FFmpeg graph. No package
+manager or additional package was installed during this comparison.
+
+The SDL event frontend now synchronizes text input on its own window on every
+event/timeout, including focus changes and guest reboot. SDL start/stop failures
+are reported and stop the runtime rather than recording a successful toggle.
+It does not stop another window's text input. The event loop no longer waits for
+an idle event queue before checking text-mode changes or reboot requests; window
+shortcuts are suppressed while the guest keyboard owns input. Focus loss also
+cancels a held touch key. SDL preedit/candidate events never enter committed guest
+text, and reported composition owns editing/confirmation keys until commit or
+cancellation. Native OS IME UI remains the SDL default; no new overlay/menu was
+added. Real-SDL dummy-window tests cover focus ownership, start/stop/restart,
+wrong-thread rejection and synthetic Unicode/preedit event routing; ARM64
+cross-linking passes. This does **not** establish physical IME/fullscreen candidate
+placement or in-game text acceptance.
+
+The user-approved single-Joy-Con layer holds the **stick click** as a modifier:
+Start becomes guest Minus, SL/SR become ZL/ZR and stick directions become D-pad.
+Face buttons stay positional. Releasing the modifier clears the layer immediately;
+held shifted buttons and movement stay blocked until released/centered, avoiding
+an unintended normal action. Direction thresholds use hysteresis rather than a
+toggle. Focus loss and hotplug clear transient state; paired/standard controllers
+and keyboard input retain their existing mappings. Synthetic real-SDL tests cover
+both single halves, repeated polls, both release orders, direction hysteresis,
+focus and reconnect. Right-stick and guest stick-click actions remain unavailable
+on a single half; the keyboard remains available.
+Whole-game GC/thread contexts, complete crash reporting, genuine NCA extraction,
+full Vulkan/audio/movie/text hardware integration, persistent single-Joy-Con controls,
+real-dump GUI end-to-end acceptance and tool-free gameplay remain unfinished.
+Windows 10/11, real controllers and native ARM64 require separate hardware
+acceptance. No game was run.
 
 ## 7. Build stages overview
 

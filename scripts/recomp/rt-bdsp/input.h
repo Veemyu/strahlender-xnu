@@ -27,6 +27,15 @@ void input_tick(void);
 
 #if (defined(__linux__) || defined(_WIN32)) && !defined(BDSP_NVN_NONE)
 #define PAD_SDL_AVAILABLE 1
-// SDL gamepad backend: starts once (idempotent), its own thread, needs no window and no event loop.
+// Linux front ends without an SDL event loop use the poller thread.
+// Windows initializes and polls on the SDL window/event thread instead.
 void pad_sdl_start(void);
+#ifdef _WIN32
+int pad_sdl_init_main(int combine_joycons);
+// Current initialized mode, or -1 if initialization/rollback failed.
+int pad_sdl_mode_main(void);
+void pad_sdl_poll_main(void);
+void pad_sdl_focus_main(int focused);
+void pad_sdl_shutdown_main(void);
+#endif
 #endif

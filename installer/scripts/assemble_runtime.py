@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import platform
+import stat
 import subprocess
 import sys
 import tarfile
@@ -16,6 +17,25 @@ from probe_runtime import MANIFEST, ROOT, sha256, validate_manifest
 
 
 LOCK = ROOT / "runtime" / "wheels.lock.json"
+
+
+def windows_inventory(runtime):
+    files = {}
+    def failed_walk(error):
+        raise error
+    for parent, directories, names in os.walk(runtime, onerror=failed_walk):
+        for path in (Path(parent), *(Path(parent) / name for name in [*directories, *names])):
+            info = path.lstat()
+            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+                raise ValueError("Windows runtime cannot contain links or reparse points")
+        for name in sorted(names):
+            path = Path(parent) / name
+            files[path.relative_to(runtime).as_posix()] = sha256(path)
+    if not files:
+        raise ValueError("Windows runtime inventory is empty")
+    if "runtime.json" in files:
+        raise ValueError("Windows runtime already contains an assembly receipt")
+    return files
 
 
 def host_target():
@@ -164,6 +184,7 @@ def assemble(name, archive, output, wheelhouse, fetch, profile="base", source_bu
             "profile": profile, "wheels": expected,
             "unicorn_python_files_removed": removed_bindings,
             "unicorn_native_linkage": "shared",
+            **({"files": windows_inventory(runtime)} if name.startswith("windows-") else {}),
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         runtime.rename(output)
     return output

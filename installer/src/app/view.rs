@@ -920,6 +920,37 @@ impl Installer {
         if let Some(plan) = &self.requirements
             && !plan.ready()
         {
+            if plan.manager == "private-windows" {
+                return column![
+                    self.title(
+                        self.language.t(L::WindowsPreparation),
+                        self.language.t(L::WindowsDependenciesHint)
+                    ),
+                    row![
+                        column![
+                            text(self.language.t(L::WindowsBuildTools)).size(14),
+                            text("Clang · Python · Unicorn · hactool").size(13).color(c.muted),
+                        ]
+                        .spacing(5)
+                        .width(Fill),
+                        column![
+                            text(self.language.t(L::WindowsGameRuntime)).size(14),
+                            text("SDL3 · Vulkan · FFmpeg").size(13).color(c.muted),
+                        ]
+                        .spacing(5)
+                        .width(Fill),
+                    ]
+                    .spacing(18),
+                    scrollable(
+                        text(super::localized_plan_description(plan, self.language).replace('\n', "\n\n"))
+                            .size(12)
+                            .line_height(1.5),
+                    )
+                    .height(100),
+                ]
+                .spacing(16)
+                .into();
+            }
             return column![
                 self.title(
                     self.language.t(L::DependenciesTitle),
@@ -1242,6 +1273,14 @@ impl Installer {
             Page::Setup if self.demo => (L::StartPreview, Some(Message::Preview), true),
             Page::Setup if self.updating => (L::UpdateDownloading, None, false),
             Page::Setup if self.requirements_busy => (L::CheckingRequirements, None, false),
+            Page::Setup
+                if self
+                    .requirements
+                    .as_ref()
+                    .is_some_and(|plan| plan.manager == "private-windows") =>
+            {
+                (L::WindowsBuildPending, None, false)
+            }
             Page::Setup if self.requirements.is_some() => (
                 L::InstallDependencies,
                 Some(Message::InstallRequirements),

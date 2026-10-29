@@ -10,6 +10,9 @@
 #include <unistd.h>
 
 #include "bdsp.h"
+#ifdef _WIN32
+#define fopen bdsp_win32_fopen
+#endif
 
 Module g_modules[4];
 int g_nmodules;
@@ -89,6 +92,26 @@ const char *loader_symbol_at(uint64_t addr, uint64_t *offset) {
 }
 
 static void read_image(const char *path, uint64_t addr) {
+#ifdef _WIN32
+    FILE *file = fopen(path, "rb");
+    if (!file) rt_fatal("module image cannot be opened (%s)\n", strerror(errno));
+    if (_fseeki64(file, 0, SEEK_END)) rt_fatal("module image seek failed\n");
+    __int64 length = _ftelli64(file);
+    if (length < 0 || addr < GUEST_LO || addr >= GUEST_HI || (uint64_t)length > GUEST_HI - addr)
+        rt_fatal("module image is outside the guest window\n");
+    if (_fseeki64(file, 0, SEEK_SET)) rt_fatal("module image rewind failed\n");
+    uint8_t *destination = G2H8(addr);
+    if (length && !bdsp_win32_commit(destination, (size_t)length))
+        rt_fatal("Windows module image commit failed (%lu)\n", GetLastError());
+    size_t done = 0;
+    while (done < (size_t)length) {
+        size_t remaining = (size_t)length - done;
+        size_t count = fread(destination + done, 1, remaining < 1048576 ? remaining : 1048576, file);
+        if (!count) rt_fatal("module image read failed (%s)\n", ferror(file) ? strerror(errno) : "unexpected end of file");
+        done += count;
+    }
+    if (fclose(file)) rt_fatal("module image close failed (%s)\n", strerror(errno));
+#else
     int fd = open(path, O_RDONLY);
     if (fd < 0) { perror(path); rt_fatal("module image %s missing (run scripts/recomp/rt-bdsp/mkimages.sh)\n", path); }
     struct stat st;
@@ -113,6 +136,7 @@ static void read_image(const char *path, uint64_t addr) {
         done += (size_t)n;
     }
     close(fd);
+#endif
 }
 
 void loader_load(const char *dir) {

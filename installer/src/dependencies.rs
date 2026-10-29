@@ -131,7 +131,106 @@ pub fn detect_manager(os: &str) -> Option<&'static str> {
         None
     }
 }
+
+#[derive(Deserialize)]
+struct WindowsContract {
+    schema: u32,
+    abi: String,
+    minimum_windows_build: u32,
+    components: Vec<WindowsComponent>,
+    release_blockers: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct WindowsComponent {
+    id: String,
+    purpose: String,
+}
+
+pub(crate) fn windows_plan(architecture: &str) -> Result<Plan, String> {
+    let contract: WindowsContract =
+        serde_json::from_str(include_str!("../assets/windows-dependencies.json"))
+            .map_err(|error| error.to_string())?;
+    if contract.schema != 1
+        || contract.abi != "llvm-mingw-ucrt"
+        || contract.minimum_windows_build != 19045
+    {
+        return Err("Unsupported Windows dependency contract.".into());
+    }
+    let mut plan = Plan {
+        manager: "private-windows".into(),
+        missing: contract
+            .components
+            .into_iter()
+            .map(|item| Missing {
+                id: item.id,
+                purpose: item.purpose,
+            })
+            .collect(),
+        manual: contract.release_blockers,
+        ..Plan::default()
+    };
+    if !matches!(architecture, "x86_64" | "aarch64") {
+        plan.manual
+            .push("The Windows build requires an amd64 or ARM64 host.".into());
+    }
+    Ok(plan)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_version() -> Result<(u32, u32), String> {
+    #[repr(C)]
+    struct Version {
+        size: u32,
+        major: u32,
+        minor: u32,
+        build: u32,
+        platform: u32,
+        service_pack: [u16; 128],
+    }
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn RtlGetVersion(version: *mut Version) -> i32;
+    }
+    let mut version = Version {
+        size: std::mem::size_of::<Version>() as u32,
+        major: 0,
+        minor: 0,
+        build: 0,
+        platform: 0,
+        service_pack: [0; 128],
+    };
+    let status = unsafe { RtlGetVersion(&mut version) };
+    if status < 0 {
+        return Err(format!("Could not check Windows version (NTSTATUS {status:#x})."));
+    }
+    Ok((version.major, version.build))
+}
+
 pub fn inspect(target: &str) -> Result<Plan, String> {
+    if cfg!(target_os = "windows") {
+        if !matches!(target, "native" | "windows" | "windows-arm64") {
+            return Err("Build this target on its native host.".into());
+        }
+        let plan = if let Some(catalog) = crate::backend::private_windows_catalog(target) {
+            private_windows_plan(&catalog, target)?
+        } else {
+            windows_plan(std::env::consts::ARCH)?
+        };
+        #[cfg(target_os = "windows")]
+        let plan = {
+            let mut plan = plan;
+            let (major, build) = windows_version()?;
+            if major < 10 || build < 19045 {
+                plan.manual.push(
+                    "Windows 10 22H2 (build 19045) or Windows 11 is required.".into(),
+                );
+            }
+
+            plan
+        };
+        return Ok(plan);
+    }
     let catalog: Catalog = serde_json::from_str(include_str!("../assets/dependencies.json"))
         .map_err(|e| e.to_string())?;
     if catalog.schema != 1 {
@@ -234,7 +333,56 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
     Ok(plan)
 }
 
+fn private_windows_plan(catalog: &std::path::Path, target: &str) -> Result<Plan, String> {
+    let root = crate::backend::project_root()
+        .ok_or("Private Windows validation requires the existing local source checkout.")?;
+    let (python, private) =
+        crate::backend::backend_python().ok_or("The installer Python runtime is unavailable.")?;
+    let mut command = Command::new(python);
+    if private {
+        command.arg("-I");
+    }
+    let output = command
+        .arg("-B")
+        .arg(root.join("scripts/install/driver.py"))
+        .arg("preflight")
+        .arg("--root")
+        .arg(&root)
+        .arg("--work")
+        .arg(root.join("work"))
+        .arg("--tools-dir")
+        .arg(root.join("tools"))
+        .arg("--target")
+        .arg(if target == "native" { "windows" } else { target })
+        .arg("--windows-catalog")
+        .arg(catalog)
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        // Only the protocol's redacted error is suitable for the GUI, not raw stderr.
+        let detail = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find_map(|event| {
+                (event["event"] == "error")
+                    .then(|| event["message"].as_str().map(str::to_owned))
+                    .flatten()
+            })
+            .unwrap_or_else(|| "The private offline Windows dependency catalog failed validation.".into());
+        return Err(format!("{detail}\nNo packages were downloaded or installed."));
+    }
+    Ok(Plan {
+        manager: "private-windows-local".into(),
+        ..Plan::default()
+    })
+}
+
 pub fn installation_script(plan: &Plan) -> Result<String, String> {
+    if plan.manager.starts_with("private-windows") {
+        return Err("Windows dependency archives are not qualified yet. No downloads or system changes were made.".into());
+    }
     // The terminal owns authentication; no password is read by this process.
     let mut script = String::from(
         "#!/bin/bash\nset -e\ntrap 'echo \"Setup stopped. Return to the installer, open Details and check again.\"; read -r -p \"Press Enter to close.\"' ERR\n",
@@ -360,6 +508,30 @@ fn return_success() -> std::process::ExitStatus {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[cfg(all(debug_assertions, target_os = "windows"))]
+    #[ignore = "Requires an explicitly selected approved offline catalog and development checkout"]
+    fn private_offline_catalog_real_gui_preflight() {
+        let catalog = crate::backend::private_windows_catalog("windows")
+            .expect("Set BDSP_INSTALLER_DEV_CHECKOUT=1 and BDSP_WINDOWS_PRIVATE_CATALOG explicitly");
+        let plan = super::private_windows_plan(&catalog, "windows").unwrap();
+        assert!(plan.ready());
+        assert_eq!(plan.manager, "private-windows-local");
+        assert!(super::installation_script(&plan).is_err());
+    }
+
+    #[test]
+    fn windows_inspection_never_offers_unix_packages_or_unverified_downloads() {
+        for architecture in ["x86_64", "aarch64", "unsupported"] {
+            let plan = super::windows_plan(architecture).unwrap();
+            assert_eq!(plan.manager, "private-windows");
+            assert!(!plan.ready());
+            assert!(plan.packages.is_empty());
+            assert!(!plan.bootstrap_brew);
+            assert!(plan.missing.iter().any(|item| item.id == "llvm-mingw"));
+            assert!(super::installation_script(&plan).is_err());
+        }
+    }
     #[test]
     fn apple_git_is_accepted_without_a_homebrew_formula() {
         let selected = super::select_git(true, |program, args| {

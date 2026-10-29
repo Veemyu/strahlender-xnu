@@ -35,12 +35,12 @@ case "$NVN_BACKEND" in
     nvnobjs=("$RT"/nvnvk/*.o)
     FW="$(linux_vulkan_libs) -lstdc++ -lm -lpthread -ldl"
     [ -n "${BDSP_NO_MOVIE:-}" ] || FW="$FW $(pkg-config --libs libavformat libavcodec libavutil)"
-    if [ -n "${BDSP_QT:-}" ]; then   # Qt shell in-process (menu bar, Vulkan surface from Qt): app/linux/qt_ui.cpp, output bdsp_boot_vk_qt; Windows only prepared (not built)
+    if [ -n "${BDSP_QT:-}" ]; then   # Shared Qt host; this shell wrapper supplies Linux system Qt, Windows uses the direct build helper.
       OUT="${OUT}_qt"; mkdir -p "$RT/qt"
       linux_require_qt
       QTCF=$(pkg-config --cflags Qt6Widgets sdl3)
       QTS=scripts/recomp/rt-bdsp/app/linux
-      if [ ! -f "$RT/qt/qt_ui.o" ] || [ "$QTS/qt_ui.cpp" -nt "$RT/qt/qt_ui.o" ] || [ "$QTS/bdsp_l10n.h" -nt "$RT/qt/qt_ui.o" ] || [ "$QTS/bdsp_icons.h" -nt "$RT/qt/qt_ui.o" ]; then
+      if [ ! -f "$RT/qt/qt_ui.o" ] || [ "$QTS/qt_ui.cpp" -nt "$RT/qt/qt_ui.o" ] || [ "$QTS/bdsp_l10n.h" -nt "$RT/qt/qt_ui.o" ] || [ "$QTS/bdsp_icons.h" -nt "$RT/qt/qt_ui.o" ] || [ "$QTS/bdsp_theme.h" -nt "$RT/qt/qt_ui.o" ] || [ "$PWD/scripts/recomp/rt-bdsp/input.h" -nt "$RT/qt/qt_ui.o" ] || [ "$PWD/scripts/recomp/rt-bdsp/runtime_paths.h" -nt "$RT/qt/qt_ui.o" ]; then
         clang++ -std=c++17 -O1 -g "$PATHMAP" -fPIC -Wall -Wextra -Wno-unused-parameter $QTCF -I "$QTS" -DBDSP_LPROJ_DIR="\"$PWD/$QTS/lproj\"" -c "$QTS/qt_ui.cpp" -o "$RT/qt/qt_ui.o"
       fi
       nvnobjs+=("$RT/qt/qt_ui.o")

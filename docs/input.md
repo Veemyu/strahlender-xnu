@@ -2,8 +2,10 @@
 
 Updated: 2026-10-24. When the game asks for text (player name, rival name, nicknames, codes) it calls the system's software keyboard,
 a library applet. This project answers that call with its own keyboard, drawn from the keyboard layout files of the Switch **firmware you
-provide**; the repository contains none of those files. Without them the game still gets a simple keyboard of our own (same keys and
-controls, plain colours and shapes, no Switch look). Both need a normal, not scripted, run (see below).
+provide**; the repository contains none of those files. Without layout files the shared logic supports a simple keyboard of our own
+(same keys and controls, plain colours and shapes, no Switch look). On the Vulkan frontend (Linux/Windows), the existing renderer
+still requires the firmware text font to enable either keyboard; the Mac has its platform-font fallback.
+Both need a normal, not scripted, run (see below).
 
 ## What you need
 
@@ -15,9 +17,50 @@ controls, plain colours and shapes, no Switch look). Both need a normal, not scr
   and `0100000000000823.romfs` (word list of the game's name check; without it the check is skipped).
   `scripts/swkbd_firmware_extract.py --nca-dir <registered NCAs> --keys <prod.keys> --hactool <hactool> --out <folder>` writes exactly this
   folder from your own firmware dump (it uses hactool and your keys locally and prints no key material).
-- A normal (not scripted) run on macOS or iPadOS. `BDSP_SWKBD_SIMPLE=1` forces the simple keyboard even with firmware files.
+- A normal (not scripted) run. `BDSP_SWKBD_SIMPLE=1` forces the simple layout even with firmware files; it does not remove the Vulkan font requirement.
 - iPadOS: the app reads the files from `Documents/Firmware` (same folder layout; copy it with the Files app or `devicectl`, without
   `--remove-existing-content`). Without that folder the simple keyboard is used.
+
+## Windows Vulkan build configuration
+
+The Windows build links the same `services_applet.c`, `swkbd_ui.c`, font/layout
+readers and `nvn/vulkan/swkbd_overlay_vk.c` as the existing implementation; no
+replacement keyboard or Windows stub is required. Set `BDSP_FIRMWARE_DATA` to an
+absolute path containing the extracted `fonts/` and `swkbd/` directories **before
+launching**. Merely providing the game XCI/update does not provide system fonts
+or keyboard layouts. Without the font the display-availability gate stays off
+and the applet follows its existing automatic initial-text/cancel path, which
+can look like a stub.
+
+For the local Windows MVP, the user-supplied firmware was prepared at
+`work\windows-firmware-20.1.1`. The private MVP test-launch helper now sets that
+path. For a manual launch in repository PowerShell, set:
+
+```powershell
+$env:BDSP_FIRMWARE_DATA=Join-Path (Get-Location) 'work\windows-firmware-20.1.1'
+```
+
+This only configures that shell and its future children; it does not modify
+global environment or an already running game. No restart is implied. Do not
+set the scripted-run overrides listed below for interactive keyboard use.
+Firmware files remain local user inputs, never distributable package contents.
+Existing glyph-atlas and layout-reader tests passed natively on Windows with
+these resources; an interactive Vulkan applet opening/submission was not
+executed by that configuration check. A later fresh-data game run reached the
+real applet UI, and the user confirmed visible keyboard rendering. Submit and
+cancel remain unverified. The test was closed normally; no BDSP test instance
+was left open. Only one BDSP instance may run at a time.
+
+A separate native regression now executes the real `swkbd_ui` text/key logic
+and `services_applet` submit/cancel callbacks, checking UTF-8/UTF-16 result
+storages, empty/minimum-length rejection, cancel result1/empty text and
+interactive checker rejection followed by acceptance. Storage allocation and
+kernel event transport are synthetic; the callbacks, queues and result
+serialization are production code. This qualifies the isolated callback path,
+not actual guest IPC, firmware-rendered interaction, game-level name acceptance
+or Windows IME. No game is started by this test:
+`test_windows_native_generator.WindowsNativeGeneratorTests.test_real_swkbd_applet_submit_cancel`
+(requires the documented existing native compiler/generator environment).
 
 ## Using it (macOS)
 
@@ -75,7 +118,8 @@ the answer is automatic:
 
 ## Controllers (game input)
 
-Plug in or pair over Bluetooth and it works; no driver, mapper or Steam Input is needed. All connected pads act as player 1 (BDSP is a
+On the implemented Apple/Linux paths, plug in or pair over Bluetooth; no mapper or Steam Input is needed. Windows remains a preparation
+target, not hardware-verified support. All connected pads act as player 1 (BDSP is a
 single-player game). The keyboard stays available next to the pad on every platform.
 
 - **macOS, iPadOS:** `GameController.framework` only (Switch Pro, Joy-Con, DualShock, DualSense, Xbox, MFi). SDL's gamepad subsystem is
@@ -83,19 +127,27 @@ single-player game). The keyboard stays available next to the pad on every platf
   already name their buttons like the console and are used as they are; Xbox and PlayStation pads are mapped by position (A right, B bottom,
   X top, Y left). On the Mac `pad_layout = xbox` keeps the labels of those pads instead. The iPad hides the touch gamepad while a pad is
   connected.
-- **Linux (and Windows, prepared):** SDL3's gamepad subsystem in its own thread (`pad_sdl.c`), independent of the window and of the UI
+- **Linux:** SDL3's gamepad subsystem in its own thread (`pad_sdl.c`), independent of the window and of the UI
   toolkit (Qt or SDL). Nintendo pads need nothing on a desktop with the kernel driver `hid-nintendo`. If a Nintendo or Sony pad is connected
   but cannot be opened, the log says so once; `scripts/recomp/rt-bdsp/app/linux/udev/70-bdsp-controllers.rules` grants the logged-in user access
   (commands are in the file, root needed once).
-- **Buttons:** A, B, X, Y by position; L/R; ZL/ZR as buttons (the game needs no analog trigger); both sticks (12 % dead zone) and their clicks;
+- **Buttons:** A, B, X, Y by position; L/R; ZL/ZR as buttons (the game needs no analog trigger); both sticks and their clicks
+  (Apple's dead zone is 12%; the SDL backend uses 1300/32767, approximately 4%, scaled out before the game's own dead zone);
   D-pad; Plus and Minus. Not implemented: motion, rumble, other players.
 - **Keys** (Linux): Return/Space/K = A, Backspace/J = B, X, Y, Q/E = L/R, P = Plus, O = Minus, arrows and WASD = D-pad. The Mac has the
   Ryujinx default keys (see the app's help text).
 - **Layers:** `input.h` is the neutral interface. Keyboard, touch and gamepads are separate sources (`input_source_set`); the game reads the merged
   state through `input_current`, which is empty while the on-screen keyboard is open.
 - `BDSP_PAD_LOG=1` (Linux/Windows) prints connections and every change of buttons and sticks, with the button names.
-- **Windows (prepared, not built or tested):** the controller layer needs no change, only the build target. `input.c` and `pad_sdl.c` use
-  POSIX threads (`pthread_mutex`, `pthread_once`), so the Windows build is MinGW-w64 (winpthreads), not MSVC. SDL3's gamepad subsystem handles
-  Switch Pro, Joy-Con, DualShock, DualSense and Xbox pads over USB or Bluetooth with its own drivers (HIDAPI, XInput); that it runs without a
-  window on Windows, as it does on Linux, is not yet checked. The Linux-only part (the hidraw hint for the udev rules) is behind `#ifdef __linux__`.
+- **Windows (implementation preparation, not a playable/hardware-tested port):** the SDL window/event thread initializes, polls and closes
+  gamepads. Guest input reads do not initialize SDL or create a second worker. HIDAPI Nintendo/Sony hints and the Joy-Con combine hint are
+  set before gamepad initialization. `BDSP_JOYCONS=pair` is the default; `single` selects separate devices for development. Changing the mode
+  through the main-thread API closes devices before reinitializing them. A persistent GUI setting and complete single-Joy-Con action mapping
+  are still required; this is not an end-user configuration yet.
+  Disconnects and focus loss clear pad state, and the Windows SDL loop also clears keyboard state on focus loss. Initialization,
+  enumeration/open and thread-affinity errors are reported. The isolated lifecycle C probe runs natively on Windows with synthetic SDL
+  devices; it does **not** verify SDL's real HIDAPI/XInput drivers or Bluetooth behavior. `input.c` and the wider runtime still require
+  winpthreads. The active runtime's remaining Mach/POSIX boundaries must be ported before a full Windows build.
 
+Windows acceptance still requires Pro/PS4 USB and Bluetooth, the supported connection types of each Xbox model, and Joy-Con L/R individually
+and paired over Bluetooth, without controller middleware. No motion, rumble or multiplayer is promised.

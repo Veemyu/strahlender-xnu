@@ -16,6 +16,9 @@
 #include "guestmem.h"
 #include "input.h"
 #include "hle.h"
+#ifdef _WIN32
+#include "win32_files.h"
+#endif
 // Frame-Takt: macOS CLOCK_UPTIME_RAW, sonst CLOCK_MONOTONIC (Linux/Vulkan)
 #ifdef __APPLE__
 static inline uint64_t frame_clock_ns(void) { return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
@@ -62,12 +65,18 @@ void plat_sleep_until_ns(uint64_t t) {
     if (t > now) { struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)}; nanosleep(&ts, NULL); }
 }
 
-// Table of the HLE_FUNC entries: Mach-O section (macOS) or ELF section with __start_/__stop_ (Linux)
+// Mach-O sections, ordered COFF subsections, or ELF linker-provided bounds.
 #ifdef __APPLE__
 static const HleImplEntry *hle_entries(size_t *n) {
     unsigned long size = 0;
     const HleImplEntry *start = (const HleImplEntry *)getsectiondata(&_mh_execute_header, "__DATA", "__hle_impls", &size);
     *n = start ? size / sizeof *start : 0;
+    return start;
+}
+#elif defined(_WIN32)
+static const HleImplEntry *hle_entries(size_t *n) {
+    const HleImplEntry *start = bdsp_hle_begin + 1;
+    *n = ((uintptr_t)bdsp_hle_end - (uintptr_t)start) / sizeof *start;
     return start;
 }
 #else
@@ -286,14 +295,37 @@ static uint64_t buttons_now(void) {
     return b;
 }
 
+static bool text_composing;
+
+bool input_update_text(SDL_Window *window, bool enabled) {
+    if (!SDL_IsMainThread() || !window) {
+        LOG("[input] text input requires a window on the SDL main thread\n");
+        return false;
+    }
+    bool want = enabled && SDL_GetKeyboardFocus() == window;
+    if (!want) text_composing = false;
+    if (SDL_TextInputActive(window) == want) return true;
+    bool ok = want ? SDL_StartTextInput(window) : SDL_StopTextInput(window);
+    if (!ok) LOG("[input] SDL_%sTextInput: %s\n", want ? "Start" : "Stop", SDL_GetError());
+    return ok;
+}
+
 #if !defined(__APPLE__)
 // Events for the on-screen keyboard (swkbd_ui.c) while it is open: typed text, editing keys, mouse and touch (the Mac shell, app_ui.m, does the same);
 // the game sees no input then. Returns true when consumed.
 #include "swkbd_ui.h"
 static bool swkbd_input(const SDL_Event *e) {
     switch (e->type) {
-    case SDL_EVENT_TEXT_INPUT: swkbd_ui_text(e->text.text); return true;
+    case SDL_EVENT_TEXT_EDITING:
+        text_composing = e->edit.text && *e->edit.text;
+        return true;   // preedit belongs to the native IME, not to the guest text
+    case SDL_EVENT_TEXT_EDITING_CANDIDATES: return true;
+    case SDL_EVENT_TEXT_INPUT:
+        text_composing = false;
+        swkbd_ui_text(e->text.text);
+        return true;
     case SDL_EVENT_KEY_DOWN:
+        if (text_composing) return true;   // Enter/Backspace/arrows edit the IME until it commits
         switch (e->key.scancode) {
         case SDL_SCANCODE_BACKSPACE: swkbd_ui_key(SWKBD_KEY_BACKSPACE); break;
         case SDL_SCANCODE_DELETE: swkbd_ui_key(SWKBD_KEY_DELETE); break;
@@ -324,7 +356,18 @@ static bool swkbd_input(const SDL_Event *e) {
 
 void input_handle_event(const void *ev) {
     const SDL_Event *e = ev;
+    if (e->type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+        atomic_store(&key_buttons, 0);
+        PadState empty = {0};
+        input_source_set(INPUT_SRC_KEYBOARD, &empty);
 #if !defined(__APPLE__)
+        text_composing = false;
+        if (swkbd_ui_active()) swkbd_ui_touch(-1, 0, 0);
+#endif
+        return;
+    }
+#if !defined(__APPLE__)
+    if (!swkbd_ui_active()) text_composing = false;
     // key releases still reach the game while the keyboard is open: a key held when it opened (Enter that started the prompt) must not stay pressed
     if (swkbd_ui_active() && e->type != SDL_EVENT_KEY_UP && swkbd_input(e)) return;
 #endif

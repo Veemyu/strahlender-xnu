@@ -149,6 +149,19 @@ def pick_nca(rows, content_type, title_id=None):
     return best[1] if best else None
 
 
+def pick_related_nca(rows, content_type, title_id):
+    """Associate unambiguous Control/Meta content with a Program's title family."""
+    matches = []
+    for row in rows:
+        fields = row.rstrip("\n").split("\t")
+        if (len(fields) >= 7 and fields[2].lower() == content_type.lower() and
+                (int(fields[1], 16) & ~0xFFF) == (int(title_id, 16) & ~0xFFF)):
+            matches.append(fields[0])
+    if len(matches) > 1:
+        raise ValueError("Multiple matching " + content_type + " NCAs; title association is ambiguous")
+    return matches[0] if matches else ""
+
+
 def cnmt_version(data):
     """Title version (u32 LE at offset 8) and title ID from a PackagedContentMeta."""
     if len(data) < 0x10:
@@ -253,6 +266,11 @@ def manifest_matches(work, xci_size, nsp_size, base_kind=None, base_path=None, u
         main = os.path.join(work, "exefs", "main")
         if file_hashes(main)[0] != m["exefs"]["main"]["sha256"]:
             return False
+        for name, digest in m["exefs"].get("files_sha256", {}).items():
+            if os.path.basename(name) != name or name in (".", ".."):
+                return False
+            if name != "main" and file_hashes(os.path.join(work, "exefs", name))[0] != digest:
+                return False
         count, total = romfs_stats(os.path.join(work, "romfs"))
         return count > 0 and count == m["romfs"]["files"] and total == m["romfs"]["bytes"]
     except (OSError, KeyError, ValueError, TypeError):

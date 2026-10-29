@@ -8,6 +8,12 @@
 
 #include "kernel.h"
 #include "platform.h"
+#ifdef _WIN32
+#include "hle.h"
+// Separate from the lookup TU: its optimizer must see linker bounds, not one-entry arrays.
+__attribute__((used, section(".hle$a"))) const HleImplEntry bdsp_hle_begin[1] = {{0}};
+__attribute__((used, section(".hle$z"))) const HleImplEntry bdsp_hle_end[1] = {{0}};
+#endif
 
 // Overlay drawn over the finished frame (the on-screen keyboard); a no-op until swkbd_overlay_vk.c, which replaces it, is built.
 __attribute__((weak)) void menu_render(void *cmd, uint32_t w, uint32_t h) { (void)cmd; (void)w; (void)h; }
@@ -25,4 +31,15 @@ void plat_terminate(void) { _exit(0); }
 // Time this thread was blocked in wait/sleep calls of the kernel (exec.c: frame pacing measurement of the clone). The BDSP runtime
 // does not track it; frame pacing stays with the game (vsync event from services_gfx.c), the clone's rate detection is off.
 __thread uint64_t g_blocked_ns;
-__attribute__((constructor)) static void vk_glue_defaults(void) { setenv("BDSP_PACE", "0", 0); }
+__attribute__((constructor)) static void vk_glue_defaults(void) {
+#ifdef _WIN32
+    // SDL's Windows setter bypasses the CRT environment read by getenv.
+    int error = getenv("BDSP_PACE") ? 0 : _putenv_s("BDSP_PACE", "0");
+#else
+    int error = setenv("BDSP_PACE", "0", 0);
+#endif
+    if (error) {
+        fprintf(stderr, "FATAL: Vulkan pacing default could not be set.\n");
+        _exit(1);
+    }
+}

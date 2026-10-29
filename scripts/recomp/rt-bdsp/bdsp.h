@@ -2,7 +2,6 @@
 // design of LASRecomp (runtime/kernel.h, ipc.h, MIT, see NOTICE.md).
 #pragma once
 #include <pthread.h>
-#include <setjmp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +9,9 @@
 
 #include "cpu.h"        // rt/cpu.h (exception extension) and on top of it scripts/recomp/upstream/runtime/cpu.h
 #include "guestmem.h"
+#ifdef _WIN32
+#include "win32_host.h"
+#endif
 
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #define MAKE_RESULT(module, desc) ((uint32_t)(((module) & 0x1FF) | ((desc) << 9)))
@@ -116,6 +118,9 @@ struct KThread {
     uint32_t wait_h0; int wait_n;       // WaitSynchronization: first handle and count
     uint64_t host_stack_size;
     void *host_stack_lo;
+#ifdef _WIN32
+    CONTEXT host_context;
+#endif
 };
 
 typedef struct KSharedMem {
@@ -185,6 +190,8 @@ struct Service {
 typedef struct { Service *objs[256]; } Domain;
 typedef struct { KObject obj; Service *svc; Domain *domain; } KSession;
 
+#undef IN  // Windows argument annotations share the IPC accessor names.
+#undef OUT
 #define IN(type, off) (*(const type *)(req->data + (off)))
 #define OUT(type, off) (*(type *)(resp->data + (off)))
 static inline void resp_size(IpcResp *resp, uint32_t n) { if (n > resp->data_size) resp->data_size = n; }

@@ -1,15 +1,20 @@
 // Horizon kernel replacement of the BDSP runtime: handles, real host threads, synchronisation, memory map, SVC dispatcher.
 // Own code following the design of LASRecomp runtime/kernel.c (MIT, Copyright (c) 2026 Peiikai, see NOTICE.md):
-// the mutex/condvar/arbiter semantics and the handle table are borrowed from there. New: Mach suspension (SVC 0x32/0x33 for
+// the mutex/condvar/arbiter semantics and the handle table are borrowed from there. New: Mach/Win32 suspension (SVC 0x32/0x33 for
 // the Boehm GC), small host stacks, per-thread SVC counters, measurement, no restart mechanism, guest addresses through G2H.
+#ifdef _WIN32
+#include <windows.h>
+#include <bcrypt.h>
+#else
 #include <mach/mach.h>
 #include <mach/mach_time.h>
+#include <sys/mman.h>
+#endif
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #include <sys/sysctl.h>
 #endif
 #include <sched.h>
-#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -26,9 +31,13 @@ volatile int g_stop;
 uint64_t g_program_id, g_system_resource_size = 0x1000000;
 
 uint64_t rt_now_ns(void) {
+#ifdef _WIN32
+    return bdsp_win32_now_ns();
+#else
     static mach_timebase_info_data_t tb;
     if (!tb.denom) mach_timebase_info(&tb);
     return mach_absolute_time() * tb.numer / tb.denom;
+#endif
 }
 uint64_t rt_ticks(void) { return (uint64_t)((__uint128_t)rt_now_ns() * 192 / 10000); }  // 19,2 MHz
 
@@ -196,8 +205,12 @@ int kernel_thread_count(void) { return g_thread_count; }
 static void *thread_main(void *arg) {
     KThread *t = arg;
     t_cur = t;
+#ifdef _WIN32
+    bdsp_win32_current_stack(&t->host_stack_lo, &t->host_stack_size);
+#else
     t->host_stack_size = pthread_get_stacksize_np(pthread_self());
     t->host_stack_lo = (void *)((uintptr_t)pthread_get_stackaddr_np(pthread_self()) - t->host_stack_size);
+#endif
     crash_handler_install();
     rt_set_fpcr(0);
     rt_fp_guest_mode();   // host FPU environment as assumed in c mode (docs/recomp-diff.md): RN, no FTZ/DAZ
@@ -488,7 +501,7 @@ out:
 
 // ------------------------------------------------------------------ Suspending other threads (Boehm GC)
 // SetThreadActivity(handle, paused) -> thread_suspend; GetThreadContext3 returns the guest register set from Cpu.
-// The guest keeps its registers only in Cpu and on the guest stack (spike measurement: 100 % of the windows).
+// This exports materialized Cpu state, not arbitrary optimized host-register temporaries.
 uint64_t g_suspends, g_resumes;
 static uint32_t svc_set_thread_activity(uint32_t h, uint32_t activity) {
     KObject *o = handle_get(h);
@@ -497,12 +510,46 @@ static uint32_t svc_set_thread_activity(uint32_t h, uint32_t activity) {
     if (t == t_cur) return R_INVALID_STATE;
     if (!t->started || t->finished) return R_INVALID_STATE;
     pthread_mutex_lock(&g_klock);  // the target never holds g_klock while being suspended: no host lock stays stuck in the kernel section
+#ifdef _WIN32
+    uint32_t result = R_OK;
+    HANDLE thread = pthread_gethandle(t->host);
+    if (activity > 1) { SetLastError(ERROR_INVALID_PARAMETER); result = R_INVALID_ENUM; }
+    else if (!thread || t->finished) { SetLastError(ERROR_INVALID_STATE); result = R_INVALID_STATE; }
+    else if (activity == 1 && !t->suspended) {
+        if (SuspendThread(thread) == (DWORD)-1) result = R_INVALID_STATE;
+        else {
+            t->host_context.ContextFlags = CONTEXT_ALL;
+            if (!GetThreadContext(thread, &t->host_context)) {
+                DWORD error = GetLastError();
+                if (ResumeThread(thread) == (DWORD)-1)
+                    rt_fatal("Windows could not undo a failed GC suspension (%lu)\n", GetLastError());
+                SetLastError(error);
+                result = R_INVALID_STATE;
+            } else {
+                t->suspended = true;
+                __atomic_fetch_add(&g_suspends, 1, __ATOMIC_RELAXED);
+            }
+        }
+    } else if (activity == 0 && t->suspended) {
+        if (ResumeThread(thread) == (DWORD)-1) result = R_INVALID_STATE;
+        else {
+            t->suspended = false;
+            __atomic_fetch_add(&g_resumes, 1, __ATOMIC_RELAXED);
+        }
+    }
+    if (result != R_OK)
+        LOG("[kernel] Windows thread activity %u failed (result %#x, Windows %lu)\n",
+            activity, result, GetLastError());
+    pthread_mutex_unlock(&g_klock);
+    return result;
+#else
     mach_port_t mp = pthread_mach_thread_np(t->host);
     __atomic_fetch_add(activity == 1 ? &g_suspends : &g_resumes, 1, __ATOMIC_RELAXED);
     if (activity == 1 && !t->suspended) { thread_suspend(mp); t->suspended = true; }
     else if (activity == 0 && t->suspended) { thread_resume(mp); t->suspended = false; }
     pthread_mutex_unlock(&g_klock);
     return R_OK;
+#endif
 }
 
 typedef struct {
@@ -518,6 +565,13 @@ static uint32_t svc_get_thread_context3(uint64_t out, uint32_t h) {
     if (!o || o->type != KOBJ_THREAD) return R_INVALID_HANDLE;
     KThread *t = (KThread *)o;
     if (t == t_cur) return R_INVALID_STATE;
+#ifdef _WIN32
+    pthread_mutex_lock(&g_klock);
+    if (!t->suspended || t->finished) {
+        pthread_mutex_unlock(&g_klock);
+        return R_INVALID_STATE;
+    }
+#endif
     ThreadContext tc;
     memset(&tc, 0, sizeof tc);
     for (int i = 0; i < 29; i++) tc.r[i] = t->cpu.x[i];
@@ -525,9 +579,15 @@ static uint32_t svc_get_thread_context3(uint64_t out, uint32_t h) {
     tc.lr = t->cpu.x[30];
     tc.sp = t->cpu.sp;
     tc.pc = t->cpu.x[30];
+    tc.psr = (uint32_t)t->cpu.nzcv;
     for (int i = 0; i < 32; i++) tc.v[i] = t->cpu.v[i];
+    tc.fpcr = (uint32_t)t->cpu.fpcr;
+    tc.fpsr = (uint32_t)t->cpu.fpsr;
     tc.tpidr = t->cpu.tpidr;
     memcpy(G2H(out), &tc, sizeof tc);
+#ifdef _WIN32
+    pthread_mutex_unlock(&g_klock);
+#endif
     return R_OK;
 }
 
@@ -763,7 +823,14 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         case 6: case 21: v = app_memory(); break;
         case 7: case 22: v = heap_size + 0x4000000; break;
         case 8: case 9: v = 0; break;
-        case 11: v = ((uint64_t)arc4random() << 32) | arc4random(); break;
+        case 11:
+#ifdef _WIN32
+            if (BCryptGenRandom(NULL, (PUCHAR)&v, sizeof v, BCRYPT_USE_SYSTEM_PREFERRED_RNG))
+                rt_fatal("Windows random generation failed\n");
+#else
+            v = ((uint64_t)arc4random() << 32) | arc4random();
+#endif
+            break;
         case 12: v = GUEST_LO; break;
         case 13: v = GUEST_HI - GUEST_LO; break;
         case 14: v = STACK_BASE; break;
@@ -791,7 +858,12 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         phys_mapped -= x[1] < phys_mapped ? x[1] : phys_mapped;
         g_phys_unmaps++;
         if (getenv("BDSP_TRACE_UNMAP")) LOG("[kernel] UnmapPhysicalMemory %llx + %llx (Nr. %llu)\n", (unsigned long long)x[0], (unsigned long long)x[1], (unsigned long long)g_phys_unmaps);
+#ifdef _WIN32
+        if (!bdsp_win32_discard(G2H(x[0]), x[1]))
+            rt_fatal("Windows guest memory discard failed (%lu)\n", GetLastError());
+#else
         mmap(G2H(x[0]), x[1], PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
         x[0] = R_OK;
         break;
     case 0x2F: x[0] = R_NOT_IMPLEMENTED; break;  // GetLastThreadInfo
@@ -816,10 +888,18 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
 }
 
 // ------------------------------------------------------------------ Bericht
+#ifndef _WIN32
 #include <mach/vm_map.h>
+#endif
 static unsigned resident_stack_kib(KThread *t) {
     if (!t->started || !t->host_stack_lo || t->finished) return 0;
     uintptr_t lo = (uintptr_t)t->host_stack_lo, hi = lo + t->host_stack_size;
+#ifdef _WIN32
+    uint64_t total = 0;
+    if (!bdsp_win32_resident_bytes((void *)lo, hi - lo, &total))
+        LOG("[kernel] Windows resident stack query failed (%lu)\n", GetLastError());
+    return (unsigned)(total >> 10);
+#else
     vm_address_t a = lo;
     uint64_t total = 0;
     while (a < hi) {  // resident pages of the host stack (frames of the recompiled functions); vm_region_64 also exists on iOS
@@ -833,6 +913,7 @@ static unsigned resident_stack_kib(KThread *t) {
         a += sz;
     }
     return (unsigned)(total >> 10);
+#endif
 }
 
 #ifdef __APPLE__

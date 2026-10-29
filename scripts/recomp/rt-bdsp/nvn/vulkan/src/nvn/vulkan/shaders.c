@@ -4,8 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "shaders.h"
+#include "runtime_paths.h"
+#ifdef _WIN32
+#include "win32_files.h"
+#endif
 
 void vk_shaders_init(void) {  // (compilers are per thread: check shaderc works at all)
     shaderc_compiler_t c = shaderc_compiler_initialize();
@@ -26,8 +31,9 @@ static uint64_t src_hash(const char *src, int stage) {
 }
 
 static uint32_t *cache_load(uint64_t h, size_t *nwords) {
-    char path[96];
-    snprintf(path, sizeof path, "work/recomp/cache/spirv/%016llx.spv", (unsigned long long)h);
+    char path[4096], name[64];
+    snprintf(name, sizeof name, "spirv/%016llx.spv", (unsigned long long)h);
+    bdsp_cache_path(path, sizeof path, name);
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
@@ -42,16 +48,20 @@ static uint32_t *cache_load(uint64_t h, size_t *nwords) {
 }
 
 static void cache_store(uint64_t h, const uint32_t *spv, size_t nwords) {
-    static int made;
-    if (!made) { made = 1; mkdir("work", 0755); mkdir("work/recomp", 0755); mkdir("work/recomp/cache", 0755); mkdir("work/recomp/cache/spirv", 0755); }
-    char path[96], tmp[112];
-    snprintf(path, sizeof path, "work/recomp/cache/spirv/%016llx.spv", (unsigned long long)h);
-    snprintf(tmp, sizeof tmp, "%s.%llx", path, (unsigned long long)(uintptr_t)&made ^ (unsigned long long)(uintptr_t)spv);
+    if (!bdsp_cache_prepare("spirv")) return;
+    char path[4096], tmp[4096], name[96];
+    snprintf(name, sizeof name, "spirv/%016llx.spv", (unsigned long long)h);
+    bdsp_cache_path(path, sizeof path, name);
+    snprintf(name, sizeof name, "spirv/%016llx.spv.%llx", (unsigned long long)h, (unsigned long long)(uintptr_t)spv);
+    bdsp_cache_path(tmp, sizeof tmp, name);
     FILE *f = fopen(tmp, "wb");
-    if (!f) return;
+    if (!f) { LOG("[vk] SPIR-V cache could not be opened for writing\n"); return; }
     bool ok = fwrite(spv, 4, nwords, f) == nwords;
-    fclose(f);
-    if (!ok || rename(tmp, path) != 0) remove(tmp);  // (another thread may have stored it first)
+    if (fclose(f)) ok = false;
+    if (!ok || rename(tmp, path) != 0) {
+        LOG("[vk] SPIR-V cache publication failed\n");
+        unlink(tmp);
+    }
 }
 
 // Vertex shaders: every float add/sub/mul/div/fma gets NoContraction, so no compiler fuses or splits them. Depth

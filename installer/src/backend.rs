@@ -243,6 +243,9 @@ fn verified_runtime_python(runtime: &Path) -> Option<PathBuf> {
     {
         return None;
     }
+    if cfg!(windows) && !runtime_inventory_matches(runtime, marker.get("files")?) {
+        return None;
+    }
     let executable = if cfg!(windows) {
         runtime.join("python/python.exe")
     } else {
@@ -251,10 +254,91 @@ fn verified_runtime_python(runtime: &Path) -> Option<PathBuf> {
     executable.is_file().then_some(executable)
 }
 
+fn runtime_inventory_matches(runtime: &Path, record: &serde_json::Value) -> bool {
+    use sha2::{Digest, Sha256};
+    use std::collections::BTreeSet;
+    use std::io::Read;
+
+    fn regular_tree(root: &Path, files: &mut BTreeSet<PathBuf>) -> std::io::Result<()> {
+        let metadata = std::fs::symlink_metadata(root)?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x400 != 0 {
+                return Err(std::io::Error::other("Runtime contains a reparse point"));
+            }
+        }
+        if metadata.file_type().is_symlink() {
+            return Err(std::io::Error::other("Runtime contains a link"));
+        }
+        if metadata.is_file() {
+            files.insert(root.to_path_buf());
+        } else if metadata.is_dir() {
+            for entry in std::fs::read_dir(root)? {
+                regular_tree(&entry?.path(), files)?;
+            }
+        } else {
+            return Err(std::io::Error::other("Runtime contains a non-regular file"));
+        }
+        Ok(())
+    }
+
+    let Some(expected) = record.as_object().filter(|files| !files.is_empty()) else {
+        return false;
+    };
+    let mut actual = BTreeSet::new();
+    if regular_tree(runtime, &mut actual).is_err() {
+        return false;
+    }
+    actual.remove(&runtime.join("runtime.json"));
+    if actual.len() != expected.len() {
+        return false;
+    }
+    for (name, digest) in expected {
+        if name
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+            || name.contains(['\\', ':'])
+        {
+            return false;
+        }
+        let path = runtime.join(name);
+        if !actual.remove(&path) {
+            return false;
+        }
+        let Ok(mut file) = std::fs::File::open(path) else {
+            return false;
+        };
+        let mut hash = Sha256::new();
+        let mut buffer = [0; 65536];
+        loop {
+            let Ok(size) = file.read(&mut buffer) else {
+                return false;
+            };
+            if size == 0 {
+                break;
+            }
+            hash.update(&buffer[..size]);
+        }
+        if digest.as_str() != Some(format!("{:x}", hash.finalize()).as_str()) {
+            return false;
+        }
+    }
+    actual.is_empty()
+}
+
 fn bundled_runtime() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
-    let contents = executable.parent()?.parent()?;
-    runtime_in_resources(&contents.join("Resources"))
+    runtime_beside_executable(&executable)
+}
+
+fn runtime_beside_executable(executable: &Path) -> Option<PathBuf> {
+    let parent = executable.parent()?;
+    if cfg!(target_os = "windows") {
+        runtime_in_resources(&parent.join("resources"))
+    } else {
+        runtime_in_resources(&parent.parent()?.join("Resources"))
+    }
 }
 
 fn runtime_in_resources(resources: &Path) -> Option<PathBuf> {
@@ -268,10 +352,11 @@ fn runtime_in_resources(resources: &Path) -> Option<PathBuf> {
     verified_runtime_python(&runtime)
 }
 
-fn backend_python() -> Option<(PathBuf, bool)> {
+pub(crate) fn backend_python() -> Option<(PathBuf, bool)> {
     if let Some(runtime) = std::env::var_os("BDSP_INSTALLER_RUNTIME") {
         return verified_runtime_python(Path::new(&runtime)).map(|python| (python, true));
     }
+
     if let Some(python) = bundled_runtime() {
         return Some((python, true));
     }
@@ -282,7 +367,21 @@ fn backend_python() -> Option<(PathBuf, bool)> {
     {
         return Some((python, true));
     }
-    cfg!(debug_assertions).then(|| (PathBuf::from("python3"), false))
+    cfg!(debug_assertions).then(|| {
+        (PathBuf::from(if cfg!(target_os = "windows") { "python" } else { "python3" }), false)
+    })
+}
+
+pub(crate) fn private_windows_catalog(target: &str) -> Option<PathBuf> {
+    if cfg!(all(debug_assertions, target_os = "windows"))
+        && matches!(target, "native" | "windows" | "windows-arm64")
+        && std::env::var_os("BDSP_INSTALLER_DEV_CHECKOUT").as_deref()
+            == Some(std::ffi::OsStr::new("1"))
+    {
+        std::env::var_os("BDSP_WINDOWS_PRIVATE_CATALOG").map(PathBuf::from)
+    } else {
+        None
+    }
 }
 
 pub fn runtime_smoke() -> Result<(), String> {
@@ -436,7 +535,9 @@ fn run_driver(
         };
         let mut command = Command::new(&python);
         // LLVM still leads PATH; select Git separately so Brew cannot shadow Apple Git.
-        command.env("BDSP_GIT", crate::dependencies::git());
+        if !cfg!(target_os = "windows") {
+            command.env("BDSP_GIT", crate::dependencies::git());
+        }
         let inherited = std::env::var_os("PATH").unwrap_or_default();
         let mut search_paths: Vec<PathBuf> = if cfg!(target_os = "macos") {
             crate::dependencies::mac_tool_paths()
@@ -488,6 +589,9 @@ fn run_driver(
                     .arg(base)
                     .arg("--prod-keys")
                     .arg(prod_keys);
+                if let Some(catalog) = private_windows_catalog(target) {
+                    command.arg("--windows-catalog").arg(catalog);
+                }
                 if target == "ios" {
                     command.arg("--ios-delivery").arg(ios_delivery.as_str());
                     if ios_delivery == IosDelivery::Ipa {
@@ -850,6 +954,24 @@ mod tests {
     use super::{ProtocolEvent, set_cpu_target};
     use tokio::process::Command;
 
+    fn runtime_marker(runtime: &std::path::Path, executable: &std::path::Path, host: &str) {
+        use sha2::{Digest, Sha256};
+        let name = executable
+            .strip_prefix(runtime)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let digest = format!("{:x}", Sha256::digest(std::fs::read(executable).unwrap()));
+        std::fs::write(
+            runtime.join("runtime.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema": 1, "target": host, "python": "3.13.15", "files": {name: digest}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
     #[test]
     fn reveal_does_not_launch_or_create_a_missing_application() {
         let missing = std::env::temp_dir()
@@ -935,12 +1057,36 @@ mod tests {
         };
         std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
         std::fs::write(&executable, b"test").unwrap();
-        std::fs::write(
-            runtime.join("runtime.json"),
-            format!(r#"{{"schema":1,"target":"{host}","python":"3.13.15"}}"#),
+        runtime_marker(&runtime, &executable, host);
+        assert_eq!(
+            super::verified_runtime_python(&runtime),
+            Some(executable.clone())
+        );
+        let marker = serde_json::from_slice::<serde_json::Value>(
+            &std::fs::read(runtime.join("runtime.json")).unwrap(),
         )
         .unwrap();
-        assert_eq!(super::verified_runtime_python(&runtime), Some(executable));
+        assert!(super::runtime_inventory_matches(&runtime, &marker["files"]));
+        std::fs::write(&executable, b"tampered").unwrap();
+        assert!(!super::runtime_inventory_matches(&runtime, &marker["files"]));
+        if cfg!(windows) {
+            assert_eq!(super::verified_runtime_python(&runtime), None);
+        }
+        std::fs::write(&executable, b"test").unwrap();
+        let extra = runtime.join("injected.pth");
+        std::fs::write(&extra, b"unexpected").unwrap();
+        assert!(!super::runtime_inventory_matches(&runtime, &marker["files"]));
+        std::fs::remove_file(extra).unwrap();
+        for name in [
+            "../escape", "/absolute", "C:/drive", "python\\python.exe", "python//python.exe",
+        ] {
+            assert!(!super::runtime_inventory_matches(
+                &runtime,
+                &serde_json::json!({
+                    name: marker["files"].as_object().unwrap().values().next().unwrap()
+                }),
+            ));
+        }
         std::fs::write(
             runtime.join("runtime.json"),
             r#"{"schema":1,"target":"wrong-host","python":"3.13.15"}"#,
@@ -975,12 +1121,27 @@ mod tests {
         });
         std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
         std::fs::write(&executable, b"fixture").unwrap();
-        std::fs::write(
-            native.join("runtime.json"),
-            format!(r#"{{"schema":1,"target":"{host}","python":"3.13.15"}}"#),
-        )
-        .unwrap();
-        assert_eq!(super::runtime_in_resources(&resources), Some(executable));
+        runtime_marker(&native, &executable, host);
+        assert_eq!(
+            super::runtime_in_resources(&resources),
+            Some(executable.clone())
+        );
+        if cfg!(windows) {
+            let package = resources.parent().unwrap();
+            let fixture = package.join(format!("runtime-layout-{}", std::process::id()));
+            std::fs::create_dir(&fixture).unwrap();
+            std::fs::rename(&resources, fixture.join("resources")).unwrap();
+            let moved_executable = fixture
+                .join("resources/runtime")
+                .join(host)
+                .join("python/python.exe");
+            assert_eq!(
+                super::runtime_beside_executable(&fixture.join("installer.exe")),
+                Some(moved_executable)
+            );
+            std::fs::rename(fixture.join("resources"), &resources).unwrap();
+            std::fs::remove_dir(fixture).unwrap();
+        }
         std::fs::write(
             native.join("runtime.json"),
             r#"{"schema":1,"target":"other-architecture","python":"3.13.15"}"#,

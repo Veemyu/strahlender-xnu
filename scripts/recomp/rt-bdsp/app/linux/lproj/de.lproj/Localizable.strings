@@ -22,3 +22,12 @@
 "Reset Game" = "Spiel zurücksetzen";
 "KEYS_HELP" = "Tastatur: Eingabe/Leertaste = A, Rücktaste/J = B, X, Y, Pfeiltasten und WASD = Steuerkreuz, Q/E = L/R, P = Plus, O = Minus.\nFenster: F1–F4 Größe, F5–F7 Bildrate 30/60/120, F11 Vollbild (im Menü auch Strg+1–4, Strg+F). Kein Ton.";
 "RESET_CONFIRM" = "Der Spielstand wird gesichert und gelöscht, das Spiel startet neu und beginnt von vorn.";
+"Controllers" = "Controller";
+"Individual Joy-Cons (mini mode)" = "Einzelne Joy-Cons (Mini-Modus)";
+"Paired Joy-Cons" = "Joy-Con-Paar";
+"Joy-Con Mini Controls" = "Joy-Con-Mini-Belegung";
+"JOYCON_MINI_HELP" = "Jeder einzelne Joy-Con ist ein Mini-Gamepad. Stick-Klick halten fuer die zweite Ebene: Stick = Steuerkreuz, Plus = Minus, L/R = ZL/ZR. Vor normalen Eingaben die Kombinationstasten loslassen und den Stick zentrieren. Moduswechsel setzen die Controller-Eingabe kurz zurueck und oeffnen Geraete neu; alle Pads bleiben gemeinsam Spieler 1.";
+"Controller configuration is overridden for this launch." = "Die Controller-Konfiguration wurde fuer diesen Start explizit ueberschrieben.";
+"Controller mode could not be changed. The previous mode was restored when possible; keyboard input remains available." = "Der Controller-Modus konnte nicht gewechselt werden. Der vorherige Modus wurde soweit moeglich wiederhergestellt; die Tastatur bleibt verfuegbar.";
+"Controller settings could not be saved. The previous mode has been restored." = "Die Controller-Einstellung konnte nicht gespeichert werden. Der vorherige Modus wurde wiederhergestellt.";
+"Controller settings could not be saved and the previous mode could not be restored. Keyboard input remains available." = "Speichern und Wiederherstellen des Controller-Modus sind fehlgeschlagen. Die Tastatur bleibt verfuegbar.";

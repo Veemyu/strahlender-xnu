@@ -15,6 +15,31 @@ TARGETS = ("macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64")
 PACKAGES = ("installer-macos-universal.zip", "installer-linux-aarch64.AppImage", "installer-linux-x86_64.AppImage")
 
 
+def windows_readiness():
+    """Public qualification is independent of private build/probe success."""
+    data = json.loads((ROOT / "installer/assets/windows-dependencies.json").read_text(encoding="utf-8"))
+    if data["schema"] != 1 or data["abi"] != "llvm-mingw-ucrt":
+        raise ValueError("Unsupported Windows release dependency contract.")
+    blockers = list(data["release_blockers"])
+    for component in data["components"]:
+        # A private source receipt, runtime probe or filename containing 'lgpl'
+        # is deliberately insufficient evidence for public redistribution.
+        blockers.append(f"{component['id']}: {component['qualification']}")
+    return {
+        "schema": 1,
+        "public_release_ready": False,
+        "profiles": data["profiles"],
+        "blockers": blockers,
+        "reason": "Windows installer packaging/signing is not enabled; private catalogs are not release assets.",
+    }
+
+
+def reject_unqualified_windows_assets(folder):
+    if any(folder.rglob("installer-windows-*")):
+        report = windows_readiness()
+        raise ValueError(report["reason"] + "\n" + "\n".join(report["blockers"]))
+
+
 def plan(version, event, ref, channel, revision, run_id, attempt, draft=False):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("Installer Cargo version must be a stable three-part version.")
@@ -40,6 +65,7 @@ def plan(version, event, ref, channel, revision, run_id, attempt, draft=False):
 
 
 def collect(artifacts, output, release):
+    reject_unqualified_windows_assets(artifacts)
     if output.exists():
         raise ValueError("Release staging directory already exists.")
     inventory = {}
@@ -90,6 +116,7 @@ def publish(folder, release, repository):
         raise ValueError("Artifact-only runs must never publish a GitHub release.")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("Invalid GitHub repository.")
+    reject_unqualified_windows_assets(folder)
     tag = release["tag"]
     # A stable tag may already exist; it must refer to this exact source revision.
     existing = subprocess.run(["git", "ls-remote", "origin", f"refs/tags/{tag}",
@@ -140,8 +167,12 @@ def main():
     publishing.add_argument("--folder", type=Path, required=True)
     publishing.add_argument("--plan", type=Path, required=True)
     publishing.add_argument("--repository", required=True)
+    sub.add_parser("windows-readiness", help="Report offline public Windows release blockers; never approves redistribution.")
     args = parser.parse_args()
-    if args.command == "plan":
+    if args.command == "windows-readiness":
+        print(json.dumps(windows_readiness(), indent=2))
+        raise SystemExit(1)
+    elif args.command == "plan":
         version = tomllib.loads((ROOT / "installer/Cargo.toml").read_text())["package"]["version"]
         release = plan(version, args.event, args.ref, args.channel, args.revision, args.run_id, args.attempt,
                        args.draft == "true")
