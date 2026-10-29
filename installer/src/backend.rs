@@ -1,9 +1,10 @@
+use crate::runtime::{backend_python, private_windows_catalog, project_root};
 use iced::futures::SinkExt;
 use serde::Deserialize;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::Stdio,
     sync::{
         Arc,
@@ -214,122 +215,6 @@ enum Action {
     Build(BuildRequest),
 }
 
-pub fn project_root() -> Option<PathBuf> {
-    let starts = vec![std::env::current_dir().ok()?, std::env::current_exe().ok()?];
-    #[cfg(debug_assertions)]
-    let mut starts = starts;
-    #[cfg(debug_assertions)]
-    if let Some(manifest) = option_env!("CARGO_MANIFEST_DIR") {
-        starts.push(PathBuf::from(manifest));
-    }
-    starts.into_iter().find_map(|start| find_root_from(&start))
-}
-
-fn host_target() -> Option<&'static str> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("macos", "aarch64") => Some("macos-aarch64"),
-        ("macos", "x86_64") => Some("macos-x86_64"),
-        ("linux", "aarch64") => Some("linux-aarch64"),
-        ("linux", "x86_64") => Some("linux-x86_64"),
-        ("windows", "aarch64") => Some("windows-aarch64"),
-        ("windows", "x86_64") => Some("windows-x86_64"),
-        _ => None,
-    }
-}
-
-fn verified_runtime_python(runtime: &Path) -> Option<PathBuf> {
-    let marker: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(runtime.join("runtime.json")).ok()?).ok()?;
-    if marker.get("schema")?.as_u64()? != 1
-        || marker.get("target")?.as_str()? != host_target()?
-        || marker.get("python")?.as_str()? != "3.13.15"
-    {
-        return None;
-    }
-    let executable = if cfg!(windows) {
-        runtime.join("python/python.exe")
-    } else {
-        runtime.join("python/bin/python3")
-    };
-    executable.is_file().then_some(executable)
-}
-
-fn bundled_runtime() -> Option<PathBuf> {
-    let executable = std::env::current_exe().ok()?;
-    let contents = executable.parent()?.parent()?;
-    runtime_in_resources(&contents.join("Resources"))
-}
-
-fn runtime_in_resources(resources: &Path) -> Option<PathBuf> {
-    let runtime = resources.join("runtime");
-    if let Some(host) = host_target()
-        && let Some(python) = verified_runtime_python(&runtime.join(host))
-    {
-        return Some(python);
-    }
-    // Existing single-architecture Mac bundles and Linux AppImages.
-    verified_runtime_python(&runtime)
-}
-
-fn backend_python() -> Option<(PathBuf, bool)> {
-    if let Some(runtime) = std::env::var_os("BDSP_INSTALLER_RUNTIME") {
-        return verified_runtime_python(Path::new(&runtime)).map(|python| (python, true));
-    }
-    if let Some(python) = bundled_runtime() {
-        return Some((python, true));
-    }
-    if let Some(dirs) = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
-        && let Some(target) = host_target()
-        && let Some(python) =
-            verified_runtime_python(&dirs.data_dir().join("runtimes/3.13.15").join(target))
-    {
-        return Some((python, true));
-    }
-    cfg!(debug_assertions).then(|| (PathBuf::from("python3"), false))
-}
-
-pub fn runtime_smoke() -> Result<(), String> {
-    let (python, private) = backend_python().ok_or("The bundled Python runtime is missing.")?;
-    if !private {
-        return Err("Runtime smoke checks require private Python.".into());
-    }
-    let status = std::process::Command::new(python)
-        .args([
-            "-I",
-            "-B",
-            "-c",
-            concat!(
-                include_str!("../runtime/native_smoke.py"),
-                "\nimport UnityPy, UnityPy.UnityPyBoost\n"
-            ),
-        ])
-        .status()
-        .map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("Private runtime smoke check failed.".into())
-    }
-}
-
-fn find_root_from(start: &Path) -> Option<PathBuf> {
-    let mut current = if start.is_file() {
-        start.parent()?.to_path_buf()
-    } else {
-        start.to_path_buf()
-    };
-    loop {
-        if current.join("scripts/install/driver.py").is_file()
-            && current.join("scripts/build_stages.py").is_file()
-        {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None;
-        }
-    }
-}
-
 pub fn build(
     run_id: u64,
     cancelled: Arc<AtomicBool>,
@@ -439,7 +324,9 @@ fn run_driver(
         };
         let mut command = Command::new(&python);
         // LLVM still leads PATH; select Git separately so Brew cannot shadow Apple Git.
-        command.env("BDSP_GIT", crate::dependencies::git());
+        if !cfg!(target_os = "windows") {
+            command.env("BDSP_GIT", crate::dependencies::git());
+        }
         let inherited = std::env::var_os("PATH").unwrap_or_default();
         let mut search_paths: Vec<PathBuf> = if cfg!(target_os = "macos") {
             crate::dependencies::mac_tool_paths()
@@ -494,6 +381,9 @@ fn run_driver(
                     .arg(base)
                     .arg("--prod-keys")
                     .arg(prod_keys);
+                if let Some(catalog) = private_windows_catalog(target) {
+                    command.arg("--windows-catalog").arg(catalog);
+                }
                 if target == "ios" {
                     command.arg("--ios-delivery").arg(ios_delivery.as_str());
                     if ios_delivery == IosDelivery::Device
@@ -887,6 +777,24 @@ mod tests {
     use super::{ProtocolEvent, set_cpu_target};
     use tokio::process::Command;
 
+    fn runtime_marker(runtime: &std::path::Path, executable: &std::path::Path, host: &str) {
+        use sha2::{Digest, Sha256};
+        let name = executable
+            .strip_prefix(runtime)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let digest = format!("{:x}", Sha256::digest(std::fs::read(executable).unwrap()));
+        std::fs::write(
+            runtime.join("runtime.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema": 1, "target": host, "python": "3.13.15", "files": {name: digest}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
     #[test]
     fn reveal_does_not_launch_or_create_a_missing_application() {
         let missing = std::env::temp_dir()
@@ -957,7 +865,7 @@ mod tests {
 
     #[test]
     fn private_runtime_requires_matching_host_and_python_marker() {
-        let Some(host) = super::host_target() else {
+        let Some(host) = crate::runtime::host_target() else {
             return;
         };
         let runtime = std::env::temp_dir().join(format!(
@@ -972,18 +880,55 @@ mod tests {
         };
         std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
         std::fs::write(&executable, b"test").unwrap();
-        std::fs::write(
-            runtime.join("runtime.json"),
-            format!(r#"{{"schema":1,"target":"{host}","python":"3.13.15"}}"#),
+        runtime_marker(&runtime, &executable, host);
+        assert_eq!(
+            crate::runtime::verified_runtime_python(&runtime),
+            Some(executable.clone())
+        );
+        let marker = serde_json::from_slice::<serde_json::Value>(
+            &std::fs::read(runtime.join("runtime.json")).unwrap(),
         )
         .unwrap();
-        assert_eq!(super::verified_runtime_python(&runtime), Some(executable));
+        assert!(crate::runtime::runtime_inventory_matches(
+            &runtime,
+            &marker["files"]
+        ));
+        std::fs::write(&executable, b"tampered").unwrap();
+        assert!(!crate::runtime::runtime_inventory_matches(
+            &runtime,
+            &marker["files"]
+        ));
+        if cfg!(windows) {
+            assert_eq!(crate::runtime::verified_runtime_python(&runtime), None);
+        }
+        std::fs::write(&executable, b"test").unwrap();
+        let extra = runtime.join("injected.pth");
+        std::fs::write(&extra, b"unexpected").unwrap();
+        assert!(!crate::runtime::runtime_inventory_matches(
+            &runtime,
+            &marker["files"]
+        ));
+        std::fs::remove_file(extra).unwrap();
+        for name in [
+            "../escape",
+            "/absolute",
+            "C:/drive",
+            "python\\python.exe",
+            "python//python.exe",
+        ] {
+            assert!(!crate::runtime::runtime_inventory_matches(
+                &runtime,
+                &serde_json::json!({
+                    name: marker["files"].as_object().unwrap().values().next().unwrap()
+                }),
+            ));
+        }
         std::fs::write(
             runtime.join("runtime.json"),
             r#"{"schema":1,"target":"wrong-host","python":"3.13.15"}"#,
         )
         .unwrap();
-        assert_eq!(super::verified_runtime_python(&runtime), None);
+        assert_eq!(crate::runtime::verified_runtime_python(&runtime), None);
         std::fs::remove_dir_all(runtime).unwrap();
     }
 
@@ -1003,7 +948,7 @@ mod tests {
     fn universal_bundle_selects_only_the_matching_private_runtime() {
         let resources =
             std::env::temp_dir().join(format!("universal-runtime-test-{}", std::process::id()));
-        let host = super::host_target().unwrap();
+        let host = crate::runtime::host_target().unwrap();
         let native = resources.join("runtime").join(host);
         let executable = native.join(if cfg!(windows) {
             "python/python.exe"
@@ -1012,18 +957,33 @@ mod tests {
         });
         std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
         std::fs::write(&executable, b"fixture").unwrap();
-        std::fs::write(
-            native.join("runtime.json"),
-            format!(r#"{{"schema":1,"target":"{host}","python":"3.13.15"}}"#),
-        )
-        .unwrap();
-        assert_eq!(super::runtime_in_resources(&resources), Some(executable));
+        runtime_marker(&native, &executable, host);
+        assert_eq!(
+            crate::runtime::runtime_in_resources(&resources),
+            Some(executable.clone())
+        );
+        if cfg!(windows) {
+            let package = resources.parent().unwrap();
+            let fixture = package.join(format!("runtime-layout-{}", std::process::id()));
+            std::fs::create_dir(&fixture).unwrap();
+            std::fs::rename(&resources, fixture.join("resources")).unwrap();
+            let moved_executable = fixture
+                .join("resources/runtime")
+                .join(host)
+                .join("python/python.exe");
+            assert_eq!(
+                crate::runtime::runtime_beside_executable(&fixture.join("installer.exe")),
+                Some(moved_executable)
+            );
+            std::fs::rename(fixture.join("resources"), &resources).unwrap();
+            std::fs::remove_dir(fixture).unwrap();
+        }
         std::fs::write(
             native.join("runtime.json"),
             r#"{"schema":1,"target":"other-architecture","python":"3.13.15"}"#,
         )
         .unwrap();
-        assert_eq!(super::runtime_in_resources(&resources), None);
+        assert_eq!(crate::runtime::runtime_in_resources(&resources), None);
         std::fs::remove_dir_all(resources).unwrap();
     }
 
@@ -1040,7 +1000,7 @@ mod tests {
         std::fs::write(scripts.join("build_stages.py"), b"").unwrap();
         let nested = root.join("installer/target/debug");
         std::fs::create_dir_all(&nested).unwrap();
-        assert_eq!(super::find_root_from(&nested), Some(root.clone()));
+        assert_eq!(crate::runtime::find_root_from(&nested), Some(root.clone()));
         std::fs::remove_dir_all(root).unwrap();
     }
 }

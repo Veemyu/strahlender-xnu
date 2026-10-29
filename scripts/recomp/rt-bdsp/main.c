@@ -6,17 +6,23 @@
 #include <malloc/malloc.h>
 #endif
 #include <errno.h>
+#ifndef _WIN32
 #include <mach/mach.h>
-#include <signal.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#endif
+#include <signal.h>
 #include <unistd.h>
-#if !defined(__APPLE__) || !TARGET_OS_IPHONE
+#if !defined(_WIN32) && (!defined(__APPLE__) || !TARGET_OS_IPHONE)
 #include <mach/mach_vm.h>
 #endif
 
 #include "bdsp.h"
 #include "mods.h"
+#include "audio_output.h"
+#ifdef _WIN32
+#include "win32_files.h"
+#endif
 #ifdef BDSP_APP
 #include "app/app.h"
 #endif
@@ -25,8 +31,41 @@
 uint8_t *g_base;
 #endif
 
+static void runtime_setenv(const char *name, const char *value) {
+#ifdef _WIN32
+    int error = _putenv_s(name, value);
+#else
+    int error = setenv(name, value, 1);
+#endif
+    if (error) rt_fatal("cannot set runtime option %s\n", name);
+}
+
 // Claim the guest window before anything else (otherwise the host allocator places regions in the same window).
+#ifdef _WIN32
+__attribute__((constructor(101))) static void reserve_guest_space(void) {
+    void *base;
 #ifdef BDSP_REBASE32
+    void *requested = NULL;
+    size_t guard = 0x10000;
+#else
+    void *requested = (void *)(uintptr_t)GUEST_LO;
+    size_t guard = 0;
+#endif
+#ifdef BDSP_NVN_NONE
+    bool reserved = bdsp_win32_reserve(requested, GUEST_HI - GUEST_LO, guard, &base);
+#else
+    bool reserved = bdsp_win32_reserve_gpu(requested, GUEST_HI - GUEST_LO, guard,
+                                          ALIAS_BASE - GUEST_LO, ALIAS_SIZE, &base);
+#endif
+    if (!reserved) {
+        fprintf(stderr, "FATAL: Windows guest memory reservation failed (%lu).\n", GetLastError());
+        _exit(1);
+    }
+#ifdef BDSP_REBASE32
+    g_base = base;
+#endif
+}
+#elif defined(BDSP_REBASE32)
 // Variant B: 4 GiB window anywhere in the host address space; pages are only committed on access (anonymous, zero). The first 64 KiB stay
 // blocked, so null pointers of the guest crash as on the console.
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
@@ -69,15 +108,27 @@ void guest_log(const char *line) {
 }
 
 static long rss_now_mib(void) {
+#ifdef _WIN32
+    uint64_t current, peak;
+    if (!bdsp_win32_memory_usage(&current, &peak)) return -1;
+    return (long)(current >> 20);
+#else
     mach_task_basic_info_data_t info;
     mach_msg_type_number_t cnt = MACH_TASK_BASIC_INFO_COUNT;
     if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &cnt) != KERN_SUCCESS) return -1;
     return (long)(info.resident_size >> 20);
+#endif
 }
 // (diagnostics, BDSP_MEM_REPORT=1) dirty and swapped memory per VM tag; the guest window is listed apart. The footprint
 // (what iOS kills for) counts dirty + swapped pages and GPU allocations.
 static void mem_report(void) {
-#ifndef __APPLE__
+#ifdef _WIN32
+    uint64_t current, peak;
+    if (bdsp_win32_memory_usage(&current, &peak))
+        printf("[mem] RSS %llu MiB, peak %llu MiB\n",
+               (unsigned long long)(current >> 20), (unsigned long long)(peak >> 20));
+    else fprintf(stderr, "[mem] Windows memory query failed (%lu).\n", GetLastError());
+#elif !defined(__APPLE__)
     struct rusage ru;
     if (getrusage(RUSAGE_SELF, &ru) == 0)
         printf("[mem] peak RSS %ld MiB\n", (long)(ru.ru_maxrss >> 10));
@@ -128,12 +179,18 @@ static void mem_report(void) {
 }
 
 static long rss_peak_mib(void) {
+#ifdef _WIN32
+    uint64_t current, peak;
+    if (!bdsp_win32_memory_usage(&current, &peak)) return -1;
+    return (long)(peak >> 20);
+#else
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
 #ifdef __APPLE__
     return (long)(ru.ru_maxrss >> 20);  // macOS reports bytes
 #else
     return (long)(ru.ru_maxrss >> 10);  // Linux reports KiB
+#endif
 #endif
 }
 
@@ -272,9 +329,18 @@ static void *monitor_loop(void *arg) {
             char fns[160] = "";
             for (int i = 0, n = 0; i < g_count_n; i++)
                 n += snprintf(fns + n, sizeof fns - n, " %llx=%llu", (unsigned long long)g_count_addr[i], (unsigned long long)g_count_hits[i]);
-            struct rusage ru;   // CPU time of all threads: independent of the frame rate cap, so growing cost per frame shows at 120 fps too
+#ifdef _WIN32
+            FILETIME creation, exit, kernel, user;
+            if (!GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user))
+                rt_fatal("Windows CPU time query failed (%lu)\n", GetLastError());
+            uint64_t kernel_time = ((uint64_t)kernel.dwHighDateTime << 32) | kernel.dwLowDateTime;
+            uint64_t user_time = ((uint64_t)user.dwHighDateTime << 32) | user.dwLowDateTime;
+            long long cpu_ms = (long long)((kernel_time + user_time) / 10000);
+#else
+            struct rusage ru;   // CPU time of all threads, independent of the frame rate cap
             getrusage(RUSAGE_SELF, &ru);
             long long cpu_ms = ((long long)ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) * 1000 + (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1000;
+#endif
             LOG("[perf] %.0f s frames %llu cpu_ms %lld gc_suspends %llu gc_resumes %llu rss %ld MiB cal_us %llu fn%s\n", secs, (unsigned long long)renderer_present_count(),
                 cpu_ms, (unsigned long long)g_suspends, (unsigned long long)g_resumes, rss_now_mib(), (unsigned long long)cpu_cal_us(), fns);
         }
@@ -291,14 +357,27 @@ static void *monitor_loop(void *arg) {
     return NULL;
 }
 
+#ifdef _WIN32
+int bdsp_main(int argc, char **argv) {
+#else
 int main(int argc, char **argv) {
+#endif
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
+#ifdef BDSP_QT
+    extern void bdsp_qt_set_arguments(int count, char **arguments);
+    bdsp_qt_set_arguments(argc, argv);
+#else
+    extern void bdsp_qt_set_arguments(int count, char **arguments) __attribute__((weak));
+    if (bdsp_qt_set_arguments) bdsp_qt_set_arguments(argc, argv);
+#endif
 #ifdef BDSP_APP
     bdsp_app_init(argc, argv);   // macOS app: paths/configuration, environment of the runtime, save backup (rt-bdsp/app)
 #endif
     signal(SIGINT, on_sigint);
+#ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
+#endif
 #ifndef BDSP_APP
     {   // without the app configuration (bdsp_boot32, tests): BDSP_FPS=30|60|120 sets the frame rate target
         extern volatile int g_bdsp_fps;
@@ -312,29 +391,31 @@ int main(int argc, char **argv) {
 #endif
     for (int i = 1; i < argc; i++) {   // options (set the environment variables of the NVN layer)
         if (!strcmp(argv[i], "--screenshot-after") && i + 1 < argc) {   // save frame no. N to work/recomp/shots (BDSP_SHOT_DIR)
-            setenv("BDSP_SCREENSHOT_EVERY", argv[i + 1], 1);
-            setenv("BDSP_SCREENSHOT_FROM", argv[i + 1], 1);
+            runtime_setenv("BDSP_SCREENSHOT_EVERY", argv[i + 1]);
+            runtime_setenv("BDSP_SCREENSHOT_FROM", argv[i + 1]);
             i++;
-        } else if (!strcmp(argv[i], "--exit-after-shot")) setenv("BDSP_EXIT_AFTER_SHOT", "1", 1);
-        else if (!strcmp(argv[i], "--headless")) setenv("BDSP_HIDDEN", "1", 1);   // window never visible, rendering stays Metal
-        else if (!strcmp(argv[i], "--window") && i + 1 < argc) setenv("BDSP_WINDOW", argv[++i], 1);
+        } else if (!strcmp(argv[i], "--exit-after-shot")) runtime_setenv("BDSP_EXIT_AFTER_SHOT", "1");
+        else if (!strcmp(argv[i], "--headless")) runtime_setenv("BDSP_HIDDEN", "1");   // window never visible, rendering stays Metal
+        else if (!strcmp(argv[i], "--window") && i + 1 < argc) runtime_setenv("BDSP_WINDOW", argv[++i]);
         else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // no graphics (gate 1 measurement only): NVN functions stay unused
-        else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) setenv("BDSP_INPUT_SCRIPT", argv[++i], 1);   // "second:KEY[+KEY]:duration,..." (nvn_glue.c)
-        else if (!strcmp(argv[i], "--save") && i + 1 < argc) setenv("BDSP_SAVE", argv[++i], 1);   // save folder (default work/recomp/save, see install_save.sh)
-        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) setenv("BDSP_MOD", argv[++i], 1);   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
-        else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) setenv("BDSP_TIMEOUT", argv[++i], 1);
+        else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) runtime_setenv("BDSP_INPUT_SCRIPT", argv[++i]);   // "second:KEY[+KEY]:duration,..." (nvn_glue.c)
+        else if (!strcmp(argv[i], "--save") && i + 1 < argc) runtime_setenv("BDSP_SAVE", argv[++i]);   // save folder (default work/recomp/save, see install_save.sh)
+        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) runtime_setenv("BDSP_MOD", argv[++i]);   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
+        else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) runtime_setenv("BDSP_TIMEOUT", argv[++i]);
         else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }
     }
-    const char *img = getenv("BDSP_IMG") ? getenv("BDSP_IMG") : "work/recomp/img";
-    const char *npdm = getenv("BDSP_NPDM") ? getenv("BDSP_NPDM") : "work/exefs/main.npdm";
     g_timeout = getenv("BDSP_TIMEOUT") ? atoi(getenv("BDSP_TIMEOUT")) : 120;
     int timeout = g_timeout;
+    if (!no_window && !audio_output_init_main())
+        LOG("[audio-output] unavailable; guest audio timing stays active\n");
     if (!mods_active()) {   // BDSP_MODS_DIR + BDSP_MOD (tests, Linux); the app shells choose the mod with a dialog before this point
         int sel = mods_select_from_env(getenv("BDSP_SAVE") ? getenv("BDSP_SAVE") : g_save_dir);
         if (sel < 0) return 2;
-        if (sel > 0) setenv("BDSP_SAVE", mods_active_save(), 1);   // the unmodified game's save folder stays untouched
+        if (sel > 0) runtime_setenv("BDSP_SAVE", mods_active_save());   // the unmodified game's save folder stays untouched
     }
     fs_set_dirs(getenv("BDSP_ROMFS"), getenv("BDSP_SAVE"));
+    const char *img = getenv("BDSP_IMG") ? getenv("BDSP_IMG") : "work/recomp/img";
+    const char *npdm = getenv("BDSP_NPDM") ? getenv("BDSP_NPDM") : "work/exefs/main.npdm";
     g_start_ns = rt_now_ns();
     g_proc_start_ns = g_start_ns;
     g_main_thread_id = pthread_self();

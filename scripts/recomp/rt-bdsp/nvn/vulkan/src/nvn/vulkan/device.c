@@ -1,6 +1,9 @@
 // Vulkan device, window, swapchain and presentation (counterpart of the window/present half of metal.m).
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#ifdef _WIN32
+#include "input.h"
+#endif
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -11,12 +14,27 @@
 
 #include "../../paths.h"
 #include "../../settings.h"
+#include "runtime_paths.h"
+#include "host_shutdown.h"
 #include "../../ui/menu.h"
 #include "vk.h"
 #include "../output_scale.h"
 #include "../renderer.h"
+#include "runtime_paths.h"
+#ifdef _WIN32
+#include "win32_files.h"
+#endif
 
 VkG g_vk;
+static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
+void vk_queue_enter(void) { pthread_mutex_lock(&queue_lock); }
+void vk_queue_leave(void) { pthread_mutex_unlock(&queue_lock); }
+static VkResult device_idle(void) {
+    vk_queue_enter();
+    VkResult result = vkDeviceWaitIdle(g_vk.dev);
+    vk_queue_leave();
+    return result;
+}
 static SDL_Window *window;
 static bool headless;  // BDSP: --headless renders into images of its own, no window, surface or swapchain (screenshots only)
 static VmaAllocation hl_mem[8];
@@ -227,7 +245,9 @@ static void create_device(void) {
     // pipeline cache: cache/vk_pipelines.bin (written by vk_pipeline_cache_save)
     size_t sz = 0;
     void *data = NULL;
-    FILE *fp = fopen("work/recomp/cache/vk_pipelines.bin", "rb");
+    char cache_path[4096];
+    bdsp_cache_path(cache_path, sizeof cache_path, "vk_pipelines.bin");
+    FILE *fp = fopen(cache_path, "rb");
     if (fp) {
         fseek(fp, 0, SEEK_END);
         sz = (size_t)ftell(fp);
@@ -250,13 +270,19 @@ void vk_pipeline_cache_save(void) {
     if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) != VK_SUCCESS || !sz) return;
     void *data = malloc(sz);
     if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, data) == VK_SUCCESS) {
-        mkdir("work", 0755); mkdir("work/recomp", 0755); mkdir("work/recomp/cache", 0755);
-        FILE *f = fopen("work/recomp/cache/vk_pipelines.bin.tmp", "wb");
+        char path[4096], temporary[4096];
+        bdsp_cache_path(path, sizeof path, "vk_pipelines.bin");
+        bdsp_cache_path(temporary, sizeof temporary, "vk_pipelines.bin.tmp");
+        if (!bdsp_cache_prepare(NULL)) { free(data); return; }
+        FILE *f = fopen(temporary, "wb");
         if (f) {
             bool ok = fwrite(data, 1, sz, f) == sz;
-            fclose(f);
-            if (ok) { remove("work/recomp/cache/vk_pipelines.bin"); rename("work/recomp/cache/vk_pipelines.bin.tmp", "work/recomp/cache/vk_pipelines.bin"); }
-        }
+            if (fclose(f)) ok = false;
+            if (!ok || rename(temporary, path)) {
+                LOG("[vk] pipeline cache publication failed\n");
+                unlink(temporary);
+            }
+        } else LOG("[vk] pipeline cache could not be opened for writing\n");
     }
     free(data);
 }
@@ -346,7 +372,7 @@ static void create_swapchain(void) {
 
 static void recreate_swapchain(void) {
     if (headless) return;
-    vkDeviceWaitIdle(g_vk.dev);
+    VK_CHECK(device_idle());
     create_swapchain();
 }
 
@@ -389,7 +415,9 @@ bool vk_frame_begin(const float clear[4]) {
         // The window size of the surface is authoritative (X11: currentExtent). SDL_GetWindowSizeInPixels stays at the initial size
         // for a window embedded in Qt, and the swapchain was then recreated in every frame (24 instead of 60 fps).
         VkSurfaceCapabilitiesKHR caps;
-        if (g_vk.surface && vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vk.phys, g_vk.surface, &caps) == VK_SUCCESS && caps.currentExtent.width != UINT32_MAX) {
+        VkResult capabilities = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vk.phys, g_vk.surface, &caps);
+        VK_CHECK(capabilities);
+        if (caps.currentExtent.width != UINT32_MAX) {
             w = (int)caps.currentExtent.width;
             h = (int)caps.currentExtent.height;
         } else {
@@ -407,12 +435,16 @@ bool vk_frame_begin(const float clear[4]) {
     vk_wait_seq(slot_seq[slot]);
     VkResult r = VK_SUCCESS;
     if (headless) cur_frame.image = (uint32_t)slot % g_vk.sc_count;  // (a slot's earlier submission is done: waited above)
-    else r = vkAcquireNextImageKHR(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
+    else r = vkAcquireNextImageKHR(g_vk.dev, g_vk.swapchain, 1000000000ull, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
         recreate_swapchain();
-        r = vkAcquireNextImageKHR(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
+        r = vkAcquireNextImageKHR(g_vk.dev, g_vk.swapchain, 1000000000ull, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
     }
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) { LOG("[vk] acquire failed: %d\n", r); return false; }
+    if (r == VK_TIMEOUT || r == VK_NOT_READY) {
+        LOG("[vk] acquire timeout/not-ready after bounded wait: %d\n", r);
+        return false;
+    }
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) VK_CHECK(r);
     cur_frame.acquired = headless ? VK_NULL_HANDLE : acquire_sem[slot];
     slot_seq[slot] = vk_pending_seq();
     VkCommandBuffer cb = vk_cmd();
@@ -485,8 +517,11 @@ void vk_frame_end(const char *shot_path) {
         vk_submit_extra(cur_frame.acquired, done_sem[img], VK_NULL_HANDLE);
         VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .waitSemaphoreCount = 1, .pWaitSemaphores = &done_sem[img],
                                .swapchainCount = 1, .pSwapchains = &g_vk.swapchain, .pImageIndices = &img};
+        vk_queue_enter();
         VkResult r = vkQueuePresentKHR(g_vk.queue, &pi);
+        vk_queue_leave();
         if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) recreate_swapchain();
+        else VK_CHECK(r);
     }
     cur_frame.ok = false;
     if (shot_path) {
@@ -539,16 +574,19 @@ static uint64_t g_last_game_present_ns;
 uint64_t vk_last_game_present_ns(void) { return __atomic_load_n(&g_last_game_present_ns, __ATOMIC_RELAXED); }
 static void present_body(NvnTexture *t);
 void backend_present(NvnTexture *t) {
+    if (!host_surface_enter()) return;
     pthread_mutex_lock(&present_lock);
     present_body(t);
     __atomic_store_n(&g_last_game_present_ns, SDL_GetTicksNS(), __ATOMIC_RELAXED);
     pthread_mutex_unlock(&present_lock);
+    host_surface_leave();
 }
 void backend_represent(void) {
-    if (!g_last_presented) { SDL_Delay(16); return; }
+    if (!host_surface_enter()) return;
     pthread_mutex_lock(&present_lock);
-    present_body(g_last_presented);
+    if (g_last_presented) present_body(g_last_presented);
     pthread_mutex_unlock(&present_lock);
+    host_surface_leave();
 }
 
 static void present_body(NvnTexture *t) {
@@ -699,7 +737,7 @@ static void quick_exit_handler(void) {
     if (trace < 0) trace = getenv("BDSP_VK_TRACE") != NULL;
     if (trace) LOG("[vk] exit: waiting for the GPU\n");
     if (g_vk.dev) {
-        vkDeviceWaitIdle(g_vk.dev);
+        VK_CHECK(device_idle());
         if (trace) LOG("[vk] exit: saving the pipeline cache\n");
         vk_pipeline_cache_save();
     }
@@ -741,8 +779,18 @@ void ui_window_init(void) {
         window = (SDL_Window *)(uintptr_t)1;  // (marker: ui_window_init ran)
         return;
     }
+#ifdef _WIN32
+    if (!SDL_Init(SDL_INIT_VIDEO)) FATAL("SDL_Init: %s\n", SDL_GetError());
+    // Pairing mode must be selected before SDL's first gamepad initialization.
+    int joycons = bdsp_joycon_mode();
+    if (joycons < 0) FATAL("Invalid controller configuration\n");
+    if (!pad_sdl_init_main(joycons))
+        FATAL("Windows controller initialization failed\n");
+    atexit(pad_sdl_shutdown_main);
+#else
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) FATAL("SDL_Init: %s\n", SDL_GetError());
+#endif
     int win_w = 1280, win_h = 720;
     if (getenv("BDSP_WINDOW")) sscanf(getenv("BDSP_WINDOW"), "%dx%d", &win_w, &win_h);
     if (getenv("BDSP_FPS")) { extern void bdsp_set_fps(int fps); bdsp_set_fps(atoi(getenv("BDSP_FPS"))); }  // 30/60/120 as on the Mac
@@ -759,6 +807,9 @@ void ui_window_init(void) {
     }
     window = SDL_CreateWindow("BDSP Recomp", win_w, win_h, wflags);
     if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
+#ifdef _WIN32
+    pad_sdl_focus_main((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);
+#endif
     rt_window_icon(window);
     if (embed) {
         SDL_PropertiesID wp = SDL_GetWindowProperties(window);
@@ -771,8 +822,11 @@ void ui_window_init(void) {
     // the Fullscreen setting applies from the start screen on (not only once the game runs); test windows stay windows
     if (g_settings.fullscreen && !embed && !getenv("BDSP_WINDOW") && !getenv("BDSP_HIDDEN")) SDL_SetWindowFullscreen(window, true);
     if (getenv("BDSP_MANGOHUD") && atoi(getenv("BDSP_MANGOHUD"))) {  // Linux: show the MangoHud overlay (Vulkan layer, package mangohud); off by default
-        setenv("MANGOHUD", "1", 1);   // enables the implicit layer; must be set before vkCreateInstance
-        if (!getenv("MANGOHUD_CONFIGFILE")) setenv("MANGOHUD_CONFIG", "fps,frametime,frame_timing=1,cpu_stats,gpu_stats,font_size=26,position=top-left", 0);
+        // The native environment must be updated before the loader discovers implicit layers.
+        if (SDL_setenv_unsafe("MANGOHUD", "1", 1) ||
+            (!getenv("MANGOHUD_CONFIGFILE") && SDL_setenv_unsafe("MANGOHUD_CONFIG",
+                "fps,frametime,frame_timing=1,cpu_stats,gpu_stats,font_size=26,position=top-left", 0)))
+            FATAL("MangoHud environment could not be configured\n");
     }
     create_instance();
     if (!SDL_Vulkan_CreateSurface(window, g_vk.inst, NULL, &g_vk.surface)) FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
@@ -795,7 +849,7 @@ void backend_init(void) {
 // ---- in-place reboot (runtime/main.c teardown; main thread, guest threads stopped)
 void backend_reset(void) {
     if (!g_vk.dev) return;
-    vkDeviceWaitIdle(g_vk.dev);
+    VK_CHECK(device_idle());
     extern void vk_textures_reset(void);
     extern void vk_exec_reset(void);
     vk_textures_reset();
@@ -804,8 +858,12 @@ void backend_reset(void) {
 }
 void backend_guest_memory_reset(void) {}  // (exec.c re-imports the heap on first use)
 void backend_clear_window(void) {
+    if (!host_surface_enter()) return;
+    pthread_mutex_lock(&present_lock);
     static const float black[4] = {0, 0, 0, 1};
     if (g_vk.dev && vk_frame_begin(black)) vk_frame_end(NULL);
+    pthread_mutex_unlock(&present_lock);
+    host_surface_leave();
 }
 
 // ---- Host mode (Qt shell app/linux/qt_ui.cpp, main thread of the host): Qt creates the instance, window and VkSurfaceKHR (platform-neutral: only Vulkan types
@@ -821,6 +879,17 @@ void vk_host_set_size(int w, int h) {
     atomic_store(&host_w, w);
     atomic_store(&host_h, h);
 }
+static int host_gpu_idle(void) {
+    if (!g_vk.dev) return 1;
+    VkResult result = device_idle();
+    if (result != VK_SUCCESS) LOG("[host-shutdown] vkDeviceWaitIdle failed: %d\n", result);
+    return result == VK_SUCCESS;
+}
+int vk_host_shutdown(void) {
+    /* A blocked driver wait is isolated from Qt; the host terminates on timeout
+       before accepting close, never destroys a surface beneath live work. */
+    return host_surface_shutdown(host_gpu_idle, 3000);
+}
 void vk_host_surface_ready(unsigned long long surface) {  // device, swapchain and runtime state; after this the game may start running (backend_init)
     g_vk.surface = (VkSurfaceKHR)surface;
     pick_device();
@@ -833,30 +902,40 @@ void vk_host_surface_ready(unsigned long long surface) {  // device, swapchain a
 }
 
 int ui_run(void) {
+#ifdef BDSP_QT
+    extern int bdsp_qt_ui_run(void);
+    if (!getenv("BDSP_HIDDEN")) return bdsp_qt_ui_run();
+#else
     extern int bdsp_qt_ui_run(void) __attribute__((weak));  // linked only in the Qt build (app/linux/qt_ui.cpp)
     if (bdsp_qt_ui_run && !getenv("BDSP_HIDDEN")) return bdsp_qt_ui_run();
+#endif
     ui_window_init();
     atomic_store(&ui_ready, true);
     for (;;) {
-        if (rt_reboot_requested()) return rt_reboot_requested();  // (runtime/main.c tears the game down)
-        if (headless) { SDL_Delay(16); continue; }
-        {   // text input events (the letters of the keyboard) only come while the on-screen keyboard is open
-            extern int swkbd_ui_active(void);
-            static bool text_input;
-            bool want = swkbd_ui_active() != 0;
-            SDL_Window *fw = want != text_input ? SDL_GetKeyboardFocus() : NULL;
-            if (fw) { if (want) SDL_StartTextInput(fw); else SDL_StopTextInput(fw); text_input = want; }
+        if (rt_reboot_requested()) {
+            if (!headless && !input_update_text(window, false)) FATAL("SDL text input shutdown failed\n");
+            return rt_reboot_requested();  // (runtime/main.c tears the game down)
         }
+        if (headless) { SDL_Delay(16); continue; }
+        extern int swkbd_ui_active(void);
+        if (!input_update_text(window, swkbd_ui_active() != 0)) FATAL("SDL text input update failed\n");
+        menu_apply_window_requests(window);
         SDL_Event e;
-        while (SDL_WaitEventTimeout(&e, 16)) {
+        if (SDL_WaitEventTimeout(&e, 16)) {
             if (e.type == SDL_EVENT_QUIT) {
                 LOG("window closed\n");
                 exit(0);
             }
+#ifdef _WIN32
+            if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST || e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
+                pad_sdl_focus_main(e.type == SDL_EVENT_WINDOW_FOCUS_GAINED);
+            }
+            pad_sdl_poll_main();
+#endif
             extern bool input_user_blocked(const SDL_Event *e);
             if (input_user_blocked(&e)) continue;  // scripted test runs: the real keyboard / mouse / pads do nothing (as metal.m)
             if (menu_handle_event(&e)) continue;
-            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {  // Linux: keys like the Mac menus View > window size (Cmd+1..4) and frame rate
+            if (!swkbd_ui_active() && e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {  // Linux: keys like the Mac menus View > window size (Cmd+1..4) and frame rate
                 static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
                 extern void bdsp_set_fps(int fps);
                 SDL_Keycode k = e.key.key;
@@ -869,6 +948,8 @@ int ui_run(void) {
             }
             input_handle_event(&e);
         }
-        menu_apply_window_requests(window);
+#ifdef _WIN32
+        pad_sdl_poll_main();
+#endif
     }
 }

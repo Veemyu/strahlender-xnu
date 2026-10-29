@@ -2,3 +2,12 @@
    so only the long texts with an ID key are listed here. */
 "KEYS_HELP" = "Keyboard: Enter/Space = A, Backspace/J = B, X, Y, arrow keys and WASD = D-pad, Q/E = L/R, P = Plus, O = Minus.\nWindow: F1–F4 size, F5–F7 frame rate 30/60/120, F11 full screen (menu: also Ctrl+1–4, Ctrl+F). No sound.";
 "RESET_CONFIRM" = "The save is backed up and deleted, the game restarts and begins anew.";
+"Controllers" = "Controllers";
+"Individual Joy-Cons (mini mode)" = "Individual Joy-Cons (mini mode)";
+"Paired Joy-Cons" = "Paired Joy-Cons";
+"Joy-Con Mini Controls" = "Joy-Con Mini Controls";
+"JOYCON_MINI_HELP" = "Each individual Joy-Con is a mini-gamepad. Hold stick-click for the secondary layer: stick = D-pad, Plus = Minus, L/R = ZL/ZR. Release the chord buttons and center the stick before returning to normal controls. Switching modes briefly clears controller input and reopens devices; all connected pads still merge into player 1.";
+"Controller configuration is overridden for this launch." = "Controller configuration is overridden for this launch.";
+"Controller mode could not be changed. The previous mode was restored when possible; keyboard input remains available." = "Controller mode could not be changed. The previous mode was restored when possible; keyboard input remains available.";
+"Controller settings could not be saved. The previous mode has been restored." = "Controller settings could not be saved. The previous mode has been restored.";
+"Controller settings could not be saved and the previous mode could not be restored. Keyboard input remains available." = "Controller settings could not be saved and the previous mode could not be restored. Keyboard input remains available.";

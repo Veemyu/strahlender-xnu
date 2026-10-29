@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "runtime_paths.h"
+#ifdef _WIN32
+#include "win32_files.h"
+#endif
 
 #include "../../kernel.h"
 #include "shaders.h"
@@ -382,7 +386,9 @@ void vk_submit_extra(VkSemaphore wait, VkSemaphore signal, VkCommandBuffer extra
     {
         PROF_T0();
         dl_note("submit %llu", (unsigned long long)submit_seq + 1);
+        vk_queue_enter();
         VkResult sr = vkQueueSubmit2(g_vk.queue, 1, &si, VK_NULL_HANDLE);
+        vk_queue_leave();
         if (sr == VK_ERROR_DEVICE_LOST) vk_devlost_dump();
         VK_CHECK(sr);
         PROF_ADD(prof_submit);
@@ -1175,11 +1181,14 @@ static VkPipelineLayout make_layout(Prog *p, int nsets, VkShaderStageFlags s0, V
 
 static void save_glsl(const char *src, uint64_t addr, const char *suffix) {
     if (!getenv("BDSP_SAVE_MSL")) return;
-    mkdir("build/glsl", 0755);
-    char path[256];
-    snprintf(path, sizeof path, "build/glsl/%llx_%s.glsl", (unsigned long long)addr, suffix);
+    if (!bdsp_cache_prepare("glsl")) return;
+    char path[4096], name[96];
+    snprintf(name, sizeof name, "glsl/%llx_%s.glsl", (unsigned long long)addr, suffix);
+    bdsp_cache_path(path, sizeof path, name);
     FILE *f = fopen(path, "w");
-    if (f) { fputs(src, f); fclose(f); }
+    if (!f) { LOG("[shader] GLSL dump could not be opened for writing\n"); return; }
+    bool failed = fputs(src, f) < 0;
+    if (fclose(f) || failed) LOG("[shader] GLSL dump write failed\n");
 }
 
 static void compile_program(void *arg) {
@@ -1931,24 +1940,53 @@ static bool gmem_import(uint64_t size) {
     PFN_vkGetMemoryHostPointerPropertiesEXT props =
         (PFN_vkGetMemoryHostPointerPropertiesEXT)vkGetDeviceProcAddr(g_vk.dev, "vkGetMemoryHostPointerPropertiesEXT");
     VkMemoryHostPointerPropertiesEXT mp = {.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT};
-    if (!props || props(g_vk.dev, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, (void *)(uintptr_t)HEAP_BASE, &mp) != VK_SUCCESS ||
-        !mp.memoryTypeBits)
+    if (!props) return false;
+    VkResult result = props(g_vk.dev, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+                             (void *)(uintptr_t)HEAP_BASE, &mp);
+    if (result != VK_SUCCESS || !mp.memoryTypeBits) {
+        LOG("[vk] guest heap host-pointer properties failed (%d, types %#x)\n", result, mp.memoryTypeBits);
         return false;
+    }
     VkImportMemoryHostPointerInfoEXT imp = {.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
                                             .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
                                             .pHostPointer = (void *)(uintptr_t)HEAP_BASE};
-    VkMemoryAllocateInfo ai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .pNext = &imp, .allocationSize = size,
-                               .memoryTypeIndex = (uint32_t)__builtin_ctz(mp.memoryTypeBits)};
-    VkDeviceMemory mem;
-    if (vkAllocateMemory(g_vk.dev, &ai, NULL, &mem) != VK_SUCCESS) return false;
     VkExternalMemoryBufferCreateInfo eb = {.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
                                            .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT};
     VkBufferCreateInfo bi = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .pNext = &eb, .size = size,
                              .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
     VkBuffer buf;
-    if (vkCreateBuffer(g_vk.dev, &bi, NULL, &buf) != VK_SUCCESS) { vkFreeMemory(g_vk.dev, mem, NULL); return false; }
-    vkBindBufferMemory(g_vk.dev, buf, mem, 0);
+    result = vkCreateBuffer(g_vk.dev, &bi, NULL, &buf);
+    if (result != VK_SUCCESS) {
+        LOG("[vk] guest heap buffer creation failed (%d)\n", result);
+        return false;
+    }
+    VkMemoryRequirements requirements;
+    vkGetBufferMemoryRequirements(g_vk.dev, buf, &requirements);
+    VkPhysicalDeviceMemoryProperties memory;
+    vkGetPhysicalDeviceMemoryProperties(g_vk.phys, &memory);
+    uint32_t types = mp.memoryTypeBits & requirements.memoryTypeBits;
+    for (uint32_t i = 0; i < memory.memoryTypeCount; i++)
+        if (!(memory.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) types &= ~(1u << i);
+    if (!types || requirements.size > size) {
+        LOG("[vk] guest heap import has incompatible buffer memory requirements\n");
+        vkDestroyBuffer(g_vk.dev, buf, NULL);
+        return false;
+    }
+    VkMemoryAllocateInfo ai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .pNext = &imp,
+                               .allocationSize = size, .memoryTypeIndex = (uint32_t)__builtin_ctz(types)};
+    VkDeviceMemory mem;
+    result = vkAllocateMemory(g_vk.dev, &ai, NULL, &mem);
+    if (result == VK_SUCCESS) {
+        result = vkBindBufferMemory(g_vk.dev, buf, mem, 0);
+        if (result != VK_SUCCESS) vkFreeMemory(g_vk.dev, mem, NULL);
+    }
+    if (result != VK_SUCCESS) {
+        LOG("[vk] guest heap allocation/bind failed (%d, %llu MB, type %u)\n",
+            result, (unsigned long long)(size >> 20), ai.memoryTypeIndex);
+        vkDestroyBuffer(g_vk.dev, buf, NULL);
+        return false;
+    }
     if (gmem_buf) {  // the heap grew: the old import may still be in use by submitted work
         vk_wait_seq(submit_seq);
         vkDestroyBuffer(g_vk.dev, gmem_buf, NULL);

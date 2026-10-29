@@ -20,6 +20,9 @@
 #include "../maxwell/shader.h"
 
 void vk_device_fault_report(void);
+/* Vulkan requires external queue synchronization, including device-idle. */
+void vk_queue_enter(void);
+void vk_queue_leave(void);
 #define VK_CHECK(x) do { VkResult r_ = (x); if (r_ != VK_SUCCESS) { if (r_ == VK_ERROR_DEVICE_LOST) vk_device_fault_report(); \
     FATAL("%s failed: %d (%s:%d)\n", #x, r_, __FILE__, __LINE__); } } while (0)
 

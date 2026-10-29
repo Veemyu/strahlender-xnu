@@ -1,4 +1,4 @@
-// In-process Qt host (Linux/Vulkan), with menus matching the Mac app (rt-bdsp/app/app_ui.m).
+// Shared in-process Qt host (Linux/Windows Vulkan), with menus matching the Mac app (rt-bdsp/app/app_ui.m).
 // Qt owns a QWindow with QSurface::VulkanSurface embedded in a window container, supporting X11 and native Wayland.
 // device.c host API: vk_host_attach_instance() receives Qt's VkInstance; vk_host_set_size() publishes pixel dimensions;
 // vk_host_surface_ready() initializes the device, swapchain, and runtime. device.c calls bdsp_qt_ui_run() on the main thread
@@ -10,6 +10,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QPlatformSurfaceEvent>
 #include "bdsp_icons.h"
 #include "bdsp_theme.h"
 #include <QCloseEvent>
@@ -43,20 +44,28 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
-#include <unistd.h>
 #include <vector>
 
 #include "bdsp_l10n.h"
 
 extern "C" {
+#include "../../runtime_paths.h"
+#include "../../input.h"
 void vk_host_attach_instance(void *vk_instance);
 void vk_host_set_size(int w, int h);
 void vk_host_surface_ready(unsigned long long surface);
+int vk_host_shutdown(void);
 void bdsp_set_fps(int fps);
 extern volatile int g_bdsp_paused;
 extern volatile int g_bdsp_fps;
 void input_handle_event(const void *ev);
 int bdsp_qt_ui_run(void);
+}
+
+static std::vector<QByteArray> runtimeArguments;
+extern "C" void bdsp_qt_set_arguments(int argc, char **argv) {
+    runtimeArguments.clear();
+    for (int i = 0; i < argc; i++) runtimeArguments.emplace_back(argv[i]);
 }
 
 namespace {
@@ -138,9 +147,34 @@ protected:
     }
 
 public:
+    static void shutdownBeforeSurface() {
+        if (!vk_host_shutdown()) {
+            std::fprintf(stderr, "FATAL: host shutdown failed; terminating before surface destruction\n");
+            std::_Exit(EXIT_FAILURE);
+        }
+    }
     void publishSize() {  // Surface pixels: logical dimensions times devicePixelRatio.
         const double r = devicePixelRatio();
         vk_host_set_size(qRound(width() * r), qRound(height() * r));
+    }
+};
+
+// Application filters precede object filters (including Qt's Vulkan surface
+// cleanup). A QWindow::event override would run too late for that ordering.
+class SurfaceShutdownFilter : public QObject {
+    QWindow *window_;
+    bool armed_ = false;
+public:
+    explicit SurfaceShutdownFilter(QWindow *window) : window_(window) {}
+    void arm() { armed_ = true; }
+    bool eventFilter(QObject *object, QEvent *event) override {
+        if (armed_ && object == window_ && event->type() == QEvent::PlatformSurface &&
+            static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() ==
+                QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
+            RenderWindow::shutdownBeforeSurface();
+            QCoreApplication::quit();
+        }
+        return false;
     }
 };
 
@@ -150,9 +184,23 @@ class KeyForwarder : public QObject {
 public:
     explicit KeyForwarder(QWidget *host) : host_(host) {}
     bool eventFilter(QObject *obj, QEvent *ev) override {
+        if (ev->type() == QEvent::ApplicationDeactivate ||
+            (obj->isWindowType() && (ev->type() == QEvent::FocusOut ||
+                                    ev->type() == QEvent::WindowDeactivate))) {
+            for (QTimer *timer : pending_) if (timer) timer->stop();
+            held_.clear();
+            SDL_Event lost = {};
+            lost.type = SDL_EVENT_WINDOW_FOCUS_LOST;
+            input_handle_event(&lost);
+            return false;
+        }
         if (ev->type() != QEvent::KeyPress && ev->type() != QEvent::KeyRelease) return false;
         if (!obj->isWindowType()) return false;  // Events pass through windows/widgets repeatedly; count only the window level.
         QKeyEvent *e = static_cast<QKeyEvent *>(ev);
+        const bool down = ev->type() == QEvent::KeyPress;
+        if (down && ((e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) ||
+                     QApplication::activeWindow() != host_ || QApplication::activePopupWidget()))
+            return false;  // Always forward releases to avoid stuck keys.
         if (swkbd_ui_active()) {  // the on-screen keyboard is open: the keys type into it, the game sees none
             if (ev->type() == QEvent::KeyPress && !(e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
                 switch (e->key()) {
@@ -173,10 +221,6 @@ public:
             if (ev->type() == QEvent::KeyRelease) handle(e->key(), false, e->isAutoRepeat());  // a game key held while the keyboard opened must not stay pressed
             return true;
         }
-        const bool down = ev->type() == QEvent::KeyPress;
-        if (down && ((e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) ||
-                     QApplication::activeWindow() != host_ || QApplication::activePopupWidget()))
-            return false;  // Always forward releases to avoid stuck keys.
         handle(e->key(), down, e->isAutoRepeat());
         return false;
     }
@@ -292,6 +336,22 @@ public:
     }
     void applyDefaultSize() { setSize(kSizes[1][0], kSizes[1][1]); }  // After show(), stage dimensions correctly exclude window decorations.
 
+#ifdef _WIN32
+    void controllersReady() {
+        const QString root = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+        controllerPath_ = QDir(root).filePath(QStringLiteral("StrahlenderXnu/controller-mode.txt"));
+        const QString configured = QDir::fromNativeSeparators(qEnvironmentVariable("BDSP_CONTROLLER_CONFIG"));
+        const bool overridden = qEnvironmentVariableIsSet("BDSP_JOYCONS") ||
+            configured.compare(QDir::fromNativeSeparators(controllerPath_), Qt::CaseInsensitive) != 0;
+        const int mode = pad_sdl_mode_main();
+        for (int i = 0; i < 2; i++) {
+            controllerActs_[i]->setChecked(i == mode);
+            controllerActs_[i]->setEnabled(!root.isEmpty() && !overridden && mode >= 0);
+            if (overridden) controllerActs_[i]->setToolTip(tr_("Controller configuration is overridden for this launch."));
+        }
+    }
+#endif
+
     void runScript(const QString &spec) {
         for (const QString &tok : spec.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
             const int colon = tok.indexOf(QLatin1Char(':'));
@@ -304,9 +364,10 @@ public:
 
 protected:
     void closeEvent(QCloseEvent *e) override {
+        RenderWindow::shutdownBeforeSurface();
         e->accept();
         std::fflush(nullptr);
-        _exit(0);  // Match SDL window-close exit: runtime threads are live, so skip teardown.
+        QCoreApplication::quit();
     }
 
 private:
@@ -360,16 +421,59 @@ private:
         hudAct_ = act(debugMenu_, tr_("Show MangoHud"), [this] { writeHudConf(hudAct_->isChecked()); }, nullptr, true);
         hudAct_->setEnabled(!QStandardPaths::findExecutable(QStringLiteral("mangohud")).isEmpty());
 
+#ifdef _WIN32
+        QMenu *controllers = bar->addMenu(tr_("Controllers"));
+        controllers->setToolTipsVisible(true);
+        QActionGroup *modes = new QActionGroup(this);
+        modes->setExclusive(true);
+        const QString labels[] = {tr_("Individual Joy-Cons (mini mode)"), tr_("Paired Joy-Cons")};
+        for (int i = 0; i < 2; i++) {
+            controllerActs_[i] = act(controllers, labels[i], [this, i] { setControllerMode(i); },
+                                     nullptr, true, modes);
+            controllerActs_[i]->setEnabled(false);
+        }
+        act(controllers, tr_("Joy-Con Mini Controls"), [this] {
+            QMessageBox::information(this, tr_("Joy-Con Mini Controls"), tr_("JOYCON_MINI_HELP"));
+        });
+#endif
+
         m = bar->addMenu(tr_("Window"));
         act(m, tr_("Minimize"), [this] { showMinimized(); }, "Ctrl+M");
 
         m = bar->addMenu(tr_("Help"));
         act(m, tr_("Key Bindings …"), [this] { QMessageBox::information(this, tr_("Key Bindings"), tr_("KEYS_HELP")); });
-        act(m, tr_("Open Cache Folder (Shaders, Images)"), [this] { openDir("work/recomp/cache"); });
-        act(m, tr_("Open Log Folder"), [this] { openDir("work/recomp/logs"); });
+        act(m, tr_("Open Cache Folder (Shaders, Images)"), [this] { openRuntimeDir("BDSP_CACHE_DIR", "work/recomp/cache"); });
+        act(m, tr_("Open Log Folder"), [this] { openRuntimeDir("BDSP_LOG_DIR", "work/recomp/logs"); });
     }
 
     // ---------------------------------------------------------------- Actions (same hooks as SDL function keys)
+#ifdef _WIN32
+    void setControllerMode(int mode) {
+        const int previous = pad_sdl_mode_main();
+        if (previous < 0 || mode == previous) { controllersReady(); return; }
+        auto report = [this](const QString &message) {
+            controllersReady();
+            QMessageBox::critical(this, tr_("Controllers"), message);
+        };
+        // All SDL access and the polling timer are on this Qt thread; no nested event loop during reinit.
+        if (!pad_sdl_init_main(mode)) {
+            report(tr_("Controller mode could not be changed. The previous mode was restored when possible; keyboard input remains available."));
+            return;
+        }
+        const QByteArray path = controllerPath_.toUtf8();
+        if (!QDir().mkpath(QFileInfo(controllerPath_).absolutePath()) ||
+            !bdsp_joycon_store(path.constData(), mode)) {
+            const bool restored = pad_sdl_init_main(previous);
+            report(restored ? tr_("Controller settings could not be saved. The previous mode has been restored.")
+                            : tr_("Controller settings could not be saved and the previous mode could not be restored. Keyboard input remains available."));
+            return;
+        }
+        pad_sdl_focus_main(QGuiApplication::applicationState() == Qt::ApplicationActive);
+        controllersReady();
+        out(QStringLiteral("[qt] Joy-Con mode %1 saved").arg(mode ? QStringLiteral("pair") : QStringLiteral("single")));
+    }
+#endif
+
     void setFps(int f) {
         fps_ = f;
         if (fpsActs_.contains(f)) fpsActs_[f]->setChecked(true);
@@ -406,17 +510,20 @@ private:
     }
 
     void restartGame() {  // Restart the process; the Qt host has no in-process runtime restart.
-        QFile f(QStringLiteral("/proc/self/cmdline"));
-        if (!f.open(QIODevice::ReadOnly)) return;
-        const QList<QByteArray> parts = f.readAll().split('\0');
-        QList<QByteArray> args;
-        for (const QByteArray &p : parts) if (!p.isEmpty()) args << p;
-        if (args.isEmpty()) return;
-        std::vector<char *> argv;
-        for (QByteArray &a : args) argv.push_back(a.data());
-        argv.push_back(nullptr);
+        QStringList arguments;
+        for (size_t i = 1; i < runtimeArguments.size(); i++)
+            arguments.append(QString::fromUtf8(runtimeArguments[i]));
+        QProcess process;
+        process.setProgram(QCoreApplication::applicationFilePath());
+        process.setArguments(arguments);
+        process.setWorkingDirectory(QDir::currentPath());
         std::fflush(nullptr);
-        execv("/proc/self/exe", argv.data());
+        if (!process.startDetached()) {
+            std::fprintf(stderr, "[qt] restart failed: %s\n", process.errorString().toUtf8().constData());
+            QMessageBox::critical(this, tr_("Restart"), process.errorString());
+            return;
+        }
+        QCoreApplication::quit();
     }
 
     QString saveDir() const {
@@ -460,8 +567,12 @@ private:
     }
 
     void openDir(const char *d) {
-        const QFileInfo fi(QString::fromLatin1(d));
+        const QFileInfo fi(QString::fromUtf8(d));
         QDesktopServices::openUrl(QUrl::fromLocalFile(fi.isDir() ? fi.absoluteFilePath() : QDir::currentPath()));
+    }
+    void openRuntimeDir(const char *variable, const char *fallback) {
+        const QByteArray path = qgetenv(variable);
+        if (path.isEmpty()) openDir(fallback); else openDir(path.constData());
     }
     void openSave() { QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::cleanPath(saveDir() + QStringLiteral("/..")))); }
 
@@ -503,6 +614,7 @@ private:
                 out(QStringLiteral("[menu] %1").arg(x->text()));
                 if (x->menu()) dumpMenu(x->menu(), 1);
             }
+#ifdef Q_OS_LINUX
         } else if (a == QLatin1String("spectacle")) {  // KDE Wayland capture of the active window.
             QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
             env.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), QStringLiteral("unix:path=%1/bus").arg(qEnvironmentVariable("XDG_RUNTIME_DIR")));
@@ -515,6 +627,7 @@ private:
             p->start(QStringLiteral("spectacle"),
                      {QStringLiteral("-b"), QStringLiteral("-n"), QStringLiteral("-a"), QStringLiteral("-o"),
                       QFileInfo(QStringLiteral("work/recomp/shots/qt_spectacle.png")).absoluteFilePath()});
+#endif
         } else if (a == QLatin1String("keystorm")) {  // Test: hold Left/Up, repeat Up with release/press pairs, then genuinely release.
             QWindow *w = windowHandle();
             auto send = [w](QEvent::Type t, int k) { QKeyEvent ev(t, k, Qt::NoModifier); QCoreApplication::sendEvent(w, &ev); };
@@ -542,6 +655,10 @@ private:
     QAction *pauseAct_ = nullptr, *fullAct_ = nullptr, *hudAct_ = nullptr;
     QMenu *viewMenu_ = nullptr, *fpsMenu_ = nullptr, *debugMenu_ = nullptr;
     QHash<int, QAction *> fpsActs_;
+#ifdef _WIN32
+    QAction *controllerActs_[2] = {};
+    QString controllerPath_;
+#endif
     int fps_ = 60;
     bool paused_ = false, hudOn_ = false;
 };
@@ -549,35 +666,41 @@ private:
 }  // namespace
 
 int bdsp_qt_ui_run(void) {
-    static int argc = 1;
-    static char arg0[] = "bdsp";
-    static char *argv[] = {arg0, nullptr};
+    if (runtimeArguments.empty()) {
+        std::fprintf(stderr, "FATAL: Qt host did not receive runtime arguments\n");
+        return 1;
+    }
+    // Qt must not reinterpret the game's switches; retain the full original argv for restart.
+    int argc = 1;
+    char *argv[] = {runtimeArguments[0].data(), nullptr};
+#ifdef Q_OS_LINUX
     if (qEnvironmentVariableIsEmpty("XAUTHORITY") && !qEnvironmentVariableIsEmpty("DISPLAY")) {  // Session X11/Xwayland authority file in the runtime directory.
         const QDir rt(qEnvironmentVariable("XDG_RUNTIME_DIR"));
         const QStringList c = rt.entryList({QStringLiteral("*xauth*")}, QDir::Files, QDir::Name);
         if (!c.isEmpty()) qputenv("XAUTHORITY", rt.filePath(c.first()).toUtf8());
     }
+#endif
     QApplication app(argc, argv);
     bdsp::installTheme();
     const QString platform = QGuiApplication::platformName();
     out(QStringLiteral("[qt] Platform: %1").arg(platform));
 
     // Configure the implicit MangoHud Vulkan layer before vkCreateInstance; hidden by default, toggled by menu.
+#ifdef Q_OS_LINUX
     if (!QStandardPaths::findExecutable(QStringLiteral("mangohud")).isEmpty()) {
         Host::writeHudConf(qEnvironmentVariable("BDSP_MANGOHUD") == QLatin1String("1"));
         qputenv("MANGOHUD", "1");
         qputenv("MANGOHUD_CONFIGFILE", Host::hudConfPath().toUtf8());
     }
+#endif
+#ifndef _WIN32
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+#endif
 
     QVulkanInstance qvi;  // Qt creates the instance and chooses platform surface extensions; device.c receives only VkInstance.
     qvi.setApiVersion(QVersionNumber(1, 3));
-    QByteArrayList exts = {"VK_KHR_surface"};
-    if (platform == QLatin1String("wayland")) exts << "VK_KHR_wayland_surface";
-    else if (platform == QLatin1String("xcb")) exts << "VK_KHR_xcb_surface";
-    // WINDOWS (prepared, not built/tested): platform "windows" needs VK_KHR_win32_surface.
-    // QVulkanInstance::surfaceForWindow supplies the surface; device.c still sees only VkSurfaceKHR and pixel size.
-    else if (platform == QLatin1String("windows")) exts << "VK_KHR_win32_surface";
+    // Qt's platform plugin supplies its own surface extensions for Windows/X11/Wayland.
+    QByteArrayList exts;
     if (qEnvironmentVariableIsSet("BDSP_VK_VALIDATION")) exts << "VK_EXT_debug_utils";
     qvi.setExtensions(exts);
     if (!qvi.create()) {
@@ -590,6 +713,8 @@ int bdsp_qt_ui_run(void) {
     KeyForwarder keys(&host);
     app.installEventFilter(&keys);
     RenderWindow rw;
+    SurfaceShutdownFilter surfaceShutdown(&rw);
+    app.installEventFilter(&surfaceShutdown);
     rw.setVulkanInstance(&qvi);
     host.resize(1280, 760);
     host.embed(&rw);
@@ -607,10 +732,33 @@ int bdsp_qt_ui_run(void) {
     }
     rw.publishSize();
     out(QStringLiteral("[qt] Vulkan surface ready, pixels %1x%2").arg(qRound(rw.width() * rw.devicePixelRatio())).arg(qRound(rw.height() * rw.devicePixelRatio())));
+#ifdef _WIN32
+    int joycons = bdsp_joycon_mode();
+    if (joycons < 0 || !pad_sdl_init_main(joycons)) {
+        QMessageBox::critical(nullptr, QStringLiteral("BDSP"), QStringLiteral("Controller initialization failed. See the runtime log."));
+        return 1;
+    }
+    SDL_SetGamepadEventsEnabled(false);
+    SDL_SetJoystickEventsEnabled(false);
+    pad_sdl_focus_main(QGuiApplication::applicationState() == Qt::ApplicationActive);
+    host.controllersReady();
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &app, [](Qt::ApplicationState state) {
+        pad_sdl_focus_main(state == Qt::ApplicationActive);
+    });
+    QTimer controllerTimer;
+    QObject::connect(&controllerTimer, &QTimer::timeout, &app, [] { pad_sdl_poll_main(); });
+    controllerTimer.start(8);
+#endif
     vk_host_surface_ready(reinterpret_cast<unsigned long long>(surface));
+    surfaceShutdown.arm();
     const QString script = qEnvironmentVariable("BDSP_QT_SCRIPT");
     if (!script.isEmpty()) host.runScript(script);
     app.exec();
+    RenderWindow::shutdownBeforeSurface(); // Also cover non-window application quit.
+#ifdef _WIN32
+    controllerTimer.stop();
+    pad_sdl_shutdown_main();
+#endif
     std::fflush(nullptr);
-    _exit(0);
+    std::_Exit(0);   // runtime guest threads are still live; do not destroy the Vulkan host underneath them
 }

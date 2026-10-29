@@ -3,11 +3,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+
+static pthread_mutex_t outputs_lock = PTHREAD_MUTEX_INITIALIZER;
+static AudioOutput *outputs[8];
+static int outputs_active = 1;
+
+#if defined(__APPLE__) || ((defined(__linux__) || defined(_WIN32)) && !defined(BDSP_NVN_NONE))
+static float output_gain(void) {
+    const char *value = getenv("BDSP_AUDIO_GAIN");
+    if (value) {
+        char *end;
+        float gain = strtof(value, &end);
+        if (end != value && !*end && gain >= 0 && gain <= 1) return gain;
+    }
+    return 1.0f;
+}
+#endif
 
 #if defined(__APPLE__)
 #include <AudioToolbox/AudioToolbox.h>
 #include <stdatomic.h>
-#include <pthread.h>
+
+static bool output_init_main(void) { return true; }
+static void output_shutdown_main(void) {}
 
 #define OUTPUT_SLOTS 8
 typedef struct {
@@ -27,10 +46,6 @@ struct AudioOutput {
     double probe_sample, probe_t;     // BDSP_AUDIO_PROBE: device sample time at the last report (played rate)
     atomic_uint_fast64_t returned;
 };
-
-static pthread_mutex_t outputs_lock = PTHREAD_MUTEX_INITIALIZER;
-static AudioOutput *outputs[8];
-static int outputs_active = 1;
 
 // The callback never accesses guest memory, locks, the kernel or IPC.
 static void output_returned(void *context, AudioQueueRef queue, AudioQueueBufferRef buffer) {
@@ -76,13 +91,7 @@ static AudioOutput *output_open(uint32_t rate, uint32_t channels) {
         free(out);
         return NULL;
     }
-    float gain = 1.0f;
-    const char *value = getenv("BDSP_AUDIO_GAIN");
-    if (value) {
-        char *end;
-        float parsed = strtof(value, &end);
-        if (end != value && !*end && parsed >= 0 && parsed <= 1) gain = parsed;
-    }
+    float gain = output_gain();
     status = AudioQueueSetParameter(out->queue, kAudioQueueParam_Volume, gain);
     if (status) output_error(out, "volume", status);
     fprintf(stderr, "[audio-output] PCM16 %u Hz %u channels, gain %.2f\n", rate, channels, gain);
@@ -193,6 +202,132 @@ static void output_close(AudioOutput *out) {
     free(out);
 }
 
+#elif (defined(__linux__) || defined(_WIN32)) && !defined(BDSP_NVN_NONE)
+#include <SDL3/SDL.h>
+
+static bool sdl_initialized;
+static bool output_init_main(void) {
+    if (sdl_initialized) return true;
+    const char *enabled = getenv("BDSP_AUDIO");
+    if (enabled && !strcmp(enabled, "0")) return true;
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        fprintf(stderr, "[audio-output] initialization failed: %s\n", SDL_GetError());
+        return false;
+    }
+    sdl_initialized = true;
+    return true;
+}
+static void output_shutdown_main(void) {
+    if (sdl_initialized) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    sdl_initialized = false;
+}
+
+struct AudioOutput {
+    SDL_AudioStream *stream;
+    size_t frame_bytes, max_bytes;
+    int started, failed;
+    uint64_t dropped;
+};
+
+static void output_error(AudioOutput *out, const char *operation) {
+    if (!out->failed) fprintf(stderr, "[audio-output] %s failed: %s\n", operation, SDL_GetError());
+    out->failed = 1;
+}
+
+static void output_resume(AudioOutput *out) {
+    if (outputs_active && out->started && !out->failed && !SDL_ResumeAudioStreamDevice(out->stream))
+        output_error(out, "resume");
+}
+
+static AudioOutput *output_open(uint32_t rate, uint32_t channels) {
+    const char *enabled = getenv("BDSP_AUDIO");
+    if (enabled && !strcmp(enabled, "0")) return NULL;
+    if (rate < 8000 || rate > 192000 || !channels || channels > 8) {
+        fprintf(stderr, "[audio-output] invalid PCM16 format %u Hz, %u channels\n", rate, channels);
+        return NULL;
+    }
+    if (!sdl_initialized) {
+        fprintf(stderr, "[audio-output] subsystem was not initialized on the window thread\n");
+        return NULL;
+    }
+    AudioOutput *out = calloc(1, sizeof *out);
+    if (!out) { fprintf(stderr, "[audio-output] allocation failed\n"); return NULL; }
+    SDL_AudioSpec spec = {.format = SDL_AUDIO_S16LE, .channels = (int)channels, .freq = (int)rate};
+    out->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    if (!out->stream) {
+        fprintf(stderr, "[audio-output] open failed: %s\n", SDL_GetError());
+        free(out); return NULL;
+    }
+    out->frame_bytes = 2 * channels;
+    out->max_bytes = rate * out->frame_bytes / 5;  // 200 ms, as on AudioQueue.
+    float gain = output_gain();
+    if (!SDL_SetAudioStreamGain(out->stream, gain)) output_error(out, "volume");
+    fprintf(stderr, "[audio-output] SDL PCM16 %u Hz %u channels, gain %.2f\n", rate, channels, gain);
+    return out;
+}
+
+static void output_start(AudioOutput *out) {
+    if (!out) return;
+    out->started = 1;
+    output_resume(out);
+}
+static void output_stop(AudioOutput *out) {
+    if (!out) return;
+    out->started = 0;
+    if (!SDL_PauseAudioStreamDevice(out->stream)) output_error(out, "pause");
+    if (!SDL_ClearAudioStream(out->stream)) output_error(out, "clear");
+}
+static void output_write(AudioOutput *out, const void *pcm, size_t bytes) {
+    if (!outputs_active || !out || out->failed || !bytes) return;
+    if (bytes % out->frame_bytes) {
+        fprintf(stderr, "[audio-output] unaligned PCM write\n");
+        out->failed = 1; return;
+    }
+    int queued = SDL_GetAudioStreamQueued(out->stream);
+    if (queued < 0) { output_error(out, "queued size"); return; }
+    if (bytes > out->max_bytes || (size_t)queued > out->max_bytes - bytes) {
+        out->dropped++;
+        if (!(out->dropped & (out->dropped - 1)))
+            fprintf(stderr, "[audio-output] queue full, dropped writes=%llu\n", (unsigned long long)out->dropped);
+        return;
+    }
+    if (!SDL_PutAudioStreamData(out->stream, pcm, (int)bytes)) { output_error(out, "enqueue"); return; }
+    output_resume(out);
+}
+static void output_close(AudioOutput *out) {
+    if (!out) return;
+    SDL_DestroyAudioStream(out->stream);
+    free(out);
+}
+#else
+struct AudioOutput { int started; };
+static bool output_init_main(void) { return true; }
+static void output_shutdown_main(void) {}
+static AudioOutput *output_open(uint32_t rate, uint32_t channels) { (void)rate; (void)channels; return NULL; }
+static void output_start(AudioOutput *out) { (void)out; }
+static void output_stop(AudioOutput *out) { (void)out; }
+static void output_write(AudioOutput *out, const void *pcm, size_t bytes) { (void)out; (void)pcm; (void)bytes; }
+static void output_close(AudioOutput *out) { (void)out; }
+static void output_resume(AudioOutput *out) { (void)out; }
+#endif
+
+bool audio_output_init_main(void) {
+    pthread_mutex_lock(&outputs_lock);
+    bool initialized = output_init_main();
+    pthread_mutex_unlock(&outputs_lock);
+    return initialized;
+}
+
+void audio_output_shutdown_main(void) {
+    pthread_mutex_lock(&outputs_lock);
+    for (int i = 0; i < 8; i++) {
+        output_close(outputs[i]);
+        outputs[i] = NULL;
+    }
+    output_shutdown_main();
+    pthread_mutex_unlock(&outputs_lock);
+}
+
 AudioOutput *audio_output_open(uint32_t rate, uint32_t channels) {
     pthread_mutex_lock(&outputs_lock);
     AudioOutput *out = NULL;
@@ -245,13 +380,3 @@ void audio_output_set_active(int active) {
     }
     pthread_mutex_unlock(&outputs_lock);
 }
-#else
-// Linux output remains a later step.
-struct AudioOutput { int unused; };
-AudioOutput *audio_output_open(uint32_t rate, uint32_t channels) { (void)rate; (void)channels; return NULL; }
-void audio_output_start(AudioOutput *out) { (void)out; }
-void audio_output_stop(AudioOutput *out) { (void)out; }
-void audio_output_write(AudioOutput *out, const void *pcm, size_t bytes) { (void)out; (void)pcm; (void)bytes; }
-void audio_output_close(AudioOutput *out) { (void)out; }
-void audio_output_set_active(int active) { (void)active; }
-#endif

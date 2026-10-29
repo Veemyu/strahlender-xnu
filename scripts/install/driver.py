@@ -17,11 +17,21 @@ import time
 import traceback
 from pathlib import Path
 
+if __package__:
+    from . import filesystem
+    from .progress import GeneratorProgress
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import filesystem
+    from progress import GeneratorProgress
+
 PROTOCOL_VERSION = 2
+EMIT_LOCK = threading.Lock()
 
 
 def emit(event, **fields):
-    print(json.dumps({"event": event, **fields}, ensure_ascii=False), flush=True)
+    with EMIT_LOCK:
+        print(json.dumps({"event": event, **fields}, ensure_ascii=False), flush=True)
 
 
 def load_build_stages(root):
@@ -56,6 +66,8 @@ def prerequisite_exception(error, args):
 
 def preflight(args):
     emit("hello", protocol=PROTOCOL_VERSION, capabilities=["preflight", "build"])
+    if args.target in ("windows", "windows-arm64"):
+        return windows_prerequisites(args)
     emit("step", id="prerequisites", status="started")
     try:
         stages = load_build_stages(args.root)
@@ -103,14 +115,21 @@ def _login_home():
 
 
 def _safe_line(line, args):
-    for value in (getattr(args, "prod_keys", None), getattr(args, "base", None),
+    def replace_path(text, value, replacement):
+        forms = {value, value.replace("\\", "/"), value.replace("\\", "\\\\")}
+        for form in sorted(forms, key=len, reverse=True):
+            text = text.replace(form, replacement)
+        return text
+    for value in (getattr(args, "prod_keys", None), getattr(args, "title_keys", None), getattr(args, "base", None),
                   getattr(args, "update", None), getattr(args, "mod_root", None)):
         if value:
-            line = line.replace(str(value), "<private input>")
+            line = replace_path(line, str(value), "<private input>")
     # Resolve relative roots before redaction. Replacing a literal "." corrupts
     # every decimal point in diagnostics and version strings.
     project_root = str(Path(args.root).resolve())
-    return line.replace(project_root, "<project>").replace(str(Path.home()), "~").replace(_login_home(), "~").rstrip()
+    line = replace_path(line, project_root, "<project>")
+    line = replace_path(line, str(Path.home()), "~")
+    return replace_path(line, _login_home(), "~").rstrip()
 
 
 def _run_command(command, args, stage, progress=None, phase_from_line=None, extra_env=None, emit_steps=True):
@@ -150,9 +169,9 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     reader_thread.start()
     done = False
     last_progress = None
-    generated_modules = set()
     first_failure = None
     module_total = (3 if getattr(args, "target", None) == "ios" else 4) + int((Path(environment.get("BDSP_EXEFS_DIR", Path(args.root) / "work/exefs")) / "subsdk1").is_file())
+    generator_progress = GeneratorProgress(module_total)
     try:
         while not done or proc.poll() is None:
             try:
@@ -184,23 +203,9 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                             active = next_phase
                             emit("step", id=active, status="started")
                     if active == "eh_gen":
-                        analysis = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9]*): analyzing module", message)
-                        functions = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9]*): progress (\d+)/(\d+) files (\d+)", message)
-                        if analysis or functions:
-                            marker = analysis or functions
-                            completed = int(functions[2]) if functions else 0
-                            total = int(functions[3]) if functions else 0
-                            if completed <= total:
-                                emit("progress", id="eh_gen", module=marker[1],
-                                     phase="emit" if functions else "analyze", unit="functions",
-                                     completed=completed, total=total,
-                                     modules_completed=len(generated_modules), modules_total=module_total)
-                        module_done = re.match(r"^([A-Za-z_][A-Za-z_0-9]*): wrote ", message)
-                        module_marker = re.match(r"^module=([A-Za-z_][A-Za-z_0-9]*)\b", message)
-                        completed_module = module_done or module_marker
-                        if completed_module and completed_module[1] not in generated_modules:
-                            generated_modules.add(completed_module[1])
-                            emit("progress", id="eh_gen", completed=min(len(generated_modules), module_total), total=module_total)
+                        event = generator_progress.feed(message)
+                        if event:
+                            emit("progress", **event)
             if progress:
                 current = progress(active)
                 if current and current != last_progress:
@@ -292,7 +297,67 @@ def _ios_signing_team(args):
     return team
 
 
+def load_windows_pipeline(root):
+    root = str(Path(root).resolve())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    path = Path(root) / "scripts/install/windows_pipeline.py"
+    spec = importlib.util.spec_from_file_location("installer_windows_pipeline", path)
+    if spec is None or spec.loader is None:
+        raise ValueError("Windows build pipeline is missing")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def windows_prerequisites(args, *, emit_result=True):
+    emit("step", id="prerequisites", status="started")
+    try:
+        catalog = getattr(args, "windows_catalog", None)
+        if catalog:
+            pipeline = load_windows_pipeline(args.root)
+            pipeline.prerequisites(catalog, "aarch64" if args.target == "windows-arm64" else "x86_64",
+                                   args.work, getattr(args, "min_free_gb", 40))
+            emit("log", level="warning", message="Private offline Windows development build only. Public redistribution, gameplay, Windows 10 and hardware acceptance remain unqualified.")
+            emit("step", id="prerequisites", status="complete")
+            if emit_result:
+                emit("result", ok=True, code=0)
+            return 0
+        path = Path(args.root) / "scripts/recomp/windows_support.py"
+        spec = importlib.util.spec_from_file_location("installer_windows_support", path)
+        if spec is None or spec.loader is None:
+            raise ValueError("Windows prerequisite checker is missing")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        target = "aarch64" if args.target == "windows-arm64" else "x86_64"
+        items = module.prerequisite_items(args.root, args.work, target)
+        for item in items:
+            emit("log", level="ok" if item["ok"] else "warning",
+                 message=("OK  " if item["ok"] else "MISSING  ") + item["name"])
+            if not item["ok"] and item.get("hint"):
+                emit("log", level="hint", message=item["hint"])
+        missing = any(not item["ok"] for item in items)
+        emit("step", id="prerequisites", status="needs attention" if missing else "complete")
+        if missing:
+            emit("error", code=4, message="Windows build is not release-qualified yet. See the listed dependency and runtime blockers. No Unix build was started.")
+        if emit_result or missing:
+            emit("result", ok=not missing, code=4 if missing else 0)
+        return 4 if missing else 0
+    except (OSError, ValueError, KeyError) as error:
+        if getattr(args, "windows_catalog", None):
+            emit("step", id="prerequisites", status="needs attention")
+            emit("error", message="Private Windows dependencies could not be verified: " +
+                 _safe_line(str(error), args), code=4)
+            emit("result", ok=False, code=4)
+            return 4
+        prerequisite_exception(error, args)
+        emit("result", ok=False, code=1)
+        return 1
+
+
 def check_build_dependencies(args):
+    if args.target in ("windows", "windows-arm64"):
+        return windows_prerequisites(args)
     emit("step", id="prerequisites", status="started")
     try:
         stages = load_build_stages(args.root)
@@ -366,37 +431,18 @@ def check_build_dependencies(args):
 
 
 def _copy_tree(source, destination, stage_id, state):
-    source = Path(source)
-    if not source.is_dir():
-        raise FileNotFoundError("Build data is missing: " + str(source))
-    for parent, dirs, files in os.walk(source):
-        dirs.sort()
-        files.sort()
-        for name in dirs:
-            if (Path(parent) / name).is_symlink():
-                raise ValueError("A symbolic link in game data needs manual review.")
-        target = destination / Path(parent).relative_to(source)
-        target.mkdir(parents=True, exist_ok=True)
-        for name in files:
-            origin = Path(parent) / name
-            if origin.is_symlink():
-                raise ValueError("A symbolic link in game data needs manual review: " + str(origin))
-            shutil.copy2(origin, target / name)
-            state[0] += 1
-            if state[0] % 25 == 0 or state[0] == state[1]:
-                emit("progress", id=stage_id, completed=state[0], total=state[1])
+    def progress():
+        state[0] += 1
+        if state[0] % 25 == 0 or state[0] == state[1]:
+            emit("progress", id=stage_id, completed=state[0], total=state[1])
+    filesystem.copy_tree(source, destination, progress)
 
 
 def _file_count(source):
     return sum(len(files) for _, _, files in os.walk(source))
 
 
-def _sha256(path):
-    digest = hashlib.sha256()
-    with open(path, "rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha256 = filesystem.sha256
 
 
 def _prepare_firmware(args):
@@ -896,7 +942,6 @@ def install_artifact(args, artifact):
             source_trees += ((Path(args.firmware_root), staging / "Firmware"),)
         total = sum(_file_count(source) for source, _ in source_trees) + 2
         state = [0, total]
-        backup = data / (".app-backup-" + str(os.getpid()))
         mods_dir = Path(os.environ.get("BDSP_MODS_DIR") or data / "mods")
         selected_mod = os.environ.get("BDSP_MOD") or "none"
         launcher = bin_home / "strahlender-xnu"
@@ -916,18 +961,7 @@ def install_artifact(args, artifact):
                 _copy_tree(source, target, "install", state)
             _linux_desktop(launcher, staging)
             (staging / ".installer-owned").write_text("strahlender-xnu-installer v1\n", encoding="utf-8")
-            if destination.exists():
-                if backup.exists():
-                    raise FileExistsError("An installation backup already exists: " + str(backup))
-                os.replace(destination, backup)
-            try:
-                os.replace(staging, destination)
-            except OSError:
-                if backup.exists():
-                    os.replace(backup, destination)
-                raise
-            if backup.exists():
-                shutil.rmtree(backup)
+            filesystem.publish_tree(staging, destination)
             (data / "saves").mkdir(exist_ok=True)
             mods_dir.mkdir(parents=True, exist_ok=True)
             bin_home.mkdir(parents=True, exist_ok=True)
@@ -985,11 +1019,30 @@ def build(args):
     emit("hello", protocol=PROTOCOL_VERSION, capabilities=["preflight", "build"])
     root = Path(args.root)
     work = Path(args.work)
+    if args.target in ("windows", "windows-arm64"):
+        # Check before looking at private inputs or dispatching any shell stages.
+        code = windows_prerequisites(args, emit_result=False)
+        if code:
+            return code
+        pipeline = load_windows_pipeline(root)
+        def windows_event(event, **fields):
+            if event == "log":
+                fields["message"] = _safe_line(fields["message"], args)
+            emit(event, **fields)
+        try:
+            pipeline.build_game(args, windows_event)
+        except KeyboardInterrupt:
+            emit("error", message="Windows build cancelled.", code=130)
+            emit("result", ok=False, code=130)
+            return 130
+        emit("result", ok=True, code=0)
+        return 0
     if work.resolve() != (root / "work").resolve():
         emit("error", message="This build pipeline currently uses the checkout's work/ folder.", code=2)
         return 2
-    if (sys.platform == "darwin" and args.target not in ("macos", "ios")) or (sys.platform != "darwin" and args.target != "linux"):
-        emit("error", message="This target must be built on its native Mac or Linux host.", code=2)
+    native_targets = {"darwin": ("macos", "ios"), "linux": ("linux",), "win32": ("windows", "windows-arm64")}
+    if args.target not in native_targets.get(sys.platform, ()):
+        emit("error", message="This target must be built on its native host.", code=2)
         return 2
     if not Path(args.prod_keys).is_file() or not Path(args.base).exists():
         emit("error", message="Game input or prod.keys is missing.", code=3)
@@ -1102,6 +1155,9 @@ def _interrupt(_signum, _frame):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     sys.dont_write_bytecode = True
     if os.name != "nt":
         signal.signal(signal.SIGTERM, _interrupt)
@@ -1111,15 +1167,18 @@ def main(argv=None):
     check.add_argument("--root", required=True)
     check.add_argument("--work", required=True)
     check.add_argument("--tools-dir", required=True)
-    check.add_argument("--target", choices=("macos", "linux", "ios"), required=True)
+    check.add_argument("--target", choices=("macos", "linux", "ios", "windows", "windows-arm64"), required=True)
     check.add_argument("--min-free-gb", type=int, default=40)
+    check.add_argument("--windows-catalog", type=Path, help="Explicit private offline development catalog, not public release approval")
     build_parser = subparsers.add_parser("build")
     build_parser.add_argument("--root", required=True)
     build_parser.add_argument("--work", required=True)
-    build_parser.add_argument("--target", choices=("macos", "linux", "ios"), required=True)
+    build_parser.add_argument("--target", choices=("macos", "linux", "ios", "windows", "windows-arm64"), required=True)
     build_parser.add_argument("--base", required=True)
     build_parser.add_argument("--prod-keys", required=True)
     build_parser.add_argument("--update")
+    build_parser.add_argument("--title-keys")
+    build_parser.add_argument("--windows-catalog", type=Path, help="Explicit private offline development catalog")
     build_parser.add_argument("--clean-build", action="store_true", help="Regenerate and recompile game code without discarding extracted game data")
     build_parser.add_argument("--mod-root")
     build_parser.add_argument("--mod-name")

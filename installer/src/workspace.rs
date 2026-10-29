@@ -43,7 +43,7 @@ pub async fn prepare(
         && std::env::var_os("BDSP_INSTALLER_DEV_CHECKOUT").as_deref()
             == Some(std::ffi::OsStr::new("1"))
     {
-        return crate::backend::project_root()
+        return crate::runtime::project_root()
             .map(|root| Prepared { root, owner: None })
             .ok_or_else(|| "Development checkout not found.".into());
     }

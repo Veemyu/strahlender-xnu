@@ -224,6 +224,9 @@ class InstallerDriverTests(unittest.TestCase):
             (obj / ".compile-total").write_text("2\n")
             for name in ("first.o", "second.o"):
                 (obj / name).touch()
+            marker = obj / ".compile-total"
+            previous_run = marker.stat().st_mtime_ns - 1_000_000_000
+            os.utime(marker, ns=(previous_run, previous_run))
             args = SimpleNamespace(root=ROOT, base=None, prod_keys=None, update=None)
             code = ("from pathlib import Path; import time; p=Path(" + repr(str(obj)) + "); "
                     "print('2/6 compile: fixture',flush=True); time.sleep(.1); "
@@ -262,7 +265,7 @@ class InstallerDriverTests(unittest.TestCase):
             compiled = objects / "main_first.o"
             compiled.write_bytes(b"object")
             self.assertEqual(driver._ios_compile_count(build), (1, 2))
-            newer = compiled.stat().st_mtime_ns + 1
+            newer = compiled.stat().st_mtime_ns + 1_000_000_000
             os.utime(first, ns=(newer, newer))
             self.assertEqual(driver._ios_compile_count(build), (0, 2))
 
@@ -543,6 +546,7 @@ class InstallerDriverTests(unittest.TestCase):
                 self.assertTrue((args.install_root / (name + ".app/Contents/MacOS/BDSP")).is_file())
                 self.assertTrue((args.install_root / ("." + name + ".installer-receipt.json")).is_file())
 
+    @unittest.skipIf(os.name == "nt", "POSIX helper fixture")
     def test_selected_mod_exefs_is_found_case_insensitively_and_staged_separately(self):
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary) / "work"
@@ -767,7 +771,12 @@ class InstallerDriverTests(unittest.TestCase):
             outside = root / "originals"
             (outside / "gen4").mkdir(parents=True)
             (outside / "gen4/save").write_text("untouched")
-            (work / "recomp").symlink_to(outside, target_is_directory=True)
+            try:
+                (work / "recomp").symlink_to(outside, target_is_directory=True)
+            except OSError as error:
+                if getattr(error, "winerror", None) == 1314:
+                    self.skipTest("Creating symbolic links needs Windows developer mode or privilege")
+                raise
             args = SimpleNamespace(root=root, work=work, target="macos", base=root / "game.xci", prod_keys=root / "prod.keys")
             with self.assertRaises(ValueError):
                 driver._clean_game_build(args, work / "recomp")
@@ -842,12 +851,13 @@ class InstallerDriverTests(unittest.TestCase):
                 text = file.read()
             self.assertIn("Example Mod", text)
             self.assertIn(mods, text)
-            with patch.dict(os.environ, {"BDSP_MOD": ""}):
-                launched = subprocess.run([launcher], capture_output=True, text=True, check=True)
-            self.assertEqual(launched.stdout.strip(),
-                             str(installed / "img") + "|" +
-                             os.path.join(install_root, "share/strahlender-xnu/saves") +
-                             "|Example Mod")
+            if os.name != "nt":
+                with patch.dict(os.environ, {"BDSP_MOD": ""}):
+                    launched = subprocess.run([launcher], capture_output=True, text=True, check=True)
+                self.assertEqual(launched.stdout.strip(),
+                                 str(installed / "img") + "|" +
+                                 os.path.join(install_root, "share/strahlender-xnu/saves") +
+                                 "|Example Mod")
             save = os.path.join(install_root, "share/strahlender-xnu/saves/untouched.bin")
             with open(save, "wb") as file:
                 file.write(b"save")
@@ -924,7 +934,8 @@ class InstallerDriverTests(unittest.TestCase):
             args = SimpleNamespace(root=temporary, work=os.path.join(temporary, "work"), target="macos" if sys.platform == "darwin" else "linux",
                                    base=base, prod_keys=keys, update=None)
             output = io.StringIO()
-            with patch.object(driver, "_run_command") as run, contextlib.redirect_stdout(output):
+            with patch.object(driver.sys, "platform", "darwin" if args.target == "macos" else "linux"), \
+                    patch.object(driver, "_run_command") as run, contextlib.redirect_stdout(output):
                 code = driver.build(args)
             self.assertEqual(code, 2)
             run.assert_not_called()
@@ -957,6 +968,7 @@ class InstallerDriverTests(unittest.TestCase):
                 args = SimpleNamespace(root=root, work=work, target=target, base=base,
                                        prod_keys=keys, update=None)
                 with patch.object(driver, "check_build_dependencies", return_value=0), \
+                     patch.object(driver.sys, "platform", "darwin" if target == "macos" else "linux"), \
                      patch.object(driver, "install_artifact"), \
                      patch.object(driver, "_run_command", return_value=0) as run, \
                      contextlib.redirect_stdout(io.StringIO()):
@@ -986,6 +998,7 @@ class InstallerDriverTests(unittest.TestCase):
             args = SimpleNamespace(root=root, work=work, target=target, base=base, prod_keys=keys, update=None)
             output = io.StringIO()
             with patch.object(driver, "check_build_dependencies", return_value=0), \
+                 patch.object(driver.sys, "platform", "darwin" if target == "macos" else "linux"), \
                  patch.object(driver, "install_artifact"), \
                  patch.object(driver, "_run_command", return_value=0) as run, \
                  contextlib.redirect_stdout(output):

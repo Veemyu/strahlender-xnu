@@ -1,7 +1,9 @@
 // Dispatcher of the BDSP runtime: guest address -> recompiled function (4 tables), HLE slots, re-entry of the
 // exception mechanism (landing pads, setjmp returns), abort and crash messages. Own code.
+#ifndef _WIN32
 #include <dlfcn.h>
 #include <execinfo.h>
+#endif
 #include <signal.h>
 #include <stdarg.h>
 #include <unistd.h>
@@ -97,9 +99,7 @@ static void il2_hit(uint64_t a) {
     if (__atomic_exchange_n(&il2_seen[lo], 1, __ATOMIC_RELAXED)) return;
     KThread *kt = kernel_current_thread();
     static uint64_t t0;
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t ms = (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    uint64_t ms = rt_now_ns() / 1000000;
     if (!t0) t0 = ms;
     fprintf(stderr, "[il2] %6llu ms t%llu %s\n", (unsigned long long)(ms - t0), (unsigned long long)(kt ? kt->id : 0), il2_syms[lo].name);
 }
@@ -262,7 +262,7 @@ void rt_nle_enter(Cpu *c) {
             for (EhRec *q = top; q != r; q = q->prev) __atomic_add_fetch(&g_nle_frames, 1, __ATOMIC_RELAXED);
             __atomic_add_fetch(&g_nle_enters, 1, __ATOMIC_RELAXED);
             EH_TOP(c) = r;
-            _longjmp(r->jb, 1);
+            EH_LONGJMP(r->jb, 1);
         }
     uint64_t off = 0;
     const char *s = loader_symbol_at(c->x[30], &off);
@@ -360,17 +360,70 @@ void rt_fatal_trace(void) {
     fflush(NULL);
 }
 
+static void wait_for_fatal_report(void) __attribute__((noreturn));
+static void wait_for_fatal_report(void) {
+#ifdef _WIN32
+    for (;;) Sleep(INFINITE);
+#else
+    for (;;) pause();
+#endif
+}
+
 void rt_fatal(const char *fmt, ...) {
     static volatile int once;
-    if (__atomic_exchange_n(&once, 1, __ATOMIC_SEQ_CST)) { for (;;) pause(); }
+    if (__atomic_exchange_n(&once, 1, __ATOMIC_SEQ_CST)) wait_for_fatal_report();
     char buf[1024];
     va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
     LOG("FATAL: %s", buf);
+#ifdef _WIN32
+    if (!bdsp_win32_crash_write(buf, (DWORD)strlen(buf)))
+        LOG("FATAL: runtime abort could not be recorded in the Windows crash log\n");
+#endif
     rt_fatal_trace();
     bdsp_fatal_report("Abort by the runtime (see FATAL)", 3);  // does not return: the main thread writes the report and ends the process
-    for (;;) pause();
+    wait_for_fatal_report();
 }
 
+#ifdef _WIN32
+static LONG WINAPI crash_handler(EXCEPTION_POINTERS *exception) {
+    char message[256];
+#if defined(__x86_64__)
+    uint64_t pc = exception->ContextRecord->Rip, sp = exception->ContextRecord->Rsp;
+#elif defined(__aarch64__)
+    uint64_t pc = exception->ContextRecord->Pc, sp = exception->ContextRecord->Sp;
+#else
+#error Unsupported Windows crash context
+#endif
+    int length = snprintf(message, sizeof message,
+        "\r\nFATAL: unhandled Windows exception 0x%08lx at host PC 0x%llx, SP 0x%llx.\r\n",
+        exception->ExceptionRecord->ExceptionCode, (unsigned long long)pc, (unsigned long long)sp);
+    if (length > 0 && (size_t)length < sizeof message) {
+        DWORD written;
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, (DWORD)length, &written, NULL);
+        OutputDebugStringA(message);
+        if (!bdsp_win32_crash_write(message, (DWORD)length)) {
+            static const char failed[] = "FATAL: Windows crash log write failed.\r\n";
+            WriteFile(GetStdHandle(STD_ERROR_HANDLE), failed, sizeof failed - 1, &written, NULL);
+        }
+    }
+    // Do not allocate, lock or dereference guest memory on a damaged host stack.
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static INIT_ONCE crash_once = INIT_ONCE_STATIC_INIT;
+static BOOL CALLBACK install_crash_handler(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    (void)once; (void)parameter; (void)context;
+    SetUnhandledExceptionFilter(crash_handler);
+    return TRUE;
+}
+
+void crash_handler_install(void) {
+    ULONG stack = 32768;
+    if (!SetThreadStackGuarantee(&stack) ||
+        !InitOnceExecuteOnce(&crash_once, install_crash_handler, NULL, NULL))
+        rt_fatal("Windows crash handler initialization failed (%lu)\n", GetLastError());
+}
+#else
 static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     (void)ctx;
     static volatile int once;
@@ -397,3 +450,4 @@ void crash_handler_install(void) {
     sigaction(SIGABRT, &sa, NULL);
     sigaction(SIGTRAP, &sa, NULL);
 }
+#endif

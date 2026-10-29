@@ -2,8 +2,12 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct AudioOutput AudioOutput;
+// Initialize on the window thread before guest workers; shut down only after they stop.
+bool audio_output_init_main(void);
+void audio_output_shutdown_main(void);
 AudioOutput *audio_output_open(uint32_t rate, uint32_t channels);
 void audio_output_start(AudioOutput *out);
 void audio_output_stop(AudioOutput *out);

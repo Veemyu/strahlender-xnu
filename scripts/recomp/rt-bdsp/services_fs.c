@@ -16,6 +16,7 @@
 #endif
 #include <pthread.h>
 #include "mods.h"
+#include "win32_files.h"
 
 void ipc_note(const char *svc, uint32_t cmd, int unhandled);
 
@@ -70,7 +71,7 @@ static RDir *scan(const char *path, const char *name, RDir *parent, int depth, i
         size_t n = strlen(path) + strlen(e->d_name) + 2;
         char *p = malloc(n);
         snprintf(p, n, "%s/%s", path, e->d_name);
-        struct stat st;
+        BdspFileInfo st;
         if (stat(p, &st) != 0) { free(p); continue; }
         if (S_ISDIR(st.st_mode)) {
             RDir *c = scan(p, e->d_name, dir, depth + 1, total);
@@ -328,7 +329,7 @@ static uint64_t romfs_read(uint8_t *dst, uint64_t size, uint64_t off) {
                 uint64_t in = o - f->data_off;
                 if (n > f->size - in) n = f->size - in;
                 int fd = open(f->path, O_RDONLY);
-                ssize_t r = fd >= 0 ? pread(fd, dst + done, n, (off_t)in) : -1;
+                ssize_t r = fd >= 0 ? pread(fd, dst + done, n, (int64_t)in) : -1;
                 if (fd >= 0) close(fd);
                 if (r < 0) r = 0;
                 if ((uint64_t)r < n) memset(dst + done + r, 0, n - (uint64_t)r);
@@ -402,7 +403,7 @@ static void storage_datafile(Service *s, IpcReq *req, IpcResp *resp) {
         if (!b) { resp->result = MAKE_RESULT(2, 6001); break; }
         if (size > b->size) size = b->size;
         if (off > d->size || size > d->size - off) { resp->result = MAKE_RESULT(2, 4001); break; }
-        if (pread(d->fd, G2H8(b->addr), size, (off_t)off) != (ssize_t)size) resp->result = MAKE_RESULT(2, 4001);
+        if (pread(d->fd, G2H8(b->addr), size, (int64_t)off) != (ssize_t)size) resp->result = MAKE_RESULT(2, 4001);
         break;
     }
     case 4: OUT(uint64_t, 0) = d->size; resp_size(resp, 8); break;  // GetSize
@@ -486,7 +487,7 @@ static void save_startup(HostFs *fs) {
         snprintf(sf, sizeof sf, "%s/%s", fs->root, names[i]);
         safety_path(fs, sf, ".prev", pv, sizeof pv);
         safety_path(fs, sf, ".start", st, sizeof st);
-        struct stat sb;
+        BdspFileInfo sb;
         if (!stat(sf, &sb) && sb.st_size > 0) {
             copy_file(sf, st);
         } else if (!stat(pv, &sb) && rename(pv, sf) == 0) {
@@ -528,7 +529,7 @@ static void host_file_impl(Service *s, IpcReq *req, IpcResp *resp) {
     }
     case 2: if (fsync(f->fd)) resp->result = errno_result(); break;
     case 3: if (ftruncate(f->fd, IN(int64_t, 0))) resp->result = errno_result(); break;
-    case 4: { struct stat sb; fstat(f->fd, &sb); OUT(int64_t, 0) = sb.st_size; resp_size(resp, 8); break; }
+    case 4: { BdspFileInfo sb; if (fstat(f->fd, &sb)) { resp->result = errno_result(); break; } OUT(int64_t, 0) = sb.st_size; resp_size(resp, 8); break; }
     case 5: resp_size(resp, 0x20); break;  // OperateRange
     default: ipc_note("IFile", req->cmd, 1);
     }
@@ -558,7 +559,7 @@ static void host_directory(Service *s, IpcReq *req, IpcResp *resp) {
             ent[0x304] = isdir ? 0 : 1;
             if (!isdir) {
                 char p[2048];
-                struct stat sb;
+                BdspFileInfo sb;
                 snprintf(p, sizeof p, "%s/%s", d->path, e->d_name);
                 if (!stat(p, &sb)) *(int64_t *)(ent + 0x308) = sb.st_size;
             }
@@ -620,7 +621,7 @@ static void host_filesystem_impl(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     }
     case 1: {
-        struct stat sb;
+        BdspFileInfo sb;
         if (is_save_root(fs) && !stat(p, &sb) && S_ISREG(sb.st_mode)) {
             char pv[2200];
             safety_path(fs, p, ".prev", pv, sizeof pv);
@@ -638,7 +639,7 @@ static void host_filesystem_impl(Service *s, IpcReq *req, IpcResp *resp) {
         if (rename(p, p2)) resp->result = errno_result();
         break;
     case 7: {
-        struct stat sb;
+        BdspFileInfo sb;
         if (stat(p, &sb)) { resp->result = FS_PATH_NOT_FOUND; break; }
         OUT(uint32_t, 0) = S_ISDIR(sb.st_mode) ? 0 : 1;
         resp_size(resp, 4);

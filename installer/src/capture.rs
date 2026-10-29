@@ -1,7 +1,7 @@
 //! Deterministic screenshots of the actual application renderer, not HTML mocks.
 use std::{fs, io::BufWriter, path::PathBuf};
 
-pub const SCENARIOS: [&str; 66] = [
+pub const SCENARIOS: [&str; 67] = [
     "signing-check",
     "signing",
     "signing-empty",
@@ -19,6 +19,7 @@ pub const SCENARIOS: [&str; 66] = [
     "error-prerequisite",
     "update-confirmation",
     "setup-dependencies",
+    "setup-dependencies-details",
     "update-available",
     "target",
     "target-ios",

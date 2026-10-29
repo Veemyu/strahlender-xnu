@@ -408,15 +408,34 @@ static void steady_clock(Service *s, IpcReq *req, IpcResp *resp) {
 static void to_calendar(int64_t t, IpcResp *resp, int utc) {
     time_t tt = (time_t)t;
     struct tm tm;
-    if (utc) gmtime_r(&tt, &tm); else localtime_r(&tt, &tm);
+#ifdef _WIN32
+    errno_t time_error = utc ? gmtime_s(&tm, &tt) : localtime_s(&tm, &tt);
+    if (time_error) { LOG("[time] calendar conversion failed (%d)\n", (int)time_error); resp->result = MAKE_RESULT(116, 1); return; }
+    char zone[64] = {0};
+    if (utc) memcpy(zone, "UTC", 4);
+    else if (!strftime(zone, sizeof zone, "%Z", &tm)) {
+        LOG("[time] timezone name does not fit\n");
+        resp->result = MAKE_RESULT(116, 1); return;
+    }
+    struct tm wall = tm;
+    int64_t offset = utc ? 0 : (int64_t)_mkgmtime64(&wall) - t;
+#else
+    if (!(utc ? gmtime_r(&tt, &tm) : localtime_r(&tt, &tm))) {
+        LOG("[time] calendar conversion failed\n");
+        resp->result = MAKE_RESULT(116, 1); return;
+    }
+    const char *zone = utc ? "UTC" : tm.tm_zone;
+    int64_t offset = utc ? 0 : tm.tm_gmtoff;
+#endif
     uint8_t *o = resp->data;
     *(uint16_t *)o = (uint16_t)(tm.tm_year + 1900);
     o[2] = (uint8_t)(tm.tm_mon + 1); o[3] = (uint8_t)tm.tm_mday; o[4] = (uint8_t)tm.tm_hour; o[5] = (uint8_t)tm.tm_min; o[6] = (uint8_t)tm.tm_sec;
     *(uint32_t *)(o + 8) = (uint32_t)tm.tm_wday;
     *(uint32_t *)(o + 12) = (uint32_t)tm.tm_yday;
-    memcpy(o + 16, utc ? "UTC" : tm.tm_zone, 4);
+    memset(o + 16, 0, 8);
+    memcpy(o + 16, zone, strnlen(zone, 4));
     *(uint32_t *)(o + 24) = (uint32_t)tm.tm_isdst;
-    *(int32_t *)(o + 28) = utc ? 0 : (int32_t)tm.tm_gmtoff;
+    *(int32_t *)(o + 28) = (int32_t)offset;
     resp_size(resp, 0x20);
 }
 static void timezone_service(Service *s, IpcReq *req, IpcResp *resp) {

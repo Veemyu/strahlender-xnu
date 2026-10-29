@@ -1,5 +1,8 @@
 #[path = "../dependencies.rs"]
 mod dependencies;
+#[allow(dead_code)]
+#[path = "../runtime.rs"]
+mod runtime;
 
 fn main() {
     let log = dependencies::read_setup_log();

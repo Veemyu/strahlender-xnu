@@ -18,7 +18,7 @@ namespace bdsp {
 inline QString iconsDirectory() {
     const QString specified = qEnvironmentVariable("BDSP_ICON_DIR");
     const QString base = QCoreApplication::applicationDirPath();
-    for (const QString &path : {specified, base + "/icons/linux", base + "/../icons/linux"}) {
+    for (const QString &path : {specified, base + "/icons/windows", base + "/icons/linux", base + "/../icons/linux"}) {
         if (!path.isEmpty() && QFile::exists(path + "/icons.json")) return path;
     }
     return {};

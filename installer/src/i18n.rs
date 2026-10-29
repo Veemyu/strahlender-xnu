@@ -28,13 +28,14 @@ impl Language {
 
     pub fn dependency_purpose(self, id: &str) -> Option<&'static str> {
         Some(self.t(match id {
-            "compiler" | "clang" => Label::Compile,
-            "git" => Label::ExtractionTools,
+            "compiler" | "clang" | "llvm-mingw" => Label::Compile,
+            "unicorn-msvc-runtime" => Label::UnicornVcRuntime,
+            "git" | "hactool" => Label::ExtractionTools,
             "cmake" => Label::NativeHelpers,
             "pkg-config" => Label::LocateLibraries,
             "sdl3" | "SDL3" => Label::WindowAudioControllers,
             "ffmpeg" => Label::PlayMovies,
-            "qt" => Label::LinuxWindowControls,
+            "qt" => Label::GameWindowControls,
             "vulkan" => Label::GpuRendering,
             "shaderc" => Label::CompileShaders,
             "vma" => Label::GpuMemory,
@@ -166,6 +167,11 @@ messages! {
     UpdateDownloading => ["Downloading update…", "Update wird geladen…", "Descargando actualización…", "A descarregar a atualização…", "Загрузка обновления…"],
     DependenciesTitle => ["Prepare your computer", "Computer vorbereiten", "Prepara tu ordenador", "Prepara o teu computador", "Подготовьте компьютер"],
     DependenciesHint => ["These tools build your app. Installation may ask for your administrator password in a terminal.", "Diese Werkzeuge bauen deine App. Die Installation fragt gegebenenfalls im Terminal nach deinem Administratorpasswort.", "Estas herramientas crean tu aplicación. Su instalación puede pedirte la contraseña de administrador en un terminal.", "Estas ferramentas criam a tua aplicação. A instalação pode pedir a palavra-passe de administrador num terminal.", "Эти инструменты создают приложение. При их установке может потребоваться пароль администратора в терминале."],
+    WindowsPreparation => ["Windows preparation", "Windows-Vorbereitung", "Preparar Windows", "Preparar o Windows", "Подготовка Windows"],
+    WindowsDependenciesHint => ["The Windows game build is not ready yet. No tools will be installed.", "Der Windows-Spielbuild ist noch nicht freigegeben. Es werden keine Werkzeuge installiert.", "La compilación del juego para Windows aún no está lista. No se instalarán herramientas.", "A compilação do jogo para Windows ainda não está pronta. Não serão instaladas ferramentas.", "Сборка игры для Windows ещё не готова. Инструменты пока не устанавливаются."],
+    WindowsBuildTools => ["Build tools", "Buildwerkzeuge", "Herramientas de compilación", "Ferramentas de compilação", "Инструменты сборки"],
+    WindowsGameRuntime => ["Graphics, audio and controllers", "Grafik, Ton und Controller", "Gráficos, sonido y mandos", "Gráficos, som e comandos", "Графика, звук и контроллеры"],
+    UnicornVcRuntime => ["App-local VC runtime for the generator only", "App-lokale VC-Runtime nur für den Generator", "Runtime de VC local solo para el generador", "Runtime de VC local apenas para o gerador", "Локальная среда VC только для генератора"],
     InstallDependencies => ["Install tools", "Installieren", "Instalar herramientas", "Instalar ferramentas", "Установить инструменты"],
     CheckAgain => ["Check again", "Erneut prüfen", "Volver a comprobar", "Verificar novamente", "Проверить снова"],
     OpenRepository => ["Open project on GitHub", "Projekt auf GitHub öffnen", "Abrir el proyecto en GitHub", "Abrir o projeto no GitHub", "Открыть проект на GitHub"],
@@ -188,6 +194,7 @@ messages! {
     SetupMobile => ["Connect and unlock your iPad or iPhone. Xcode and your configured Apple signing team are used to build and install the app.", "Verbinde und entsperre dein iPad oder iPhone. Xcode und dein eingerichtetes Apple-Signierungsteam werden zum Bauen und Installieren verwendet.", "Conecta y desbloquea tu iPad o iPhone. Se usarán Xcode y tu equipo de firma de Apple configurado para compilar e instalar la aplicación.", "Liga e desbloqueia o teu iPad ou iPhone. O Xcode e a tua equipa de assinatura Apple configurada serão usados para compilar e instalar a aplicação.", "Подключите и разблокируйте iPad или iPhone. Для сборки и установки используются Xcode и настроенная команда подписи Apple."],
     BackendHint => ["The installer checks the required tools, prepares your game data and builds the app. You can follow every step in the log.", "Der Installer prüft die nötigen Werkzeuge, bereitet deine Spieldaten vor und baut die App. Im Protokoll kannst du jeden Schritt verfolgen.", "El instalador comprueba las herramientas, prepara los datos del juego y crea la aplicación. Puedes seguir cada paso en el registro.", "O instalador verifica as ferramentas, prepara os dados do jogo e cria a aplicação. Podes acompanhar cada passo no registo.", "Установщик проверяет инструменты, подготавливает данные игры и создаёт приложение. Каждый шаг можно проследить в журнале."],
     BackendUnavailable => ["A real build is not connected for this target or game format yet.", "Für dieses Ziel oder Spielformat ist noch kein echter Build angebunden.", "La compilación real aún no está disponible para este destino o formato de juego.", "A compilação real ainda não está disponível para este destino ou formato de jogo.", "Настоящая сборка для этой платформы или формата игры пока недоступна."],
+    WindowsBuildPending => ["Not available yet", "Noch nicht verfügbar", "Aún no disponible", "Ainda indisponível", "Пока недоступно"],
     DemoData => ["Demo · Example file", "Demo · Beispieldatei", "Demo · Archivo de ejemplo", "Demo · Ficheiro de exemplo", "Демо · Пример файла"],
     DemoGameFile => ["Example.xci", "Beispiel.xci", "Ejemplo.xci", "Exemplo.xci", "Пример.xci"],
     DemoUpdateFile => ["Example update.nsp", "Beispiel-Update.nsp", "Actualización de ejemplo.nsp", "Atualização de exemplo.nsp", "Пример обновления.nsp"],
@@ -364,7 +371,7 @@ messages! {
     LocateLibraries => ["Locate installed development libraries", "Installierte Entwicklungsbibliotheken finden", "Localizar bibliotecas de desarrollo", "Localizar bibliotecas de desenvolvimento", "Найти библиотеки для разработки"],
     WindowAudioControllers => ["Window, audio and controller support", "Fenster, Audio und Controller unterstützen", "Ventana, audio y mandos", "Janela, áudio e comandos", "Поддержка окна, звука и контроллеров"],
     PlayMovies => ["Play the game's movies", "Videos im Spiel abspielen", "Reproducir vídeos del juego", "Reproduzir vídeos do jogo", "Воспроизводить видеоролики игры"],
-    LinuxWindowControls => ["Provide the Linux game window controls", "Bedienelemente des Linux-Spielfensters bereitstellen", "Controles de la ventana del juego en Linux", "Controlos da janela do jogo no Linux", "Элементы управления окном игры в Linux"],
+    GameWindowControls => ["Provide the game window and menus", "Spielfenster und Menüs bereitstellen", "Ventana y menús del juego", "Janela e menus do jogo", "Окно игры и меню"],
     GpuRendering => ["Render the game on your GPU", "Das Spiel auf der Grafikkarte darstellen", "Renderizar el juego con tu GPU", "Renderizar o jogo com a tua GPU", "Отображать игру с помощью видеокарты"],
     CompileShaders => ["Compile Vulkan shaders", "Vulkan-Shader kompilieren", "Compilar sombreadores Vulkan", "Compilar shaders Vulkan", "Компилировать шейдеры Vulkan"],
     GpuMemory => ["Manage GPU memory", "Grafikspeicher verwalten", "Gestionar la memoria de la GPU", "Gerir a memória da GPU", "Управлять памятью видеокарты"],
@@ -514,18 +521,22 @@ mod tests {
             Language::Russian.dependency_purpose("SDL3"),
             Some(Language::Russian.t(Label::WindowAudioControllers))
         );
-        let catalog: serde_json::Value =
-            serde_json::from_str(include_str!("../assets/dependencies.json")).unwrap();
-        for component in catalog["components"].as_array().unwrap() {
-            for language in Language::ALL {
-                assert!(
-                    !language
-                        .dependency_purpose(component["id"].as_str().unwrap())
-                        .unwrap()
-                        .is_empty()
-                );
-                if let Some(note) = component["manual_pacman"].as_str() {
-                    assert!(language.dependency_note(note).is_some());
+        for source in [
+            include_str!("../assets/dependencies.json"),
+            include_str!("../assets/windows-dependencies.json"),
+        ] {
+            let catalog: serde_json::Value = serde_json::from_str(source).unwrap();
+            for component in catalog["components"].as_array().unwrap() {
+                for language in Language::ALL {
+                    assert!(
+                        !language
+                            .dependency_purpose(component["id"].as_str().unwrap())
+                            .unwrap()
+                            .is_empty()
+                    );
+                    if let Some(note) = component["manual_pacman"].as_str() {
+                        assert!(language.dependency_note(note).is_some());
+                    }
                 }
             }
         }

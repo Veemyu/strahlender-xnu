@@ -10,6 +10,7 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "win32_files.h"
 
 #define SCAN_DEPTH 4
 
@@ -18,7 +19,7 @@ static int g_have_active;
 static char g_active_save[1200];
 
 static int is_dir(const char *p) {
-    struct stat st;
+    BdspFileInfo st;
     return stat(p, &st) == 0 && S_ISDIR(st.st_mode);
 }
 

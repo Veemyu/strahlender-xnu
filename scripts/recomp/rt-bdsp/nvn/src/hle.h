@@ -1,5 +1,5 @@
-// Replacement for runtime/hle.h of the LAS clone: HLE_FUNC binds a host function to a name in a Mach-O section;
-// hle_lookup_impl (nvn_glue.m) searches it. Design as in the original (MIT, see NOTICE.md).
+// HLE_FUNC binds a host function to a name in a platform linker section;
+// hle_lookup_impl (nvn_glue.c) searches it. Design as in the original (MIT, see NOTICE.md).
 #pragma once
 #include <stdlib.h>
 
@@ -12,6 +12,9 @@ typedef struct { const char *name; HostFn fn; } HleImplEntry;
 #define HLE_CAT(a, b) HLE_CAT2(a, b)
 #ifdef __APPLE__
 #define HLE_SECTION "__DATA,__hle_impls"
+#elif defined(_WIN32)
+#define HLE_SECTION ".hle$m"
+extern const HleImplEntry bdsp_hle_begin[], bdsp_hle_end[];
 #else
 #define HLE_SECTION "hle_impls"   // ELF (Linux): the linker provides __start_hle_impls / __stop_hle_impls
 #endif

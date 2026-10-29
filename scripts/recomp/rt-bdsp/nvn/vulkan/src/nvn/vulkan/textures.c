@@ -191,7 +191,7 @@ void vk_level_change_check(void) {
     static char last[64];
     const char *lv = game_level_name();
     if (strncmp(lv, last, sizeof last - 1) != 0) {
-        strlcpy(last, lv, sizeof last);
+        snprintf(last, sizeof last, "%s", lv);
         if (!strncmp(lv, "TelephoneBox", 12) || getenv("BDSP_CLEAR_ALL_LEVELS")) g_level_gen++;
     }
 }

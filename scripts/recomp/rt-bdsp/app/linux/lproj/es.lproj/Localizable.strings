@@ -22,3 +22,12 @@
 "Reset Game" = "Restablecer juego";
 "KEYS_HELP" = "Teclado: Intro/Espacio = A, Retroceso/J = B, X, Y, flechas y WASD = cruceta, Q/E = L/R, P = Más, O = Menos.\nVentana: F1–F4 tamaño, F5–F7 tasa de fotogramas 30/60/120, F11 pantalla completa (en el menú también Ctrl+1–4, Ctrl+F). Sin sonido.";
 "RESET_CONFIRM" = "La partida se guarda como copia y se borra; el juego se reinicia y empieza de nuevo.";
+"Controllers" = "Mandos";
+"Individual Joy-Cons (mini mode)" = "Joy-Con individuales (modo mini)";
+"Paired Joy-Cons" = "Pareja de Joy-Con";
+"Joy-Con Mini Controls" = "Controles de Joy-Con mini";
+"JOYCON_MINI_HELP" = "Cada Joy-Con individual es un minimando. Mantén pulsado el stick para la segunda capa: stick = cruceta, Plus = Minus, L/R = ZL/ZR. Suelta los botones y centra el stick antes de volver al control normal. Cambiar de modo borra brevemente la entrada y vuelve a abrir los dispositivos; todos los mandos siguen siendo el jugador 1.";
+"Controller configuration is overridden for this launch." = "La configuración del mando se ha sobrescrito para este inicio.";
+"Controller mode could not be changed. The previous mode was restored when possible; keyboard input remains available." = "No se pudo cambiar el modo. Se restauró el anterior cuando fue posible; el teclado sigue disponible.";
+"Controller settings could not be saved. The previous mode has been restored." = "No se pudo guardar la configuración. Se ha restaurado el modo anterior.";
+"Controller settings could not be saved and the previous mode could not be restored. Keyboard input remains available." = "No se pudo guardar ni restaurar el modo anterior. El teclado sigue disponible.";

@@ -2,6 +2,9 @@
 // (runtime section): network/online (nifm, bsd, ssl, friend, ldn, bcat, nim, …) and everything the Mac run does not need reports
 // an error, the rest (prepo, ldr:ro) is answered with "success, no data". Own code.
 #include "bdsp.h"
+#ifdef _WIN32
+#include <bcrypt.h>
+#endif
 
 void ipc_note(const char *svc, uint32_t cmd, int unhandled);
 
@@ -19,7 +22,18 @@ static void csrng(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     if (req->cmd == 0) {
         IpcBuf *b = out_buf(req, 0);
-        if (b) { uint8_t *p = G2H8(b->addr); for (uint64_t i = 0; i < b->size; i++) p[i] = (uint8_t)arc4random(); }
+        if (b) {
+#ifdef _WIN32
+            if (b->size > ULONG_MAX || !bdsp_win32_prepare_write(G2H8(b->addr), (size_t)b->size) ||
+                BCryptGenRandom(NULL, G2H8(b->addr), (ULONG)b->size, BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) {
+                LOG("[csrng] Windows system randomness failed\n");
+                resp->result = MAKE_RESULT(1, 1);
+            }
+#else
+            uint8_t *p = G2H8(b->addr);
+            for (uint64_t i = 0; i < b->size; i++) p[i] = (uint8_t)arc4random();
+#endif
+        }
     } else resp_size(resp, 0x10);
 }
 

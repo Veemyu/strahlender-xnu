@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QHash>
+#include <QLocale>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
@@ -45,7 +46,7 @@ inline QString systemLocale() {
         if (!v.isEmpty() && v != QLatin1String("C") && v != QLatin1String("POSIX"))
             return v.section(QRegularExpression(QStringLiteral("[.@]")), 0, 0);
     }
-    return QString();
+    return QLocale::system().name();
 }
 
 inline QStringList localeChain(QString locale) {

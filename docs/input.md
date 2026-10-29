@@ -29,6 +29,10 @@ exclusively on iOS; UIKit's keyboard is never opened over it. Both need a normal
   Bundled installer firmware takes priority. Without complete layouts/fonts, only a
   prompt and native field appear above the iOS keyboard.
 
+## Windows / Vulkan
+
+The Vulkan frontend (Linux, Windows) needs the firmware text font to enable either keyboard. Set `BDSP_FIRMWARE_DATA` to a folder with the extracted `fonts/` and `swkbd/` directories before launching; without it the applet takes the automatic initial-text/cancel path.
+
 ## Using it (macOS)
 
 - Typing: the keyboard of the Mac; Backspace/Delete, Left/Right/Home/End move and delete in the text, Return confirms, Esc cancels.
@@ -86,7 +90,8 @@ the answer is automatic:
 
 ## Controllers (game input)
 
-Plug in or pair over Bluetooth and it works; no driver, mapper or Steam Input is needed. All connected pads act as player 1 (BDSP is a
+On the implemented Apple/Linux paths, plug in or pair over Bluetooth; no mapper or Steam Input is needed. Windows remains a preparation
+target, not hardware-verified support. All connected pads act as player 1 (BDSP is a
 single-player game). The keyboard stays available next to the pad on every platform.
 
 - **macOS, iPadOS:** `GameController.framework` only (Switch Pro, Joy-Con, DualShock, DualSense, Xbox, MFi). SDL's gamepad subsystem is
@@ -94,19 +99,27 @@ single-player game). The keyboard stays available next to the pad on every platf
   already name their buttons like the console and are used as they are; Xbox and PlayStation pads are mapped by position (A right, B bottom,
   X top, Y left). On the Mac `pad_layout = xbox` keeps the labels of those pads instead. The iPad hides the touch gamepad while a pad is
   connected.
-- **Linux (and Windows, prepared):** SDL3's gamepad subsystem in its own thread (`pad_sdl.c`), independent of the window and of the UI
+- **Linux:** SDL3's gamepad subsystem in its own thread (`pad_sdl.c`), independent of the window and of the UI
   toolkit (Qt or SDL). Nintendo pads need nothing on a desktop with the kernel driver `hid-nintendo`. If a Nintendo or Sony pad is connected
   but cannot be opened, the log says so once; `scripts/recomp/rt-bdsp/app/linux/udev/70-bdsp-controllers.rules` grants the logged-in user access
   (commands are in the file, root needed once).
-- **Buttons:** A, B, X, Y by position; L/R; ZL/ZR as buttons (the game needs no analog trigger); both sticks (12 % dead zone) and their clicks;
+- **Buttons:** A, B, X, Y by position; L/R; ZL/ZR as buttons (the game needs no analog trigger); both sticks and their clicks
+  (Apple's dead zone is 12%; the SDL backend uses 1300/32767, approximately 4%, scaled out before the game's own dead zone);
   D-pad; Plus and Minus. Not implemented: motion, rumble, other players.
 - **Keys** (Linux): Return/Space/K = A, Backspace/J = B, X, Y, Q/E = L/R, P = Plus, O = Minus, arrows and WASD = D-pad. The Mac has the
   Ryujinx default keys (see the app's help text).
 - **Layers:** `input.h` is the neutral interface. Keyboard, touch and gamepads are separate sources (`input_source_set`); the game reads the merged
   state through `input_current`, which is empty while the on-screen keyboard is open.
 - `BDSP_PAD_LOG=1` (Linux/Windows) prints connections and every change of buttons and sticks, with the button names.
-- **Windows (prepared, not built or tested):** the controller layer needs no change, only the build target. `input.c` and `pad_sdl.c` use
-  POSIX threads (`pthread_mutex`, `pthread_once`), so the Windows build is MinGW-w64 (winpthreads), not MSVC. SDL3's gamepad subsystem handles
-  Switch Pro, Joy-Con, DualShock, DualSense and Xbox pads over USB or Bluetooth with its own drivers (HIDAPI, XInput); that it runs without a
-  window on Windows, as it does on Linux, is not yet checked. The Linux-only part (the hidraw hint for the udev rules) is behind `#ifdef __linux__`.
+- **Windows (implementation preparation, not a playable/hardware-tested port):** the SDL window/event thread initializes, polls and closes
+  gamepads. Guest input reads do not initialize SDL or create a second worker. HIDAPI Nintendo/Sony hints and the Joy-Con combine hint are
+  set before gamepad initialization. `BDSP_JOYCONS=pair` is the default; `single` selects separate devices for development. Changing the mode
+  through the main-thread API closes devices before reinitializing them. A persistent GUI setting and complete single-Joy-Con action mapping
+  are still required; this is not an end-user configuration yet.
+  Disconnects and focus loss clear pad state, and the Windows SDL loop also clears keyboard state on focus loss. Initialization,
+  enumeration/open and thread-affinity errors are reported. The isolated lifecycle C probe runs natively on Windows with synthetic SDL
+  devices; it does **not** verify SDL's real HIDAPI/XInput drivers or Bluetooth behavior. `input.c` and the wider runtime still require
+  winpthreads. The active runtime's remaining Mach/POSIX boundaries must be ported before a full Windows build.
 
+Windows acceptance still requires Pro/PS4 USB and Bluetooth, the supported connection types of each Xbox model, and Joy-Con L/R individually
+and paired over Bluetooth, without controller middleware. No motion, rumble or multiplayer is promised.

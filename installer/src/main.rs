@@ -17,6 +17,7 @@ mod platform;
 mod preferences;
 mod progress;
 mod project_link;
+mod runtime;
 mod sources;
 mod style;
 mod updates;
@@ -43,7 +44,7 @@ fn main() -> iced::Result {
             return Ok(());
         }
         [flag] if flag == "--check-runtime" => {
-            if let Err(error) = backend::runtime_smoke() {
+            if let Err(error) = runtime::runtime_smoke() {
                 eprintln!("{error}");
                 std::process::exit(1);
             }

@@ -39,7 +39,37 @@ No build files are added to the repository root.
 interface version and capabilities. A cached executable is accepted only if both
 its build fingerprint and its binary SHA-256 match. Paths are passed as distinct
 arguments, including spaces, apostrophes and Unicode. On Windows the executable
-uses a Unicode command line and file APIs; Windows builds have not been validated.
+uses a Unicode command line and file APIs; the amd64 native synthetic checks below
+have passed, but Windows 10 qualification and a complete game build remain open.
+
+Windows preparation now requires an explicit **LLVM-MinGW UCRT** compiler for
+the running host architecture; clang-cl and MSVCRT configurations are rejected.
+The output name is normalized to `.exe`, `-municode` selects `wmain`, and LLD is
+selected directly. Compiler bytes/path/triple, host architecture and baseline
+flags participate in cache identity. PE architecture and Unicorn's recursively
+required DLLs are checked before publication. The generator's DLLs are build
+dependencies and must not enter the game package.
+
+The LZ4 provenance check accepts upstream LF bytes or their exact CRLF-only
+checkout conversion; all other edits still fail the pinned checksum. This does
+not rewrite the checkout. Native LLVM-MinGW UCRT 20261020/Unicorn 2.1.4 checks
+now cover Unicode/apostrophe paths, image relocations and HLE slots, deterministic
+portable C generation, amd64 compilation and a moved generator without a developer
+PATH. Generated C also cross-compiles for ARM64; no ARM64 executable was run.
+
+The locked amd64 Unicorn wheel imports `vcruntime140.dll`. The native check used
+an existing local developer redistributable, not a system DLL copied for release.
+Authorized redistribution, a versioned runtime inventory and Windows 10 acceptance
+remain necessary before enabling automatic public tool preparation. LLD imports
+the wheel's DLL directly when no GNU import library exists; its MSVC `.lib` pulls
+`OLDNAMES` and is not the selected MinGW link input.
+
+The opt-in `scripts.tests.test_windows_native_generator` suite uses only synthetic
+NSOs and never a Git oracle. Set `BDSP_WINDOWS_NATIVE_BINARY` and
+`BDSP_WINDOWS_NATIVE_CC` to explicit amd64 executable/compiler paths, and optionally
+`BDSP_WINDOWS_ARM64_CC` for cross-compilation. It also executes the Windows EH and
+guest-memory/Unicode-loader probes and a fake-device controller lifecycle probe.
+These are not game, real SDL/HIDAPI or controller hardware acceptance.
 
 ## Image command
 

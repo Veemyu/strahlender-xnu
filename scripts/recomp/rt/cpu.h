@@ -3,6 +3,10 @@
 // and pulls in the original cpu.h via #include_next.
 #pragma once
 #include_next "cpu.h"
+#if defined(_WIN32) && !defined(__USE_MINGW_SETJMP_NON_SEH)
+// Guest unwinding owns the EhRec chain; Windows must not unwind host SEH frames.
+#define __USE_MINGW_SETJMP_NON_SEH
+#endif
 #include <setjmp.h>
 
 // One entry per active guest function that contains a re-entry point. Lives on the host stack
@@ -19,7 +23,13 @@ typedef struct EhRec {
     EhRec eh;                                                           \
     eh.prev = EH_TOP(c); eh.lo = (lo_); eh.hi = (hi_); eh.sp = c->sp;   \
     EH_TOP(c) = &eh
+#ifdef _WIN32
+#define EH_SETJMP() setjmp(eh.jb)
+#define EH_LONGJMP(buffer, value) longjmp(buffer, value)
+#else
 #define EH_SETJMP() _setjmp(eh.jb)
+#define EH_LONGJMP(buffer, value) _longjmp(buffer, value)
+#endif
 #define EH_POP() (EH_TOP(c) = eh.prev)
 
 void rt_nle_enter(Cpu *c) __attribute__((noreturn));   // c->pc = re-entry point in the middle of a function

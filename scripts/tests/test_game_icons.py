@@ -53,6 +53,19 @@ class GameIconTests(unittest.TestCase):
         (self.update / "icon_Japanese.dat").write_bytes(b"invalid synthetic image")
         return icons.ingest(self.base, self.update, self.source, "0000000000000000")
 
+    def test_windows_ico_and_qt_variants_reuse_original_pipeline(self):
+        source = self.fixture()
+        output = self.root / "windows"
+        result = icons.build_windows(self.source, output)
+        self.assertEqual(source, result)
+        self.assertEqual((output / "app.rc").read_text(), '1 ICON "app.ico"\n')
+        with Image.open(output / "app.ico") as image:
+            self.assertEqual(image.format, "ICO")
+            self.assertEqual(image.ico.sizes(), {(n, n) for n in (16, 24, 32, 48, 64, 128, 256)})
+        for variant in source["variants"]:
+            self.assertEqual((output / variant["image"]).read_bytes(),
+                             (self.source / variant["image"]).read_bytes())
+
     def test_mod_icons_and_names_take_priority_over_base_variants(self):
         base = self.fixture()
         mod = self.root / "Luminescent"
