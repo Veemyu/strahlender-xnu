@@ -25,7 +25,7 @@ macOS tools are BSD variants (no GNU `ls --time-style` and similar); Xcode is se
 | Purpose | Command |
 |---|---|
 | Guided install | `./install.command` (macOS) · `./install-linux.sh` (Linux); `--dry-run` shows the plan |
-| Check and tests | `python3 scripts/repo_check.py` · `python3 -m unittest discover -s scripts/tests` (one known failure: `test_stage_glass_icons … test_native_renderer_accepts_document_and_changes_lighting`) |
+| Check and tests | `python3 scripts/repo_check.py` · `python3 -m unittest discover -s scripts/tests` |
 | Build stages | `scripts/build_all.sh --only tools,extract,recomp --target macos …` (stages `tools extract recomp shaders`; `--dry-run`, `--force`) |
 | Test build from the working tree | build the runtime and NVN layer into a separate bundle and keep the shipped app untouched; guest code (`work/recomp/obj4`) is reused |
 | Hot functions at `-O2` | add the function to `scripts/recomp/hot_o2.txt` when `sample <pid> 6` shows it at the top of a guest thread; the next `recomp` build recompiles only that chunk |

@@ -120,26 +120,20 @@ at build time.
 
 ## Review and verification
 
-The review helper is independent of app builds:
-
-```sh
-python3 scripts/recomp/app/stage_glass_icons.py --output work/recomp/icons/new-review --layout full-bleed
-```
-
-It requires a new output directory. --locales en-US,de,ja selects a subset.
-review.png compares the older accepted flat icon with native light-angle 0/120
-and dark renders. Per-language previews and editable .icon packages are included.
-These static previews do not replace on-device appearance/switching verification.
-The .icon schema and CLI are validated against the installed Apple tools, not
-treated as a stable public file-format API.
+The earlier preview helper (`stage_glass_icons.py`, rendered 1024 px previews with Icon Composer's `ictool` at light
+angles 0 and 120) was a development check and was removed on 2026-10-29: Xcode 27 dropped the light angle from
+`ictool`, and no build used its output. The app icons come from `actool --compile` (`icon_composer.compile_icons`);
+compiled bundles were checked with Xcode 27.1 for iPad/iPhone (`Assets.car`, `AppIcon60x60@2x.png`,
+`AppIcon76x76@2x~ipad.png`) and macOS (`AppIcon.icns`). Static previews never replace on-device appearance and
+switching verification. The .icon schema and CLI are validated against the installed Apple tools, not treated as a
+stable public file-format API.
 
 Approved design examples: work/recomp/icons/staging-liquid-glass-03-full-bleed.
 All nine variants: work/recomp/icons/staging-liquid-glass-04-full-bleed-all.
 
 Synthetic tests cover fresh XCI/base-NSP icon extraction without old work data,
 title filtering, base/update merges, corruption, deduplication, full-bleed pixels,
-document scale/position, settings/metadata, fingerprints, language recommendations,
-and native rendering at different light angles. Existing Apple and Linux Qt
+document scale/position, settings/metadata, fingerprints, and language recommendations. Existing Apple and Linux Qt
 tests cover selection, persistence, and removed-variant fallback.
 
 Final bundles were checked for nine language variants. iPad registration names

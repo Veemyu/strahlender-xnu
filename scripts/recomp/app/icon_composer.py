@@ -88,21 +88,3 @@ def foreground(data, size=1024, layout="inset"):
     canvas = Image.new("RGBA", (size, size))
     canvas.alpha_composite(artwork, (margin, margin))
     return canvas
-
-
-def find_renderer():
-    developer = Path(subprocess.check_output(["xcode-select", "-p"], text=True).strip())
-    renderer = developer.parent / "Applications/Icon Composer.app/Contents/Executables/ictool"
-    if not renderer.is_file():
-        raise ValueError("Icon Composer's native ictool renderer was not found in the selected Xcode")
-    return renderer
-
-
-def render(renderer, bundle, output, appearance="Light", angle=0, platform="iOS"):
-    subprocess.run([str(renderer), str(bundle), "--export-preview", platform, appearance,
-                    "1024", "1024", "1", str(angle), str(output)],
-                   check=True, capture_output=True, timeout=60)
-    Image = game_icons.image_module()[0]
-    with Image.open(output) as image:
-        if image.format != "PNG" or image.size != (1024, 1024):
-            raise ValueError("Unexpected native icon preview dimensions or format")
