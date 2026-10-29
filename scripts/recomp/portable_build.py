@@ -413,19 +413,10 @@ def compile_sources(generated, objects, compiler, selected, commands, jobs=None,
     return sorted(results)
 
 
-def compile_runtime(objects, compiler, selected, commands, *, backend, has_subsdk1=False,
-                    jobs=None, root=ROOT, sdl=None, vulkan=None, ffmpeg=None,
-                    frontend="sdl", qt=None):
-    """Compile the active platform runtime; `none` is a diagnostic, not a game."""
-    if backend not in ("none", "vulkan"):
-        raise ValueError("Unknown Windows runtime backend: " + backend)
-    if frontend not in ("sdl", "qt"):
-        raise ValueError("Unknown runtime frontend: " + frontend)
-    qt_bundle = None
-    if frontend == "qt":
-        if backend != "vulkan":
-            raise ValueError("The Qt host requires the Vulkan runtime")
-        qt_bundle = qt_development(qt, compiler, selected)
+def compile_runtime(objects, compiler, selected, commands, *, has_subsdk1=False,
+                    jobs=None, root=ROOT, sdl=None, vulkan=None, ffmpeg=None, qt=None):
+    """Compile the Windows runtime: Vulkan renderer and the shared Qt game host."""
+    qt_bundle = qt_development(qt, compiler, selected)
     root = Path(root).resolve()
     runtime = root / "scripts/recomp/rt-bdsp"
     # Snapshot publication uses the iOS durability contract, not a Windows shim.
@@ -433,29 +424,25 @@ def compile_runtime(objects, compiler, selected, commands, *, backend, has_subsd
     extra = ["-I", str(runtime), f"-DBDSP_HAS_SUBSDK1={int(has_subsdk1)}"]
     headers = sorted(runtime.rglob("*.h"))
     per_source = {}
-    if backend == "none":
-        extra.append("-DBDSP_NVN_NONE")
-    else:
-        bundles = [verified_bundle(path, selected) for path in (sdl, vulkan, ffmpeg)]
-        overlay = prepare_vulkan(root, Path(objects) / "nvn-src-vk")
-        nvn = runtime / "nvn"
-        sources += [overlay / f"nvn/{name}.c" for name in ("objects", "cmdbuf", "formats", "tegra", "astc")]
-        sources += [overlay / "nvn/maxwell/translate.c"]
-        sources += [overlay / f"nvn/vulkan/{name}.c" for name in ("device", "exec", "shaders", "textures")]
-        sources += [overlay / "nvn/vulkan/vma.cpp", nvn / "nvn_glue.c",
-                    nvn / "vulkan/vk_glue.c", nvn / "vulkan/swkbd_overlay_vk.c", nvn / "movie_glue.c"]
-        per_source[nvn / "nvn_glue.c"] = ("-Dg_debug_frame=bdsp_glue_debug_frame",)
-        for directory in (overlay, overlay / "nvn", *(path / "include" for path in bundles)):
-            extra += ["-I", str(directory)]
-            headers += sorted(directory.rglob("*.h"))
-        if qt_bundle:
-            host = runtime / "app/linux"
-            sources.append(host / "qt_ui.cpp")
-            extra += ["-DBDSP_QT", "-DQT_NO_DEBUG"]
-            for directory in (host, qt_bundle / "include",
-                              *(qt_bundle / "include" / name for name in ("QtCore", "QtGui", "QtWidgets"))):
-                extra += ["-I", str(directory)]
-                headers += sorted(directory.rglob("*.h"))
+    bundles = [verified_bundle(path, selected) for path in (sdl, vulkan, ffmpeg)]
+    overlay = prepare_vulkan(root, Path(objects) / "nvn-src-vk")
+    nvn = runtime / "nvn"
+    sources += [overlay / f"nvn/{name}.c" for name in ("objects", "cmdbuf", "formats", "tegra", "astc")]
+    sources += [overlay / "nvn/maxwell/translate.c"]
+    sources += [overlay / f"nvn/vulkan/{name}.c" for name in ("device", "exec", "shaders", "textures")]
+    sources += [overlay / "nvn/vulkan/vma.cpp", nvn / "nvn_glue.c",
+                nvn / "vulkan/vk_glue.c", nvn / "vulkan/swkbd_overlay_vk.c", nvn / "movie_glue.c"]
+    per_source[nvn / "nvn_glue.c"] = ("-Dg_debug_frame=bdsp_glue_debug_frame",)
+    for directory in (overlay, overlay / "nvn", *(path / "include" for path in bundles)):
+        extra += ["-I", str(directory)]
+        headers += sorted(directory.rglob("*.h"))
+    host = runtime / "app/linux"
+    sources.append(host / "qt_ui.cpp")
+    extra += ["-DBDSP_QT", "-DQT_NO_DEBUG"]
+    for directory in (host, qt_bundle / "include",
+                      *(qt_bundle / "include" / name for name in ("QtCore", "QtGui", "QtWidgets"))):
+        extra += ["-I", str(directory)]
+        headers += sorted(directory.rglob("*.h"))
     return compile_sources(
         runtime, objects, compiler, selected, commands, jobs,
         extra=extra, root=root, source_paths=sources, dependency_headers=headers, source_flags=per_source)
@@ -509,19 +496,16 @@ def qt_development(path, compiler, selected):
     return bundle
 
 
-def graphical_libraries(compiler, selected, sdl, vulkan, ffmpeg, *, frontend="sdl", qt=None):
-    if frontend not in ("sdl", "qt"):
-        raise ValueError("Unknown runtime frontend: " + frontend)
-    qt_bundle = qt_development(qt, compiler, selected) if frontend == "qt" else None
+def graphical_libraries(compiler, selected, sdl, vulkan, ffmpeg, *, qt=None):
+    qt_bundle = qt_development(qt, compiler, selected)
     sdl, vulkan, ffmpeg = (verified_bundle(path, selected) for path in (sdl, vulkan, ffmpeg))
     identity = compiler_identity(compiler, selected)
     prefix = Path(identity["path"]).parent.parent / (selected["target"] + "-w64-mingw32")
     libraries = [sdl / "lib/libSDL3.dll.a", vulkan / "lib/libshaderc_shared.dll.a",
                  vulkan / "lib/libvulkan-1.a",
                  *(ffmpeg / f"lib/lib{name}.dll.a" for name in ("avformat", "avcodec", "avutil")),
-                 prefix / "lib/libc++.dll.a", *runtime_libraries(compiler, selected)]
-    if qt_bundle:
-        libraries += [qt_bundle / f"lib/libQt6{name}.a" for name in ("Widgets", "Gui", "Core")]
+                 prefix / "lib/libc++.dll.a", *runtime_libraries(compiler, selected),
+                 *(qt_bundle / f"lib/libQt6{name}.a" for name in ("Widgets", "Gui", "Core"))]
     for path in libraries:
         if not path.is_file():
             raise ValueError("Missing graphical runtime library: " + str(path))
@@ -738,8 +722,6 @@ def main(argv=None):
     parser.add_argument("--unicorn-root", type=Path)
     parser.add_argument("--work", type=Path, default=ROOT / "work")
     parser.add_argument("--jobs", type=int)
-    parser.add_argument("--backend", choices=("none", "vulkan"), default="vulkan",
-                        help="'none' is only a non-graphics runtime diagnostic, never a playable build")
     parser.add_argument("--with-subsdk1", action="store_true")
     parser.add_argument("--cmake", type=Path, help="Explicit maintainer-only CMake executable")
     parser.add_argument("--ninja", type=Path, help="Explicit existing maintainer Ninja executable")
@@ -747,12 +729,8 @@ def main(argv=None):
     parser.add_argument("--sdl-prefix", type=Path, help="New private SDL development-bundle directory")
     parser.add_argument("--vulkan-prefix", type=Path, help="Verified private Vulkan development bundle")
     parser.add_argument("--ffmpeg-prefix", type=Path, help="Verified private FFmpeg development bundle")
-    parser.add_argument("--frontend", choices=("qt", "sdl"), default="qt",
-                        help="Shared Qt game host; SDL is retained only for explicit frontend diagnostics")
     parser.add_argument("--qt-prefix", type=Path, help="Verified shared Qt6 LLVM-MinGW UCRT/libc++ target bundle")
     args = parser.parse_args(argv)
-    if args.backend == "none":
-        args.frontend = "sdl"   # no graphical host in the non-graphics diagnostic
     selected = windows.profile(args.target, args.host)
     if args.stage == "overlay":
         try:
@@ -786,26 +764,20 @@ def main(argv=None):
             compile_sources(work / "gen", work / "objects", args.cc or "", selected, commands, args.jobs,
                             source_paths=generated_inventory(work / "gen"))
         elif args.stage == "runtime":
-            compile_runtime(work / ("runtime-" + args.backend + "-" + args.frontend), args.cc or "", selected, commands,
-                            backend=args.backend, has_subsdk1=args.with_subsdk1, jobs=args.jobs,
-                            sdl=args.sdl_prefix, vulkan=args.vulkan_prefix, ffmpeg=args.ffmpeg_prefix,
-                            frontend=args.frontend, qt=args.qt_prefix)
+            compile_runtime(work / "runtime-vulkan", args.cc or "", selected, commands,
+                            has_subsdk1=args.with_subsdk1, jobs=args.jobs,
+                            sdl=args.sdl_prefix, vulkan=args.vulkan_prefix, ffmpeg=args.ffmpeg_prefix, qt=args.qt_prefix)
         elif args.stage == "sdl":
             if not all((args.cmake, args.ninja, args.sdl_archive, args.sdl_prefix)):
                 raise ValueError("SDL preparation requires --cmake, --ninja, --sdl-archive and --sdl-prefix")
             build_sdl(args.sdl_archive, args.sdl_prefix, args.cc or "", selected,
                       args.cmake, args.ninja, commands, args.jobs)
         elif args.stage == "link":
-            if args.backend == "vulkan" and args.frontend == "qt":
-                qt_development(args.qt_prefix, args.cc or "", selected)
-            host = compiled_inventory(work / ("runtime-" + args.backend + "-" + args.frontend) / selected["cache_key"] / "compile.json", selected)
-            libraries = (runtime_libraries(args.cc or "", selected) if args.backend == "none" else
-                         graphical_libraries(args.cc or "", selected, args.sdl_prefix,
-                                             args.vulkan_prefix, args.ffmpeg_prefix,
-                                             frontend=args.frontend, qt=args.qt_prefix))
+            host = compiled_inventory(work / "runtime-vulkan" / selected["cache_key"] / "compile.json", selected)
+            libraries = graphical_libraries(args.cc or "", selected, args.sdl_prefix, args.vulkan_prefix,
+                                            args.ffmpeg_prefix, qt=args.qt_prefix)
             link_executable(work / "objects" / selected["cache_key"] / "compile.json", host,
-                            libraries, work / ("BDSP-diagnostic.exe" if args.backend == "none" else "BDSP.exe"),
-                            args.cc or "", selected, commands)
+                            libraries, work / "BDSP.exe", args.cc or "", selected, commands)
         return 0
     except KeyboardInterrupt:
         if commands:

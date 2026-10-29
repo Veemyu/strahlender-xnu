@@ -159,20 +159,6 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_shared_sdl_audio_queue_lifetime_with_stub_device(self):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
-        executable = self.root / "audio_sdl_test.exe"
-        result = subprocess.run([
-            self.compiler, "-std=c17", "-Wall", "-Wextra", "-Werror",
-            "-I", str(runtime / "test/sdl_stub"), "-I", str(runtime),
-            str(runtime / "test/audio_sdl_test.c"), str(runtime / "audio_output.c"),
-            "-Wl,-Bstatic,-lwinpthread,-Bdynamic", "-o", str(executable)],
-            capture_output=True, text=True, timeout=30)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=15)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("injected SDL audio error", result.stderr)
-
     @unittest.skipUnless(os.environ.get("BDSP_WINDOWS_SDL_ROOT"), "Set the private SDL bundle root")
     def test_real_sdl_entry_virtual_controller_and_dummy_audio_without_path(self):
         runtime = ROOT / "scripts/recomp/rt-bdsp"
@@ -492,37 +478,30 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         self.assertEqual(result.returncode, 0, result.stderr)
         return result
 
-    def test_full_diagnostic_runtime_link_boot_and_host_crash(self):
-        self.check_runtime_link_boot_and_host_crash("none")
-
-    @unittest.skipUnless(os.environ.get("BDSP_WINDOWS_VULKAN_ROOT") and os.environ.get("BDSP_WINDOWS_FFMPEG_ROOT"),
-                         "Explicit Vulkan and FFmpeg development bundles required")
+    @unittest.skipUnless(all(os.environ.get("BDSP_WINDOWS_" + name + "_ROOT") for name in ("VULKAN", "FFMPEG", "SDL", "QT")),
+                         "Explicit SDL, Vulkan, FFmpeg and Qt bundles required")
     def test_full_graphical_runtime_link_boot_and_host_crash(self):
-        self.check_runtime_link_boot_and_host_crash("vulkan")
-
-    def check_runtime_link_boot_and_host_crash(self, backend):
         runtime = ROOT / "scripts/recomp/rt-bdsp"
         selected = windows.profile("x86_64", "x86_64")
         generated = self.root / "synthetic tables"
         (generated / "main").mkdir(parents=True)
         shutil.copyfile(runtime / "test/runtime_win_test.c", generated / "main/tables.c")
         commands = build.Commands()
-        bundles = ({name: Path(os.environ["BDSP_WINDOWS_" + name.upper() + "_ROOT"]).resolve()
-                    for name in ("sdl", "vulkan", "ffmpeg")} if backend == "vulkan" else {})
+        bundles = {name: Path(os.environ["BDSP_WINDOWS_" + name.upper() + "_ROOT"]).resolve()
+                   for name in ("sdl", "vulkan", "ffmpeg", "qt")}
         try:
             objects = build.compile_sources(
                 generated, self.root / "guest objects", self.compiler, selected, commands,
                 jobs=2, extra=("-I", str(runtime), "-DBDSP_HAS_SUBSDK1=0"))
             host = build.compile_runtime(self.root / "host objects", self.compiler, selected,
-                                         commands, backend=backend, jobs=2, **bundles)
+                                         commands, jobs=2, **bundles)
             executable = self.root / "relocated package 日本語/BDSP.exe"
             build.link_executable(objects[0].parent / "compile.json", host,
-                                  (build.graphical_libraries(self.compiler, selected, **bundles) if bundles
-                                   else build.runtime_libraries(self.compiler, selected)), executable,
+                                  build.graphical_libraries(self.compiler, selected, **bundles), executable,
                                   self.compiler, selected, commands)
         finally:
             commands.close()
-        providers = build.runtime_dll_candidates(self.compiler, selected, bundles.values()) if bundles else []
+        providers = build.runtime_dll_candidates(self.compiler, selected, bundles.values())
         for path in windows.dll_closure(executable, providers, "x86_64"):
             if path != executable:
                 shutil.copyfile(path, executable.parent / path.name)
@@ -758,19 +737,6 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
                                            windows.profile("aarch64", "x86_64"), commands, jobs=2)
             self.assertTrue(result)
             self.assertTrue(all(int.from_bytes(path.read_bytes()[:2], "little") == 0xaa64 for path in result))
-            runtime = ROOT / "scripts/recomp/rt-bdsp"
-            selected = windows.profile("aarch64", "x86_64")
-            compiler = os.environ["BDSP_WINDOWS_ARM64_CC"]
-            host = build.compile_runtime(self.root / "arm host", compiler, selected,
-                                         commands, backend="none", jobs=2)
-            tables = build.compile_sources(
-                runtime, self.root / "arm tables", compiler, selected, commands, jobs=2,
-                source_paths=[runtime / "test/runtime_win_test.c"],
-                extra=("-I", str(runtime), "-DBDSP_HAS_SUBSDK1=0"))
-            binary = build.link_executable(
-                tables[0].parent / "compile.json", host, build.runtime_libraries(compiler, selected),
-                self.root / "BDSP-arm64-diagnostic.exe", compiler, selected, commands)
-            self.assertEqual(windows.PE(binary).machine, 0xaa64)
         finally:
             commands.close()
 

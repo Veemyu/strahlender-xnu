@@ -86,7 +86,7 @@ class WindowsPipelineTests(unittest.TestCase):
             generator = pe(root / "generator.exe", imports=("unicorn.dll",))
             pe(root / "unicorn.dll")
             bundles = {}
-            for name in ("sdl", "vulkan", "ffmpeg", "hactool"):
+            for name in ("sdl", "vulkan", "ffmpeg", "hactool", "qt"):
                 bundles[name] = root / name
                 bundles[name].mkdir()
                 (bundles[name] / "build.json").write_text("{}")
@@ -94,24 +94,14 @@ class WindowsPipelineTests(unittest.TestCase):
             identity = {"path": str(compiler)}
             with patch.object(build, "compiler_identity", return_value=identity), \
                     patch.object(build, "verified_bundle", side_effect=lambda path, _: Path(path).resolve()):
-                catalog = pipeline.write_catalog(root / "catalog.json", compiler, generator, selected, **bundles)
-                self.assertEqual(pipeline.read_catalog(catalog, "x86_64")[2], generator)
-                record = json.loads(catalog.read_text())
-                self.assertEqual(record["frontend"], "sdl-diagnostic")
-                bundles["qt"] = root / "qt"
-                bundles["qt"].mkdir()
-                (bundles["qt"] / "build.json").write_text("{}")
                 with patch.object(build, "qt_development", return_value=bundles["qt"]) as qt_check:
-                    qt_catalog = pipeline.write_catalog(root / "qt-catalog.json", compiler, generator,
-                                                        selected, **bundles)
-                    self.assertIn("qt", pipeline.read_catalog(qt_catalog, "x86_64")[3])
+                    catalog = pipeline.write_catalog(root / "catalog.json", compiler, generator, selected, **bundles)
+                    self.assertIn("qt", pipeline.read_catalog(catalog, "x86_64")[3])
                     self.assertEqual(qt_check.call_count, 2)
-                    qt_record = json.loads(qt_catalog.read_text())
-                    self.assertEqual(qt_record["frontend"], "qt")
-                    qt_record["frontend"] = "sdl-diagnostic"
-                    build.atomic_json(qt_catalog, qt_record)
-                    with self.assertRaisesRegex(ValueError, "frontend"):
-                        pipeline.read_catalog(qt_catalog, "x86_64")
+                    without_qt = {name: path for name, path in bundles.items() if name != "qt"}
+                    with self.assertRaisesRegex(ValueError, "required"):
+                        pipeline.write_catalog(root / "no-qt.json", compiler, generator, selected, **without_qt)
+                record = json.loads(catalog.read_text())
                 self.assertIn("llvm/bin/lld.exe", {Path(n).as_posix() for n in record["files"]})
                 record["files"].pop("unicorn.dll")
                 build.atomic_json(catalog, record)
@@ -121,8 +111,8 @@ class WindowsPipelineTests(unittest.TestCase):
                     pipeline.read_catalog(catalog, "aarch64")
 
     def test_pipeline_stage_order_and_failed_compile_never_publishes_or_installs(self):
-        for fail, with_qt in ((False, False), (True, False), (False, True)):
-            with self.subTest(fail=fail, qt=with_qt), tempfile.TemporaryDirectory() as temporary:
+        for fail in (False, True):
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary).resolve()
                 (root / "work/exefs").mkdir(parents=True)
                 for name in ("rtld", "main", "sdk", "subsdk0", "main.npdm"):
@@ -132,22 +122,18 @@ class WindowsPipelineTests(unittest.TestCase):
                                        target="windows", base=root / "input", prod_keys=root / "selected.keys",
                                        update=None, install_root=root / "install", clean_build=False)
                 selected = windows.profile("x86_64")
-                bundles = {name: root / name for name in ("sdl", "vulkan", "ffmpeg", "hactool")}
-                if with_qt:
-                    bundles["qt"] = root / "qt"
-                    plugin = bundles["qt"] / "plugins/platforms/qwindows.dll"
-                    plugin.parent.mkdir(parents=True)
-                    pe(plugin, ("kernel32.dll",))
+                bundles = {name: root / name for name in ("sdl", "vulkan", "ffmpeg", "hactool", "qt")}
+                plugin = bundles["qt"] / "plugins/platforms/qwindows.dll"
+                plugin.parent.mkdir(parents=True)
+                pe(plugin, ("kernel32.dll",))
                 events, installed = [], []
                 emit = lambda event, **fields: events.append({"event": event, **fields})
                 def package(*arguments, **options):
-                    expected = {"img", "romfs", "exefs/main.npdm", "icons/windows"}
-                    if with_qt:
-                        expected |= {"plugins/platforms/qwindows.dll", "qt.conf", "lproj"}
-                        self.assertEqual(options["data"]["plugins/platforms/qwindows.dll"], plugin)
-                        self.assertEqual(options["data"]["qt.conf"].read_text(),
-                                         "[Paths]\nPrefix=.\nPlugins=plugins\n")
-                        self.assertIn("qt", options["notice_trees"])
+                    expected = {"img", "romfs", "exefs/main.npdm", "icons/windows",
+                                "plugins/platforms/qwindows.dll", "qt.conf", "lproj"}
+                    self.assertEqual(options["data"]["plugins/platforms/qwindows.dll"], plugin)
+                    self.assertEqual(options["data"]["qt.conf"].read_text(), "[Paths]\nPrefix=.\nPlugins=plugins\n")
+                    self.assertIn("qt", options["notice_trees"])
                     self.assertEqual(set(options["data"]), expected)
                     return self.package(Path(arguments[3]))
                 with ExitStack() as stack:
@@ -170,8 +156,7 @@ class WindowsPipelineTests(unittest.TestCase):
                             pipeline.build_game(args, emit)
                     else:
                         pipeline.build_game(args, emit)
-                        self.assertEqual(build.compile_runtime.call_args.kwargs["frontend"],
-                                         "qt" if with_qt else "sdl")
+                        self.assertIs(build.compile_runtime.call_args.kwargs["qt"], bundles["qt"])
                         self.assertEqual(build.link_executable.call_args.kwargs["icon"],
                                          root / "work/recomp" / selected["cache_key"] / "icons/windows")
                 steps = [e["id"] for e in events if e["event"] == "step" and e["status"] == "started"]
@@ -191,7 +176,7 @@ class WindowsPipelineTests(unittest.TestCase):
             args = SimpleNamespace(root=root, work=root / "work", windows_catalog=root / "catalog",
                                    target="windows", base=root / "input", prod_keys=root / "selected.keys",
                                    update=None, clean_build=True)
-            bundles = {name: root / name for name in ("sdl", "vulkan", "ffmpeg", "hactool")}
+            bundles = {name: root / name for name in ("sdl", "vulkan", "ffmpeg", "hactool", "qt")}
             with patch.object(pipeline, "prerequisites",
                     return_value=(selected, root / "cc.exe", root / "gen.exe", bundles)), \
                     patch.object(pipeline, "extract_game", side_effect=ValueError("injected extraction failure")):

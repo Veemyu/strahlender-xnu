@@ -66,7 +66,7 @@ class WindowsBuildTests(unittest.TestCase):
             for bundle in (None, Path(temporary) / "missing"):
                 with self.assertRaisesRegex(ValueError, "Qt development bundle missing"):
                     build.compile_runtime(Path(temporary) / "objects", "unused", selected, None,
-                                          backend="vulkan", frontend="qt", qt=bundle)
+                                          qt=bundle)
             compiler.assert_not_called()
             overlay.assert_not_called()
             compile_sources.assert_not_called()
@@ -143,8 +143,8 @@ class WindowsBuildTests(unittest.TestCase):
                     patch.object(build, "verified_bundle", return_value=qt), \
                     patch.object(build, "prepare_vulkan", return_value=root / "overlay"), \
                     patch.object(build, "compile_sources", return_value=[]) as compile_sources:
-                build.compile_runtime(root / "objects", compiler, selected, None, backend="vulkan",
-                                      frontend="qt", qt=qt, sdl=qt, vulkan=qt, ffmpeg=qt)
+                build.compile_runtime(root / "objects", compiler, selected, None,
+                                      qt=qt, sdl=qt, vulkan=qt, ffmpeg=qt)
                 options = compile_sources.call_args.kwargs
                 self.assertIn(ROOT / "scripts/recomp/rt-bdsp/app/linux/qt_ui.cpp", options["source_paths"])
                 self.assertIn("-DBDSP_QT", options["extra"])
@@ -171,19 +171,15 @@ class WindowsBuildTests(unittest.TestCase):
                     patch.object(build, "compiler_identity", return_value={"path": str(compiler)}), \
                     patch.object(build, "runtime_libraries", return_value=[]):
                 libraries = build.graphical_libraries(
-                    compiler, selected, bundle, bundle, bundle, frontend="qt", qt=qt)
+                    compiler, selected, bundle, bundle, bundle, qt=qt)
                 self.assertEqual(libraries[-3:],
                                  [qt / f"lib/libQt6{name}.a" for name in ("Widgets", "Gui", "Core")])
                 qt_check.assert_called_once_with(qt, compiler, selected)
-                qt_check.reset_mock()
-                diagnostic = build.graphical_libraries(compiler, selected, bundle, bundle, bundle)
-                qt_check.assert_not_called()
-                self.assertEqual(diagnostic, libraries[:-3])
                 library = qt / "lib/libQt6Widgets.a"
                 library.rename(library.with_name("libQt6Widgets.dll.a"))
                 with self.assertRaisesRegex(ValueError, r"libQt6Widgets\.a"):
                     build.graphical_libraries(
-                        compiler, selected, bundle, bundle, bundle, frontend="qt", qt=qt)
+                        compiler, selected, bundle, bundle, bundle, qt=qt)
 
     def test_sdl_offline_recipe_paths_target_inventory_and_atomic_publication(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -31,11 +31,9 @@ def write_catalog(output, compiler, generator, selected, **bundles):
     compiler = Path(build.compiler_identity(compiler, selected)["path"])
     generator = Path(generator).resolve()
     paths = {name: build.verified_bundle(path, selected) for name, path in bundles.items()}
-    if set(paths) not in ({"sdl", "vulkan", "ffmpeg", "hactool"},
-                         {"sdl", "vulkan", "ffmpeg", "hactool", "qt"}):
-        raise ValueError("SDL, Vulkan, FFmpeg and hactool bundles, plus optional verified Qt, are required")
-    if "qt" in paths:
-        build.qt_development(paths["qt"], compiler, selected)
+    if set(paths) != {"sdl", "vulkan", "ffmpeg", "hactool", "qt"}:
+        raise ValueError("SDL, Vulkan, FFmpeg, hactool and Qt bundles are required")
+    build.qt_development(paths["qt"], compiler, selected)
     closure = build.windows.dll_closure(generator, generator.parent.glob("*.dll"),
                                         selected["host"], allow_build_tools=True)
     if build.windows.PE(generator).machine != build.windows.profile(selected["host"])["machine"]:
@@ -48,7 +46,6 @@ def write_catalog(output, compiler, generator, selected, **bundles):
         "toolchain": os.path.relpath(toolchain, output.parent),
         "generator": os.path.relpath(generator, output.parent),
         "bundles": {name: os.path.relpath(path, output.parent) for name, path in paths.items()},
-        "frontend": "qt" if "qt" in paths else "sdl-diagnostic",
         "files": {os.path.relpath(path, output.parent): build.windows.sha256(path) for path in files},
         "release_qualified": False,
     })
@@ -70,14 +67,10 @@ def read_catalog(path, target):
             raise ValueError("A private Windows catalog file changed; prepare a new catalog")
     bundles = {name: build.verified_bundle(path.parent / relative, selected)
                for name, relative in record["bundles"].items()}
-    if set(bundles) not in ({"sdl", "vulkan", "ffmpeg", "hactool"},
-                           {"sdl", "vulkan", "ffmpeg", "hactool", "qt"}):
+    if set(bundles) != {"sdl", "vulkan", "ffmpeg", "hactool", "qt"}:
         raise ValueError("The private dependency catalog is incomplete")
     compiler = (path.parent / record["compiler"]).resolve()
-    if record.get("frontend", "sdl-diagnostic") != ("qt" if "qt" in bundles else "sdl-diagnostic"):
-        raise ValueError("The private catalog frontend does not match its bundles")
-    if "qt" in bundles:
-        build.qt_development(bundles["qt"], compiler, selected)
+    build.qt_development(bundles["qt"], compiler, selected)
     generator = (path.parent / record["generator"]).resolve()
     toolchain = (path.parent / record["toolchain"]).resolve()
     if compiler.parent.parent != toolchain:
@@ -236,42 +229,34 @@ def build_game(args, emit):
                          root / "scripts/recomp/rt-bdsp/hle_nvn.txt", commands)
             prepare_icons()
         stage("images", prepare_images)
-        frontend = "qt" if "qt" in bundles else "sdl"
         runtime = stage("runtime", lambda: build.compile_runtime(
-            output / "runtime-vulkan", compiler, selected, commands, backend="vulkan",
-            has_subsdk1=(work / "exefs/subsdk1").is_file(), root=root,
-            frontend=frontend, qt=bundles.get("qt"),
+            output / "runtime-vulkan", compiler, selected, commands,
+            has_subsdk1=(work / "exefs/subsdk1").is_file(), root=root, qt=bundles["qt"],
             **{name: bundles[name] for name in ("sdl", "vulkan", "ffmpeg")}))
         executable = stage("link", lambda: build.link_executable(
             output / "objects" / selected["cache_key"] / "compile.json", runtime,
             build.graphical_libraries(compiler, selected, *(bundles[name] for name in ("sdl", "vulkan", "ffmpeg")),
-                                      frontend=frontend, qt=bundles.get("qt")),
+                                      qt=bundles["qt"]),
             output / "BDSP.exe", compiler, selected, commands, icon=output / "icons/windows"))
         destination = work / "builds/windows-amd64/BDSP"
         destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="windows-package-", dir=destination.parent) as temporary:
             def package():
-                dependencies = [bundles[name] for name in ("sdl", "vulkan", "ffmpeg")]
+                dependencies = [bundles[name] for name in ("sdl", "vulkan", "ffmpeg", "qt")]
                 toolchain = Path(compiler).parent.parent
                 toolchain_license = toolchain / "LICENSE.TXT"
-                notices = {name: bundles[name] / "notices" for name in ("sdl", "vulkan", "ffmpeg")}
+                notices = {name: bundles[name] / "notices" for name in ("sdl", "vulkan", "ffmpeg", "qt")}
                 notices["mingw-runtime"] = toolchain / (selected["target"] + "-w64-mingw32") / "share/mingw32"
+                qt_conf = Path(temporary) / "qt.conf"
+                qt_conf.write_text("[Paths]\nPrefix=.\nPlugins=plugins\n", encoding="utf-8")
+                plugin = bundles["qt"] / "plugins/platforms/qwindows.dll"
                 data = {"img": output / "images", "romfs": work / "romfs",
                         "exefs/main.npdm": work / "exefs/main.npdm",
-                        "icons/windows": output / "icons/windows"}
-                dynamic = []
-                if "qt" in bundles:
-                    dependencies.append(bundles["qt"])
-                    notices["qt"] = bundles["qt"] / "notices"
-                    plugin = bundles["qt"] / "plugins/platforms/qwindows.dll"
-                    providers = build.runtime_dll_candidates(compiler, selected, dependencies)
-                    dynamic = [path.name for path in build.windows.dll_closure(
-                        plugin, providers, selected["target"]) if path != plugin]
-                    data["plugins/platforms/qwindows.dll"] = plugin
-                    qt_conf = Path(temporary) / "qt.conf"
-                    qt_conf.write_text("[Paths]\nPrefix=.\nPlugins=plugins\n", encoding="utf-8")
-                    data["qt.conf"] = qt_conf
-                    data["lproj"] = root / "scripts/recomp/rt-bdsp/app/linux/lproj"
+                        "icons/windows": output / "icons/windows",
+                        "plugins/platforms/qwindows.dll": plugin, "qt.conf": qt_conf,
+                        "lproj": root / "scripts/recomp/rt-bdsp/app/linux/lproj"}
+                providers = build.runtime_dll_candidates(compiler, selected, dependencies)
+                dynamic = [path.name for path in build.windows.dll_closure(plugin, providers, selected["target"]) if path != plugin]
                 packaged = build.package_game(
                     executable, build.runtime_dll_candidates(compiler, selected, dependencies),
                     selected["target"], Path(temporary) / "BDSP",
@@ -304,11 +289,10 @@ def main():
     parser.add_argument("--generator", type=Path, required=True)
     for name in ("sdl", "vulkan", "ffmpeg", "hactool"):
         parser.add_argument("--" + name, type=Path, required=True)
-    parser.add_argument("--qt", type=Path, help="Verified shared Qt6 LLVM-MinGW UCRT/libc++ bundle")
+    parser.add_argument("--qt", type=Path, required=True, help="Verified shared Qt6 LLVM-MinGW UCRT/libc++ bundle")
     args = parser.parse_args()
     write_catalog(args.output, args.cc, args.generator, build.windows.profile("x86_64"),
-                  **{name: getattr(args, name) for name in ("sdl", "vulkan", "ffmpeg", "hactool")},
-                  **({"qt": args.qt} if args.qt else {}))
+                  **{name: getattr(args, name) for name in ("sdl", "vulkan", "ffmpeg", "hactool", "qt")})
 
 
 if __name__ == "__main__":
