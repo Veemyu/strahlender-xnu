@@ -275,4 +275,27 @@ mod tests {
         assert!(bad.check().is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    #[ignore = "Needs BDSP_BUILDENV_DIR with the real windows-buildenv.zip and .json from windows-buildenv.yml"]
+    fn the_published_archive_unpacks_and_has_a_catalog() {
+        let source = PathBuf::from(std::env::var("BDSP_BUILDENV_DIR").expect("BDSP_BUILDENV_DIR"));
+        let meta: Meta =
+            serde_json::from_slice(&fs::read(source.join("windows-buildenv.json")).unwrap())
+                .unwrap();
+        let dir = scratch("real");
+        let catalog_path = unpack(&source.join("windows-buildenv.zip"), &meta, &dir).unwrap();
+        assert!(catalog(&dir).is_some());
+        let base = catalog_path.parent().unwrap();
+        for part in [
+            "toolchain/bin/x86_64-w64-mingw32-clang.exe",
+            "qt/bin/Qt6Core.dll",
+            "generator/bdsp_codegen.exe",
+            "hactool/hactool.exe",
+            "inputs/windows-sources.json",
+        ] {
+            assert!(base.join(part).is_file(), "{part}");
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
