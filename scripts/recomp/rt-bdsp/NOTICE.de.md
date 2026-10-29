@@ -9,7 +9,7 @@ Die Laufzeit in diesem Ordner folgt dem Entwurf von LASRecomp und enthält **Tei
 | Stand | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (einziger Commit des Klons) |
 | Urheber | Peiikai |
 | Lizenz | MIT, „Copyright (c) 2026 Peiikai“. Lizenztext unverändert in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten (`.git`, Makefile, README, `docs/`). Bis zum 29.10.2026 waren Laufzeit und Generator vollständig unter `scripts/recomp/upstream/` vendort; seitdem bleiben dort nur `LICENSE`, `runtime/{cpu,simd,simd_fp}.h` und die Windows-Vorbereitung, der Rest (auch die zehn `runtime/nvn`-Dateien, die zu den lokalen Kopien byte-identisch waren) steht in der Git-Historie (Commits `e43b466`, `2d01ade`, `d1c40e7`). Siehe „Woher was stammt“ und „NVN-Schicht“ |
+| Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten (`.git`, Makefile, README, `docs/`). Bis zum 29.10.2026 waren Laufzeit und Generator vollständig unter `scripts/recomp/upstream/` vendort; seitdem bleiben dort nur `LICENSE`, `runtime/{cpu,simd,simd_fp}.h`, der Rest (auch die zehn `runtime/nvn`-Dateien, die zu den lokalen Kopien byte-identisch waren) steht in der Git-Historie (Commits `e43b466`, `2d01ade`, `d1c40e7`). Siehe „Woher was stammt“ und „NVN-Schicht“ |
 
 Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus. Davon ist hier nichts enthalten. Der Nutzer des Repositories hat die Nutzung und Weiterentwicklung ausdrücklich freigegeben.
 
