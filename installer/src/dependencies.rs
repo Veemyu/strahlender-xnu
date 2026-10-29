@@ -132,49 +132,23 @@ pub fn detect_manager(os: &str) -> Option<&'static str> {
     }
 }
 
-#[derive(Deserialize)]
-struct WindowsContract {
-    schema: u32,
-    abi: String,
-    minimum_windows_build: u32,
-    components: Vec<WindowsComponent>,
-    release_blockers: Vec<String>,
-}
-
-#[derive(Deserialize)]
-struct WindowsComponent {
-    id: String,
-    purpose: String,
-}
-
-pub(crate) fn windows_plan(architecture: &str) -> Result<Plan, String> {
-    let contract: WindowsContract =
-        serde_json::from_str(include_str!("../assets/windows-dependencies.json"))
-            .map_err(|error| error.to_string())?;
-    if contract.schema != 1
-        || contract.abi != "llvm-mingw-ucrt"
-        || contract.minimum_windows_build != 19045
-    {
-        return Err("Unsupported Windows dependency contract.".into());
-    }
+/// Windows needs one thing: the build environment that GitHub Actions publishes (see buildenv.rs).
+pub(crate) fn windows_plan(architecture: &str, installed: bool) -> Plan {
     let mut plan = Plan {
-        manager: "private-windows".into(),
-        missing: contract
-            .components
-            .into_iter()
-            .map(|item| Missing {
-                id: item.id,
-                purpose: item.purpose,
-            })
-            .collect(),
-        manual: contract.release_blockers,
+        manager: "windows-buildenv".into(),
         ..Plan::default()
     };
-    if !matches!(architecture, "x86_64" | "aarch64") {
-        plan.manual
-            .push("The Windows build requires an amd64 or ARM64 host.".into());
+    if !installed {
+        plan.missing.push(Missing {
+            id: "windows-build-environment".into(),
+            purpose: "Compiler, SDL, Vulkan, FFmpeg and tools for the game build, downloaded once from this project's GitHub release".into(),
+        });
     }
-    Ok(plan)
+    if architecture != "x86_64" {
+        plan.manual
+            .push("The native Windows build currently supports amd64 only.".into());
+    }
+    plan
 }
 
 #[cfg(target_os = "windows")]
@@ -214,11 +188,10 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
         if !matches!(target, "native" | "windows" | "windows-arm64") {
             return Err("Build this target on its native host.".into());
         }
-        let plan = if let Some(catalog) = crate::runtime::private_windows_catalog(target) {
-            private_windows_plan(&catalog, target)?
-        } else {
-            windows_plan(std::env::consts::ARCH)?
-        };
+        let installed = crate::buildenv::root()
+            .ok()
+            .is_some_and(|root| crate::buildenv::catalog(&root).is_some());
+        let plan = windows_plan(std::env::consts::ARCH, installed);
         #[cfg(target_os = "windows")]
         let plan = {
             let mut plan = plan;
@@ -334,63 +307,9 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
     Ok(plan)
 }
 
-fn private_windows_plan(catalog: &std::path::Path, target: &str) -> Result<Plan, String> {
-    let root = crate::runtime::project_root()
-        .ok_or("Private Windows validation requires the existing local source checkout.")?;
-    let (python, private) =
-        crate::runtime::backend_python().ok_or("The installer Python runtime is unavailable.")?;
-    let mut command = Command::new(python);
-    if private {
-        command.arg("-I");
-    }
-    let output = command
-        .arg("-B")
-        .arg(root.join("scripts/install/driver.py"))
-        .arg("preflight")
-        .arg("--root")
-        .arg(&root)
-        .arg("--work")
-        .arg(root.join("work"))
-        .arg("--tools-dir")
-        .arg(root.join("tools"))
-        .arg("--target")
-        .arg(if target == "native" {
-            "windows"
-        } else {
-            target
-        })
-        .arg("--windows-catalog")
-        .arg(catalog)
-        .current_dir(root)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|error| error.to_string())?;
-    if !output.status.success() {
-        // Only the protocol's redacted error is suitable for the GUI, not raw stderr.
-        let detail = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-            .find_map(|event| {
-                (event["event"] == "error")
-                    .then(|| event["message"].as_str().map(str::to_owned))
-                    .flatten()
-            })
-            .unwrap_or_else(|| {
-                "The private offline Windows dependency catalog failed validation.".into()
-            });
-        return Err(format!(
-            "{detail}\nNo packages were downloaded or installed."
-        ));
-    }
-    Ok(Plan {
-        manager: "private-windows-local".into(),
-        ..Plan::default()
-    })
-}
-
 pub fn installation_script(plan: &Plan) -> Result<String, String> {
-    if plan.manager.starts_with("private-windows") {
-        return Err("Windows dependency archives are not qualified yet. No downloads or system changes were made.".into());
+    if plan.manager == "windows-buildenv" {
+        return Err("The Windows build environment is downloaded directly, not by script.".into());
     }
     // The terminal owns authentication; no password is read by this process.
     let mut script = String::from(
@@ -437,6 +356,9 @@ pub fn installation_script(plan: &Plan) -> Result<String, String> {
 }
 
 pub fn install(plan: &Plan) -> Result<(), String> {
+    if plan.manager == "windows-buildenv" {
+        return crate::buildenv::install_latest(&crate::buildenv::root()?).map(|_| ());
+    }
     let script = installation_script(plan)?;
     let directory = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
         .ok_or("Application data unavailable.")?
@@ -518,29 +440,22 @@ fn return_success() -> std::process::ExitStatus {
 #[cfg(test)]
 mod tests {
     #[test]
-    #[cfg(all(debug_assertions, target_os = "windows"))]
-    #[ignore = "Requires an explicitly selected approved offline catalog and development checkout"]
-    fn private_offline_catalog_real_gui_preflight() {
-        let catalog = crate::runtime::private_windows_catalog("windows").expect(
-            "Set BDSP_INSTALLER_DEV_CHECKOUT=1 and BDSP_WINDOWS_PRIVATE_CATALOG explicitly",
+    fn windows_needs_only_the_downloaded_build_environment() {
+        let missing = super::windows_plan("x86_64", false);
+        assert_eq!(missing.manager, "windows-buildenv");
+        assert!(!missing.ready() && missing.packages.is_empty() && !missing.bootstrap_brew);
+        assert!(
+            missing
+                .missing
+                .iter()
+                .any(|item| item.id == "windows-build-environment")
         );
-        let plan = super::private_windows_plan(&catalog, "windows").unwrap();
-        assert!(plan.ready());
-        assert_eq!(plan.manager, "private-windows-local");
-        assert!(super::installation_script(&plan).is_err());
-    }
-
-    #[test]
-    fn windows_inspection_never_offers_unix_packages_or_unverified_downloads() {
-        for architecture in ["x86_64", "aarch64", "unsupported"] {
-            let plan = super::windows_plan(architecture).unwrap();
-            assert_eq!(plan.manager, "private-windows");
-            assert!(!plan.ready());
-            assert!(plan.packages.is_empty());
-            assert!(!plan.bootstrap_brew);
-            assert!(plan.missing.iter().any(|item| item.id == "llvm-mingw"));
-            assert!(super::installation_script(&plan).is_err());
-        }
+        assert!(super::installation_script(&missing).is_err());
+        assert!(super::windows_plan("x86_64", true).ready());
+        assert!(
+            !super::windows_plan("aarch64", true).ready(),
+            "ARM64 is not supported yet"
+        );
     }
     #[test]
     fn apple_git_is_accepted_without_a_homebrew_formula() {

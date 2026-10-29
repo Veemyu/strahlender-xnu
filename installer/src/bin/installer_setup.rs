@@ -1,3 +1,5 @@
+#[path = "../buildenv.rs"]
+mod buildenv;
 #[path = "../dependencies.rs"]
 mod dependencies;
 #[allow(dead_code)]

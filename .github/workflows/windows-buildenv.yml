@@ -48,6 +48,10 @@ jobs:
           Expand-Archive work/downloads/llvm-mingw.zip work/unpack
           Move-Item (Get-ChildItem work/unpack -Directory | Select-Object -First 1).FullName work/buildenv/toolchain
           python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
+          # The Unicorn wheel imports the Visual C++ runtime; take the redistributable copy from Visual Studio (app-local deployment).
+          $crt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT\vcruntime140*.dll" | Select-Object -First 4
+          if (-not $crt) { throw "Visual C++ redistributable runtime not found" }
+          $crt | Copy-Item -Destination work/pydeps/unicorn/lib
       - name: Build the dependency bundles
         run: |
           $env:PYTHONPATH = "$PWD"

@@ -1,4 +1,4 @@
-use crate::runtime::{backend_python, private_windows_catalog, project_root};
+use crate::runtime::{backend_python, project_root};
 use iced::futures::SinkExt;
 use serde::Deserialize;
 #[cfg(unix)]
@@ -387,7 +387,11 @@ fn run_driver(
                     .arg(base)
                     .arg("--prod-keys")
                     .arg(prod_keys);
-                if let Some(catalog) = private_windows_catalog(target) {
+                if target.starts_with("windows")
+                    && let Some(catalog) = crate::buildenv::root()
+                        .ok()
+                        .and_then(|root| crate::buildenv::catalog(&root))
+                {
                     command.arg("--windows-catalog").arg(catalog);
                 }
                 if target == "ios" {

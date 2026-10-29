@@ -169,18 +169,6 @@ pub fn backend_python() -> Option<(PathBuf, bool)> {
     })
 }
 
-pub fn private_windows_catalog(target: &str) -> Option<PathBuf> {
-    if cfg!(all(debug_assertions, target_os = "windows"))
-        && matches!(target, "native" | "windows" | "windows-arm64")
-        && std::env::var_os("BDSP_INSTALLER_DEV_CHECKOUT").as_deref()
-            == Some(std::ffi::OsStr::new("1"))
-    {
-        std::env::var_os("BDSP_WINDOWS_PRIVATE_CATALOG").map(PathBuf::from)
-    } else {
-        None
-    }
-}
-
 pub fn runtime_smoke() -> Result<(), String> {
     let (python, private) = backend_python().ok_or("The bundled Python runtime is missing.")?;
     if !private {

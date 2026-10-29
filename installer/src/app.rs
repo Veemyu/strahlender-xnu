@@ -2511,8 +2511,7 @@ impl Installer {
                 self.page = Page::Setup;
                 self.details = scenario == "setup-dependencies-details";
                 self.requirements = Some(if self.host == Platform::Windows {
-                    crate::dependencies::windows_plan(std::env::consts::ARCH)
-                        .expect("Embedded Windows dependency contract")
+                    crate::dependencies::windows_plan("x86_64", false)
                 } else {
                     crate::dependencies::Plan {
                         manager: "dnf".into(),
@@ -2737,7 +2736,7 @@ mod tests {
     }
 
     #[test]
-    fn windows_dependency_capture_uses_the_real_contract_without_host_mutation() {
+    fn windows_dependency_capture_offers_the_build_environment_download() {
         let (app, _) = Installer::with_options(Options {
             platform: Some(Platform::Windows),
             capture: Some(std::env::temp_dir().join("windows-dependency-capture")),
@@ -2747,11 +2746,19 @@ mod tests {
         assert_eq!(app.page, Page::Setup);
         assert_eq!(app.target, InstallTarget::Windows);
         let plan = app.requirements.expect("Windows requirements");
-        assert_eq!(plan.manager, "private-windows");
+        assert_eq!(plan.manager, "windows-buildenv");
         assert!(!plan.ready());
         assert!(plan.packages.is_empty());
-        assert!(plan.missing.iter().any(|item| item.id == "llvm-mingw"));
-        assert!(app.log.iter().any(|line| line.contains("llvm-mingw")));
+        assert!(
+            plan.missing
+                .iter()
+                .any(|item| item.id == "windows-build-environment")
+        );
+        assert!(
+            app.log
+                .iter()
+                .any(|line| line.contains("windows-build-environment"))
+        );
     }
 
     #[test]
