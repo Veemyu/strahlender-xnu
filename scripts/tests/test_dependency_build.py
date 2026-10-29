@@ -47,59 +47,6 @@ class DependencyBuildTests(unittest.TestCase):
                 self.assertEqual((root / "notices" / "embedded-source" / name).read_bytes(),
                                  (source / name).read_bytes())
 
-    def test_notice_refresh_is_pinned_transactional_and_never_qualifies_binaries(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            archive = root / "vulkan-headers-pin.tar.gz"
-            contents = {"headers/LICENSE.md": b"license reference",
-                        "headers/LICENSES/Apache-2.0.txt": b"full synthetic license"}
-            with tarfile.open(archive, "w:gz") as tar:
-                for name, value in contents.items():
-                    member = tarfile.TarInfo(name)
-                    member.size = len(value)
-                    tar.addfile(member, io.BytesIO(value))
-            item = {"revision": "pin", "size_bytes": archive.stat().st_size,
-                    "sha256": build.windows.sha256(archive)}
-            selected = build.windows.profile("x86_64", "x86_64")
-            bundle = root / "bundle"
-            bundle.mkdir()
-            binary = bundle / "shaderc.dll"
-            binary.write_bytes(b"unchanged binary")
-            original = {"schema": 1, "profile": selected, "sources": {"vulkan-headers": item},
-                        "qualified": False, "files": {"shaderc.dll": build.windows.sha256(binary)}}
-            build.atomic_json(bundle / "build.json", original)
-            before = (bundle / "build.json").read_bytes()
-            with patch.object(dependencies, "source_lock", return_value={"vulkan-headers": item}):
-                result = dependencies.refresh_notices(bundle, root, root / "complete", selected)
-                self.assertEqual((bundle / "build.json").read_bytes(), before)
-                self.assertEqual((result / "shaderc.dll").read_bytes(), binary.read_bytes())
-                record = json.loads((result / "build.json").read_text())
-                self.assertFalse(record["qualified"])
-                self.assertEqual(record["notice_refresh"]["base_build_sha256"],
-                                 build.windows.sha256(bundle / "build.json"))
-                self.assertIn("notices/vulkan-headers/LICENSES/Apache-2.0.txt", record["files"])
-                build.verified_bundle(result, selected)
-                with self.assertRaisesRegex(ValueError, "existing"):
-                    dependencies.refresh_notices(bundle, root, result, selected)
-                with self.assertRaisesRegex(ValueError, "outside"):
-                    dependencies.refresh_notices(bundle, root, bundle / "nested/output", selected)
-                self.assertFalse((bundle / "nested").exists())
-                archive.write_bytes(b"damaged")
-                with self.assertRaisesRegex(ValueError, "checksum/size"):
-                    dependencies.refresh_notices(bundle, root, root / "failed", selected)
-                self.assertFalse((root / "failed").exists())
-                self.assertEqual(list(root.glob("notice-refresh-*")), [])
-            with patch.object(dependencies, "source_lock", return_value={}):
-                with self.assertRaisesRegex(ValueError, "provenance"):
-                    dependencies.refresh_notices(bundle, root, root / "wrong-source", selected)
-            build.atomic_json(bundle / "build.json", {**original, "sources": {"SDL3": item}})
-            with self.assertRaisesRegex(ValueError, "provenance"):
-                dependencies.refresh_notices(bundle, root, root / "wrong-sdl-source", selected)
-            build.atomic_json(bundle / "build.json", original)
-            (bundle / "extra.dll").write_bytes(b"untracked")
-            with self.assertRaisesRegex(ValueError, "added"):
-                build.verified_bundle(bundle, selected)
-
     def test_pinned_description_never_invokes_vcs(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "version.py"

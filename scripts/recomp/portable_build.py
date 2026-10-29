@@ -72,11 +72,8 @@ class Commands:
     def run(self, arguments):
         return self._run(arguments)
 
-    def capture(self, arguments, *, env=None, cwd=None, limit=1024 * 1024, on_line=None,
-                discard_output=False):
-        """Bounded private capture, or drain unused output without retaining it."""
-        if discard_output and on_line:
-            raise ValueError("Discarded tool output cannot have a line callback")
+    def capture(self, arguments, *, env=None, cwd=None, limit=1024 * 1024, on_line=None):
+        """Bounded private capture of a tool's output."""
         read_fd, write_fd = os.pipe()
         chunks, overflow, callbacks = [], threading.Event(), []
         def drain(stream):
@@ -85,8 +82,6 @@ class Commands:
             with stream:
                 for chunk in iter(lambda: stream.read1(65536), b""):
                     total += len(chunk)
-                    if discard_output:
-                        continue
                     if total <= limit:
                         chunks.append(chunk)
                         if on_line and not callbacks:

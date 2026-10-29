@@ -137,52 +137,6 @@ def collect_notices(source, destination, component=None):
             shutil.copyfile(source / name, embedded / name)
 
 
-def refresh_notices(bundle, archives, destination, selected):
-    """Publish a new private bundle with notices recovered from its exact sources."""
-    bundle = build.verified_bundle(bundle, selected)
-    record = json.loads((bundle / "build.json").read_text(encoding="utf-8"))
-    if record.get("qualified") is not False:
-        raise ValueError("Only unqualified private bundles can refresh notices")
-    destination = Path(destination).resolve()
-    if destination.exists():
-        raise ValueError("Refusing to replace an existing dependency bundle")
-    if destination.is_relative_to(bundle):
-        raise ValueError("The notice bundle must remain outside its original bundle")
-    sources = record.get("sources")
-    lock = source_lock()
-    sdl = next(item for item in build.windows.contract()["components"] if item["id"] == "SDL3")
-    if not sources and record.get("source_sha256") == sdl["source_archive"]["sha256"]:
-        sources = {"SDL3": {**sdl["source_archive"], "revision": sdl["version"]}}
-    if not sources:
-        raise ValueError("The bundle has no matching pinned source archives; binary licenses cannot be inferred")
-    for name, item in sources.items():
-        expected = ({**sdl["source_archive"], "revision": sdl["version"]}
-                    if name == "SDL3" else lock.get(name))
-        if item != expected:
-            raise ValueError("Bundle source provenance differs from the approved lock: " + name)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="notice-refresh-", dir=destination.parent) as temporary:
-        stage = Path(temporary)
-        package = stage / "package"
-        build.filesystem.copy_tree(bundle, package)
-        for name, item in sources.items():
-            source = extract_source(archives, name, stage / name, {name: item})
-            collect_notices(source, package / "notices" / name, name)
-        record["notice_refresh"] = {
-            "base_build_sha256": build.windows.sha256(bundle / "build.json"),
-            "recipe_sha256": build.windows.sha256(__file__),
-            "sources": sources,
-            "scope": "License/notice files only; original binaries unchanged; not a redistribution approval.",
-        }
-        record["files"] = {path.relative_to(package).as_posix(): build.windows.sha256(path)
-                           for path in sorted(package.rglob("*"))
-                           if path.is_file() and path != package / "build.json"}
-        build.atomic_json(package / "build.json", record)
-        build.verified_bundle(package, selected)
-        package.rename(destination)
-    return destination
-
-
 def bundle_receipt(package, selected, identity, sources, tools, **extra):
     build.atomic_json(package / "build.json", {
         "schema": 1, "profile": selected, "sources": sources,
@@ -370,8 +324,7 @@ def build_vulkan(archives, destination, compiler, selected, cmake, ninja, comman
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool", "notices"))
-    parser.add_argument("--bundle", type=Path, help="Existing verified private source-built bundle")
+    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool"))
     parser.add_argument("--archives", type=Path)
     parser.add_argument("--archive", type=Path, help="Already downloaded pinned FFmpeg development ZIP")
     parser.add_argument("--prefix", type=Path, required=True)
@@ -387,13 +340,9 @@ def main(argv=None):
         parser.error("vulkan requires --archives, --cc, --cmake and --ninja")
     if args.component == "hactool" and not all((args.archives, args.cc)):
         parser.error("hactool requires --archives and --cc")
-    if args.component == "notices" and not all((args.archives, args.bundle)):
-        parser.error("notices requires --archives and --bundle")
     commands = build.Commands()
     try:
-        if args.component == "notices":
-            refresh_notices(args.bundle, args.archives, args.prefix, build.windows.profile(args.target))
-        elif args.component == "ffmpeg":
+        if args.component == "ffmpeg":
             import_ffmpeg(args.archive, args.prefix, build.windows.profile(args.target), args.archives)
         elif args.component == "hactool":
             build_hactool(args.archives, args.prefix, args.cc, build.windows.profile(args.target),
