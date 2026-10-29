@@ -211,40 +211,6 @@ def recommend(variants, preferred):
     return default_variant(variants)
 
 
-def ingest(base, update, destination, title_id=""):
-    destination = output_path(destination)
-    destination.mkdir(parents=True, exist_ok=True)
-    variants = {}
-    titles = {}
-    version = ""
-    for directory in (base, update):
-        if not directory:
-            continue
-        localized_titles, display_version = read_nacp(directory)
-        titles.update(localized_titles)
-        version = display_version or version
-        for name, (locale, label) in LANGUAGES.items():
-            path = Path(directory) / ("icon_" + name + ".dat")
-            if not path.is_file():
-                continue
-            try:
-                data = normalize(path.read_bytes())
-            except (OSError, ValueError, SyntaxError) as error:
-                print("Notice: invalid icon variant %s (%s)" % (locale, type(error).__name__), file=sys.stderr)
-                continue
-            digest = hashlib.sha256(data).hexdigest()
-            image = digest + ".png"
-            (destination / image).write_bytes(data)
-            variants[locale] = {"id": locale, "label": label, "image": image,
-                                "sha256": digest, "icon": "BDSP_" + digest[:24]}
-    entries = sorted(variants.values(), key=lambda v: v["id"])
-    manifest = {"schema": 1, "title_id": title_id, "default": default_variant(entries), "variants": entries,
-                "titles": titles, "display_version": version}
-    write_json(destination / "icons.json", manifest)
-    print("Original icons: %d language variants" % len(entries))
-    return manifest
-
-
 def overlay_mod(source, mod_root, destination, mod_name):
     """Keep every base language variant, replacing only icons supplied by a mod."""
     source, mod_root, destination = Path(source), Path(mod_root), output_path(destination)
@@ -353,11 +319,6 @@ def mod_fallback_icon(data):
     stream = io.BytesIO()
     image.save(stream, "PNG")
     return stream.getvalue()
-
-
-def pick_control(tsv, title_id):
-    import build_helpers as helpers
-    return helpers.pick_related_nca(Path(tsv).read_text().splitlines(), "Control", title_id)
 
 
 def load_source(source):
@@ -563,11 +524,6 @@ def sign_ios(bundle):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    ingest_parser = sub.add_parser("ingest")
-    ingest_parser.add_argument("--base-control")
-    ingest_parser.add_argument("--update-control")
-    ingest_parser.add_argument("--title-id", default="")
-    ingest_parser.add_argument("--output", default="work/recomp/icons/source")
     mod_icons = sub.add_parser("overlay-mod")
     mod_icons.add_argument("--source", required=True)
     mod_icons.add_argument("--mod-root", required=True)
@@ -588,17 +544,12 @@ def main(argv=None):
             p.add_argument("--executable", default="work/recomp/bdsp_boot_vk_qt")
     signing = sub.add_parser("sign-ios")
     signing.add_argument("--bundle", required=True)
-    picking = sub.add_parser("pick-control")
-    picking.add_argument("--tsv", required=True)
-    picking.add_argument("--title-id", required=True)
     previewing = sub.add_parser("preview")
     previewing.add_argument("--source", default="work/recomp/icons/source")
     previewing.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == "ingest":
-            ingest(args.base_control, args.update_control, args.output, args.title_id)
-        elif args.command == "overlay-mod":
+        if args.command == "overlay-mod":
             overlay_mod(args.source, args.mod_root, args.output, args.mod_name)
         elif args.command == "check-mod-artwork":
             check_mod_artwork(args.mod_root)
@@ -610,8 +561,6 @@ def main(argv=None):
             build_windows(args.source, args.output, args.mod_root, args.mod_name)
         elif args.command == "sign-ios":
             sign_ios(args.bundle)
-        elif args.command == "pick-control":
-            print(pick_control(args.tsv, args.title_id))
         elif args.command == "preview":
             image_module()
             from icon_artwork import preview

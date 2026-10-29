@@ -1,5 +1,6 @@
 """Original-icon pipeline tests using only synthetic pictures under work/."""
 import importlib.util
+import hashlib
 import io
 import json
 import os
@@ -25,6 +26,43 @@ except ImportError:
 
 
 @unittest.skipUnless(Image, "Pillow required")
+
+
+def ingest(base, update, destination, title_id=""):
+    """Test fixture: builds an icon source like the extract stage does (Rust: installer/extract/src/icons.rs)."""
+    destination = icons.output_path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    variants = {}
+    titles = {}
+    version = ""
+    for directory in (base, update):
+        if not directory:
+            continue
+        localized_titles, display_version = icons.read_nacp(directory)
+        titles.update(localized_titles)
+        version = display_version or version
+        for name, (locale, label) in icons.LANGUAGES.items():
+            path = Path(directory) / ("icon_" + name + ".dat")
+            if not path.is_file():
+                continue
+            try:
+                data = icons.normalize(path.read_bytes())
+            except (OSError, ValueError, SyntaxError) as error:
+                print("Notice: invalid icon variant %s (%s)" % (locale, type(error).__name__), file=sys.stderr)
+                continue
+            digest = hashlib.sha256(data).hexdigest()
+            image = digest + ".png"
+            (destination / image).write_bytes(data)
+            variants[locale] = {"id": locale, "label": label, "image": image,
+                                "sha256": digest, "icon": "BDSP_" + digest[:24]}
+    entries = sorted(variants.values(), key=lambda v: v["id"])
+    manifest = {"schema": 1, "title_id": title_id, "default": icons.default_variant(entries), "variants": entries,
+                "titles": titles, "display_version": version}
+    icons.write_json(destination / "icons.json", manifest)
+    print("Original icons: %d language variants" % len(entries))
+    return manifest
+
+
 class GameIconTests(unittest.TestCase):
     def setUp(self):
         work = ROOT / "work/tests"
@@ -51,7 +89,7 @@ class GameIconTests(unittest.TestCase):
         self.picture(self.base, "German", "green")
         self.picture(self.update, "German", "blue")
         (self.update / "icon_Japanese.dat").write_bytes(b"invalid synthetic image")
-        return icons.ingest(self.base, self.update, self.source, "0000000000000000")
+        return ingest(self.base, self.update, self.source, "0000000000000000")
 
     def test_windows_ico_and_qt_variants_reuse_original_pipeline(self):
         source = self.fixture()
@@ -163,7 +201,7 @@ class GameIconTests(unittest.TestCase):
         manifests = []
         for language in ("de-DE", "ja-JP", "pt-BR"):
             with patch.dict(os.environ, BDSP_LANG=language, LANG=language):
-                manifest = icons.ingest(self.base, self.update, self.source)
+                manifest = ingest(self.base, self.update, self.source)
             manifests.append(manifest)
         self.assertEqual(manifests[0], manifests[1])
         self.assertEqual(manifests[1], manifests[2])
@@ -229,7 +267,7 @@ class GameIconTests(unittest.TestCase):
 
     def test_missing_icons_fail_instead_of_using_a_placeholder(self):
         self.fixture()
-        icons.ingest(None, None, self.source)
+        ingest(None, None, self.source)
         for source in (self.source, self.root / "missing-source"):
             with self.assertRaisesRegex(ValueError, "No original game icon"):
                 icons.build_linux(source, self.root / "linux", self.root / "game")
@@ -256,7 +294,7 @@ class GameIconTests(unittest.TestCase):
         import build_stages
         before, _ = build_stages.stage_hash("recomp", str(ROOT), str(self.root), env={"BDSP_ICON_SOURCE": str(self.source)})
         self.picture(self.update, "German", "yellow")
-        icons.ingest(self.base, self.update, self.source)
+        ingest(self.base, self.update, self.source)
         after, _ = build_stages.stage_hash("recomp", str(ROOT), str(self.root), env={"BDSP_ICON_SOURCE": str(self.source)})
         self.assertNotEqual(before, after)
 
@@ -288,17 +326,6 @@ class GameIconTests(unittest.TestCase):
     def test_outputs_cannot_write_into_tracked_source_tree(self):
         with self.assertRaises(ValueError):
             icons.output_path(ROOT / "scripts/AppIcon.png")
-
-    def test_control_selection_excludes_other_titles_and_rejects_ambiguity(self):
-        path = self.root / "ncandidates.tsv"
-        rows = ["other.nca\t0000000000002000\tControl\t0\t\t\t9999",
-                "matching.nca\t0000000000001800\tControl\t0\t\t\t20"]
-        path.write_text("\n".join(rows))
-        self.assertEqual(icons.pick_control(path, "0000000000001000"), "matching.nca")
-        self.assertEqual(icons.pick_control(path, "0000000000003000"), "")
-        path.write_text("\n".join(rows + ["duplicate.nca\t0000000000001000\tControl\t0\t\t\t10"]))
-        with self.assertRaises(ValueError):
-            icons.pick_control(path, "0000000000001000")
 
     def test_ios_catalog_and_settings_include_all_variants(self):
         self.nacp(self.base, {"de": "Diamant", "ja": "ダイヤモンド"})

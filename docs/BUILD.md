@@ -687,8 +687,7 @@ developer PATH. A separate isolated-Python JSONL probe invokes the actual native
 extractor on an invalid synthetic NCA and verifies failure/redaction. These do not
 prove genuine NCA extraction, GUI-click-through with real game data or gameplay.
 Use `BDSP_WINDOWS_HACTOOL_ROOT` and `BDSP_WINDOWS_PRIVATE_CATALOG` for these probes;
-shared regression suites include `test_container_extract`, `test_extract_game`,
-`test_windows_pipeline`, `test_installer_filesystem` and `test_installer_driver`.
+shared regression suites include the Rust tests of `installer/extract`, `test_windows_pipeline`, `test_installer_filesystem` and `test_installer_driver`.
 
 NVN uses the same HLE lookup and input logic on all platforms, with a small COFF
 linker-boundary alternative to Mach-O/ELF. Optimized multi-object HLE registration,

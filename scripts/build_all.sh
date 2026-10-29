@@ -47,7 +47,6 @@ ALL_STAGES="tools extract recomp"
 XCI="" BASE_NSP="" BASE_NCA_DIR="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
 DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all
-EXTRACT_ACTIVE=0
 RECOMP_JOBS=auto RECOMP_O0_KB=300 RECOMP_HARDENED=0 RECOMP_DATA=1
 SELECTED="" RESULTS="" UPSTREAM_DIRTY=0
 
@@ -93,6 +92,15 @@ check_hactool() {
   ok "hactool built ($HACTOOL)"
 }
 
+check_extract_tool() {
+  if [ -n "${BDSP_EXTRACT:-}" ]; then ok "extract tool (installer: $BDSP_EXTRACT ${BDSP_EXTRACT_PREFIX:-})"; return 0; fi
+  command -v cargo >/dev/null 2>&1 || { miss "extract tool: cargo missing (install Rust from https://rustup.rs, or use the installer app)"; return 1; }
+  log "extract tool: cargo build --release (installer/extract)"
+  cargo build --release --locked --manifest-path "$ROOT/installer/extract/Cargo.toml" >"$TOOLS_DIR/extract-build.log" 2>&1 \
+    || { tail -n 15 "$TOOLS_DIR/extract-build.log" >&2; miss "extract tool: build failed"; return 1; }
+  ok "extract tool built ($ROOT/installer/extract/target/release/bdsp-extract)"
+}
+
 check_ffmpeg() {
   if command -v ffmpeg >/dev/null 2>&1; then
     ok "ffmpeg ($(ffmpeg -version 2>&1 | sed -n '1s/ Copyright.*//p'))"
@@ -122,12 +130,14 @@ stage_tools() {
   log "Stage tools"
   if [ "$DRY" -eq 1 ]; then
     if hactool_runs; then ok "hactool present ($HACTOOL)"; else echo "    [dry-run] would clone and build hactool: $HACTOOL_REPO to $HACTOOL_DIR (make, without sudo)"; fi
-    echo "    [dry-run] would check python3, ffmpeg and Xcode (check only)"
+    echo "    [dry-run] would build the extract tool (cargo) and check python3, ffmpeg and Xcode (check only)"
     stage_result tools "plan"; return 0
   fi
   local bad=0
   check_python || bad=1
   check_hactool || bad=1
+  mkdir -p "$TOOLS_DIR"
+  check_extract_tool || bad=1
   # ffmpeg and Xcode are needed for the macOS stages only (the Linux build uses its own scripts, docs/BUILD.md section 6)
   if [ "$(uname -s)" = Darwin ]; then check_ffmpeg || bad=1; check_xcode || bad=1; fi
   [ "$bad" -eq 0 ] || die 4 "Tools incomplete (see MISSING above)"
@@ -140,33 +150,20 @@ abspath() { local d; d="$(cd "$(dirname "$1")" && pwd)" && echo "$d/$(basename "
 file_size() { wc -c < "$1" | tr -d ' '; }   # (portable: stat -f %z is BSD only)
 free_gb() { df -k "$1" | awk 'NR==2 {print int($4 * 1024 / 1000000000)}'; }
 
-# Classify all NCAs of a folder: one TSV line per NCA (non-critical fields only)
-classify_dir() {
-  local dir="$1" out="$2" f line
-  : >"$out"
-  for f in "$dir"/*.nca "$dir"/*.NCA; do
-    [ -e "$f" ] || continue
-    # Case-insensitive macOS volumes may match the same file twice.
-    [ -z "$(awk -F'\t' -v p="$f" '$1 == p {print 1; exit}' "$out")" ] || continue
-    line="$("$HACTOOL" -k "$PROD_KEYS" -i "$f" 2>/dev/null | python3 "$HELPERS" nca-info --path "$f" 2>/dev/null)" || {
-      echo "  Note: $(basename "$f") not readable (skipped)" >&2; continue; }
-    echo "$line" >>"$out"
-  done
-  [ -s "$out" ] || die 6 "No NCA readable in $dir: does prod.keys match the firmware/master key revision?"
+# The extract step is a Rust program (installer/extract). The installer app passes itself as BDSP_EXTRACT (+ --cli),
+# a source checkout uses the binary that the tools stage builds.
+EXTRACT_CMD=()
+locate_extract() {
+  if [ -n "${BDSP_EXTRACT:-}" ]; then EXTRACT_CMD=("$BDSP_EXTRACT" ${BDSP_EXTRACT_PREFIX:+"$BDSP_EXTRACT_PREFIX"}); return 0; fi
+  EXTRACT_CMD=("$ROOT/installer/extract/target/release/bdsp-extract")
+  [ -x "${EXTRACT_CMD[0]}" ]
 }
 
-pick() { python3 "$HELPERS" pick --tsv "$1" --type "$2" ${3:+--title-id "$3"} || true; }
-tsv_field() { awk -F'\t' -v p="$2" -v c="$3" '$1 == p {print $c}' "$1"; }
-
-extract_cleanup() {
-  [ "$EXTRACT_ACTIVE" -eq 1 ] || return 0
-  rm -rf "$WORK/.stage"
-  [ "$KEEP_NCA" -eq 1 ] || rm -rf "$WORK/nca-base" "$WORK/nca-update"
-  return 0
+extract_args() {
+  EXTRACT_ARGS=(--base "$1" --keys "$PROD_KEYS" --hactool "$HACTOOL" --work "$WORK" --icons "$WORK/recomp/icons/source")
+  [ -z "$NSP" ] || EXTRACT_ARGS+=(--update "$NSP")
+  [ -z "$TITLE_KEYS" ] || EXTRACT_ARGS+=(--title-keys "$TITLE_KEYS")
 }
-
-# hactool call without output (stdout and stderr may contain key values)
-hq() { "$HACTOOL" -k "$PROD_KEYS" "$@" >/dev/null 2>&1; }
 
 stage_extract() {
   log "Stage extract"
@@ -174,7 +171,7 @@ stage_extract() {
     log "extract: no base source given, using the existing result in $WORK"
     stage_result extract "present"; return 0
   fi
-  local base_kind base_path base_dir base_size
+  local base_kind base_path base_size
   if [ -n "$XCI" ]; then base_kind=xci; base_path="$XCI"
   elif [ -n "$BASE_NSP" ]; then base_kind=nsp; base_path="$BASE_NSP"
   elif [ -n "$BASE_NCA_DIR" ]; then base_kind=nca; base_path="$BASE_NCA_DIR"
@@ -195,13 +192,10 @@ stage_extract() {
   [ -z "$NSP" ] || NSP="$(abspath "$NSP")"
   if [ "$base_kind" = nca ]; then base_size=$(( $(du -sk "$base_path" | awk '{print $1}') * 1024 ))
   else base_size="$(file_size "$base_path")"; fi
-  local input_flags=(--base-kind "$base_kind" --base-path "$base_path")
-  [ -z "$NSP" ] || input_flags+=(--update-path "$NSP")
 
   if [ "$DRY" -eq 1 ]; then
-    local dxs dns=0
-    dxs="$base_size"; [ -z "$NSP" ] || dns="$(file_size "$NSP")"
-    if [ "$FORCE" -eq 0 ] && [ -d "$WORK" ] && python3 "$HELPERS" check-manifest --work "$WORK" --xci-size "$dxs" --nsp-size "$dns" "${input_flags[@]}"; then
+    extract_args "$base_path"
+    if [ "$FORCE" -eq 0 ] && [ -d "$WORK" ] && locate_extract && "${EXTRACT_CMD[@]}" check "${EXTRACT_ARGS[@]}"; then
       echo "    [dry-run] manifest.json matches: would be skipped"
       stage_result extract "skipped (plan)"
     else
@@ -220,15 +214,19 @@ stage_extract() {
         die 3 "The selected NCA folder is inside a temporary extraction folder; choose your original folder instead" ;;
     esac
   fi
-  local xci_size nsp_size=0
+  locate_extract || die 4 "The extract tool is missing: run 'scripts/build_all.sh tools' first"
+  local xci_size nsp_size=0 t0=$SECONDS rc=0
   xci_size="$base_size"
   [ -z "$NSP" ] || nsp_size="$(file_size "$NSP")"
-
-  if [ "$FORCE" -eq 0 ] && python3 "$HELPERS" check-manifest --work "$WORK" --xci-size "$xci_size" --nsp-size "$nsp_size" "${input_flags[@]}"; then
+  extract_args "$base_path"
+  if [ "$FORCE" -eq 0 ] && "${EXTRACT_CMD[@]}" check "${EXTRACT_ARGS[@]}"; then
     log "extract: manifest.json matches, skipped (--force to regenerate)"
     stage_result extract "skipped"
     return 0
   fi
+  [ "$FORCE" -eq 0 ] || EXTRACT_ARGS+=(--force)
+  [ "$KEEP_NCA" -eq 0 ] || EXTRACT_ARGS+=(--keep-nca)
+  mkdir -p "$WORK/recomp/icons"
 
   # Space needed: XCI + NSP + RomFS (roughly as large as the XCI) plus reserve
   local need free
@@ -236,114 +234,8 @@ stage_extract() {
   free="$(free_gb "$WORK")"
   [ "$free" -ge "$need" ] || die 8 "Not enough space: ${free} GB free, about ${need} GB needed (incl. ${MIN_FREE_GB} GB reserve)"
 
-  EXTRACT_ACTIVE=1
-  trap extract_cleanup EXIT
-  rm -rf "$WORK/.stage" "$WORK/nca-base" "$WORK/nca-update"
-  mkdir -p "$WORK/.stage"
-  local stage="$WORK/.stage" t0=$SECONDS
-
-  case "$base_kind" in
-    xci)
-      log "1/6 XCI: unpack the secure partition"
-      hq -t xci --securedir="$WORK/nca-base" "$base_path" || die 5 "XCI cannot be unpacked (file damaged or keys missing)"
-      base_dir="$WORK/nca-base" ;;
-    nsp)
-      log "1/6 NSP: unpack the base game"
-      hq -t pfs0 --pfs0dir="$WORK/nca-base" "$base_path" || die 5 "Base NSP cannot be unpacked"
-      base_dir="$WORK/nca-base" ;;
-    nca)
-      log "1/6 NCA folder: read the selected files"
-      base_dir="$base_path" ;;
-  esac
-  if [ -n "$NSP" ]; then
-    log "2/6 unpack NSP"
-    hq -t pfs0 --pfs0dir="$WORK/nca-update" "$NSP" || die 5 "NSP cannot be unpacked"
-  else
-    log "2/6 no NSP given: base game only"
-  fi
-
-  log "3/6 classify NCAs (hactool -i: content type, title ID)"
-  classify_dir "$base_dir" "$stage/base.tsv"
-  local base_nca base_tid base_rights base_key="" upd_nca="" upd_rights="" tk=""
-  base_nca="$(pick "$stage/base.tsv" Program)"
-  [ -n "$base_nca" ] || die 7 "No Program NCA found in the base game"
-  base_tid="$(tsv_field "$stage/base.tsv" "$base_nca" 2)"
-  base_rights="$(tsv_field "$stage/base.tsv" "$base_nca" 6)"
-  if [ -n "$base_rights" ]; then
-    base_key="$(python3 "$HELPERS" titlekey --rights-id "$base_rights" --tik-dir "$base_dir" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"})" \
-      || die 6 "No titlekey found for the base game"
-  fi
-  log "    base game: title ID $base_tid"
-  if [ -n "$NSP" ]; then
-    classify_dir "$WORK/nca-update" "$stage/update.tsv"
-    upd_nca="$(pick "$stage/update.tsv" Program "$base_tid")"
-    [ -n "$upd_nca" ] || die 7 "No update Program NCA for title ID $base_tid in the NSP (wrong update?)"
-    upd_rights="$(tsv_field "$stage/update.tsv" "$upd_nca" 6)"
-    if [ -n "$upd_rights" ]; then
-      log "4/6 titlekey from ticket or title.keys"
-      tk="$(python3 "$HELPERS" titlekey --rights-id "$upd_rights" --tik-dir "$WORK/nca-update" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"})" \
-        || die 6 "No titlekey found for the update (ticket in the NSP or entry in title.keys required)"
-    else
-      log "4/6 update uses standard crypto, no titlekey needed"
-    fi
-  else
-    log "4/6 not applicable (no update)"
-  fi
-
-  log "5/6 extract exefs and romfs (apply the update to the base NCA)"
-  if [ -n "$upd_nca" ]; then
-    hq ${tk:+--titlekey="$tk"} --basenca="$base_nca" --exefsdir="$stage/exefs" --romfsdir="$stage/romfs" "$upd_nca" \
-      || die 5 "Update NCA cannot be applied (master key revision of the update in prod.keys?)"
-  else
-    hq ${base_key:+--titlekey="$base_key"} --exefsdir="$stage/exefs" --romfsdir="$stage/romfs" "$base_nca" || die 5 "Base NCA cannot be extracted"
-  fi
-  tk=""; base_key=""
-  [ -s "$stage/exefs/main" ] || die 9 "exefs/main missing after the extraction"
-  [ -n "$(find "$stage/romfs" -type f -print -quit 2>/dev/null)" ] || die 9 "romfs is empty after the extraction"
-
-  # Version: title version from the cnmt, display version from control.nacp (best effort)
-  log "6/6 version and manifest"
-  local vtsv="$stage/base.tsv" meta_nca ctl_nca ctl_rights ver=0 dver="" tkc=""
-  [ -z "$NSP" ] || vtsv="$stage/update.tsv"
-  meta_nca="$(pick "$vtsv" Meta)"
-  if [ -n "$meta_nca" ] && hq --section0dir="$stage/cnmt" "$meta_nca"; then
-    ver="$(python3 "$HELPERS" cnmt-version "$stage/cnmt" 2>/dev/null || echo 0)"
-  fi
-  ctl_nca="$(python3 "$ROOT/scripts/recomp/app/game_icons.py" pick-control --tsv "$vtsv" --title-id "$base_tid")"
-  if [ -n "$ctl_nca" ]; then
-    ctl_rights="$(tsv_field "$vtsv" "$ctl_nca" 6)"
-    if [ -n "$ctl_rights" ]; then
-      if [ -n "$NSP" ]; then local ctl_dir="$WORK/nca-update"; else local ctl_dir="$base_dir"; fi
-      tkc="$(python3 "$HELPERS" titlekey --rights-id "$ctl_rights" --tik-dir "$ctl_dir" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"} 2>/dev/null || true)"
-    fi
-    if hq ${tkc:+--titlekey="$tkc"} --romfsdir="$stage/control" "$ctl_nca"; then
-      dver="$(python3 "$HELPERS" nacp-version "$stage/control" 2>/dev/null || true)"
-    fi
-  fi
-  tkc=""
-
-  # Preserve all original icon variants outside Git; fill missing update languages from the base Control NCA.
-  local base_ctl base_ctl_rights base_ctl_key=""
-  base_ctl="$(python3 "$ROOT/scripts/recomp/app/game_icons.py" pick-control --tsv "$stage/base.tsv" --title-id "$base_tid")"
-  if [ -n "$base_ctl" ]; then
-    base_ctl_rights="$(tsv_field "$stage/base.tsv" "$base_ctl" 6)"
-    if [ -n "$base_ctl_rights" ]; then
-      base_ctl_key="$(python3 "$HELPERS" titlekey --rights-id "$base_ctl_rights" --tik-dir "$base_dir" ${TITLE_KEYS:+--title-keys "$TITLE_KEYS"} 2>/dev/null || true)"
-    fi
-    hq ${base_ctl_key:+--titlekey="$base_ctl_key"} --romfsdir="$stage/control-base" "$base_ctl" || true
-  fi
-  base_ctl_key=""
-  python3 "$ROOT/scripts/recomp/app/game_icons.py" ingest --base-control "$stage/control-base" \
-    --update-control "$stage/control" --title-id "$base_tid" --output "$WORK/recomp/icons/source"
-
-  rm -rf "$WORK/exefs" "$WORK/romfs" "$WORK/manifest.json"
-  mv "$stage/exefs" "$WORK/exefs"
-  mv "$stage/romfs" "$WORK/romfs"
-  python3 "$HELPERS" write-manifest --work "$WORK" --title-id "$base_tid" --title-version "$ver" \
-    --display-version "$dver" --update-applied "$([ -n "$upd_nca" ] && echo 1 || echo 0)" \
-    --xci-size "$xci_size" --nsp-size "$nsp_size" "${input_flags[@]}" || die 9 "manifest.json could not be written"
-  extract_cleanup
-  EXTRACT_ACTIVE=0
+  "${EXTRACT_CMD[@]}" extract "${EXTRACT_ARGS[@]}" || rc=$?
+  [ "$rc" -eq 0 ] || die "$rc" "Extraction failed (see the message above)"
   log "Stage extract done in $((SECONDS - t0)) s: $WORK/exefs, $WORK/romfs, $WORK/manifest.json"
   stage_result extract "executed"
 }

@@ -1,0 +1,17 @@
+[package]
+name = "bdsp-extract"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT"
+description = "Extracts ExeFS, RomFS and the original icons from the user's own game files with hactool"
+
+[dependencies]
+serde_json = "1"
+sha2 = "0.10"
+image = { version = "=0.25.9", default-features = false, features = ["jpeg", "png"] }
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

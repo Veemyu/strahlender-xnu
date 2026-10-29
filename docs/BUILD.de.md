@@ -529,8 +529,7 @@ fehlenden Spieleinstiegs. Eine getrennte JSONL-Probe mit isoliertem Python ruft
 den echten Extraktor auf einer ungültigen künstlichen NCA auf und prüft Fehler und
 Redaktion. Das beweist weder echte NCA-Extraktion noch GUI-Klickabnahme mit Spieldaten
 oder Gameplay. `BDSP_WINDOWS_HACTOOL_ROOT` und `BDSP_WINDOWS_PRIVATE_CATALOG`
-aktivieren diese Proben. Gemeinsame Tests: `test_container_extract`,
-`test_extract_game`, `test_windows_pipeline`, `test_installer_filesystem` und
+aktivieren diese Proben. Gemeinsame Tests: die Rust-Tests von `installer/extract`, `test_windows_pipeline`, `test_installer_filesystem` und
 `test_installer_driver`.
 
 Die Windows-Vorbereitung zeigt ihre Abhängigkeits-/Freigabedetails zusätzlich in

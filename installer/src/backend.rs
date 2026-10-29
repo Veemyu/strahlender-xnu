@@ -323,6 +323,12 @@ fn run_driver(
             return;
         };
         let mut command = Command::new(&python);
+        // The scripts run the extract step through this very executable (`--cli extract`), so no Rust toolchain is needed.
+        if let Ok(own) = std::env::current_exe() {
+            command
+                .env("BDSP_EXTRACT", own)
+                .env("BDSP_EXTRACT_PREFIX", "--cli");
+        }
         // LLVM still leads PATH; select Git separately so Brew cannot shadow Apple Git.
         if !cfg!(target_os = "windows") {
             command.env("BDSP_GIT", crate::dependencies::git());

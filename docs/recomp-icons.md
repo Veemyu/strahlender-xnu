@@ -37,8 +37,8 @@ A different dump exposes only variants actually present there.
 
 ## Extraction and automatic builds
 
-The extraction stage (scripts/build_all.sh, or `extract_game.py` in the Windows
-installer pipeline) retains the source icons from the base XCI or NSP and the
+The extraction stage (scripts/build_all.sh and the Windows installer pipeline run the
+Rust tool `installer/extract`) retains the source icons from the base XCI or NSP and the
 optional update NSP in `work/recomp/icons/source` before it cleans up control data.
 There is no separate icon extractor; run the extract stage once and every platform
 build reads the same source:

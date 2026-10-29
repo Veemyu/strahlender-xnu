@@ -30,7 +30,7 @@ Python remains in:
 
 - `scripts/install/driver.py`: JSONL orchestration, preflight, extraction/build
   commands, input/mod metadata and platform installation.
-- `scripts/build_stages.py` and `scripts/build_helpers.py`: manifests, input
+- `scripts/build_stages.py` and `installer/extract` (Rust, `--cli extract`): manifests, input
   identity/checks, stage fingerprints and extraction metadata around hactool.
 - `scripts/recomp/native-generator/build.py`: native compiler/Unicorn discovery,
   tool build and dependency fingerprinting.

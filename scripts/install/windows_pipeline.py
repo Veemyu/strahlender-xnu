@@ -9,7 +9,6 @@ import sys
 import tempfile
 import uuid
 
-from scripts.extract_game import extract_game
 from scripts.recomp import portable_build as build
 from scripts.recomp.app import game_icons
 from scripts.install.progress import GeneratorProgress
@@ -150,6 +149,28 @@ def install_package(package, destination, emit):
     return executable
 
 
+def extract_game(base, prod_keys, work, hactool, *, update=None, title_keys=None, icons=None, progress=None):
+    """Runs the Rust extract step (installer/extract) through the installer executable passed in BDSP_EXTRACT."""
+    tool = os.environ.get("BDSP_EXTRACT")
+    if not tool:
+        raise ValueError("The installer's extract tool is unavailable (BDSP_EXTRACT is not set)")
+    prefix = [os.environ["BDSP_EXTRACT_PREFIX"]] if os.environ.get("BDSP_EXTRACT_PREFIX") else []
+    command = [tool, *prefix, "extract", "--base", str(base), "--keys", str(prod_keys),
+               "--hactool", str(hactool), "--work", str(work)]
+    for flag, value in (("--update", update), ("--title-keys", title_keys), ("--icons", icons)):
+        if value:
+            command += [flag, str(value)]
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+    for line in result.stdout.splitlines():
+        if progress:
+            progress(line)
+    if result.returncode:
+        # The tool prints only its own messages, never hactool output.
+        message = next((line[7:] for line in reversed(result.stderr.splitlines()) if line.startswith("ERROR: ")), "")
+        raise ValueError(message or "Native extraction failed; check the selected dump, update and keys.")
+    return Path(work) / "manifest.json"
+
+
 def build_game(args, emit):
     selected, compiler, generator, bundles = prerequisites(
         args.windows_catalog, "aarch64" if args.target == "windows-arm64" else "x86_64", args.work)
@@ -189,7 +210,7 @@ def build_game(args, emit):
         return result
     try:
         stage("extract", lambda: extract_game(
-            args.base, args.prod_keys, work, bundles["hactool"] / "hactool.exe", commands,
+            args.base, args.prod_keys, work, bundles["hactool"] / "hactool.exe",
             update=args.update, title_keys=getattr(args, "title_keys", None),
             progress=lambda text: emit("log", level="diagnostic", message=text), icons=icons))
         def verify_exefs():

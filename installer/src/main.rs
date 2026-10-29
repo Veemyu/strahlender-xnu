@@ -43,6 +43,10 @@ fn main() -> iced::Result {
             }
             return Ok(());
         }
+        [flag, rest @ ..] if flag == "--cli" => {
+            // Build steps without the window: `--cli extract ...` (see installer/extract).
+            std::process::exit(bdsp_extract::cli(rest.iter().map(Into::into).collect()));
+        }
         [flag] if flag == "--check-runtime" => {
             if let Err(error) = runtime::runtime_smoke() {
                 eprintln!("{error}");
@@ -64,7 +68,7 @@ fn main() -> iced::Result {
         }
         [flag] if flag == "--help" || flag == "-h" => {
             println!(
-                "strahlender-xnu-installer [--demo | --capture-dir DIRECTORY] [--platform mac|windows|linux]\n\n--demo         Explore all views with synthetic example files.\n--capture-dir  Save deterministic dark-mode screenshots and exit.\n--scenes       Comma-separated capture scenes (default: target; all: full matrix).\n--platform     Simulate host UI in demo/capture mode only.\n--licenses     Show the licenses for bundled UI icons and Fira Sans.\n--check-runtime  Exercise the private Python runtime without starting a game.\n--check-source   Download current main into a new workspace without building a game."
+                "strahlender-xnu-installer [--demo | --capture-dir DIRECTORY] [--platform mac|windows|linux]\n\n--demo         Explore all views with synthetic example files.\n--capture-dir  Save deterministic dark-mode screenshots and exit.\n--scenes       Comma-separated capture scenes (default: target; all: full matrix).\n--platform     Simulate host UI in demo/capture mode only.\n--licenses     Show the licenses for bundled UI icons and Fira Sans.\n--cli            Run a build step without the window: --cli extract|check (see installer/extract).\n--check-runtime  Exercise the private Python runtime without starting a game.\n--check-source   Download current main into a new workspace without building a game."
             );
             return Ok(());
         }
