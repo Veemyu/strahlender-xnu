@@ -3,12 +3,14 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "scripts/recomp/linux/deps.sh"
 
 
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
 class LinuxDependenciesTests(unittest.TestCase):
     def setUp(self):
         (ROOT / "work/tests").mkdir(parents=True, exist_ok=True)

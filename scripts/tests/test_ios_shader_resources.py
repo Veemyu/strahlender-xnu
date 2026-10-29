@@ -3,10 +3,12 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import sys
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'recomp/ios/app/copy_bundle_resources.sh'
 
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
 class ShaderResources(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='shader resources ')

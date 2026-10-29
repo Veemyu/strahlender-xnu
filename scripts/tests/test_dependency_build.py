@@ -16,7 +16,7 @@ from scripts.tests.test_windows_build import pe
 class DependencyBuildTests(unittest.TestCase):
     def test_notice_collection_preserves_spdx_directories_and_authorship_without_source_tree(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             source = root / "source"
             files = ("LICENSE.md", "LICENSES/Apache-2.0.txt", "LICENSES/MIT.txt",
                      "third_party/tool/AUTHORS.txt", "third_party/tool/COPYRIGHT",
@@ -36,7 +36,7 @@ class DependencyBuildTests(unittest.TestCase):
 
     def test_hactool_preserves_distinct_embedded_license_notices(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             source = root / "source"
             source.mkdir()
             files = ("cJSON.c", "ConvertUTF.c", "ConvertUTF.h", "lz4.c", "lz4.h")
@@ -63,7 +63,7 @@ class DependencyBuildTests(unittest.TestCase):
 
     def test_source_digest_size_and_safe_extraction(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             archive = root / "synthetic-pin.tar.gz"
             with tarfile.open(archive, "w:gz") as output:
                 member = tarfile.TarInfo("../outside.txt")
@@ -81,7 +81,7 @@ class DependencyBuildTests(unittest.TestCase):
 
     def test_prebuilt_import_integrity_architecture_closure_and_publication(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             entries = {"ffmpeg/LICENSE.txt": b"synthetic license", "ffmpeg/doc/manual.txt": b"documentation"}
             for name in ("avcodec", "avformat", "avutil"):
                 entries[f"ffmpeg/include/lib{name}/{name}.h"] = b"synthetic header"

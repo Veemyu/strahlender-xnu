@@ -29,6 +29,7 @@ def run(args, env=None):
     return p.returncode, p.stdout, p.stderr
 
 
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
 class DryRunTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

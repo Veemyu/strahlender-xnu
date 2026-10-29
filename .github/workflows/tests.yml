@@ -27,6 +27,19 @@ jobs:
           python-version: '3.13'
       - name: Install the test dependencies
         run: python -m pip install Pillow lz4 unicorn==2.1.4
+      - name: macOS toolchain (Homebrew LLVM and SDL3, as the project requires)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm sdl3 pkg-config
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+      - name: Visual C++ runtime next to Unicorn (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $crt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT\vcruntime140*.dll" | Select-Object -First 4
+          $lib = python -c "import unicorn, pathlib; print(pathlib.Path(unicorn.__file__).parent / 'lib')"
+          $crt | Copy-Item -Destination $lib
+      - name: Fetch the Rust crates (the SBOM tests read cargo metadata offline)
+        run: cargo fetch --locked --manifest-path installer/Cargo.toml
       - name: Python test suite
         run: python -m unittest discover -s scripts/tests
   rust:

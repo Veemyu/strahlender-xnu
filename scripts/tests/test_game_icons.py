@@ -214,7 +214,7 @@ class GameIconTests(unittest.TestCase):
             names = list(resources.glob("*.lproj/InfoPlist.strings"))
             self.assertEqual(len(names), 20)
             for locale, title in manifest["titles"].items():
-                content = (resources / (locale + ".lproj/InfoPlist.strings")).read_text()
+                content = (resources / (locale + ".lproj/InfoPlist.strings")).read_text(encoding="utf-8")
                 value = content.partition(" = ")[2].removesuffix(";\n")
                 self.assertEqual(json.loads(value), title["name"])
 
@@ -227,9 +227,9 @@ class GameIconTests(unittest.TestCase):
         manifest = {"titles": {"es-419": {"name": "América"}, "es-ES": {"name": "España"}}}
         for _ in range(2):
             icons.write_bundle_names(manifest, resources)
-        self.assertIn('"CFBundleTypeName" = "Partida";', path.read_text())
-        self.assertEqual(path.read_text().count('"CFBundleDisplayName"'), 1)
-        self.assertIn("España", path.read_text())
+        self.assertIn('"CFBundleTypeName" = "Partida";', path.read_text(encoding="utf-8"))
+        self.assertEqual(path.read_text(encoding="utf-8").count('"CFBundleDisplayName"'), 1)
+        self.assertIn("España", path.read_text(encoding="utf-8"))
         self.assertIn("América", (resources / "es-419.lproj/InfoPlist.strings").read_text())
 
     def test_truncated_nacp_is_rejected_and_missing_metadata_stays_empty(self):
@@ -273,6 +273,7 @@ class GameIconTests(unittest.TestCase):
                 icons.build_linux(source, self.root / "linux", self.root / "game")
         self.assertEqual(icons.load_source(self.root / "missing-source")["variants"], [])
 
+    @unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
     def test_mac_icns_and_incremental_fingerprint(self):
         self.nacp(self.base, {"de": "Diamant", "ja": "ダイヤモンド"})
         self.fixture()
@@ -356,8 +357,8 @@ class GameIconTests(unittest.TestCase):
         icon_setting = next(v for v in settings["PreferenceSpecifiers"] if v.get("Key") == "bdsp_app_icon")
         self.assertEqual(icon_setting["DefaultValue"], "default")
         self.assertEqual(set(icon_setting["Values"]), {"default", "de", "en-US", "ja"})
-        self.assertIn("empfohlen", (bundle / "Settings.bundle/de.lproj/Root.strings").read_text())
-        self.assertIn("recommended", (bundle / "Settings.bundle/ja.lproj/Root.strings").read_text())
+        self.assertIn("empfohlen", (bundle / "Settings.bundle/de.lproj/Root.strings").read_text(encoding="utf-8"))
+        self.assertIn("recommended", (bundle / "Settings.bundle/ja.lproj/Root.strings").read_text(encoding="utf-8"))
         info = plistlib.loads((bundle / "Info.plist").read_bytes())
         self.assertEqual(info["CFBundleIdentifier"], "synthetic.icons")
         self.assertIn("CFBundleIcons", info)

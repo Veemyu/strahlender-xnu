@@ -3,12 +3,14 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 @unittest.skipUnless(shutil.which("clang"), "clang is required for the audio service harness")
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
 class AudioServiceTests(unittest.TestCase):
     def test_pacing_bounds_and_lifetime(self):
         work = ROOT / "work" / "tests"

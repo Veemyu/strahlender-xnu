@@ -339,6 +339,7 @@ class RecompStageTests(unittest.TestCase):
         h3, _ = bs.stage_hash("recomp", self.root, self.work, env={"XNU_RECOMP_OPTS": "o0kb=1000"})
         self.assertNotEqual(h2, h3)
 
+    @unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
     def test_nvn_stamp_covers_src_translator_and_prepare(self):
         nvn = os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "nvn")
         os.makedirs(nvn, exist_ok=True)

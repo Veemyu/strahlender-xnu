@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+from scripts.tests.test_windows_build import pe
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("native_codegen_build_unicorn", ROOT / "scripts/recomp/native-generator/build.py")
@@ -19,8 +21,9 @@ class UnicornLookupTests(unittest.TestCase):
         (package / "lib").mkdir()
         (package / "include/unicorn/unicorn.h").write_text(
             "#define UC_API_MAJOR 2\n#define UC_API_MINOR 1\n#define UC_API_PATCH 4\n")
-        for name in ("libunicorn.2.dylib", "libunicorn.so.2", "unicorn.dll"):
+        for name in ("libunicorn.2.dylib", "libunicorn.so.2"):
             (package / "lib" / name).write_bytes(b"library")
+        pe(package / "lib/unicorn.dll")  # the Windows build inspects the DLL, so it must be a real (empty) PE image
         return package
 
     def test_tools_pydeps_is_used_when_the_package_is_not_importable(self):

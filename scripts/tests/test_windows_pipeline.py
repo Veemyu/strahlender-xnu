@@ -53,7 +53,7 @@ class WindowsPipelineTests(unittest.TestCase):
 
     def test_installed_package_preserves_external_saves_and_refuses_modified_data(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             package = self.package(root / "package")
             (root / "user/saves").mkdir(parents=True)
             save = root / "user/saves/player.bin"
@@ -75,10 +75,10 @@ class WindowsPipelineTests(unittest.TestCase):
                 pipeline.install_package(package, root / "other", emit)
             self.assertFalse((root / "other").exists())
 
-    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and needs executable-file semantics of Windows; runs on Windows only")
     def test_catalog_tracks_generator_closure_and_entire_toolchain(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             (root / "llvm/bin").mkdir(parents=True)
             compiler = root / "llvm/bin/clang.exe"
             compiler.write_bytes(b"synthetic compiler")
@@ -120,11 +120,10 @@ class WindowsPipelineTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     pipeline.read_catalog(catalog, "aarch64")
 
-    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_pipeline_stage_order_and_failed_compile_never_publishes_or_installs(self):
         for fail, with_qt in ((False, False), (True, False), (False, True)):
             with self.subTest(fail=fail, qt=with_qt), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
+                root = Path(temporary).resolve()
                 (root / "work/exefs").mkdir(parents=True)
                 for name in ("rtld", "main", "sdk", "subsdk0", "main.npdm"):
                     (root / "work/exefs" / name).write_bytes(b"synthetic")
@@ -183,7 +182,7 @@ class WindowsPipelineTests(unittest.TestCase):
 
     def test_failed_extraction_does_not_move_clean_build_outputs_or_selected_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             selected = windows.profile("x86_64")
             output = root / "work/recomp" / selected["cache_key"]
             output.mkdir(parents=True)
@@ -208,7 +207,7 @@ class WindowsPipelineTests(unittest.TestCase):
 
     def test_driver_success_result_only_after_install_and_redacts_selected_keys(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             keys = root / "private-selected.keys"
             args = SimpleNamespace(root=root, work=root / "work", target="windows",
                                    windows_catalog=root / "catalog", prod_keys=str(keys))

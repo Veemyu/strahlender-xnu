@@ -3,11 +3,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
 class LinuxCpuFlagsTests(unittest.TestCase):
     def flags(self, arch, profile):
         return subprocess.run(

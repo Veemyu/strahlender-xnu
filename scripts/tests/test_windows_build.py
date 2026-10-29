@@ -72,11 +72,10 @@ class WindowsBuildTests(unittest.TestCase):
             compile_sources.assert_not_called()
             self.assertFalse((Path(temporary) / "objects").exists())
 
-    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_qt_bundle_checks_cpp_abi_plugins_closure_and_shared_source_wiring(self):
         selected = windows.profile("x86_64", "x86_64")
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             qt = root / "Qt"
             files = ("include/QtCore/qglobal.h", "include/QtGui/QVulkanInstance",
                      "include/QtWidgets/QApplication", "notices/Qt/LICENSE.txt",
@@ -154,7 +153,7 @@ class WindowsBuildTests(unittest.TestCase):
     def test_graphical_link_uses_official_qt_import_library_names(self):
         selected = windows.profile("x86_64", "x86_64")
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             compiler = root / "llvm/bin/x86_64-w64-mingw32-clang.exe"
             qt = root / "qt"
             bundle = root / "graphics"
@@ -188,7 +187,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_sdl_offline_recipe_paths_target_inventory_and_atomic_publication(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "tools with spaces"
+            root = Path(temporary).resolve() / "tools with spaces"
             root.mkdir()
             archive, cmake, ninja = (root / name for name in ("SDL.tar.gz", "cmake.exe", "ninja.exe"))
             for path in (archive, cmake, ninja):
@@ -272,7 +271,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_link_inventory_and_tool_free_package(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             selected = windows.profile("x86_64", "x86_64")
             game, runtime = root / "main_chunk.o", root / "runtime.o"
             for path in (game, runtime):
@@ -340,11 +339,11 @@ class WindowsBuildTests(unittest.TestCase):
                 job.close()
                 process.close()
 
-    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and needs executable-file semantics of Windows; runs on Windows only")
     def test_generator_windows_exe_and_compiler_identity_cache(self):
         builder = build.load_helper("windows_generator_test", ROOT / "scripts/recomp/native-generator/build.py")
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             compiler = root / "clang.exe"
             compiler.write_bytes(b"synthetic")
             identity = {"path": str(compiler), "sha256": "compiler-one", "triple": "x86_64-w64-windows-gnu"}
@@ -420,7 +419,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_pe_normal_delay_imports_and_closure(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             exe = pe(root / "BDSP.exe", ["SDL3.dll", "KERNEL32.dll", "api-ms-win-core-file-l1-1-0.dll"],
                      delayed=["shaderc_shared.dll", "vulkan-1.dll"])
             sdl = pe(root / "SDL3.dll", ["winmm.dll", "libwinpthread-1.dll"])
@@ -449,7 +448,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_pe_rejects_truncation_unbounded_imports_and_build_tools(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             exe = pe(root / "BDSP.exe", ["unicorn.dll"])
             engine = pe(root / "unicorn.dll")
             with self.assertRaisesRegex(ValueError, "Build-only"):
@@ -467,7 +466,7 @@ class WindowsBuildTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Unterminated"):
                 windows.PE(exe).imports()
 
-    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and needs executable-file semantics of Windows; runs on Windows only")
     def test_compiler_rejects_msvc_msvcrt_and_wrong_target(self):
         with tempfile.TemporaryDirectory() as temporary:
             compiler = Path(temporary) / "clang.exe"
@@ -519,7 +518,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_generation_order_entries_and_simd(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             for name in build.BASES:
                 (root / name).write_bytes(b"synthetic")
             (root / "subsdk1.entries").write_text("0x100\n")
@@ -550,7 +549,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_images_are_two_pass_with_explicit_hle_and_no_success_on_failure(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             exefs = root / "exefs"
             exefs.mkdir()
             for name in ("main", "sdk", "subsdk0"):
@@ -588,7 +587,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_compile_cache_headers_flags_architecture_hot_and_failure(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "O'Brien 日本語 build"
+            root = Path(temporary).resolve() / "O'Brien 日本語 build"
             generated = root / "gen/main"
             generated.mkdir(parents=True)
             (generated / "hot.c").write_text("void f_hot(Cpu *c) {\n}\n")
@@ -641,10 +640,9 @@ class WindowsBuildTests(unittest.TestCase):
                     compile()
                 self.assertFalse(marker.exists())
 
-    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_mixed_c_cpp_uses_target_drivers_flags_and_cache_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             for name in ("scripts/recomp/rt/cpu.h", "scripts/recomp/hot_o2.txt"):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -688,7 +686,7 @@ class WindowsBuildTests(unittest.TestCase):
 
     def test_overlay_is_deterministic_and_preserves_manual_changes(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             base = root / "scripts/recomp/rt-bdsp/nvn"
             for folder, text in (("src/nvn", "base"), ("vulkan/src/nvn", "vulkan")):
                 path = base / folder / "test.c"
