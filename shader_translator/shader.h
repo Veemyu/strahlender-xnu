@@ -25,24 +25,6 @@
 //    GL_KHR_shader_subgroup_basic/_shuffle/_shuffle_relative (SHFL, FSWZADD lane: fragment/compute subgroup
 //    support), GL_EXT_texture_shadow_lod (explicit-LOD array / cube shadow lookups).
 //
-// HLSL contract (XNU; key->hlsl, for the ShaderLab wrapper scripts/shader_wrap.py; vertex and fragment only):
-//  - the output is a snippet, not a program: helpers, resource declarations, the stage structs and one function
-//    `MxVOut mx_vs(MxVIn i_, uint vid, uint iid)` or `MxFOut mx_fs(MxFIn i_, bool front_facing)`. The structs carry
-//    no semantics: MxVIn { float4|int4|uint4 a<i>; } (vertex attribute location i), MxVOut/MxFIn { float4 pos; float4
-//    v<i>; [float psize;] } (varying i = generic attribute i), MxFOut { float4|int4|uint4 c<rt>; [float depth;] }. The
-//    wrapper maps them to semantics and interpolation modifiers (#define MX_FLAT_MASK, a bit per varying).
-//  - hardware cbuf k is read as `mx_cb<k>[row][component]` (uint4 array; dynamic reads: cbr(mx_cb<k>, byte offset));
-//    texture slot i as `mx_t<i>` / `mx_s<i>` (Texture1D/2D/3D/Cube/...Array<float4>, SamplerState or, for shadow
-//    lookups, Texture<float> + SamplerComparisonState). Register-indexed cbuf reads are `mx_cbr<k>(byte offset)`, a macro
-//    the wrapper may replace (instancing arrays). Without `#define MX_EXTERNAL_RESOURCES` the snippet declares
-//    them itself (cbuffer b<k>, register t<i> / s<i>); with it the including shader must provide all of them.
-//  - global memory (LDG, 32/64/128 bit and sub-word loads) is read from the ByteAddressBuffer `mx_gmem` (storage buffer 0).
-//    Hardware cbuf 0 row 17 holds that buffer's address; the wrapper keeps cbuf 0 at zero, so the guest address is the byte
-//    offset (a non-zero high word reads 0). Stores (STG) and a second storage buffer are not supported.
-//  - registers stay `uint` with asfloat/asuint; no resolution scale, no 64-bit integers, no subgroup
-//    operations, no compute (these fail with an "hlsl:" message). Clip space is the guest's (flip_y / depth_minus_one
-//    as in MSL).
-//
 // Derived from LASRecomp (https://github.com/peiikai/LASRecomp, commit 09f8e5e), MIT License, Copyright (c) 2026 Peiikai.
 // See ../LICENSE-LASRecomp and ../NOTICE.md. Modifications for the strahlender-xnu project are marked "XNU:".
 #pragma once
@@ -69,7 +51,6 @@ typedef struct {
     bool annotate;          // XNU: comment every instruction with its pc and 64-bit word (was LARECOMP_SAVE_MSL)
     bool fast_math;         // XNU: MSL without the pragmas that disable fast math and FMA contraction (original behaviour)
     bool half_compat;       // XNU: Ryujinx-compatible half precision: no rounding to fp16 between half operations (see translate.c hstore)
-    uint8_t hlsl;           // XNU: emit HLSL (Unity ShaderLab, Shader Model 5 subset) instead of MSL; the contract is listed above
     uint8_t dbg_pos;        // XNU debug (BDSP_GEOM_CHECK): vertex shaders also store their clip position to buffer(29)[iid * 4096 + vid]
 } ShaderKey;
 

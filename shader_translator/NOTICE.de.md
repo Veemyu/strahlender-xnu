@@ -51,6 +51,8 @@ Teil 3 (2026-10-19): `ShaderKey.hlsl` und der Schnittstellenkommentar „HLSL co
 
 ### `translate.c`, Teil 3: HLSL-Ausgabe für Unity (`ShaderKey.hlsl`, Werkzeug: `--lang hlsl`)
 
+*Am 29.10.2026 wieder entfernt: Der Unity-Rebuild ist eingestellt, und niemand nutzte das HLSL-Backend. Der Text unten beschreibt, was es war; der Code steht nur noch in der Git-Historie. MSL- und GLSL-Ausgabe blieben byte-identisch (4.276 Spiel-Shader in vier Modi).*
+
 Alle Stellen sind mit `XNU:` oder im Kopfkommentar der Datei markiert. Die MSL- und GLSL-Ausgabe bleibt byteidentisch (an 500 zufälligen Blobs mit je drei Optionssätzen gegen die Vorversion geprüft).
 
 12. **Neuer Zweig `hlsl_rewrite()` / `hlsl_prelude` / `hlsl_finish()`** nach dem Muster des GLSL-Zweigs: Der Befehlsrumpf entsteht weiter in der MSL-Schreibweise und wird tokenweise umgeschrieben (`as_type<float/uint/int>` → `asfloat/asuint/asint`, `fmin/fmax` → `min/max`, `rint` → `round`, `fma` → `mx_fma` (= `mad`), `isnan` → `mx_isnan` (Bittest, weil FXC `isnan` wegfaltet), `popcount` → `countbits`, `char()/short()` → `sx8/sx16`, `in`/`out` → `i_`/`o_`, `cb<k>` → `mx_cb<k>`; nicht abbildbare Bezeichner wie `ulong`, `half`, `gmem`, `simd_shuffle*` brechen mit einer „hlsl:“-Meldung ab). Die Hilfsfunktionen (Bitfelder, `mulhi`, `clz`, `prmt`, `hx`/`hpack` über `f16tof32`/`f32tof16`, 32-Bit-Übertrag `mx_adc3`, Trichterverschiebung `mx_shf_*`, `fswzadd` mit Lane aus der Pixelposition) liegen im Prelude, das eine Include-Wache trägt (Vertex und Fragment teilen ein Programm).

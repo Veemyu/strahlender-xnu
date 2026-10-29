@@ -84,7 +84,7 @@ class Report(unittest.TestCase):
         self.assertEqual(rep["timing"]["instructionsTotal"], 25)
         text = sr.render(rep, None, 1.5)
         self.assertIn("bindless tex", text)
-        self.assertIn("Wandzeit des Laufs 1.5 s", text)
+        self.assertIn("wall time of the run 1.5 s", text)
 
     def test_input_error_counts_as_problem(self):
         d = self.d

@@ -51,6 +51,8 @@ Part 3 (2026-10-19): added `ShaderKey.hlsl` and “HLSL contract” interface co
 
 ### `translate.c`, part 3: HLSL output for Unity (`ShaderKey.hlsl`, tool option `--lang hlsl`)
 
+*Removed again on 2026-10-29: the Unity rebuild is deprecated, and nothing used the HLSL backend. The text below documents what it was; the code is only in the git history. MSL and GLSL output stayed byte-identical (4,276 game shaders in four modes).*
+
 All changes are marked with `XNU:` or in the file's header comment. MSL and GLSL output remain byte-identical (checked against previous version on 500 random blobs with three option sets each).
 
 12. **New `hlsl_rewrite()`/`hlsl_prelude`/`hlsl_finish()` branch** following GLSL branch pattern: instruction body is still emitted in MSL syntax, then rewritten token by token (`as_type<float/uint/int>` → `asfloat/asuint/asint`, `fmin/fmax` → `min/max`, `rint` → `round`, `fma` → `mx_fma` (= `mad`), `isnan` → `mx_isnan` (bit test, because FXC folds away `isnan`), `popcount` → `countbits`, `char()/short()` → `sx8/sx16`, `in`/`out` → `i_`/`o_`, `cb<k>` → `mx_cb<k>`; unsupported names such as `ulong`, `half`, `gmem`, `simd_shuffle*` abort with an “hlsl:” message). Helpers (bitfields, `mulhi`, `clz`, `prmt`, `hx`/`hpack` via `f16tof32`/`f32tof16`, 32-bit carry `mx_adc3`, funnel shifts `mx_shf_*`, `fswzadd` with lane from pixel position) are in prelude, which has an include guard (vertex and fragment share a program).
