@@ -87,6 +87,7 @@ jobs:
           $dir = "$PWD\work\buildenv"
           $env:PYTHONPATH = "$PWD;$PWD\work\pydeps"
           $env:BDSP_WINDOWS_NATIVE_CC = "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe"
+          $env:CC = $env:BDSP_WINDOWS_NATIVE_CC
           $env:BDSP_WINDOWS_NATIVE_BINARY = "$dir\generator\bdsp_codegen.exe"
           $env:BDSP_WINDOWS_PRIVATE_CATALOG = "$dir\catalog.json"
           $env:BDSP_WINDOWS_SDL_ROOT = "$dir\sdl"

@@ -230,7 +230,7 @@ class GameIconTests(unittest.TestCase):
         self.assertIn('"CFBundleTypeName" = "Partida";', path.read_text(encoding="utf-8"))
         self.assertEqual(path.read_text(encoding="utf-8").count('"CFBundleDisplayName"'), 1)
         self.assertIn("España", path.read_text(encoding="utf-8"))
-        self.assertIn("América", (resources / "es-419.lproj/InfoPlist.strings").read_text())
+        self.assertIn("América", (resources / "es-419.lproj/InfoPlist.strings").read_text(encoding="utf-8"))
 
     def test_truncated_nacp_is_rejected_and_missing_metadata_stays_empty(self):
         self.assertEqual(icons.read_nacp(self.base), ({}, ""))

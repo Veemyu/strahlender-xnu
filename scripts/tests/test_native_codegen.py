@@ -89,6 +89,8 @@ def synthetic_eh_nso(path):
     return path
 
 
+@unittest.skipIf(sys.platform == "win32" and not os.environ.get("BDSP_WINDOWS_NATIVE_CC"),
+                 "needs an LLVM-MinGW compiler; windows-buildenv.yml supplies it")
 class NativeCodegenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

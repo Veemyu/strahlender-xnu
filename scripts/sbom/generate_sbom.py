@@ -283,7 +283,7 @@ def cargo_components(installer):
         if pkg["name"] == "strahlender-xnu-installer":
             continue
         vendored = pkg["source"] is None
-        location = str(Path(pkg["manifest_path"]).parent.relative_to(ROOT)) if vendored else "installer/Cargo.lock"
+        location = Path(pkg["manifest_path"]).parent.relative_to(ROOT).as_posix() if vendored else "installer/Cargo.lock"
         crates.append(C(f"crate-{pkg['name']}-{pkg['version']}", pkg["name"], pkg["version"], purl_of[pkg["id"]],
                         normalize_license(pkg.get("license")), SHIPPED, TRACKED, [location],
                         download=f"https://crates.io/crates/{pkg['name']}/{pkg['version']}", category="rust-crate",
