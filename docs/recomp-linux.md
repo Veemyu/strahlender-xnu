@@ -1,7 +1,7 @@
 # Linux: build host and Vulkan backend
 
-The same recompilation also builds for Linux x86-64 with a Vulkan renderer and a Qt 6 frontend. **Status: work in progress, not
-playable.** Rendering, input and frame rate work in a window; audio, compute-heavy scenes, long sessions and Windows are not done.
+The same recompilation also builds for Linux x86-64 with a Vulkan renderer and a Qt 6 frontend. Linux is tested on x86-64 only. A Linux ARM64
+build compiles but is not tested yet; its backend and installer path are complete. **Status: work in progress, not playable.** Rendering, input and frame rate work in a window; audio, compute-heavy scenes, long sessions and Windows are not done.
 The user workflow (packages, commands, session variables) is in [BUILD.md](BUILD.md), section 6, and the guided installer
 `./install-linux.sh`. This page records how the Linux path is put together and what was measured. The figures come from an earlier
 workflow with a dedicated remote Linux machine (x86-64, 6 cores / 12 threads, 30 GB RAM, RTX 2080 Ti, Fedora 44) that no longer

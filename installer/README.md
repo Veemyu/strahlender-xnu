@@ -166,8 +166,10 @@ The backend performs prerequisite checks, builds through the existing local
 scripts, reports live stages and installs the resulting desktop app. Linux's
 launcher and desktop entry use the XDG data directory and keep saves outside
 the replaceable app folder. These paths have synthetic tests; an end-to-end
-build through the GUI with actual game inputs is still required. Windows,
-Linux ARM64 and macOS x86_64 remain planned build ports. Native Mac-hosted
+build through the GUI with actual game inputs is still required. Linux is
+tested on x86_64 only; Linux ARM64 compiles but is not tested yet, and its
+backend and installer path are complete. Windows and macOS x86_64 remain
+planned build ports. Native Mac-hosted
 iPhone/iPad builds and deployment are connected, with device evidence below.
 
 For ExeFS development, `cargo run --locked --manifest-path installer/Cargo.toml --bin ips_patch -- inspect <patch.ips> [--nso <original.nso>]` checks IPS/IPS32 framing and the NSO build ID. `apply <original.nso> <staged.nso> <patch.ips>...` decompresses the NSO with native Rust/LZ4 code, applies matching IPS/IPS32 records to backed segments and writes a separate uncompressed NSO for the existing generator. `stage <base-exefs> <mod-exefs> <output>` inventories a mod's top-level IPS/IPS32 files and optional `subsdk1`, matches patches to exactly one NSO and creates a complete isolated ExeFS folder. The Rust helper also validates the extra module's memory slot including BSS and writes cross-module branch entry points for the generator. Unknown entries, mismatched updates, `rtld` patches and records in gaps or BSS are rejected. Source NSOs are never overwritten. For a native Mac or Mac-hosted iPhone/iPad code mod, build the `ips_patch` binary alongside the GUI (`cargo build --locked --manifest-path installer/Cargo.toml --bins`); the GUI stages, compiles and packages a separate signed mod app. It detects a complete downloaded mod folder, including wrapper folders, and gives mod-provided icons and names priority. Linux code builds, more added modules and in-app code switching remain unavailable. A full code-mod playthrough is not validated. The offset rule follows

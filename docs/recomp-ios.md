@@ -10,7 +10,7 @@ accepted the startup gate: only the shader-compilation counter appears at the
 upper left. Do not change this start path without agreement.
 
 Xcode 27.1 (iOS 27.1 SDK) builds the iPad app and the iPhone compile target
-(`TARGETED_DEVICE_FAMILY=1`, minimum iOS 17.0). Two findings on 2026-10-22:
+(`TARGETED_DEVICE_FAMILY = "1,2"` for iPhone and iPad, `IPHONEOS_DEPLOYMENT_TARGET = 17.0`). Two findings on 2026-10-22:
 
 - Fixed: shader libraries need `-target air64-apple-ios26.0` (`shader_bin.sh`).
   Without it Xcode 27 emits AIR v29 for iOS 27.1, which iPadOS 26 does not load,
@@ -121,7 +121,7 @@ The growth over time is **thermal throttling**, not a leak: a fixed integer cali
 and 12 to 14 ms after one to three minutes of load, also when the player stands still (`thermalState` stays 0 the whole time). At a 60 fps target
 the same scene runs at a flat 22 to 23 ms per frame and `cal_us` stays at 7.4 ms for 200 s. The game needs about 2.7 busy cores at 120 fps (it runs its
 whole per-frame logic at the display rate, the original ran it at 30), which the passively cooled iPad cannot sustain. Practical consequence: 60 fps
-is the sustainable setting on the iPad; 120 fps drops to about 90 after a minute.
+was the sustainable setting on the iPad in the 2026-10-22 runs, where 120 fps dropped to about 90 after a minute. Re-measured 2026-10-25 on an M2 iPad Pro: 120 fps stable for 5 minutes with ProMotion enabled (author measurement).
 
 **iPhone target.** The Xcode project builds for iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`, model A-low by default through `BDSP_RT_DIR = ios-rt-a`);
 the touch overlay scales with the screen and the safe area. `DEVICE_NAME=<part of the device name> scripts/recomp/ios/deploy_ios.sh ...` selects the phone;
