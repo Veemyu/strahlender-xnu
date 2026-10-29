@@ -2,7 +2,8 @@
 """Build/cache the standalone C tool; Python never processes module instructions.
 
 The compile command is an argv list, including paths with spaces and apostrophes.
-No CMake, pkg-config, pip, or network access is required for this milestone.
+No CMake, pkg-config or pip is required. The pinned LZ4 sources are downloaded once
+into ignored work/ and checked against vendor/lz4/source.json (or taken from --lz4-root).
 """
 import argparse
 import importlib.util
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
@@ -47,7 +49,46 @@ def unicorn_dependency(explicit=None):
     return {"root": root, "library": library, "sha256": sha, "fingerprint": digest.hexdigest()}
 
 
-def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unicorn=False):
+def download(url):
+    """Fetch bytes; python.org builds on macOS may lack CA certificates, so fall back to curl.
+
+    The caller checks the pinned SHA-256, so the transport is never trusted for content.
+    """
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            return response.read()
+    except OSError as error:
+        curl = shutil.which("curl")
+        if not curl:
+            raise ValueError("Cannot download " + url + ": " + str(error))
+        return subprocess.run([curl, "-fsSL", "--max-time", "60", url], check=True, capture_output=True).stdout
+
+
+def lz4_dependency(explicit=None):
+    """Directory with the pinned lz4.c/lz4.h; only the pin and LICENSE live in the repo."""
+    pin = HERE / "vendor/lz4/source.json"
+    provenance = json.loads(pin.read_text())
+    location = explicit or os.environ.get("BDSP_LZ4_ROOT")
+    root = Path(location).resolve() if location else ROOT / "work/native-generator/deps" / ("lz4-" + provenance["version"])
+    for name in ("lz4.c", "lz4.h"):
+        expected = provenance["files"][name]
+        path = root / name
+        if not path.is_file():
+            if location:
+                raise ValueError("LZ4 source is missing: " + str(path))
+            data = download(provenance["url"].format(name=name))
+            if hashlib.sha256(data).hexdigest() != expected:
+                raise ValueError("Downloaded LZ4 source checksum mismatch: " + name)
+            root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=root, delete=False) as handle:
+                handle.write(data)
+            os.replace(handle.name, path)
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError("LZ4 source checksum mismatch: " + str(path))
+    return root
+
+
+def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unicorn=False, lz4_root=None):
     compiler = compiler or os.environ.get("CC") or ("clang" if shutil.which("clang") else "cc")
     resolved = shutil.which(compiler)
     if not resolved:
@@ -56,15 +97,11 @@ def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unic
     if require_unicorn and not dependency:
         raise ValueError("Unicorn 2.1.4 native library and C headers are required; use the private installer runtime or BDSP_UNICORN_ROOT")
     identity = subprocess.run([resolved, "--version"], check=True, capture_output=True).stdout
-    vendor = HERE / "vendor/lz4"
-    provenance = json.loads((vendor / "source.json").read_text())
-    for name, expected in provenance["files"].items():
-        if Path(name).name != name or hashlib.sha256((vendor / name).read_bytes()).hexdigest() != expected:
-            raise ValueError("Vendored LZ4 source checksum mismatch: " + name)
-    sources = sorted((HERE / "src").glob("*.c")) + [HERE / "vendor/lz4/lz4.c"]
-    inputs = sorted((HERE / "src").glob("*.h")) + sources + sorted((HERE / "vendor/lz4").glob("*.h"))
+    lz4 = lz4_dependency(lz4_root)
+    sources = sorted((HERE / "src").glob("*.c")) + [lz4 / "lz4.c"]
+    inputs = sorted((HERE / "src").glob("*.h")) + sorted((HERE / "src").glob("*.c"))
     fingerprint = hashlib.sha256()
-    for path in [Path(__file__).resolve(), vendor / "source.json", *inputs]:
+    for path in [Path(__file__).resolve(), HERE / "vendor/lz4/source.json", *inputs]:
         fingerprint.update(path.relative_to(HERE).as_posix().encode() + b"\0" + path.read_bytes())
     fingerprint.update((dependency["fingerprint"] if dependency else "without-unicorn").encode())
     fingerprint.update(identity)
@@ -86,7 +123,7 @@ def build(output, compiler=None, sanitize=False, unicorn_root=None, require_unic
     with tempfile.TemporaryDirectory(prefix="codegen-build-", dir=output.parent) as temporary:
         candidate = Path(temporary) / output.name
         flags = ["-std=c17", "-O2", "-g", "-Wall", "-Wextra", "-Werror", "-Wconversion",
-                 "-Wno-sign-conversion", f"-ffile-prefix-map={Path.home()}=/build", f"-ffile-prefix-map={ROOT}=.", "-I", str(HERE / "src"), "-I", str(HERE / "vendor/lz4"),
+                 "-Wno-sign-conversion", f"-ffile-prefix-map={Path.home()}=/build", f"-ffile-prefix-map={ROOT}=.", "-I", str(HERE / "src"), "-I", str(lz4),
                  f'-DBDSP_CODEGEN_SOURCE_HASH="{digest}"']
         if sys.platform != "win32":
             flags += ["-pthread"]
@@ -125,6 +162,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "work/native-generator/bdsp_codegen")
     parser.add_argument("--cc")
     parser.add_argument("--unicorn-root", type=Path, help="Pinned Unicorn package root containing include/ and lib/")
+    parser.add_argument("--lz4-root", type=Path, help="Directory with the pinned lz4.c and lz4.h (default: download into work/)")
     parser.add_argument("--sanitize", action="store_true")
     parser.add_argument("--require-unicorn", action="store_true", help="Require the native engine for the complete generator")
     parser.add_argument("--check-unicorn", action="store_true", help="Validate native engine assets without compiling or importing its Python binding")
@@ -135,7 +173,7 @@ def main():
                 raise ValueError("Unicorn 2.1.4 C headers and shared library are missing")
             print('{"unicorn":"2.1.4","native_assets":true}')
             return
-        print(build(args.output, args.cc, args.sanitize, args.unicorn_root, args.require_unicorn))
+        print(build(args.output, args.cc, args.sanitize, args.unicorn_root, args.require_unicorn, args.lz4_root))
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         parser.exit(1, "Native generator build failed: " + str(error) + "\n")
 

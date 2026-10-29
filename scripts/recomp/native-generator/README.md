@@ -27,7 +27,10 @@ image/lifter checkpoints can still be built without Unicorn.
 The cached tool includes hashes of the compiler, C sources/headers, LZ4 provenance
 and native Unicorn headers/library. The shared library is copied next to the tool
 and located using a relative loader path; moving the tool and its `.deps` directory
-together preserves execution. Vendored LZ4 1.9.4 is checked against `vendor/lz4/source.json` before compiling.
+together preserves execution. LZ4 1.9.4 is not stored in the repository: `build.py` downloads `lz4.c`/`lz4.h` once into
+ignored `work/native-generator/deps/`, checks them against the SHA-256 values in
+`vendor/lz4/source.json` and rejects anything else. `--lz4-root PATH` or `BDSP_LZ4_ROOT`
+supplies an offline copy of those two files, which is checked the same way.
 Build output, temporary files and comparisons default to ignored `work/`.
 `--output PATH` selects another output. `--sanitize` enables AddressSanitizer/UBSan.
 No build files are added to the repository root.
@@ -227,7 +230,7 @@ the native executable does not execute Python. The frozen reference is extracted
 from Git commit `a26bc12e4188fb69d6cd96f3271a07bfc9e475ab`.
 
 The Rust/Iced UI, IPS helper, runtime and saves are unaffected by the generator.
-See `NOTICE.md` for source attribution and `vendor/lz4/LICENSE` for LZ4.
+See `NOTICE.md` for source attribution and `vendor/lz4/` (pin and license) for LZ4.
 
 ## Validated checkpoints (2026-10-25)
 

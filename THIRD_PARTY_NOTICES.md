@@ -30,7 +30,9 @@ fix for synchronous window resizing is documented in `PATCHES.md` beside it.
 
 ## LZ4 1.9.4 (BSD-2-Clause)
 
-The native generator vendors the upstream `lz4.c` and `lz4.h` under
-`scripts/recomp/native-generator/vendor/lz4/`. The unchanged BSD-2-Clause license
-and copyright notice are included there. `source.json` records the upstream tag
-and SHA-256 of every imported file. This is independent of the Python LZ4 wrapper.
+The native generator compiles the upstream `lz4.c` and `lz4.h`. They are not stored
+in this repository: `scripts/recomp/native-generator/build.py` downloads the pinned
+files into the ignored `work/` folder and verifies them against the SHA-256 values in
+`scripts/recomp/native-generator/vendor/lz4/source.json`. The unchanged BSD-2-Clause
+license and copyright notice are kept next to that pin. This is independent of the
+Python LZ4 wrapper.

@@ -88,10 +88,10 @@ CATALOG = [
             "not meant for untrusted font files."),
 
     C("lz4-native-codegen", "LZ4 (native generator)", "1.9.4",
-      "pkg:github/lz4/lz4@v1.9.4", "BSD-2-Clause", BUILD, TRACKED,
+      "pkg:github/lz4/lz4@v1.9.4", "BSD-2-Clause", BUILD, EXTERNAL,
       ["scripts/recomp/native-generator/vendor/lz4/LICENSE", "scripts/recomp/native-generator/vendor/lz4/source.json"],
-      download="https://github.com/lz4/lz4/tree/v1.9.4", category="vendored-source",
-      notes="Unchanged LZ4 C block decoder source, compiled into the standalone native generator. Per-file SHA-256 values are in source.json."),
+      download="https://github.com/lz4/lz4/tree/v1.9.4", category="library",
+      notes="Unchanged LZ4 C block decoder source, downloaded at build time into work/ and compiled into the standalone native generator. Only the license and the pinned per-file SHA-256 values (source.json) are tracked."),
 
 
     # Assets bundled into the installer (uncommitted installer/ directory).

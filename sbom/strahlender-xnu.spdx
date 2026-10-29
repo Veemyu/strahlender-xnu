@@ -1,10 +1,10 @@
 SPDXVersion: SPDX-2.3
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
-DocumentName: strahlender-xnu e4e3d8a-dirty SBOM
-DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-0205dbf7-07de-505f-9d4e-7b4469e87d30
+DocumentName: strahlender-xnu 26df251-dirty SBOM
+DocumentNamespace: https://spdx.org/spdxdocs/strahlender-xnu-c3b1a395-4b70-5791-b960-66c8fa731040
 Creator: Tool: strahlender-xnu-sbom (scripts/sbom/generate_sbom.py)
-Created: 2026-10-26T07:34:30Z
+Created: 2026-10-29T16:50:27Z
 
 LicenseID: LicenseRef-Apple-SDK
 LicenseName: Apple Xcode and SDK Agreement
@@ -16,14 +16,14 @@ ExtractedText: <text>Proprietary FMOD runtime library (libfmod) inside fmod_tool
 
 PackageName: strahlender-xnu
 SPDXID: SPDXRef-strahlender-xnu
-PackageVersion: e4e3d8a-dirty
+PackageVersion: 26df251-dirty
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: NOASSERTION
 PackageLicenseDeclared: MIT
 PackageCopyrightText: <text>Copyright (c) 2026 Veemyu</text>
 PrimaryPackagePurpose: APPLICATION
-PackageComment: <text>Repository commit e4e3d8a3b53b09722dc7b26ebb029d2347a0354f. Uncommitted files at generation: sbom/strahlender-xnu.cdx.json, sbom/strahlender-xnu.csv, sbom/strahlender-xnu.spdx, sbom/strahlender-xnu.spdx.json, scripts/sbom/generate_sbom.py.</text>
+PackageComment: <text>Repository commit 26df251e98aa3daa967f44e1d966c6fb8fbae136. Uncommitted files at generation: THIRD_PARTY_NOTICES.md, scripts/recomp/native-generator/NOTICE.md, scripts/recomp/native-generator/README.md, scripts/recomp/native-generator/build.py, scripts/recomp/native-generator/vendor/lz4/lz4.c, scripts/recomp/native-generator/vendor/lz4/lz4.h, scripts/recomp/native-generator/vendor/lz4/source.json, scripts/sbom/generate_sbom.py, pico.save, scripts/tests/test_native_lz4_pin.py.</text>
 
 PackageName: strahlender-xnu-installer
 SPDXID: SPDXRef-installer
@@ -228,6 +228,18 @@ PackageCopyrightText: <text>NOASSERTION</text>
 PrimaryPackagePurpose: LIBRARY
 ExternalRef: PACKAGE-MANAGER purl pkg:generic/libvorbis@1.3.7
 PackageComment: <text>Distribution: local-tool. Repository state: git-ignored (tools/). Evidence: tools/vgmstream/deps/libvorbis-1.3.7.</text>
+
+PackageName: LZ4 (native generator)
+SPDXID: SPDXRef-lz4-native-codegen
+PackageVersion: 1.9.4
+PackageDownloadLocation: https://github.com/lz4/lz4/tree/v1.9.4
+FilesAnalyzed: false
+PackageLicenseConcluded: NOASSERTION
+PackageLicenseDeclared: BSD-2-Clause
+PackageCopyrightText: <text>NOASSERTION</text>
+PrimaryPackagePurpose: LIBRARY
+ExternalRef: PACKAGE-MANAGER purl pkg:github/lz4/lz4@v1.9.4
+PackageComment: <text>Distribution: build-tool. Repository state: external. Evidence: scripts/recomp/native-generator/vendor/lz4/LICENSE, scripts/recomp/native-generator/vendor/lz4/source.json. Unchanged LZ4 C block decoder source, downloaded at build time into work/ and compiled into the standalone native generator. Only the license and the pinned per-file SHA-256 values (source.json) are tracked.</text>
 
 PackageName: LZ4 C library (vendored in hactool and nx2elf)
 SPDXID: SPDXRef-lz4-c
@@ -7523,18 +7535,6 @@ PrimaryPackagePurpose: SOURCE
 ExternalRef: PACKAGE-MANAGER purl pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5
 PackageComment: <text>Distribution: shipped. Repository state: tracked. Evidence: THIRD_PARTY_NOTICES.md, shader_translator/NOTICE.md, scripts/recomp/rt-bdsp/NOTICE.md, scripts/recomp/upstream/LICENSE, scripts/recomp/native-generator/NOTICE.md. Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included. The native generator adapts the analysis/lifter/emitter algorithms and preserves attribution.</text>
 
-PackageName: LZ4 (native generator)
-SPDXID: SPDXRef-lz4-native-codegen
-PackageVersion: 1.9.4
-PackageDownloadLocation: https://github.com/lz4/lz4/tree/v1.9.4
-FilesAnalyzed: false
-PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: BSD-2-Clause
-PackageCopyrightText: <text>NOASSERTION</text>
-PrimaryPackagePurpose: SOURCE
-ExternalRef: PACKAGE-MANAGER purl pkg:github/lz4/lz4@v1.9.4
-PackageComment: <text>Distribution: build-tool. Repository state: tracked. Evidence: scripts/recomp/native-generator/vendor/lz4/LICENSE, scripts/recomp/native-generator/vendor/lz4/source.json. Unchanged LZ4 C block decoder source, compiled into the standalone native generator. Per-file SHA-256 values are in source.json.</text>
-
 PackageName: stb_truetype (as shipped by Dear ImGui; on-screen keyboard text)
 SPDXID: SPDXRef-stb-truetype
 PackageVersion: 1.26
@@ -7565,6 +7565,7 @@ Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-il2cppdumper
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-keystone
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-libogg
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-libvorbis
+Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lz4-native-codegen
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lz4-c
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-mbedtls
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-nx2elf
@@ -7603,7 +7604,6 @@ Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-linux-vulkan
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-linux-vma
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-xcode
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lasrecomp
-Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-lz4-native-codegen
 Relationship: SPDXRef-strahlender-xnu DEPENDS_ON SPDXRef-stb-truetype
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-base64-0.22.1
 Relationship: SPDXRef-installer DEPENDS_ON SPDXRef-crate-cc-1.10.0

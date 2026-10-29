@@ -2,6 +2,7 @@
   "version": "1.9.4",
   "origin": "https://github.com/lz4/lz4",
   "revision": "v1.9.4",
+  "url": "https://raw.githubusercontent.com/lz4/lz4/v1.9.4/lib/{name}",
   "files": {
     "lz4.c": "b6a85fd8f9be0fedb568abd1338719b23b999583ccda6f3404d5ae11e4ce7b8e",
     "lz4.h": "c1614ecf7ada7b0be1acb560d4239595f96fbb7aa6a79a7c40cb358753830be6",
