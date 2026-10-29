@@ -730,7 +730,7 @@ def package_game(executable, candidates, target, destination, notices, dynamic=(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=("inspect", "generate", "images", "compile", "generator", "overlay", "runtime", "link", "sdl"))
+    parser.add_argument("stage", choices=("generate", "images", "compile", "generator", "overlay", "runtime", "link", "sdl"))
     parser.add_argument("--target", choices=("x86_64", "aarch64"), default=windows.architecture())
     parser.add_argument("--host", choices=("x86_64", "aarch64"), default=windows.architecture())
     parser.add_argument("--cc", help="Explicit LLVM-MinGW target compiler")
@@ -754,9 +754,6 @@ def main(argv=None):
     if args.backend == "none":
         args.frontend = "sdl"   # no graphical host in the non-graphics diagnostic
     selected = windows.profile(args.target, args.host)
-    if args.stage == "inspect":
-        print(json.dumps({"profile": selected, "requirements": windows.prerequisite_items(ROOT, args.work, args.target)}, indent=2))
-        return 0
     if args.stage == "overlay":
         try:
             prepare_vulkan(ROOT, args.work / "recomp" / selected["cache_key"] / "nvn-src-vk")

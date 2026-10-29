@@ -418,17 +418,6 @@ class WindowsBuildTests(unittest.TestCase):
                 self.assertEqual(item["artifacts"], [])
             self.assertTrue(item["qualification"])
 
-    def test_preflight_checks_real_minimum_and_does_not_run_unix_tools(self):
-        for version, supported in ((19044, False), (19045, True), (26100, True)):
-            with tempfile.TemporaryDirectory() as temporary, \
-                    patch.object(windows.sys, "platform", "win32"), \
-                    patch.object(windows.sys, "getwindowsversion",
-                                 return_value=SimpleNamespace(major=10, build=version), create=True), \
-                    patch.object(windows.subprocess, "run", side_effect=AssertionError("No process in preflight")):
-                items = windows.prerequisite_items(ROOT, temporary, "x86_64")
-                self.assertEqual(items[0]["ok"], supported)
-                self.assertTrue(any(not item["ok"] for item in items))
-
     def test_pe_normal_delay_imports_and_closure(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -733,7 +722,7 @@ class WindowsBuildTests(unittest.TestCase):
             events = [json.loads(line) for line in output.getvalue().splitlines()]
             self.assertEqual(events[-1], {"event": "result", "ok": False, "code": 4})
             self.assertNotIn(str(args.prod_keys), output.getvalue())
-            self.assertTrue(any("No Unix build" in e.get("message", "") for e in events))
+            self.assertTrue(any("build environment" in e.get("message", "") for e in events))
 
 
 if __name__ == "__main__":

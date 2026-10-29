@@ -8,13 +8,18 @@
     "x86_64": {
       "triple": "x86_64-w64-windows-gnu",
       "machine": 34404,
-      "cpu_flags": ["-march=x86-64", "-mcx16"],
+      "cpu_flags": [
+        "-march=x86-64",
+        "-mcx16"
+      ],
       "accepted": false
     },
     "aarch64": {
       "triple": "aarch64-w64-windows-gnu",
       "machine": 43620,
-      "cpu_flags": ["-march=armv8-a"],
+      "cpu_flags": [
+        "-march=armv8-a"
+      ],
       "accepted": false
     }
   },
@@ -39,10 +44,9 @@
   "components": [
     {
       "id": "qt",
-      "purpose": "Shared Linux/Windows in-process game window, existing menus and Qt-owned Vulkan surface; SDL remains the controller/audio layer. The iced installer is separate.",
       "source": "https://www.qt.io/download-qt-installer-oss",
       "license": "LicenseRef-Qt-module-and-plugin-audit-required",
-      "qualification": "Public release remains unqualified. The user explicitly approved isolated extraction/execution of the four existing verified archives for a game-launch MVP, deferring package-manager organization. The actual shared Qt runtime compiles with Qt 6.12.0 and paired LLVM-MinGW 22.1.7 in work/windows-tools/qt-mvp-6.12.0; the existing 23.1.4 toolchain is unchanged. The private receipt checks actual headers, libQt6Core/Gui/Widgets.a import libraries, DLL/plugin closure, paired compiler identity and source license texts. Qt's runtime-reference DLLs match the paired compiler's byte-for-byte; only one provider is used. The existing shaderc/FFmpeg compile/link/codec/relocation probe also passes with the paired compiler/runtime. The real user-selected game/update linked and launched with Qt's Windows plugin and Vulkan on an RTX2080Ti; a 60-second rerun after fixing GPU-importable guest backing visibly renders Rowan. These are not whole-game/ABI/Windows10 acceptance. Complete notices/source/build correspondence and redistribution review remain separate. The official Windows 10 1809+ baseline is not physical acceptance of the LLVM kit. No package manager, extra download or global toolchain switch was authorized. MSVC/GCC Qt binaries are not interchangeable C++ ABIs. The retained private SDL frontend is a diagnostic fallback, not acceptance of the common Qt game host.",
+      "qualification": "Qt (LGPL): module and plugin license audit and a source offer are required before redistribution.",
       "candidate": {
         "version": "6.12.0",
         "package_version": "6.12.0-0-202609280346",
@@ -85,10 +89,9 @@
     },
     {
       "id": "llvm-mingw",
-      "purpose": "Private Clang, LLD, LLVM PE tools, UCRT headers/import libraries, compiler-rt and winpthreads; no global PATH changes.",
       "source": "https://github.com/mstorsjo/llvm-mingw",
       "license": "LicenseRef-LLVM-MinGW-distribution",
-      "qualification": "Audit individual LLVM/MinGW/winpthreads notices and the complete portable host tool DLL closure on Windows 10.",
+      "qualification": "Mixed licenses (GPL tools included): keep every notice of the toolchain distribution.",
       "version": "20261020",
       "artifacts": [
         {
@@ -104,19 +107,17 @@
     },
     {
       "id": "unicorn-msvc-runtime",
-      "purpose": "App-local Microsoft VC runtime for the locked Unicorn Windows wheel, used only by the build-time generator.",
       "source": "https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist",
       "license": "LicenseRef-Microsoft-Visual-Cpp-Runtime",
-      "qualification": "The amd64 wheel imports vcruntime140.dll. A locally installed developer runtime passed native probes; pin and audit an authorized redistributable source before enabling public preparation. Never copy from System32 or include Unicorn in the game package.",
+      "qualification": "vcruntime140.dll is deployed app-local from the Visual Studio redistributable; follow Microsoft's redistribution terms.",
       "version": null,
       "artifacts": []
     },
     {
       "id": "SDL3",
-      "purpose": "Windows window/events, audio, text input, HIDAPI Switch Pro/Joy-Con/PS4 and Xbox gamepad backends.",
       "source": "https://github.com/libsdl-org/SDL",
       "license": "Zlib",
-      "qualification": "Build with the selected UCRT toolchain and HIDAPI/XInput support; USB/Bluetooth controller acceptance is required.",
+      "qualification": "Zlib: keep the license text.",
       "version": "3.4.18",
       "source_archive": {
         "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz",
@@ -160,16 +161,22 @@
     },
     {
       "id": "vulkan",
-      "purpose": "Vulkan headers/import library, VMA headers and ABI-compatible shaderc. The GPU driver/loader is an external requirement, not a bundled SDK.",
       "source": "https://github.com/KhronosGroup/Vulkan-Headers",
       "license": "Apache-2.0 AND MIT",
-      "qualification": "Offline amd64 bundle built from the six individually pinned sources; notices, configuration, source adaptation and file inventories recorded. Public packaging, CPU/Windows 10 qualification and renderer-required GPU features remain unaccepted.",
+      "qualification": "Apache-2.0 and MIT: keep the notices.",
       "build_recipe": {
         "status": "implemented-offline",
         "script": "scripts/recomp/dependency_build.py",
         "component": "vulkan",
         "source_lock": "installer/assets/windows-sources.json",
-        "sources": ["vulkan-headers", "vma", "shaderc", "glslang", "spirv-headers", "spirv-tools"],
+        "sources": [
+          "vulkan-headers",
+          "vma",
+          "shaderc",
+          "glslang",
+          "spirv-headers",
+          "spirv-tools"
+        ],
         "required_inventory": [
           "include/vulkan/vulkan.h",
           "include/vk_mem_alloc.h",
@@ -185,10 +192,9 @@
     },
     {
       "id": "ffmpeg",
-      "purpose": "avcodec, avformat and avutil development files and the full runtime DLL closure for movies.",
       "source": "https://ffmpeg.org",
       "license": "LicenseRef-FFmpeg-build-configuration",
-      "qualification": "Private prebuilt development import only. Record actual configure flags, enabled codecs and complete DLL closure; obtain matching FFmpeg and third-party corresponding sources, build recipe and notices before redistribution. The earlier n8.0.1 source archive does not match this binary.",
+      "qualification": "LGPL shared build (BtbN): provide the build configuration and a source offer.",
       "version": "n8.1.3-24-g92611900bb",
       "build_recipe": {
         "status": "implemented-offline-import",
@@ -231,10 +237,9 @@
     },
     {
       "id": "hactool",
-      "purpose": "Private native Windows extraction tool; reads only the user's selected dump and keys locally.",
       "source": "https://github.com/SciresM/hactool",
       "license": "ISC AND Apache-2.0 AND MIT AND BSD-2-Clause AND LicenseRef-Unicode-ConvertUTF",
-      "qualification": "Direct native Unicode PFS0 extraction, unsafe-name/overlength rejection and PE closure have synthetic native probes. Genuine NCA extraction with user-selected keys and Windows 10 execution remain unaccepted. No game data or keys in releases.",
+      "qualification": "ISC with bundled mbedTLS (Apache-2.0) and further notices: keep them.",
       "version": "1.4.0-3121a5bf08cd81d3a99719feb2cab3b60767afd5",
       "build_recipe": {
         "status": "implemented-offline",
@@ -249,13 +254,8 @@
     }
   ],
   "release_blockers": [
-    "LLVM-MinGW 20261020 and Unicorn 2.1.4 passed native generator probes after consented private preparation. Full dependency inventories, redistribution notices and Windows 10 qualification remain incomplete; GUI dependency downloads are not enabled.",
-    "Offline license evidence audit: preserve all LLVM host-tool notices, not just LICENSE.TXT. BusyBox is GPLv2, Make/gendef include GPLv3, and widl/Python/libffi have separate notices; matching copyleft host-tool source/build evidence is not locally supplied. The required CPython 3.13.15 archive/runtime is not locally available, and the compiler's Python 3.14 is not a substitute. Unicorn wheel metadata says BSD while its embedded README says GPLv2; full engine license/source qualification and authorized VC-runtime redistribution remain open.",
-    "Source-built notice recipes now retain SPDX LICENSES directories, authorship and hactool's embedded cJSON/Unicode/LZ4 statements in separate inventoried private bundle variants. FFmpeg import can supplement generic GPLv3/LGPLv3 texts from the already pinned older source archive; these texts do not establish corresponding sources for the 8.1 binary or qualify transitive components. Preserving notices is not redistribution approval or proof of a license violation.",
-    "The repeated offline audit verifies the four existing Qt MVP archive pins, installed Qt receipt, 38 top-level Qt license texts against the approved source archive, and libc++/libunwind identity with the paired compiler. It inventories 93 third-party source notice/attribution candidates, not 93 confirmed deployed obligations. Qt's current private receipt does not itself bind the archive pins or a corresponding producer recipe; generic top-level license texts are not complete third-party attributions. The paired compiler retains 34 notice texts, but copyleft host-tool corresponding sources/build evidence and applicable deployed runtime notices remain release gates. No live package was changed or redistribution qualified.",
-    "The active amd64 runtime including Vulkan/VMA/SDL/movie compiles and links with synthetic guest tables, boots without developer PATH and reports host crashes. Actual shaderc SPIR-V/error probes and FFmpeg ABI/license/VP8 Unicode WebM roundtrip pass. SDL virtual controllers/dummy audio and ARM64 non-graphics cross-link also pass. These are not gameplay, GPU, physical audio/controllers, native ARM64, whole-game GC or IME acceptance.",
-    "An explicit debug-only local offline catalog now connects GUI prerequisites/build to extraction, C generation, full Vulkan/movie linking, packaging and transactional per-user installation. Native tests traverse real generation through relocated installation after synthetic extraction, plus the real isolated JSONL/native-extractor failure path. Real dump/keys selection through the GUI to a playable installation is not accepted. The public GUI gate remains closed.",
-    "Windows 10 22H2, Windows 11 and the USB/Bluetooth controller matrix require real hardware acceptance.",
-    "ARM64 is a separate experimental target; native host Unicorn and target dependencies/hardware are not qualified."
+    "Redistribution review of the bundled third-party binaries (notices, source offers) is not finished.",
+    "Windows 10 22H2, Windows 11 and the controller matrix need real-hardware acceptance.",
+    "ARM64 is experimental and not qualified."
   ]
 }

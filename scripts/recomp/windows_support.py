@@ -39,38 +39,6 @@ def profile(target=None, host=None):
             "cache_key": f"windows-{host}-to-{target}-{data['abi']}-simd-c"}
 
 
-def prerequisite_items(root, work, target=None):
-    """Fail closed until every release input is pinned and acceptance is recorded."""
-    data = contract(Path(root) / "installer" / "assets" / "windows-dependencies.json")
-    items = []
-    if sys.platform != "win32":
-        items.append({"name": "Native Windows host", "ok": False, "level": "missing",
-                      "hint": "Build the Windows target on Windows; no Linux fallback is used."})
-    else:
-        version = sys.getwindowsversion()
-        items.append({"name": "Windows 10 22H2 (19045) or Windows 11",
-                      "ok": version.major >= 10 and version.build >= data["minimum_windows_build"],
-                      "level": "missing", "hint": "Windows builds older than 19045 are not supported."})
-    selected = data["profiles"][architecture(target)]
-    items.append({"name": "Windows target acceptance", "ok": selected["accepted"],
-                  "level": "missing", "hint": "This target is not yet qualified for a playable release."})
-    for component in data["components"]:
-        # Empty arrays are deliberately not downloadable plans.
-        items.append({"name": component["id"] + " locked Windows package", "ok": False,
-                      "level": "missing", "hint": component["qualification"]})
-    for blocker in data["release_blockers"]:
-        items.append({"name": blocker, "ok": False, "level": "missing", "hint": ""})
-    destination = Path(work).resolve()
-    while not destination.exists():
-        destination = destination.parent
-    free = shutil.disk_usage(destination).free
-    minimum = data["minimum_free_gb"]
-    items.append({"name": f"Disk space >= {minimum} GB", "ok": free >= minimum * 10**9,
-                  "level": "missing", "detail": f"{free / 10**9:.1f} GB free",
-                  "hint": "Select a local build volume with enough space."})
-    return items
-
-
 def sha256(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:

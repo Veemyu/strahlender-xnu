@@ -314,45 +314,20 @@ def windows_prerequisites(args, *, emit_result=True):
     emit("step", id="prerequisites", status="started")
     try:
         catalog = getattr(args, "windows_catalog", None)
-        if catalog:
-            pipeline = load_windows_pipeline(args.root)
-            pipeline.prerequisites(catalog, "aarch64" if args.target == "windows-arm64" else "x86_64",
-                                   args.work, getattr(args, "min_free_gb", 40))
-            emit("log", level="warning", message="Private offline Windows development build only. Public redistribution, gameplay, Windows 10 and hardware acceptance remain unqualified.")
-            emit("step", id="prerequisites", status="complete")
-            if emit_result:
-                emit("result", ok=True, code=0)
-            return 0
-        path = Path(args.root) / "scripts/recomp/windows_support.py"
-        spec = importlib.util.spec_from_file_location("installer_windows_support", path)
-        if spec is None or spec.loader is None:
-            raise ValueError("Windows prerequisite checker is missing")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        target = "aarch64" if args.target == "windows-arm64" else "x86_64"
-        items = module.prerequisite_items(args.root, args.work, target)
-        for item in items:
-            emit("log", level="ok" if item["ok"] else "warning",
-                 message=("OK  " if item["ok"] else "MISSING  ") + item["name"])
-            if not item["ok"] and item.get("hint"):
-                emit("log", level="hint", message=item["hint"])
-        missing = any(not item["ok"] for item in items)
-        emit("step", id="prerequisites", status="needs attention" if missing else "complete")
-        if missing:
-            emit("error", code=4, message="Windows build is not release-qualified yet. See the listed dependency and runtime blockers. No Unix build was started.")
-        if emit_result or missing:
-            emit("result", ok=not missing, code=4 if missing else 0)
-        return 4 if missing else 0
+        if not catalog:
+            raise ValueError("The Windows build environment is not installed; download it in the installer first.")
+        pipeline = load_windows_pipeline(args.root)
+        pipeline.prerequisites(catalog, "aarch64" if args.target == "windows-arm64" else "x86_64",
+                               args.work, getattr(args, "min_free_gb", 40))
+        emit("step", id="prerequisites", status="complete")
+        if emit_result:
+            emit("result", ok=True, code=0)
+        return 0
     except (OSError, ValueError, KeyError) as error:
-        if getattr(args, "windows_catalog", None):
-            emit("step", id="prerequisites", status="needs attention")
-            emit("error", message="Private Windows dependencies could not be verified: " +
-                 _safe_line(str(error), args), code=4)
-            emit("result", ok=False, code=4)
-            return 4
-        prerequisite_exception(error, args)
-        emit("result", ok=False, code=1)
-        return 1
+        emit("step", id="prerequisites", status="needs attention")
+        emit("error", message="The Windows build environment cannot be used: " + _safe_line(str(error), args), code=4)
+        emit("result", ok=False, code=4)
+        return 4
 
 
 def check_build_dependencies(args):
