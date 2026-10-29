@@ -291,6 +291,9 @@ void bdsp_app_init(int argc, char **argv) {
         setenv("BDSP_IMG", tmp, 0);
         snprintf(tmp, sizeof tmp, "%s/main.npdm", g_app.resources);
         setenv("BDSP_NPDM", tmp, 0);
+        snprintf(tmp, sizeof tmp, "%s/Firmware", g_app.resources);
+        struct stat firmware_stat;
+        if (!stat(tmp, &firmware_stat) && S_ISDIR(firmware_stat.st_mode)) setenv("BDSP_FIRMWARE_DATA", tmp, 0);
     }
     setenv("BDSP_TIMEOUT", "2000000000", 0);   // the app runs until the user quits it
     snprintf(tmp, sizeof tmp, "%s/shots", g_app.cache);

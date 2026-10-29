@@ -18,6 +18,7 @@ SCENARIOS = (
     "setup-dependencies", "update-available", "update-confirmation",
     "target", "target-ios", "target-mac", "demo-target-ios", "review-ios", "setup-ios", "ipa-exported", "review-ios-mod", "ios-profile",
     "keys-empty", "keys-selected", "keys-not-found", "game-empty", "game-selected",
+    "firmware-empty", "firmware-selected", "review-firmware",
     "nca", "update-empty", "update-selected", "mods-folder", "mods-folder-ios", "mods-empty",
     "mods-selected", "mods-exefs-only", "mods-ips-ready", "mods-ips-ios-ready", "review-mod", "error", "error-details", "error-disk",
     "review", "review-portable", "demo-review", "setup", "build-options", "installed", "installed-test", "generator-analyze", "generator-emit", "progress", "progress-details",

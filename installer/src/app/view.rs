@@ -87,6 +87,7 @@ impl Installer {
             match self.page {
                 Page::Target => self.target_view(),
                 Page::Keys | Page::Game | Page::Update => self.input_view(),
+                Page::Firmware => self.firmware_view(),
                 Page::ModsFolder => self.mods_folder_view(),
                 Page::Mods => self.mods_view(),
                 Page::Review => self.review_view(),
@@ -812,6 +813,62 @@ impl Installer {
         .into()
     }
 
+    fn firmware_view(&self) -> Element<'_, Message> {
+        let c = style::colors(self.appearance);
+        let name = self
+            .firmware
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| compact_name(&n.to_string_lossy()))
+            .unwrap_or_else(|| self.language.t(L::FirmwareDrop).into());
+        let busy = self.firmware_pending.is_some();
+        let choose = |label, folder| {
+            button(text(self.language.t(label)).size(13))
+                .padding([10, 14])
+                .width(160)
+                .on_press_maybe((!busy).then_some(Message::ChooseFirmware(folder)))
+                .style(move |_, status| style::action(c, false, status))
+        };
+        let mut heading = row![text(name).size(16)].spacing(8).align_y(Center);
+        if self.firmware.is_some() {
+            heading = heading
+                .push(space().width(Fill))
+                .push(self.text_action(self.language.t(L::Remove), Message::RemoveFirmware));
+        }
+        let card = column![
+            heading,
+            text(self.language.t(if busy {
+                L::CheckingRequirements
+            } else {
+                L::FirmwareFormats
+            }))
+            .size(12)
+            .color(c.muted),
+            row![choose(L::FirmwareZip, false), choose(L::Folder, true)].spacing(10),
+        ]
+        .spacing(8);
+        column![
+            self.title(
+                self.language.t(L::FirmwareTitle),
+                self.language.t(L::FirmwareHint)
+            ),
+            container(card)
+                .padding(12)
+                .width(Fill)
+                .style(move |_| style::surface(c, self.drag_active)),
+            container(
+                text(self.language.t(L::FirmwareWithout))
+                    .size(13)
+                    .color(c.muted)
+            )
+            .padding(10)
+            .width(Fill)
+            .style(move |_| style::surface(c, false)),
+        ]
+        .spacing(12)
+        .into()
+    }
+
     fn mods_folder_view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
         let folder = self
@@ -1041,6 +1098,14 @@ impl Installer {
             self.summary(self.language.t(L::Target), self.target.label().into()),
         ]
         .spacing(4);
+        let summary = if let Some(path) = &self.firmware {
+            summary.push(self.summary(
+                self.language.t(L::Firmware),
+                compact_name(&path.file_name().unwrap_or_default().to_string_lossy()),
+            ))
+        } else {
+            summary
+        };
         let summary = if let Some(name) = &self.selected_mod {
             if self
                 .mods
@@ -1500,6 +1565,18 @@ impl Installer {
             }
         };
         let c = style::colors(self.appearance);
+        if self.page == Page::Firmware {
+            actions = actions.push(
+                button(text(self.language.t(L::SkipMods)).size(14))
+                    .padding([10, 20])
+                    .on_press_maybe(
+                        self.firmware_pending
+                            .is_none()
+                            .then_some(Message::SkipFirmware),
+                    )
+                    .style(move |_, status| style::action(c, false, status)),
+            );
+        }
         if matches!(self.page, Page::ModsFolder | Page::Mods) {
             actions =
                 actions.push(self.text_action(self.language.t(L::SkipMods), Message::SkipMods));

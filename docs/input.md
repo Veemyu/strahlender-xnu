@@ -1,6 +1,6 @@
 # On-screen keyboard (text entry)
 
-Updated: 2026-10-24. When the game asks for text (player name, rival name, nicknames, codes) it calls the system's software keyboard,
+Updated: 2026-10-29. When the game asks for text (player name, rival name, nicknames, codes) it calls the system's software keyboard,
 a library applet. This project answers that call with its own keyboard, drawn from the keyboard layout files of the Switch **firmware you
 provide**; the repository contains none of those files. Without them macOS/Linux use a simple independent keyboard. iOS/iPadOS instead show only the prompt, a native editable field and the
 blurred game while UIKit handles text input. Complete readable Horizon layouts plus valid text and button-glyph fonts select Horizon
@@ -16,11 +16,18 @@ exclusively on iOS; UIKit's keyboard is never opened over it. Both need a normal
   and `0100000000000823.romfs` (word list of the game's name check; without it the check is skipped).
   `scripts/swkbd_firmware_extract.py --nca-dir <registered NCAs> --keys <prod.keys> --hactool <hactool> --out <folder>` writes exactly this
   folder from your own firmware dump (it uses hactool and your keys locally and prints no key material).
-  The GUI installer does not currently import or extract firmware. On iPhone/iPad, the app reads already extracted keyboard data from
-  `Documents/Firmware`; without complete layouts/fonts, UIKit handles input. Firmware is optional and is not part of the game RomFS.
+  The GUI installer offers an optional **Firmware** step after the game update: drop/select
+  your own firmware ZIP or a folder containing complete firmware `.nca` files. A native
+  Rust helper uses hactool and your selected keys to extract and validate keyboard
+  layouts and fonts before game-code generation. Skipping explains the alternative
+  keyboard behavior and never blocks playing.
+  Verified resources are bundled in the game app/IPA, separately from RomFS and saves.
+  iPhone/iPad prefer bundled `res/Firmware`, with `Documents/Firmware` retained for
+  manual imports. Without usable layouts/fonts, UIKit handles input.
 - A normal (not scripted) run on macOS or iPadOS. `BDSP_SWKBD_SIMPLE=1` forces the fallback even with firmware files (native input on iOS).
-- iPadOS: the app reads the files from `Documents/Firmware` (same folder layout; copy it with the Files app or `devicectl`, without
-  `--remove-existing-content`). Without complete layouts/fonts, only a prompt and native field appear above the iOS keyboard.
+- Manual iPadOS imports may still use `Documents/Firmware` with the same folder layout.
+  Bundled installer firmware takes priority. Without complete layouts/fonts, only a
+  prompt and native field appear above the iOS keyboard.
 
 ## Using it (macOS)
 
@@ -28,8 +35,9 @@ exclusively on iOS; UIKit's keyboard is never opened over it. Both need a normal
 - Mouse: click a key.
 - Controller: D-pad or left stick moves the focus, A presses the key, B deletes, X cancels, Y inserts a space, L/R move the caret,
   left stick click toggles Shift, Plus confirms.
-- iPadOS: touch a key, or the text field to bring up the system keyboard; a hardware keyboard types directly; a controller works like on the Mac.
-  The touch gamepad is hidden while the keyboard is open.
+- iPadOS with complete firmware: touch Horizon keys; UIKit's keyboard stays hidden.
+  Without complete firmware: edit the native field with the system keyboard.
+  A hardware keyboard types directly; the touch gamepad stays hidden during text entry.
 - While the keyboard is open the game sees no input.
 - The game stops inside the keyboard call; the window keeps showing the last game image behind the keyboard.
 

@@ -133,8 +133,9 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     environment = dict(os.environ)
     for variable in ("BDSP_EXEFS_DIR", "RECOMP_DIR", "BDSP_MOD_NAME", "BDSP_MOD_ROOT",
                      "BDSP_MOD_BUNDLE_ID", "BDSP_MOD_DISPLAY_NAME", "BDSP_ICON_SOURCE",
-                     "BDSP_IOS_BUILD_DIR", "BDSP_IOS_UDID", "BDSP_IOS_BUNDLE_ID"):
+                     "BDSP_IOS_BUILD_DIR", "BDSP_IOS_UDID", "BDSP_IOS_BUNDLE_ID", "BDSP_FIRMWARE_SOURCE"):
         environment.pop(variable, None)
+    environment["BDSP_FIRMWARE_SOURCE"] = str(getattr(args, "firmware_root", "") or "")
     environment.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1", **(extra_env or {})})
     proc = subprocess.Popen(command, cwd=args.root, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -396,6 +397,36 @@ def _sha256(path):
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _prepare_firmware(args):
+    source = getattr(args, "firmware", None)
+    args.firmware_root = None
+    if not source:
+        return 0
+    helper = getattr(args, "firmware_helper", None)
+    if not helper or not Path(helper).is_file():
+        raise ValueError("The native firmware importer is missing. Reinstall the installer or provide --firmware-helper.")
+    if not Path(source).exists():
+        raise ValueError("The selected firmware ZIP or NCA folder is unavailable. Choose it again or skip firmware.")
+    # Bootstrap hactool only; reject firmware before game extraction/generation.
+    code = _run_command([str(Path(args.root) / "scripts/build_all.sh"), "--only", "tools",
+                         "--target", args.target, "--min-free-gb", str(required_free_gb(args))], args, "firmware")
+    if code:
+        return code
+    cache = Path(getattr(args, "firmware_cache", None) or Path(args.work) / "firmware-cache")
+    result = Path(args.work) / "installer/firmware-result.json"
+    result.parent.mkdir(parents=True, exist_ok=True)
+    result.unlink(missing_ok=True)
+    tool = Path(args.root) / "tools/hactool/hactool"
+    code = _run_command([str(helper), str(source), str(args.prod_keys), str(tool), str(cache), str(result)], args, "firmware")
+    if code:
+        return code
+    root = Path(json.loads(result.read_text())["firmware"]).resolve(strict=True)
+    if not root.is_relative_to(cache.resolve()) or not (root / "firmware-manifest.json").is_file():
+        raise ValueError("Firmware importer returned an invalid resource cache.")
+    args.firmware_root = root
+    return 0
 
 
 def _mod_exefs(root):
@@ -861,6 +892,8 @@ def install_artifact(args, artifact):
                         (work / "recomp/img_gfx", staging / "img"),
                         (work / "recomp/icons/linux", staging / "icons/linux"),
                         (root / "scripts/recomp/rt-bdsp/app/linux/lproj", staging / "lproj"))
+        if getattr(args, "firmware_root", None):
+            source_trees += ((Path(args.firmware_root), staging / "Firmware"),)
         total = sum(_file_count(source) for source, _ in source_trees) + 2
         state = [0, total]
         backup = data / (".app-backup-" + str(os.getpid()))
@@ -920,6 +953,7 @@ def _linux_launcher(data, mods_dir, selected_mod):
     app = data / "app"
     lines = ["#!/bin/sh", "set -eu"]
     for name, path in (("BDSP_IMG", app / "img"), ("BDSP_NPDM", app / "main.npdm"),
+                       ("BDSP_FIRMWARE_DATA", app / "Firmware"),
                        ("BDSP_ROMFS", app / "romfs"), ("BDSP_SAVE", data / "saves"),
                        ("BDSP_MODS_DIR", mods_dir), ("BDSP_ICON_DIR", app / "icons/linux"),
                        ("BDSP_LPROJ", app / "lproj")):
@@ -986,6 +1020,10 @@ def build(args):
     if args.update:
         common += ["--nsp", args.update]
     code = check_build_dependencies(args)
+    if code:
+        emit("result", ok=False, code=code)
+        return code
+    code = _prepare_firmware(args)
     if code:
         emit("result", ok=False, code=code)
         return code
@@ -1087,6 +1125,9 @@ def main(argv=None):
     build_parser.add_argument("--mod-name")
     build_parser.add_argument("--mods-dir")
     build_parser.add_argument("--ips-helper")
+    build_parser.add_argument("--firmware", help="Optional local firmware ZIP or NCA folder")
+    build_parser.add_argument("--firmware-helper", help="Native firmware_import executable")
+    build_parser.add_argument("--firmware-cache", help="Reusable private firmware resource cache")
     build_parser.add_argument("--ios-team", help="Apple development team ID for direct device installation")
     build_parser.add_argument("--ios-device", help="Connected device identifier, UDID or name")
     build_parser.add_argument("--ios-delivery", choices=("device", "ipa"), default="device")

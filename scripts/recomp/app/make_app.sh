@@ -39,6 +39,10 @@ strip -S "$NEW/Contents/MacOS/BDSP"
 cp -c -R "$IMG" "$NEW/Contents/Resources/img" 2>/dev/null || cp -R "$IMG" "$NEW/Contents/Resources/img"
 cp -R "$HERE/lproj/." "$NEW/Contents/Resources/"
 cp "$NPDM" "$NEW/Contents/Resources/main.npdm"
+if [ -n "${BDSP_FIRMWARE_SOURCE:-}" ]; then
+  [ -f "$BDSP_FIRMWARE_SOURCE/firmware-manifest.json" ] || { echo "ERROR: firmware resources are not verified" >&2; exit 4; }
+  cp -R "$BDSP_FIRMWARE_SOURCE" "$NEW/Contents/Resources/Firmware"
+fi
 # Shader cache (generated locally, gitignored) into the bundle, if present
 if [[ -d work/recomp/cache/shaders ]]; then cp -R work/recomp/cache/shaders "$NEW/Contents/Resources/shaders"; fi
 # precompiled Metal libraries (scripts/recomp/shader_bin.sh macosx)

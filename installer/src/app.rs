@@ -40,6 +40,7 @@ enum Page {
     Keys,
     Game,
     Update,
+    Firmware,
     ModsFolder,
     Mods,
     Review,
@@ -132,6 +133,11 @@ pub enum Message {
     Review,
     Back,
     SkipMods,
+    ChooseFirmware(bool),
+    FirmwarePicked(Option<PathBuf>),
+    FirmwareChecked(u64, PathBuf, Result<(), String>),
+    RemoveFirmware,
+    SkipFirmware,
     Preview,
     RequirementsChecked(u64, Result<crate::dependencies::Plan, String>),
     InstallRequirements,
@@ -174,6 +180,7 @@ pub struct RestoredInputs {
     base: Option<Source>,
     update: Option<Source>,
     mod_folder: Option<PathBuf>,
+    firmware: Option<PathBuf>,
     keys_were_saved: bool,
     keys_missing: bool,
     base_missing: bool,
@@ -189,6 +196,8 @@ pub struct Installer {
     mods: Vec<ModEntry>,
     selected_mod: Option<String>,
     mods_skipped: bool,
+    firmware: Option<PathBuf>,
+    firmware_pending: Option<u64>,
     mods_folder: Option<PathBuf>,
     chosen_mod_folder: Option<PathBuf>,
     select_imported_mod: bool,
@@ -269,6 +278,7 @@ fn restore_inputs(saved: preferences::SavedPaths, language: Language) -> Restore
     let mod_folder = saved.mod_folder.clone().filter(|path| path.is_dir());
     let mod_folder_missing = saved.mod_folder.is_some() && mod_folder.is_none();
     RestoredInputs {
+        firmware: saved.firmware.filter(|p| p.exists()),
         keys,
         base,
         update,
@@ -366,6 +376,7 @@ fn build_error_notice(detail: &str, language: Language, exporting: bool) -> Stri
         let label = match crate::progress::Stage::from_id(stage) {
             Some(crate::progress::Stage::Source) => L::FetchSource,
             Some(crate::progress::Stage::Requirements) => L::Tools,
+            Some(crate::progress::Stage::Firmware) => L::Firmware,
             Some(crate::progress::Stage::Extract) => L::Prepare,
             Some(crate::progress::Stage::Exefs) => L::ExeFS,
             Some(crate::progress::Stage::Signing) => L::VerifySigning,
@@ -445,6 +456,8 @@ impl Installer {
                     && !name.eq_ignore_ascii_case("diamond")
             }),
             mods_skipped: false,
+            firmware: None,
+            firmware_pending: None,
             mods_folder: mod_support::folder_for(host, InstallTarget::native(host)),
             chosen_mod_folder: None,
             select_imported_mod: false,
@@ -698,6 +711,7 @@ impl Installer {
                 Err(error) => self.notice = Some(error),
             },
             Message::InputsRestored(restored) => {
+                self.firmware = restored.firmware;
                 let keys_restored = restored.keys.is_some();
                 self.saved_input_missing = [
                     restored.base_missing,
@@ -1395,7 +1409,8 @@ impl Installer {
                     Page::Target => Page::Keys,
                     Page::Keys => Page::Game,
                     Page::Game => Page::Update,
-                    Page::Update => Page::ModsFolder,
+                    Page::Update => Page::Firmware,
+                    Page::Firmware => Page::ModsFolder,
                     Page::ModsFolder => Page::Mods,
                     Page::Mods => Page::Review,
                     Page::Review => Page::Setup,
@@ -1410,6 +1425,86 @@ impl Installer {
                 if self.page == Page::Mods && !self.demo && self.capture.is_none() {
                     return self.handle(Message::RefreshMods);
                 }
+            }
+            Message::ChooseFirmware(folder)
+                if self.page == Page::Firmware && self.firmware_pending.is_none() =>
+            {
+                let language = self.language;
+                let start = preferences::load_paths().last_directory;
+                return Task::perform(
+                    async move {
+                        let picker = rfd::AsyncFileDialog::new().set_title(language.t(L::Firmware));
+                        let picker =
+                            start.map_or(picker.clone(), |path| picker.set_directory(path));
+                        let file = if folder {
+                            picker.pick_folder().await
+                        } else {
+                            picker.add_filter("ZIP", &["zip"]).pick_file().await
+                        };
+                        file.map(|f| f.path().to_owned())
+                    },
+                    Message::FirmwarePicked,
+                );
+            }
+            Message::FirmwarePicked(Some(path))
+                if self.page == Page::Firmware && self.firmware_pending.is_none() =>
+            {
+                self.sequence += 1;
+                let id = self.sequence;
+                self.firmware_pending = Some(id);
+                self.notice = None;
+                return Task::perform(
+                    async move {
+                        let p = path.clone();
+                        let result = tokio::task::spawn_blocking(move || {
+                            crate::firmware::inspect_source(&p)
+                        })
+                        .await
+                        .unwrap_or_else(|_| Err("Firmware inspection failed.".into()));
+                        (id, path, result)
+                    },
+                    |(id, path, result)| Message::FirmwareChecked(id, path, result),
+                );
+            }
+            Message::FirmwareChecked(id, path, result) if self.firmware_pending == Some(id) => {
+                self.firmware_pending = None;
+                match result {
+                    Ok(()) => {
+                        self.firmware = Some(path.clone());
+                        if !self.demo && self.capture.is_none() {
+                            let _ = preferences::save_firmware(Some(&path));
+                        }
+                    }
+                    Err(detail) => {
+                        self.notice = Some(format!(
+                            "{}\n\n{}",
+                            self.language.t(L::FirmwareInvalid),
+                            redact_home_path(&detail)
+                        ))
+                    }
+                }
+            }
+            Message::RemoveFirmware => {
+                self.firmware = None;
+                self.firmware_pending = None;
+                if !self.demo && self.capture.is_none() {
+                    let _ = preferences::save_firmware(None);
+                }
+            }
+            Message::SkipFirmware
+                if self.page == Page::Firmware && self.firmware_pending.is_none() =>
+            {
+                self.firmware = None;
+                self.page = Page::ModsFolder;
+                self.mods_skipped = false;
+                self.notice = None;
+                self.drag_active = false;
+            }
+            Message::Event(Event::Window(window::Event::FileDropped(path)))
+                if self.page == Page::Firmware =>
+            {
+                self.drag_active = false;
+                return self.handle(Message::FirmwarePicked(Some(path)));
             }
             Message::SkipMods if matches!(self.page, Page::ModsFolder | Page::Mods) => {
                 self.mods_skipped = true;
@@ -1465,10 +1560,11 @@ impl Installer {
                     Page::Keys => Page::Target,
                     Page::Game => Page::Keys,
                     Page::Update => Page::Game,
-                    Page::Review if self.mods_skipped => Page::Update,
+                    Page::Review if self.mods_skipped => Page::Firmware,
                     Page::Review => Page::Mods,
                     Page::Mods => Page::ModsFolder,
-                    Page::ModsFolder => Page::Update,
+                    Page::ModsFolder => Page::Firmware,
+                    Page::Firmware => Page::Update,
                     Page::Setup => Page::Review,
                     Page::Progress => Page::Setup,
                     Page::Finished => Page::Keys,
@@ -1597,6 +1693,7 @@ impl Installer {
                                 auto_cleanup: self.auto_cleanup,
                                 base: base.path.clone(),
                                 prod_keys: keys.path.clone(),
+                                firmware: self.firmware.clone(),
                                 update: self.update.as_ref().map(|source| source.path.clone()),
                                 mod_root: self
                                     .selected_mod
@@ -1883,7 +1980,7 @@ impl Installer {
     }
 
     fn step_labels(&self) -> Vec<L> {
-        let mut labels = vec![L::Target, L::Keys, L::Base, L::Update];
+        let mut labels = vec![L::Target, L::Keys, L::Base, L::Update, L::Firmware];
         if !self.mods_skipped {
             labels.extend([L::ModsLocation, L::Mods]);
         }
@@ -1903,6 +2000,7 @@ impl Installer {
             });
         crate::progress::Stage::ALL
             .into_iter()
+            .filter(|stage| *stage != crate::progress::Stage::Firmware || self.firmware.is_some())
             .filter(|stage| *stage != crate::progress::Stage::Exefs || code_mod)
             .filter(|stage| {
                 *stage != crate::progress::Stage::Signing
@@ -1912,10 +2010,11 @@ impl Installer {
             .collect()
     }
 
-    fn build_labels(&self) -> [L; 11] {
+    fn build_labels(&self) -> [L; 12] {
         [
             L::FetchSource,
             L::Tools,
+            L::Firmware,
             L::Prepare,
             L::ExeFS,
             L::VerifySigning,
@@ -1941,13 +2040,14 @@ impl Installer {
             Page::Keys => offset,
             Page::Game => offset + 1,
             Page::Update => offset + 2,
-            Page::ModsFolder => offset + 3,
-            Page::Mods => offset + 4,
-            Page::Review => offset + if self.mods_skipped { 3 } else { 5 },
-            Page::Setup => offset + if self.mods_skipped { 4 } else { 6 },
+            Page::Firmware => offset + 3,
+            Page::ModsFolder => offset + 4,
+            Page::Mods => offset + 5,
+            Page::Review => offset + if self.mods_skipped { 4 } else { 6 },
+            Page::Setup => offset + if self.mods_skipped { 5 } else { 7 },
             Page::Progress => {
                 offset
-                    + if self.mods_skipped { 5 } else { 7 }
+                    + if self.mods_skipped { 6 } else { 8 }
                     + if self.demo
                         || (self.capture.is_some() && self.backend_status == BackendStatus::Idle)
                     {
@@ -1994,6 +2094,9 @@ impl Installer {
         }
         if matches!(self.page, Page::Target | Page::Review | Page::ModsFolder) {
             return true;
+        }
+        if self.page == Page::Firmware {
+            return self.firmware_pending.is_none() && (self.demo || self.firmware.is_some());
         }
         if self.page == Page::Mods {
             return !self.mods_scanning
@@ -2201,6 +2304,18 @@ impl Installer {
             "update-empty" => {
                 self.page = Page::Update;
                 self.update = None;
+            }
+            "firmware-empty" => {
+                self.page = Page::Firmware;
+                self.firmware = None;
+            }
+            "firmware-selected" => {
+                self.page = Page::Firmware;
+                self.firmware = Some(PathBuf::from("Firmware.zip"));
+            }
+            "review-firmware" => {
+                self.page = Page::Review;
+                self.firmware = Some(PathBuf::from("Firmware.zip"));
             }
             "mods-folder" => self.page = Page::ModsFolder,
             "mods-folder-ios" => {
@@ -2480,6 +2595,36 @@ fn compact_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn firmware_is_optional_explicit_and_rejects_stale_inspection() {
+        let (mut app, _) = Installer::new();
+        app.demo = true;
+        app.page = Page::Firmware;
+        app.firmware_pending = Some(5);
+        let path = PathBuf::from("Firmware.zip");
+        let _ = app.update(Message::FirmwareChecked(4, path.clone(), Ok(())));
+        assert!(app.firmware.is_none());
+        let _ = app.update(Message::SkipFirmware);
+        assert_eq!(app.page, Page::Firmware);
+        let _ = app.update(Message::FirmwareChecked(5, path.clone(), Ok(())));
+        assert_eq!(app.firmware.as_ref(), Some(&path));
+        assert!(
+            app.build_stages()
+                .contains(&crate::progress::Stage::Firmware)
+        );
+        let _ = app.update(Message::SkipFirmware);
+        assert_eq!(app.page, Page::ModsFolder);
+        assert!(app.firmware.is_none());
+        assert!(
+            !app.build_stages()
+                .contains(&crate::progress::Stage::Firmware)
+        );
+        let _ = app.update(Message::Back);
+        assert_eq!(app.page, Page::Firmware);
+        app.demo = false;
+        assert!(!app.ready()); // Without a selection, use the explicit Skip action.
+    }
 
     #[test]
     fn ios_delivery_is_explicit_and_cannot_change_during_a_build() {
@@ -2776,7 +2921,7 @@ mod tests {
         assert_eq!(app.target, InstallTarget::Ios);
         let _ = app.update(Message::SelectTarget(InstallTarget::Mac));
         assert_eq!(app.target, InstallTarget::Mac);
-        assert_eq!(app.step_labels().len(), 8 + app.build_stages().len());
+        assert_eq!(app.step_labels().len(), 9 + app.build_stages().len());
     }
 
     #[test]
@@ -2810,7 +2955,7 @@ mod tests {
         app.build_progress.step("eh_gen", "started");
         let active = app.active_step();
         assert!(matches!(app.step_labels()[active], L::Generate));
-        assert_eq!(app.step_labels().len(), 6 + 9);
+        assert_eq!(app.step_labels().len(), 7 + 9);
         app.page = Page::Finished;
         assert_eq!(app.active_step(), app.step_labels().len() - 1);
     }
@@ -2827,6 +2972,7 @@ mod tests {
         for page in [
             Page::Game,
             Page::Update,
+            Page::Firmware,
             Page::ModsFolder,
             Page::Mods,
             Page::Review,
@@ -2842,6 +2988,8 @@ mod tests {
         assert_eq!(app.page, Page::Mods);
         let _ = app.update(Message::Back);
         assert_eq!(app.page, Page::ModsFolder);
+        let _ = app.update(Message::Back);
+        assert_eq!(app.page, Page::Firmware);
         let _ = app.update(Message::Back);
         assert_eq!(app.page, Page::Update);
         let _ = app.update(Message::DemoInput);
@@ -2868,11 +3016,11 @@ mod tests {
         app.page = Page::Setup;
         app.demo = true;
         let _ = app.update(Message::Preview);
-        assert_eq!(app.active_step(), 8);
+        assert_eq!(app.active_step(), 9);
         for _ in 0..20 {
             let _ = app.update(Message::Tick);
         }
-        assert_eq!(app.active_step(), 10);
+        assert_eq!(app.active_step(), 11);
         let _ = app.update(Message::Back);
         assert!(
             app.log
@@ -2930,7 +3078,7 @@ mod tests {
         ));
         assert_eq!(
             app.active_step(),
-            8 + app
+            9 + app
                 .build_stages()
                 .iter()
                 .position(|stage| *stage == crate::progress::Stage::Compile)
@@ -2970,6 +3118,8 @@ mod tests {
         let _ = app.update(Message::Review);
         assert_eq!(app.page, Page::Update);
         let _ = app.update(Message::Review);
+        assert_eq!(app.page, Page::Firmware);
+        let _ = app.update(Message::SkipFirmware);
         assert_eq!(app.page, Page::ModsFolder);
         let _ = app.update(Message::Review);
         assert_eq!(app.page, Page::Mods);
@@ -2981,6 +3131,8 @@ mod tests {
         assert_eq!(app.page, Page::Mods);
         let _ = app.update(Message::Back);
         assert_eq!(app.page, Page::ModsFolder);
+        let _ = app.update(Message::Back);
+        assert_eq!(app.page, Page::Firmware);
         let _ = app.update(Message::Back);
         assert_eq!(app.page, Page::Update);
         let _ = app.update(Message::Back);
@@ -3115,6 +3267,7 @@ mod tests {
     #[test]
     fn device_selection_stays_explicit_and_stale_refreshes_cannot_replace_it() {
         let (mut app, _) = Installer::new();
+        app.ios_team.clear();
         app.host = Platform::Mac;
         app.target = InstallTarget::Ios;
         app.page = Page::Target;

@@ -3,6 +3,8 @@ mod backend;
 mod capture;
 mod dependencies;
 mod drop_target;
+#[allow(dead_code)]
+mod firmware;
 mod i18n;
 mod icons;
 mod ios_devices;
@@ -49,11 +51,13 @@ fn main() -> iced::Result {
         }
         [flag] if flag == "--licenses" => {
             println!(
-                "{}\n\n{}\n\n{}\n\n{}",
+                "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
                 include_str!("../assets/OCTICONS-LICENSE"),
                 include_str!("../assets/lucide/LICENSE"),
                 include_str!("../assets/FIRA-LICENSE"),
-                include_str!("../vendor/iced_winit/LICENSE")
+                include_str!("../vendor/iced_winit/LICENSE"),
+                include_str!("../assets/firmware-import-licenses/ZIP-MIT.txt"),
+                include_str!("../assets/firmware-import-licenses/TTF-PARSER-MIT.txt")
             );
             return Ok(());
         }

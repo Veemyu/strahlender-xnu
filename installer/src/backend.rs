@@ -161,6 +161,7 @@ pub struct BuildRequest {
     pub auto_cleanup: bool,
     pub base: PathBuf,
     pub prod_keys: PathBuf,
+    pub firmware: Option<PathBuf>,
     pub update: Option<PathBuf>,
     pub mod_root: Option<PathBuf>,
     pub mod_name: Option<String>,
@@ -475,6 +476,7 @@ fn run_driver(
                 auto_cleanup: _,
                 base,
                 prod_keys,
+                firmware,
                 update,
                 mod_root,
                 mod_name,
@@ -562,6 +564,27 @@ fn run_driver(
                         == Some(std::ffi::OsStr::new("1")),
                     std::env::var_os("BDSP_INSTALLER_DEV_INSTALL_ROOT"),
                 );
+                if let Some(source) = firmware {
+                    let helper = std::env::current_exe().unwrap_or_default().with_file_name(
+                        if cfg!(windows) {
+                            "firmware_import.exe"
+                        } else {
+                            "firmware_import"
+                        },
+                    );
+                    command
+                        .arg("--firmware")
+                        .arg(source)
+                        .arg("--firmware-helper")
+                        .arg(helper);
+                    if let Some(data) =
+                        directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
+                    {
+                        command
+                            .arg("--firmware-cache")
+                            .arg(data.data_local_dir().join("firmware"));
+                    }
+                }
                 if let Some(update) = update {
                     command.arg("--update").arg(update);
                 }

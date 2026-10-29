@@ -36,3 +36,13 @@ files into the ignored `work/` folder and verifies them against the SHA-256 valu
 `scripts/recomp/native-generator/vendor/lz4/source.json`. The unchanged BSD-2-Clause
 license and copyright notice are kept next to that pin. This is independent of the
 Python LZ4 wrapper.
+
+## Native installer firmware import dependencies
+
+- **zip 2.6.1** (MIT): Rust ZIP parsing, CRC checking and Deflate decoding. Source
+  and license are fetched by Cargo at build time; version is locked in
+  `installer/Cargo.lock`. No external archive program is required at runtime.
+- **ttf-parser 0.25.1** (MIT OR Apache-2.0): bounds-checked parsing of locally decoded
+  firmware font tables; also used by the GUI font stack. Fetched by Cargo at build
+  time and locked in `installer/Cargo.lock`. Firmware font bytes are never shipped
+  in this repository or public installer packages.

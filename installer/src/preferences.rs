@@ -11,6 +11,7 @@ pub struct SavedPaths {
     pub base: Option<PathBuf>,
     pub update: Option<PathBuf>,
     pub mod_folder: Option<PathBuf>,
+    pub firmware: Option<PathBuf>,
     pub last_directory: Option<PathBuf>,
 }
 
@@ -36,6 +37,8 @@ struct Preferences {
     update_path: Option<PathBuf>,
     #[serde(default, with = "stored_path")]
     mod_folder: Option<PathBuf>,
+    #[serde(default, with = "stored_path")]
+    firmware_path: Option<PathBuf>,
     #[serde(default, with = "stored_path")]
     last_directory: Option<PathBuf>,
 }
@@ -121,6 +124,7 @@ pub fn load_paths() -> SavedPaths {
         base: preferences.base_path,
         update: preferences.update_path,
         mod_folder: preferences.mod_folder,
+        firmware: preferences.firmware_path,
         last_directory: preferences.last_directory,
     }
 }
@@ -193,4 +197,13 @@ mod tests {
         assert_eq!(restored.keys_path, preferences.keys_path);
         assert_eq!(restored.last_directory, preferences.last_directory);
     }
+}
+
+pub fn save_firmware(path: Option<&Path>) -> io::Result<()> {
+    let mut preferences = load_preferences();
+    preferences.firmware_path = path.map(Path::to_path_buf);
+    if let Some(path) = path {
+        preferences.last_directory = path.parent().map(Path::to_path_buf);
+    }
+    write(preferences)
 }

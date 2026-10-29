@@ -679,7 +679,8 @@ static void StartSelectedRuntime(const ModInfo *mod) {
     setenv("BDSP_ROMFS", romfs.UTF8String, 1);
     setenv("BDSP_SAVE", saves.UTF8String, 1);
     {   // firmware files of the on-screen keyboard (layouts, fonts, name check); without them the keyboard is a simple one of our own
-        NSString *fw = [docs stringByAppendingPathComponent:@"Firmware"];
+        NSString *fw = [res stringByAppendingPathComponent:@"Firmware"];
+        if (![fm fileExistsAtPath:fw]) fw = [docs stringByAppendingPathComponent:@"Firmware"];
         if ([fm fileExistsAtPath:fw]) setenv("BDSP_FIRMWARE_DATA", fw.UTF8String, 0);
     }
     setenv("BDSP_SHOT_DIR", [docs stringByAppendingPathComponent:@"Shots"].UTF8String, 0);

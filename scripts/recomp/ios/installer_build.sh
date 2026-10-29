@@ -69,6 +69,13 @@ case "${1:-}" in
         XCODE_SIGNING=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=) ;;
       *) echo "Unknown iOS delivery method" >&2; exit 2 ;;
     esac
+    # Xcode's folder resource includes this versioned, verified firmware payload.
+    # Clear only our previous resource copy when firmware is skipped/changed.
+    rm -rf "$R/res/Firmware"
+    if [ -n "${BDSP_FIRMWARE_SOURCE:-}" ]; then
+      [ -f "$BDSP_FIRMWARE_SOURCE/firmware-manifest.json" ] || { echo "Firmware resources are not verified." >&2; exit 4; }
+      cp -R "$BDSP_FIRMWARE_SOURCE" "$R/res/Firmware"
+    fi
     mkdir -p "$R/res/img32"
     for file in "$IMG"/*.img "$IMG"/*.mod "$IMG"/*.syms.json "$IMG/hle.txt"; do cp "$file" "$R/res/img32/"; done
     cp "$BDSP_EXEFS_DIR/main.npdm" "$R/res/main.npdm"
@@ -91,6 +98,8 @@ case "${1:-}" in
       build > "$R/xcodebuild.log" 2>&1 \
       || { tail -n 35 "$R/xcodebuild.log" >&2; exit 4; }
     APP="$R/derived/Build/Products/Release-iphoneos/BDSP.app"
+    rm -rf "$APP/res/Firmware"
+    [ ! -d "$R/res/Firmware" ] || cp -R "$R/res/Firmware" "$APP/res/Firmware"
     ICONARGS=(ios --source "${BDSP_ICON_SOURCE:-work/recomp/icons/source}" --output "$R/icons" --bundle "$APP")
     [ -z "${BDSP_MOD_ROOT:-}" ] || ICONARGS+=(--mod-root "$BDSP_MOD_ROOT" --mod-name "${BDSP_MOD_NAME:-}")
     python3 scripts/recomp/app/game_icons.py "${ICONARGS[@]}"

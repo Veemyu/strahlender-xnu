@@ -18,6 +18,50 @@ DRIVER = os.path.join(ROOT, "scripts", "install", "driver.py")
 
 
 class InstallerDriverTests(unittest.TestCase):
+    def test_firmware_skip_does_not_run_tools_or_touch_data(self):
+        args = SimpleNamespace(firmware=None, firmware_root="stale")
+        with patch.object(driver, "_run_command", side_effect=AssertionError("Unexpected firmware command")):
+            self.assertEqual(driver._prepare_firmware(args), 0)
+        self.assertIsNone(args.firmware_root)
+
+    def test_firmware_is_verified_before_any_game_code_and_cache_is_bounded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, helper, keys = root / "firmware.zip", root / "importer", root / "prod.keys"
+            for file in (source, helper, keys):
+                file.write_bytes(b"synthetic")
+            cache = root / "cache"
+            extracted = cache / "version"
+            extracted.mkdir(parents=True)
+            (extracted / "firmware-manifest.json").write_text("{}")
+            args = SimpleNamespace(root=root, work=root / "work", target="macos", firmware=source,
+                                   firmware_helper=helper, firmware_cache=cache, prod_keys=keys, base=source, update=None)
+            stages = []
+            def run(command, _args, stage):
+                stages.append(stage)
+                self.assertEqual(stage, "firmware")
+                if command[0] == str(helper):
+                    Path(command[-1]).write_text(json.dumps({"firmware":str(extracted)}))
+                else:
+                    self.assertEqual(command[1:3], ["--only", "tools"])
+                return 0
+            with patch.object(driver, "_run_command", side_effect=run):
+                self.assertEqual(driver._prepare_firmware(args), 0)
+            self.assertEqual(args.firmware_root, extracted.resolve())
+            self.assertEqual(stages, ["firmware", "firmware"])
+            self.assertEqual(source.read_bytes(), b"synthetic")
+
+    def test_failed_firmware_import_never_sets_a_payload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            helper, source = root / "helper", root / "dump.zip"
+            helper.touch(); source.touch()
+            args = SimpleNamespace(root=root, work=root / "work", target="ios", firmware=source,
+                                   firmware_helper=helper, prod_keys=root / "prod.keys", base=source, update=None)
+            with patch.object(driver, "_run_command", side_effect=[0, 4]):
+                self.assertEqual(driver._prepare_firmware(args), 4)
+            self.assertIsNone(args.firmware_root)
+
     def test_ios_compile_progress_ignores_inventory_from_an_older_run(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

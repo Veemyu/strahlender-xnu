@@ -192,7 +192,7 @@ jobs:
           shasum -a 256 -c SHA256SUMS
           ditto -x -k installer-macos-universal.zip "$RUNNER_TEMP/universal-installer"
           APP="$RUNNER_TEMP/universal-installer/Strahlender Installer.app"
-          for binary in strahlender-xnu-installer ips_patch installer_update installer_setup; do
+          for binary in strahlender-xnu-installer ips_patch firmware_import installer_update installer_setup; do
             lipo "$APP/Contents/MacOS/$binary" -verify_arch arm64
             lipo "$APP/Contents/MacOS/$binary" -verify_arch x86_64
           done

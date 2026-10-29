@@ -52,7 +52,7 @@ done
 
 mkdir -p "$OUTPUT"
 ditto "$ARM_APP" "$APP"
-for binary in strahlender-xnu-installer ips_patch installer_update installer_setup; do
+for binary in strahlender-xnu-installer ips_patch firmware_import installer_update installer_setup; do
   arm="$ARM_APP/Contents/MacOS/$binary"
   intel="$INTEL_APP/Contents/MacOS/$binary"
   lipo "$arm" -verify_arch arm64

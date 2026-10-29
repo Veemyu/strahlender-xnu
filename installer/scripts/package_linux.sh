@@ -24,10 +24,11 @@ if [[ -e "$APPDIR" ]]; then
   fi
 else
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/Resources" "$OUTPUT/tools"
-cp "$HERE/target/release/strahlender-xnu-installer" "$HERE/target/release/ips_patch" "$HERE/target/release/installer_update" "$HERE/target/release/installer_setup" "$APPDIR/usr/bin/"
+cp "$HERE/target/release/strahlender-xnu-installer" "$HERE/target/release/ips_patch" "$HERE/target/release/firmware_import" "$HERE/target/release/installer_update" "$HERE/target/release/installer_setup" "$APPDIR/usr/bin/"
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$HERE/assets/FIRA-LICENSE" "$HERE/assets/OCTICONS-LICENSE" "$APPDIR/usr/Resources/"
 cp "$HERE/vendor/iced_winit/LICENSE" "$APPDIR/usr/Resources/ICED-WINIT-LICENSE"
 cp -R "$HERE/assets/lucide" "$APPDIR/usr/Resources/lucide"
+cp -R "$HERE/assets/firmware-import-licenses" "$APPDIR/usr/Resources/firmware-import-licenses"
 cp -a "$PRIVATE_RUNTIME" "$APPDIR/usr/Resources/runtime"
 cat > "$APPDIR/strahlender.desktop" <<'DESKTOP'
 [Desktop Entry]

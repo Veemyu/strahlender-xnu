@@ -3,6 +3,7 @@
 pub enum Stage {
     Source,
     Requirements,
+    Firmware,
     Extract,
     Exefs,
     Signing,
@@ -15,9 +16,10 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Source,
         Self::Requirements,
+        Self::Firmware,
         Self::Extract,
         Self::Exefs,
         Self::Signing,
@@ -33,6 +35,7 @@ impl Stage {
         Some(match id {
             "source" => Self::Source,
             "prerequisites" => Self::Requirements,
+            "firmware" => Self::Firmware,
             "extract" => Self::Extract,
             "exefs" => Self::Exefs,
             "signing" => Self::Signing,

@@ -177,3 +177,41 @@ macOS BDSP → Notifications provides persisted checkmarks for its implemented s
 local-save and save/backup-warning banners. Menu changes apply immediately. External
 backup and verification switches can be added when those services exist in the Mac
 shell; the menu does not advertise services it does not perform.
+
+### Optional native firmware import
+
+After Update, the installer offers a compact Firmware view accepting ZIP or NCA
+folder selection and drag-and-drop. Skip sits beside Continue. The view explains
+that missing original Switch keyboard resources are replaced by alternative input
+(native system keyboard on iPhone/iPad). Only the selected source reference is
+remembered locally; no firmware or keys are fetched remotely.
+
+The `firmware_import` Rust helper uses hactool, suppressing its raw output because
+it can include key material. Before any game C generation it checks the firmware
+NCAs, chooses required keyboard/text-font/glyph-font titles, extracts resources and
+validates decoded SFNT tables and core Yaz0/SARC layout entries. Optional CJK fonts,
+sounds, localized labels and the name-check dictionary are kept when supplied.
+Required titles missing or wrong keys cause a firmware-specific failure before
+compilation; skipped firmware adds no prerequisite.
+
+ZIP imports reject unsafe paths, links, duplicate names and oversized archives.
+Limits are 8,192 entries, 4 GB expanded input and 256 MB extracted resources.
+Complete NCA files and registered `.nca/00` directories are supported, not split
+NCAs. Successful imports publish an immutable content-derived cache entry after
+validation. Reuse checks its file inventory and SHA-256 manifest. Source files and
+selected keys remain untouched; temporary import directories are removed on normal
+success/failure. Forced process termination can leave staging that needs cleanup.
+
+The cache is under the installer's private application-data directory and remains
+reusable across downloaded source revisions. Small validated resources are copied
+into signed Mac/iOS app resources (including IPA), or the Linux installed app tree.
+No second RomFS is created. Firmware does not enter the save/game identity or trigger
+game-code regeneration. App publication already uses staging, so a failed package
+does not replace the installed app or its firmware. Manual `Documents/Firmware` on
+iOS remains supported as fallback to bundled resources.
+
+Validation includes synthetic ZIP/folder import, cache reuse/tampering, incomplete
+dumps, invalid paths/fonts/layouts, navigation and pre-build ordering. Actual
+user-firmware/device keyboard acceptance remains pending; no proprietary fixture
+is distributed. The helper is included in macOS universal and Linux AppImage
+packaging; no CI job or release was dispatched for this change.
