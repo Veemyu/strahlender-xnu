@@ -1,4 +1,5 @@
 """Windows build contracts and synthetic PE/C fixtures; never reads game inputs."""
+import os
 import contextlib
 import ctypes
 import io
@@ -71,6 +72,7 @@ class WindowsBuildTests(unittest.TestCase):
             compile_sources.assert_not_called()
             self.assertFalse((Path(temporary) / "objects").exists())
 
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_qt_bundle_checks_cpp_abi_plugins_closure_and_shared_source_wiring(self):
         selected = windows.profile("x86_64", "x86_64")
         with tempfile.TemporaryDirectory() as temporary:
@@ -338,6 +340,7 @@ class WindowsBuildTests(unittest.TestCase):
                 job.close()
                 process.close()
 
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_generator_windows_exe_and_compiler_identity_cache(self):
         builder = build.load_helper("windows_generator_test", ROOT / "scripts/recomp/native-generator/build.py")
         with tempfile.TemporaryDirectory() as temporary:
@@ -475,6 +478,7 @@ class WindowsBuildTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Unterminated"):
                 windows.PE(exe).imports()
 
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_compiler_rejects_msvc_msvcrt_and_wrong_target(self):
         with tempfile.TemporaryDirectory() as temporary:
             compiler = Path(temporary) / "clang.exe"
@@ -648,6 +652,7 @@ class WindowsBuildTests(unittest.TestCase):
                     compile()
                 self.assertFalse(marker.exists())
 
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_mixed_c_cpp_uses_target_drivers_flags_and_cache_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

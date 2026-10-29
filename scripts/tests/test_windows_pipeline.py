@@ -1,3 +1,4 @@
+import os
 import contextlib
 from contextlib import ExitStack
 import io
@@ -74,6 +75,7 @@ class WindowsPipelineTests(unittest.TestCase):
                 pipeline.install_package(package, root / "other", emit)
             self.assertFalse((root / "other").exists())
 
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_catalog_tracks_generator_closure_and_entire_toolchain(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -118,6 +120,7 @@ class WindowsPipelineTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     pipeline.read_catalog(catalog, "aarch64")
 
+    @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and Windows path semantics; runs on Windows hosts only")
     def test_pipeline_stage_order_and_failed_compile_never_publishes_or_installs(self):
         for fail, with_qt in ((False, False), (True, False), (False, True)):
             with self.subTest(fail=fail, qt=with_qt), tempfile.TemporaryDirectory() as temporary:
