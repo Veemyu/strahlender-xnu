@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolves the newest upstream releases of the Windows build inputs, downloads them and records what was used.
+"""Resolves the newest upstream releases of the Windows build inputs (the compiler and Qt come from resolve_qt.py), downloads them and records what was used.
 
 Nothing is pinned in the repository: every run of the GitHub Actions job windows-buildenv.yml takes the current
 release of each project, hashes what it downloaded, and writes resolved copies of windows-dependencies.json and
@@ -81,8 +81,6 @@ def release_asset(release, pattern):
 
 def resolve(get=api, get_text=text):
     """Returns (contract updates, source entries, downloads) without touching the network beyond `get`."""
-    llvm = get("https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest")
-    toolchain = release_asset(llvm, r"llvm-mingw-\d+-ucrt-x86_64\.zip")
     sdl_releases = [r for r in get("https://api.github.com/repos/libsdl-org/SDL/releases?per_page=40")
                     if re.fullmatch(r"release-3\.\d+\.\d+", r["tag_name"]) and not r["prerelease"] and not r["draft"]]
     sdl = max(sdl_releases, key=lambda r: version_key(r["tag_name"]))
@@ -119,7 +117,6 @@ def resolve(get=api, get_text=text):
         "hactool": ("SciresM/hactool", "HEAD", hactool_head),
     }
     downloads = [
-        {"role": "llvm-mingw", "name": "llvm-mingw.zip", "url": toolchain["browser_download_url"], "version": llvm["tag_name"]},
         {"role": "SDL3", "name": "SDL3-source.tar.gz", "url": sdl_asset["browser_download_url"], "version": sdl_version},
         {"role": "ffmpeg-binaries", "name": "ffmpeg-binaries.zip", "url": ffmpeg_asset["browser_download_url"], "version": ffmpeg_name},
     ]
@@ -148,11 +145,7 @@ def write_resolved(downloads, destination, assets=ASSETS):
     contract = json.loads((assets / "windows-dependencies.json").read_text(encoding="utf-8"))
     sources = json.loads((assets / "windows-sources.json").read_text(encoding="utf-8"))
     for component in contract["components"]:
-        if component["id"] == "llvm-mingw":
-            item = by_role["llvm-mingw"]
-            component["version"] = item["version"]
-            component["artifacts"][0].update(url=item["url"], sha256=item["sha256"], size_bytes=item["size_bytes"])
-        elif component["id"] == "SDL3":
+        if component["id"] == "SDL3":
             item = by_role["SDL3"]
             component["version"] = item["version"]
             component["source_archive"].update(url=item["url"], sha256=item["sha256"], size_bytes=item["size_bytes"])

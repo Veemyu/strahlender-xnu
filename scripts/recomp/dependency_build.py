@@ -210,6 +210,54 @@ def build_hactool(archives, destination, compiler, selected, commands, jobs=None
     return destination
 
 
+def build_qt(qt_root, source_archive, destination, compiler, selected, version):
+    """Bundle the shared Qt6 that Qt publishes for LLVM-MinGW UCRT/libc++ (the C++ ABI of our compiler), plus its licence texts.
+
+    The licence texts come from the matching qtbase source archive; the compiler is the one Qt pairs with the kit.
+    """
+    qt_root, destination = Path(qt_root).resolve(), Path(destination).resolve()
+    if destination.exists():
+        raise ValueError("Refusing to replace an existing Qt bundle")
+    if not re.fullmatch(r"6\.\d+\.\d+", version):
+        raise ValueError("Unexpected Qt version: " + version)
+    identity = build.compiler_identity(compiler, selected)
+    cxx = build.compiler_identity(Path(identity["path"]).with_name(selected["target"] + "-w64-mingw32-clang++.exe"), selected)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    wanted = [("include", ("QtCore", "QtGui", "QtWidgets")), ("lib", ()), ("bin", ()), ("plugins", ("platforms", "styles", "imageformats"))]
+    with tempfile.TemporaryDirectory(prefix="qt-bundle-", dir=destination.parent) as temporary:
+        package = Path(temporary) / "package"
+        for folder, names in wanted:
+            source = qt_root / folder
+            if not source.is_dir():
+                raise ValueError("Qt installation lacks " + folder)
+            if names:
+                for name in names:
+                    if (source / name).is_dir():
+                        build.filesystem.copy_tree(source / name, package / folder / name)
+            else:
+                (package / folder).mkdir(parents=True)
+                for module in ("Core", "Gui", "Widgets"):
+                    for pattern in (f"libQt6{module}.a", f"Qt6{module}.dll"):
+                        for path in source.glob(pattern):
+                            shutil.copyfile(path, package / folder / path.name)
+        notices = package / "notices/qt"
+        notices.mkdir(parents=True)
+        with tarfile.open(source_archive, "r:xz") as source:
+            for member in source.getmembers():
+                parts = member.name.split("/")
+                if member.isfile() and len(parts) >= 2 and (parts[1] == "LICENSES" or parts[1].startswith("LICENSE")):
+                    (notices / Path(*parts[1:])).parent.mkdir(parents=True, exist_ok=True)
+                    (notices / Path(*parts[1:])).write_bytes(source.extractfile(member).read())
+        if not any(notices.iterdir()):
+            raise ValueError("The Qt source archive has no licence texts")
+        bundle_receipt(package, selected, identity, {"qtbase": {"version": version, "archive_sha256": build.windows.sha256(source_archive)}}, {},
+                       qt={"linkage": "shared", "cxx_runtime": "libc++", "version": version,
+                           "minimum_windows_build": build.windows.contract()["minimum_windows_build"],
+                           "cxx_compiler_sha256": cxx["sha256"]})
+        package.rename(destination)
+    return destination
+
+
 def patch_hactool_paths(source):
     """Bound upstream fixed-size path construction before opening any output."""
     patches = {}
@@ -325,8 +373,11 @@ def build_vulkan(archives, destination, compiler, selected, cmake, ninja, comman
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool"))
+    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool", "qt"))
     parser.add_argument("--archives", type=Path)
+    parser.add_argument("--qt-root", type=Path, help="Qt installation for LLVM-MinGW (contains bin, lib, include, plugins)")
+    parser.add_argument("--qt-source", type=Path, help="Matching qtbase-everywhere-src .tar.xz (licence texts)")
+    parser.add_argument("--qt-version")
     parser.add_argument("--archive", type=Path, help="Already downloaded pinned FFmpeg development ZIP")
     parser.add_argument("--prefix", type=Path, required=True)
     parser.add_argument("--cc")
@@ -341,9 +392,13 @@ def main(argv=None):
         parser.error("vulkan requires --archives, --cc, --cmake and --ninja")
     if args.component == "hactool" and not all((args.archives, args.cc)):
         parser.error("hactool requires --archives and --cc")
+    if args.component == "qt" and not all((args.qt_root, args.qt_source, args.qt_version, args.cc)):
+        parser.error("qt requires --qt-root, --qt-source, --qt-version and --cc")
     commands = build.Commands()
     try:
-        if args.component == "ffmpeg":
+        if args.component == "qt":
+            build_qt(args.qt_root, args.qt_source, args.prefix, args.cc, build.windows.profile(args.target), args.qt_version)
+        elif args.component == "ffmpeg":
             import_ffmpeg(args.archive, args.prefix, build.windows.profile(args.target), args.archives)
         elif args.component == "hactool":
             build_hactool(args.archives, args.prefix, args.cc, build.windows.profile(args.target),

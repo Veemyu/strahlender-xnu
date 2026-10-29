@@ -42,11 +42,18 @@ jobs:
           python scripts/recomp/resolve_inputs.py --out work/downloads
           Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_CONTRACT=$PWD\work\resolved\windows-dependencies.json"
           Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_SOURCES=$PWD\work\resolved\windows-sources.json"
-      - name: Unpack LLVM-MinGW, install the native Unicorn engine
+      - name: Install Qt and the LLVM-MinGW toolchain Qt pairs with it (newest releases), and the native Unicorn engine
         run: |
-          New-Item -ItemType Directory -Force work/buildenv, work/unpack | Out-Null
-          Expand-Archive work/downloads/llvm-mingw.zip work/unpack
-          Move-Item (Get-ChildItem work/unpack -Directory | Select-Object -First 1).FullName work/buildenv/toolchain
+          New-Item -ItemType Directory -Force work/buildenv | Out-Null
+          python -m pip install aqtinstall
+          $q = python scripts/recomp/resolve_qt.py | ConvertFrom-Json
+          aqt install-qt windows desktop $q.qt $q.arch -O work/qt
+          aqt install-tool windows desktop $q.tool $q.variant -O work/qt
+          $minor = ($q.qt -split '\.')[0..1] -join '.'
+          Invoke-WebRequest "https://download.qt.io/official_releases/qt/$minor/$($q.qt)/submodules/qtbase-everywhere-src-$($q.qt).tar.xz" -OutFile work/downloads/qtbase-src.tar.xz -UseBasicParsing
+          Add-Content $env:GITHUB_ENV "QT_VERSION=$($q.qt)"
+          Add-Content $env:GITHUB_ENV "QT_ROOT=$((Get-ChildItem "work/qt/$($q.qt)" -Directory | Select-Object -First 1).FullName)"
+          Move-Item (Get-ChildItem work/qt/Tools -Directory | Where-Object Name -like 'llvm-mingw*' | Select-Object -First 1).FullName work/buildenv/toolchain
           python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
           # The Unicorn wheel imports the Visual C++ runtime; take the redistributable copy from Visual Studio (app-local deployment).
           $crt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT\vcruntime140*.dll" | Select-Object -First 4
@@ -62,6 +69,7 @@ jobs:
           python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake $cmake --ninja $ninja --prefix work/buildenv/vulkan
           python scripts/recomp/dependency_build.py ffmpeg --archive work/downloads/ffmpeg-binaries.zip --archives work/downloads --prefix work/buildenv/ffmpeg
           python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/buildenv/hactool
+          python scripts/recomp/dependency_build.py qt --qt-root $env:QT_ROOT --qt-source work/downloads/qtbase-src.tar.xz --qt-version $env:QT_VERSION --cc $cc --prefix work/buildenv/qt
       - name: Build the native generator
         run: |
           $env:PYTHONPATH = "$PWD"
@@ -72,7 +80,7 @@ jobs:
         run: |
           $env:PYTHONPATH = "$PWD"
           $dir = "$PWD\work\buildenv"
-          python scripts/install/windows_pipeline.py --output "$dir\catalog.json" --cc "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe" --generator "$dir\generator\bdsp_codegen.exe" --sdl "$dir\sdl" --vulkan "$dir\vulkan" --ffmpeg "$dir\ffmpeg" --hactool "$dir\hactool"
+          python scripts/install/windows_pipeline.py --output "$dir\catalog.json" --cc "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe" --generator "$dir\generator\bdsp_codegen.exe" --sdl "$dir\sdl" --vulkan "$dir\vulkan" --ffmpeg "$dir\ffmpeg" --hactool "$dir\hactool" --qt "$dir\qt"
       - name: Windows tests against the new toolchain
         continue-on-error: true
         run: |
@@ -85,6 +93,7 @@ jobs:
           $env:BDSP_WINDOWS_VULKAN_ROOT = "$dir\vulkan"
           $env:BDSP_WINDOWS_FFMPEG_ROOT = "$dir\ffmpeg"
           $env:BDSP_WINDOWS_HACTOOL_ROOT = "$dir\hactool"
+          $env:BDSP_WINDOWS_QT_ROOT = "$dir\qt"
           python -m unittest scripts.tests.test_windows_build scripts.tests.test_windows_pipeline scripts.tests.test_windows_native_generator scripts.tests.test_dependency_build scripts.tests.test_installer_filesystem scripts.tests.test_installer_driver
       - name: Pack the archive
         run: |
@@ -105,7 +114,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Publish as the release "windows-buildenv"
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+        if: github.event_name == 'schedule' || inputs.publish
         run: |
           gh release view windows-buildenv *> $null
           if ($LASTEXITCODE -ne 0) { gh release create windows-buildenv --title "Windows build environment" --notes "Rolling build environment for the Windows game build, rebuilt weekly from the newest upstream releases. The installer downloads it; versions and hashes are in inputs/ and windows-buildenv.json." }

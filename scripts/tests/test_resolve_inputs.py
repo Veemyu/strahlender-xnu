@@ -9,8 +9,6 @@ from scripts.recomp import resolve_inputs as resolver
 
 def canned(url):
     tags = lambda names: [{"name": n, "commit": {"sha": (n.encode().hex() * 5)[:40]}} for n in names]
-    if "llvm-mingw/releases/latest" in url:
-        return {"tag_name": "20270101", "assets": [{"name": "llvm-mingw-20270101-ucrt-x86_64.zip", "browser_download_url": "https://x/llvm.zip"}]}
     if "SDL/releases" in url:
         return [{"tag_name": "release-2.40.0", "prerelease": False, "draft": False, "assets": []},
                 {"tag_name": "release-3.6.0", "prerelease": True, "draft": False, "assets": []},
@@ -39,7 +37,6 @@ DEPS = "'glslang_revision': '%s',\n'spirv_headers_revision': '%s',\n'spirv_tools
 class ResolveInputsTests(unittest.TestCase):
     def test_picks_the_newest_stable_release_of_each_project_within_the_compatible_ffmpeg_line(self):
         items = {i["role"]: i for i in resolver.resolve(canned, lambda url: DEPS)}
-        self.assertEqual(items["llvm-mingw"]["version"], "20270101")
         self.assertEqual(items["SDL3"]["version"], "3.4.18")  # no 2.x, no pre-release
         self.assertEqual(items["ffmpeg-binaries"]["version"], "ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip")
         self.assertEqual(items["ffmpeg"]["version"], "n8.1.10")

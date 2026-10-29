@@ -34,6 +34,41 @@ class DependencyBuildTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "outside"):
                 dependencies.collect_notices(source, source / "notices")
 
+    def test_qt_bundle_keeps_the_three_modules_the_host_links_and_their_licence_texts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            qt = root / "qt"
+            for name in ("include/QtCore/qglobal.h", "include/QtGui/QVulkanInstance", "include/QtWidgets/QApplication",
+                         "include/QtNetwork/QTcpSocket", "lib/libQt6Core.a", "lib/libQt6Gui.a", "lib/libQt6Widgets.a",
+                         "lib/libQt6Network.a", "bin/Qt6Core.dll", "bin/Qt6Gui.dll", "bin/Qt6Widgets.dll", "bin/Qt6Network.dll",
+                         "plugins/platforms/qwindows.dll", "plugins/styles/qmodernwindowsstyle.dll", "plugins/sqldrivers/x.dll"):
+                (qt / name).parent.mkdir(parents=True, exist_ok=True)
+                (qt / name).write_bytes(name.encode())
+            source = root / "qtbase.tar.xz"
+            with tarfile.open(source, "w:xz") as archive:
+                for name, data in (("qtbase-6.12.0/LICENSES/LGPL-3.0-only.txt", b"lgpl"), ("qtbase-6.12.0/LICENSE.LGPL3", b"l3"),
+                                   ("qtbase-6.12.0/src/main.cpp", b"code")):
+                    member = tarfile.TarInfo(name)
+                    member.size = len(data)
+                    archive.addfile(member, io.BytesIO(data))
+            selected = build.windows.profile("x86_64", "x86_64")
+            identity = {"path": str(root / "bin/x86_64-w64-mingw32-clang.exe"), "sha256": "c" * 64, "version": "v", "triple": "t"}
+            with patch.object(build, "compiler_identity", return_value=identity):
+                result = dependencies.build_qt(qt, source, root / "bundle", "clang", selected, "6.12.0")
+            files = {p.relative_to(result).as_posix() for p in result.rglob("*") if p.is_file()}
+            self.assertIn("lib/libQt6Widgets.a", files)
+            self.assertIn("bin/Qt6Core.dll", files)
+            self.assertIn("plugins/platforms/qwindows.dll", files)
+            self.assertNotIn("lib/libQt6Network.a", files)
+            self.assertNotIn("plugins/sqldrivers/x.dll", files)
+            self.assertIn("notices/qt/LICENSES/LGPL-3.0-only.txt", files)
+            self.assertNotIn("notices/qt/src/main.cpp", files)
+            record = json.loads((result / "build.json").read_text())
+            self.assertEqual(record["qt"], {"linkage": "shared", "cxx_runtime": "libc++", "version": "6.12.0",
+                                            "minimum_windows_build": 19045, "cxx_compiler_sha256": "c" * 64})
+            with self.assertRaisesRegex(ValueError, "existing"):
+                dependencies.build_qt(qt, source, result, "clang", selected, "6.12.0")
+
     def test_hactool_preserves_distinct_embedded_license_notices(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
