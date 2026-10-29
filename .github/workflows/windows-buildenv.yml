@@ -42,18 +42,19 @@ jobs:
           python scripts/recomp/resolve_inputs.py --out work/downloads
           Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_CONTRACT=$PWD\work\resolved\windows-dependencies.json"
           Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_SOURCES=$PWD\work\resolved\windows-sources.json"
-      - name: Install Qt and the LLVM-MinGW toolchain Qt pairs with it (newest releases), and the native Unicorn engine
+      - name: Fetch Qt and the LLVM-MinGW toolchain Qt pairs with it (newest release), install the native Unicorn engine
         run: |
           New-Item -ItemType Directory -Force work/buildenv | Out-Null
-          python -m pip install aqtinstall
-          $q = python scripts/recomp/resolve_qt.py | ConvertFrom-Json
-          aqt install-qt windows desktop $q.qt $q.arch -O work/qt
-          aqt install-tool windows desktop $q.tool $q.variant -O work/qt
-          $minor = ($q.qt -split '\.')[0..1] -join '.'
-          Invoke-WebRequest "https://download.qt.io/official_releases/qt/$minor/$($q.qt)/submodules/qtbase-everywhere-src-$($q.qt).tar.xz" -OutFile work/downloads/qtbase-src.tar.xz -UseBasicParsing
+          python scripts/recomp/resolve_qt.py --out work/qt-download
+          $q = Get-Content work/qt-download/qt.json | ConvertFrom-Json
+          7z x work/qt-download/qtbase.7z -owork/qt -y | Out-Null
+          7z x work/qt-download/toolchain.7z -owork/qt-tools -y | Out-Null
+          Copy-Item work/qt-download/source.tar.xz work/downloads/qtbase-src.tar.xz
           Add-Content $env:GITHUB_ENV "QT_VERSION=$($q.qt)"
-          Add-Content $env:GITHUB_ENV "QT_ROOT=$((Get-ChildItem "work/qt/$($q.qt)" -Directory | Select-Object -First 1).FullName)"
-          Move-Item (Get-ChildItem work/qt/Tools -Directory | Where-Object Name -like 'llvm-mingw*' | Select-Object -First 1).FullName work/buildenv/toolchain
+          $core = Get-ChildItem work/qt -Recurse -Filter Qt6Core.dll | Select-Object -First 1
+          Add-Content $env:GITHUB_ENV "QT_ROOT=$($core.Directory.Parent.FullName)"
+          $clang = Get-ChildItem work/qt-tools -Recurse -Filter x86_64-w64-mingw32-clang.exe | Select-Object -First 1
+          Move-Item $clang.Directory.Parent.FullName work/buildenv/toolchain
           python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
           # The Unicorn wheel imports the Visual C++ runtime; take the redistributable copy from Visual Studio (app-local deployment).
           $crt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT\vcruntime140*.dll" | Select-Object -First 4

@@ -1,44 +1,92 @@
 #!/usr/bin/env python3
-"""Picks the newest Qt 6 that Qt publishes for LLVM-MinGW (UCRT, libc++) and the toolchain Qt pairs with it.
+"""Downloads the newest Qt 6 that Qt publishes for LLVM-MinGW (UCRT, libc++) and the LLVM-MinGW toolchain Qt pairs with it.
 
-Uses aqtinstall's listing commands, so nothing is pinned in the repository. Prints one JSON object:
-{"qt": "6.12.0", "arch": "win64_llvm_mingw", "tool": "tools_llvm_mingw2217", "variant": "qt.tools.win64_llvm_mingw2217"}
+Reads Qt's own online repository (download.qt.io) directly, so nothing is pinned in the repository; every archive is
+checked against the .sha1 file Qt publishes next to it. Also fetches the matching qtbase sources for the licence texts.
+Writes <out>/qt.json with the file names and the Qt version.
 """
+import argparse
+import hashlib
 import json
+from pathlib import Path
 import re
-import subprocess
 import sys
+import urllib.request
+import xml.etree.ElementTree as ET
 
-ARCH = "win64_llvm_mingw"
-
-
-def version_key(text):
-    return tuple(int(part) for part in re.findall(r"\d+", text))
-
-
-def pick(qt_listing, arch_listing_for, tool_listing):
-    """qt_listing/tool_listing: aqt output; arch_listing_for(version): aqt output for that Qt version."""
-    versions = sorted((v for v in re.findall(r"\b6\.\d+\.\d+\b", qt_listing)), key=version_key, reverse=True)
-    for version in versions:
-        if ARCH in arch_listing_for(version).split():
-            tools = sorted(set(re.findall(r"\btools_llvm_mingw\d+\b", tool_listing)), key=version_key)
-            if not tools:
-                raise ValueError("aqt lists no LLVM-MinGW tool")
-            tool = tools[-1]
-            return {"qt": version, "arch": ARCH, "tool": tool, "variant": "qt.tools.win64_" + tool.removeprefix("tools_")}
-    raise ValueError("No Qt 6 release offers " + ARCH)
+BASE = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/"
+SOURCES = "https://download.qt.io/official_releases/qt/%s/%s/submodules/qtbase-everywhere-src-%s.tar.xz"
 
 
-def aqt(*arguments):
-    return subprocess.run([sys.executable, "-m", "aqt", *arguments], check=True, capture_output=True, text=True).stdout
+def text(url):
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "strahlender-xnu-ci"}), timeout=120) as response:
+        return response.read().decode("utf-8")
 
 
-def main():
-    result = pick(aqt("list-qt", "windows", "desktop"),
-                  lambda version: aqt("list-qt", "windows", "desktop", "--arch", version),
-                  aqt("list-tool", "windows", "desktop"))
-    print(json.dumps(result))
+def package(updates, name):
+    """(version, archives) of one package in a repository's Updates.xml."""
+    for item in ET.fromstring(updates).iter("PackageUpdate"):
+        if item.findtext("Name") == name:
+            return item.findtext("Version"), [a.strip() for a in (item.findtext("DownloadableArchives") or "").split(",") if a.strip()]
+    raise ValueError("Package not found: " + name)
+
+
+def resolve(get=text):
+    listing = get(BASE)
+    toolchain = None
+    for number in sorted({int(n) for n in re.findall(r'href="qt6_(\d+)/"', listing)}, reverse=True):
+        try:
+            version, archives = package(get("%sqt6_%d/qt6_%d_llvm_mingw/Updates.xml" % (BASE, number, number)),
+                                        "qt.qt6.%d.win64_llvm_mingw" % number)
+        except (OSError, ValueError, ET.ParseError):
+            continue  # releases without an LLVM-MinGW kit are skipped
+        qtbase = next((a for a in archives if a.startswith("qtbase-")), None)
+        if qtbase:
+            qt = {"qt": version.split("-")[0], "url": "%sqt6_%d/qt6_%d_llvm_mingw/qt.qt6.%d.win64_llvm_mingw/%s%s" % (BASE, number, number, number, version, qtbase)}
+            break
+    else:
+        raise ValueError("No Qt 6 release offers the LLVM-MinGW kit")
+    for number in sorted({int(n) for n in re.findall(r'href="tools_llvm_mingw(\d+)/"', listing)}, reverse=True):
+        tool_version, tool_archives = package(get("%stools_llvm_mingw%d/Updates.xml" % (BASE, number)), "qt.tools.win64_llvm_mingw%d" % number)
+        toolchain = "%stools_llvm_mingw%d/qt.tools.win64_llvm_mingw%d/%s%s" % (BASE, number, number, tool_version, tool_archives[0])
+        break
+    if not toolchain:
+        raise ValueError("No LLVM-MinGW tool in the Qt repository")
+    minor = ".".join(qt["qt"].split(".")[:2])
+    return {"qt": qt["qt"], "qtbase": qt["url"], "toolchain": toolchain, "source": SOURCES % (minor, qt["qt"], qt["qt"])}
+
+
+def download(url, destination, expected_sha1=None):
+    digest = hashlib.sha1()
+    with urllib.request.urlopen(url, timeout=600) as response, open(destination, "wb") as output:
+        for chunk in iter(lambda: response.read(1 << 20), b""):
+            digest.update(chunk)
+            output.write(chunk)
+    if expected_sha1 and digest.hexdigest() != expected_sha1:
+        Path(destination).unlink(missing_ok=True)
+        raise ValueError("SHA-1 mismatch: " + url)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args(argv)
+    args.out.mkdir(parents=True, exist_ok=True)
+    try:
+        found = resolve()
+        files = {}
+        for role, extension in (("qtbase", "7z"), ("toolchain", "7z"), ("source", "tar.xz")):
+            target = args.out / ("%s.%s" % (role, extension))
+            sha1 = text(found[role] + ".sha1").split()[0] if role != "source" else None
+            download(found[role], target, sha1)
+            files[role] = target.name
+    except (OSError, ValueError, ET.ParseError) as error:
+        print("Resolving Qt failed: " + str(error), file=sys.stderr)
+        return 4
+    (args.out / "qt.json").write_text(json.dumps({"qt": found["qt"], "files": files}) + "\n", encoding="utf-8")
+    print(json.dumps({"qt": found["qt"], **files}))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
