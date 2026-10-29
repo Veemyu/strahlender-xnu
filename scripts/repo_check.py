@@ -23,7 +23,6 @@ FORBIDDEN_SUFFIXES = (
 FORBIDDEN_PARTS = (
     "nsp/", "Ryujinx/", "Ryujinx_", "work/", "tools/", "research/", "cache/shaders/",
     "StreamingAssets/AssetAssistant", "GameData/",
-    "unity/Library/", "unity/Temp/", "unity/Assets/_Recovery/", "unity/Assets/XnuStubs/", "unity/Assets/XnuGenerated/",
 )
 
 # File names that look like keys (independent of the folder).

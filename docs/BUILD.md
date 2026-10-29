@@ -385,7 +385,7 @@ Details: `docs/recomp-linux.md`.
 
 ## 7. Build stages overview
 
-Stage order: `tools extract recomp shaders`. Run one part with `--only` or
+Stage order: `tools extract recomp`. Run one part with `--only` or
 `--from`/`--to`. Use `--dry-run` first. Each stage writes a marker `work/.stages/<stage>.json` with an input hash.
 If the hash matches, the stage is skipped (`--force` rebuilds it).
 
@@ -394,9 +394,8 @@ If the hash matches, the stage is skipped (`--force` rebuilds it).
 | `tools` | checks tools, builds `hactool` into `tools/hactool` | yes (for `extract`) |
 | `extract` | decrypts the `.xci`/`.nsp` into `work/exefs`, `work/romfs`, `work/manifest.json` | yes |
 | `recomp` | macOS app from the recompilation | macOS app only |
-| `shaders` | converts cached game shaders for the Unity-era shader tools (needs UnityPy in `tools/pydeps`) | no: `recomp_build.sh` reads only `work/exefs` and `work/romfs` |
 
-The Unity-era stages `il2cpp`, `masterdata`, `video` and `audio` were removed (they remain on the branch `unity`).
+The Unity-era stages `il2cpp`, `masterdata`, `video`, `audio` and `shaders` were removed (they remain on the branch `unity`).
 
 ### 7.1 The `recomp` stage
 

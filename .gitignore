@@ -27,7 +27,6 @@ xcuserdata/
 *.xcuserstate
 
 cache/
-*.unitypackage
 *.bundle
 !scripts/recomp/ios/app/Settings.bundle/
 *.ipa

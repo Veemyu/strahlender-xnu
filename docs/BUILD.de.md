@@ -222,7 +222,7 @@ Messungen und Vulkan-Stand: [recomp-linux.md](recomp-linux.md) (englisch).
 
 ## 7. Überblick über die Bau-Stufen
 
-Reihenfolge der Stufen: `tools extract recomp shaders`. Mit `--only` oder
+Reihenfolge der Stufen: `tools extract recomp`. Mit `--only` oder
 `--from`/`--to` läufst du einen Teil. Prüfe vorher mit `--dry-run`. Jede Stufe schreibt einen Marker
 `work/.stages/<Stufe>.json` mit einem Eingabe-Hash. Passt der Hash, wird die Stufe übersprungen
 (`--force` baut sie neu).
@@ -232,9 +232,8 @@ Reihenfolge der Stufen: `tools extract recomp shaders`. Mit `--only` oder
 | `tools` | prüft Werkzeuge, baut `hactool` nach `tools/hactool` | ja (für `extract`) |
 | `extract` | entschlüsselt `.xci`/`.nsp` nach `work/exefs`, `work/romfs`, `work/manifest.json` | ja |
 | `recomp` | macOS-App aus der Rekompilation | nur für die macOS-App |
-| `shaders` | wandelt zwischengespeicherte Spiel-Shader für die Unity-Shader-Werkzeuge um (braucht UnityPy in `tools/pydeps`) | nein: `recomp_build.sh` liest nur `work/exefs` und `work/romfs` |
 
-Die Unity-Stufen `il2cpp`, `masterdata`, `video` und `audio` wurden entfernt (sie liegen im Branch `unity`).
+Die Unity-Stufen `il2cpp`, `masterdata`, `video`, `audio` und `shaders` wurden entfernt (sie liegen im Branch `unity`).
 
 ### 7.1 Die Stufe `recomp`
 
