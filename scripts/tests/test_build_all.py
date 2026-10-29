@@ -47,7 +47,7 @@ class DryRunTests(unittest.TestCase):
     def test_all_stages_listed_and_nothing_written(self):
         rc, out, err = self.dry(["all", "--xci", self.xci, "--keys", self.keys])
         self.assertEqual(rc, 0, err)
-        for stage in ("tools", "extract", "recomp", "shaders"):
+        for stage in ("tools", "extract", "recomp"):
             self.assertIn("  %-12s" % stage, out, stage)
         for stage in ("il2cpp", "masterdata", "video", "audio"):
             self.assertNotIn("  %-12s" % stage, out, stage)
@@ -74,14 +74,14 @@ class DryRunTests(unittest.TestCase):
         self.assertIn("skipped", out)
 
     def test_from_to_and_only(self):
-        rc, out, _ = self.dry(["--from", "recomp", "--to", "shaders"])
+        rc, out, _ = self.dry(["--from", "recomp"])
         self.assertEqual(rc, 0)
-        self.assertIn("Stages: recomp shaders ", out)
-        rc, out, _ = self.dry(["--only", "shaders,tools"])
-        self.assertIn("Stages: tools shaders ", out)
+        self.assertIn("Stages: recomp ", out)
+        rc, out, _ = self.dry(["--only", "recomp,tools"])
+        self.assertIn("Stages: tools recomp ", out)
 
     def test_removed_stages_and_options_are_rejected(self):
-        for stage in ("il2cpp", "masterdata", "video", "audio"):
+        for stage in ("il2cpp", "masterdata", "video", "audio", "shaders"):
             self.assertEqual(run(["--only", stage, "--dry-run"])[0], 2, stage)
         for option in ("--video-profile", "--movie-src", "--bundle-platform", "--bundle-subset", "--texture-format", "--launch"):
             self.assertEqual(run([option, "x", "--dry-run", "--only", "tools"])[0], 2, option)
@@ -90,8 +90,8 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(run([])[0], 2)
         self.assertEqual(run(["--only", "nix", "--dry-run"])[0], 2)
         self.assertEqual(run(["--target", "windows", "--dry-run", "all"])[0], 2)
-        self.assertEqual(run(["--from", "shaders", "--to", "tools", "--dry-run"])[0], 2)
-        self.assertEqual(run(["--only", "shaders", "--from", "tools", "--dry-run"])[0], 2)
+        self.assertEqual(run(["--from", "recomp", "--to", "tools", "--dry-run"])[0], 2)
+        self.assertEqual(run(["--only", "recomp", "--from", "tools", "--dry-run"])[0], 2)
         rc, _, err = run(["extract", "--no-preflight", "--work", self.work])
         self.assertEqual(rc, 2)
         self.assertIn("--xci missing", err)
@@ -104,13 +104,14 @@ class DryRunTests(unittest.TestCase):
     def test_dry_run_respects_marker(self):
         write(os.path.join(self.work, "exefs", "main"), "m")
         write(os.path.join(self.work, "romfs", "Data", "x"), "r")
-        write(os.path.join(self.work, "build", "shaders", "x"), "{}")
-        digest, _ = bs.stage_hash("shaders", ROOT, self.work, "all")
-        bs.write_marker(self.work, "shaders", digest)
-        rc, out, _ = self.dry(["--only", "shaders"])
+        write(os.path.join(self.work, "builds", "macos-recomp", "BDSP.app", "Contents", "MacOS", "BDSP"), "x")
+        env = {"XNU_RECOMP_OPTS": "o0kb=300 hardened=0 data=1"}
+        digest, _ = bs.stage_hash("recomp", ROOT, self.work, "all", env=env)
+        bs.write_marker(self.work, "recomp", digest)
+        rc, out, _ = self.dry(["--only", "recomp"])
         self.assertEqual(rc, 0)
         self.assertIn("marker matches", out)
-        rc, out, _ = self.dry(["--only", "shaders", "--force"])
+        rc, out, _ = self.dry(["--only", "recomp", "--force"])
         self.assertIn("would run", out)
 
 

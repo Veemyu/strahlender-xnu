@@ -2,7 +2,7 @@
 # Entry point of the build pipeline (guide: docs/BUILD.md).
 # The repo never contains game data or keys.
 #
-# Stages (fixed order): tools extract recomp shaders
+# Stages (fixed order): tools extract recomp
 #   A preflight runs first (check only, no installation).
 #
 # Usage (everything in one command):
@@ -21,16 +21,13 @@
 #   --force             regenerate the selected stages even if the marker matches
 #   --no-preflight      skip the preflight;  --min-free-gb N  minimum free space in the preflight (default 40)
 #   --keep-nca          keep the unpacked NCAs (several GB)
-#   --shader-only NAME  only one shader (test, stage shaders)
 #   Stage recomp (macOS app from the recompilation, work/builds/macos-recomp/BDSP.app; only for --target macos|all):
 #   --recomp-jobs N     override CPU/RAM-based compiler count;  --recomp-o0-kb N  outliers from N KB compiled with -O0 (default 300)
 #   --hardened          sign the app with the hardened runtime (default: ad hoc only);  --no-install-data  do not clone the RomFS to Application Support
-# Environment: TOOLS_DIR, MIN_FREE_GB (reserve in extract, default 25), DEVELOPER_DIR,
-#   SHADER_USED
+# Environment: TOOLS_DIR, MIN_FREE_GB (reserve in extract, default 25), DEVELOPER_DIR
 #
 # Exit codes: 0 ok, 2 usage, 3 input missing, 4 tool missing/build, 5 hactool error,
-#   6 key/titlekey, 7 NCA not found, 8 not enough space, 9 check, 10 prerequisite/stage missing,
-#   14 stage shaders failed
+#   6 key/titlekey, 7 NCA not found, 8 not enough space, 9 check, 10 prerequisite/stage missing
 # hactool prints key values: stdout/stderr never go into the log (only filtered fields).
 set -euo pipefail
 
@@ -45,12 +42,11 @@ GIT_BIN="${BDSP_GIT:-git}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 MIN_FREE_GB="${MIN_FREE_GB:-25}"
 PREFLIGHT_FREE_GB="${PREFLIGHT_MIN_FREE_GB:-40}"
-ALL_STAGES="tools extract recomp shaders"
+ALL_STAGES="tools extract recomp"
 
 XCI="" BASE_NSP="" BASE_NCA_DIR="" NSP="" KEYS_DIR="" PROD_KEYS="" TITLE_KEYS="" WORK="$ROOT/work"
 FORCE=0 KEEP_NCA=0 STAGES="" FROM="" TO="" ONLY=""
 DRY=0 NO_PREFLIGHT=0 PREFLIGHT_ONLY=0 TARGET=all
-SHADER_ONLY=""
 EXTRACT_ACTIVE=0
 RECOMP_JOBS=auto RECOMP_O0_KB=300 RECOMP_HARDENED=0 RECOMP_DATA=1
 SELECTED="" RESULTS="" UPSTREAM_DIRTY=0
@@ -408,17 +404,6 @@ need_extract() {
   die 10 "exefs/romfs missing in $WORK: run 'scripts/build_all.sh extract --xci <file> --nsp <file> --keys <folder>' first (docs/BUILD.md)"
 }
 
-need_pydeps() {
-  [ "$DRY" -eq 1 ] && return 0
-  if [ "${BDSP_INSTALLER_PRIVATE_RUNTIME:-0}" = 1 ]; then
-    python3 -I -B -c 'import UnityPy, lz4.block' >/dev/null 2>&1 ||
-      die 4 "Private installer runtime is missing UnityPy or lz4"
-  else
-    PYTHONPATH="$TOOLS_DIR/pydeps${PYTHONPATH:+:$PYTHONPATH}" python3 -B -c 'import UnityPy, lz4.block' >/dev/null 2>&1 ||
-      die 4 "Python packages missing (UnityPy, lz4): python3 -m pip install --target tools/pydeps UnityPy lz4"
-  fi
-}
-
 # ---------- Stage recomp ----------
 # macOS app from the recompilation of your own dump (generator -> C -> compile -> runtime/Metal -> BDSP.app); technique and
 # sub-steps: scripts/recomp/app/recomp_build.sh, guide: docs/BUILD.md, docs/recomp-macapp.md
@@ -461,7 +446,7 @@ stage_recomp() {
   stage_done recomp "app=${out#"$ROOT"/}" "bytes=$sz"
 }
 
-# ---------- Stage shaders ----------
+# ---------- Helper for non-default --work ----------
 # The helper scripts read work/romfs hard-coded; with another --work it is linked there.
 ensure_legacy_links() {
   local n real_have real_want
@@ -477,40 +462,12 @@ ensure_legacy_links() {
   done
 }
 
-stage_shaders() {
-  log "Stage shaders"
-  need_extract; need_pydeps
-  local out="$WORK/build/shaders" rc=0 args=()
-  if stage_cached shaders "$out"; then
-    if [ -z "$SHADER_ONLY" ]; then return 0; fi
-  fi
-  command -v make >/dev/null 2>&1 || [ "$DRY" -eq 1 ] || die 4 "make/cc missing (xcode-select --install)"
-  ensure_legacy_links
-  args=(--out "$out")
-  [ -z "${SHADER_USED:-}" ] || args+=(--used "$SHADER_USED")
-  [ -z "$SHADER_ONLY" ] || args+=(--shader "$SHADER_ONLY")
-  [ "$FORCE" -eq 0 ] || args+=(--force)
-  logrun shaders "$ROOT/scripts/shader_build.sh" "${args[@]}" || rc=$?
-  case "$rc" in
-    0) ;;
-    9) echo "  Note: not all variants can be packed (currently 16 with subgroup shuffle, list in variants.json); the stage continues." ;;
-    *) die 14 "shader_build.sh failed (exit $rc, log: $WORK/logs/shaders.log)" ;;
-  esac
-  if [ -n "$SHADER_ONLY" ]; then
-    stage_result shaders "sample ($SHADER_ONLY), no marker"; return 0
-  fi
-  local n="0 0"
-  [ "$DRY" -eq 1 ] || n="$(sp tree-size --path "$out")"
-  stage_done shaders "files=${n% *}" "bytes=${n#* }" "output=${out#"$ROOT"/}"
-}
-
 # ---------- Invocation ----------
 run_stage() {
   case "$1" in
     tools) stage_tools ;;
     extract) stage_extract ;;
     recomp) stage_recomp ;;
-    shaders) stage_shaders ;;
     *) die 2 "Unknown stage: $1 (known: $ALL_STAGES)" ;;
   esac
 }
@@ -527,7 +484,6 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1; shift ;;
     --no-preflight) NO_PREFLIGHT=1; shift ;;
     --min-free-gb) need_val $# "$1"; PREFLIGHT_FREE_GB="$2"; shift 2 ;;
-    --shader-only) need_val $# "$1"; SHADER_ONLY="$2"; shift 2 ;;
     --xci) need_val $# "$1"; XCI="$2"; shift 2 ;;
     --base-nsp) need_val $# "$1"; BASE_NSP="$2"; shift 2 ;;
     --base-nca-dir) need_val $# "$1"; BASE_NCA_DIR="$2"; shift 2 ;;

@@ -29,12 +29,12 @@ EX_USAGE = 2
 EX_TOOLS = 4
 EX_DISK = 8
 
-STAGES = ["tools", "extract", "recomp", "shaders"]
-ALIASES = {"shader": "shaders", "macapp": "recomp"}
+STAGES = ["tools", "extract", "recomp"]
+ALIASES = {"macapp": "recomp"}
 MARKER_SCHEMA = 1
 MIN_FREE_GB = 40
 RECOMP_MIN_FREE_GB = 25   # generator C, objects, binary, app, intermediate copies (measured about 3 GB; the rest is reserve for the compiler and swapping)
-HEAVY_STAGES = {"extract", "shaders"}
+HEAVY_STAGES = {"extract"}
 TARGETS = ("macos", "ios", "all")
 
 
@@ -78,8 +78,7 @@ def select_stages(requested=(), from_stage=None, to_stage=None, only=()):
 
 # ---------- Hashes and markers ----------
 # NOTE: the placeholder tokens below ("missing", "no-marker", "no-prepare", "no-manifest", "none") are part of the stage
-# hashes, but only in cases where an input is absent. Renaming them from their old German forms changed the hash of the
-# shaders stage once (SHADER_USED unset gave "keine"), so that stage re-runs a single time.
+# hashes, but only in cases where an input is absent.
 
 def _sha(data):
     return hashlib.sha256(data).hexdigest()
@@ -236,13 +235,6 @@ def stage_hash(stage, root, work, target="all", env=None):
             parts["npdm"] = hash_file(os.path.join(work, "exefs", "main.npdm"))
             parts["icons"] = hash_tree_content(env.get("BDSP_ICON_SOURCE", os.path.join(work, "recomp/icons/source")), (".json", ".png"))
             parts["options"] = env.get("XNU_RECOMP_OPTS", "")
-    elif stage == "shaders":
-        parts["scripts"] = files("shader_build.sh", "shader_extract_blobs.py", "shader_inventory.py",
-                                 "shader_fidelity.py", "shader_wrap_all.py", "shader_wrap.py")
-        tr = os.path.join(root, "shader_translator")
-        parts["translator"] = hash_tree_content(tr, (".c", ".h", "makefile"), skip_dirs=("build", "__pycache__"))
-        used = env.get("SHADER_USED", "")
-        parts["used"] = hash_file(used) if used else "none"
     digest = _sha(json.dumps(parts, sort_keys=True).encode())
     return digest, parts
 
@@ -323,13 +315,6 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
             "scripts/build_all.sh tools (clones and builds hactool locally, without sudo)")
     if "extract" in s and "tools" in s and not os.access(hactool, os.X_OK):
         add("hactool", True, "built by stage tools", level="note")
-
-    if "shaders" in s:
-        pyd = os.path.join(tools_dir, "pydeps")
-        add("Python packages (UnityPy, lz4) for shaders", python_imports(("UnityPy", "lz4.block"), pyd),
-            "", "python3 -m pip install --target tools/pydeps UnityPy lz4")
-        for c in ("make", "cc"):
-            add(c + " (for shader_translator)", which(c), "", "xcode-select --install (Command Line Tools)")
 
     if "recomp" in s and want_mac:
         if not (s & HEAVY_STAGES):   # otherwise the general space check (stricter) already covers it

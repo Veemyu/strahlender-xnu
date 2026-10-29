@@ -25,27 +25,27 @@ class StageSelectionTests(unittest.TestCase):
         self.assertEqual(bs.select_stages([]), bs.STAGES)
 
     def test_order_is_canonical_and_aliases_work(self):
-        self.assertEqual(bs.select_stages(["shader", "recomp", "tools"]), ["tools", "recomp", "shaders"])
+        self.assertEqual(bs.select_stages(["recomp", "extract", "tools"]), ["tools", "extract", "recomp"])
         self.assertEqual(bs.select_stages(["macapp"]), ["recomp"])
 
     def test_from_to(self):
         self.assertEqual(bs.select_stages(from_stage="extract", to_stage="recomp"), ["extract", "recomp"])
-        self.assertEqual(bs.select_stages(from_stage="shaders"), ["shaders"])
+        self.assertEqual(bs.select_stages(from_stage="recomp"), ["recomp"])
         self.assertEqual(bs.select_stages(to_stage="extract"), ["tools", "extract"])
 
     def test_from_after_to_fails(self):
         with self.assertRaises(ValueError):
-            bs.select_stages(from_stage="shaders", to_stage="extract")
+            bs.select_stages(from_stage="recomp", to_stage="extract")
 
     def test_removed_stages_are_unknown(self):
-        for name in ("il2cpp", "masterdata", "video", "audio"):
+        for name in ("il2cpp", "masterdata", "video", "audio", "shaders", "shader"):
             with self.assertRaises(ValueError):
                 bs.select_stages([name])
 
     def test_only(self):
-        self.assertEqual(bs.select_stages(only=["shaders,tools"]), ["tools", "shaders"])
+        self.assertEqual(bs.select_stages(only=["recomp,tools"]), ["tools", "recomp"])
         with self.assertRaises(ValueError):
-            bs.select_stages(only=["shaders"], from_stage="tools")
+            bs.select_stages(only=["recomp"], from_stage="tools")
 
     def test_unknown_stage(self):
         with self.assertRaises(ValueError) as cm:
@@ -54,31 +54,31 @@ class StageSelectionTests(unittest.TestCase):
 
     def test_explicit_stage_outside_range_is_empty(self):
         with self.assertRaises(ValueError):
-            bs.select_stages(["tools"], from_stage="shaders")
+            bs.select_stages(["tools"], from_stage="recomp")
 
     def test_cli_exit_codes(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(bs.main(["stages", "--stage", "nix"]), bs.EX_USAGE)
-            self.assertEqual(bs.main(["stages", "--only", "shaders"]), 0)
+            self.assertEqual(bs.main(["stages", "--only", "recomp"]), 0)
 
 
 class MarkerTests(unittest.TestCase):
     def test_roundtrip_and_mismatch(self):
         with tempfile.TemporaryDirectory() as work:
-            self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
-            bs.write_marker(work, "shaders", "abc", {"files": "3"})
-            self.assertTrue(bs.marker_matches(work, "shaders", "abc"))
-            self.assertFalse(bs.marker_matches(work, "shaders", "abd"))
+            self.assertFalse(bs.marker_matches(work, "extract", "abc"))
+            bs.write_marker(work, "extract", "abc", {"files": "3"})
+            self.assertTrue(bs.marker_matches(work, "extract", "abc"))
+            self.assertFalse(bs.marker_matches(work, "extract", "abd"))
             self.assertFalse(bs.marker_matches(work, "assets", "abc"))
-            with open(bs.marker_path(work, "shaders")) as f:
+            with open(bs.marker_path(work, "extract")) as f:
                 self.assertEqual(json.load(f)["notes"], {"files": "3"})
-            bs.clear_marker(work, "shaders")
-            self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
+            bs.clear_marker(work, "extract")
+            self.assertFalse(bs.marker_matches(work, "extract", "abc"))
 
     def test_corrupt_marker_is_ignored(self):
         with tempfile.TemporaryDirectory() as work:
-            write(bs.marker_path(work, "shaders"), "{kaputt")
-            self.assertFalse(bs.marker_matches(work, "shaders", "abc"))
+            write(bs.marker_path(work, "extract"), "{kaputt")
+            self.assertFalse(bs.marker_matches(work, "extract", "abc"))
 
 
 class HashTests(unittest.TestCase):
@@ -86,7 +86,7 @@ class HashTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = os.path.join(self.tmp.name, "repo")
         self.work = os.path.join(self.tmp.name, "work")
-        write(os.path.join(self.root, "scripts", "shader_build.sh"), "v1")
+        write(os.path.join(self.root, "scripts", "recomp", "build_all.sh"), "v1")
         manifest = {"title_id": "t", "title_version": 1, "exefs": {"main": {"sha256": "aa"}},
                     "romfs": {"files": 2, "bytes": 8}}
         write(os.path.join(self.work, "manifest.json"), json.dumps(manifest))
@@ -98,26 +98,20 @@ class HashTests(unittest.TestCase):
         return bs.stage_hash(stage, self.root, self.work, env={}, **kw)[0]
 
     def test_stable(self):
-        self.assertEqual(self.h("shaders"), self.h("shaders"))
+        self.assertEqual(self.h("recomp"), self.h("recomp"))
 
     def test_script_change_changes_hash(self):
-        before = self.h("shaders")
-        write(os.path.join(self.root, "scripts", "shader_build.sh"), "v2")
-        self.assertNotEqual(before, self.h("shaders"))
+        before = self.h("recomp")
+        write(os.path.join(self.root, "scripts", "recomp", "build_all.sh"), "v2")
+        self.assertNotEqual(before, self.h("recomp"))
 
     def test_manifest_change_changes_hash(self):
-        before = self.h("shaders")
+        before = self.h("extract")
         with open(os.path.join(self.work, "manifest.json")) as f:
             m = json.load(f)
         m["exefs"]["main"]["sha256"] = "bb"
         write(os.path.join(self.work, "manifest.json"), json.dumps(m))
-        self.assertNotEqual(before, self.h("shaders"))
-
-    def test_shader_used_list_changes_hash(self):
-        base = self.h("shaders")
-        used = os.path.join(self.tmp.name, "used.txt")
-        write(used, "a")
-        self.assertNotEqual(base, bs.stage_hash("shaders", self.root, self.work, env={"SHADER_USED": used})[0])
+        self.assertNotEqual(before, self.h("extract"))
 
 
 class EnvFileTests(unittest.TestCase):
@@ -181,12 +175,12 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(self.names(items, False), [])
 
     def test_disk_requirement(self):
-        items = self.run_pf(["shaders"], free=lambda p: 32.0)
+        items = self.run_pf(["extract"], free=lambda p: 32.0)
         self.assertEqual(self.names(items, False), ["Disk space >= 40 GB free"])
         lines, missing, disk = bs.format_preflight(items)
         self.assertTrue(disk)
         with contextlib.redirect_stdout(io.StringIO()):
-            rc = bs.main(["preflight", "--stages", "shaders", "--root", self.root, "--work", self.work,
+            rc = bs.main(["preflight", "--stages", "extract", "--root", self.root, "--work", self.work,
                           "--tools-dir", self.tools, "--min-free-gb", "100000000"])
         self.assertEqual(rc, bs.EX_DISK)
 
@@ -197,15 +191,8 @@ class PreflightTests(unittest.TestCase):
     def test_only_selected_stages_are_checked(self):
         items = self.run_pf(["extract"], which=lambda c: None)
         self.assertEqual(self.names(items, False), [])
-        items = self.run_pf(["shaders"], which=lambda c: None)
-        self.assertEqual(self.names(items, False), ["make (for shader_translator)", "cc (for shader_translator)"])
-
-    def test_shaders_need_unitypy(self):
-        def run(cmd, env=None, timeout=60):
-            return ("import UnityPy" not in cmd[-1], "")
-
-        items = self.run_pf(["shaders"], run=run)
-        self.assertEqual(self.names(items, False), ["Python packages (UnityPy, lz4) for shaders"])
+        items = self.run_pf(["tools"], which=lambda c: None)
+        self.assertEqual(self.names(items, False), ["git (for hactool)", "make (for hactool)", "cc (for hactool)"])
 
     def test_missing_hactool_is_reported_for_extract(self):
         os.remove(os.path.join(self.tools, "hactool", "hactool"))
