@@ -9,7 +9,7 @@ Die Laufzeit in diesem Ordner folgt dem Entwurf von LASRecomp und enthält **Tei
 | Stand | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (einziger Commit des Klons) |
 | Urheber | Peiikai |
 | Lizenz | MIT, „Copyright (c) 2026 Peiikai“. Lizenztext unverändert in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten (`.git`, Makefile, README, `docs/`). Laufzeit und Generator sind vollständig vendort (`scripts/recomp/upstream/`), siehe „Woher was stammt“ und „NVN-Schicht“ |
+| Nicht übernommen | `third_party/` des Originals, `fonts/`, Klon-Metadaten (`.git`, Makefile, README, `docs/`). Laufzeit und Generator sind vendort (`scripts/recomp/upstream/`), bis auf zehn `runtime/nvn`-Dateien, die byte-identisch zu den lokalen Kopien in `nvn/src/` und `nvn/vulkan/src/` waren und am 29.10.2026 entfernt wurden (`astc.c/h`, `formats.c`, `tegra.c/h`, `output_scale.h`, `renderer.h`, `vulkan/shaders.h`, `vulkan/vk.h`, `vulkan/vma.cpp`); die lokalen Kopien sind die unveränderten Upstream-Dateien aus Commit 09f8e5e. Siehe „Woher was stammt“ und „NVN-Schicht“ |
 
 Die Lizenz des Originals nimmt Nintendo-Eigentum und die Drittkomponenten aus. Davon ist hier nichts enthalten. Der Nutzer des Repositories hat die Nutzung und Weiterentwicklung ausdrücklich freigegeben.
 

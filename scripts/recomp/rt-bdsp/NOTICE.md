@@ -9,7 +9,7 @@ The runtime in this directory follows LASRecomp's design and contains **verbatim
 | Revision | Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5` (the clone's only commit) |
 | Author | Peiikai |
 | License | MIT, “Copyright (c) 2026 Peiikai”. Unchanged text in [`LICENSE-LASRecomp`](LICENSE-LASRecomp). |
-| Excluded | Upstream `third_party/`, `fonts/`, and clone metadata (`.git`, Makefile, README, `docs/`). The runtime and generator are vendored in full (`scripts/recomp/upstream/`); see the provenance and NVN sections below. |
+| Excluded | Upstream `third_party/`, `fonts/`, and clone metadata (`.git`, Makefile, README, `docs/`). The runtime and generator are vendored (`scripts/recomp/upstream/`) except for ten `runtime/nvn` files that are byte-identical to the local copies in `nvn/src/` and `nvn/vulkan/src/` and were removed on 2026-10-29 (`astc.c/h`, `formats.c`, `tegra.c/h`, `output_scale.h`, `renderer.h`, `vulkan/shaders.h`, `vulkan/vk.h`, `vulkan/vma.cpp`); the local copies are the verbatim upstream files from commit 09f8e5e. See the provenance and NVN sections below. |
 
 The upstream license excludes Nintendo property and third-party components. None of that content is included here. The repository user explicitly authorized use and further development.
 
