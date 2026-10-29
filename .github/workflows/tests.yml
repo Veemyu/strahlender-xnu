@@ -1,0 +1,51 @@
+name: Tests
+run-name: Tests · ${{ github.ref_name }}
+# Runs on every platform the project targets, so no test depends on one developer machine:
+# Linux x86-64 and ARM64 (the ARM64 runner uses 4 KiB pages; the 16 KiB case is tested on a private Asahi machine),
+# macOS (Apple silicon) and Windows. The Windows toolchain tests live in windows-buildenv.yml.
+on:
+  push:
+    branches: [main, win-integration]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  python:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Install the test dependencies
+        run: python -m pip install Pillow lz4 unicorn==2.1.4
+      - name: Python test suite
+        run: python -m unittest discover -s scripts/tests -t .
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Prepare Rust
+        run: rustup toolchain install 1.88 --profile minimal --component rustfmt --component clippy
+      - name: Extract tool (fmt, clippy, tests)
+        run: |
+          cargo +1.88 fmt --manifest-path installer/extract/Cargo.toml -- --check
+          cargo +1.88 clippy --locked --manifest-path installer/extract/Cargo.toml --all-targets -- -D warnings
+          cargo +1.88 test --locked --manifest-path installer/extract/Cargo.toml
+      - name: Installer system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libvulkan-dev
+      - name: Installer tests
+        run: cargo +1.88 test --locked --manifest-path installer/Cargo.toml

@@ -1,17 +1,24 @@
 name: Windows build environment
 run-name: Windows build environment · ${{ github.ref_name }}
-# Builds the dependencies that the Windows game build needs (LLVM-MinGW, SDL3, Vulkan/shaderc, FFmpeg, hactool and the
-# native generator) once from the pinned inputs and publishes them as ONE archive. The installer downloads that archive
-# instead of asking the user to prepare compilers and libraries. Result: artifact "windows-buildenv" with the SHA-256 and
-# size to pin in installer/assets/windows-buildenv.json. No Qt yet: the build is the SDL diagnostic frontend until the
-# Qt bundle is pinned.
+# Builds everything the Windows game build needs (LLVM-MinGW, SDL3, Vulkan/shaderc, FFmpeg, hactool and the native
+# generator) from the NEWEST upstream releases and publishes it as ONE archive; the installer downloads that archive
+# instead of asking the user to prepare compilers and libraries. Nothing is pinned in the repository: the resolved
+# versions and measured SHA-256 values travel inside the archive (inputs/) and in windows-buildenv.json. It also runs the
+# Windows tests against the freshly built toolchain. Weekly, so upstream changes show up before a user hits them.
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the archive as the release "windows-buildenv"'
+        type: boolean
+        default: false
   push:
     branches: [win-integration]
     paths:
       - .github/workflows/windows-buildenv.yml
-      - scripts/recomp/fetch_sources.py
+      - scripts/recomp/resolve_inputs.py
+  schedule:
+    - cron: '17 4 * * 1'
 permissions:
   contents: read
 concurrency:
@@ -20,20 +27,27 @@ concurrency:
 jobs:
   buildenv:
     runs-on: windows-2022
-    timeout-minutes: 150
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-      - name: Fetch the pinned inputs
-        run: python scripts/recomp/fetch_sources.py --out work/downloads
+      - name: Resolve and download the newest inputs
+        run: |
+          python scripts/recomp/resolve_inputs.py --out work/downloads
+          Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_CONTRACT=$PWD\work\resolved\windows-dependencies.json"
+          Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_SOURCES=$PWD\work\resolved\windows-sources.json"
       - name: Unpack LLVM-MinGW, install the native Unicorn engine
         run: |
           New-Item -ItemType Directory -Force work/buildenv, work/unpack | Out-Null
           Expand-Archive work/downloads/llvm-mingw.zip work/unpack
           Move-Item (Get-ChildItem work/unpack -Directory | Select-Object -First 1).FullName work/buildenv/toolchain
-          python -m pip install --target work/pydeps unicorn==2.1.4
+          python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
       - name: Build the dependency bundles
         run: |
           $env:PYTHONPATH = "$PWD"
@@ -55,15 +69,40 @@ jobs:
           $env:PYTHONPATH = "$PWD"
           $dir = "$PWD\work\buildenv"
           python scripts/install/windows_pipeline.py --output "$dir\catalog.json" --cc "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe" --generator "$dir\generator\bdsp_codegen.exe" --sdl "$dir\sdl" --vulkan "$dir\vulkan" --ffmpeg "$dir\ffmpeg" --hactool "$dir\hactool"
-      - name: Pack and print the pin
+      - name: Windows tests against the new toolchain
+        continue-on-error: true
         run: |
+          $dir = "$PWD\work\buildenv"
+          $env:PYTHONPATH = "$PWD;$PWD\work\pydeps"
+          $env:BDSP_WINDOWS_NATIVE_CC = "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe"
+          $env:BDSP_WINDOWS_NATIVE_BINARY = "$dir\generator\bdsp_codegen.exe"
+          $env:BDSP_WINDOWS_PRIVATE_CATALOG = "$dir\catalog.json"
+          $env:BDSP_WINDOWS_SDL_ROOT = "$dir\sdl"
+          $env:BDSP_WINDOWS_VULKAN_ROOT = "$dir\vulkan"
+          $env:BDSP_WINDOWS_FFMPEG_ROOT = "$dir\ffmpeg"
+          $env:BDSP_WINDOWS_HACTOOL_ROOT = "$dir\hactool"
+          python -m unittest scripts.tests.test_windows_build scripts.tests.test_windows_pipeline scripts.tests.test_windows_native_generator scripts.tests.test_dependency_build scripts.tests.test_installer_filesystem scripts.tests.test_installer_driver
+      - name: Pack the archive
+        run: |
+          New-Item -ItemType Directory -Force work/buildenv/inputs | Out-Null
+          Copy-Item work/resolved/*.json work/buildenv/inputs
           python -c "import shutil; shutil.make_archive('work/windows-buildenv', 'zip', 'work/buildenv')"
           $file = Get-Item work/windows-buildenv.zip
           $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
-          "windows-buildenv.zip  sha256=$hash  size_bytes=$($file.Length)" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY
+          $meta = [ordered]@{ schema = 1; archive = 'windows-buildenv.zip'; sha256 = $hash; size_bytes = $file.Length; created = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); commit = $env:GITHUB_SHA }
+          $meta | ConvertTo-Json | Set-Content work/windows-buildenv.json
+          Get-Content work/windows-buildenv.json | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-buildenv
-          path: work/windows-buildenv.zip
+          path: |
+            work/windows-buildenv.zip
+            work/windows-buildenv.json
           if-no-files-found: error
           retention-days: 14
+      - name: Publish as the release "windows-buildenv"
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+        run: |
+          gh release view windows-buildenv *> $null
+          if ($LASTEXITCODE -ne 0) { gh release create windows-buildenv --title "Windows build environment" --notes "Rolling build environment for the Windows game build, rebuilt weekly from the newest upstream releases. The installer downloads it; versions and hashes are in inputs/ and windows-buildenv.json." }
+          gh release upload windows-buildenv work/windows-buildenv.zip work/windows-buildenv.json --clobber

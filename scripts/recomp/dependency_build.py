@@ -2,6 +2,7 @@
 """Offline maintainer dependency recipes, separate from the direct game build."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -18,7 +19,7 @@ else:
     import portable_build as build
 
 ROOT = build.ROOT
-LOCK = ROOT / "installer/assets/windows-sources.json"
+LOCK = Path(os.environ.get("BDSP_WINDOWS_SOURCES") or ROOT / "installer/assets/windows-sources.json")
 VULKAN_SOURCES = ("vulkan-headers", "vma", "shaderc", "glslang", "spirv-headers", "spirv-tools")
 
 
