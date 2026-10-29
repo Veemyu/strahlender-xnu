@@ -188,12 +188,16 @@ class WindowsBuildTests(unittest.TestCase):
             archive, cmake, ninja = (root / name for name in ("SDL.tar.gz", "cmake.exe", "ninja.exe"))
             for path in (archive, cmake, ninja):
                 path.write_bytes(b"synthetic")
-            with patch.object(build, "compiler_identity") as identity:
+            contract = windows.contract()
+            component = next(item for item in contract["components"] if item["id"] == "SDL3")
+            # The repository pins nothing; the CI job supplies the resolved version and hash.
+            component["version"] = "3.4.18"
+            component["source_archive"] = {"url": "https://example.invalid/SDL3.tar.gz", "sha256": "0" * 64, "size_bytes": 9}
+            with patch.object(build, "compiler_identity") as identity, \
+                    patch.object(build.windows, "contract", return_value=contract):
                 with self.assertRaisesRegex(ValueError, "SHA256"):
                     build.build_sdl(archive, root / "bad", "", {}, cmake, ninja, None)
                 identity.assert_not_called()
-            contract = windows.contract()
-            component = next(item for item in contract["components"] if item["id"] == "SDL3")
             with tarfile.open(archive, "w:gz") as output:
                 contents = b"Synthetic license"
                 member = tarfile.TarInfo("SDL3-" + component["version"] + "/LICENSE.txt")
@@ -374,7 +378,7 @@ class WindowsBuildTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             windows.architecture("i686")
 
-    def test_contract_reuses_private_runtime_and_never_invents_downloads(self):
+    def test_contract_has_recipes_but_no_pinned_versions_or_downloads(self):
         data = windows.contract()
         self.assertEqual(data["minimum_windows_build"], 19045)
         runtime = json.loads((ROOT / data["private_runtime"]["manifest"]).read_text())
@@ -382,35 +386,14 @@ class WindowsBuildTests(unittest.TestCase):
         self.assertIn("windows-x86_64", runtime["targets"])
         self.assertIn("unicorn==2.1.4", wheels["targets"]["windows-x86_64"])
         self.assertFalse(data["profiles"]["aarch64"]["accepted"])
+        text = json.dumps(data)
+        self.assertNotRegex(text, r'"sha256": "[0-9a-f]{64}"')  # hashes are measured per run (resolve_inputs.py)
+        recipes = {item["id"]: item.get("build_recipe", {}) for item in data["components"]}
+        self.assertEqual(recipes["SDL3"]["status"], "implemented-offline")
+        self.assertEqual(recipes["ffmpeg"]["component"], "ffmpeg")
+        self.assertFalse(recipes["ffmpeg"]["redistribution_qualified"])
+        self.assertEqual(recipes["hactool"]["component"], "hactool")
         for item in data["components"]:
-            if item["id"] == "llvm-mingw":
-                self.assertEqual(item["version"], "20261020")
-                self.assertEqual(len(item["artifacts"][0]["sha256"]), 64)
-                self.assertFalse(item["artifacts"][0]["qualified"])
-                self.assertFalse(item["artifacts"][0]["inventory"])
-            elif item["id"] == "SDL3":
-                self.assertEqual(item["version"], "3.4.18")
-                self.assertEqual(len(item["source_archive"]["sha256"]), 64)
-                self.assertFalse(item["source_archive"]["qualified"])
-                self.assertEqual(item["artifacts"], [])
-                self.assertEqual(item["build_recipe"]["status"], "implemented-offline")
-            elif item["id"] == "ffmpeg":
-                self.assertEqual(item["version"], "n8.1.3-24-g92611900bb")
-                artifact = item["artifacts"][0]
-                self.assertEqual(artifact["target"], "x86_64")
-                self.assertEqual(len(artifact["sha256"]), 64)
-                self.assertNotIn("/latest/", artifact["url"])
-                self.assertFalse(artifact["qualified"])
-                self.assertFalse(item["build_recipe"]["redistribution_qualified"])
-                self.assertEqual(item["build_recipe"]["component"], "ffmpeg")
-            elif item["id"] == "hactool":
-                self.assertIn("3121a5bf08cd81d3a99719feb2cab3b60767afd5", item["version"])
-                self.assertEqual(item["build_recipe"]["status"], "implemented-offline")
-                self.assertEqual(item["build_recipe"]["component"], "hactool")
-                self.assertEqual(item["artifacts"], [])
-            else:
-                self.assertIsNone(item["version"])
-                self.assertEqual(item["artifacts"], [])
             self.assertTrue(item["qualification"])
 
     def test_pe_normal_delay_imports_and_closure(self):

@@ -1,71 +1,38 @@
 {
   "schema": 1,
-  "purpose": "Maintainer-only offline dependency sources; not a public redistribution or hardware acceptance.",
+  "purpose": "Upstream projects the Windows build environment is built from; windows-buildenv.yml resolves the newest release of each (scripts/recomp/resolve_inputs.py) and records revision, SHA-256 and size in the published archive.",
   "maximum_archive_bytes": 40000000,
-  "digest_provenance": "Locally measured official HTTPS source archives at immutable revisions; not independent signed upstream digest attestations.",
   "sources": {
     "vulkan-headers": {
       "repository": "KhronosGroup/Vulkan-Headers",
-      "version": "vulkan-sdk-1.4.363.0",
-      "revision": "6802bb4733b63ed5efd3adb308a6c885ef180ea1",
-      "sha256": "9044fbb356160e43201dc2094acb44c8a906722a63a35f48fc0f051579db9bb6",
-      "size_bytes": 3416843,
       "license": "Apache-2.0 OR MIT"
     },
     "vma": {
       "repository": "GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
-      "version": "v3.5.0",
-      "revision": "0f1a757da579831283413295cc7f3b47eb521c77",
-      "sha256": "5e72cb8b7f788cb5c9ae8195936fcbb3f4e9a0b14cdf9abb05e472891e9098cf",
-      "size_bytes": 1001392,
       "license": "MIT"
     },
     "shaderc": {
       "repository": "google/shaderc",
-      "version": "v2026.4",
-      "revision": "b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc",
-      "sha256": "b0f73c2f50df5f24e78fae6d04f1e95131c65ea3ea13fd8998a317a5d632a51f",
-      "size_bytes": 237669,
       "license": "Apache-2.0"
     },
     "glslang": {
       "repository": "KhronosGroup/glslang",
-      "version": "shaderc-v2026.4-DEPS",
-      "revision": "e1b562a8bed273a02f30b59b66a5d499793cede5",
-      "sha256": "907174a24713c6202c146f164bf81783f1fbc79c8cb821a30f18f159eb980312",
-      "size_bytes": 4641535,
       "license": "LicenseRef-glslang-source-notices"
     },
     "spirv-headers": {
       "repository": "KhronosGroup/SPIRV-Headers",
-      "version": "shaderc-v2026.4-DEPS",
-      "revision": "04fd3caa1e8267e4d95c806cad901181728e1006",
-      "sha256": "392f4801409aad9c4f1b77745f179952fd6264e4c8bd0fc1bc45dfa6807bf6d0",
-      "size_bytes": 594644,
       "license": "MIT AND LicenseRef-SPIRV-Headers-source-notices"
     },
     "spirv-tools": {
       "repository": "KhronosGroup/SPIRV-Tools",
-      "version": "shaderc-v2026.4-DEPS",
-      "revision": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
-      "sha256": "82c62146083fd558735a3171cf97cfc47903ca7d368482e87f94bd44883c0f00",
-      "size_bytes": 3559528,
       "license": "Apache-2.0"
     },
     "ffmpeg": {
       "repository": "FFmpeg/FFmpeg",
-      "version": "n8.0.1",
-      "revision": "894da5ca7d742e4429ffb2af534fcda0103ef593",
-      "sha256": "9dad3557314f1b7923b61aff15e30079e964c3b41276bbd43dd8bb15b8028b5f",
-      "size_bytes": 16422004,
       "license": "LicenseRef-FFmpeg-build-configuration"
     },
     "hactool": {
       "repository": "SciresM/hactool",
-      "version": "1.4.0",
-      "revision": "3121a5bf08cd81d3a99719feb2cab3b60767afd5",
-      "sha256": "5307bbc57131e29a324c18e2c7cdde3a679c2f7d046e82c75e7cea99045ab382",
-      "size_bytes": 2555657,
       "license": "ISC AND LicenseRef-bundled-mbedTLS"
     }
   }
