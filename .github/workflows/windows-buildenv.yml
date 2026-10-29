@@ -84,7 +84,10 @@ jobs:
           python scripts/install/windows_pipeline.py --output "$dir\catalog.json" --cc "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe" --generator "$dir\generator\bdsp_codegen.exe" --sdl "$dir\sdl" --vulkan "$dir\vulkan" --ffmpeg "$dir\ffmpeg" --hactool "$dir\hactool" --qt "$dir\qt"
       - name: Vulkan loader and extract tool for the Windows tests
         run: |
-          choco install vulkan-runtime --yes --no-progress
+          # The renderer links the Vulkan loader statically; runners have no GPU driver, so install LunarG's loader (latest).
+          Invoke-WebRequest https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-runtime.exe -OutFile vulkan-runtime.exe -UseBasicParsing
+          Start-Process ./vulkan-runtime.exe -ArgumentList '/S' -Wait
+          if (-not (Test-Path C:\Windows\System32\vulkan-1.dll)) { throw "Vulkan loader was not installed" }
           cargo build --release --manifest-path installer/extract/Cargo.toml
           Add-Content $env:GITHUB_ENV "BDSP_EXTRACT=$PWD\installer\extract\target\release\bdsp-extract.exe"
       - name: Windows tests against the new toolchain
