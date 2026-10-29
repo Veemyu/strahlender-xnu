@@ -71,6 +71,24 @@ def synthetic_nso(path, compressed=False):
     return path
 
 
+def synthetic_eh_nso(path):
+    synthetic_nso(path)
+    raw = bytearray(path.read_bytes())
+    ro = 0x200
+    struct.pack_into("<ii", raw, ro + 16, 0xa00, 0xa14)
+    hdr, cie, fde, lsda = 0x1a00, 0x1b00, 0x1b40, 0x1c00
+    struct.pack_into("<4B i I ii", raw, ro + 0xa00, 1, 0x1b, 3, 0x3b,
+                     cie - (hdr + 4), 1, 0x80 - hdr, fde - hdr)
+    cie_body = struct.pack("<I", 0) + b"\x01zLR\0\x01\x78\x1e\x02\x1b\x1b"
+    raw[ro + 0xb00:ro + 0xb00 + len(cie_body) + 4] = struct.pack("<I", len(cie_body)) + cie_body
+    fde_body = struct.pack("<IiiB", fde + 4 - cie, 0x80 - (fde + 8), 0x20, 4)
+    fde_body += struct.pack("<i", lsda - (fde + 8 + 4 + 4 + 1))
+    raw[ro + 0xb40:ro + 0xb40 + len(fde_body) + 4] = struct.pack("<I", len(fde_body)) + fde_body
+    raw[ro + 0xc00:ro + 0xc08] = bytes((0xff, 0xff, 1, 4, 0, 0x10, 8, 0))
+    path.write_bytes(raw)
+    return path
+
+
 class NativeCodegenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

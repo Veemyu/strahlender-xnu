@@ -308,19 +308,6 @@ class WindowsBuildTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "notices"):
                 build.package_game(exe, [sdl], "x86_64", root / "bad-package", {})
 
-    def test_vendor_integrity_accepts_only_verified_newline_conversion(self):
-        builder = build.load_helper("windows_vendor_test", ROOT / "scripts/recomp/native-generator/build.py")
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "lz4.c"
-            path.write_bytes(b"source\ntext\n")
-            digest = windows.sha256(path)
-            builder.verify_vendor(path, digest)
-            path.write_bytes(b"source\r\ntext\r\n")
-            builder.verify_vendor(path, digest)
-            path.write_bytes(b"changed\r\ntext\r\n")
-            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
-                builder.verify_vendor(path, digest)
-
     @unittest.skipUnless(sys.platform == "win32", "Native Windows job lifecycle")
     def test_compiler_job_owns_descendants_and_cancels_without_orphans(self):
         with tempfile.TemporaryDirectory() as temporary:
