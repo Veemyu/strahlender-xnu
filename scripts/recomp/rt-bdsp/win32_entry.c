@@ -1,4 +1,5 @@
 #ifdef _WIN32
+#include "plat.h"
 #include "win32_files.h"
 #include <errno.h>
 #include <shlobj.h>
@@ -19,8 +20,8 @@ static int set_path(const char *name, const char *parent, const char *child, boo
     if (!path) { errno = ENOMEM; return -1; }
     snprintf(path, size, "%s\\%s", parent, child);
     int result = 0;
-    if (directory && mkdir(path, 0700) && errno != EEXIST) result = -1;
-    if (!result) result = _putenv_s(name, path);
+    if (directory && !plat_ensure_directory(path)) result = -1;
+    if (!result && !plat_setenv(name, path, true)) result = -1;
     free(path);
     return result;
 }
@@ -55,7 +56,7 @@ static int prepare_paths(void) {
         if (!save_root) { free(base); errno = ENOMEM; return -1; }
         snprintf(save_root, size, "%s\\StrahlenderXnu", base);
         free(base);
-        if (mkdir(save_root, 0700) && errno != EEXIST) {
+        if (!plat_ensure_directory(save_root)) {
             free(save_root);
             return -1;
         }
@@ -80,7 +81,7 @@ static int prepare_paths(void) {
     // getenv pointers may be invalidated by subsequent _putenv_s calls.
     char *root = strdup(getenv("BDSP_DATA_DIR"));
     if (!root) { errno = ENOMEM; return -1; }
-    if (mkdir(root, 0700) && errno != EEXIST) { free(root); return -1; }
+    if (!plat_ensure_directory(root)) { free(root); return -1; }
     result = set_path("BDSP_CONTROLLER_CONFIG", root, "controller-mode.txt", false) ||
              set_path("BDSP_SAVE", root, "save", true) ||
              set_path("BDSP_CACHE_DIR", root, "cache", true) ||
@@ -107,10 +108,10 @@ int wmain(int argc, wchar_t **wide_argv) {
         char *equal = strchr(assignment, '=');
         if (!equal) { free(assignment); continue; }
         *equal = 0;
-        int error = _putenv_s(assignment, equal + 1);
+        bool imported = plat_setenv(assignment, equal + 1, true);
         free(assignment);
-        if (error) {
-            fprintf(stderr, "FATAL: Windows UTF-8 environment import failed (%d).\n", error);
+        if (!imported) {
+            fprintf(stderr, "FATAL: Windows UTF-8 environment import failed (%d).\n", errno);
             FreeEnvironmentStringsW(environment); return 1;
         }
     }

@@ -9,6 +9,7 @@
 
 #include "cpu.h"        // rt/cpu.h (exception extension) and on top of it scripts/recomp/upstream/runtime/cpu.h
 #include "guestmem.h"
+#include "plat.h"
 #ifdef _WIN32
 #include "win32_host.h"
 #endif

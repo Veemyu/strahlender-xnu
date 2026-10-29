@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "shaders.h"
+#include "plat.h"
 #include "runtime_paths.h"
 #ifdef _WIN32
 #include "win32_files.h"
@@ -49,19 +50,10 @@ static uint32_t *cache_load(uint64_t h, size_t *nwords) {
 
 static void cache_store(uint64_t h, const uint32_t *spv, size_t nwords) {
     if (!bdsp_cache_prepare("spirv")) return;
-    char path[4096], tmp[4096], name[96];
+    char path[4096], name[96];
     snprintf(name, sizeof name, "spirv/%016llx.spv", (unsigned long long)h);
     bdsp_cache_path(path, sizeof path, name);
-    snprintf(name, sizeof name, "spirv/%016llx.spv.%llx", (unsigned long long)h, (unsigned long long)(uintptr_t)spv);
-    bdsp_cache_path(tmp, sizeof tmp, name);
-    FILE *f = fopen(tmp, "wb");
-    if (!f) { LOG("[vk] SPIR-V cache could not be opened for writing\n"); return; }
-    bool ok = fwrite(spv, 4, nwords, f) == nwords;
-    if (fclose(f)) ok = false;
-    if (!ok || rename(tmp, path) != 0) {
-        LOG("[vk] SPIR-V cache publication failed\n");
-        unlink(tmp);
-    }
+    if (!plat_write_file_atomic(path, spv, nwords * 4)) LOG("[vk] SPIR-V cache publication failed\n");
 }
 
 // Vertex shaders: every float add/sub/mul/div/fma gets NoContraction, so no compiler fuses or splits them. Depth

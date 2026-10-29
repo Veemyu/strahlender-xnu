@@ -4,7 +4,6 @@
 // the Boehm GC), small host stacks, per-thread SVC counters, measurement, no restart mechanism, guest addresses through G2H.
 #ifdef _WIN32
 #include <windows.h>
-#include <bcrypt.h>
 #else
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -824,12 +823,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         case 7: case 22: v = heap_size + 0x4000000; break;
         case 8: case 9: v = 0; break;
         case 11:
-#ifdef _WIN32
-            if (BCryptGenRandom(NULL, (PUCHAR)&v, sizeof v, BCRYPT_USE_SYSTEM_PREFERRED_RNG))
-                rt_fatal("Windows random generation failed\n");
-#else
-            v = ((uint64_t)arc4random() << 32) | arc4random();
-#endif
+            if (!plat_random(&v, sizeof v)) rt_fatal("random generation failed\n");
             break;
         case 12: v = GUEST_LO; break;
         case 13: v = GUEST_HI - GUEST_LO; break;

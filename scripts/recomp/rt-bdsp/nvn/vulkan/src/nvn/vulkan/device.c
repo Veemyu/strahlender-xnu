@@ -14,13 +14,13 @@
 
 #include "../../paths.h"
 #include "../../settings.h"
+#include "plat.h"
 #include "runtime_paths.h"
 #include "host_shutdown.h"
 #include "../../ui/menu.h"
 #include "vk.h"
 #include "../output_scale.h"
 #include "../renderer.h"
-#include "runtime_paths.h"
 #ifdef _WIN32
 #include "win32_files.h"
 #endif
@@ -270,19 +270,10 @@ void vk_pipeline_cache_save(void) {
     if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) != VK_SUCCESS || !sz) return;
     void *data = malloc(sz);
     if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, data) == VK_SUCCESS) {
-        char path[4096], temporary[4096];
+        char path[4096];
         bdsp_cache_path(path, sizeof path, "vk_pipelines.bin");
-        bdsp_cache_path(temporary, sizeof temporary, "vk_pipelines.bin.tmp");
         if (!bdsp_cache_prepare(NULL)) { free(data); return; }
-        FILE *f = fopen(temporary, "wb");
-        if (f) {
-            bool ok = fwrite(data, 1, sz, f) == sz;
-            if (fclose(f)) ok = false;
-            if (!ok || rename(temporary, path)) {
-                LOG("[vk] pipeline cache publication failed\n");
-                unlink(temporary);
-            }
-        } else LOG("[vk] pipeline cache could not be opened for writing\n");
+        if (!plat_write_file_atomic(path, data, sz)) LOG("[vk] pipeline cache publication failed\n");
     }
     free(data);
 }

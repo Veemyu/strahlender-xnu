@@ -1,4 +1,5 @@
 #include "bdsp.h"
+#include "plat.h"
 #include "runtime_paths.h"
 #include "win32_files.h"
 #include <errno.h>
@@ -39,32 +40,10 @@ bool bdsp_joycon_store(const char *path, int combine) {
         errno = EINVAL;
         return false;
     }
-    size_t capacity = strlen(path) + 80;
-    char *temporary = malloc(capacity);
-    if (!temporary) { errno = ENOMEM; return false; }
-    snprintf(temporary, capacity, "%s.%lu.%llu.tmp", path, GetCurrentProcessId(),
-             (unsigned long long)GetTickCount64());
-    int fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, 0600);
-    if (fd < 0) {
-        fprintf(stderr, "[pad] cannot create controller configuration (%d)\n", errno);
-        free(temporary);
-        return false;
-    }
     const char *text = combine ? "pair\n" : "single\n";
-    size_t length = strlen(text);
-    bool ok = write(fd, text, (unsigned)length) == (ssize_t)length;
-    int error = ok ? 0 : (errno ? errno : EIO);
-    if (ok && fsync(fd)) { ok = false; error = errno; }
-    if (close(fd) && ok) { ok = false; error = errno; }
-    if (ok && rename(temporary, path)) { ok = false; error = errno; }
-    if (!ok) {
-        fprintf(stderr, "[pad] cannot publish controller configuration (%d)\n", error);
-        if (unlink(temporary) && errno != ENOENT)
-            fprintf(stderr, "[pad] cannot remove incomplete controller configuration (%d)\n", errno);
-    }
-    free(temporary);
-    errno = error;
-    return ok;
+    if (plat_write_file_atomic(path, text, strlen(text))) return true;
+    fprintf(stderr, "[pad] cannot publish controller configuration (%d)\n", errno);
+    return false;
 }
 #endif
 
@@ -83,9 +62,7 @@ void bdsp_cache_path(char *out, size_t capacity, const char *relative) {
 }
 
 static bool ensure_directory(const char *path) {
-    if (!mkdir(path, 0700)) return true;
-    BdspFileInfo info;
-    if (errno == EEXIST && !stat(path, &info) && S_ISDIR(info.st_mode)) return true;
+    if (plat_ensure_directory(path)) return true;
     fprintf(stderr, "[cache] cannot prepare directory (%d)\n", errno);
     return false;
 }

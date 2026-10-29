@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "plat.h"
 #include "kernel.h"
 #include "platform.h"
 #ifdef _WIN32
@@ -32,13 +33,7 @@ void plat_terminate(void) { _exit(0); }
 // does not track it; frame pacing stays with the game (vsync event from services_gfx.c), the clone's rate detection is off.
 __thread uint64_t g_blocked_ns;
 __attribute__((constructor)) static void vk_glue_defaults(void) {
-#ifdef _WIN32
-    // SDL's Windows setter bypasses the CRT environment read by getenv.
-    int error = getenv("BDSP_PACE") ? 0 : _putenv_s("BDSP_PACE", "0");
-#else
-    int error = setenv("BDSP_PACE", "0", 0);
-#endif
-    if (error) {
+    if (!plat_setenv("BDSP_PACE", "0", false)) {  // (Windows: SDL's own setter would bypass the CRT environment)
         fprintf(stderr, "FATAL: Vulkan pacing default could not be set.\n");
         _exit(1);
     }

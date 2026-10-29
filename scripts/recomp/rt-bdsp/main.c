@@ -32,12 +32,7 @@ uint8_t *g_base;
 #endif
 
 static void runtime_setenv(const char *name, const char *value) {
-#ifdef _WIN32
-    int error = _putenv_s(name, value);
-#else
-    int error = setenv(name, value, 1);
-#endif
-    if (error) rt_fatal("cannot set runtime option %s\n", name);
+    if (!plat_setenv(name, value, true)) rt_fatal("cannot set runtime option %s\n", name);
 }
 
 // Claim the guest window before anything else (otherwise the host allocator places regions in the same window).
