@@ -384,10 +384,6 @@ def classify(metrics):
     return "failed"
 
 
-def jsonable(m):
-    return {k: (None if isinstance(v, float) and math.isinf(v) else v) for k, v in m.items()}
-
-
 def attr_locations(ref_vs, info_vs):
     return sorted({loc for loc, _ in ref_vs["attrs"]} | {i["location"] for i in info_vs["inputs"]})
 

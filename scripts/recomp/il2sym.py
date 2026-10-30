@@ -11,7 +11,6 @@ table 2 = strings. The pointers per module are in Il2CppCodeGenModule (name, cou
 """
 import os
 import struct
-import sys
 
 import numpy as np
 

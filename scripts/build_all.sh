@@ -32,7 +32,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-HELPERS="$ROOT/scripts/build_helpers.py"
 STAGEPY="$ROOT/scripts/build_stages.py"
 TOOLS_DIR="${TOOLS_DIR:-$ROOT/tools}"
 HACTOOL_DIR="$TOOLS_DIR/hactool"

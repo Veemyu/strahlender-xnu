@@ -246,9 +246,6 @@ class Metrics(unittest.TestCase):
         self.assertEqual(s["passRateHalfCompat"], 0.6)
         self.assertIsNone(sf.summarize([{"status": "nicht_aussagekraeftig"}])["passRate"])
 
-    def test_jsonable_drops_infinity(self):
-        self.assertEqual(sf.jsonable({"psnr": float("inf"), "x": 1}), {"psnr": None, "x": 1})
-
 
 class Files(unittest.TestCase):
     def test_cleanup_keeps_chosen_profile_and_constants(self):

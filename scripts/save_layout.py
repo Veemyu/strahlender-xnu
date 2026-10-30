@@ -4,7 +4,7 @@
 Field order and types come from dump.cs, ByValArray/ByValTStr sizes from
 fieldMarshaledSizes of the metadata (Il2Cpp v24). Output: field, offset, size.
 """
-import re, struct, sys, json
+import re, struct, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent

@@ -8,7 +8,6 @@ import re
 import shutil
 import struct
 import subprocess
-import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = Path(os.environ.get("BDSP_WINDOWS_CONTRACT") or ROOT / "installer" / "assets" / "windows-dependencies.json")

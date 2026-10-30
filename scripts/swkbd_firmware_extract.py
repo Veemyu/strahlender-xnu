@@ -57,13 +57,6 @@ def find_ncas(nca_dir, tool, keys, wanted):
     return {t: v[0] for t, v in found.items()}
 
 
-def xor_check(path):
-    """bfttf files are kept encoded (the keyboard decodes them in memory); only check the header."""
-    with open(path, "rb") as f:
-        head = f.read(8)
-    return len(head) == 8
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--nca-dir", required=True)

@@ -16,7 +16,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
 import threading
 
@@ -708,8 +707,6 @@ def main(argv=None):
     parser.add_argument("--work", type=Path, default=ROOT / "work")
     parser.add_argument("--jobs", type=int)
     parser.add_argument("--with-subsdk1", action="store_true")
-    parser.add_argument("--cmake", type=Path, help="Explicit maintainer-only CMake executable")
-    parser.add_argument("--ninja", type=Path, help="Explicit existing maintainer Ninja executable")
     parser.add_argument("--sdl-prefix", type=Path, help="New private SDL development-bundle directory")
     parser.add_argument("--vulkan-prefix", type=Path, help="Verified private Vulkan development bundle")
     parser.add_argument("--ffmpeg-prefix", type=Path, help="Verified private FFmpeg development bundle")

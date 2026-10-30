@@ -6,7 +6,6 @@ Standard library only. Run by .github/workflows/windows-components.yml when the 
 import argparse
 import hashlib
 import json
-import shutil
 import tarfile
 import urllib.request
 from pathlib import Path

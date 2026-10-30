@@ -104,11 +104,6 @@ def uc_run(words, cases, n):
     return np.frombuffer(bytes(mu.mem_read(OUT, n * OUT_SZ)), dtype=OUT_DT)
 
 
-def build_lib(src, out, extra=(), cc="clang", flags=()):
-    cmd = [cc, "-O2", "-shared", "-fPIC", "-w", *flags, *map(str, src), "-o", str(out), *extra]
-    subprocess.run(cmd, check=True)
-
-
 def load_cases_lib(path):
     lib = ctypes.CDLL(str(path))
     lib.gen_cases.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
