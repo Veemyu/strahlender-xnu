@@ -133,6 +133,22 @@ pub fn detect_manager(os: &str) -> Option<&'static str> {
 }
 
 /// Windows needs one thing: the build environment that GitHub Actions publishes (see components.rs).
+/// The oldest Clang the generated code builds with: `rt/cpu.h` supplies the vector builtins Clang 14 lacks.
+const MIN_CLANG: u32 = 14;
+
+fn clang_major_from(text: &str) -> Option<u32> {
+    let rest = &text[text.find("clang version ")? + "clang version ".len()..];
+    rest.split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
+}
+
+fn clang_major() -> Option<u32> {
+    let output = Command::new("clang").arg("--version").output().ok()?;
+    clang_major_from(&String::from_utf8_lossy(&output.stdout))
+}
+
 pub(crate) fn windows_plan(architecture: &str, installed: bool) -> Plan {
     let mut plan = Plan {
         manager: "windows-components".into(),
@@ -290,6 +306,16 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
                         .collect::<Vec<_>>(),
                 )
         };
+        if present
+            && !mac
+            && component.id == "compiler"
+            && let Some(major) = clang_major()
+            && major < MIN_CLANG
+        {
+            plan.manual.push(format!(
+                "Your Clang is version {major}; version {MIN_CLANG} or newer is needed. Install a newer Clang (for example from apt.llvm.org or a clang-{MIN_CLANG}+ package of your distribution), then check again."
+            ));
+        }
         if !present {
             if manager == "pacman"
                 && let Some(note) = &component.manual_pacman
@@ -471,6 +497,23 @@ mod tests {
             "git"
         );
     }
+    #[test]
+    fn clang_versions_are_read_from_the_first_line() {
+        assert_eq!(
+            clang_major_from("Ubuntu clang version 14.0.0-1ubuntu1.1\nTarget: x86_64"),
+            Some(14)
+        );
+        assert_eq!(
+            clang_major_from("clang version 22.1.7 (https://github.com/llvm/llvm-project.git)"),
+            Some(22)
+        );
+        assert_eq!(
+            super::clang_major_from("Debian clang version 11.0.1-2"),
+            Some(11)
+        );
+        assert_eq!(super::clang_major_from("gcc (GCC) 14.2.1"), None);
+    }
+
     #[test]
     fn homebrew_prefix_order_matches_each_mac_architecture() {
         assert_eq!(
