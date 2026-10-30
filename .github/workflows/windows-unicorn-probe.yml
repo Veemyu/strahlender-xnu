@@ -2,6 +2,9 @@ name: Windows Unicorn probe
 run-name: Unicorn from source with LLVM-MinGW · ${{ github.ref_name }}
 on:
   workflow_dispatch:
+  push:
+    branches: [win-integration]
+    paths: [.github/workflows/windows-unicorn-probe.yml]
 permissions:
   contents: read
 jobs:
