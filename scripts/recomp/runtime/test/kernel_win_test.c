@@ -161,6 +161,10 @@ void guest_call(Cpu *cpu, uint64_t entry) {
     uint64_t previous[WORKERS] = {0};
     for (int cycle = 0; cycle < CYCLES; cycle++) {
         Sleep(1);
+        // On a busy machine a worker may not have run within 1 ms; give each up to 500 ms to make progress.
+        for (int worker = 0; worker < WORKERS && cycle; worker++)
+            for (int wait = 0; wait < 500 && __atomic_load_n(&targets[worker]->cpu.x[20], __ATOMIC_RELAXED) <= previous[worker]; wait++)
+                Sleep(1);
         for (int worker = 0; worker < WORKERS; worker++)
             CHECK(svc(cpu, 0x32, handles[worker], 1, 0) == R_OK);
         for (int worker = 0; worker < WORKERS; worker++) {

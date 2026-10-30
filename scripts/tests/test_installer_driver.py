@@ -651,18 +651,22 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(applications, "BDSP.app/Contents/MacOS/BDSP")))
 
     def test_free_space_estimate_uses_source_sizes(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            base = os.path.join(temporary, "base.xci")
-            update = os.path.join(temporary, "update.nsp")
-            with open(base, "wb") as file:
-                file.truncate(2 * 1024 ** 3)
-            with open(update, "wb") as file:
-                file.truncate(1024 ** 3)
-            args = SimpleNamespace(base=base, update=update)
-            self.assertEqual(driver.required_free_gb(args), 40)
+        sizes = {"base.xci": 2 * 1024 ** 3, "update.nsp": 1024 ** 3}
 
-            with open(base, "wb") as file:
-                file.truncate(20 * 1024 ** 3)
+        class FakePath:  # sizes only: real multi-GB files are written out in full on NTFS and took minutes
+            def __init__(self, name):
+                self.name = name
+
+            def is_dir(self):
+                return False
+
+            def stat(self):
+                return SimpleNamespace(st_size=sizes[self.name])
+
+        args = SimpleNamespace(base="base.xci", update="update.nsp")
+        with patch.object(driver, "Path", FakePath):
+            self.assertEqual(driver.required_free_gb(args), 40)
+            sizes["base.xci"] = 20 * 1024 ** 3
             self.assertEqual(driver.required_free_gb(args), 71)
 
     @unittest.skipUnless(sys.platform == "darwin", "ditto is a macOS system tool")
