@@ -50,8 +50,10 @@ the file that proves it, so a reviewer can check it against the repository.
 
 These are not errors in the SBOM. They are licence and consistency questions the SBOM exposes:
 
-1. **Unicorn 2.1.4** (GPL-2.0-only) ships in the installer's private runtime. Its wheel metadata says "BSD License",
-   its upstream metadata says GPLv2. Check this before a release.
+1. **Unicorn 2.1.4** (GPL-2.0-only) — *decided 2026-10-30.* It ships in the installer's private runtime and, with the
+   code generator, in the Windows tools archive. The wheel metadata says "BSD License"; upstream says GPLv2. The project
+   owner accepts the GPL-2.0 terms for these distributions: the SBOM concludes `GPL-2.0-only`, the Windows archive carries
+   the unmodified source, `COPYING` and a written offer in `NOTICES/`. This is a decision, not legal advice.
 2. **FFmpeg** is bundled into the macOS app by `scripts/recomp/app/bundle_dylibs.py`. `THIRD_PARTY_NOTICES.md` says FFmpeg
    is "not distributed here". That is true for the repository, not for the built app. `bundle_dylibs.py` copies whatever
    FFmpeg the binary links. With the documented setup (`brew install ffmpeg`) that is the Homebrew build (`brew-ffmpeg`),

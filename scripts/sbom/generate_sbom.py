@@ -57,6 +57,9 @@ LICENSE_REFS = {
 }
 
 
+# Decided by the project owner (2026-10-30): Unicorn is distributed under GPL-2.0-only, despite the wheel's BSD classifier.
+CONCLUDED = {"unicorn": "GPL-2.0-only"}
+
 def C(cid, name, version, purl, license_expr, distribution, tracked, evidence, *, download=None,
       copyright_text=None, category="library", sha256=None, notes=""):
     """One catalogue entry. `license_expr` is an SPDX expression; LicenseRef-* ids need LICENSE_REFS."""
@@ -480,7 +483,7 @@ def write_outputs(out, components, root):
         pkg = {
             "SPDXID": ids[c["purl"]], "name": c["name"], "versionInfo": c["version"],
             "downloadLocation": c["download"] or "NOASSERTION", "filesAnalyzed": False,
-            "licenseConcluded": "NOASSERTION", "licenseDeclared": c["license"],
+            "licenseConcluded": CONCLUDED.get(c["name"].lower(), "NOASSERTION"), "licenseDeclared": c["license"],
             "copyrightText": c["copyright"] or "NOASSERTION",
             "primaryPackagePurpose": PURPOSE.get(c["category"], "LIBRARY"),
             "comment": merge_notes(f"Distribution: {c['distribution']}. Repository state: {c['tracked']}.",
