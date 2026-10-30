@@ -256,14 +256,16 @@ def purl_name(name):
     return re.sub(r"[_.]", "-", name).lower()
 
 
-def cargo_components(installer):
-    """Rust crates from installer/Cargo.lock. Licences and dependency edges come from `cargo metadata` when it works offline."""
-    lock = tomllib.loads((installer / "Cargo.lock").read_text(encoding="utf-8"))
+def cargo_components(project):
+    """Rust crates of one Cargo project (its Cargo.lock). Licences and dependency edges come from `cargo metadata` when it works offline."""
+    lock_path = (project / "Cargo.lock").relative_to(ROOT).as_posix()
+    manifest = (project / "Cargo.toml").relative_to(ROOT).as_posix()
+    lock = tomllib.loads((project / "Cargo.lock").read_text(encoding="utf-8"))
     checksums = {(p["name"], p["version"]): p.get("checksum") for p in lock.get("package", []) if "source" in p}
     try:
         meta = json.loads(subprocess.run(
             ["cargo", "metadata", "--locked", "--offline", "--format-version", "1",
-             "--manifest-path", str(installer / "Cargo.toml")],
+             "--manifest-path", str(project / "Cargo.toml")],
             capture_output=True, text=True, check=True).stdout)
     except (OSError, subprocess.CalledProcessError):
         meta = None
@@ -271,19 +273,19 @@ def cargo_components(installer):
 
     if meta is None:
         crates = [C(f"crate-{name}-{version}", name, version, f"pkg:cargo/{name}@{version}", "NOASSERTION", SHIPPED,
-                    TRACKED, ["installer/Cargo.lock"], download=f"https://crates.io/crates/{name}/{version}",
+                    TRACKED, [lock_path], download=f"https://crates.io/crates/{name}/{version}",
                     category="rust-crate", sha256=checksum)
                   for (name, version), checksum in checksums.items()]
         return crates, {}, None
 
-    purl_of = {p["id"]: f"pkg:cargo/{p['name']}@{p['version']}" for p in meta["packages"]
-               if p["name"] != "strahlender-xnu-installer"}
+    root_pkg = next(p for p in meta["packages"] if Path(p["manifest_path"]) == project / "Cargo.toml")
+    purl_of = {p["id"]: f"pkg:cargo/{p['name']}@{p['version']}" for p in meta["packages"] if p["id"] != root_pkg["id"]}
     crates = []
     for pkg in meta["packages"]:
-        if pkg["name"] == "strahlender-xnu-installer":
+        if pkg["id"] == root_pkg["id"]:
             continue
         vendored = pkg["source"] is None
-        location = Path(pkg["manifest_path"]).parent.relative_to(ROOT).as_posix() if vendored else "installer/Cargo.lock"
+        location = Path(pkg["manifest_path"]).parent.relative_to(ROOT).as_posix() if vendored else lock_path
         crates.append(C(f"crate-{pkg['name']}-{pkg['version']}", pkg["name"], pkg["version"], purl_of[pkg["id"]],
                         normalize_license(pkg.get("license")), SHIPPED, TRACKED, [location],
                         download=f"https://crates.io/crates/{pkg['name']}/{pkg['version']}", category="rust-crate",
@@ -291,17 +293,51 @@ def cargo_components(installer):
                         notes=(f"Repository: {pkg['repository']}" if pkg.get("repository") else "")
                         + ("; locally patched source; see PATCHES.md in the component directory." if vendored else "")))
     edges = {}
-    installer_pkg = next(p for p in meta["packages"] if p["source"] is None and p["name"] == "strahlender-xnu-installer")
     for node in meta["resolve"]["nodes"]:
         if node["id"] in purl_of:
             edges[purl_of[node["id"]]] = [purl_of[d] for d in node["dependencies"] if d in purl_of]
-    installer = C("installer", "strahlender-xnu-installer", installer_pkg["version"],
-                  f"pkg:cargo/strahlender-xnu-installer@{installer_pkg['version']}", "MIT", SHIPPED, TRACKED,
-                  ["installer/Cargo.toml", "installer/Cargo.lock"], category="application",
-                  notes="Rust/Iced setup helper (installer/README.md).")
-    installer["depends_on"] = [purl_of[d] for d in next(n for n in meta["resolve"]["nodes"]
-                                                         if n["id"] == installer_pkg["id"])["dependencies"] if d in purl_of]
-    return crates, edges, installer
+    root = C("installer" if project.name == "installer" else project.name, root_pkg["name"], root_pkg["version"],
+             f"pkg:cargo/{root_pkg['name']}@{root_pkg['version']}", normalize_license(root_pkg.get("license")) or "MIT",
+             SHIPPED, TRACKED, [manifest, lock_path], category="application",
+             notes=root_pkg.get("description") or "")
+    root["depends_on"] = [purl_of[d] for d in next(n for n in meta["resolve"]["nodes"]
+                                                    if n["id"] == root_pkg["id"])["dependencies"] if d in purl_of]
+    return crates, edges, root
+
+
+# Windows build environment: what the CI archive contains, read from the lock files the CI resolved on the day.
+def windows_components(folder):
+    """Components of the Windows build environment from the resolved lock files (windows-dependencies.json,
+    windows-sources.json, qt.json) in `folder`."""
+    folder = Path(folder)
+    contract = json.loads((folder / "windows-dependencies.json").read_text(encoding="utf-8"))
+    sources = json.loads((folder / "windows-sources.json").read_text(encoding="utf-8"))
+    qt = json.loads((folder / "qt.json").read_text(encoding="utf-8")) if (folder / "qt.json").is_file() else {}
+    versions = {"qt": qt.get("qt"), "llvm-mingw": qt.get("toolchain_version")}
+    note = "Windows build environment archive (windows-buildenv.yml)."
+    result = []
+
+    def register(expr, text):
+        for ref in re.findall(r"LicenseRef-[A-Za-z0-9.-]+", expr):
+            LICENSE_REFS.setdefault(ref, (ref.removeprefix("LicenseRef-").replace("-", " "), text))
+
+    for item in contract["components"]:
+        version = item.get("version") or versions.get(item["id"]) or "rolling"
+        register(item["license"], item.get("qualification", ""))
+        artifacts = item.get("artifacts") or []
+        sha = (artifacts[0].get("sha256") if artifacts else None) or item.get("source_archive", {}).get("sha256")
+        result.append(C(f"win-{item['id']}", item["id"], version, f"pkg:generic/windows-{item['id']}@{version}",
+                        item["license"], SHIPPED, EXTERNAL, ["installer/assets/windows-dependencies.json"],
+                        download=item.get("source"), category="build-environment", sha256=sha, notes=note))
+    for name, entry in sources["sources"].items():
+        expr = entry.get("license", "NOASSERTION")
+        register(expr, f"Licence of the {name} sources as shipped in the build environment.")
+        revision = entry.get("revision") or "unknown"
+        result.append(C(f"win-src-{name}", name, entry.get("version") or revision, f"pkg:github/{entry['repository']}@{revision}",
+                        expr, SHIPPED, EXTERNAL, ["installer/assets/windows-sources.json"],
+                        download="https://github.com/" + entry["repository"], category="build-environment",
+                        sha256=entry.get("sha256"), notes=note + " Built from source."))
+    return result
 
 
 def python_runtime_wheels(installer, filename="wheels.lock.json"):
@@ -338,20 +374,24 @@ def merge_notes(*parts):
 
 
 # ---------------------------------------------------------------- assemble
-def build_components():
+def build_components(windows_inputs=None):
     purls = [c["purl"] for c in CATALOG]
     duplicates = sorted({p for p in purls if purls.count(p) > 1})
     if duplicates:
         raise SystemExit("duplicate purl in CATALOG: " + ", ".join(duplicates))
     components = {c["purl"]: c for c in CATALOG}
 
-    crates, crate_edges, installer = cargo_components(ROOT / "installer")
-    for c in crates:
-        components[c["purl"]] = c
-    for purl, deps in crate_edges.items():
-        components[purl]["depends_on"] = deps
-    if installer is not None:
-        components[installer["purl"]] = installer
+    for project in (ROOT / "installer", ROOT / "installer" / "extract"):
+        crates, crate_edges, root = cargo_components(project)
+        for c in crates:
+            components.setdefault(c["purl"], c)
+        for purl, deps in crate_edges.items():
+            components[purl]["depends_on"] = sorted(set(components[purl]["depends_on"]) | set(deps))
+        if root is not None:
+            components[root["purl"]] = root
+    if windows_inputs:
+        for c in windows_components(windows_inputs):
+            components[c["purl"]] = c
 
     # Pinned wheels of the installer's private runtime (shipped).
     for (name, version), per_target in python_runtime_wheels(ROOT / "installer").items():
@@ -550,8 +590,9 @@ def write_outputs(out, components, root):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=str(ROOT / "sbom"), help="output directory (default: sbom/)")
+    parser.add_argument("--windows-inputs", help="folder with the lock files the Windows build-environment CI resolved")
     args = parser.parse_args(argv)
-    count = write_outputs(Path(args.out), build_components(), root_component())
+    count = write_outputs(Path(args.out), build_components(args.windows_inputs), root_component())
     print(f"{count} components written to {args.out}")
     return 0
 

@@ -21,10 +21,11 @@ python3 -m unittest scripts/tests/test_generate_sbom.py
 
 ## Scope
 
-- **Rust crates** (454, plus the installer itself): `installer/Cargo.lock`, with SHA-256 checksums. Licences and
+- **Rust crates** of the installer and of `installer/extract` (`bdsp-extract`), merged by purl: both `Cargo.lock` files, with SHA-256 checksums. Licences and
   dependency edges come from `cargo metadata --locked --offline`.
 - **Python**: the pinned wheels of the installer runtime (`installer/runtime/wheels.lock.json`) and the local
   `tools/pydeps` environment (git-ignored).
+- **Windows build environment** (CI only, `--windows-inputs`): Qt, LLVM-MinGW, SDL3, Vulkan, FFmpeg, hactool and the VC runtime with the versions and hashes the CI resolved that day (`windows-dependencies.json`, `windows-sources.json`, `qt.json`, published as assets of the `windows-buildenv` release). The installer SBOM job downloads them, so every release carries one document for all platforms.
 - **Vendored source and assets**: LASRecomp (MIT), Octicons, Lucide, Fira Sans.
 - **Pinned build inputs** named in `scripts/recomp/.../build_deps*.sh`, `fetch_zig.sh` and `installer/runtime/manifest.json`.
 - **Local tools** in `tools/` (git-ignored): hactool and its bundled mbed TLS, cJSON and LZ4, Il2CppDumper, nx2elf, vgmstream.

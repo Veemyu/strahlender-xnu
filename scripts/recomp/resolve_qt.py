@@ -53,7 +53,7 @@ def resolve(get=text):
     if not toolchain:
         raise ValueError("No LLVM-MinGW tool in the Qt repository")
     minor = ".".join(qt["qt"].split(".")[:2])
-    return {"qt": qt["qt"], "qtbase": qt["url"], "toolchain": toolchain, "source": SOURCES % (minor, qt["qt"], qt["qt"])}
+    return {"qt": qt["qt"], "qtbase": qt["url"], "toolchain": toolchain, "toolchain_version": tool_version.split("-")[0], "source": SOURCES % (minor, qt["qt"], qt["qt"])}
 
 
 def download(url, destination, expected_sha1=None):
@@ -83,7 +83,7 @@ def main(argv=None):
     except (OSError, ValueError, ET.ParseError) as error:
         print("Resolving Qt failed: " + str(error), file=sys.stderr)
         return 4
-    (args.out / "qt.json").write_text(json.dumps({"qt": found["qt"], "files": files}) + "\n", encoding="utf-8")
+    (args.out / "qt.json").write_text(json.dumps({"qt": found["qt"], "toolchain_version": found["toolchain_version"], "files": files}) + "\n", encoding="utf-8")
     print(json.dumps({"qt": found["qt"], **files}))
     return 0
 

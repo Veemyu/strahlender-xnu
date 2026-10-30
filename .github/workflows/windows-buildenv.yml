@@ -55,6 +55,7 @@ jobs:
           Add-Content $env:GITHUB_ENV "QT_ROOT=$($core.Directory.Parent.FullName)"
           $clang = Get-ChildItem work/qt-tools -Recurse -Filter x86_64-w64-mingw32-clang.exe | Select-Object -First 1
           Move-Item $clang.Directory.Parent.FullName work/buildenv/toolchain
+          Copy-Item work/qt-download/qt.json work/resolved/qt.json
           python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
           # The Unicorn wheel imports the Visual C++ runtime; take the redistributable copy from Visual Studio (app-local deployment).
           $crt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT\vcruntime140*.dll" | Select-Object -First 4
@@ -119,7 +120,7 @@ jobs:
       - name: Generate the SBOM
         run: |
           cargo fetch --locked --manifest-path installer/Cargo.toml
-          python scripts/sbom/generate_sbom.py --out work/sbom
+          python scripts/sbom/generate_sbom.py --out work/sbom --windows-inputs work/resolved
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-buildenv
@@ -134,4 +135,4 @@ jobs:
         run: |
           gh release view windows-buildenv *> $null
           if ($LASTEXITCODE -ne 0) { gh release create windows-buildenv --title "Windows build environment" --notes "Rolling build environment for the Windows game build, rebuilt weekly from the newest upstream releases. The installer downloads it; versions and hashes are in inputs/ and windows-buildenv.json." }
-          gh release upload windows-buildenv work/windows-buildenv.zip work/windows-buildenv.json (Get-ChildItem work/sbom/strahlender-xnu.*).FullName --clobber
+          gh release upload windows-buildenv work/windows-buildenv.zip work/windows-buildenv.json work/resolved/windows-dependencies.json work/resolved/windows-sources.json work/resolved/qt.json (Get-ChildItem work/sbom/strahlender-xnu.*).FullName --clobber

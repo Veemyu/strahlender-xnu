@@ -210,9 +210,19 @@ jobs:
         with:
           python-version: '3.13'
       - name: Generate SPDX and CycloneDX documents
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cargo fetch --locked --manifest-path installer/Cargo.toml
-          python3 scripts/sbom/generate_sbom.py --out sbom
+          # One document per release: the Windows build environment joins in from its last published run.
+          mkdir -p windows-inputs
+          if gh release download windows-buildenv -R "$GITHUB_REPOSITORY" -D windows-inputs \
+              -p windows-dependencies.json -p windows-sources.json -p qt.json; then
+            python3 scripts/sbom/generate_sbom.py --out sbom --windows-inputs windows-inputs
+          else
+            echo "No windows-buildenv release yet: SBOM without the Windows build environment" >> "$GITHUB_STEP_SUMMARY"
+            python3 scripts/sbom/generate_sbom.py --out sbom
+          fi
           python3 -m unittest scripts.tests.test_generate_sbom
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

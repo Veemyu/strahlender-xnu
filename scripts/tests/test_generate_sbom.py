@@ -77,6 +77,34 @@ class SbomGeneratorTest(unittest.TestCase):
         self.assertEqual(installer["tracked"], gen.TRACKED)
         self.assertEqual(installer["license"], "MIT")
 
+    def test_extract_crate_and_its_dependencies_are_listed(self):
+        extract = self.components["pkg:cargo/bdsp-extract@0.1.0"]
+        self.assertEqual(extract["category"], "application")
+        self.assertIn("installer/extract/Cargo.lock", extract["evidence"])
+        self.assertTrue(any(d.startswith("pkg:cargo/sha2@") for d in extract["depends_on"]))
+
+
+class WindowsEnvironmentTest(unittest.TestCase):
+    def test_resolved_lock_files_become_components(self):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            contract = {"components": [
+                {"id": "SDL3", "source": "https://github.com/libsdl-org/SDL", "license": "Zlib", "version": "3.4.2",
+                 "source_archive": {"sha256": "ab" * 32}},
+                {"id": "qt", "source": "https://www.qt.io", "license": "LicenseRef-Qt-audit", "qualification": "LGPL notes"}]}
+            sources = {"sources": {"shaderc": {"repository": "google/shaderc", "license": "Apache-2.0",
+                                               "version": "v2026.1", "revision": "c" * 40, "sha256": "cd" * 32}}}
+            (folder / "windows-dependencies.json").write_text(json.dumps(contract))
+            (folder / "windows-sources.json").write_text(json.dumps(sources))
+            (folder / "qt.json").write_text(json.dumps({"qt": "6.12.0"}))
+            found = {c["name"]: c for c in gen.windows_components(folder)}
+            self.assertEqual(found["SDL3"]["purl"], "pkg:generic/windows-SDL3@3.4.2")
+            self.assertEqual(found["SDL3"]["sha256"], "ab" * 32)
+            self.assertEqual(found["qt"]["version"], "6.12.0")
+            self.assertIn("LicenseRef-Qt-audit", gen.LICENSE_REFS)
+            self.assertEqual(found["shaderc"]["purl"], "pkg:github/google/shaderc@" + "c" * 40)
+            self.assertTrue(all(c["distribution"] == gen.SHIPPED for c in found.values()))
+
 
 if __name__ == "__main__":
     unittest.main()
