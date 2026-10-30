@@ -27,6 +27,10 @@ ed25519-dalek = "2"
 base64 = "0.22"
 lz4_flex = { version = "0.11", default-features = false }
 bdsp-extract = { path = "extract" }
+sevenz-rust2 = { version = "0.20", default-features = false }
+
+[dev-dependencies]
+sevenz-rust2 = { version = "0.20", features = ["compress"] }
 
 [build-dependencies]
 cc = "1"
