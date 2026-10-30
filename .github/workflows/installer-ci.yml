@@ -337,8 +337,12 @@ jobs:
           retention-days: 1
   publish:
     needs: [plan, package, package-windows, verify-universal, sbom, sign]
-    # sign is skipped for nightlies; a failed or cancelled job still stops the release
-    if: needs.plan.outputs.channel != 'artifacts' && !failure() && !cancelled()
+    # sign only runs for stable releases; every other job must have succeeded (a cancelled or skipped one stops the release)
+    if: >-
+      always() && needs.plan.outputs.channel != 'artifacts' &&
+      needs.package.result == 'success' && needs.package-windows.result == 'success' &&
+      needs.verify-universal.result == 'success' && needs.sbom.result == 'success' &&
+      (needs.sign.result == 'success' || (needs.plan.outputs.channel != 'release' && needs.sign.result == 'skipped'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
