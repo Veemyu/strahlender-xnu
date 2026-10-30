@@ -2,7 +2,6 @@
 use std::{
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
 };
 fn replace(source: &Path, destination: &Path) -> Result<(), String> {
     let parent = destination.parent().ok_or("Install folder missing.")?;
@@ -62,7 +61,7 @@ fn main() {
             if unsafe { libc::kill(pid, 0) } != 0 {
                 break;
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
         if unsafe { libc::kill(pid, 0) } == 0 {
             eprintln!("Installer is still running; update deferred.");
