@@ -31,7 +31,8 @@ def import_ffmpeg(archive, destination, selected, archives=None, license_dir=Non
     """
     component = next((item for item in build.windows.contract()["components"] if item["id"] == "ffmpeg"), {})
     archive, destination = Path(archive), Path(destination).resolve()
-    pinned = [item for item in component.get("artifacts", []) if item["target"] == selected["target"]]
+    pinned = [item for item in component.get("artifacts", [])
+              if item.get("target") == selected["target"] and "sha256" in item]
     if pinned:
         artifact = pinned[0]
         if archive.stat().st_size != artifact["size_bytes"] or build.windows.sha256(archive) != artifact["sha256"]:
