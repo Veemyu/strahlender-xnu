@@ -15,6 +15,17 @@ SHA = "a" * 40
 
 
 class InstallerReleaseTests(unittest.TestCase):
+    def test_published_names_match_the_update_manifest_of_installer_release(self):
+        # installer/src/bin/installer_release.rs asset_name() lists the same downloads.
+        source = (ROOT / "installer/src/bin/installer_release.rs").read_text()
+        for name in ("installer-macos-universal.zip", "installer-windows-x86_64.zip"):
+            self.assertIn(name, release.PACKAGES)
+        self.assertIn('"installer-macos-universal.zip"', source)
+        self.assertIn('format!("installer-{host}.zip")', source)
+        for arch in ("aarch64", "x86_64"):
+            self.assertIn(f"Strahlender-Installer-{arch}.AppImage", release.PACKAGES)
+        self.assertIn("Strahlender-Installer-{arch}.AppImage", source)
+
     def plan(self, channel="artifacts", event="workflow_dispatch", ref="main"):
         return release.plan("0.1.0", event, ref, channel, SHA, "123", "1")
 

@@ -153,6 +153,16 @@ Set repository variable `INSTALLER_UPDATE_PUBLIC_KEY` to a base64 Ed25519 public
 key before building updater-enabled packages. Keep the 32-byte seed private,
 outside the repository. The updater is disabled when no key is configured.
 
+Create the key once, outside the repository (the seed is the private key; keep a backup):
+
+```sh
+mkdir -p ~/.strahlender-signing && chmod 700 ~/.strahlender-signing
+(umask 077; openssl rand -base64 32 > ~/.strahlender-signing/update-seed.base64)
+cargo run --locked --manifest-path installer/Cargo.toml --bin installer_release -- \
+  public-key ~/.strahlender-signing/update-seed.base64
+gh variable set INSTALLER_UPDATE_PUBLIC_KEY --body '<the printed public key>'
+```
+
 Collect final artifacts in one directory, then sign the manifest offline:
 
 ```sh

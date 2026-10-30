@@ -4,6 +4,25 @@ use ed25519_dalek::{Signer, SigningKey};
 
 use std::path::Path;
 
+/// The public download for a target: one universal Mac zip, one AppImage per Linux architecture, one Windows zip.
+fn asset_name(host: &str) -> String {
+    match host.split_once('-') {
+        Some(("macos", _)) => "installer-macos-universal.zip".into(),
+        Some(("linux", arch)) => format!("Strahlender-Installer-{arch}.AppImage"),
+        _ => format!("installer-{host}.zip"),
+    }
+}
+
+fn seed(path: &str) -> Result<SigningKey, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let seed: [u8; 32] = STANDARD
+        .decode(text.trim())
+        .map_err(|e| e.to_string())?
+        .try_into()
+        .map_err(|_| "Expected a base64-encoded 32-byte Ed25519 seed.")?;
+    Ok(SigningKey::from_bytes(&seed))
+}
+
 fn manifest(version: &str, folder: &Path) -> Result<Vec<u8>, String> {
     let version = version.trim_start_matches('v');
     if version.split('.').count() != 3 || !version.split('.').all(|p| p.parse::<u64>().is_ok()) {
@@ -15,12 +34,9 @@ fn manifest(version: &str, folder: &Path) -> Result<Vec<u8>, String> {
         "macos-x86_64",
         "linux-aarch64",
         "linux-x86_64",
+        "windows-x86_64",
     ] {
-        let name = if host.starts_with("macos") {
-            "installer-macos-universal.zip".into()
-        } else {
-            format!("installer-{host}.AppImage")
-        };
+        let name = asset_name(host);
         let path = folder.join(&name);
         if !path.is_file() {
             continue;
@@ -36,16 +52,19 @@ fn manifest(version: &str, folder: &Path) -> Result<Vec<u8>, String> {
 }
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    if args.len() != 3 {
-        return Err("Usage: installer_release VERSION ASSET-DIRECTORY BASE64-SEED-FILE".into());
+    if let [command, seed_file] = args.as_slice()
+        && command == "public-key"
+    {
+        println!(
+            "{}",
+            STANDARD.encode(seed(seed_file)?.verifying_key().as_bytes())
+        );
+        return Ok(());
     }
-    let key_bytes = std::fs::read_to_string(&args[2]).map_err(|e| e.to_string())?;
-    let seed: [u8; 32] = STANDARD
-        .decode(key_bytes.trim())
-        .map_err(|e| e.to_string())?
-        .try_into()
-        .map_err(|_| "Expected a base64-encoded 32-byte Ed25519 seed.")?;
-    let key = SigningKey::from_bytes(&seed);
+    if args.len() != 3 {
+        return Err("Usage: installer_release VERSION ASSET-DIRECTORY BASE64-SEED-FILE | installer_release public-key BASE64-SEED-FILE".into());
+    }
+    let key = seed(&args[2])?;
     let bytes = manifest(&args[0], Path::new(&args[1]))?;
     let signature = STANDARD.encode(key.sign(&bytes).to_bytes());
     std::fs::write(Path::new(&args[1]).join("installer-update.json"), bytes)
@@ -70,6 +89,27 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_target_names_its_public_download() {
+        assert_eq!(
+            super::asset_name("linux-x86_64"),
+            "Strahlender-Installer-x86_64.AppImage"
+        );
+        assert_eq!(
+            super::asset_name("linux-aarch64"),
+            "Strahlender-Installer-aarch64.AppImage"
+        );
+        assert_eq!(
+            super::asset_name("windows-x86_64"),
+            "installer-windows-x86_64.zip"
+        );
+        assert_eq!(
+            super::asset_name("macos-x86_64"),
+            "installer-macos-universal.zip"
+        );
+        // The release publishes exactly these names (installer/scripts/release.py PACKAGES).
+    }
+
     #[test]
     fn one_universal_zip_serves_both_mac_update_targets() {
         let folder =
