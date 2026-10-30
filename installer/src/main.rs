@@ -19,6 +19,7 @@ mod preferences;
 mod progress;
 mod project_link;
 mod runtime;
+mod source_download;
 mod sources;
 mod style;
 mod updates;

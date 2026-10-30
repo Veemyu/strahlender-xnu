@@ -5,6 +5,9 @@ mod dependencies;
 #[allow(dead_code)]
 #[path = "../runtime.rs"]
 mod runtime;
+#[allow(dead_code)]
+#[path = "../source_download.rs"]
+mod source_download;
 
 fn main() {
     let log = dependencies::read_setup_log();

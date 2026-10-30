@@ -200,6 +200,10 @@ jobs:
           unzip -q installer-windows-x86_64.zip -d "$RUNNER_TEMP/unpacked"
           cd "$RUNNER_TEMP"
           "unpacked/Strahlender Installer/strahlender-xnu-installer.exe" --check-runtime
+          # What a user's first start does: the packaged installer sets the Windows environment up from its own tools
+          # (Qt, FFmpeg and SDL3 come from their publishers). It carries no scripts, so it fetches the current main source.
+          "unpacked/Strahlender Installer/installer_setup.exe" --install
+          find "$APPDATA/Veemyu/strahlender-xnu-installer/data/windows-components" -maxdepth 2 -name catalog.json | grep .
       - uses: actions/upload-artifact@v7
         with:
           name: installer-windows-x86_64

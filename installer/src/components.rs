@@ -144,12 +144,26 @@ pub fn unpack(
     Ok(target.join("catalog.json"))
 }
 
+/// The folder whose scripts run the setup: a checkout beside the installer (development), otherwise the newest `main`
+/// source, like every build uses. A packaged installer carries no scripts of its own.
+fn setup_source(
+    beside: Option<PathBuf>,
+    download: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    match beside {
+        Some(root) => Ok(root),
+        None => download(),
+    }
+}
+
 /// Runs scripts/install/windows_setup.py in the private Python: Qt, FFmpeg and SDL3 come from their publishers.
 fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let (python, _) =
         crate::runtime::backend_python().ok_or("The bundled Python runtime is missing.")?;
-    let project =
-        crate::runtime::project_root().ok_or("The installer's scripts were not found.")?;
+    let project = setup_source(crate::runtime::project_root(), || {
+        let parent = crate::source_download::data_dir()?.join("sources");
+        crate::source_download::download_main(&parent, &std::sync::atomic::AtomicBool::new(false))
+    })?;
     let output = std::process::Command::new(python)
         .current_dir(&project)
         .env(
@@ -201,6 +215,16 @@ pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_uses_a_checkout_beside_the_installer_else_downloads_main() {
+        let beside = Some(PathBuf::from("checkout"));
+        let used = setup_source(beside, || Err("must not download".into()));
+        assert_eq!(used, Ok(PathBuf::from("checkout")));
+        let downloaded = setup_source(None, || Ok(PathBuf::from("main-source")));
+        assert_eq!(downloaded, Ok(PathBuf::from("main-source")));
+        assert!(setup_source(None, || Err("offline".into())).is_err());
+    }
     use std::io::Write;
 
     fn scratch(name: &str) -> PathBuf {
