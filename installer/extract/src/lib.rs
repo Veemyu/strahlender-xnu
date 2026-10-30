@@ -3,6 +3,7 @@
 pub mod icons;
 pub mod manifest;
 pub mod nca;
+pub mod unpack;
 
 use nca::Nca;
 use std::{
@@ -549,7 +550,7 @@ fn find_first(root: &Path, extension: &str) -> Option<PathBuf> {
     None
 }
 
-const USAGE: &str = "Usage: extract|check --base <xci|nsp|nca-folder> [--update <nsp>] --keys <prod.keys> [--title-keys <file>]\n         --hactool <path> --work <folder> [--icons <folder>] [--force] [--keep-nca]\nExit codes: 0 ok (check: up to date), 1 check: not up to date, 2 usage, 3 input missing, 5 hactool, 6 keys, 7 NCA not found, 9 check.";
+const USAGE: &str = "Usage: unpack ARCHIVE DESTINATION  (.zip, .tar.gz, .7z)\n       extract|check --base <xci|nsp|nca-folder> [--update <nsp>] --keys <prod.keys> [--title-keys <file>]\n         --hactool <path> --work <folder> [--icons <folder>] [--force] [--keep-nca]\nExit codes: 0 ok (check: up to date), 1 check: not up to date, 2 usage, 3 input missing, 5 hactool, 6 keys, 7 NCA not found, 9 check.";
 
 /// Command line entry shared by the `bdsp-extract` binary and `strahlender-xnu-installer --cli`.
 pub fn cli(args: Vec<OsString>) -> i32 {
@@ -561,10 +562,13 @@ pub fn cli(args: Vec<OsString>) -> i32 {
     let Some(command) = args
         .next()
         .and_then(|c| c.into_string().ok())
-        .filter(|c| c == "extract" || c == "check")
+        .filter(|c| c == "extract" || c == "check" || c == "unpack")
     else {
         return usage("Unknown or missing command");
     };
+    if command == "unpack" {
+        return unpack::cli(&args.collect::<Vec<_>>());
+    }
     let (mut base, mut update, mut keys, mut title_keys, mut hactool, mut work, mut icons) =
         (None, None, None, None, None, None, None);
     let (mut force, mut keep_nca) = (false, false);

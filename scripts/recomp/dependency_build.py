@@ -23,16 +23,28 @@ LOCK = Path(os.environ.get("BDSP_WINDOWS_SOURCES") or ROOT / "installer/assets/w
 VULKAN_SOURCES = ("vulkan-headers", "vma", "shaderc", "glslang", "spirv-headers", "spirv-tools")
 
 
-def import_ffmpeg(archive, destination, selected, archives=None):
-    """Import the approved development archive; never install tools or rebuild FFmpeg."""
-    component = next(item for item in build.windows.contract()["components"] if item["id"] == "ffmpeg")
-    artifacts = [item for item in component["artifacts"] if item["target"] == selected["target"]]
-    if len(artifacts) != 1:
-        raise ValueError("No pinned FFmpeg binary for this target")
-    artifact = artifacts[0]
+def import_ffmpeg(archive, destination, selected, archives=None, license_dir=None):
+    """Import an FFmpeg development ZIP (BtbN lgpl-shared); never install tools or rebuild FFmpeg.
+
+    The caller verified the download against the digest GitHub publishes. A lock file that pins this archive
+    (size, hash, root) is checked as well when present.
+    """
+    component = next((item for item in build.windows.contract()["components"] if item["id"] == "ffmpeg"), {})
     archive, destination = Path(archive), Path(destination).resolve()
-    if archive.stat().st_size != artifact["size_bytes"] or build.windows.sha256(archive) != artifact["sha256"]:
-        raise ValueError("FFmpeg archive checksum/size mismatch")
+    pinned = [item for item in component.get("artifacts", []) if item["target"] == selected["target"]]
+    if pinned:
+        artifact = pinned[0]
+        if archive.stat().st_size != artifact["size_bytes"] or build.windows.sha256(archive) != artifact["sha256"]:
+            raise ValueError("FFmpeg archive checksum/size mismatch")
+    else:
+        with zipfile.ZipFile(archive) as source:
+            entries = source.infolist()
+        roots = {item.filename.split("/")[0] for item in entries}
+        if len(roots) != 1:
+            raise ValueError("Expected one FFmpeg archive root")
+        artifact = {"target": selected["target"], "archive_root": roots.pop(), "size_bytes": archive.stat().st_size,
+                    "sha256": build.windows.sha256(archive),
+                    "expanded_size_bytes": sum(item.file_size for item in entries)}
     if destination.exists():
         raise ValueError("Refusing to replace an existing FFmpeg bundle")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -60,7 +72,11 @@ def import_ffmpeg(archive, destination, selected, archives=None):
         notices.mkdir(parents=True)
         shutil.copyfile(source / "LICENSE.txt", notices / "LICENSE.txt")
         license_texts = None
-        if archives is not None:
+        if license_dir is not None:
+            for name in ("COPYING.GPLv3", "COPYING.LGPLv3"):
+                shutil.copyfile(Path(license_dir) / name, notices / name)
+            license_texts = {"source": "prepared licence texts", "scope": "Generic GPLv3/LGPLv3 texts only."}
+        elif archives is not None:
             license_lock = source_lock()
             license_source = extract_source(archives, "ffmpeg", stage / "license-texts", license_lock)
             for name in ("COPYING.GPLv3", "COPYING.LGPLv3"):
@@ -84,10 +100,10 @@ def import_ffmpeg(archive, destination, selected, archives=None):
         for name, path in closure.items():
             shutil.copyfile(path, package / "bin" / name)
         build.atomic_json(package / "build.json", {
-            "schema": 1, "profile": selected, "version": component["version"], "artifact": artifact,
+            "schema": 1, "profile": selected, "version": component.get("version") or artifact["archive_root"], "artifact": artifact,
             "recipe_sha256": build.windows.sha256(__file__),
             "support_sha256": build.windows.sha256(build.windows.__file__),
-            "license_review": component["qualification"],
+            "license_review": component.get("qualification", ""),
             "license_texts": license_texts,
             "files": {path.relative_to(package).as_posix(): build.windows.sha256(path)
                       for path in sorted(package.rglob("*")) if path.is_file()},
@@ -210,10 +226,32 @@ def build_hactool(archives, destination, compiler, selected, commands, jobs=None
     return destination
 
 
-def build_qt(qt_root, source_archive, destination, compiler, selected, version):
+LICENSE_NAME = re.compile(r"(?i)^(license|licence|copying|notice|qt_attribution)[^/]*$")
+
+
+def qt_notices(source_archive, destination):
+    """Licence texts of qtbase and of the third-party code inside it (src/3rdparty/*), from the qtbase source archive."""
+    destination = Path(destination)
+    destination.mkdir(parents=True)
+    with tarfile.open(source_archive, "r:xz") as source:
+        for member in source.getmembers():
+            parts = member.name.split("/")
+            relative = parts[1:]
+            wanted = (len(relative) >= 2 and relative[0] == "LICENSES") or (len(relative) == 1 and LICENSE_NAME.match(relative[0])) \
+                or (len(relative) >= 4 and relative[:2] == ["src", "3rdparty"] and LICENSE_NAME.match(relative[-1]))
+            if member.isfile() and wanted and ".." not in relative:
+                target = destination.joinpath(*relative)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.extractfile(member).read())
+    if not any(destination.iterdir()):
+        raise ValueError("The Qt source archive has no licence texts")
+    return destination
+
+
+def build_qt(qt_root, notices_dir, destination, compiler, selected, version):
     """Bundle the shared Qt6 that Qt publishes for LLVM-MinGW UCRT/libc++ (the C++ ABI of our compiler), plus its licence texts.
 
-    The licence texts come from the matching qtbase source archive; the compiler is the one Qt pairs with the kit.
+    `notices_dir` holds the licence texts of the matching qtbase source (see qt_notices); the compiler is the one Qt pairs with the kit.
     """
     qt_root, destination = Path(qt_root).resolve(), Path(destination).resolve()
     if destination.exists():
@@ -240,17 +278,10 @@ def build_qt(qt_root, source_archive, destination, compiler, selected, version):
                     for pattern in (f"libQt6{module}.a", f"Qt6{module}.dll"):
                         for path in source.glob(pattern):
                             shutil.copyfile(path, package / folder / path.name)
-        notices = package / "notices/qt"
-        notices.mkdir(parents=True)
-        with tarfile.open(source_archive, "r:xz") as source:
-            for member in source.getmembers():
-                parts = member.name.split("/")
-                if member.isfile() and len(parts) >= 2 and (parts[1] == "LICENSES" or parts[1].startswith("LICENSE")):
-                    (notices / Path(*parts[1:])).parent.mkdir(parents=True, exist_ok=True)
-                    (notices / Path(*parts[1:])).write_bytes(source.extractfile(member).read())
-        if not any(notices.iterdir()):
-            raise ValueError("The Qt source archive has no licence texts")
-        bundle_receipt(package, selected, identity, {"qtbase": {"version": version, "archive_sha256": build.windows.sha256(source_archive)}}, {},
+        build.filesystem.copy_tree(Path(notices_dir), package / "notices/qt")
+        if not any((package / "notices/qt").iterdir()):
+            raise ValueError("No Qt licence texts")
+        bundle_receipt(package, selected, identity, {"qtbase": {"version": version}}, {},
                        qt={"linkage": "shared", "cxx_runtime": "libc++", "version": version,
                            "minimum_windows_build": build.windows.contract()["minimum_windows_build"],
                            "cxx_compiler_sha256": cxx["sha256"]})
@@ -373,10 +404,12 @@ def build_vulkan(archives, destination, compiler, selected, cmake, ninja, comman
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool", "qt"))
+    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool", "qt", "qt-notices"))
     parser.add_argument("--archives", type=Path)
     parser.add_argument("--qt-root", type=Path, help="Qt installation for LLVM-MinGW (contains bin, lib, include, plugins)")
     parser.add_argument("--qt-source", type=Path, help="Matching qtbase-everywhere-src .tar.xz (licence texts)")
+    parser.add_argument("--qt-notices", type=Path, help="Licence texts prepared by the qt-notices step")
+    parser.add_argument("--license-dir", type=Path, help="Folder with COPYING.GPLv3 and COPYING.LGPLv3 for FFmpeg")
     parser.add_argument("--qt-version")
     parser.add_argument("--archive", type=Path, help="Already downloaded pinned FFmpeg development ZIP")
     parser.add_argument("--prefix", type=Path, required=True)
@@ -392,14 +425,18 @@ def main(argv=None):
         parser.error("vulkan requires --archives, --cc, --cmake and --ninja")
     if args.component == "hactool" and not all((args.archives, args.cc)):
         parser.error("hactool requires --archives and --cc")
-    if args.component == "qt" and not all((args.qt_root, args.qt_source, args.qt_version, args.cc)):
-        parser.error("qt requires --qt-root, --qt-source, --qt-version and --cc")
+    if args.component == "qt" and not all((args.qt_root, args.qt_notices, args.qt_version, args.cc)):
+        parser.error("qt requires --qt-root, --qt-notices, --qt-version and --cc")
+    if args.component == "qt-notices" and not args.qt_source:
+        parser.error("qt-notices requires --qt-source")
     commands = build.Commands()
     try:
-        if args.component == "qt":
-            build_qt(args.qt_root, args.qt_source, args.prefix, args.cc, build.windows.profile(args.target), args.qt_version)
+        if args.component == "qt-notices":
+            qt_notices(args.qt_source, args.prefix)
+        elif args.component == "qt":
+            build_qt(args.qt_root, args.qt_notices, args.prefix, args.cc, build.windows.profile(args.target), args.qt_version)
         elif args.component == "ffmpeg":
-            import_ffmpeg(args.archive, args.prefix, build.windows.profile(args.target), args.archives)
+            import_ffmpeg(args.archive, args.prefix, build.windows.profile(args.target), args.archives, args.license_dir)
         elif args.component == "hactool":
             build_hactool(args.archives, args.prefix, args.cc, build.windows.profile(args.target),
                           commands, args.jobs)

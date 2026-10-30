@@ -114,7 +114,7 @@ pub fn unpack(archive: &Path, destination: &Path) -> Result<(), String> {
 }
 
 /// `unpack ARCHIVE DESTINATION`; returns the process exit code.
-pub fn cli(args: &[String]) -> i32 {
+pub fn cli(args: &[std::ffi::OsString]) -> i32 {
     let [archive, destination] = args else {
         eprintln!("Usage: --cli unpack ARCHIVE DESTINATION");
         return 2;

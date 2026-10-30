@@ -553,51 +553,36 @@ def cmake_target_definitions(compiler, selected, ninja, stage, package):
     }
 
 
-def build_sdl(archive, destination, compiler, selected, cmake, ninja, commands, jobs=None):
-    """Maintainer-only, offline SDL bundle recipe; never invoked by game builds."""
-    component = next(item for item in windows.contract()["components"] if item["id"] == "SDL3")
-    if windows.sha256(archive) != component["source_archive"]["sha256"]:
-        raise ValueError("SDL source archive SHA256 mismatch")
-    identity = compiler_identity(compiler, selected)
-    compiler = Path(identity["path"])
-    cmake, ninja, destination = Path(cmake).resolve(), Path(ninja).resolve(), Path(destination).resolve()
-    if not cmake.is_file() or not ninja.is_file():
-        raise ValueError("Explicit maintainer CMake and Ninja executables are required")
+def import_sdl(devel, destination, selected):
+    """Bundle the official SDL3 MinGW development package (libsdl-org publishes it with every release).
+
+    `devel` is the unpacked SDL3-devel-*-mingw archive root; its <arch>-w64-mingw32 folder holds include/, lib/ and bin/.
+    """
+    devel, destination = Path(devel).resolve(), Path(destination).resolve()
+    source = devel / (selected["target"] + "-w64-mingw32")
     if destination.exists():
         raise ValueError("Refusing to replace an existing SDL bundle")
+    for relative in ("include/SDL3/SDL.h", "lib/libSDL3.dll.a", "bin/SDL3.dll"):
+        if not (source / relative).is_file():
+            raise ValueError("Missing SDL development file: " + relative)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="sdl-build-", dir=destination.parent) as temporary:
-        stage = Path(temporary)
-        with tarfile.open(archive, "r:gz") as source:
-            source.extractall(stage / "source", filter="data")
-        source = stage / "source" / ("SDL3-" + component["version"])
-        package = stage / "package"
-        definitions = {
-            **component["build_recipe"]["definitions"],
-            **cmake_target_definitions(compiler, selected, ninja, stage, package),
-            "SDL_RELOCATABLE": "ON",
-            "SDL_HIDAPI_LIBUSB": "OFF",
-        }
-        commands.run([cmake, "-S", source, "-B", stage / "build", "-G", "Ninja",
-                      *(f"-D{name}={value}" for name, value in sorted(definitions.items()))])
-        commands.run([cmake, "--build", stage / "build", "--parallel",
-                      str(jobs or parallel.choose_jobs(parallel.cpu_count(), parallel.memory_bytes()))])
-        commands.run([cmake, "--install", stage / "build"])
-        library = package / "bin/SDL3.dll"
-        windows.dll_closure(library, (), selected["target"])
-        for relative in ("include/SDL3/SDL.h", "lib/libSDL3.dll.a"):
-            if not (package / relative).is_file():
-                raise ValueError("Missing installed SDL development file: " + relative)
-        filesystem.copy_notices(source, package / "notices/SDL3")
-        configurations = list((stage / "build").rglob("SDL_build_config.h"))
-        if len(configurations) != 1:
-            raise ValueError("Expected one generated SDL build configuration")
-        shutil.copyfile(configurations[0], package / "SDL_build_config.h")
+    with tempfile.TemporaryDirectory(prefix="sdl-import-", dir=destination.parent) as temporary:
+        package = Path(temporary) / "package"
+        filesystem.copy_tree(source / "include", package / "include")
+        (package / "lib").mkdir(parents=True)
+        shutil.copyfile(source / "lib/libSDL3.dll.a", package / "lib/libSDL3.dll.a")
+        (package / "bin").mkdir()
+        shutil.copyfile(source / "bin/SDL3.dll", package / "bin/SDL3.dll")
+        windows.dll_closure(package / "bin/SDL3.dll", (), selected["target"])
+        notices = package / "notices/SDL3"
+        notices.mkdir(parents=True)
+        for name in ("LICENSE.txt", "README.md"):
+            if (devel / name).is_file():
+                shutil.copyfile(devel / name, notices / name)
+        if not (notices / "LICENSE.txt").is_file():
+            raise ValueError("The SDL package has no LICENSE.txt")
         atomic_json(package / "build.json", {
-            "schema": 1, "profile": selected, "source_sha256": component["source_archive"]["sha256"],
-            "recipe_sha256": windows.sha256(__file__),
-            "recipe": component["build_recipe"], "compiler": {k: v for k, v in identity.items() if k != "path"},
-            "cmake_sha256": windows.sha256(cmake), "ninja_sha256": windows.sha256(ninja),
+            "schema": 1, "profile": selected, "recipe_sha256": windows.sha256(__file__), "origin": "libsdl-org SDL3-devel mingw package",
             "files": {path.relative_to(package).as_posix(): windows.sha256(path)
                       for path in sorted(package.rglob("*")) if path.is_file()},
             "qualified": False,
@@ -714,7 +699,7 @@ def package_game(executable, candidates, target, destination, notices, dynamic=(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=("generate", "images", "compile", "generator", "overlay", "runtime", "link", "sdl"))
+    parser.add_argument("stage", choices=("generate", "images", "compile", "generator", "overlay", "runtime", "link"))
     parser.add_argument("--target", choices=("x86_64", "aarch64"), default=windows.architecture())
     parser.add_argument("--host", choices=("x86_64", "aarch64"), default=windows.architecture())
     parser.add_argument("--cc", help="Explicit LLVM-MinGW target compiler")
@@ -725,7 +710,6 @@ def main(argv=None):
     parser.add_argument("--with-subsdk1", action="store_true")
     parser.add_argument("--cmake", type=Path, help="Explicit maintainer-only CMake executable")
     parser.add_argument("--ninja", type=Path, help="Explicit existing maintainer Ninja executable")
-    parser.add_argument("--sdl-archive", type=Path, help="Already downloaded, pinned SDL source archive")
     parser.add_argument("--sdl-prefix", type=Path, help="New private SDL development-bundle directory")
     parser.add_argument("--vulkan-prefix", type=Path, help="Verified private Vulkan development bundle")
     parser.add_argument("--ffmpeg-prefix", type=Path, help="Verified private FFmpeg development bundle")
@@ -767,11 +751,6 @@ def main(argv=None):
             compile_runtime(work / "runtime-vulkan", args.cc or "", selected, commands,
                             has_subsdk1=args.with_subsdk1, jobs=args.jobs,
                             sdl=args.sdl_prefix, vulkan=args.vulkan_prefix, ffmpeg=args.ffmpeg_prefix, qt=args.qt_prefix)
-        elif args.stage == "sdl":
-            if not all((args.cmake, args.ninja, args.sdl_archive, args.sdl_prefix)):
-                raise ValueError("SDL preparation requires --cmake, --ninja, --sdl-archive and --sdl-prefix")
-            build_sdl(args.sdl_archive, args.sdl_prefix, args.cc or "", selected,
-                      args.cmake, args.ninja, commands, args.jobs)
         elif args.stage == "link":
             host = compiled_inventory(work / "runtime-vulkan" / selected["cache_key"] / "compile.json", selected)
             libraries = graphical_libraries(args.cc or "", selected, args.sdl_prefix, args.vulkan_prefix,

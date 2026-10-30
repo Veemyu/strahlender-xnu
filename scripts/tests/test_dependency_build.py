@@ -47,14 +47,18 @@ class DependencyBuildTests(unittest.TestCase):
             source = root / "qtbase.tar.xz"
             with tarfile.open(source, "w:xz") as archive:
                 for name, data in (("qtbase-6.12.0/LICENSES/LGPL-3.0-only.txt", b"lgpl"), ("qtbase-6.12.0/LICENSE.LGPL3", b"l3"),
+                                   ("qtbase-6.12.0/src/3rdparty/freetype/LICENSE.TXT", b"ftl"),
+                                   ("qtbase-6.12.0/src/3rdparty/freetype/src/skip/LICENSE", b"too deep"),
                                    ("qtbase-6.12.0/src/main.cpp", b"code")):
                     member = tarfile.TarInfo(name)
                     member.size = len(data)
                     archive.addfile(member, io.BytesIO(data))
+            notices = dependencies.qt_notices(source, root / "notices")
+            self.assertTrue((notices / "src/3rdparty/freetype/LICENSE.TXT").is_file())
             selected = build.windows.profile("x86_64", "x86_64")
             identity = {"path": str(root / "bin/x86_64-w64-mingw32-clang.exe"), "sha256": "c" * 64, "version": "v", "triple": "t"}
             with patch.object(build, "compiler_identity", return_value=identity):
-                result = dependencies.build_qt(qt, source, root / "bundle", "clang", selected, "6.12.0")
+                result = dependencies.build_qt(qt, notices, root / "bundle", "clang", selected, "6.12.0")
             files = {p.relative_to(result).as_posix() for p in result.rglob("*") if p.is_file()}
             self.assertIn("lib/libQt6Widgets.a", files)
             self.assertIn("bin/Qt6Core.dll", files)
@@ -62,12 +66,13 @@ class DependencyBuildTests(unittest.TestCase):
             self.assertNotIn("lib/libQt6Network.a", files)
             self.assertNotIn("plugins/sqldrivers/x.dll", files)
             self.assertIn("notices/qt/LICENSES/LGPL-3.0-only.txt", files)
+            self.assertIn("notices/qt/src/3rdparty/freetype/LICENSE.TXT", files)
             self.assertNotIn("notices/qt/src/main.cpp", files)
             record = json.loads((result / "build.json").read_text())
             self.assertEqual(record["qt"], {"linkage": "shared", "cxx_runtime": "libc++", "version": "6.12.0",
                                             "minimum_windows_build": 19045, "cxx_compiler_sha256": "c" * 64})
             with self.assertRaisesRegex(ValueError, "existing"):
-                dependencies.build_qt(qt, source, result, "clang", selected, "6.12.0")
+                dependencies.build_qt(qt, notices, result, "clang", selected, "6.12.0")
 
     def test_hactool_preserves_distinct_embedded_license_notices(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -183,6 +188,33 @@ class DependencyBuildTests(unittest.TestCase):
                     dependencies.import_ffmpeg(archive, root / "missing", selected)
             self.assertFalse((root / "missing").exists())
             self.assertEqual(list(root.glob("ffmpeg-import-*")), [])
+
+    def test_unpinned_ffmpeg_download_is_imported_with_prepared_license_texts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            entries = {"ffmpeg-n8.1/LICENSE.txt": b"lgpl", "ffmpeg-n8.1/doc/manual.txt": b"doc"}
+            for name in ("avcodec", "avformat", "avutil"):
+                entries[f"ffmpeg-n8.1/include/lib{name}/{name}.h"] = b"header"
+                entries[f"ffmpeg-n8.1/lib/lib{name}.dll.a"] = b"import"
+            for name, imports in (("avcodec-62", ["avutil-60.dll"]), ("avformat-62", ["avcodec-62.dll"]), ("avutil-60", ["kernel32.dll"])):
+                entries[f"ffmpeg-n8.1/bin/{name}.dll"] = pe(root / (name + ".dll"), imports).read_bytes()
+            archive = root / "ffmpeg.zip"
+            with zipfile.ZipFile(archive, "w") as output:
+                for name, contents in entries.items():
+                    output.writestr(name, contents)
+            texts = root / "texts"
+            texts.mkdir()
+            for name in ("COPYING.GPLv3", "COPYING.LGPLv3"):
+                (texts / name).write_bytes(b"text")
+            selected = build.windows.profile("x86_64", "x86_64")
+            no_pin = {**build.windows.contract(), "components": [{"id": "ffmpeg", "artifacts": []}]}
+            with patch.object(build.windows, "contract", return_value=no_pin):
+                bundle = dependencies.import_ffmpeg(archive, root / "bundle", selected, license_dir=texts)
+            record = json.loads((bundle / "build.json").read_text())
+            self.assertEqual(record["version"], "ffmpeg-n8.1")
+            self.assertEqual(record["artifact"]["sha256"], build.windows.sha256(archive))
+            self.assertTrue((bundle / "notices/ffmpeg/COPYING.LGPLv3").is_file())
+            build.verified_bundle(bundle, selected)
 
 
 if __name__ == "__main__":

@@ -181,82 +181,28 @@ class WindowsBuildTests(unittest.TestCase):
                     build.graphical_libraries(
                         compiler, selected, bundle, bundle, bundle, qt=qt)
 
-    def test_sdl_offline_recipe_paths_target_inventory_and_atomic_publication(self):
+    def test_sdl_mingw_package_is_bundled_with_receipt_and_licence(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).resolve() / "tools with spaces"
-            root.mkdir()
-            archive, cmake, ninja = (root / name for name in ("SDL.tar.gz", "cmake.exe", "ninja.exe"))
-            for path in (archive, cmake, ninja):
-                path.write_bytes(b"synthetic")
-            contract = windows.contract()
-            component = next(item for item in contract["components"] if item["id"] == "SDL3")
-            # The repository pins nothing; the CI job supplies the resolved version and hash.
-            component["version"] = "3.4.18"
-            component["source_archive"] = {"url": "https://example.invalid/SDL3.tar.gz", "sha256": "0" * 64, "size_bytes": 9}
-            with patch.object(build, "compiler_identity") as identity, \
-                    patch.object(build.windows, "contract", return_value=contract):
-                with self.assertRaisesRegex(ValueError, "SHA256"):
-                    build.build_sdl(archive, root / "bad", "", {}, cmake, ninja, None)
-                identity.assert_not_called()
-            with tarfile.open(archive, "w:gz") as output:
-                contents = b"Synthetic license"
-                member = tarfile.TarInfo("SDL3-" + component["version"] + "/LICENSE.txt")
-                member.size = len(contents)
-                output.addfile(member, io.BytesIO(contents))
-            component["source_archive"]["sha256"] = windows.sha256(archive)
-            for architecture in ("x86_64", "aarch64"):
-                with self.subTest(architecture=architecture):
-                    selected = windows.profile(architecture, "x86_64")
-                    compiler = root / (architecture + "-w64-mingw32-clang.exe")
-                    destination = root / architecture
-                    configuration = {}
-                    fail_build = False
-                    def run(command):
-                        if "-S" in command:
-                            configuration.update(arg[2:].split("=", 1) for arg in command
-                                                 if isinstance(arg, str) and arg.startswith("-D"))
-                            generated = Path(command[command.index("-B") + 1]) / "generated"
-                            generated.mkdir(parents=True)
-                            (generated / "SDL_build_config.h").write_text("synthetic config")
-                        elif "--build" in command and fail_build:
-                            raise RuntimeError("injected SDL build failure")
-                        elif "--install" in command:
-                            package = Path(configuration["CMAKE_INSTALL_PREFIX:PATH"])
-                            for relative in ("include/SDL3/SDL.h", "lib/libSDL3.dll.a", "bin/SDL3.dll"):
-                                target = package / relative
-                                target.parent.mkdir(parents=True, exist_ok=True)
-                                if target.suffix == ".dll":
-                                    pe(target, ["kernel32.dll"], machine=selected["machine"])
-                                else:
-                                    target.write_bytes(b"synthetic development file")
-                    with patch.object(build.windows, "contract", return_value=contract), \
-                            patch.object(build, "compiler_identity",
-                                         return_value={"path": str(compiler), "sha256": "synthetic"}):
-                        build.build_sdl(archive, destination, compiler, selected, cmake, ninja,
-                                        SimpleNamespace(run=run), jobs=1)
-                        self.assertEqual(configuration["CMAKE_C_COMPILER:FILEPATH"], str(compiler))
-                        self.assertEqual(configuration["CMAKE_CXX_COMPILER:FILEPATH"],
-                                         str(compiler.with_name(architecture + "-w64-mingw32-clang++.exe")))
-                        self.assertEqual(configuration["CMAKE_C_FLAGS"], configuration["CMAKE_CXX_FLAGS"])
-                        self.assertEqual(configuration["CMAKE_SYSTEM_PROCESSOR"], architecture)
-                        self.assertEqual(configuration["CMAKE_DISABLE_FIND_PACKAGE_Git"], "TRUE")
-                        self.assertEqual(configuration["FETCHCONTENT_FULLY_DISCONNECTED"], "ON")
-                        self.assertEqual(configuration["SDL_TEST_LIBRARY"], "OFF")
-                        record = json.loads((destination / "build.json").read_text())
-                        self.assertEqual(record["profile"], selected)
-                        self.assertFalse(record["qualified"])
-                        self.assertEqual(record["recipe_sha256"], windows.sha256(build.__file__))
-                        self.assertIn("notices/SDL3/LICENSE.txt", record["files"])
-                        for relative, digest in record["files"].items():
-                            self.assertEqual(windows.sha256(destination / relative), digest)
-                        with self.assertRaisesRegex(ValueError, "existing"):
-                            build.build_sdl(archive, destination, compiler, selected, cmake, ninja, None)
-                        fail_build = True
-                        with self.assertRaisesRegex(RuntimeError, "injected"):
-                            build.build_sdl(archive, root / "failed", compiler, selected, cmake, ninja,
-                                            SimpleNamespace(run=run), jobs=1)
-                        self.assertFalse((root / "failed").exists())
-                        self.assertEqual(list(root.glob("sdl-build-*")), [])
+            root = Path(temporary).resolve()
+            devel = root / "SDL3-3.4.18"
+            arch = devel / "x86_64-w64-mingw32"
+            (arch / "include/SDL3").mkdir(parents=True)
+            (arch / "include/SDL3/SDL.h").write_text("header")
+            (arch / "lib").mkdir()
+            (arch / "lib/libSDL3.dll.a").write_bytes(b"import")
+            (arch / "bin").mkdir()
+            pe(arch / "bin/SDL3.dll", ["kernel32.dll", "msvcrt.dll"])
+            (devel / "LICENSE.txt").write_text("zlib")
+            selected = windows.profile("x86_64", "x86_64")
+            bundle = build.import_sdl(devel, root / "bundle", selected)
+            self.assertTrue((bundle / "notices/SDL3/LICENSE.txt").is_file())
+            build.verified_bundle(bundle, selected)
+            with self.assertRaisesRegex(ValueError, "existing"):
+                build.import_sdl(devel, bundle, selected)
+            (devel / "LICENSE.txt").unlink()
+            with self.assertRaisesRegex(ValueError, "LICENSE"):
+                build.import_sdl(devel, root / "other", selected)
+            self.assertFalse((root / "other").exists())
 
     def test_failed_command_cancels_queue_and_rejects_later_work(self):
         commands = build.Commands()
