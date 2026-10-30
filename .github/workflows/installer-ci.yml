@@ -179,8 +179,12 @@ jobs:
           python installer/scripts/assemble_runtime.py --target windows-x86_64 --profile base --python-archive "$BUILD/python.tar.gz" --fetch-wheels --wheelhouse "$BUILD/wheels" --output "$BUILD/runtime"
       - name: Build the installer
         run: cargo +1.88 build --release --locked --bins --manifest-path installer/Cargo.toml
+      - name: Fetch the build tools the installer ships (hactool, Vulkan/shaderc, code generator with Unicorn)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download windows-components -R "$env:GITHUB_REPOSITORY" -D work/windows-tools -p windows-components.zip -p windows-components.json
       - name: Package
-        run: python installer/scripts/package_windows.py work/installer-runtime-release/windows-x86_64/runtime
+        run: python installer/scripts/package_windows.py work/installer-runtime-release/windows-x86_64/runtime work/windows-tools
       - name: Smoke test outside the checkout
         shell: bash
         run: |

@@ -1,6 +1,7 @@
 //! The Windows components: ONE archive with the compiler, SDL, Vulkan, FFmpeg, hactool and the generator that
 //! GitHub Actions builds from the newest upstream releases (.github/workflows/windows-components.yml). The installer
-//! downloads it instead of asking the user to prepare tools; integrity comes from the SHA-256 in the release metadata.
+//! ships it inside the installer (resources/), so the user prepares nothing; integrity comes from the SHA-256 in the
+//! metadata that travels with it. Development builds without the bundle download the published release instead.
 use serde::Deserialize;
 
 use std::{
@@ -200,14 +201,33 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
         .to_string())
 }
 
+/// The tools archive shipped inside the installer (resources/ beside the executable), with its metadata.
+pub fn bundled() -> Option<(PathBuf, Meta)> {
+    let resources = std::env::current_exe().ok()?.parent()?.join("resources");
+    let meta: Meta =
+        serde_json::from_slice(&fs::read(resources.join("windows-components.json")).ok()?).ok()?;
+    meta.check().ok()?;
+    let archive = resources.join(ARCHIVE);
+    archive.is_file().then_some((archive, meta))
+}
+
+/// Sets up the environment from the tools that ship with the installer; only if this build carries none, they are
+/// downloaded from the published release (development builds).
 pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
-    let meta = latest()?;
+    let bundled = bundled();
+    let meta = match &bundled {
+        Some((_, meta)) => meta.clone(),
+        None => latest()?,
+    };
     if let (Some(have), Some(catalog)) = (installed(root), catalog(root))
         && have.sha256 == meta.sha256
     {
         return Ok(catalog);
     }
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    if let Some((archive, _)) = bundled {
+        return unpack(&archive, &meta, root, run_setup);
+    }
     let partial = root.join("download.partial");
     let result = (|| {
         let mut response = client()?

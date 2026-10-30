@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Builds installer-windows-x86_64.zip: the installer executables, the verified private Python runtime and the licence
 files, laid out as installer/src/runtime.rs expects (resources/ beside the executable). The build tools are not part of
-it: the installer downloads them from the release "windows-components" on first use.
+the build tools: windows-components.zip and its metadata, built by .github/workflows/windows-components.yml, go into
+resources/ and the installer sets the environment up from them without any download of its own.
 
-Usage: python installer/scripts/package_windows.py RUNTIME_DIR   (run on Windows, after cargo build --release --bins)"""
+Usage: python installer/scripts/package_windows.py RUNTIME_DIR TOOLS_DIR   (after cargo build --release --bins;
+TOOLS_DIR holds windows-components.zip and windows-components.json)"""
 import hashlib
 import shutil
 import sys
@@ -16,7 +18,7 @@ BINARIES = ("strahlender-xnu-installer", "ips_patch", "firmware_import", "instal
 NAME = "installer-windows-x86_64"
 
 
-def stage(runtime, output):
+def stage(runtime, tools, output):
     app = output / "Strahlender Installer"
     resources = app / "resources"
     resources.mkdir(parents=True)
@@ -28,6 +30,8 @@ def stage(runtime, output):
     shutil.copytree(INSTALLER / "assets/lucide", resources / "lucide")
     shutil.copytree(INSTALLER / "assets/firmware-import-licenses", resources / "firmware-import-licenses")
     shutil.copytree(runtime, resources / "runtime")
+    for name in ("windows-components.zip", "windows-components.json"):
+        shutil.copy2(tools / name, resources)
     return app
 
 
@@ -41,11 +45,11 @@ def pack(app, archive):
 
 
 def main(argv):
-    runtime = Path(argv[1])
+    runtime, tools = Path(argv[1]), Path(argv[2])
     output = ROOT / "work/installer-packages/windows-x86_64"
     if output.exists():
         shutil.rmtree(output)
-    app = stage(runtime, output)
+    app = stage(runtime, tools, output)
     pack(app, output / f"{NAME}.zip")
     print(output / f"{NAME}.zip")
 
