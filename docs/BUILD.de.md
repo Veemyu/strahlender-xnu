@@ -228,15 +228,15 @@ Für den Windows-Build müssen keine Compiler oder Bibliotheken vorbereitet werd
 - **Inhalt:** Qt 6 (LLVM-MinGW-Kit) mit dem passenden LLVM-MinGW von Qt, SDL3, Vulkan-Header, VMA und shaderc, FFmpeg
   (BtbN-LGPL-Shared-Build, Linie 8.x), hactool, der native Generator (Unicorn 2.1.4) und die Visual-C++-Laufzeit, die
   Unicorn braucht (neben ihm abgelegt). Jede Eingabe ist zur Bauzeit das neueste Upstream-Release; genaue Versionen und
-  SHA-256-Werte stehen in `inputs/` im Archiv und in `windows-buildenv.json`.
-- **Herkunft:** `.github/workflows/windows-buildenv.yml` baut es auf einem Windows-Runner, führt die Windows-Tests dagegen aus
-  und veröffentlicht es (wöchentlich oder auf Anforderung) als Release `windows-buildenv`. Die Rezepte sind
+  SHA-256-Werte stehen in `inputs/` im Archiv und in `windows-components.json`.
+- **Herkunft:** `.github/workflows/windows-components.yml` baut es auf einem Windows-Runner, führt die Windows-Tests dagegen aus
+  und veröffentlicht es (wöchentlich oder auf Anforderung) als Release `windows-components`. Die Rezepte sind
   `scripts/recomp/resolve_inputs.py`, `resolve_qt.py`, `portable_build.py` und `dependency_build.py`; im Repository ist nichts festgepinnt.
 - **Bau-Stufen** (Treiber `--target windows`): extract (`installer/extract`, hactool), C erzeugen, kompilieren, Images, Runtime,
   Link, Paket. Installiert wird nach `%LOCALAPPDATA%\StrahlenderXnu\app`, Spielstände und Einstellungen liegen in `%APPDATA%\StrahlenderXnu`.
 - **Voraussetzungen:** Windows 10 22H2 (Build 19045) oder Windows 11, x86-64, Vulkan-fähiger GPU-Treiber, etwa 40 GB freier Platz.
   ARM64 wird noch nicht unterstützt.
-- **Tests:** Die Windows-Tests laufen nur in der CI (`tests.yml` bei jedem Push, die Toolchain-Tests in `windows-buildenv.yml`).
+- **Tests:** Die Windows-Tests laufen nur in der CI (`tests.yml` bei jedem Push, die Toolchain-Tests in `windows-components.yml`).
   Sie lesen die entpackte Umgebung über `BDSP_WINDOWS_NATIVE_CC`, `BDSP_WINDOWS_NATIVE_BINARY`, `BDSP_WINDOWS_PRIVATE_CATALOG`
   und `BDSP_WINDOWS_{SDL,VULKAN,FFMPEG,HACTOOL,QT}_ROOT`.
 - **Offen:** Weitergabeprüfung der mitgelieferten Fremdbinärdateien (Hinweise, Quellcode-Angebote), Hardware-Abnahme unter

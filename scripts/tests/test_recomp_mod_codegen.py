@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @unittest.skipIf(sys.platform == "win32" and not os.environ.get("BDSP_WINDOWS_NATIVE_CC"),
-                 "needs an LLVM-MinGW compiler; windows-buildenv.yml supplies it")
+                 "needs an LLVM-MinGW compiler; windows-components.yml supplies it")
 class ModCodegenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

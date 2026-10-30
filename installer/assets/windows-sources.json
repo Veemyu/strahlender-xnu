@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Upstream projects the Windows build environment is built from; windows-buildenv.yml resolves the newest release of each (scripts/recomp/resolve_inputs.py) and records revision, SHA-256 and size in the published archive.",
+  "purpose": "Upstream projects the Windows components is built from; windows-components.yml resolves the newest release of each (scripts/recomp/resolve_inputs.py) and records revision, SHA-256 and size in the published archive.",
   "maximum_archive_bytes": 40000000,
   "sources": {
     "vulkan-headers": {

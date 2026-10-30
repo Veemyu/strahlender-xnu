@@ -47,7 +47,7 @@ is `bdsp_codegen.exe` with a Unicode entry point. Compiler identity, host archit
 key, and the PE architecture and Unicorn's DLL closure are checked before publication. The generator's DLLs, including the
 Visual C++ runtime that the Unicorn wheel imports, are build tools and never enter the game package. The Windows tests
 (`scripts.tests.test_windows_native_generator`, synthetic NSOs only) run in CI against the environment built by
-`windows-buildenv.yml`; set `BDSP_WINDOWS_NATIVE_BINARY` and `BDSP_WINDOWS_NATIVE_CC` to run them elsewhere.
+`windows-components.yml`; set `BDSP_WINDOWS_NATIVE_BINARY` and `BDSP_WINDOWS_NATIVE_CC` to run them elsewhere.
 
 ## Image command
 

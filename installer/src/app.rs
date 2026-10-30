@@ -2746,18 +2746,18 @@ mod tests {
         assert_eq!(app.page, Page::Setup);
         assert_eq!(app.target, InstallTarget::Windows);
         let plan = app.requirements.expect("Windows requirements");
-        assert_eq!(plan.manager, "windows-buildenv");
+        assert_eq!(plan.manager, "windows-components");
         assert!(!plan.ready());
         assert!(plan.packages.is_empty());
         assert!(
             plan.missing
                 .iter()
-                .any(|item| item.id == "windows-build-environment")
+                .any(|item| item.id == "windows-components")
         );
         assert!(
             app.log
                 .iter()
-                .any(|line| line.contains("windows-build-environment"))
+                .any(|line| line.contains("windows-components"))
         );
     }
 

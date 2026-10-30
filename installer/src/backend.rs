@@ -388,9 +388,9 @@ fn run_driver(
                     .arg("--prod-keys")
                     .arg(prod_keys);
                 if target.starts_with("windows")
-                    && let Some(catalog) = crate::buildenv::root()
+                    && let Some(catalog) = crate::components::root()
                         .ok()
-                        .and_then(|root| crate::buildenv::catalog(&root))
+                        .and_then(|root| crate::components::catalog(&root))
                 {
                     command.arg("--windows-catalog").arg(catalog);
                 }

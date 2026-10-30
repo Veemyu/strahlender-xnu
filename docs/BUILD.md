@@ -386,20 +386,20 @@ Details: `docs/recomp-linux.md`.
 ## Windows (work in progress, not a playable release)
 
 The Windows build does not ask you to prepare compilers or libraries. The installer downloads **one archive**, the
-*Windows build environment*, and builds the game with it:
+*Windows components*, and builds the game with it:
 
 - **What is inside:** Qt 6 (the LLVM-MinGW kit) with the LLVM-MinGW toolchain that Qt pairs with it, SDL3, the Vulkan
   headers, VMA and shaderc, FFmpeg (BtbN LGPL shared build, 8.x line), hactool, the native generator (Unicorn 2.1.4) and the
   Visual C++ runtime that Unicorn needs (deployed next to it). Every input is the newest upstream release at build time; the
-  exact versions and SHA-256 values are recorded in `inputs/` inside the archive and in `windows-buildenv.json`.
-- **Where it comes from:** `.github/workflows/windows-buildenv.yml` builds it on a Windows runner, runs the Windows tests against
-  it, and (weekly, or on request) publishes it as the release `windows-buildenv`. The recipes are `scripts/recomp/resolve_inputs.py`,
+  exact versions and SHA-256 values are recorded in `inputs/` inside the archive and in `windows-components.json`.
+- **Where it comes from:** `.github/workflows/windows-components.yml` builds it on a Windows runner, runs the Windows tests against
+  it, and (weekly, or on request) publishes it as the release `windows-components`. The recipes are `scripts/recomp/resolve_inputs.py`,
   `resolve_qt.py`, `portable_build.py` and `dependency_build.py`; nothing is pinned in the repository.
 - **Build stages** (driver `--target windows`): extract (`installer/extract`, hactool), generate C, compile, images, runtime,
   link, package. The game is installed to `%LOCALAPPDATA%\StrahlenderXnu\app`, saves and settings go to `%APPDATA%\StrahlenderXnu`.
 - **Requirements:** Windows 10 22H2 (build 19045) or Windows 11, x86-64, a Vulkan-capable GPU driver, about 40 GB of free space.
   ARM64 is not supported yet.
-- **Tests:** the Windows tests run in CI only (`tests.yml` on every push, the toolchain tests inside `windows-buildenv.yml`).
+- **Tests:** the Windows tests run in CI only (`tests.yml` on every push, the toolchain tests inside `windows-components.yml`).
   They read the unpacked environment through `BDSP_WINDOWS_NATIVE_CC`, `BDSP_WINDOWS_NATIVE_BINARY`, `BDSP_WINDOWS_PRIVATE_CATALOG`
   and `BDSP_WINDOWS_{SDL,VULKAN,FFMPEG,HACTOOL,QT}_ROOT`.
 - **Open:** redistribution review of the bundled third-party binaries (notices and source offers), hardware acceptance on

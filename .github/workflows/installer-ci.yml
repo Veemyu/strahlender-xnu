@@ -214,13 +214,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cargo fetch --locked --manifest-path installer/Cargo.toml
-          # One document per release: the Windows build environment joins in from its last published run.
+          # One document per release: the Windows components joins in from its last published run.
           mkdir -p windows-inputs
-          if gh release download windows-buildenv -R "$GITHUB_REPOSITORY" -D windows-inputs \
+          if gh release download windows-components -R "$GITHUB_REPOSITORY" -D windows-inputs \
               -p windows-dependencies.json -p windows-sources.json -p qt.json; then
             python3 scripts/sbom/generate_sbom.py --out sbom --windows-inputs windows-inputs
           else
-            echo "No windows-buildenv release yet: SBOM without the Windows build environment" >> "$GITHUB_STEP_SUMMARY"
+            echo "No windows-components release yet: SBOM without the Windows components" >> "$GITHUB_STEP_SUMMARY"
             python3 scripts/sbom/generate_sbom.py --out sbom
           fi
           python3 -m unittest scripts.tests.test_generate_sbom

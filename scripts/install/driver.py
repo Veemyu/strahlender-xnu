@@ -315,7 +315,7 @@ def windows_prerequisites(args, *, emit_result=True):
     try:
         catalog = getattr(args, "windows_catalog", None)
         if not catalog:
-            raise ValueError("The Windows build environment is not installed; download it in the installer first.")
+            raise ValueError("The Windows components is not installed; download it in the installer first.")
         pipeline = load_windows_pipeline(args.root)
         pipeline.prerequisites(catalog, "aarch64" if args.target == "windows-arm64" else "x86_64",
                                args.work, getattr(args, "min_free_gb", 40))
@@ -325,7 +325,7 @@ def windows_prerequisites(args, *, emit_result=True):
         return 0
     except (OSError, ValueError, KeyError) as error:
         emit("step", id="prerequisites", status="needs attention")
-        emit("error", message="The Windows build environment cannot be used: " + _safe_line(str(error), args), code=4)
+        emit("error", message="The Windows components cannot be used: " + _safe_line(str(error), args), code=4)
         emit("result", ok=False, code=4)
         return 4
 

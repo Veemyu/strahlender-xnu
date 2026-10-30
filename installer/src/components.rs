@@ -1,5 +1,5 @@
-//! The Windows build environment: ONE archive with the compiler, SDL, Vulkan, FFmpeg, hactool and the generator that
-//! GitHub Actions builds from the newest upstream releases (.github/workflows/windows-buildenv.yml). The installer
+//! The Windows components: ONE archive with the compiler, SDL, Vulkan, FFmpeg, hactool and the generator that
+//! GitHub Actions builds from the newest upstream releases (.github/workflows/windows-components.yml). The installer
 //! downloads it instead of asking the user to prepare tools; integrity comes from the SHA-256 in the release metadata.
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -10,8 +10,8 @@ use std::{
 };
 
 const RELEASE: &str =
-    "https://github.com/Veemyu/strahlender-xnu/releases/download/windows-buildenv";
-const ARCHIVE: &str = "windows-buildenv.zip";
+    "https://github.com/Veemyu/strahlender-xnu/releases/download/windows-components";
+const ARCHIVE: &str = "windows-components.zip";
 const MAX_UNPACKED: u64 = 8 << 30;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -36,7 +36,7 @@ impl Meta {
             && self.size_bytes > 0
             && self.size_bytes < MAX_UNPACKED)
             .then_some(())
-            .ok_or_else(|| "The Windows build environment metadata is invalid.".to_string())
+            .ok_or_else(|| "The Windows components metadata is invalid.".to_string())
     }
 }
 
@@ -45,7 +45,7 @@ pub fn root() -> Result<PathBuf, String> {
         directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
             .ok_or("Application data unavailable.")?
             .data_dir()
-            .join("windows-buildenv"),
+            .join("windows-components"),
     )
 }
 
@@ -58,7 +58,7 @@ pub fn catalog(root: &Path) -> Option<PathBuf> {
 
 pub fn installed(root: &Path) -> Option<Meta> {
     let current = fs::read_to_string(root.join("current")).ok()?;
-    serde_json::from_slice(&fs::read(root.join(current.trim()).join("windows-buildenv.json")).ok()?)
+    serde_json::from_slice(&fs::read(root.join(current.trim()).join("windows-components.json")).ok()?)
         .ok()
 }
 
@@ -80,7 +80,7 @@ pub fn unpack(archive: &Path, meta: &Meta, root: &Path) -> Result<PathBuf, Strin
     meta.check()?;
     let (hash, size) = hash_file(archive)?;
     if hash != meta.sha256 || size != meta.size_bytes {
-        return Err("The Windows build environment download is damaged. Retry.".into());
+        return Err("The Windows components download is damaged. Retry.".into());
     }
     let name = &meta.sha256[..16];
     let (partial, target) = (root.join(format!("{name}.partial")), root.join(name));
@@ -118,7 +118,7 @@ pub fn unpack(archive: &Path, meta: &Meta, root: &Path) -> Result<PathBuf, Strin
         if !partial.join("catalog.json").is_file() {
             return Err("The archive has no catalog.json.".into());
         }
-        fs::write(partial.join("windows-buildenv.json"), serde_json::to_vec(&serde_json::json!({
+        fs::write(partial.join("windows-components.json"), serde_json::to_vec(&serde_json::json!({
             "schema": meta.schema, "archive": meta.archive, "sha256": meta.sha256, "size_bytes": meta.size_bytes, "created": meta.created
         })).unwrap()).map_err(|e| e.to_string())?;
         let _ = fs::remove_dir_all(&target);
@@ -152,10 +152,10 @@ fn client() -> Result<reqwest::blocking::Client, String> {
 /// Metadata of the newest published environment.
 pub fn latest() -> Result<Meta, String> {
     let bytes = client()?
-        .get(format!("{RELEASE}/windows-buildenv.json"))
+        .get(format!("{RELEASE}/windows-components.json"))
         .send()
         .and_then(|r| r.error_for_status())
-        .map_err(|_| "The Windows build environment has not been published yet.".to_string())?
+        .map_err(|_| "The Windows components has not been published yet.".to_string())?
         .bytes()
         .map_err(|e| e.to_string())?;
     let meta: Meta = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
@@ -194,14 +194,14 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("bdsp-buildenv-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bdsp-components-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     fn archive(dir: &Path, entries: &[(&str, &[u8])]) -> (PathBuf, Meta) {
-        let path = dir.join("windows-buildenv.zip");
+        let path = dir.join("windows-components.zip");
         let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
         for (name, data) in entries {
             zip.start_file(*name, zip::write::SimpleFileOptions::default())
@@ -277,14 +277,14 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Needs BDSP_BUILDENV_DIR with the real windows-buildenv.zip and .json from windows-buildenv.yml"]
+    #[ignore = "Needs BDSP_COMPONENTS_DIR with the real windows-components.zip and .json from windows-components.yml"]
     fn the_published_archive_unpacks_and_has_a_catalog() {
-        let source = PathBuf::from(std::env::var("BDSP_BUILDENV_DIR").expect("BDSP_BUILDENV_DIR"));
+        let source = PathBuf::from(std::env::var("BDSP_COMPONENTS_DIR").expect("BDSP_COMPONENTS_DIR"));
         let meta: Meta =
-            serde_json::from_slice(&fs::read(source.join("windows-buildenv.json")).unwrap())
+            serde_json::from_slice(&fs::read(source.join("windows-components.json")).unwrap())
                 .unwrap();
         let dir = scratch("real");
-        let catalog_path = unpack(&source.join("windows-buildenv.zip"), &meta, &dir).unwrap();
+        let catalog_path = unpack(&source.join("windows-components.zip"), &meta, &dir).unwrap();
         assert!(catalog(&dir).is_some());
         let base = catalog_path.parent().unwrap();
         for part in [

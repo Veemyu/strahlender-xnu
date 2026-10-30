@@ -1,31 +1,31 @@
-name: Windows build environment
-run-name: Windows build environment · ${{ github.ref_name }}
+name: Windows components
+run-name: Windows components · ${{ github.ref_name }}
 # Builds everything the Windows game build needs (LLVM-MinGW, SDL3, Vulkan/shaderc, FFmpeg, hactool and the native
 # generator) from the NEWEST upstream releases and publishes it as ONE archive; the installer downloads that archive
 # instead of asking the user to prepare compilers and libraries. Nothing is pinned in the repository: the resolved
-# versions and measured SHA-256 values travel inside the archive (inputs/) and in windows-buildenv.json. It also runs the
+# versions and measured SHA-256 values travel inside the archive (inputs/) and in windows-components.json. It also runs the
 # Windows tests against the freshly built toolchain. Weekly, so upstream changes show up before a user hits them.
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the archive as the release "windows-buildenv"'
+        description: 'Publish the archive as the release "windows-components"'
         type: boolean
         default: false
   push:
     branches: [win-integration]
     paths:
-      - .github/workflows/windows-buildenv.yml
+      - .github/workflows/windows-components.yml
       - scripts/recomp/resolve_inputs.py
   schedule:
     - cron: '17 4 * * 1'
 permissions:
   contents: read
 concurrency:
-  group: windows-buildenv-${{ github.ref }}
+  group: windows-components-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  buildenv:
+  components:
     runs-on: windows-2022
     timeout-minutes: 180
     permissions:
@@ -44,7 +44,7 @@ jobs:
           Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_SOURCES=$PWD\work\resolved\windows-sources.json"
       - name: Fetch Qt and the LLVM-MinGW toolchain Qt pairs with it (newest release), install the native Unicorn engine
         run: |
-          New-Item -ItemType Directory -Force work/buildenv | Out-Null
+          New-Item -ItemType Directory -Force work/components | Out-Null
           python scripts/recomp/resolve_qt.py --out work/qt-download
           $q = Get-Content work/qt-download/qt.json | ConvertFrom-Json
           7z x work/qt-download/qtbase.7z -owork/qt -y | Out-Null
@@ -54,7 +54,7 @@ jobs:
           $core = Get-ChildItem work/qt -Recurse -Filter Qt6Core.dll | Select-Object -First 1
           Add-Content $env:GITHUB_ENV "QT_ROOT=$($core.Directory.Parent.FullName)"
           $clang = Get-ChildItem work/qt-tools -Recurse -Filter x86_64-w64-mingw32-clang.exe | Select-Object -First 1
-          Move-Item $clang.Directory.Parent.FullName work/buildenv/toolchain
+          Move-Item $clang.Directory.Parent.FullName work/components/toolchain
           Copy-Item work/qt-download/qt.json work/resolved/qt.json
           python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
           # The Unicorn wheel imports the Visual C++ runtime; take the redistributable copy from Visual Studio (app-local deployment).
@@ -64,24 +64,24 @@ jobs:
       - name: Build the dependency bundles
         run: |
           $env:PYTHONPATH = "$PWD"
-          $cc = "$PWD\work\buildenv\toolchain\bin\x86_64-w64-mingw32-clang.exe"
+          $cc = "$PWD\work\components\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           $cmake = (Get-Command cmake).Source
           $ninja = (Get-Command ninja).Source
-          python scripts/recomp/portable_build.py sdl --cc $cc --cmake $cmake --ninja $ninja --sdl-archive work/downloads/SDL3-source.tar.gz --sdl-prefix work/buildenv/sdl
-          python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake $cmake --ninja $ninja --prefix work/buildenv/vulkan
-          python scripts/recomp/dependency_build.py ffmpeg --archive work/downloads/ffmpeg-binaries.zip --archives work/downloads --prefix work/buildenv/ffmpeg
-          python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/buildenv/hactool
-          python scripts/recomp/dependency_build.py qt --qt-root $env:QT_ROOT --qt-source work/downloads/qtbase-src.tar.xz --qt-version $env:QT_VERSION --cc $cc --prefix work/buildenv/qt
+          python scripts/recomp/portable_build.py sdl --cc $cc --cmake $cmake --ninja $ninja --sdl-archive work/downloads/SDL3-source.tar.gz --sdl-prefix work/components/sdl
+          python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake $cmake --ninja $ninja --prefix work/components/vulkan
+          python scripts/recomp/dependency_build.py ffmpeg --archive work/downloads/ffmpeg-binaries.zip --archives work/downloads --prefix work/components/ffmpeg
+          python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/components/hactool
+          python scripts/recomp/dependency_build.py qt --qt-root $env:QT_ROOT --qt-source work/downloads/qtbase-src.tar.xz --qt-version $env:QT_VERSION --cc $cc --prefix work/components/qt
       - name: Build the native generator
         run: |
           $env:PYTHONPATH = "$PWD"
-          $cc = "$PWD\work\buildenv\toolchain\bin\x86_64-w64-mingw32-clang.exe"
+          $cc = "$PWD\work\components\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           python scripts/recomp/portable_build.py generator --cc $cc --host-cc $cc --unicorn-root work/pydeps/unicorn
-          Copy-Item work/native-generator/windows-x86_64 work/buildenv/generator -Recurse
+          Copy-Item work/native-generator/windows-x86_64 work/components/generator -Recurse
       - name: Register the bundles in the catalog
         run: |
           $env:PYTHONPATH = "$PWD"
-          $dir = "$PWD\work\buildenv"
+          $dir = "$PWD\work\components"
           python scripts/install/windows_pipeline.py --output "$dir\catalog.json" --cc "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe" --generator "$dir\generator\bdsp_codegen.exe" --sdl "$dir\sdl" --vulkan "$dir\vulkan" --ffmpeg "$dir\ffmpeg" --hactool "$dir\hactool" --qt "$dir\qt"
       - name: Vulkan loader and extract tool for the Windows tests
         run: |
@@ -94,7 +94,7 @@ jobs:
       - name: Windows tests against the new toolchain
         continue-on-error: true
         run: |
-          $dir = "$PWD\work\buildenv"
+          $dir = "$PWD\work\components"
           Remove-Item Env:BDSP_WINDOWS_CONTRACT, Env:BDSP_WINDOWS_SOURCES  # the contract tests check the repository files
           $env:PYTHONPATH = "$PWD;$PWD\work\pydeps"
           $env:BDSP_WINDOWS_NATIVE_CC = "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe"
@@ -109,30 +109,30 @@ jobs:
           python -m unittest scripts.tests.test_windows_build scripts.tests.test_windows_pipeline scripts.tests.test_windows_native_generator scripts.tests.test_dependency_build scripts.tests.test_installer_filesystem scripts.tests.test_installer_driver
       - name: Pack the archive
         run: |
-          New-Item -ItemType Directory -Force work/buildenv/inputs | Out-Null
-          Copy-Item work/resolved/*.json work/buildenv/inputs
-          python -c "import shutil; shutil.make_archive('work/windows-buildenv', 'zip', 'work/buildenv')"
-          $file = Get-Item work/windows-buildenv.zip
+          New-Item -ItemType Directory -Force work/components/inputs | Out-Null
+          Copy-Item work/resolved/*.json work/components/inputs
+          python -c "import shutil; shutil.make_archive('work/windows-components', 'zip', 'work/components')"
+          $file = Get-Item work/windows-components.zip
           $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
-          $meta = [ordered]@{ schema = 1; archive = 'windows-buildenv.zip'; sha256 = $hash; size_bytes = $file.Length; created = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); commit = $env:GITHUB_SHA }
-          $meta | ConvertTo-Json | Set-Content work/windows-buildenv.json
-          Get-Content work/windows-buildenv.json | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY
+          $meta = [ordered]@{ schema = 1; archive = 'windows-components.zip'; sha256 = $hash; size_bytes = $file.Length; created = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); commit = $env:GITHUB_SHA }
+          $meta | ConvertTo-Json | Set-Content work/windows-components.json
+          Get-Content work/windows-components.json | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY
       - name: Generate the SBOM
         run: |
           cargo fetch --locked --manifest-path installer/Cargo.toml
           python scripts/sbom/generate_sbom.py --out work/sbom --windows-inputs work/resolved
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows-buildenv
+          name: windows-components
           path: |
-            work/windows-buildenv.zip
-            work/windows-buildenv.json
+            work/windows-components.zip
+            work/windows-components.json
             work/sbom/strahlender-xnu.*
           if-no-files-found: error
           retention-days: 14
-      - name: Publish as the release "windows-buildenv"
+      - name: Publish as the release "windows-components"
         if: github.event_name == 'schedule' || inputs.publish
         run: |
-          gh release view windows-buildenv *> $null
-          if ($LASTEXITCODE -ne 0) { gh release create windows-buildenv --title "Windows build environment" --notes "Rolling build environment for the Windows game build, rebuilt weekly from the newest upstream releases. The installer downloads it; versions and hashes are in inputs/ and windows-buildenv.json." }
-          gh release upload windows-buildenv work/windows-buildenv.zip work/windows-buildenv.json work/resolved/windows-dependencies.json work/resolved/windows-sources.json work/resolved/qt.json (Get-ChildItem work/sbom/strahlender-xnu.*).FullName --clobber
+          gh release view windows-components *> $null
+          if ($LASTEXITCODE -ne 0) { gh release create windows-components --title "Windows components" --notes "Rolling build environment for the Windows game build, rebuilt weekly from the newest upstream releases. The installer downloads it; versions and hashes are in inputs/ and windows-components.json." }
+          gh release upload windows-components work/windows-components.zip work/windows-components.json work/resolved/windows-dependencies.json work/resolved/windows-sources.json work/resolved/qt.json (Get-ChildItem work/sbom/strahlender-xnu.*).FullName --clobber

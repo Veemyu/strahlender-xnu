@@ -2,7 +2,7 @@ name: Tests
 run-name: Tests · ${{ github.ref_name }}
 # Runs on every platform the project targets, so no test depends on one developer machine:
 # Linux x86-64 and ARM64 (the ARM64 runner uses 4 KiB pages; the 16 KiB case is tested on a private Asahi machine),
-# macOS (Apple silicon) and Windows. The Windows toolchain tests live in windows-buildenv.yml.
+# macOS (Apple silicon) and Windows. The Windows toolchain tests live in windows-components.yml.
 on:
   push:
     branches: [main, win-integration]

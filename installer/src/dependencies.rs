@@ -132,15 +132,15 @@ pub fn detect_manager(os: &str) -> Option<&'static str> {
     }
 }
 
-/// Windows needs one thing: the build environment that GitHub Actions publishes (see buildenv.rs).
+/// Windows needs one thing: the build environment that GitHub Actions publishes (see components.rs).
 pub(crate) fn windows_plan(architecture: &str, installed: bool) -> Plan {
     let mut plan = Plan {
-        manager: "windows-buildenv".into(),
+        manager: "windows-components".into(),
         ..Plan::default()
     };
     if !installed {
         plan.missing.push(Missing {
-            id: "windows-build-environment".into(),
+            id: "windows-components".into(),
             purpose: "Compiler, SDL, Vulkan, FFmpeg and tools for the game build, downloaded once from this project's GitHub release".into(),
         });
     }
@@ -188,9 +188,9 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
         if !matches!(target, "native" | "windows" | "windows-arm64") {
             return Err("Build this target on its native host.".into());
         }
-        let installed = crate::buildenv::root()
+        let installed = crate::components::root()
             .ok()
-            .is_some_and(|root| crate::buildenv::catalog(&root).is_some());
+            .is_some_and(|root| crate::components::catalog(&root).is_some());
         let plan = windows_plan(std::env::consts::ARCH, installed);
         #[cfg(target_os = "windows")]
         let plan = {
@@ -308,8 +308,8 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
 }
 
 pub fn installation_script(plan: &Plan) -> Result<String, String> {
-    if plan.manager == "windows-buildenv" {
-        return Err("The Windows build environment is downloaded directly, not by script.".into());
+    if plan.manager == "windows-components" {
+        return Err("The Windows components is downloaded directly, not by script.".into());
     }
     // The terminal owns authentication; no password is read by this process.
     let mut script = String::from(
@@ -356,8 +356,8 @@ pub fn installation_script(plan: &Plan) -> Result<String, String> {
 }
 
 pub fn install(plan: &Plan) -> Result<(), String> {
-    if plan.manager == "windows-buildenv" {
-        return crate::buildenv::install_latest(&crate::buildenv::root()?).map(|_| ());
+    if plan.manager == "windows-components" {
+        return crate::components::install_latest(&crate::components::root()?).map(|_| ());
     }
     let script = installation_script(plan)?;
     let directory = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
@@ -442,13 +442,13 @@ mod tests {
     #[test]
     fn windows_needs_only_the_downloaded_build_environment() {
         let missing = super::windows_plan("x86_64", false);
-        assert_eq!(missing.manager, "windows-buildenv");
+        assert_eq!(missing.manager, "windows-components");
         assert!(!missing.ready() && missing.packages.is_empty() && !missing.bootstrap_brew);
         assert!(
             missing
                 .missing
                 .iter()
-                .any(|item| item.id == "windows-build-environment")
+                .any(|item| item.id == "windows-components")
         );
         assert!(super::installation_script(&missing).is_err());
         assert!(super::windows_plan("x86_64", true).ready());

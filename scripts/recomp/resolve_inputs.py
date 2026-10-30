@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resolves the newest upstream releases of the Windows build inputs (the compiler and Qt come from resolve_qt.py), downloads them and records what was used.
 
-Nothing is pinned in the repository: every run of the GitHub Actions job windows-buildenv.yml takes the current
+Nothing is pinned in the repository: every run of the GitHub Actions job windows-components.yml takes the current
 release of each project, hashes what it downloaded, and writes resolved copies of windows-dependencies.json and
 windows-sources.json (the recipes read them through BDSP_WINDOWS_CONTRACT / BDSP_WINDOWS_SOURCES). The resolved files
 travel inside the published build environment, so each bundle documents exactly which versions it contains.

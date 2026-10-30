@@ -10,7 +10,7 @@ The CI generates the SBOM for every full run and attaches it to the release; not
 | `strahlender-xnu.csv` | flat inventory with evidence paths, for review |
 
 - `installer-ci.yml`: job `sbom` on every run (artifact `sbom`); published with the installer releases (nightly and stable).
-- `windows-buildenv.yml`: the same files travel with the `windows-buildenv` release.
+- `windows-components.yml`: the same files travel with the `windows-components` release.
 
 Locally (standard library only, Python 3.11 or newer; `cargo fetch --locked` in `installer/` first, so licences resolve offline):
 
@@ -25,7 +25,7 @@ python3 -m unittest scripts/tests/test_generate_sbom.py
   dependency edges come from `cargo metadata --locked --offline`.
 - **Python**: the pinned wheels of the installer runtime (`installer/runtime/wheels.lock.json`) and the local
   `tools/pydeps` environment (git-ignored).
-- **Windows build environment** (CI only, `--windows-inputs`): Qt, LLVM-MinGW, SDL3, Vulkan, FFmpeg, hactool and the VC runtime with the versions and hashes the CI resolved that day (`windows-dependencies.json`, `windows-sources.json`, `qt.json`, published as assets of the `windows-buildenv` release). The installer SBOM job downloads them, so every release carries one document for all platforms.
+- **Windows components** (CI only, `--windows-inputs`): Qt, LLVM-MinGW, SDL3, Vulkan, FFmpeg, hactool and the VC runtime with the versions and hashes the CI resolved that day (`windows-dependencies.json`, `windows-sources.json`, `qt.json`, published as assets of the `windows-components` release). The installer SBOM job downloads them, so every release carries one document for all platforms.
 - **Vendored source and assets**: LASRecomp (MIT), Octicons, Lucide, Fira Sans.
 - **Pinned build inputs** named in `scripts/recomp/.../build_deps*.sh`, `fetch_zig.sh` and `installer/runtime/manifest.json`.
 - **Local tools** in `tools/` (git-ignored): hactool and its bundled mbed TLS, cJSON and LZ4, Il2CppDumper, nx2elf, vgmstream.

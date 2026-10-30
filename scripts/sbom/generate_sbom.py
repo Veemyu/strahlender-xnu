@@ -305,16 +305,16 @@ def cargo_components(project):
     return crates, edges, root
 
 
-# Windows build environment: what the CI archive contains, read from the lock files the CI resolved on the day.
+# Windows components: what the CI archive contains, read from the lock files the CI resolved on the day.
 def windows_components(folder):
-    """Components of the Windows build environment from the resolved lock files (windows-dependencies.json,
+    """Components of the Windows components from the resolved lock files (windows-dependencies.json,
     windows-sources.json, qt.json) in `folder`."""
     folder = Path(folder)
     contract = json.loads((folder / "windows-dependencies.json").read_text(encoding="utf-8"))
     sources = json.loads((folder / "windows-sources.json").read_text(encoding="utf-8"))
     qt = json.loads((folder / "qt.json").read_text(encoding="utf-8")) if (folder / "qt.json").is_file() else {}
     versions = {"qt": qt.get("qt"), "llvm-mingw": qt.get("toolchain_version")}
-    note = "Windows build environment archive (windows-buildenv.yml)."
+    note = "Windows components archive (windows-components.yml)."
     result = []
 
     def register(expr, text):
