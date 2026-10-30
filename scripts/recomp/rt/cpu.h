@@ -2,13 +2,6 @@
 // Own code. Sits before scripts/recomp/upstream/runtime in the include path (-I scripts/recomp/rt -I scripts/recomp/upstream/runtime)
 // and pulls in the original cpu.h via #include_next.
 #pragma once
-#include_next "cpu.h"
-#if defined(_WIN32) && !defined(__USE_MINGW_SETJMP_NON_SEH)
-// Guest unwinding owns the EhRec chain; Windows must not unwind host SEH frames.
-#define __USE_MINGW_SETJMP_NON_SEH
-#endif
-#include <setjmp.h>
-
 // ---- __builtin_elementwise_* for Clang before 16 (Ubuntu 22.04 ships 14) ----
 // Where the compiler has a builtin it is used untouched. Where it is missing, a macro of the same name maps the vector
 // lane by lane onto scalar builtins (the auto-vectoriser turns that back into SIMD where the target allows). The generator
@@ -95,6 +88,13 @@
     EW_MAP2_(a, b, ({ __typeof__(x) s_; __builtin_sub_overflow(x, y, &s_)                          \
                       ? (EW_SIGNED_(x) ? (x < 0 ? EW_SMIN_(x) : EW_SMAX_(x)) : (__typeof__(x))0) : s_; }))
 #endif
+// (The block above must come first: the original cpu.h pulls in simd.h and simd_fp.h, which use these builtins.)
+#include_next "cpu.h"
+#if defined(_WIN32) && !defined(__USE_MINGW_SETJMP_NON_SEH)
+// Guest unwinding owns the EhRec chain; Windows must not unwind host SEH frames.
+#define __USE_MINGW_SETJMP_NON_SEH
+#endif
+#include <setjmp.h>
 
 // One entry per active guest function that contains a re-entry point. Lives on the host stack
 // of the generated function; the chain hangs off the Cpu (offset 336, unused padding in the original).

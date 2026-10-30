@@ -17,4 +17,4 @@ jobs:
           for b in abs sqrt fma rint max add_sat; do
             echo "int v = __has_builtin(__builtin_elementwise_$b);" | clang -x c -E -P - | tail -1
           done
-          python3 -m unittest scripts.tests.test_ew_compat 2>&1 | tail -20
+          python3 -m unittest -v scripts.tests.test_ew_compat 2>&1 | tail -20

@@ -48,6 +48,32 @@ int main(void) {
 """
 
 
+VALUES = r"""
+#include "cpu.h"
+#include <stdio.h>
+typedef float vf __attribute__((vector_size(16)));
+typedef int8_t vs8 __attribute__((vector_size(16)));
+typedef uint8_t vu8 __attribute__((vector_size(16)));
+int main(void) {
+    vf a = {4.0f, 9.0f, 16.0f, 25.0f}, h = {2.5f, -2.5f, 3.5f, 0.5f}, m = {2.0f, 2.0f, 2.0f, 2.0f}, n = {3.0f, 3.0f, 3.0f, 3.0f}, k = {4.0f, 4.0f, 4.0f, 4.0f};
+    vf r = __builtin_elementwise_sqrt(a);
+    printf("%g %g %g %g\n", r[0], r[1], r[2], r[3]);
+    r = __builtin_elementwise_fma(m, n, k);
+    printf("%g\n", r[0]);
+    r = __builtin_elementwise_rint(h);
+    printf("%g %g %g %g\n", r[0], r[1], r[2], r[3]);
+    r = __builtin_elementwise_round(h);
+    printf("%g %g %g %g\n", r[0], r[1], r[2], r[3]);
+    vs8 s = {127, -128, 5}, t = {1, -1, 5};
+    vs8 p = __builtin_elementwise_add_sat(s, t);
+    vu8 u = {0, 255, 7}, w = {1, 1, 7};
+    vu8 q = __builtin_elementwise_sub_sat(u, w), x = __builtin_elementwise_add_sat(u, w);
+    printf("%d %d %d | %d %d %d | %d %d %d\n", p[0], p[1], p[2], q[0], q[1], q[2], x[0], x[1], x[2]);
+    return 0;
+}
+"""
+
+
 @unittest.skipUnless(shutil.which("clang"), "needs Clang")
 class ElementwiseCompatTests(unittest.TestCase):
     def run_program(self, directory, extra):
@@ -59,6 +85,20 @@ class ElementwiseCompatTests(unittest.TestCase):
                                capture_output=True, text=True)
         self.assertEqual(build.returncode, 0, build.stderr)
         return subprocess.run([str(binary)], capture_output=True, text=True, check=True).stdout
+
+    def test_the_default_build_gives_the_right_values_with_any_clang(self):
+        # On Clang 14 (no sqrt/fma/rint/round/sat builtins) this runs the fallbacks; on newer ones the builtins.
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            source, binary = directory / "values.c", directory / "values"
+            source.write_text(VALUES)
+            build = subprocess.run(["clang", "-std=c17", "-O1", "-Wno-everything", "-I", str(ROOT / "scripts/recomp/rt"),
+                                    "-I", str(ROOT / "scripts/recomp/upstream/runtime"), str(source), "-o", str(binary),
+                                    *([] if sys.platform == "win32" else ["-lm"])], capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, build.stderr)
+            out = subprocess.run([str(binary)], capture_output=True, text=True, check=True).stdout.split("\n")
+            self.assertEqual(out[:4], ["2 3 4 5", "10", "2 -2 4 0", "3 -3 4 1"])
+            self.assertEqual(out[4], "127 -128 10 | 0 254 0 | 1 255 14")
 
     def test_fallbacks_match_the_compiler_builtins(self):
         probe = subprocess.run(["clang", "-x", "c", "-fsyntax-only", "-"], input="int x[__has_builtin(__builtin_elementwise_sqrt) ? 1 : -1];",
