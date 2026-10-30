@@ -185,7 +185,7 @@ jobs:
       - name: Publish as the release "windows-components"
         if: github.event_name == 'schedule' || inputs.publish
         run: |
-          $notes = "NOT AN INSTALLER - you do not need to download anything here. Download the installer from the Releases page instead (Installer nightly / Strahlender Installer). This release only holds the build tools (hactool, Vulkan/shaderc, code generator with Unicorn) that the Windows installer fetches by itself, rebuilt weekly. Versions and hashes: windows-components.json. Unicorn is GPL-2.0; its source and licence are inside the archive (NOTICES/)."
+          $notes = "NOT AN INSTALLER - you do not need to download anything here. Download the installer from the Releases page instead (Installer nightly / Strahlender Installer). This release only holds the build tools (hactool, Vulkan/shaderc, code generator with Unicorn) that are built into the Windows installer download, rebuilt weekly. Versions and hashes: windows-components.json. Unicorn is GPL-2.0; its source and licence are inside the archive (NOTICES/)."
           $title = "Internal: Windows build tools (not an installer)"
           gh release view windows-components *> $null
           if ($LASTEXITCODE -ne 0) { gh release create windows-components --prerelease --latest=false --title $title --notes $notes }
