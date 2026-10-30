@@ -19,8 +19,8 @@ class SbomGeneratorTest(unittest.TestCase):
         cls.out = Path(cls.tmp.name)
         cls.components = gen.build_components()
         gen.write_outputs(cls.out, cls.components, gen.root_component())
-        cls.spdx = json.loads((cls.out / "strahlender-xnu.spdx.json").read_text(encoding="utf-8"))
-        cls.cdx = json.loads((cls.out / "strahlender-xnu.cdx.json").read_text(encoding="utf-8"))
+        cls.spdx = json.loads((cls.out / "sbom-strahlender-xnu.spdx.json").read_text(encoding="utf-8"))
+        cls.cdx = json.loads((cls.out / "sbom-strahlender-xnu.cdx.json").read_text(encoding="utf-8"))
 
     @classmethod
     def tearDownClass(cls):

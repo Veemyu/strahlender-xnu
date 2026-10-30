@@ -4,10 +4,10 @@ The CI generates the SBOM for every full run and attaches it to the release; not
 
 | File | Format |
 |---|---|
-| `strahlender-xnu.spdx.json` | SPDX 2.3, JSON (main format) |
-| `strahlender-xnu.spdx` | SPDX 2.3, tag-value |
-| `strahlender-xnu.cdx.json` | CycloneDX 1.6, JSON |
-| `strahlender-xnu.csv` | flat inventory with evidence paths, for review |
+| `sbom-strahlender-xnu.spdx.json` | SPDX 2.3, JSON (main format) |
+| `sbom-strahlender-xnu.spdx` | SPDX 2.3, tag-value |
+| `sbom-strahlender-xnu.cdx.json` | CycloneDX 1.6, JSON |
+| `sbom-strahlender-xnu.csv` | flat inventory with evidence paths, for review |
 
 - `installer-ci.yml`: job `sbom` on every run (artifact `sbom`); published with the installer releases (nightly and stable).
 - `windows-components.yml`: the same files travel with the `windows-components` release.

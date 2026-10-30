@@ -12,7 +12,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ("macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64", "windows-x86_64")
-SBOM = ("strahlender-xnu.spdx.json", "strahlender-xnu.spdx", "strahlender-xnu.cdx.json", "strahlender-xnu.csv")
+SBOM = ("sbom-strahlender-xnu.spdx.json", "sbom-strahlender-xnu.spdx", "sbom-strahlender-xnu.cdx.json", "sbom-strahlender-xnu.csv")
 PACKAGES = ("installer-macos-universal.zip", "Strahlender-Installer-aarch64.AppImage", "Strahlender-Installer-x86_64.AppImage",
             "installer-windows-x86_64.zip")
 
@@ -87,7 +87,8 @@ def release_notes(release, repository):
         link = f"https://github.com/{repository}/releases/download/{release['tag']}/{name}"
         notes = notes.replace(f"`{name}`", f"[{name}]({link})")
     return notes + (
-        f"\n\n---\nChannel: **{release['channel']}** · "
+        "\n\nThe `sbom-*` files are the software bill of materials for auditors and compliance tools. You do not need them to use the installer.\n"
+        f"\n---\nChannel: **{release['channel']}** · "
         f"[Installer source](https://github.com/{repository}/commit/{release['revision']})\n")
 
 

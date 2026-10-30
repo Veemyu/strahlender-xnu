@@ -1,17 +1,14 @@
 //! The Windows components: ONE archive with the compiler, SDL, Vulkan, FFmpeg, hactool and the generator that
 //! GitHub Actions builds from the newest upstream releases (.github/workflows/windows-components.yml). The installer
 //! ships it inside the installer (resources/), so the user prepares nothing; integrity comes from the SHA-256 in the
-//! metadata that travels with it. Development builds without the bundle download the published release instead.
+//! metadata that travels with it. Builds without the bundle (development) cannot set the Windows environment up.
 use serde::Deserialize;
 
 use std::{
-    fs,
-    io::{self, Write},
+    fs, io,
     path::{Component, Path, PathBuf},
 };
 
-const RELEASE: &str =
-    "https://github.com/Veemyu/strahlender-xnu/releases/download/windows-components";
 const ARCHIVE: &str = "windows-components.zip";
 const MAX_UNPACKED: u64 = 8 << 30;
 
@@ -147,30 +144,6 @@ pub fn unpack(
     Ok(target.join("catalog.json"))
 }
 
-fn client() -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder()
-        .user_agent("strahlender-xnu-installer")
-        .timeout(std::time::Duration::from_secs(1800))
-        .build()
-        .map_err(|e| e.to_string())
-}
-
-/// Metadata of the newest published environment.
-pub fn latest() -> Result<Meta, String> {
-    let bytes = client()?
-        .get(format!("{RELEASE}/windows-components.json"))
-        .send()
-        .and_then(|r| r.error_for_status())
-        .map_err(|_| "The Windows components has not been published yet.".to_string())?
-        .bytes()
-        .map_err(|e| e.to_string())?;
-    let meta: Meta = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    meta.check()?;
-    Ok(meta)
-}
-
-/// Downloads the CI-built tools, then fetches Qt, FFmpeg and SDL3 from their publishers (windows_setup.py) unless this
-/// version is already installed.
 /// Runs scripts/install/windows_setup.py in the private Python: Qt, FFmpeg and SDL3 come from their publishers.
 fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let (python, _) =
@@ -211,43 +184,24 @@ pub fn bundled() -> Option<(PathBuf, Meta)> {
     archive.is_file().then_some((archive, meta))
 }
 
-/// Sets up the environment from the tools that ship with the installer; only if this build carries none, they are
-/// downloaded from the published release (development builds).
+/// Sets up the environment from the tools that ship with the installer, then fetches Qt, FFmpeg and SDL3 from their
+/// publishers (windows_setup.py), unless this version is already installed.
 pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
-    let bundled = bundled();
-    let meta = match &bundled {
-        Some((_, meta)) => meta.clone(),
-        None => latest()?,
-    };
+    let (archive, meta) =
+        bundled().ok_or("This installer build does not include the Windows tools.")?;
     if let (Some(have), Some(catalog)) = (installed(root), catalog(root))
         && have.sha256 == meta.sha256
     {
         return Ok(catalog);
     }
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
-    if let Some((archive, _)) = bundled {
-        return unpack(&archive, &meta, root, run_setup);
-    }
-    let partial = root.join("download.partial");
-    let result = (|| {
-        let mut response = client()?
-            .get(format!("{RELEASE}/{ARCHIVE}"))
-            .send()
-            .and_then(|r| r.error_for_status())
-            .map_err(|e| e.to_string())?;
-        let mut file = fs::File::create(&partial).map_err(|e| e.to_string())?;
-        io::copy(&mut response, &mut file).map_err(|e| e.to_string())?;
-        file.flush().map_err(|e| e.to_string())?;
-        drop(file);
-        unpack(&partial, &meta, root, run_setup)
-    })();
-    let _ = fs::remove_file(&partial);
-    result
+    unpack(&archive, &meta, root, run_setup)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     fn scratch(name: &str) -> PathBuf {
         let dir =

@@ -1,18 +1,14 @@
 name: Windows components
 run-name: Windows components · ${{ github.ref_name }}
 # Builds the tools the Windows installer ships (Vulkan with shaderc, hactool, and the native code generator with Unicorn,
-# all compiled with the LLVM-MinGW toolchain Qt pairs with its newest release) and packs them. Qt, FFmpeg and SDL3 are not
+# all compiled with the LLVM-MinGW toolchain Qt pairs with its newest release) and packs them as the artifact
+# "windows-components", which the installer workflow builds into the Windows installer (there is no release for it). Qt, FFmpeg and SDL3 are not
 # built or redistributed: the installer downloads them from their publishers. This workflow runs that very setup
 # (scripts/install/windows_setup.py) and the Windows tests against the result, so the combination is tested before a user
 # gets it. Nothing is pinned in the repository: the resolved versions and SHA-256 values travel inside the archive (inputs/)
 # and in windows-components.json. Weekly, so upstream changes show up before a user hits them.
 on:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Publish the tools as the release "windows-components"'
-        type: boolean
-        default: false
   push:
     branches: [main, win-integration]
     paths:  # everything the Windows build compiles, links or runs: runtime (renderer, Qt UI, Win32 entry), CPU headers, generator, recipes, setup
@@ -35,7 +31,7 @@ permissions:
   contents: read
 concurrency:
   group: windows-components-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}  # a newer push replaces an unfinished test run; schedule and publish runs finish
+  cancel-in-progress: ${{ github.event_name == 'push' }}  # a newer push replaces an unfinished test run; scheduled and manual runs finish
 jobs:
   components:
     runs-on: windows-2022
@@ -179,15 +175,9 @@ jobs:
           path: |
             work/windows-components.zip
             work/windows-components.json
-            work/sbom/strahlender-xnu.*
+            work/resolved/windows-dependencies.json
+            work/resolved/windows-sources.json
+            work/resolved/qt.json
+            work/sbom/sbom-strahlender-xnu.*
           if-no-files-found: error
-          retention-days: 14
-      - name: Publish as the release "windows-components"
-        if: github.event_name == 'schedule' || inputs.publish
-        run: |
-          $notes = "NOT AN INSTALLER - you do not need to download anything here. Download the installer from the Releases page instead (Installer nightly / Strahlender Installer). This release only holds the build tools (hactool, Vulkan/shaderc, code generator with Unicorn) that are built into the Windows installer download, rebuilt weekly. Versions and hashes: windows-components.json. Unicorn is GPL-2.0; its source and licence are inside the archive (NOTICES/)."
-          $title = "Internal: Windows build tools (not an installer)"
-          gh release view windows-components *> $null
-          if ($LASTEXITCODE -ne 0) { gh release create windows-components --prerelease --latest=false --title $title --notes $notes }
-          else { gh release edit windows-components --prerelease --latest=false --title $title --notes $notes }
-          gh release upload windows-components work/windows-components.zip work/windows-components.json work/resolved/windows-dependencies.json work/resolved/windows-sources.json work/resolved/qt.json --clobber
+          retention-days: 90  # the installer workflow takes the newest successful run's artifact; the weekly run keeps one fresh

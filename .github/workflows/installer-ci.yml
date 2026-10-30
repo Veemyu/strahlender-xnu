@@ -151,6 +151,9 @@ jobs:
   package-windows:
     needs: plan
     runs-on: windows-2022
+    permissions:
+      contents: read
+      actions: read  # downloads the artifact of the windows-components workflow
     timeout-minutes: 45
     env:
       RUSTUP_TOOLCHAIN: '1.88'
@@ -182,7 +185,10 @@ jobs:
       - name: Fetch the build tools the installer ships (hactool, Vulkan/shaderc, code generator with Unicorn)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download windows-components -R "$env:GITHUB_REPOSITORY" -D work/windows-tools -p windows-components.zip -p windows-components.json
+        run: |
+          $run = gh run list -R "$env:GITHUB_REPOSITORY" --workflow windows-components.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId'
+          if (-not $run) { throw "No successful windows-components run found: start the workflow 'Windows components' first." }
+          gh run download $run -R "$env:GITHUB_REPOSITORY" -n windows-components -D work/windows-tools
       - name: Package
         run: python installer/scripts/package_windows.py work/installer-runtime-release/windows-x86_64/runtime work/windows-tools
       - name: Smoke test outside the checkout
@@ -263,6 +269,9 @@ jobs:
   sbom:
     needs: plan
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -273,20 +282,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cargo fetch --locked --manifest-path installer/Cargo.toml && cargo fetch --locked --manifest-path installer/extract/Cargo.toml
-          # One document per release: the Windows components joins in from its last published run.
+          # One document per release: the Windows components join in from the last successful windows-components run.
           mkdir -p windows-inputs
-          if gh release download windows-components -R "$GITHUB_REPOSITORY" -D windows-inputs \
-              -p windows-dependencies.json -p windows-sources.json -p qt.json; then
-            python3 scripts/sbom/generate_sbom.py --out sbom --windows-inputs windows-inputs
+          RUN="$(gh run list -R "$GITHUB_REPOSITORY" --workflow windows-components.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')"
+          if [ -n "$RUN" ] && gh run download "$RUN" -R "$GITHUB_REPOSITORY" -n windows-components -D windows-inputs; then
+            python3 scripts/sbom/generate_sbom.py --out sbom --windows-inputs windows-inputs/resolved
           else
-            echo "No windows-components release yet: SBOM without the Windows components" >> "$GITHUB_STEP_SUMMARY"
+            echo "No windows-components run yet: SBOM without the Windows components" >> "$GITHUB_STEP_SUMMARY"
             python3 scripts/sbom/generate_sbom.py --out sbom
           fi
           python3 -m unittest scripts.tests.test_generate_sbom
       - uses: actions/upload-artifact@v7
         with:
           name: sbom
-          path: sbom/strahlender-xnu.*
+          path: sbom/sbom-strahlender-xnu.*
           if-no-files-found: error
   publish:
     needs: [plan, package, package-windows, verify-universal, sbom]

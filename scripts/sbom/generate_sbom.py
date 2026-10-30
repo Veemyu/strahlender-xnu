@@ -2,10 +2,10 @@
 """Generates the software bill of materials (SBOM) of the repository.
 
 Outputs (default: sbom/):
-  strahlender-xnu.spdx.json   SPDX 2.3, JSON
-  strahlender-xnu.spdx        SPDX 2.3, tag-value
-  strahlender-xnu.cdx.json    CycloneDX 1.6, JSON
-  strahlender-xnu.csv         flat inventory for review and spreadsheets
+  sbom-strahlender-xnu.spdx.json   SPDX 2.3, JSON
+  sbom-strahlender-xnu.spdx        SPDX 2.3, tag-value
+  sbom-strahlender-xnu.cdx.json    CycloneDX 1.6, JSON
+  sbom-strahlender-xnu.csv         flat inventory for review and spreadsheets
 
 Sources:
   installer/Cargo.lock        Rust crates with SHA-256 checksums. Licences and dependency edges come from
@@ -511,7 +511,7 @@ def write_outputs(out, components, root):
     if used_refs:
         spdx["hasExtractedLicensingInfos"] = [
             {"licenseId": ref, "name": LICENSE_REFS[ref][0], "extractedText": LICENSE_REFS[ref][1]} for ref in used_refs]
-    (out / "strahlender-xnu.spdx.json").write_text(json.dumps(spdx, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (out / "sbom-strahlender-xnu.spdx.json").write_text(json.dumps(spdx, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     # ---------------- SPDX 2.3 tag-value
     lines = ["SPDXVersion: SPDX-2.3", "DataLicense: CC0-1.0", "SPDXID: SPDXRef-DOCUMENT",
@@ -531,7 +531,7 @@ def write_outputs(out, components, root):
         lines += [f"PackageComment: <text>{pkg['comment']}</text>", ""]
     lines += [f"Relationship: {rel['spdxElementId']} {rel['relationshipType']} {rel['relatedSpdxElement']}"
               for rel in relationships]
-    (out / "strahlender-xnu.spdx").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (out / "sbom-strahlender-xnu.spdx").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # ---------------- CycloneDX 1.6 JSON
     cdx_components = []
@@ -577,10 +577,10 @@ def write_outputs(out, components, root):
         },
         "components": cdx_components, "dependencies": cdx_dependencies,
     }
-    (out / "strahlender-xnu.cdx.json").write_text(json.dumps(cdx, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (out / "sbom-strahlender-xnu.cdx.json").write_text(json.dumps(cdx, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     # ---------------- CSV
-    with (out / "strahlender-xnu.csv").open("w", encoding="utf-8", newline="") as handle:
+    with (out / "sbom-strahlender-xnu.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["id", "name", "version", "category", "distribution", "repository_state", "license", "purl",
                          "download", "sha256", "evidence", "notes"])
