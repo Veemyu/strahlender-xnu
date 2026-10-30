@@ -405,6 +405,15 @@ fn build_error_notice(detail: &str, language: Language, exporting: bool) -> Stri
     disk_space_error(detail, language).unwrap_or_else(|| detail.into())
 }
 
+/// Runs a blocking job off the UI thread; a job that panics becomes an `Err` for the message handler.
+async fn blocking<T: Send + 'static>(
+    job: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tokio::task::spawn_blocking(job)
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()))
+}
+
 impl Installer {
     fn resolve_ios_profile(&mut self) {
         if self.target != InstallTarget::Ios
@@ -556,14 +565,7 @@ impl Installer {
         let task = if !app.demo && app.capture.is_none() {
             Task::batch([
                 task,
-                Task::perform(
-                    async {
-                        tokio::task::spawn_blocking(crate::updates::check)
-                            .await
-                            .unwrap_or_else(|e| Err(e.to_string()))
-                    },
-                    Message::UpdateChecked,
-                ),
+                Task::perform(blocking(crate::updates::check), Message::UpdateChecked),
             ])
         } else {
             task
@@ -635,11 +637,7 @@ impl Installer {
                     self.updating = true;
                     self.record("UPDATE", "Downloading the verified installer update. The app will restart when ready.");
                     return Task::perform(
-                        async move {
-                            tokio::task::spawn_blocking(move || crate::updates::download(&release))
-                                .await
-                                .unwrap_or_else(|e| Err(e.to_string()))
-                        },
+                        blocking(move || crate::updates::download(&release)),
                         Message::UpdateDownloaded,
                     );
                 }
@@ -647,11 +645,7 @@ impl Installer {
             Message::UpdateDownloaded(result) => match result {
                 Ok(path) => {
                     return Task::perform(
-                        async move {
-                            tokio::task::spawn_blocking(move || crate::updates::apply(&path))
-                                .await
-                                .unwrap_or_else(|e| Err(e.to_string()))
-                        },
+                        blocking(move || crate::updates::apply(&path)),
                         Message::UpdateApplied,
                     );
                 }
@@ -695,11 +689,7 @@ impl Installer {
                 self.setup_log_length = 0;
                 if let Some(plan) = self.requirements.clone() {
                     return Task::perform(
-                        async move {
-                            tokio::task::spawn_blocking(move || crate::dependencies::install(&plan))
-                                .await
-                                .unwrap_or_else(|e| Err(e.to_string()))
-                        },
+                        blocking(move || crate::dependencies::install(&plan)),
                         Message::RequirementsOpened,
                     );
                 }
@@ -776,13 +766,7 @@ impl Installer {
                 };
                 if let Some(path) = path {
                     return Task::perform(
-                        async move {
-                            tokio::task::spawn_blocking(move || {
-                                crate::backend::reveal_installed_application(path)
-                            })
-                            .await
-                            .unwrap_or_else(|error| Err(error.to_string()))
-                        },
+                        blocking(move || crate::backend::reveal_installed_application(path)),
                         Message::InstallationRevealed,
                     );
                 }
@@ -1079,14 +1063,10 @@ impl Installer {
                 let scan_id = self.mods_scan_id;
                 self.mods_scanning = true;
                 return Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || match chosen {
-                            Some(path) => mod_support::scan_selected(&path),
-                            None => mod_support::scan(&folder),
-                        })
-                        .await
-                        .unwrap_or_else(|error| Err(error.to_string()))
-                    },
+                    blocking(move || match chosen {
+                        Some(path) => mod_support::scan_selected(&path),
+                        None => mod_support::scan(&folder),
+                    }),
                     move |result| Message::ModsScanned(scan_id, result),
                 );
             }
@@ -1125,11 +1105,7 @@ impl Installer {
                     return Task::none();
                 };
                 return Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || mod_support::open_folder(&folder))
-                            .await
-                            .unwrap_or_else(|error| Err(error.to_string()))
-                    },
+                    blocking(move || mod_support::open_folder(&folder)),
                     Message::ModsFolderOpened,
                 );
             }
@@ -1683,13 +1659,7 @@ impl Installer {
                             "native"
                         };
                         return Task::perform(
-                            async move {
-                                tokio::task::spawn_blocking(move || {
-                                    crate::dependencies::inspect(target)
-                                })
-                                .await
-                                .unwrap_or_else(|e| Err(e.to_string()))
-                            },
+                            blocking(move || crate::dependencies::inspect(target)),
                             move |result| Message::RequirementsChecked(requirements_run_id, result),
                         );
                     }
