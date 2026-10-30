@@ -57,7 +57,18 @@ jobs:
           Move-Item $clang.Directory.Parent.FullName work/toolchain
           Copy-Item work/qt-download/qt.json work/resolved/qt.json
           python -m pip install --target work/pydeps Pillow lz4
+      - name: Cache keys of the tools (each one from its own sources and the compiler version only)
+        run: |
+          python -c "import json; s=json.load(open('work/resolved/windows-sources.json'))['sources']; t=json.load(open('work/resolved/qt.json'))['toolchain_version']; k=lambda n, v: open('work/key-' + n + '.txt', 'w').write(v); k('vulkan', ' '.join(s[n]['revision'] for n in ('vulkan-headers', 'vma', 'shaderc', 'glslang', 'spirv-headers', 'spirv-tools')) + ' ' + t); k('hactool', s['hactool']['revision'] + ' ' + t); k('unicorn', 'unicorn-2.1.4 ' + t)"
+          Get-Content work/key-*.txt
+      - name: Reuse Unicorn while the version and compiler are unchanged
+        id: unicorn-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: work/unicorn
+          key: unicorn-${{ hashFiles('work/key-unicorn.txt') }}
       - name: Build Unicorn from source with the same compiler (GPL-2.0; no Visual C++ runtime needed)
+        if: steps.unicorn-cache.outputs.cache-hit != 'true'
         run: |
           Invoke-WebRequest https://github.com/unicorn-engine/unicorn/archive/refs/tags/2.1.4.tar.gz -OutFile work/unicorn.tar.gz -UseBasicParsing
           tar xzf work/unicorn.tar.gz -C work
@@ -71,29 +82,46 @@ jobs:
           $pthread = Get-ChildItem work/toolchain -Recurse -Filter libwinpthread-1.dll | Where-Object { $_.FullName -match 'x86_64' } | Select-Object -First 1
           if (-not $pthread) { throw 'libwinpthread-1.dll not found in the toolchain' }
           Copy-Item $pthread.FullName work/unicorn/lib/
-      - name: Cache key of the Vulkan bundle (its source revisions and the compiler version)
-        run: |
-          python -c "import json; s=json.load(open('work/resolved/windows-sources.json'))['sources']; q=json.load(open('work/resolved/qt.json')); print(' '.join(s[n]['revision'] for n in ('vulkan-headers', 'vma', 'shaderc', 'glslang', 'spirv-headers', 'spirv-tools')), q['toolchain_version'])" | Set-Content work/vulkan-key.txt
-          Get-Content work/vulkan-key.txt
-      - name: Reuse the Vulkan/shaderc bundle while its sources, recipe and compiler are unchanged (about 5 minutes saved)
+      - name: Reuse the Vulkan/shaderc bundle while its sources, recipe and compiler are unchanged
         id: vulkan-cache
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: work/tools/vulkan
-          key: vulkan-bundle-${{ hashFiles('work/vulkan-key.txt', 'scripts/recomp/dependency_build.py', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py') }}
+          key: vulkan-${{ hashFiles('work/key-vulkan.txt', 'scripts/recomp/dependency_build.py', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py') }}
       - name: Build the Vulkan bundle with shaderc
         if: steps.vulkan-cache.outputs.cache-hit != 'true'
         run: |
           $env:PYTHONPATH = "$PWD"
           $cc = "$PWD\work\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake (Get-Command cmake).Source --ninja (Get-Command ninja).Source --prefix work/tools/vulkan
-      - name: Build the tools the installer ships (hactool, the code generator)
+      - name: Reuse hactool while its revision, recipe and compiler are unchanged
+        id: hactool-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: work/tools/hactool
+          key: hactool-${{ hashFiles('work/key-hactool.txt', 'scripts/recomp/dependency_build.py', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py', 'scripts/recomp/hactool_windows.c', 'scripts/recomp/hactool_windows.h') }}
+      - name: Build hactool
+        if: steps.hactool-cache.outputs.cache-hit != 'true'
         run: |
           $env:PYTHONPATH = "$PWD"
           $cc = "$PWD\work\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/tools/hactool
+      - name: Reuse the code generator while its sources and Unicorn are unchanged
+        id: generator-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: work/tools/generator
+          key: generator-${{ hashFiles('work/key-unicorn.txt', 'scripts/recomp/native-generator/**', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py') }}
+      - name: Build the code generator
+        if: steps.generator-cache.outputs.cache-hit != 'true'
+        run: |
+          $env:PYTHONPATH = "$PWD"
+          $cc = "$PWD\work\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           python scripts/recomp/portable_build.py generator --cc $cc --host-cc $cc --unicorn-root work/unicorn
           Copy-Item work/native-generator/windows-x86_64 work/tools/generator -Recurse
+      - name: Licence texts, notices and the resolved inputs for the archive
+        run: |
+          $env:PYTHONPATH = "$PWD"
           python scripts/recomp/dependency_build.py qt-notices --qt-source work/downloads/qtbase-src.tar.xz --prefix work/tools/license-texts/qt
           python scripts/recomp/dependency_build.py ffmpeg-license-texts --archives work/downloads --prefix work/tools/license-texts/ffmpeg
           python scripts/recomp/archive_notices.py --resolved work/resolved --out work/tools/NOTICES
