@@ -14,14 +14,21 @@ on:
         type: boolean
         default: false
   push:
-    branches: [win-integration]
-    paths:
+    branches: [main, win-integration]
+    paths:  # everything the Windows build compiles, links or runs: runtime (renderer, Qt UI, Win32 entry), CPU headers, generator, recipes, setup
       - .github/workflows/windows-components.yml
-      - scripts/recomp/resolve_inputs.py
-      - scripts/install/windows_setup.py
-      - scripts/recomp/dependency_build.py
-      - scripts/recomp/portable_build.py
+      - scripts/recomp/runtime/**
+      - scripts/recomp/rt/**
+      - scripts/recomp/upstream/**
+      - scripts/recomp/native-generator/**
+      - scripts/recomp/*.py
+      - scripts/recomp/hactool_windows.*
+      - scripts/install/**
+      - scripts/tests/test_windows*.py
+      - scripts/tests/test_dependency_build.py
+      - installer/assets/windows-*.json
       - installer/extract/**
+      - shader_translator/**
   schedule:
     - cron: '17 4 * * 1'
 permissions:
