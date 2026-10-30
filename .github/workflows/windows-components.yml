@@ -161,7 +161,7 @@ jobs:
           $env:BDSP_WINDOWS_FFMPEG_ROOT = "$dir\ffmpeg"
           $env:BDSP_WINDOWS_HACTOOL_ROOT = "$dir\hactool"
           $env:BDSP_WINDOWS_QT_ROOT = "$dir\qt"
-          python -m unittest scripts.tests.test_windows_build scripts.tests.test_windows_pipeline scripts.tests.test_windows_native_generator scripts.tests.test_dependency_build scripts.tests.test_installer_filesystem scripts.tests.test_installer_driver
+          python scripts/tests/run_parallel.py scripts.tests.test_windows_build scripts.tests.test_windows_pipeline scripts.tests.test_windows_native_generator scripts.tests.test_dependency_build scripts.tests.test_installer_filesystem scripts.tests.test_installer_driver
       - name: Pack the tools
         run: |
           python -c "import shutil; shutil.make_archive('work/windows-components', 'zip', 'work/tools')"
