@@ -147,7 +147,6 @@ jobs:
           $env:PYTHONPATH = "$PWD"
           python scripts/install/windows_setup.py --tools work/tools --out work/env
       - name: Windows tests against the new environment
-        continue-on-error: true
         run: |
           $dir = "$PWD\work\env"
           Remove-Item Env:BDSP_WINDOWS_CONTRACT, Env:BDSP_WINDOWS_SOURCES  # the contract tests check the repository files
