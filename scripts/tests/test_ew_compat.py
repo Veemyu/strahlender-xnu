@@ -1,5 +1,6 @@
 """The __builtin_elementwise_* fallbacks in rt/cpu.h (for Clang before 16) must agree with the real builtins."""
 import shutil
+import sys
 import subprocess
 import tempfile
 import unittest
@@ -54,7 +55,7 @@ class ElementwiseCompatTests(unittest.TestCase):
         source.write_text(PROGRAM)
         binary = directory / ("ew-" + ("fallback" if extra else "builtin"))
         build = subprocess.run(["clang", "-std=c17", "-O1", "-Wno-everything", *extra, "-I", str(ROOT / "scripts/recomp/rt"),
-                                "-I", str(ROOT / "scripts/recomp/upstream/runtime"), str(source), "-o", str(binary), "-lm"],
+                                "-I", str(ROOT / "scripts/recomp/upstream/runtime"), str(source), "-o", str(binary), *([] if sys.platform == "win32" else ["-lm"])],
                                capture_output=True, text=True)
         self.assertEqual(build.returncode, 0, build.stderr)
         return subprocess.run([str(binary)], capture_output=True, text=True, check=True).stdout
