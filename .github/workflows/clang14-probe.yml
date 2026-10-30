@@ -1,0 +1,20 @@
+name: Clang 14 probe
+run-name: Clang 14 probe · ${{ github.ref_name }}
+on:
+  push:
+    branches: [win-integration]
+    paths: [.github/workflows/clang14-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: What does the default Clang say?
+        run: |
+          clang --version
+          for b in abs sqrt fma rint max add_sat; do
+            echo "int v = __has_builtin(__builtin_elementwise_$b);" | clang -x c -E -P - | tail -1
+          done
+          python3 -m unittest scripts.tests.test_ew_compat 2>&1 | tail -20
