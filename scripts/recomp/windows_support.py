@@ -141,6 +141,11 @@ winmm.dll wintrust.dll ws2_32.dll wtsapi32.dll xinput1_4.dll
 """.split())
 
 
+# Microsoft's Visual C++ runtime may only be redistributed by licensed Visual Studio users, so the archive never carries
+# it: the installer asks for Microsoft's own redistributable instead (see components.rs).
+VC_RUNTIME_DLLS = frozenset("vcruntime140.dll vcruntime140_1.dll msvcp140.dll msvcp140_1.dll concrt140.dll vcomp140.dll".split())
+
+
 def dll_closure(executable, candidates, target, dynamic=(), allow_build_tools=False):
     """Resolve only explicitly inventoried files; never search PATH or copy a tool bin tree."""
     expected = profile(target)["machine"]
@@ -170,6 +175,8 @@ def dll_closure(executable, candidates, target, dynamic=(), allow_build_tools=Fa
         for dependency in sorted(image.imports()):
             if dependency in SYSTEM_DLLS or re.fullmatch(r"(api|ext)-ms-win-[a-z0-9-]+\.dll", dependency):
                 continue
+            if dependency in VC_RUNTIME_DLLS:
+                continue  # installed system-wide from Microsoft's redistributable
             if dependency == "vulkan-1.dll":
                 continue  # GPU-vendor loader; the renderer must diagnose its absence.
             if dependency not in providers:

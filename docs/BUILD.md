@@ -389,8 +389,9 @@ The Windows build does not ask you to prepare compilers or libraries. The instal
 *Windows components*, and builds the game with it:
 
 - **What is inside:** Qt 6 (the LLVM-MinGW kit) with the LLVM-MinGW toolchain that Qt pairs with it, SDL3, the Vulkan
-  headers, VMA and shaderc, FFmpeg (BtbN LGPL shared build, 8.x line), hactool, the native generator (Unicorn 2.1.4) and the
-  Visual C++ runtime that Unicorn needs (deployed next to it). Every input is the newest upstream release at build time; the
+  headers, VMA and shaderc, FFmpeg (BtbN LGPL shared build, 8.x line), hactool, and the native generator (Unicorn 2.1.4, GPL-2.0).
+  The Microsoft Visual C++ runtime is not included (its licence forbids it): the installer asks for Microsoft's redistributable.
+  `NOTICES/` carries the licence overview, the written offer and the source of Qt, FFmpeg and Unicorn. Every input is the newest upstream release at build time; the
   exact versions and SHA-256 values are recorded in `inputs/` inside the archive and in `windows-components.json`.
 - **Where it comes from:** `.github/workflows/windows-components.yml` builds it on a Windows runner, runs the Windows tests against
   it, and (weekly, or on request) publishes it as the release `windows-components`. The recipes are `scripts/recomp/resolve_inputs.py`,

@@ -166,7 +166,26 @@ pub fn latest() -> Result<Meta, String> {
 }
 
 /// Downloads and installs the newest environment unless it is already installed.
+/// The archive cannot carry Microsoft's Visual C++ runtime (its licence only allows licensed Visual Studio users to
+/// redistribute it), but the code generator's Unicorn needs it.
+#[cfg(windows)]
+fn vc_runtime_missing() -> bool {
+    let system = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    !Path::new(&system)
+        .join("System32")
+        .join("vcruntime140.dll")
+        .is_file()
+}
+
+#[cfg(not(windows))]
+fn vc_runtime_missing() -> bool {
+    false
+}
+
 pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
+    if vc_runtime_missing() {
+        return Err("Install Microsoft's Visual C++ Redistributable first: https://aka.ms/vs/17/release/vc_redist.x64.exe".into());
+    }
     let meta = latest()?;
     if let (Some(have), Some(catalog)) = (installed(root), catalog(root))
         && have.sha256 == meta.sha256

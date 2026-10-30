@@ -226,8 +226,9 @@ Für den Windows-Build müssen keine Compiler oder Bibliotheken vorbereitet werd
 *Windows-Build-Umgebung*, und baut damit das Spiel:
 
 - **Inhalt:** Qt 6 (LLVM-MinGW-Kit) mit dem passenden LLVM-MinGW von Qt, SDL3, Vulkan-Header, VMA und shaderc, FFmpeg
-  (BtbN-LGPL-Shared-Build, Linie 8.x), hactool, der native Generator (Unicorn 2.1.4) und die Visual-C++-Laufzeit, die
-  Unicorn braucht (neben ihm abgelegt). Jede Eingabe ist zur Bauzeit das neueste Upstream-Release; genaue Versionen und
+  (BtbN-LGPL-Shared-Build, Linie 8.x), hactool und der native Generator (Unicorn 2.1.4, GPL-2.0). Die
+  Visual-C++-Laufzeit von Microsoft liegt nicht bei (ihre Lizenz verbietet es): der Installer verweist auf Microsofts Redistributable.
+  `NOTICES/` enthält die Lizenzübersicht, das schriftliche Angebot und den Quellcode von Qt, FFmpeg und Unicorn. Jede Eingabe ist zur Bauzeit das neueste Upstream-Release; genaue Versionen und
   SHA-256-Werte stehen in `inputs/` im Archiv und in `windows-components.json`.
 - **Herkunft:** `.github/workflows/windows-components.yml` baut es auf einem Windows-Runner, führt die Windows-Tests dagegen aus
   und veröffentlicht es (wöchentlich oder auf Anforderung) als Release `windows-components`. Die Rezepte sind

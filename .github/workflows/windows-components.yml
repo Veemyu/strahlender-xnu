@@ -57,10 +57,6 @@ jobs:
           Move-Item $clang.Directory.Parent.FullName work/components/toolchain
           Copy-Item work/qt-download/qt.json work/resolved/qt.json
           python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
-          # The Unicorn wheel imports the Visual C++ runtime; take the redistributable copy from Visual Studio (app-local deployment).
-          $crt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT\vcruntime140*.dll" | Select-Object -First 4
-          if (-not $crt) { throw "Visual C++ redistributable runtime not found" }
-          $crt | Copy-Item -Destination work/pydeps/unicorn/lib
       - name: Build the dependency bundles
         run: |
           $env:PYTHONPATH = "$PWD"
@@ -111,6 +107,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force work/components/inputs | Out-Null
           Copy-Item work/resolved/*.json work/components/inputs
+          python scripts/recomp/archive_notices.py --resolved work/resolved --downloads work/downloads --out work/components/NOTICES
           python -c "import shutil; shutil.make_archive('work/windows-components', 'zip', 'work/components')"
           $file = Get-Item work/windows-components.zip
           $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()

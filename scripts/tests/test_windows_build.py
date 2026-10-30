@@ -699,7 +699,7 @@ class WindowsBuildTests(unittest.TestCase):
             events = [json.loads(line) for line in output.getvalue().splitlines()]
             self.assertEqual(events[-1], {"event": "result", "ok": False, "code": 4})
             self.assertNotIn(str(args.prod_keys), output.getvalue())
-            self.assertTrue(any("build environment" in e.get("message", "") for e in events))
+            self.assertTrue(any("Windows components" in e.get("message", "") for e in events))
 
 
 if __name__ == "__main__":
