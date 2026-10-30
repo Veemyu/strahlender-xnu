@@ -134,11 +134,7 @@ impl Installer {
         let base: Element<'_, Message> = container(layout)
             .width(Fill)
             .height(crate::window_layout::HEIGHT)
-            .style(move |_| container::Style {
-                background: Some(c.background.into()),
-                text_color: Some(c.text),
-                ..Default::default()
-            })
+            .style(style::page(c))
             .into();
         let base = if self.details {
             let log: Element<'_, Message> = if self.log.is_empty() {
@@ -205,11 +201,7 @@ impl Installer {
             )
             .width(Fill)
             .height(Fill)
-            .style(move |_| container::Style {
-                background: Some(c.background.into()),
-                text_color: Some(c.text),
-                ..Default::default()
-            })
+            .style(style::page(c))
             .into()
         } else {
             base

@@ -415,6 +415,13 @@ async fn blocking<T: Send + 'static>(
 }
 
 impl Installer {
+    /// Forgets the selected iOS signing profile and closes its dialog.
+    fn clear_ios_profile(&mut self) {
+        self.ios_profile = None;
+        self.ios_new_profile = None;
+        self.ios_profile_open = false;
+    }
+
     fn resolve_ios_profile(&mut self) {
         if self.target != InstallTarget::Ios
             || self.ios_profile.is_some()
@@ -802,9 +809,7 @@ impl Installer {
                 self.select_imported_mod = false;
                 self.mods.clear();
                 self.selected_mod = None;
-                self.ios_profile = None;
-                self.ios_new_profile = None;
-                self.ios_profile_open = false;
+                self.clear_ios_profile();
                 self.mods_scan_id += 1;
                 self.mods_scanning = false;
             }
@@ -1085,9 +1090,7 @@ impl Installer {
                             .is_some_and(|name| !self.mods.iter().any(|item| &item.name == name))
                         {
                             self.selected_mod = None;
-                            self.ios_profile = None;
-                            self.ios_new_profile = None;
-                            self.ios_profile_open = false;
+                            self.clear_ios_profile();
                         }
                         self.notice = None;
                     }
@@ -1148,16 +1151,12 @@ impl Installer {
                 self.select_imported_mod = true;
                 self.mods.clear();
                 self.selected_mod = None;
-                self.ios_profile = None;
-                self.ios_new_profile = None;
-                self.ios_profile_open = false;
+                self.clear_ios_profile();
                 return self.handle(Message::RefreshMods);
             }
             Message::SelectMod(selection) if self.page == Page::Mods => {
                 if selection != self.selected_mod {
-                    self.ios_profile = None;
-                    self.ios_new_profile = None;
-                    self.ios_profile_open = false;
+                    self.clear_ios_profile();
                 }
                 if selection
                     .as_ref()
@@ -1535,9 +1534,7 @@ impl Installer {
             Message::SkipMods if matches!(self.page, Page::ModsFolder | Page::Mods) => {
                 self.mods_skipped = true;
                 self.selected_mod = None;
-                self.ios_profile = None;
-                self.ios_new_profile = None;
-                self.ios_profile_open = false;
+                self.clear_ios_profile();
                 self.page = Page::Review;
                 self.details = false;
                 self.notice = None;
@@ -2193,9 +2190,7 @@ impl Installer {
         self.saved_input_missing = [false; 3];
         self.mods.clear();
         self.selected_mod = None;
-        self.ios_profile = None;
-        self.ios_new_profile = None;
-        self.ios_profile_open = false;
+        self.clear_ios_profile();
         self.ios_devices_open = false;
         self.ios_signing_open = false;
         self.ios_teams.clear();

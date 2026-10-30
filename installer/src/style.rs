@@ -14,6 +14,15 @@ pub struct Colors {
     pub error: Color,
 }
 
+/// The window background with the default text colour.
+pub fn page(c: Colors) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style {
+        background: Some(c.background.into()),
+        text_color: Some(c.text),
+        ..Default::default()
+    }
+}
+
 pub fn colors(appearance: Appearance) -> Colors {
     match appearance {
         Appearance::Dark => Colors {
