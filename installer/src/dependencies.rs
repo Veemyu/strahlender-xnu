@@ -500,11 +500,13 @@ mod tests {
     #[test]
     fn clang_versions_are_read_from_the_first_line() {
         assert_eq!(
-            clang_major_from("Ubuntu clang version 14.0.0-1ubuntu1.1\nTarget: x86_64"),
+            super::clang_major_from("Ubuntu clang version 14.0.0-1ubuntu1.1\nTarget: x86_64"),
             Some(14)
         );
         assert_eq!(
-            clang_major_from("clang version 22.1.7 (https://github.com/llvm/llvm-project.git)"),
+            super::clang_major_from(
+                "clang version 22.1.7 (https://github.com/llvm/llvm-project.git)"
+            ),
             Some(22)
         );
         assert_eq!(
