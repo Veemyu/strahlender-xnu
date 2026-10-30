@@ -77,8 +77,14 @@ fn hash_file(path: &Path) -> Result<(String, u64), String> {
     }
 }
 
-/// Verifies the downloaded archive against the metadata and unpacks it next to the others; `current` switches last.
-pub fn unpack(archive: &Path, meta: &Meta, root: &Path) -> Result<PathBuf, String> {
+/// Verifies the downloaded tools archive against the metadata, unpacks it, lets `assemble(tools, out)` build the full
+/// environment next to the others; `current` switches last.
+pub fn unpack(
+    archive: &Path,
+    meta: &Meta,
+    root: &Path,
+    assemble: impl FnOnce(&Path, &Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
     meta.check()?;
     let (hash, size) = hash_file(archive)?;
     if hash != meta.sha256 || size != meta.size_bytes {
@@ -86,8 +92,10 @@ pub fn unpack(archive: &Path, meta: &Meta, root: &Path) -> Result<PathBuf, Strin
     }
     let name = &meta.sha256[..16];
     let (partial, target) = (root.join(format!("{name}.partial")), root.join(name));
+    let tools = root.join(format!("{name}.tools.partial"));
     let _ = fs::remove_dir_all(&partial);
-    fs::create_dir_all(&partial).map_err(|e| e.to_string())?;
+    let _ = fs::remove_dir_all(&tools);
+    fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
     let result = (|| {
         let mut zip = zip::ZipArchive::new(fs::File::open(archive).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
@@ -104,7 +112,7 @@ pub fn unpack(archive: &Path, meta: &Meta, root: &Path) -> Result<PathBuf, Strin
             {
                 return Err("The archive contains an unsafe entry.".to_string());
             }
-            let destination = partial.join(&relative);
+            let destination = tools.join(&relative);
             if entry.is_dir() {
                 fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
                 continue;
@@ -117,12 +125,14 @@ pub fn unpack(archive: &Path, meta: &Meta, root: &Path) -> Result<PathBuf, Strin
             let mut file = fs::File::create(&destination).map_err(|e| e.to_string())?;
             io::copy(&mut entry, &mut file).map_err(|e| e.to_string())?;
         }
+        assemble(&tools, &partial)?;
         if !partial.join("catalog.json").is_file() {
-            return Err("The archive has no catalog.json.".into());
+            return Err("The Windows setup produced no catalog.json.".into());
         }
         fs::write(partial.join("windows-components.json"), serde_json::to_vec(&serde_json::json!({
             "schema": meta.schema, "archive": meta.archive, "sha256": meta.sha256, "size_bytes": meta.size_bytes, "created": meta.created
         })).unwrap()).map_err(|e| e.to_string())?;
+        let _ = fs::remove_dir_all(&tools);
         let _ = fs::remove_dir_all(&target);
         fs::rename(&partial, &target).map_err(|e| e.to_string())?;
         let pointer = root.join("current.partial");
@@ -132,6 +142,7 @@ pub fn unpack(archive: &Path, meta: &Meta, root: &Path) -> Result<PathBuf, Strin
     })();
     if let Err(error) = result {
         let _ = fs::remove_dir_all(&partial);
+        let _ = fs::remove_dir_all(&tools);
         return Err(error);
     }
     for entry in fs::read_dir(root).map_err(|e| e.to_string())?.flatten() {
@@ -165,27 +176,39 @@ pub fn latest() -> Result<Meta, String> {
     Ok(meta)
 }
 
-/// Downloads and installs the newest environment unless it is already installed.
-/// The archive cannot carry Microsoft's Visual C++ runtime (its licence only allows licensed Visual Studio users to
-/// redistribute it), but the code generator's Unicorn needs it.
-#[cfg(windows)]
-fn vc_runtime_missing() -> bool {
-    let system = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
-    !Path::new(&system)
-        .join("System32")
-        .join("vcruntime140.dll")
-        .is_file()
-}
-
-#[cfg(not(windows))]
-fn vc_runtime_missing() -> bool {
-    false
+/// Downloads the CI-built tools, then fetches Qt, FFmpeg and SDL3 from their publishers (windows_setup.py) unless this
+/// version is already installed.
+/// Runs scripts/install/windows_setup.py in the private Python: Qt, FFmpeg and SDL3 come from their publishers.
+fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
+    let (python, _) =
+        crate::runtime::backend_python().ok_or("The bundled Python runtime is missing.")?;
+    let project =
+        crate::runtime::project_root().ok_or("The installer's scripts were not found.")?;
+    let output = std::process::Command::new(python)
+        .current_dir(&project)
+        .env(
+            "BDSP_EXTRACT",
+            std::env::current_exe().map_err(|e| e.to_string())?,
+        )
+        .env("BDSP_EXTRACT_PREFIX", "--cli")
+        .args(["-B", "-m", "scripts.install.windows_setup", "--tools"])
+        .arg(tools)
+        .arg("--out")
+        .arg(out)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let text = String::from_utf8_lossy(&output.stderr);
+    Err(text
+        .lines()
+        .last()
+        .unwrap_or("The Windows setup failed.")
+        .to_string())
 }
 
 pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
-    if vc_runtime_missing() {
-        return Err("Install Microsoft's Visual C++ Redistributable first: https://aka.ms/vs/17/release/vc_redist.x64.exe".into());
-    }
     let meta = latest()?;
     if let (Some(have), Some(catalog)) = (installed(root), catalog(root))
         && have.sha256 == meta.sha256
@@ -204,7 +227,7 @@ pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
         io::copy(&mut response, &mut file).map_err(|e| e.to_string())?;
         file.flush().map_err(|e| e.to_string())?;
         drop(file);
-        unpack(&partial, &meta, root)
+        unpack(&partial, &meta, root, run_setup)
     })();
     let _ = fs::remove_file(&partial);
     result
@@ -244,29 +267,37 @@ mod tests {
         )
     }
 
+    /// Stand-in for windows_setup.py: copies the tools into the environment and registers a catalog.
+    fn assemble(tools: &Path, out: &Path) -> Result<(), String> {
+        fs::create_dir_all(out.join("hactool")).map_err(|e| e.to_string())?;
+        fs::copy(
+            tools.join("hactool/hactool.exe"),
+            out.join("hactool/hactool.exe"),
+        )
+        .map_err(|e| e.to_string())?;
+        fs::write(out.join("catalog.json"), b"{}").map_err(|e| e.to_string())
+    }
+
     #[test]
     fn unpacks_a_verified_archive_and_switches_the_current_version_last() {
         let dir = scratch("ok");
         let root = dir.join("root");
         fs::create_dir_all(&root).unwrap();
-        let (zip, meta) = archive(
-            &dir,
-            &[("catalog.json", b"{}"), ("toolchain/bin/clang.exe", b"x")],
-        );
+        let (zip, meta) = archive(&dir, &[("hactool/hactool.exe", b"x")]);
         assert!(catalog(&root).is_none());
-        let catalog_path = unpack(&zip, &meta, &root).unwrap();
+        let catalog_path = unpack(&zip, &meta, &root, assemble).unwrap();
         assert_eq!(catalog(&root), Some(catalog_path.clone()));
         assert!(
             catalog_path
                 .parent()
                 .unwrap()
-                .join("toolchain/bin/clang.exe")
+                .join("hactool/hactool.exe")
                 .is_file()
         );
         assert_eq!(installed(&root), Some(meta.clone()));
         // A second version replaces the first one completely.
-        let (zip2, meta2) = archive(&dir, &[("catalog.json", b"{\"v\":2}")]);
-        unpack(&zip2, &meta2, &root).unwrap();
+        let (zip2, meta2) = archive(&dir, &[("hactool/hactool.exe", b"2")]);
+        unpack(&zip2, &meta2, &root, assemble).unwrap();
         assert_eq!(installed(&root).unwrap().sha256, meta2.sha256);
         assert_eq!(
             fs::read_dir(&root).unwrap().count(),
@@ -281,13 +312,31 @@ mod tests {
         let dir = scratch("bad");
         let root = dir.join("root");
         fs::create_dir_all(&root).unwrap();
-        let (zip, mut meta) = archive(&dir, &[("catalog.json", b"{}")]);
+        let (zip, mut meta) = archive(&dir, &[("hactool/hactool.exe", b"x")]);
         meta.sha256 = "0".repeat(64);
-        assert!(unpack(&zip, &meta, &root).unwrap_err().contains("damaged"));
-        let (zip, meta) = archive(&dir, &[("catalog.json", b"{}"), ("../evil", b"x")]);
-        assert!(unpack(&zip, &meta, &root).unwrap_err().contains("unsafe"));
+        assert!(
+            unpack(&zip, &meta, &root, assemble)
+                .unwrap_err()
+                .contains("damaged")
+        );
+        let (zip, meta) = archive(&dir, &[("hactool/hactool.exe", b"x"), ("../evil", b"x")]);
+        assert!(
+            unpack(&zip, &meta, &root, assemble)
+                .unwrap_err()
+                .contains("unsafe")
+        );
         let (zip, meta) = archive(&dir, &[("toolchain/a", b"x")]);
-        assert!(unpack(&zip, &meta, &root).unwrap_err().contains("catalog"));
+        assert!(
+            unpack(&zip, &meta, &root, |_, _| Ok(()))
+                .unwrap_err()
+                .contains("catalog")
+        );
+        let (zip, meta) = archive(&dir, &[("hactool/hactool.exe", b"y")]);
+        assert!(
+            unpack(&zip, &meta, &root, |_, _| Err("setup failed".into()))
+                .unwrap_err()
+                .contains("setup failed")
+        );
         assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
         assert!(!dir.join("evil").exists());
         let bad = Meta {
@@ -295,30 +344,6 @@ mod tests {
             ..meta
         };
         assert!(bad.check().is_err());
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    #[ignore = "Needs BDSP_COMPONENTS_DIR with the real windows-components.zip and .json from windows-components.yml"]
-    fn the_published_archive_unpacks_and_has_a_catalog() {
-        let source =
-            PathBuf::from(std::env::var("BDSP_COMPONENTS_DIR").expect("BDSP_COMPONENTS_DIR"));
-        let meta: Meta =
-            serde_json::from_slice(&fs::read(source.join("windows-components.json")).unwrap())
-                .unwrap();
-        let dir = scratch("real");
-        let catalog_path = unpack(&source.join("windows-components.zip"), &meta, &dir).unwrap();
-        assert!(catalog(&dir).is_some());
-        let base = catalog_path.parent().unwrap();
-        for part in [
-            "toolchain/bin/x86_64-w64-mingw32-clang.exe",
-            "qt/bin/Qt6Core.dll",
-            "generator/bdsp_codegen.exe",
-            "hactool/hactool.exe",
-            "inputs/windows-sources.json",
-        ] {
-            assert!(base.join(part).is_file(), "{part}");
-        }
         fs::remove_dir_all(&dir).unwrap();
     }
 }
