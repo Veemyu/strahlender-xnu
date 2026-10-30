@@ -220,7 +220,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cargo fetch --locked --manifest-path installer/Cargo.toml
+          cargo fetch --locked --manifest-path installer/Cargo.toml && cargo fetch --locked --manifest-path installer/extract/Cargo.toml
           # One document per release: the Windows components joins in from its last published run.
           mkdir -p windows-inputs
           if gh release download windows-components -R "$GITHUB_REPOSITORY" -D windows-inputs \
