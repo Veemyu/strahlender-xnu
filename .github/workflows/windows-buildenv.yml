@@ -116,12 +116,17 @@ jobs:
           $meta = [ordered]@{ schema = 1; archive = 'windows-buildenv.zip'; sha256 = $hash; size_bytes = $file.Length; created = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); commit = $env:GITHUB_SHA }
           $meta | ConvertTo-Json | Set-Content work/windows-buildenv.json
           Get-Content work/windows-buildenv.json | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY
+      - name: Generate the SBOM
+        run: |
+          cargo fetch --locked --manifest-path installer/Cargo.toml
+          python scripts/sbom/generate_sbom.py --out work/sbom
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-buildenv
           path: |
             work/windows-buildenv.zip
             work/windows-buildenv.json
+            work/sbom/strahlender-xnu.*
           if-no-files-found: error
           retention-days: 14
       - name: Publish as the release "windows-buildenv"
@@ -129,4 +134,4 @@ jobs:
         run: |
           gh release view windows-buildenv *> $null
           if ($LASTEXITCODE -ne 0) { gh release create windows-buildenv --title "Windows build environment" --notes "Rolling build environment for the Windows game build, rebuilt weekly from the newest upstream releases. The installer downloads it; versions and hashes are in inputs/ and windows-buildenv.json." }
-          gh release upload windows-buildenv work/windows-buildenv.zip work/windows-buildenv.json --clobber
+          gh release upload windows-buildenv work/windows-buildenv.zip work/windows-buildenv.json (Get-ChildItem work/sbom/strahlender-xnu.*).FullName --clobber

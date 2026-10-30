@@ -1,6 +1,6 @@
 # SBOM (software bill of materials)
 
-Generated files for the repository, including the uncommitted work in `installer/`, `install.command` and `scripts/`:
+The CI generates the SBOM for every full run and attaches it to the release; nothing generated is checked in.
 
 | File | Format |
 |---|---|
@@ -9,10 +9,13 @@ Generated files for the repository, including the uncommitted work in `installer
 | `strahlender-xnu.cdx.json` | CycloneDX 1.6, JSON |
 | `strahlender-xnu.csv` | flat inventory with evidence paths, for review |
 
-Regenerate from the repository root (standard library only, Python 3.11 or newer):
+- `installer-ci.yml`: job `sbom` on every run (artifact `sbom`); published with the installer releases (nightly and stable).
+- `windows-buildenv.yml`: the same files travel with the `windows-buildenv` release.
+
+Locally (standard library only, Python 3.11 or newer; `cargo fetch --locked` in `installer/` first, so licences resolve offline):
 
 ```sh
-python3 scripts/sbom/generate_sbom.py
+python3 scripts/sbom/generate_sbom.py --out sbom
 python3 -m unittest scripts/tests/test_generate_sbom.py
 ```
 

@@ -201,8 +201,26 @@ jobs:
           done
           cd "$RUNNER_TEMP"
           env -i HOME="$HOME" PATH=/usr/bin:/bin "$APP/Contents/MacOS/strahlender-xnu-installer" --check-runtime
+  sbom:
+    needs: plan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Generate SPDX and CycloneDX documents
+        run: |
+          cargo fetch --locked --manifest-path installer/Cargo.toml
+          python3 scripts/sbom/generate_sbom.py --out sbom
+          python3 -m unittest scripts.tests.test_generate_sbom
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: sbom/strahlender-xnu.*
+          if-no-files-found: error
   publish:
-    needs: [plan, package, verify-universal]
+    needs: [plan, package, verify-universal, sbom]
     if: needs.plan.outputs.channel != 'artifacts'
     runs-on: ubuntu-24.04
     permissions:

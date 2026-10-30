@@ -33,3 +33,4 @@ cache/
 *.p12
 *.mobileprovision
 *.cer
+/sbom/
