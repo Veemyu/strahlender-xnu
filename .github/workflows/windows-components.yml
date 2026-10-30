@@ -45,8 +45,8 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
       - name: Resolve and download the newest build inputs
@@ -70,7 +70,7 @@ jobs:
           Get-Content work/key-*.txt
       - name: Reuse Unicorn while the version and compiler are unchanged
         id: unicorn-cache
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: work/unicorn
           key: unicorn-${{ hashFiles('work/key-unicorn.txt') }}
@@ -91,7 +91,7 @@ jobs:
           Copy-Item $pthread.FullName work/unicorn/lib/
       - name: Reuse the Vulkan/shaderc bundle while its sources, recipe and compiler are unchanged
         id: vulkan-cache
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: work/tools/vulkan
           key: vulkan-${{ hashFiles('work/key-vulkan.txt', 'scripts/recomp/dependency_build.py', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py') }}
@@ -103,7 +103,7 @@ jobs:
           python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake (Get-Command cmake).Source --ninja (Get-Command ninja).Source --prefix work/tools/vulkan
       - name: Reuse hactool while its revision, recipe and compiler are unchanged
         id: hactool-cache
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: work/tools/hactool
           key: hactool-${{ hashFiles('work/key-hactool.txt', 'scripts/recomp/dependency_build.py', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py', 'scripts/recomp/hactool_windows.c', 'scripts/recomp/hactool_windows.h') }}
@@ -115,7 +115,7 @@ jobs:
           python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/tools/hactool
       - name: Reuse the code generator while its sources and Unicorn are unchanged
         id: generator-cache
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: work/tools/generator
           key: generator-${{ hashFiles('work/key-unicorn.txt', 'scripts/recomp/native-generator/**', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py') }}
@@ -173,7 +173,7 @@ jobs:
         run: |
           cargo fetch --locked --manifest-path installer/Cargo.toml && cargo fetch --locked --manifest-path installer/extract/Cargo.toml
           python scripts/sbom/generate_sbom.py --out work/sbom --windows-inputs work/resolved
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-components
           path: |
