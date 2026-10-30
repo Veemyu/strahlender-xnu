@@ -37,7 +37,7 @@ def pack(app, archive):
             if path.is_file():
                 zipped.write(path, path.relative_to(app.parent).as_posix())
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    (archive.parent / "SHA256SUMS").write_text(f"{digest}  {archive.name}\n")
+    (archive.parent / "SHA256SUMS").write_bytes(f"{digest}  {archive.name}\n".encode())  # LF even on Windows
 
 
 def main(argv):
