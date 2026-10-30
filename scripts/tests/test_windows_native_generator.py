@@ -71,7 +71,9 @@ class WindowsNativeGeneratorTests(unittest.TestCase):
         self.assertIn("gen", version["capabilities"])
         closure = windows.dll_closure(self.binary, self.binary.parent.glob("*.dll"),
                                       "x86_64", allow_build_tools=True)
-        self.assertIn("vcruntime140.dll", {p.name.lower() for p in closure})
+        names = {p.name.lower() for p in closure}
+        self.assertIn("libunicorn.dll", names)
+        self.assertFalse(names & windows.VC_RUNTIME_DLLS, "the generator must not depend on Microsoft's Visual C++ runtime")
         relocated = self.root / "moved tools"
         relocated.mkdir()
         for path in closure:
