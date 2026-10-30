@@ -70,12 +70,15 @@ def download(url, destination, expected_sha1=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--skip-source", action="store_true", help="do not fetch the qtbase sources (only the licence texts need them)")
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     try:
         found = resolve()
         files = {}
         for role, extension in (("qtbase", "7z"), ("toolchain", "7z"), ("source", "tar.xz")):
+            if role == "source" and args.skip_source:
+                continue
             target = args.out / ("%s.%s" % (role, extension))
             sha1 = text(found[role] + ".sha1").split()[0] if role != "source" else None
             download(found[role], target, sha1)

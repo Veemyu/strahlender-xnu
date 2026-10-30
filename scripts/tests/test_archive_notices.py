@@ -21,32 +21,24 @@ class ArchiveNoticesTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         base = Path(self.tmp.name)
-        self.resolved, self.downloads = base / "resolved", base / "downloads"
+        self.resolved = base / "resolved"
         self.resolved.mkdir()
-        self.downloads.mkdir()
         (self.resolved / "windows-dependencies.json").write_text(json.dumps(
-            {"components": [{"id": "SDL3", "license": "Zlib", "version": "3.4.2", "source": "https://libsdl.org"}]}))
+            {"components": [{"id": "vulkan", "license": "Apache-2.0 AND MIT", "version": "1.4", "source": "https://vulkan.org"}]}))
         (self.resolved / "windows-sources.json").write_text(json.dumps(
-            {"sources": {"ffmpeg": {"repository": "FFmpeg/FFmpeg", "license": "LGPL-2.1-or-later", "version": "n8.1", "revision": "a" * 40}}}))
-        (self.resolved / "qt.json").write_text(json.dumps({"qt": "6.12.0"}))
-        (self.downloads / "qtbase-src.tar.xz").write_bytes(b"qt")
-        (self.downloads / ("ffmpeg-" + "a" * 40 + ".tar.gz")).write_bytes(b"ff")
+            {"sources": {"shaderc": {"repository": "google/shaderc", "license": "Apache-2.0", "version": "v2026.4", "revision": "a" * 40}}}))
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_sources_licence_and_offer_are_written(self):
-        out = notices.write(self.resolved, self.downloads, Path(self.tmp.name) / "NOTICES", fake_fetch)
-        self.assertEqual((out / "source/qtbase-src.tar.xz").read_bytes(), b"qt")
+    def test_unicorn_source_licence_and_offer_are_written(self):
+        out = notices.write(self.resolved, Path(self.tmp.name) / "NOTICES", fake_fetch)
+        self.assertTrue((out / "source/unicorn-2.1.4.tar.gz").is_file())
         self.assertIn("GENERAL PUBLIC LICENSE", (out / "unicorn/COPYING").read_text())
         text = (out / "README.md").read_text(encoding="utf-8")
-        for expected in ("Written offer", "Qt 6.12.0", "unicorn-2.1.4.tar.gz", "| SDL3 | 3.4.2 | Zlib |", "not part of this archive"):
+        for expected in ("Written offer", "unicorn-2.1.4.tar.gz", "| shaderc |", "| vulkan | 1.4 |", "Visual C++ runtime is not needed"):
             self.assertIn(expected, text)
-
-    def test_missing_source_archive_is_an_error(self):
-        (self.downloads / "qtbase-src.tar.xz").unlink()
-        with self.assertRaises(ValueError):
-            notices.write(self.resolved, self.downloads, Path(self.tmp.name) / "NOTICES", fake_fetch)
+        self.assertNotIn("| ffmpeg |", text)
 
 
 if __name__ == "__main__":

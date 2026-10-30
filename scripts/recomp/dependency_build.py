@@ -226,6 +226,18 @@ def build_hactool(archives, destination, compiler, selected, commands, jobs=None
     return destination
 
 
+def ffmpeg_license_texts(archives, destination):
+    """The generic GPLv3/LGPLv3 texts from the FFmpeg source tag the CI resolved (shipped next to the downloaded binaries)."""
+    destination = Path(destination)
+    with tempfile.TemporaryDirectory(prefix="ffmpeg-license-") as temporary:
+        source = extract_source(archives, "ffmpeg", Path(temporary) / "source", source_lock())
+        destination.mkdir(parents=True)
+        for name in ("COPYING.GPLv3", "COPYING.LGPLv3"):
+            build.filesystem.reject_link(source / name)
+            shutil.copyfile(source / name, destination / name)
+    return destination
+
+
 LICENSE_NAME = re.compile(r"(?i)^(license|licence|copying|notice|qt_attribution)[^/]*$")
 
 
@@ -404,7 +416,7 @@ def build_vulkan(archives, destination, compiler, selected, cmake, ninja, comman
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool", "qt", "qt-notices"))
+    parser.add_argument("component", choices=("vulkan", "ffmpeg", "hactool", "qt", "qt-notices", "ffmpeg-license-texts"))
     parser.add_argument("--archives", type=Path)
     parser.add_argument("--qt-root", type=Path, help="Qt installation for LLVM-MinGW (contains bin, lib, include, plugins)")
     parser.add_argument("--qt-source", type=Path, help="Matching qtbase-everywhere-src .tar.xz (licence texts)")
@@ -419,6 +431,8 @@ def main(argv=None):
     parser.add_argument("--target", choices=("x86_64", "aarch64"), default=build.windows.architecture())
     parser.add_argument("--jobs", type=int)
     args = parser.parse_args(argv)
+    if args.component == "ffmpeg-license-texts" and not args.archives:
+        parser.error("ffmpeg-license-texts requires --archives")
     if args.component == "ffmpeg" and not args.archive:
         parser.error("ffmpeg requires --archive")
     if args.component == "vulkan" and not all((args.archives, args.cc, args.cmake, args.ninja)):
@@ -431,7 +445,9 @@ def main(argv=None):
         parser.error("qt-notices requires --qt-source")
     commands = build.Commands()
     try:
-        if args.component == "qt-notices":
+        if args.component == "ffmpeg-license-texts":
+            ffmpeg_license_texts(args.archives, args.prefix)
+        elif args.component == "qt-notices":
             qt_notices(args.qt_source, args.prefix)
         elif args.component == "qt":
             build_qt(args.qt_root, args.qt_notices, args.prefix, args.cc, build.windows.profile(args.target), args.qt_version)

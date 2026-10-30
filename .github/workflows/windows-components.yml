@@ -1,15 +1,16 @@
 name: Windows components
 run-name: Windows components · ${{ github.ref_name }}
-# Builds everything the Windows game build needs (LLVM-MinGW, SDL3, Vulkan/shaderc, FFmpeg, hactool and the native
-# generator) from the NEWEST upstream releases and publishes it as ONE archive; the installer downloads that archive
-# instead of asking the user to prepare compilers and libraries. Nothing is pinned in the repository: the resolved
-# versions and measured SHA-256 values travel inside the archive (inputs/) and in windows-components.json. It also runs the
-# Windows tests against the freshly built toolchain. Weekly, so upstream changes show up before a user hits them.
+# Builds the tools the Windows installer ships (Vulkan with shaderc, hactool, and the native code generator with Unicorn,
+# all compiled with the LLVM-MinGW toolchain Qt pairs with its newest release) and packs them. Qt, FFmpeg and SDL3 are not
+# built or redistributed: the installer downloads them from their publishers. This workflow runs that very setup
+# (scripts/install/windows_setup.py) and the Windows tests against the result, so the combination is tested before a user
+# gets it. Nothing is pinned in the repository: the resolved versions and SHA-256 values travel inside the archive (inputs/)
+# and in windows-components.json. Weekly, so upstream changes show up before a user hits them.
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the archive as the release "windows-components"'
+        description: 'Publish the tools as the release "windows-components"'
         type: boolean
         default: false
   push:
@@ -17,6 +18,10 @@ on:
     paths:
       - .github/workflows/windows-components.yml
       - scripts/recomp/resolve_inputs.py
+      - scripts/install/windows_setup.py
+      - scripts/recomp/dependency_build.py
+      - scripts/recomp/portable_build.py
+      - installer/extract/**
   schedule:
     - cron: '17 4 * * 1'
 permissions:
@@ -37,63 +42,51 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-      - name: Resolve and download the newest inputs
+      - name: Resolve and download the newest build inputs
         run: |
           python scripts/recomp/resolve_inputs.py --out work/downloads
           Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_CONTRACT=$PWD\work\resolved\windows-dependencies.json"
           Add-Content $env:GITHUB_ENV "BDSP_WINDOWS_SOURCES=$PWD\work\resolved\windows-sources.json"
-      - name: Fetch Qt and the LLVM-MinGW toolchain Qt pairs with it (newest release), install the native Unicorn engine
+      - name: Fetch the LLVM-MinGW toolchain Qt pairs with its newest release (and the Qt sources for the licence texts)
         run: |
-          New-Item -ItemType Directory -Force work/components | Out-Null
+          New-Item -ItemType Directory -Force work/tools | Out-Null
           python scripts/recomp/resolve_qt.py --out work/qt-download
-          $q = Get-Content work/qt-download/qt.json | ConvertFrom-Json
-          7z x work/qt-download/qtbase.7z -owork/qt -y | Out-Null
           7z x work/qt-download/toolchain.7z -owork/qt-tools -y | Out-Null
           Copy-Item work/qt-download/source.tar.xz work/downloads/qtbase-src.tar.xz
-          Add-Content $env:GITHUB_ENV "QT_VERSION=$($q.qt)"
-          $core = Get-ChildItem work/qt -Recurse -Filter Qt6Core.dll | Select-Object -First 1
-          Add-Content $env:GITHUB_ENV "QT_ROOT=$($core.Directory.Parent.FullName)"
           $clang = Get-ChildItem work/qt-tools -Recurse -Filter x86_64-w64-mingw32-clang.exe | Select-Object -First 1
-          Move-Item $clang.Directory.Parent.FullName work/components/toolchain
+          Move-Item $clang.Directory.Parent.FullName work/toolchain
           Copy-Item work/qt-download/qt.json work/resolved/qt.json
           python -m pip install --target work/pydeps Pillow lz4
       - name: Build Unicorn from source with the same compiler (GPL-2.0; no Visual C++ runtime needed)
         run: |
           Invoke-WebRequest https://github.com/unicorn-engine/unicorn/archive/refs/tags/2.1.4.tar.gz -OutFile work/unicorn.tar.gz -UseBasicParsing
           tar xzf work/unicorn.tar.gz -C work
-          $bin = ("$PWD\work\components\toolchain\bin").Replace("\", "/")
+          $bin = ("$PWD\work\toolchain\bin").Replace("\", "/")
           $prefix = ("$PWD\work\unicorn").Replace("\", "/")
-          $env:PATH = "$PWD\work\components\toolchain\bin;$env:PATH"
+          $env:PATH = "$PWD\work\toolchain\bin;$env:PATH"
           cmake -S work/unicorn-2.1.4 -B work/unicorn-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$bin/x86_64-w64-mingw32-clang.exe" -DCMAKE_CXX_COMPILER="$bin/x86_64-w64-mingw32-clang++.exe" -DCMAKE_RC_COMPILER="$bin/x86_64-w64-mingw32-windres.exe" -DBUILD_SHARED_LIBS=ON -DUNICORN_ARCH=aarch64 -DUNICORN_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build work/unicorn-build --parallel
           cmake --install work/unicorn-build
           Copy-Item work/unicorn/bin/libunicorn.dll work/unicorn/lib/
-          $pthread = Get-ChildItem work/components/toolchain -Recurse -Filter libwinpthread-1.dll | Where-Object { $_.FullName -match 'x86_64' } | Select-Object -First 1
+          $pthread = Get-ChildItem work/toolchain -Recurse -Filter libwinpthread-1.dll | Where-Object { $_.FullName -match 'x86_64' } | Select-Object -First 1
           if (-not $pthread) { throw 'libwinpthread-1.dll not found in the toolchain' }
           Copy-Item $pthread.FullName work/unicorn/lib/
-      - name: Build the dependency bundles
+      - name: Build the tools the installer ships (Vulkan with shaderc, hactool, the code generator)
         run: |
           $env:PYTHONPATH = "$PWD"
-          $cc = "$PWD\work\components\toolchain\bin\x86_64-w64-mingw32-clang.exe"
+          $cc = "$PWD\work\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           $cmake = (Get-Command cmake).Source
           $ninja = (Get-Command ninja).Source
-          python scripts/recomp/portable_build.py sdl --cc $cc --cmake $cmake --ninja $ninja --sdl-archive work/downloads/SDL3-source.tar.gz --sdl-prefix work/components/sdl
-          python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake $cmake --ninja $ninja --prefix work/components/vulkan
-          python scripts/recomp/dependency_build.py ffmpeg --archive work/downloads/ffmpeg-binaries.zip --archives work/downloads --prefix work/components/ffmpeg
-          python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/components/hactool
-          python scripts/recomp/dependency_build.py qt --qt-root $env:QT_ROOT --qt-source work/downloads/qtbase-src.tar.xz --qt-version $env:QT_VERSION --cc $cc --prefix work/components/qt
-      - name: Build the native generator
-        run: |
-          $env:PYTHONPATH = "$PWD"
-          $cc = "$PWD\work\components\toolchain\bin\x86_64-w64-mingw32-clang.exe"
+          python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake $cmake --ninja $ninja --prefix work/tools/vulkan
+          python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/tools/hactool
           python scripts/recomp/portable_build.py generator --cc $cc --host-cc $cc --unicorn-root work/unicorn
-          Copy-Item work/native-generator/windows-x86_64 work/components/generator -Recurse
-      - name: Register the bundles in the catalog
-        run: |
-          $env:PYTHONPATH = "$PWD"
-          $dir = "$PWD\work\components"
-          python scripts/install/windows_pipeline.py --output "$dir\catalog.json" --cc "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe" --generator "$dir\generator\bdsp_codegen.exe" --sdl "$dir\sdl" --vulkan "$dir\vulkan" --ffmpeg "$dir\ffmpeg" --hactool "$dir\hactool" --qt "$dir\qt"
-      - name: Vulkan loader and extract tool for the Windows tests
+          Copy-Item work/native-generator/windows-x86_64 work/tools/generator -Recurse
+          python scripts/recomp/dependency_build.py qt-notices --qt-source work/downloads/qtbase-src.tar.xz --prefix work/tools/license-texts/qt
+          python scripts/recomp/dependency_build.py ffmpeg-license-texts --archives work/downloads --prefix work/tools/license-texts/ffmpeg
+          python scripts/recomp/archive_notices.py --resolved work/resolved --out work/tools/NOTICES
+          New-Item -ItemType Directory -Force work/tools/inputs | Out-Null
+          Copy-Item work/resolved/*.json work/tools/inputs
+      - name: Vulkan loader and the unpack/extract tool
         run: |
           # The renderer links the Vulkan loader statically; runners have no GPU driver, so install LunarG's loader (latest).
           Invoke-WebRequest https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-runtime.exe -OutFile vulkan-runtime.exe -UseBasicParsing
@@ -101,10 +94,14 @@ jobs:
           if (-not (Test-Path C:\Windows\System32\vulkan-1.dll)) { throw "Vulkan loader was not installed" }
           cargo build --release --manifest-path installer/extract/Cargo.toml
           Add-Content $env:GITHUB_ENV "BDSP_EXTRACT=$PWD\installer\extract\target\release\bdsp-extract.exe"
-      - name: Windows tests against the new toolchain
+      - name: Set up the build environment exactly like a user's machine does (Qt, FFmpeg and SDL3 from their publishers)
+        run: |
+          $env:PYTHONPATH = "$PWD"
+          python scripts/install/windows_setup.py --tools work/tools --out work/env
+      - name: Windows tests against the new environment
         continue-on-error: true
         run: |
-          $dir = "$PWD\work\components"
+          $dir = "$PWD\work\env"
           Remove-Item Env:BDSP_WINDOWS_CONTRACT, Env:BDSP_WINDOWS_SOURCES  # the contract tests check the repository files
           $env:PYTHONPATH = "$PWD;$PWD\work\pydeps"
           $env:BDSP_WINDOWS_NATIVE_CC = "$dir\toolchain\bin\x86_64-w64-mingw32-clang.exe"
@@ -117,12 +114,9 @@ jobs:
           $env:BDSP_WINDOWS_HACTOOL_ROOT = "$dir\hactool"
           $env:BDSP_WINDOWS_QT_ROOT = "$dir\qt"
           python -m unittest scripts.tests.test_windows_build scripts.tests.test_windows_pipeline scripts.tests.test_windows_native_generator scripts.tests.test_dependency_build scripts.tests.test_installer_filesystem scripts.tests.test_installer_driver
-      - name: Pack the archive
+      - name: Pack the tools
         run: |
-          New-Item -ItemType Directory -Force work/components/inputs | Out-Null
-          Copy-Item work/resolved/*.json work/components/inputs
-          python scripts/recomp/archive_notices.py --resolved work/resolved --downloads work/downloads --out work/components/NOTICES
-          python -c "import shutil; shutil.make_archive('work/windows-components', 'zip', 'work/components')"
+          python -c "import shutil; shutil.make_archive('work/windows-components', 'zip', 'work/tools')"
           $file = Get-Item work/windows-components.zip
           $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
           $meta = [ordered]@{ schema = 1; archive = 'windows-components.zip'; sha256 = $hash; size_bytes = $file.Length; created = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); commit = $env:GITHUB_SHA }
