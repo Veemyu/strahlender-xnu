@@ -89,6 +89,7 @@ jobs:
         run: rustup toolchain install 1.88 --profile minimal --component rustfmt --component clippy
       - name: Validate native code
         run: |
+          python3 -m pip install cryptography
           cargo +1.88 fmt --manifest-path installer/Cargo.toml -- --check
           cargo +1.88 test --locked --manifest-path installer/Cargo.toml
           cargo +1.88 test --locked --manifest-path installer/extract/Cargo.toml

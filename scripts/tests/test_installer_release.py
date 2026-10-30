@@ -26,6 +26,7 @@ class InstallerReleaseTests(unittest.TestCase):
             self.assertIn(f"Strahlender-Installer-{arch}.AppImage", release.PACKAGES)
         self.assertIn("Strahlender-Installer-{arch}.AppImage", source)
 
+    @unittest.skipUnless(importlib.util.find_spec("cryptography"), "needs the cryptography package (installed in CI)")
     def test_update_manifest_is_signed_for_every_target_and_verifies(self):
         import base64
         import json
