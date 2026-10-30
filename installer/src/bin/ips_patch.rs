@@ -524,34 +524,6 @@ fn parse(data: &[u8]) -> Result<Patch, String> {
     Ok(Patch { format, records })
 }
 
-#[allow(dead_code)]
-fn apply_to_mapped_nso(patch: &Patch, mapped: &mut [u8]) -> Result<(), String> {
-    // Atmosphere protects the 0x100-byte NSO header and subtracts that offset
-    // before writing into the uncompressed, mapped module image.
-    for record in &patch.records {
-        let start = record.offset - NSO_HEADER_SIZE;
-        let end = start
-            .checked_add(record.payload.len())
-            .ok_or("IPS record range overflow")?;
-        if end > mapped.len() {
-            return Err(format!(
-                "IPS record at 0x{:x} exceeds the mapped NSO",
-                record.offset
-            ));
-        }
-    }
-    for record in &patch.records {
-        let start = record.offset - NSO_HEADER_SIZE;
-        let end = start + record.payload.len();
-        let destination = &mut mapped[start..end];
-        match &record.payload {
-            Payload::Bytes(bytes) => destination.copy_from_slice(bytes),
-            Payload::Repeat { value, .. } => destination.fill(*value),
-        }
-    }
-    Ok(())
-}
-
 fn inspect(path: &Path) -> Result<(), String> {
     let patch = read_patch(path)?;
     let changed = patch
@@ -679,6 +651,34 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    /// Test model of the loader's write into the uncompressed NSO image (the real patching goes through `apply_to_segments`).
+    fn apply_to_mapped_nso(patch: &Patch, mapped: &mut [u8]) -> Result<(), String> {
+        // Atmosphere protects the 0x100-byte NSO header and subtracts that offset
+        // before writing into the uncompressed, mapped module image.
+        for record in &patch.records {
+            let start = record.offset - NSO_HEADER_SIZE;
+            let end = start
+                .checked_add(record.payload.len())
+                .ok_or("IPS record range overflow")?;
+            if end > mapped.len() {
+                return Err(format!(
+                    "IPS record at 0x{:x} exceeds the mapped NSO",
+                    record.offset
+                ));
+            }
+        }
+        for record in &patch.records {
+            let start = record.offset - NSO_HEADER_SIZE;
+            let end = start + record.payload.len();
+            let destination = &mut mapped[start..end];
+            match &record.payload {
+                Payload::Bytes(bytes) => destination.copy_from_slice(bytes),
+                Payload::Repeat { value, .. } => destination.fill(*value),
+            }
+        }
+        Ok(())
+    }
+
     use super::*;
 
     #[test]
