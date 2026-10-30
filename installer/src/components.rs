@@ -156,6 +156,18 @@ fn setup_source(
     }
 }
 
+/// The executable that answers `--cli unpack`: the installer itself. The helper `installer_setup` runs from the same
+/// folder and does not know `--cli`, so it points at its sibling.
+fn extract_tool(own: &Path) -> PathBuf {
+    let main = format!("strahlender-xnu-installer{}", std::env::consts::EXE_SUFFIX);
+    let sibling = own.with_file_name(&main);
+    if own.file_name().is_some_and(|name| name != main.as_str()) && sibling.is_file() {
+        sibling
+    } else {
+        own.to_path_buf()
+    }
+}
+
 /// Runs scripts/install/windows_setup.py in the private Python: Qt, FFmpeg and SDL3 come from their publishers.
 fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let (python, _) =
@@ -168,7 +180,7 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
         .current_dir(&project)
         .env(
             "BDSP_EXTRACT",
-            std::env::current_exe().map_err(|e| e.to_string())?,
+            extract_tool(&std::env::current_exe().map_err(|e| e.to_string())?),
         )
         .env("BDSP_EXTRACT_PREFIX", "--cli")
         .args(["-B", "-m", "scripts.install.windows_setup", "--tools"])
@@ -215,6 +227,21 @@ pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_helper_points_at_the_installer_for_cli_unpack() {
+        let dir = scratch("extract-tool");
+        let main = dir.join(format!(
+            "strahlender-xnu-installer{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        let helper = dir.join(format!("installer_setup{}", std::env::consts::EXE_SUFFIX));
+        assert_eq!(extract_tool(&helper), helper); // no sibling yet
+        fs::write(&main, b"x").unwrap();
+        assert_eq!(extract_tool(&helper), main);
+        assert_eq!(extract_tool(&main), main);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn setup_uses_a_checkout_beside_the_installer_else_downloads_main() {
