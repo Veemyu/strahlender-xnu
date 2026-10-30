@@ -163,20 +163,27 @@ cargo run --locked --manifest-path installer/Cargo.toml --bin installer_release 
 gh variable set INSTALLER_UPDATE_PUBLIC_KEY --body '<the printed public key>'
 ```
 
-Collect final artifacts in one directory, then sign the manifest offline:
+A stable release signs its manifest in CI: the publish job runs `release.py sign`, which reads the seed from the
+repository secret `INSTALLER_UPDATE_SEED` and writes `installer-update.json` and `installer-update.json.sig` next to the
+verified downloads (every target with the SHA-256 of its file). Nightlies are not signed; the updater only reads stable
+releases. Store the secret once from the seed file you created above:
+
+```sh
+gh secret set INSTALLER_UPDATE_SEED < ~/.strahlender-signing/update-seed.base64
+```
+
+A stable release without that secret fails on purpose. The key then lives in GitHub, so only people with write access
+to the repository can sign. The offline tool stays available when you prefer to sign by hand:
 
 ```sh
 cargo run --locked --manifest-path installer/Cargo.toml --bin installer_release -- \
-  0.2.0 work/release-assets /secure/location/update-seed.base64
+  0.2.0 work/release-assets ~/.strahlender-signing/update-seed.base64
 ```
 
-Upload `installer-update.json`, `installer-update.json.sig` and its named assets
-to the matching stable release only after approval. macOS updates use the same
-universal `.zip` as manual downloads (extracted with macOS ditto); both Mac
-architecture entries refer to that file. Linux updates use `.AppImage`.
+macOS updates use the same universal `.zip` as manual downloads (extracted with macOS ditto); both Mac
+architecture entries refer to that file. Linux updates use `.AppImage`, Windows the `.zip`.
 The public key printed by the signing tool must match the
-one embedded in the installer. The workflow does not store or use the private key.
-
+one embedded in the installer. 
 Update metadata signatures and downloaded bytes are verified before replacement.
 The user confirms download/restart. The replacement helper waits for the GUI to
 exit, keeps a backup, and restores it if replacement or launch fails. Read-only

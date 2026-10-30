@@ -26,6 +26,30 @@ class InstallerReleaseTests(unittest.TestCase):
             self.assertIn(f"Strahlender-Installer-{arch}.AppImage", release.PACKAGES)
         self.assertIn("Strahlender-Installer-{arch}.AppImage", source)
 
+    def test_update_manifest_is_signed_for_every_target_and_verifies(self):
+        import base64
+        import json
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        seed = bytes(range(32))
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            for name in set(release.UPDATE_TARGETS.values()):
+                (folder / name).write_bytes(name.encode())
+            release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode())
+            manifest = (folder / "installer-update.json").read_bytes()
+            Ed25519PrivateKey.from_private_bytes(seed).public_key().verify(
+                base64.b64decode((folder / "installer-update.json.sig").read_bytes()), manifest)
+            data = json.loads(manifest)
+            self.assertEqual(data["version"], "0.2.0")
+            self.assertEqual({a["target"] for a in data["assets"]}, set(release.UPDATE_TARGETS))
+            for asset in data["assets"]:
+                self.assertEqual(asset["sha256"], hashlib.sha256(asset["name"].encode()).hexdigest())
+            (folder / "installer-windows-x86_64.zip").unlink()
+            with self.assertRaisesRegex(ValueError, "Missing download for windows-x86_64"):
+                release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode())
+            with self.assertRaisesRegex(ValueError, "32-byte"):
+                release.sign_update(folder, "0.2.0", base64.b64encode(b"short").decode())
+
     def plan(self, channel="artifacts", event="workflow_dispatch", ref="main"):
         return release.plan("0.1.0", event, ref, channel, SHA, "123", "1")
 

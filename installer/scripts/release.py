@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -13,6 +14,15 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ("macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64", "windows-x86_64")
 SBOM = ("sbom-strahlender-xnu.spdx.json", "sbom-strahlender-xnu.spdx", "sbom-strahlender-xnu.cdx.json", "sbom-strahlender-xnu.csv")
+UPDATE = ("installer-update.json", "installer-update.json.sig")
+# Which public download updates which installer (the installer's own host name); one universal zip serves both Macs.
+UPDATE_TARGETS = {
+    "macos-aarch64": "installer-macos-universal.zip",
+    "macos-x86_64": "installer-macos-universal.zip",
+    "linux-aarch64": "Strahlender-Installer-aarch64.AppImage",
+    "linux-x86_64": "Strahlender-Installer-x86_64.AppImage",
+    "windows-x86_64": "installer-windows-x86_64.zip",
+}
 PACKAGES = ("installer-macos-universal.zip", "Strahlender-Installer-aarch64.AppImage", "Strahlender-Installer-x86_64.AppImage",
             "installer-windows-x86_64.zip")
 
@@ -75,6 +85,30 @@ def collect(artifacts, output, release):
         {"schema": 1, **release, "targets": TARGETS}, indent=2) + "\n")
 
 
+def sign_update(folder, version, seed_b64):
+    """Writes installer-update.json (every target with the SHA-256 of its download) and its Ed25519 signature.
+    The installer verifies both against the public key built into it (installer/src/updates.rs)."""
+    import base64
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise ValueError("Installer Cargo version must be a stable three-part version.")
+    seed = base64.b64decode(seed_b64.strip(), validate=True)
+    if len(seed) != 32:
+        raise ValueError("Expected a base64-encoded 32-byte Ed25519 seed.")
+    assets = []
+    for target, name in UPDATE_TARGETS.items():
+        path = folder / name
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"Missing download for {target}: {name}")
+        with path.open("rb") as file:
+            digest = hashlib.file_digest(file, "sha256").hexdigest()
+        assets.append({"target": target, "name": name, "sha256": digest})
+    manifest = (json.dumps({"version": version, "assets": assets}, indent=2) + "\n").encode()
+    signature = base64.b64encode(Ed25519PrivateKey.from_private_bytes(seed).sign(manifest))
+    (folder / UPDATE[0]).write_bytes(manifest)
+    (folder / UPDATE[1]).write_bytes(signature)
+
+
 def release_notes(release, repository):
     version = release["version"]
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
@@ -117,7 +151,7 @@ def publish(folder, release, repository):
                    "--notes-file", str(path)]
         if prerelease:
             command.append("--prerelease")
-        command.extend(str(folder / name) for name in (*PACKAGES, "SHA256SUMS", *(n for n in SBOM if (folder / n).exists())))
+        command.extend(str(folder / name) for name in (*PACKAGES, "SHA256SUMS", *(n for n in (*SBOM, *UPDATE) if (folder / n).exists())))
         subprocess.run(command, check=True)
     if release.get("draft", False):
         return
@@ -143,6 +177,9 @@ def main():
     assembling.add_argument("--artifacts", type=Path, required=True)
     assembling.add_argument("--output", type=Path, required=True)
     assembling.add_argument("--plan", type=Path, required=True)
+    signing = sub.add_parser("sign", help="Sign the update manifest (seed in the environment variable INSTALLER_UPDATE_SEED).")
+    signing.add_argument("--folder", type=Path, required=True)
+    signing.add_argument("--plan", type=Path, required=True)
     publishing = sub.add_parser("publish")
     publishing.add_argument("--folder", type=Path, required=True)
     publishing.add_argument("--plan", type=Path, required=True)
@@ -158,6 +195,11 @@ def main():
         with args.github_output.open("a") as file:
             for key, value in release.items():
                 file.write(f"{key}={value}\n")
+    elif args.command == "sign":
+        seed = os.environ.get("INSTALLER_UPDATE_SEED", "")
+        if not seed:
+            raise SystemExit("INSTALLER_UPDATE_SEED is not set: a stable release must carry a signed update manifest.")
+        sign_update(args.folder, json.loads(args.plan.read_text())["version"], seed)
     elif args.command == "collect":
         collect(args.artifacts, args.output, json.loads(args.plan.read_text()))
     else:
