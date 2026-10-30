@@ -1,4 +1,4 @@
-# Native Linux build dependencies. Parsed by build_qt.sh; see docs/BUILD.md section 6.
+# Native Linux build dependencies. Package names per distribution; see docs/BUILD.md section 6.
 # Install packages yourself using your normal administrator workflow. Scripts never install them.
 # Public Qt APIs only: private Qt headers, PySide6, and Qt vendoring are unnecessary.
 # Format: package family | user-run install command | caveat

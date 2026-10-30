@@ -300,9 +300,6 @@ The Linux build runs directly on the Linux machine, from the repository root; it
 6. Launch locally with `bash scripts/recomp/linux/local/vk_qt.sh` and the
    desktop-session environment below.
 
-For the separate-process X11 host, build with
-scripts/recomp/linux/local/vk_qt_build.sh and launch using BDSP_QT_PROCESS=1.
-That fallback embeds the SDL X11 window; it needs Xwayland on a Wayland desktop.
 The in-process host creates its own Vulkan surface and supports native Wayland
 or X11 without embedding a foreign window.
 

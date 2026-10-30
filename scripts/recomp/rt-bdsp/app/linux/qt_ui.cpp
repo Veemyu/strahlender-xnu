@@ -388,7 +388,7 @@ private:
         return a;
     }
 
-    void buildMenus() {  // Match the menu structure and localization keys in bdsp_qt_host.cpp / app_ui.m.
+    void buildMenus() {  // Match the menu structure and localization keys of the Mac app (app_ui.m).
         QMenuBar *bar = menuBar();
         QMenu *m = bar->addMenu(tr_("File"));
         act(m, tr_("Open Save Folder"), [this] { openSave(); }, "Ctrl+O");

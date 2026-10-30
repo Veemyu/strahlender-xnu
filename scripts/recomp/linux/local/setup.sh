@@ -4,7 +4,6 @@
 source "$(dirname "$0")/common.sh"
 missing=()
 for t in clang python3; do command -v "$t" >/dev/null || missing+=("$t"); done
-command -v cmake >/dev/null || echo "NOTE: cmake is missing (needed only for the Qt frontend, vk_qt_build.sh)."
 command -v rsync >/dev/null || echo "NOTE: rsync is missing (needed only for incr_test.sh)."
 command -v ld.lld >/dev/null || echo "NOTE: ld.lld is missing (package 'lld'): linking with ld.bfd, slower; the LAS Makefile uses -fuse-ld=lld."
 command -v ccache >/dev/null || echo "NOTE: ccache is missing (optional)."

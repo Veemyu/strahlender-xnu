@@ -740,7 +740,7 @@ static void quick_exit_handler(void) {
 #endif
 }
 
-// Qt shell (scripts/recomp/rt-bdsp/app/linux/bdsp_qt_host.cpp): BDSP_EMBED=1 -> borderless X11 window, its id goes to stdout, commands arrive on stdin
+// Legacy embed mode (its Qt host is gone; remove with a Linux test run): BDSP_EMBED=1 -> borderless X11 window, its id goes to stdout, commands arrive on stdin
 // ("fps 30|60|120", "pause 0|1"); the same places as the F keys in ui_run.
 static void *embed_commands(void *arg) {
     (void)arg;

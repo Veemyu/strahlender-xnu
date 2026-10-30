@@ -202,7 +202,7 @@ Ergebnis liegt unter `work/recomp/bdsp_boot_vk_qt`. Extrahierte Icon-Varianten
 werden während des Builds deterministisch in Linux-Assets unter
 `work/recomp/icons/` umgewandelt. Starten lässt sich die App lokal mit
 `bash scripts/recomp/linux/local/vk_qt.sh`. Diese Variante unterstützt natives
-Wayland und X11. Die getrennte X11-Hülle bleibt mit `BDSP_QT_PROCESS=1` verfügbar.
+Wayland und X11.
 Modulbilder für `vk_qt.sh` und `vk_run.sh` liegen unter `work/recomp/img_gfx`. Einmal erzeugen: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh` (wie bei der macOS-App, `scripts/recomp/app/recomp_build.sh`).
 Konkrete Sitzungs-IDs und Authentifizierungspfade committe nie.
 

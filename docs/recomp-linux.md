@@ -16,7 +16,7 @@ exists; treat them as reference values from 2026-10-19/20.
 | `compile.sh`, `build_all.sh` | compile in parallel with `-O1` (chunks above `THRESH_O0`, default 300 KB, get `-O0`) and link `libgame.so`; `build_all.sh` runs generation and compile with timing |
 | `vk_build.sh [--qt]` | builds `rt-bdsp` with the Vulkan backend (`NVN_BACKEND=vulkan`); `--qt` adds the in-process Qt frontend |
 | `vk_run.sh` | runs the Vulkan build, headless by default (`--headless`, `--window WxH`, `--timeout S`, `--screenshot-after N`) |
-| `vk_qt.sh`, `vk_qt_build.sh` | launch the Qt frontend (in-process; `BDSP_QT_PROCESS=1` selects the older separate-process X11 host) and build that host (CMake) |
+| `vk_qt.sh` | launches the in-process Qt frontend (`bdsp_boot_vk_qt`, built by `vk_build.sh --qt`) |
 | `probe.sh <test>` | Linux counterparts of the spike probes: `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `bdsp` |
 | `incr_test.sh` | measurement of incremental rebuilds |
 
