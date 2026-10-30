@@ -158,16 +158,18 @@ pub fn runtime_smoke() -> Result<(), String> {
     if !private {
         return Err("Runtime smoke checks require private Python.".into());
     }
+    // The Windows runtime has no shader profile (UnityPy), only the generator's native libraries.
+    let code = if cfg!(windows) {
+        include_str!("../runtime/native_smoke.py").to_string()
+    } else {
+        concat!(
+            include_str!("../runtime/native_smoke.py"),
+            "\nimport UnityPy, UnityPy.UnityPyBoost\n"
+        )
+        .to_string()
+    };
     let status = std::process::Command::new(python)
-        .args([
-            "-I",
-            "-B",
-            "-c",
-            concat!(
-                include_str!("../runtime/native_smoke.py"),
-                "\nimport UnityPy, UnityPy.UnityPyBoost\n"
-            ),
-        ])
+        .args(["-I", "-B", "-c", &code])
         .status()
         .map_err(|e| e.to_string())?;
     if status.success() {

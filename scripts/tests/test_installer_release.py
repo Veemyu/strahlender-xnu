@@ -15,25 +15,6 @@ SHA = "a" * 40
 
 
 class InstallerReleaseTests(unittest.TestCase):
-    def test_windows_readiness_never_promotes_private_probes_to_release(self):
-        report = release.windows_readiness()
-        self.assertFalse(report["public_release_ready"])
-        self.assertTrue(any("ffmpeg:" in item for item in report["blockers"]))
-        self.assertTrue(any("vcruntime" in item.lower() for item in report["blockers"]))
-
-    def test_unqualified_windows_assets_abort_collection_and_publication_before_commands(self):
-        with tempfile.TemporaryDirectory() as temporary, patch.object(release.subprocess, "run") as run:
-            root = Path(temporary)
-            artifacts = root / "artifacts"
-            self.artifacts(artifacts)
-            (artifacts / "installer-windows-x86_64.zip").write_bytes(b"private unqualified package")
-            with self.assertRaisesRegex(ValueError, "not enabled"):
-                release.collect(artifacts, root / "output", self.plan())
-            self.assertFalse((root / "output").exists())
-            with self.assertRaisesRegex(ValueError, "not enabled"):
-                release.publish(artifacts, self.plan("release"), "Veemyu/strahlender-xnu")
-            run.assert_not_called()
-
     def plan(self, channel="artifacts", event="workflow_dispatch", ref="main"):
         return release.plan("0.1.0", event, ref, channel, SHA, "123", "1")
 
@@ -83,8 +64,8 @@ class InstallerReleaseTests(unittest.TestCase):
             root = Path(temporary)
             self.artifacts(root / "artifacts")
             release.collect(root / "artifacts", root / "output", self.plan())
-            self.assertEqual(len(list((root / "output").iterdir())), 5)
-            self.assertEqual(len((root / "output/SHA256SUMS").read_text().splitlines()), 3)
+            self.assertEqual(len(list((root / "output").iterdir())), 6)
+            self.assertEqual(len((root / "output/SHA256SUMS").read_text().splitlines()), 4)
             self.assertFalse((root / "output/installer-build.json").exists())
             self.assertTrue((root / "output/.internal/installer-build.json").is_file())
 

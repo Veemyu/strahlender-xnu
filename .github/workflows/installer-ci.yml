@@ -148,6 +148,56 @@ jobs:
             work/installer-packages/**/SHA256SUMS
           if-no-files-found: error
           retention-days: 1
+  package-windows:
+    needs: plan
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      RUSTUP_TOOLCHAIN: '1.88'
+      BDSP_INSTALLER_UPDATE_PUBLIC_KEY: ${{ vars.INSTALLER_UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.plan.outputs.revision }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Prepare Rust
+        run: rustup toolchain install 1.88 --profile minimal --component rustfmt --component clippy
+      - name: Validate native code
+        run: |
+          cargo +1.88 test --locked --manifest-path installer/Cargo.toml
+          cargo +1.88 test --locked --manifest-path installer/extract/Cargo.toml
+          cargo +1.88 clippy --locked --manifest-path installer/Cargo.toml -- -D warnings
+      - name: Assemble the private Python runtime (CPython and the locked wheels, verified by SHA-256)
+        shell: bash
+        run: |
+          BUILD="work/installer-runtime-release/windows-x86_64"
+          mkdir -p "$BUILD"
+          ASSET="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["targets"][sys.argv[2]]["python_asset"])' installer/runtime/manifest.json windows-x86_64)"
+          curl -fL --retry 3 "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/${ASSET//+/%2B}" -o "$BUILD/python.tar.gz"
+          python installer/scripts/assemble_runtime.py --target windows-x86_64 --profile base --python-archive "$BUILD/python.tar.gz" --fetch-wheels --wheelhouse "$BUILD/wheels" --output "$BUILD/runtime"
+      - name: Build the installer
+        run: cargo +1.88 build --release --locked --bins --manifest-path installer/Cargo.toml
+      - name: Package
+        run: python installer/scripts/package_windows.py work/installer-runtime-release/windows-x86_64/runtime
+      - name: Smoke test outside the checkout
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/unpacked" && mkdir "$RUNNER_TEMP/unpacked"
+          cd work/installer-packages/windows-x86_64
+          sha256sum -c SHA256SUMS
+          unzip -q installer-windows-x86_64.zip -d "$RUNNER_TEMP/unpacked"
+          cd "$RUNNER_TEMP"
+          "unpacked/Strahlender Installer/strahlender-xnu-installer.exe" --check-runtime
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installer-windows-x86_64
+          path: |
+            work/installer-packages/windows-x86_64/installer-windows-x86_64.zip
+            work/installer-packages/windows-x86_64/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
   universal:
     needs: [plan, package]
     runs-on: macos-15
@@ -235,7 +285,7 @@ jobs:
           path: sbom/strahlender-xnu.*
           if-no-files-found: error
   publish:
-    needs: [plan, package, verify-universal, sbom]
+    needs: [plan, package, package-windows, verify-universal, sbom]
     if: needs.plan.outputs.channel != 'artifacts'
     runs-on: ubuntu-24.04
     permissions:
