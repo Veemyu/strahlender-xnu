@@ -9,6 +9,93 @@
 #endif
 #include <setjmp.h>
 
+// ---- __builtin_elementwise_* for Clang before 16 (Ubuntu 22.04 ships 14) ----
+// Where the compiler has a builtin it is used untouched. Where it is missing, a macro of the same name maps the vector
+// lane by lane onto scalar builtins (the auto-vectoriser turns that back into SIMD where the target allows). The generator
+// and the vendored simd headers keep using the original names; this header sits before them in the include path.
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
+#ifdef BDSP_EW_FORCE_FALLBACK  // the test builds with this to compare the fallbacks with the real builtins
+#define EW_HAS_(b) 0
+#else
+#define EW_HAS_(b) __has_builtin(b)
+#endif
+
+#define EW_LANES_(v) (sizeof(v) / sizeof((v)[0]))
+
+// One operand, one result per lane.
+#define EW_MAP1_(a, expr)                                                                         \
+    ({ __typeof__(a) ew_a_ = (a); __typeof__(ew_a_) ew_r_;                                        \
+       for (unsigned ew_i_ = 0; ew_i_ < EW_LANES_(ew_a_); ew_i_++) {                              \
+           __typeof__(ew_a_[0]) x = ew_a_[ew_i_]; ew_r_[ew_i_] = (expr); }                        \
+       ew_r_; })
+#define EW_MAP2_(a, b, expr)                                                                      \
+    ({ __typeof__(a) ew_a_ = (a); __typeof__(ew_a_) ew_b_ = (b); __typeof__(ew_a_) ew_r_;         \
+       for (unsigned ew_i_ = 0; ew_i_ < EW_LANES_(ew_a_); ew_i_++) {                              \
+           __typeof__(ew_a_[0]) x = ew_a_[ew_i_], y = ew_b_[ew_i_]; ew_r_[ew_i_] = (expr); }      \
+       ew_r_; })
+#define EW_MAP3_(a, b, c, expr)                                                                   \
+    ({ __typeof__(a) ew_a_ = (a); __typeof__(ew_a_) ew_b_ = (b), ew_c_ = (c); __typeof__(ew_a_) ew_r_; \
+       for (unsigned ew_i_ = 0; ew_i_ < EW_LANES_(ew_a_); ew_i_++) {                              \
+           __typeof__(ew_a_[0]) x = ew_a_[ew_i_], y = ew_b_[ew_i_], z = ew_c_[ew_i_];             \
+           ew_r_[ew_i_] = (expr); }                                                               \
+       ew_r_; })
+
+// Builtins must be called directly, so the call sits inside each _Generic association.
+#define EW_F1_(name, x) _Generic((x), float: __builtin_##name##f(x), default: __builtin_##name(x))
+#define EW_F3_(name, x, y, z) _Generic((x), float: __builtin_##name##f(x, y, z), default: __builtin_##name(x, y, z))
+
+#if !EW_HAS_(__builtin_elementwise_abs)
+#define __builtin_elementwise_abs(a)                                                              \
+    EW_MAP1_(a, _Generic(x, float: __builtin_fabsf(x), double: __builtin_fabs(x),                 \
+                         default: (__typeof__(x))(x < 0 ? 0ull - (unsigned long long)x : (unsigned long long)x)))
+#endif
+#if !EW_HAS_(__builtin_elementwise_sqrt)
+#define __builtin_elementwise_sqrt(a) EW_MAP1_(a, EW_F1_(sqrt, x))
+#endif
+#if !EW_HAS_(__builtin_elementwise_rint)
+#define __builtin_elementwise_rint(a) EW_MAP1_(a, EW_F1_(rint, x))
+#endif
+#if !EW_HAS_(__builtin_elementwise_ceil)
+#define __builtin_elementwise_ceil(a) EW_MAP1_(a, EW_F1_(ceil, x))
+#endif
+#if !EW_HAS_(__builtin_elementwise_floor)
+#define __builtin_elementwise_floor(a) EW_MAP1_(a, EW_F1_(floor, x))
+#endif
+#if !EW_HAS_(__builtin_elementwise_trunc)
+#define __builtin_elementwise_trunc(a) EW_MAP1_(a, EW_F1_(trunc, x))
+#endif
+#if !EW_HAS_(__builtin_elementwise_round)
+#define __builtin_elementwise_round(a) EW_MAP1_(a, EW_F1_(round, x))
+#endif
+#if !EW_HAS_(__builtin_elementwise_fma)
+#define __builtin_elementwise_fma(a, b, c) EW_MAP3_(a, b, c, EW_F3_(fma, x, y, z))
+#endif
+// A NaN operand loses, like the builtin.
+#if !EW_HAS_(__builtin_elementwise_max)
+#define __builtin_elementwise_max(a, b) EW_MAP2_(a, b, (y != y || x > y) ? x : y)
+#endif
+#if !EW_HAS_(__builtin_elementwise_min)
+#define __builtin_elementwise_min(a, b) EW_MAP2_(a, b, (y != y || x < y) ? x : y)
+#endif
+
+// Saturating integer add/sub per lane. The limits come from the element type.
+#define EW_SIGNED_(x) (((__typeof__(x))-1) < 0)
+#define EW_SMAX_(x) ((__typeof__(x))((1ull << (sizeof(x) * 8 - 1)) - 1))
+#define EW_SMIN_(x) ((__typeof__(x))~EW_SMAX_(x))
+#define EW_UMAX_(x) ((__typeof__(x))~(__typeof__(x))0)
+#if !EW_HAS_(__builtin_elementwise_add_sat)
+#define __builtin_elementwise_add_sat(a, b)                                                       \
+    EW_MAP2_(a, b, ({ __typeof__(x) s_; __builtin_add_overflow(x, y, &s_)                          \
+                      ? (EW_SIGNED_(x) ? (x < 0 ? EW_SMIN_(x) : EW_SMAX_(x)) : EW_UMAX_(x)) : s_; }))
+#endif
+#if !EW_HAS_(__builtin_elementwise_sub_sat)
+#define __builtin_elementwise_sub_sat(a, b)                                                       \
+    EW_MAP2_(a, b, ({ __typeof__(x) s_; __builtin_sub_overflow(x, y, &s_)                          \
+                      ? (EW_SIGNED_(x) ? (x < 0 ? EW_SMIN_(x) : EW_SMAX_(x)) : (__typeof__(x))0) : s_; }))
+#endif
+
 // One entry per active guest function that contains a re-entry point. Lives on the host stack
 // of the generated function; the chain hangs off the Cpu (offset 336, unused padding in the original).
 typedef struct EhRec {

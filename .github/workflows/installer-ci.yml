@@ -82,10 +82,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libvulkan-dev squashfs-tools
-          # The generated C uses __builtin_elementwise_*; the 22.04 default Clang (14) lacks it.
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          sudo bash /tmp/llvm.sh 18
-          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
       - name: Install macOS native-build prerequisites
         if: runner.os == 'macOS'
         run: brew install sdl3 pkg-config
