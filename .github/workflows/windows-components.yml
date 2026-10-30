@@ -56,7 +56,18 @@ jobs:
           $clang = Get-ChildItem work/qt-tools -Recurse -Filter x86_64-w64-mingw32-clang.exe | Select-Object -First 1
           Move-Item $clang.Directory.Parent.FullName work/components/toolchain
           Copy-Item work/qt-download/qt.json work/resolved/qt.json
-          python -m pip install --target work/pydeps unicorn==2.1.4 Pillow lz4
+          python -m pip install --target work/pydeps Pillow lz4
+      - name: Build Unicorn from source with the same compiler (GPL-2.0; no Visual C++ runtime needed)
+        run: |
+          Invoke-WebRequest https://github.com/unicorn-engine/unicorn/archive/refs/tags/2.1.4.tar.gz -OutFile work/unicorn.tar.gz -UseBasicParsing
+          tar xzf work/unicorn.tar.gz -C work
+          $bin = ("$PWD\work\components\toolchain\bin").Replace("\", "/")
+          $prefix = ("$PWD\work\unicorn").Replace("\", "/")
+          $env:PATH = "$PWD\work\components\toolchain\bin;$env:PATH"
+          cmake -S work/unicorn-2.1.4 -B work/unicorn-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$bin/x86_64-w64-mingw32-clang.exe" -DCMAKE_CXX_COMPILER="$bin/x86_64-w64-mingw32-clang++.exe" -DCMAKE_RC_COMPILER="$bin/x86_64-w64-mingw32-windres.exe" -DBUILD_SHARED_LIBS=ON -DUNICORN_ARCH=aarch64 -DUNICORN_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build work/unicorn-build --parallel
+          cmake --install work/unicorn-build
+          Copy-Item work/unicorn/bin/libunicorn.dll work/unicorn/lib/
       - name: Build the dependency bundles
         run: |
           $env:PYTHONPATH = "$PWD"
@@ -72,7 +83,7 @@ jobs:
         run: |
           $env:PYTHONPATH = "$PWD"
           $cc = "$PWD\work\components\toolchain\bin\x86_64-w64-mingw32-clang.exe"
-          python scripts/recomp/portable_build.py generator --cc $cc --host-cc $cc --unicorn-root work/pydeps/unicorn
+          python scripts/recomp/portable_build.py generator --cc $cc --host-cc $cc --unicorn-root work/unicorn
           Copy-Item work/native-generator/windows-x86_64 work/components/generator -Recurse
       - name: Register the bundles in the catalog
         run: |
