@@ -144,7 +144,7 @@ jobs:
           name: installer-${{ matrix.target }}
           path: |
             work/installer-packages/**/installer-*.zip
-            work/installer-packages/**/installer-*.AppImage
+            work/installer-packages/**/Strahlender-Installer-*.AppImage
             work/installer-packages/**/SHA256SUMS
           if-no-files-found: error
           retention-days: 1

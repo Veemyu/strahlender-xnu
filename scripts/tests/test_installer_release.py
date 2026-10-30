@@ -113,7 +113,7 @@ class InstallerReleaseTests(unittest.TestCase):
         self.assertIn("Full Lumi playthrough validation remains in progress", notes)
         self.assertIn(SHA, notes)
         self.assertIn("**nightly**", notes)
-        self.assertIn("/releases/download/installer-nightly-123-1/installer-linux-aarch64.AppImage", notes)
+        self.assertIn("/releases/download/installer-nightly-123-1/Strahlender-Installer-aarch64.AppImage", notes)
 
 
 if __name__ == "__main__":

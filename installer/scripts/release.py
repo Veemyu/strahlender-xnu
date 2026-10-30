@@ -13,7 +13,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ("macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64", "windows-x86_64")
 SBOM = ("strahlender-xnu.spdx.json", "strahlender-xnu.spdx", "strahlender-xnu.cdx.json", "strahlender-xnu.csv")
-PACKAGES = ("installer-macos-universal.zip", "installer-linux-aarch64.AppImage", "installer-linux-x86_64.AppImage",
+PACKAGES = ("installer-macos-universal.zip", "Strahlender-Installer-aarch64.AppImage", "Strahlender-Installer-x86_64.AppImage",
             "installer-windows-x86_64.zip")
 
 

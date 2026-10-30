@@ -74,6 +74,6 @@ fetch_verified() {
 fetch_verified "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage" "$TOOL" "$TOOL_HASH"
 fetch_verified "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-$ARCH" "$RUNTIME" "$RUNTIME_HASH"
 chmod 755 "$TOOL"
-ARCH="$ARCH" "$TOOL" --appimage-extract-and-run --runtime-file "$RUNTIME" "$APPDIR" "$OUTPUT/installer-linux-$ARCH.AppImage"
+ARCH="$ARCH" "$TOOL" --appimage-extract-and-run --runtime-file "$RUNTIME" "$APPDIR" "$OUTPUT/Strahlender-Installer-$ARCH.AppImage"
 cd "$OUTPUT"
-sha256sum "installer-linux-$ARCH.AppImage" > SHA256SUMS
+sha256sum "Strahlender-Installer-$ARCH.AppImage" > SHA256SUMS
