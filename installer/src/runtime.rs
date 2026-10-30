@@ -45,9 +45,7 @@ pub fn verified_runtime_python(runtime: &Path) -> Option<PathBuf> {
 }
 
 pub fn runtime_inventory_matches(runtime: &Path, record: &serde_json::Value) -> bool {
-    use sha2::{Digest, Sha256};
     use std::collections::BTreeSet;
-    use std::io::Read;
 
     fn regular_tree(root: &Path, files: &mut BTreeSet<PathBuf>) -> std::io::Result<()> {
         let metadata = std::fs::symlink_metadata(root)?;
@@ -96,21 +94,7 @@ pub fn runtime_inventory_matches(runtime: &Path, record: &serde_json::Value) -> 
         if !actual.remove(&path) {
             return false;
         }
-        let Ok(mut file) = std::fs::File::open(path) else {
-            return false;
-        };
-        let mut hash = Sha256::new();
-        let mut buffer = [0; 65536];
-        loop {
-            let Ok(size) = file.read(&mut buffer) else {
-                return false;
-            };
-            if size == 0 {
-                break;
-            }
-            hash.update(&buffer[..size]);
-        }
-        if digest.as_str() != Some(format!("{:x}", hash.finalize()).as_str()) {
+        if bdsp_extract::manifest::file_sha256(&path).ok().as_deref() != digest.as_str() {
             return false;
         }
     }

@@ -1,8 +1,8 @@
 //! Offline release metadata signing. No upload or release publication happens here.
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signer, SigningKey};
-use sha2::{Digest, Sha256};
-use std::{io::Read, path::Path};
+
+use std::path::Path;
 
 fn manifest(version: &str, folder: &Path) -> Result<Vec<u8>, String> {
     let version = version.trim_start_matches('v');
@@ -25,19 +25,8 @@ fn manifest(version: &str, folder: &Path) -> Result<Vec<u8>, String> {
         if !path.is_file() {
             continue;
         }
-        let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        let mut hash = Sha256::new();
-        let mut buffer = [0_u8; 65536];
-        loop {
-            let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
-            if n == 0 {
-                break;
-            }
-            hash.update(&buffer[..n]);
-        }
-        assets.push(
-            serde_json::json!({"target":host,"name":name,"sha256":format!("{:x}",hash.finalize())}),
-        );
+        let sha256 = bdsp_extract::manifest::file_sha256(&path).map_err(|e| e.to_string())?;
+        assets.push(serde_json::json!({"target":host,"name":name,"sha256":sha256}));
     }
     if assets.is_empty() {
         return Err("No installer release assets found.".into());

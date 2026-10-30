@@ -193,17 +193,7 @@ fn unpack(source: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 fn hash_file(path: &Path) -> Result<String> {
-    let mut f = fs::File::open(path).map_err(err)?;
-    let mut h = Sha256::new();
-    let mut buf = [0u8; 65536];
-    loop {
-        let n = f.read(&mut buf).map_err(err)?;
-        if n == 0 {
-            break;
-        }
-        h.update(&buf[..n]);
-    }
-    Ok(format!("{:x}", h.finalize()))
+    bdsp_extract::manifest::file_sha256(path).map_err(err)
 }
 fn tool(tool: &Path, keys: &Path, args: &[String]) -> Result<String> {
     let out = Command::new(tool)

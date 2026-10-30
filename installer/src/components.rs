@@ -2,10 +2,10 @@
 //! GitHub Actions builds from the newest upstream releases (.github/workflows/windows-components.yml). The installer
 //! downloads it instead of asking the user to prepare tools; integrity comes from the SHA-256 in the release metadata.
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
+
 use std::{
     fs,
-    io::{self, Read, Write},
+    io::{self, Write},
     path::{Component, Path, PathBuf},
 };
 
@@ -65,16 +65,8 @@ pub fn installed(root: &Path) -> Option<Meta> {
 }
 
 fn hash_file(path: &Path) -> Result<(String, u64), String> {
-    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
-    let (mut digest, mut size, mut buffer) = (Sha256::new(), 0, vec![0u8; 1 << 20]);
-    loop {
-        let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
-        if n == 0 {
-            return Ok((format!("{:x}", digest.finalize()), size));
-        }
-        digest.update(&buffer[..n]);
-        size += n as u64;
-    }
+    let hash = bdsp_extract::manifest::file_sha256(path).map_err(|e| e.to_string())?;
+    Ok((hash, fs::metadata(path).map_err(|e| e.to_string())?.len()))
 }
 
 /// Verifies the downloaded tools archive against the metadata, unpacks it, lets `assemble(tools, out)` build the full
