@@ -83,6 +83,9 @@ pub fn unpack(archive: &Path, destination: &Path) -> Result<(), String> {
         let mut failure = None;
         reader
             .for_each_entries(|entry, data| {
+                if entry.name().is_empty() {
+                    return Ok(true); // the archive's root directory
+                }
                 let result = target(destination, entry.name()).and_then(|path| {
                     if entry.is_directory() {
                         fs::create_dir_all(&path).map_err(|e| e.to_string())
