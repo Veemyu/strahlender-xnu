@@ -85,16 +85,22 @@ def collect(artifacts, output, release):
         {"schema": 1, **release, "targets": TARGETS}, indent=2) + "\n")
 
 
-def sign_update(folder, version, seed_b64):
+def sign_update(folder, version, seed_b64, public_key_b64):
     """Writes installer-update.json (every target with the SHA-256 of its download) and its Ed25519 signature.
     The installer verifies both against the public key built into it (installer/src/updates.rs)."""
     import base64
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("Installer Cargo version must be a stable three-part version.")
     seed = base64.b64decode(seed_b64.strip(), validate=True)
     if len(seed) != 32:
         raise ValueError("Expected a base64-encoded 32-byte Ed25519 seed.")
+    key = Ed25519PrivateKey.from_private_bytes(seed)
+    # The installers carry the public key from the repository variable; a different secret would sign updates nobody accepts.
+    derived = base64.b64encode(key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode()
+    if not public_key_b64 or derived != public_key_b64.strip():
+        raise ValueError("The signing key does not match INSTALLER_UPDATE_PUBLIC_KEY: installers built with that key would reject the update.")
     assets = []
     for target, name in UPDATE_TARGETS.items():
         path = folder / name
@@ -104,7 +110,7 @@ def sign_update(folder, version, seed_b64):
             digest = hashlib.file_digest(file, "sha256").hexdigest()
         assets.append({"target": target, "name": name, "sha256": digest})
     manifest = (json.dumps({"version": version, "assets": assets}, indent=2) + "\n").encode()
-    signature = base64.b64encode(Ed25519PrivateKey.from_private_bytes(seed).sign(manifest))
+    signature = base64.b64encode(key.sign(manifest))
     (folder / UPDATE[0]).write_bytes(manifest)
     (folder / UPDATE[1]).write_bytes(signature)
 
@@ -199,7 +205,7 @@ def main():
         seed = os.environ.get("INSTALLER_UPDATE_SEED", "")
         if not seed:
             raise SystemExit("INSTALLER_UPDATE_SEED is not set: a stable release must carry a signed update manifest.")
-        sign_update(args.folder, json.loads(args.plan.read_text())["version"], seed)
+        sign_update(args.folder, json.loads(args.plan.read_text())["version"], seed, os.environ.get("INSTALLER_UPDATE_PUBLIC_KEY", ""))
     elif args.command == "collect":
         collect(args.artifacts, args.output, json.loads(args.plan.read_text()))
     else:

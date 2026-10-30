@@ -301,9 +301,43 @@ jobs:
           name: sbom
           path: sbom/sbom-strahlender-xnu.*
           if-no-files-found: error
-  publish:
+  sign:
+    # Only a stable release signs. The environment "release" holds the signing seed and asks the owner for approval.
     needs: [plan, package, package-windows, verify-universal, sbom]
-    if: needs.plan.outputs.channel != 'artifacts'
+    if: needs.plan.outputs.channel == 'release'
+    runs-on: ubuntu-24.04
+    environment: release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.revision }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Verify the downloads, then sign the update manifest over exactly those files
+        env:
+          INSTALLER_UPDATE_SEED: ${{ secrets.INSTALLER_UPDATE_SEED }}
+          INSTALLER_UPDATE_PUBLIC_KEY: ${{ vars.INSTALLER_UPDATE_PUBLIC_KEY }}
+        run: |
+          python3 -m pip install cryptography
+          PLAN=artifacts/installer-release-plan/installer-release-plan.json
+          python3 installer/scripts/release.py collect --artifacts artifacts --output release-assets --plan "$PLAN"
+          python3 installer/scripts/release.py sign --folder release-assets --plan "$PLAN"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: update-manifest
+          path: |
+            release-assets/installer-update.json
+            release-assets/installer-update.json.sig
+          if-no-files-found: error
+          retention-days: 1
+  publish:
+    needs: [plan, package, package-windows, verify-universal, sbom, sign]
+    # sign is skipped for nightlies; a failed or cancelled job still stops the release
+    if: needs.plan.outputs.channel != 'artifacts' && !failure() && !cancelled()
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -321,14 +355,9 @@ jobs:
         run: |
           python3 installer/scripts/release.py collect --artifacts artifacts --output release-assets \
             --plan artifacts/installer-release-plan/installer-release-plan.json
-      - name: Sign the update manifest (stable releases only)
+      - name: Add the signed update manifest (stable releases)
         if: needs.plan.outputs.channel == 'release'
-        env:
-          INSTALLER_UPDATE_SEED: ${{ secrets.INSTALLER_UPDATE_SEED }}
-        run: |
-          python3 -m pip install cryptography
-          python3 installer/scripts/release.py sign --folder release-assets \
-            --plan artifacts/installer-release-plan/installer-release-plan.json
+        run: cp artifacts/update-manifest/installer-update.json artifacts/update-manifest/installer-update.json.sig release-assets/
       - name: Publish explicitly requested installer release
         env:
           GH_TOKEN: ${{ github.token }}

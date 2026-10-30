@@ -30,12 +30,15 @@ class InstallerReleaseTests(unittest.TestCase):
         import base64
         import json
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
         seed = bytes(range(32))
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             for name in set(release.UPDATE_TARGETS.values()):
                 (folder / name).write_bytes(name.encode())
-            release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode())
+            public = base64.b64encode(Ed25519PrivateKey.from_private_bytes(seed).public_key().public_bytes(
+                Encoding.Raw, PublicFormat.Raw)).decode()
+            release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode(), public)
             manifest = (folder / "installer-update.json").read_bytes()
             Ed25519PrivateKey.from_private_bytes(seed).public_key().verify(
                 base64.b64decode((folder / "installer-update.json.sig").read_bytes()), manifest)
@@ -46,9 +49,15 @@ class InstallerReleaseTests(unittest.TestCase):
                 self.assertEqual(asset["sha256"], hashlib.sha256(asset["name"].encode()).hexdigest())
             (folder / "installer-windows-x86_64.zip").unlink()
             with self.assertRaisesRegex(ValueError, "Missing download for windows-x86_64"):
-                release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode())
+                release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode(), public)
+            (folder / "installer-windows-x86_64.zip").write_bytes(b"w")
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode(), "")
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode(),
+                                    base64.b64encode(bytes(32)).decode())
             with self.assertRaisesRegex(ValueError, "32-byte"):
-                release.sign_update(folder, "0.2.0", base64.b64encode(b"short").decode())
+                release.sign_update(folder, "0.2.0", base64.b64encode(b"short").decode(), public)
 
     def plan(self, channel="artifacts", event="workflow_dispatch", ref="main"):
         return release.plan("0.1.0", event, ref, channel, SHA, "123", "1")
