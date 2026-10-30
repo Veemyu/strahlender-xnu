@@ -1,0 +1,30 @@
+name: Release probe
+run-name: Release probe
+# Temporary: finds out why the token cannot create the installer release (HTTP 403). Creates and deletes a draft.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Draft with a tag-less target SHA (what publish does)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_DEBUG: api
+        run: |
+          echo probe > notes.md
+          gh release create probe-sha-tag --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title probe --notes-file notes.md 2>&1 | grep -i -E "HTTP/|x-accepted|x-oauth|message|release create" | head -20 || true
+      - name: Draft with a branch target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create probe-branch-tag --repo "$GITHUB_REPOSITORY" --target main --draft --title probe --notes-file notes.md 2>&1 | tail -3 || true
+      - name: Clean up
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete probe-sha-tag --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>&1 | tail -1 || true
+          gh release delete probe-branch-tag --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>&1 | tail -1 || true
