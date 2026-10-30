@@ -119,14 +119,13 @@ fn native_candidates() -> Vec<Candidate> {
     let data = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute());
-    let paths = candidates(
+    candidates(
         std::env::consts::OS,
         &home,
         roaming.as_deref(),
         config.as_deref(),
         data.as_deref(),
-    );
-    paths
+    )
 }
 
 pub fn find(language: Language) -> Option<Source> {

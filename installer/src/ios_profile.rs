@@ -103,6 +103,7 @@ pub fn remember(profile: &Profile) -> Result<(), String> {
     result
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn parse(metadata: Value, info: Value) -> Result<Profile, String> {
     let string = |key| {
         metadata

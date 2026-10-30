@@ -10,6 +10,7 @@ pub struct Device {
     pub wifi: bool,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn parse(value: &Value) -> Result<Vec<Device>, String> {
     let entries = value
         .pointer("/result/devices")

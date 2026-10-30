@@ -28,6 +28,7 @@ pub fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn certificate(subject: &str) -> Option<(Team, String)> {
     let mut id = None;
     let mut name = None;
@@ -128,7 +129,7 @@ pub async fn scan() -> Result<Vec<Team>, String> {
             .map_err(|e| e.to_string())?;
         if let Some(mut input) = child.stdin.take() {
             input
-                .write_all(block[start..].as_bytes())
+                .write_all(&block.as_bytes()[start..])
                 .await
                 .map_err(|e| e.to_string())?;
         }

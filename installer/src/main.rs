@@ -1,7 +1,7 @@
 mod app;
 mod backend;
-mod components;
 mod capture;
+mod components;
 mod dependencies;
 mod drop_target;
 #[allow(dead_code)]

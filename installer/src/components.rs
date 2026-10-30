@@ -58,8 +58,10 @@ pub fn catalog(root: &Path) -> Option<PathBuf> {
 
 pub fn installed(root: &Path) -> Option<Meta> {
     let current = fs::read_to_string(root.join("current")).ok()?;
-    serde_json::from_slice(&fs::read(root.join(current.trim()).join("windows-components.json")).ok()?)
-        .ok()
+    serde_json::from_slice(
+        &fs::read(root.join(current.trim()).join("windows-components.json")).ok()?,
+    )
+    .ok()
 }
 
 fn hash_file(path: &Path) -> Result<(String, u64), String> {
@@ -194,7 +196,8 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("bdsp-components-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("bdsp-components-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -279,7 +282,8 @@ mod tests {
     #[test]
     #[ignore = "Needs BDSP_COMPONENTS_DIR with the real windows-components.zip and .json from windows-components.yml"]
     fn the_published_archive_unpacks_and_has_a_catalog() {
-        let source = PathBuf::from(std::env::var("BDSP_COMPONENTS_DIR").expect("BDSP_COMPONENTS_DIR"));
+        let source =
+            PathBuf::from(std::env::var("BDSP_COMPONENTS_DIR").expect("BDSP_COMPONENTS_DIR"));
         let meta: Meta =
             serde_json::from_slice(&fs::read(source.join("windows-components.json")).unwrap())
                 .unwrap();
