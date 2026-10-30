@@ -18,3 +18,5 @@ jobs:
             echo "int v = __has_builtin(__builtin_elementwise_$b);" | clang -x c -E -P - | tail -1
           done
           python3 -m unittest -v scripts.tests.test_ew_compat 2>&1 | tail -20
+          printf '#include "cpu.h"\n#include "simd.h"\nint main(void){return 0;}\n' > full.c
+          clang -std=c17 -D_DEFAULT_SOURCE -O1 -Wno-everything -I scripts/recomp/rt -I scripts/recomp/upstream/runtime full.c -o full -lm && echo "FULL-SIMD-COMPILES"

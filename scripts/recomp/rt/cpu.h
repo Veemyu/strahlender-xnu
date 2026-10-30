@@ -3,9 +3,10 @@
 // and pulls in the original cpu.h via #include_next.
 #pragma once
 // ---- __builtin_elementwise_* for Clang before 16 (Ubuntu 22.04 ships 14) ----
-// Where the compiler has a builtin it is used untouched. Where it is missing, a macro of the same name maps the vector
-// lane by lane onto scalar builtins (the auto-vectoriser turns that back into SIMD where the target allows). The generator
-// and the vendored simd headers keep using the original names; this header sits before them in the include path.
+// Where the compiler has a builtin it is used untouched. Where it is missing, a macro of the same name calls an
+// overloaded inline function (Clang's `overloadable`) that handles scalars and the vector types the runtime and the
+// generated code use lane by lane. The generator and the vendored simd headers keep using the original names.
+#include <stdint.h>
 #ifndef __has_builtin
 #define __has_builtin(x) 0
 #endif
@@ -15,79 +16,90 @@
 #define EW_HAS_(b) __has_builtin(b)
 #endif
 
-#define EW_LANES_(v) (sizeof(v) / sizeof((v)[0]))
-
-// One operand, one result per lane.
-#define EW_MAP1_(a, expr)                                                                         \
-    ({ __typeof__(a) ew_a_ = (a); __typeof__(ew_a_) ew_r_;                                        \
-       for (unsigned ew_i_ = 0; ew_i_ < EW_LANES_(ew_a_); ew_i_++) {                              \
-           __typeof__(ew_a_[0]) x = ew_a_[ew_i_]; ew_r_[ew_i_] = (expr); }                        \
-       ew_r_; })
-#define EW_MAP2_(a, b, expr)                                                                      \
-    ({ __typeof__(a) ew_a_ = (a); __typeof__(ew_a_) ew_b_ = (b); __typeof__(ew_a_) ew_r_;         \
-       for (unsigned ew_i_ = 0; ew_i_ < EW_LANES_(ew_a_); ew_i_++) {                              \
-           __typeof__(ew_a_[0]) x = ew_a_[ew_i_], y = ew_b_[ew_i_]; ew_r_[ew_i_] = (expr); }      \
-       ew_r_; })
-#define EW_MAP3_(a, b, c, expr)                                                                   \
-    ({ __typeof__(a) ew_a_ = (a); __typeof__(ew_a_) ew_b_ = (b), ew_c_ = (c); __typeof__(ew_a_) ew_r_; \
-       for (unsigned ew_i_ = 0; ew_i_ < EW_LANES_(ew_a_); ew_i_++) {                              \
-           __typeof__(ew_a_[0]) x = ew_a_[ew_i_], y = ew_b_[ew_i_], z = ew_c_[ew_i_];             \
-           ew_r_[ew_i_] = (expr); }                                                               \
-       ew_r_; })
-
-// Builtins must be called directly, so the call sits inside each _Generic association.
+#if !EW_HAS_(__builtin_elementwise_abs) || !EW_HAS_(__builtin_elementwise_sqrt) || !EW_HAS_(__builtin_elementwise_fma) || \
+    !EW_HAS_(__builtin_elementwise_rint) || !EW_HAS_(__builtin_elementwise_add_sat) || !EW_HAS_(__builtin_elementwise_max)
+#define EW_OV_ static inline __attribute__((overloadable, unused))
+#define EW_VEC_(T, B) ew_vec_##T##_##B
+#define EW_LANES_(V, T) (sizeof(V) / sizeof(T))
 #define EW_F1_(name, x) _Generic((x), float: __builtin_##name##f(x), default: __builtin_##name(x))
 #define EW_F3_(name, x, y, z) _Generic((x), float: __builtin_##name##f(x, y, z), default: __builtin_##name(x, y, z))
+#define EW_UN_(name, V, T, expr) EW_OV_ V ew_##name(V a) { V r; for (unsigned i = 0; i < EW_LANES_(V, T); i++) { T x = a[i]; r[i] = (expr); } return r; }
+#define EW_BIN_(name, V, T, expr) EW_OV_ V ew_##name(V a, V b) { V r; for (unsigned i = 0; i < EW_LANES_(V, T); i++) { T x = a[i], y = b[i]; r[i] = (expr); } return r; }
+#define EW_TER_(name, V, T, expr) EW_OV_ V ew_##name(V a, V b, V c) { V r; for (unsigned i = 0; i < EW_LANES_(V, T); i++) { T x = a[i], y = b[i], z = c[i]; r[i] = (expr); } return r; }
 
-#if !EW_HAS_(__builtin_elementwise_abs)
-#define __builtin_elementwise_abs(a)                                                              \
-    EW_MAP1_(a, _Generic(x, float: __builtin_fabsf(x), double: __builtin_fabs(x),                 \
-                         default: (__typeof__(x))(x < 0 ? 0ull - (unsigned long long)x : (unsigned long long)x)))
-#endif
-#if !EW_HAS_(__builtin_elementwise_sqrt)
-#define __builtin_elementwise_sqrt(a) EW_MAP1_(a, EW_F1_(sqrt, x))
-#endif
-#if !EW_HAS_(__builtin_elementwise_rint)
-#define __builtin_elementwise_rint(a) EW_MAP1_(a, EW_F1_(rint, x))
-#endif
-#if !EW_HAS_(__builtin_elementwise_ceil)
-#define __builtin_elementwise_ceil(a) EW_MAP1_(a, EW_F1_(ceil, x))
-#endif
-#if !EW_HAS_(__builtin_elementwise_floor)
-#define __builtin_elementwise_floor(a) EW_MAP1_(a, EW_F1_(floor, x))
-#endif
-#if !EW_HAS_(__builtin_elementwise_trunc)
-#define __builtin_elementwise_trunc(a) EW_MAP1_(a, EW_F1_(trunc, x))
-#endif
-#if !EW_HAS_(__builtin_elementwise_round)
-#define __builtin_elementwise_round(a) EW_MAP1_(a, EW_F1_(round, x))
-#endif
-#if !EW_HAS_(__builtin_elementwise_fma)
-#define __builtin_elementwise_fma(a, b, c) EW_MAP3_(a, b, c, EW_F3_(fma, x, y, z))
-#endif
-// A NaN operand loses, like the builtin.
-#if !EW_HAS_(__builtin_elementwise_max)
-#define __builtin_elementwise_max(a, b) EW_MAP2_(a, b, (y != y || x > y) ? x : y)
-#endif
-#if !EW_HAS_(__builtin_elementwise_min)
-#define __builtin_elementwise_min(a, b) EW_MAP2_(a, b, (y != y || x < y) ? x : y)
-#endif
+// Floating point: scalars and vectors; a NaN operand loses in max/min like in the builtin.
+#define EW_FP_(T, B)                                                                                   \
+    typedef T EW_VEC_(T, B) __attribute__((vector_size(B)));                                          \
+    EW_UN_(abs, EW_VEC_(T, B), T, EW_F1_(fabs, x)) EW_UN_(sqrt, EW_VEC_(T, B), T, EW_F1_(sqrt, x))   \
+    EW_UN_(rint, EW_VEC_(T, B), T, EW_F1_(rint, x)) EW_UN_(ceil, EW_VEC_(T, B), T, EW_F1_(ceil, x))  \
+    EW_UN_(floor, EW_VEC_(T, B), T, EW_F1_(floor, x)) EW_UN_(trunc, EW_VEC_(T, B), T, EW_F1_(trunc, x)) \
+    EW_UN_(round, EW_VEC_(T, B), T, EW_F1_(round, x))                                                 \
+    EW_TER_(fma, EW_VEC_(T, B), T, EW_F3_(fma, x, y, z))                                              \
+    EW_BIN_(max, EW_VEC_(T, B), T, (y != y || x > y) ? x : y) EW_BIN_(min, EW_VEC_(T, B), T, (y != y || x < y) ? x : y)
+EW_FP_(float, 16) EW_FP_(float, 8) EW_FP_(double, 16)
+#define EW_FP_SCALAR_(T)                                                                               \
+    EW_OV_ T ew_abs(T x) { return EW_F1_(fabs, x); } EW_OV_ T ew_sqrt(T x) { return EW_F1_(sqrt, x); } \
+    EW_OV_ T ew_rint(T x) { return EW_F1_(rint, x); } EW_OV_ T ew_ceil(T x) { return EW_F1_(ceil, x); } \
+    EW_OV_ T ew_floor(T x) { return EW_F1_(floor, x); } EW_OV_ T ew_trunc(T x) { return EW_F1_(trunc, x); } \
+    EW_OV_ T ew_round(T x) { return EW_F1_(round, x); } EW_OV_ T ew_fma(T x, T y, T z) { return EW_F3_(fma, x, y, z); } \
+    EW_OV_ T ew_max(T x, T y) { return (y != y || x > y) ? x : y; } EW_OV_ T ew_min(T x, T y) { return (y != y || x < y) ? x : y; }
+EW_FP_SCALAR_(float) EW_FP_SCALAR_(double)
 
-// Saturating integer add/sub per lane. The limits come from the element type.
+// Integers: abs, max/min and saturating add/sub. The limits come from the element type.
 #define EW_SIGNED_(x) (((__typeof__(x))-1) < 0)
 #define EW_SMAX_(x) ((__typeof__(x))((1ull << (sizeof(x) * 8 - 1)) - 1))
 #define EW_SMIN_(x) ((__typeof__(x))~EW_SMAX_(x))
 #define EW_UMAX_(x) ((__typeof__(x))~(__typeof__(x))0)
+#define EW_INT_(T, B)                                                                                  \
+    typedef T EW_VEC_(T, B) __attribute__((vector_size(B)));                                          \
+    EW_UN_(abs, EW_VEC_(T, B), T, (T)(x < 0 ? 0ull - (unsigned long long)x : (unsigned long long)x))  \
+    EW_BIN_(max, EW_VEC_(T, B), T, x > y ? x : y) EW_BIN_(min, EW_VEC_(T, B), T, x < y ? x : y)       \
+    EW_BIN_(add_sat, EW_VEC_(T, B), T, ({ T s_; __builtin_add_overflow(x, y, &s_)                     \
+        ? (EW_SIGNED_(x) ? (x < 0 ? EW_SMIN_(x) : EW_SMAX_(x)) : EW_UMAX_(x)) : s_; }))               \
+    EW_BIN_(sub_sat, EW_VEC_(T, B), T, ({ T s_; __builtin_sub_overflow(x, y, &s_)                     \
+        ? (EW_SIGNED_(x) ? (x < 0 ? EW_SMIN_(x) : EW_SMAX_(x)) : (T)0) : s_; }))
+#define EW_INT_SIZES_(T) EW_INT_(T, 16) EW_INT_(T, 8)
+EW_INT_SIZES_(int8_t) EW_INT_SIZES_(uint8_t) EW_INT_SIZES_(int16_t) EW_INT_SIZES_(uint16_t)
+EW_INT_SIZES_(int32_t) EW_INT_SIZES_(uint32_t) EW_INT_SIZES_(int64_t) EW_INT_SIZES_(uint64_t)
+
+#if !EW_HAS_(__builtin_elementwise_abs)
+#define __builtin_elementwise_abs(a) ew_abs(a)
+#endif
+#if !EW_HAS_(__builtin_elementwise_sqrt)
+#define __builtin_elementwise_sqrt(a) ew_sqrt(a)
+#endif
+#if !EW_HAS_(__builtin_elementwise_rint)
+#define __builtin_elementwise_rint(a) ew_rint(a)
+#endif
+#if !EW_HAS_(__builtin_elementwise_ceil)
+#define __builtin_elementwise_ceil(a) ew_ceil(a)
+#endif
+#if !EW_HAS_(__builtin_elementwise_floor)
+#define __builtin_elementwise_floor(a) ew_floor(a)
+#endif
+#if !EW_HAS_(__builtin_elementwise_trunc)
+#define __builtin_elementwise_trunc(a) ew_trunc(a)
+#endif
+#if !EW_HAS_(__builtin_elementwise_round)
+#define __builtin_elementwise_round(a) ew_round(a)
+#endif
+#if !EW_HAS_(__builtin_elementwise_fma)
+#define __builtin_elementwise_fma(a, b, c) ew_fma(a, b, c)
+#endif
+#if !EW_HAS_(__builtin_elementwise_max)
+#define __builtin_elementwise_max(a, b) ew_max(a, b)
+#endif
+#if !EW_HAS_(__builtin_elementwise_min)
+#define __builtin_elementwise_min(a, b) ew_min(a, b)
+#endif
 #if !EW_HAS_(__builtin_elementwise_add_sat)
-#define __builtin_elementwise_add_sat(a, b)                                                       \
-    EW_MAP2_(a, b, ({ __typeof__(x) s_; __builtin_add_overflow(x, y, &s_)                          \
-                      ? (EW_SIGNED_(x) ? (x < 0 ? EW_SMIN_(x) : EW_SMAX_(x)) : EW_UMAX_(x)) : s_; }))
+#define __builtin_elementwise_add_sat(a, b) ew_add_sat(a, b)
 #endif
 #if !EW_HAS_(__builtin_elementwise_sub_sat)
-#define __builtin_elementwise_sub_sat(a, b)                                                       \
-    EW_MAP2_(a, b, ({ __typeof__(x) s_; __builtin_sub_overflow(x, y, &s_)                          \
-                      ? (EW_SIGNED_(x) ? (x < 0 ? EW_SMIN_(x) : EW_SMAX_(x)) : (__typeof__(x))0) : s_; }))
+#define __builtin_elementwise_sub_sat(a, b) ew_sub_sat(a, b)
 #endif
+#endif
+
 // (The block above must come first: the original cpu.h pulls in simd.h and simd_fp.h, which use these builtins.)
 #include_next "cpu.h"
 #if defined(_WIN32) && !defined(__USE_MINGW_SETJMP_NON_SEH)
