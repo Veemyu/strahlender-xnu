@@ -119,6 +119,8 @@ jobs:
           "$CODEGEN_PYTHON" -m unittest scripts.tests.test_native_codegen scripts.tests.test_recomp_mod_codegen
       - name: Package
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           export BDSP_INSTALLER_RUNTIME="$PWD/work/installer-runtime-release/${{ matrix.target }}/runtime"
           if [[ "$RUNNER_OS" == macOS ]]; then

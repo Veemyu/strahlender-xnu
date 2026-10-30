@@ -4,14 +4,17 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 ARCH="$(uname -m)"
 case "$ARCH" in
-  aarch64)
-    TOOL_HASH=a595ea34cd6136c7f595e9dcbb16f3e9725d7610efb9e43b38c3c6e86cafc270
-    RUNTIME_HASH=9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900 ;;
-  x86_64)
-    TOOL_HASH=95cbe7cce9717fce90c484e34052ee7c7f1d7635b33c12525b4776826a7d29b6
-    RUNTIME_HASH=617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46 ;;
+  aarch64|x86_64) ;;
   *) echo 'Unsupported Linux architecture' >&2; exit 2 ;;
 esac
+# The AppImage tools are rolling "continuous" builds, so there is nothing to pin: take the SHA-256 GitHub publishes
+# for the asset right now (HTTPS) and verify the download against it.
+published_digest() {
+  curl -fsSL --retry 3 ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$1/releases/tags/continuous" |
+    python3 -c 'import json,sys; name=sys.argv[1]; print(next(a["digest"].removeprefix("sha256:") for a in json.load(sys.stdin)["assets"] if a["name"]==name))' "$2"
+}
+TOOL_HASH="$(published_digest AppImage/appimagetool "appimagetool-$ARCH.AppImage")"
+RUNTIME_HASH="$(published_digest AppImage/type2-runtime "runtime-$ARCH")"
 PRIVATE_RUNTIME="${BDSP_INSTALLER_RUNTIME:?Set BDSP_INSTALLER_RUNTIME to the verified full runtime}"
 "$PRIVATE_RUNTIME/python/bin/python3" -I -B -c 'import json,sys; from pathlib import Path; assert json.loads((Path(sys.executable).resolve().parents[2]/"runtime.json").read_text())["profile"] == "shaders", "Full shader runtime required"'
 RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME=/build --remap-path-prefix=$ROOT=." cargo build --release --locked --bins --manifest-path "$HERE/Cargo.toml"
