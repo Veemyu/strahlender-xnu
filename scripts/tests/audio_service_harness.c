@@ -1,7 +1,7 @@
 // Synthetic regression cases: no game data, real audio device or guest threads.
 #include <assert.h>
 #include <stdatomic.h>
-#include "../recomp/rt-bdsp/services_audio.c"
+#include "../recomp/runtime/services_audio.c"
 
 uint8_t *g_base;
 pthread_mutex_t g_klock = PTHREAD_MUTEX_INITIALIZER;

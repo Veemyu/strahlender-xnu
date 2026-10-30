@@ -280,7 +280,7 @@ def optimization(source, threshold, hot):
 
 def prepare_vulkan(root, destination):
     root, destination = Path(root), Path(destination)
-    base = root / "scripts/recomp/rt-bdsp/nvn"
+    base = root / "scripts/recomp/runtime/nvn"
     sources = {}
     for source_tree in (base / "src", base / "vulkan/src"):
         if not source_tree.is_dir():
@@ -417,7 +417,7 @@ def compile_runtime(objects, compiler, selected, commands, *, has_subsdk1=False,
     """Compile the Windows runtime: Vulkan renderer and the shared Qt game host."""
     qt_bundle = qt_development(qt, compiler, selected)
     root = Path(root).resolve()
-    runtime = root / "scripts/recomp/rt-bdsp"
+    runtime = root / "scripts/recomp/runtime"
     # Snapshot publication uses the iOS durability contract, not a Windows shim.
     sources = [path for path in sorted(runtime.glob("*.c")) if path.name != "save_snapshot.c"]
     extra = ["-I", str(runtime), f"-DBDSP_HAS_SUBSDK1={int(has_subsdk1)}"]
@@ -740,7 +740,7 @@ def main(argv=None):
             generate(generator, args.work / "exefs", work / "gen", commands)
         elif args.stage == "images":
             images(generator, args.work / "exefs", work / "images",
-                   HERE / "rt-bdsp/hle_nvn.txt", commands)
+                   HERE / "runtime/hle_nvn.txt", commands)
         elif args.stage == "compile":
             compile_sources(work / "gen", work / "objects", args.cc or "", selected, commands, args.jobs,
                             source_paths=generated_inventory(work / "gen"))

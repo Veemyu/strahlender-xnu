@@ -4,7 +4,7 @@
 # compiles everything for iPhoneOS arm64 to work/recomp/obj32 (target iOS, afterwards platformless via vtool for the Mac test).
 # MODEL=a selects memory model A-low: the same compact layout shifted to the fixed host address ORG (default 0x800000000, free on iPad and iPhone), guest address ==
 # host address, NEON inline assembler (--simd asm); folders gen4i, img4i, obj4i (the runtime is built with -DBDSP_COMPACT_BASE=ORG).
-# Everything under work/ (gitignored). The bases must match the compact layout in scripts/recomp/rt-bdsp/bdsp.h.
+# Everything under work/ (gitignored). The bases must match the compact layout in scripts/recomp/runtime/bdsp.h.
 # Usage: [MODEL=a] gen32.sh gen | img | build [JOBS] | hot | all [JOBS]   (hot: only the -O2 files of scripts/recomp/hot_o2.txt)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
@@ -22,7 +22,7 @@ modules=(main sdk subsdk0)
 HLE_BASE=$(printf '0x%x' $(( ORG + 0x0A000000 )))
 # Toolchain stamp of the guest objects: SDKs, compiler, compile script and headers of the runtime. If one of them changes, everything is recompiled.
 obj_stamp() {
-  . scripts/recomp/rt-bdsp/nvn/hash.inc.sh
+  . scripts/recomp/runtime/nvn/hash.inc.sh
   { echo "model $MODEL $ORG"; xcrun --sdk iphoneos --show-sdk-version; xcrun --sdk iphoneos --show-sdk-path; xcode-select -p; clang --version; sha256 scripts/recomp/ios/compile_chunk_ios.sh
     find $([ "$MODEL" = a ] || echo scripts/recomp/rt32) scripts/recomp/rt scripts/recomp/upstream/runtime -name '*.h' | LC_ALL=C sort | while IFS= read -r h; do sha256 "$h"; done; } | sha256 | cut -d' ' -f1
 }
@@ -53,7 +53,7 @@ do_img() {
       else
         "$CODEGEN" image "$EXEFS_DIR/$m" "$m" --base "$(base_of $m)" --hle-base $HLE_BASE --out "$IMG" \
           "${links[@]}" \
-          --interpose-from "$IMG/main.syms.json" --hle-list scripts/recomp/rt-bdsp/hle_nvn.txt
+          --interpose-from "$IMG/main.syms.json" --hle-list scripts/recomp/runtime/hle_nvn.txt
       fi
     done
     if [ "$pass" = 1 ]; then rm -f "$IMG/hle.txt"; fi

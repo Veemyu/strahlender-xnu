@@ -12,7 +12,7 @@ case "${1:-host}" in
     /usr/bin/clang -O1 -g -fobjc-arc -Wno-deprecated-declarations -DBDSP_SAVE_FAULT_TESTS \
       -fsanitize=address,undefined -fno-omit-frame-pointer -framework Foundation \
       scripts/recomp/ios/app/test_data_store.m scripts/recomp/ios/app/data_library.m \
-      scripts/recomp/ios/app/save_archive.m scripts/recomp/rt-bdsp/save_snapshot.c -o "$BUILD/tests"
+      scripts/recomp/ios/app/save_archive.m scripts/recomp/runtime/save_snapshot.c -o "$BUILD/tests"
     "$BUILD/tests" ;;
   device)
     : "${2:?Usage: run_ios_data_tests.sh device DEVICE_ID (TEAM_ID in private environment)}"
@@ -36,7 +36,7 @@ case "${1:-host}" in
  AA0000000000000000000021 = { isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "../../../scripts/tests/ios_data_test_app.m"; sourceTree = SOURCE_ROOT; };
  AA0000000000000000000022 = { isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "../../../scripts/recomp/ios/app/data_library.m"; sourceTree = SOURCE_ROOT; };
  AA0000000000000000000023 = { isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "../../../scripts/recomp/ios/app/save_archive.m"; sourceTree = SOURCE_ROOT; };
- AA0000000000000000000024 = { isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "../../../scripts/recomp/rt-bdsp/save_snapshot.c"; sourceTree = SOURCE_ROOT; };
+ AA0000000000000000000024 = { isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "../../../scripts/recomp/runtime/save_snapshot.c"; sourceTree = SOURCE_ROOT; };
  AA0000000000000000000031 = { isa = PBXBuildFile; fileRef = AA0000000000000000000021; };
  AA0000000000000000000032 = { isa = PBXBuildFile; fileRef = AA0000000000000000000022; };
  AA0000000000000000000033 = { isa = PBXBuildFile; fileRef = AA0000000000000000000023; };

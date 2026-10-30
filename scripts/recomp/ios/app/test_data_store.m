@@ -4,7 +4,7 @@
 #endif
 #import "data_library.h"
 #import "save_archive.h"
-#include "../../rt-bdsp/save_snapshot.h"
+#include "../../runtime/save_snapshot.h"
 #include <assert.h>
 #include <sys/stat.h>
 #include <unistd.h>

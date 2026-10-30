@@ -3,7 +3,7 @@
 
 linux_deps_fail() {
   echo "Missing Linux development dependency: $*" >&2
-  echo "See docs/BUILD.md, section 6, and scripts/recomp/rt-bdsp/app/linux/deps.txt." >&2
+  echo "See docs/BUILD.md, section 6, and scripts/recomp/runtime/app/linux/deps.txt." >&2
   return 3
 }
 

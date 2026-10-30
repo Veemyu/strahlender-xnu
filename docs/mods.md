@@ -64,9 +64,9 @@ A `SaveData.bin` dropped into `Documents/` on iPhone/iPad is imported at the nex
 
 ## How it works
 
-`scripts/recomp/rt-bdsp/mods.c` finds mods and creates the save folder. `services_fs.c` builds the virtual RomFS from the game's folder and
+`scripts/recomp/runtime/mods.c` finds mods and creates the save folder. `services_fs.c` builds the virtual RomFS from the game's folder and
 merges the mod's `romfs/` over it before the layout, so the game's own file lookups see the merged tree; the movie layer
-(`nvn/movie_glue.c`) opens files by host path and goes through `fs_resolve_rom_path`. Tests: `scripts/recomp/rt-bdsp/test/run_mods_test.sh`
+(`nvn/movie_glue.c`) opens files by host path and goes through `fs_resolve_rom_path`. Tests: `scripts/recomp/runtime/test/run_mods_test.sh`
 (synthetic folders, no game data).
 
 ## Code mods

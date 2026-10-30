@@ -83,10 +83,10 @@ the answer is automatic:
 
 ## Tests
 
-- `scripts/recomp/rt-bdsp/test/run_lyt_test.sh`: readers for Yaz0, SARC, BFLYT, BFLAN, BNTX (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
-- `scripts/recomp/rt-bdsp/test/run_swkbd_ui_test.sh`: keyboard logic and a software rendering to a PPM.
-- `scripts/recomp/rt-bdsp/test/run_swkbd_text_test.sh`: glyph atlas text (measure, placement, atlas reuse and clearing; with `BDSP_FIRMWARE_DATA`, the firmware fonts).
-- `scripts/recomp/rt-bdsp/test/run_swkbd_snd_test.sh`: reader of the sound archive (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
+- `scripts/recomp/runtime/test/run_lyt_test.sh`: readers for Yaz0, SARC, BFLYT, BFLAN, BNTX (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
+- `scripts/recomp/runtime/test/run_swkbd_ui_test.sh`: keyboard logic and a software rendering to a PPM.
+- `scripts/recomp/runtime/test/run_swkbd_text_test.sh`: glyph atlas text (measure, placement, atlas reuse and clearing; with `BDSP_FIRMWARE_DATA`, the firmware fonts).
+- `scripts/recomp/runtime/test/run_swkbd_snd_test.sh`: reader of the sound archive (synthetic part always; firmware part with `BDSP_FIRMWARE_DATA`).
 
 ## Controllers (game input)
 
@@ -101,7 +101,7 @@ single-player game). The keyboard stays available next to the pad on every platf
   connected.
 - **Linux:** SDL3's gamepad subsystem in its own thread (`pad_sdl.c`), independent of the window and of the UI
   toolkit (Qt or SDL). Nintendo pads need nothing on a desktop with the kernel driver `hid-nintendo`. If a Nintendo or Sony pad is connected
-  but cannot be opened, the log says so once; `scripts/recomp/rt-bdsp/app/linux/udev/70-bdsp-controllers.rules` grants the logged-in user access
+  but cannot be opened, the log says so once; `scripts/recomp/runtime/app/linux/udev/70-bdsp-controllers.rules` grants the logged-in user access
   (commands are in the file, root needed once).
 - **Buttons:** A, B, X, Y by position; L/R; ZL/ZR as buttons (the game needs no analog trigger); both sticks and their clicks
   (Apple's dead zone is 12%; the SDL backend uses 1300/32767, approximately 4%, scaled out before the game's own dead zone);

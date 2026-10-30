@@ -1,0 +1,78 @@
+// Synthetic test of the exclusive-pair helpers (rt/cpu.h: ldxp64/stxp64/ldxp32/stxp32) without game code:
+// (1) single-thread semantics (success 0, failure 1 after a foreign write), (2) 128-bit counter with an LL/SC loop from
+// 4 threads, (3) 32-bit pair. Compile and run: scripts/recomp/runtime/test/run_excl_test.sh
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cpu.h"
+
+void rt_dispatch(Cpu *c) { (void)c; }
+void rt_svc(Cpu *c, uint32_t imm, uint64_t pc) { (void)c; (void)imm; (void)pc; }
+void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) { (void)c; (void)imm; (void)pc; abort(); }
+void rt_udf(Cpu *c, uint64_t pc) { (void)c; (void)pc; abort(); }
+uint64_t rt_ticks(void) { return 0; }
+void rt_nle_enter(Cpu *c) { (void)c; abort(); }
+void rt_nle_fatal(Cpu *c) { (void)c; abort(); }
+volatile int g_fnprof;
+void fnprof_hit(uint64_t a, uint64_t b, uint64_t c) { (void)a; (void)b; (void)c; }
+
+static int fails;
+#define CHECK(x) do { if (!(x)) { printf("ERROR line %d: %s\n", __LINE__, #x); fails++; } } while (0)
+
+typedef struct { uint64_t lo, hi; } Pair __attribute__((aligned(16)));
+static Pair counter __attribute__((aligned(16)));
+enum { THREADS = 4, ITER = 50000 };
+
+static void *worker(void *arg) {
+    Cpu *c = aligned_alloc(16, sizeof(Cpu));
+    memset(c, 0, sizeof *c);
+    (void)arg;
+    for (int i = 0; i < ITER; i++) {
+        for (;;) {  // like the loop in the game: ldxp; add (with carry); stxp; cbnz
+            uint64_t lo, hi, a = (uint64_t)(uintptr_t)&counter;
+            ldxp64(c, a, GPTR(a), &lo, &hi);
+            uint64_t nlo = lo + 0xFFFFFFFFull, nhi = hi + (nlo < lo);
+            if (!stxp64(c, a, GPTR(a), nlo, nhi)) break;
+        }
+    }
+    free(c);
+    return NULL;
+}
+
+int main(void) {
+    Cpu *c = aligned_alloc(16, sizeof(Cpu));
+    memset(c, 0, sizeof *c);
+    Pair p __attribute__((aligned(16))) = {0x1111, 0x2222};
+    uint64_t a = (uint64_t)(uintptr_t)&p, lo, hi;
+    ldxp64(c, a, GPTR(a), &lo, &hi);
+    CHECK(lo == 0x1111 && hi == 0x2222);
+    CHECK(stxp64(c, a, GPTR(a), 7, 8) == 0);
+    CHECK(p.lo == 7 && p.hi == 8);
+    CHECK(stxp64(c, a, GPTR(a), 9, 9) == 1);  // the monitor is used up
+    CHECK(p.lo == 7 && p.hi == 8);
+    ldxp64(c, a, GPTR(a), &lo, &hi);
+    p.hi = 99;  // foreign write between ldxp and stxp
+    CHECK(stxp64(c, a, GPTR(a), 1, 2) == 1);
+    CHECK(p.lo == 7 && p.hi == 99);
+    // value unchanged, but different address: stxp must fail
+    ldxp64(c, a, GPTR(a), &lo, &hi);
+    CHECK(stxp64(c, a + 16, GPTR(a + 16), 1, 2) == 1);
+
+    uint32_t q[2] __attribute__((aligned(8))) = {5, 6};
+    uint64_t qa = (uint64_t)(uintptr_t)q;
+    ldxp32(c, qa, GPTR(qa), &lo, &hi);
+    CHECK(lo == 5 && hi == 6);
+    CHECK(stxp32(c, qa, GPTR(qa), 0xAAAAAAAAull, 0xBBBBBBBBull) == 0);
+    CHECK(q[0] == 0xAAAAAAAAu && q[1] == 0xBBBBBBBBu);
+
+    pthread_t t[THREADS];
+    for (int i = 0; i < THREADS; i++) pthread_create(&t[i], NULL, worker, NULL);
+    for (int i = 0; i < THREADS; i++) pthread_join(t[i], NULL);
+    unsigned __int128 total = ((unsigned __int128)counter.hi << 64) | counter.lo;
+    unsigned __int128 expect = (unsigned __int128)THREADS * ITER * 0xFFFFFFFFull;
+    CHECK(total == expect);
+    printf(fails ? "Exclusive pairs: %d errors\n" : "Exclusive pairs: passed (4 threads x %d count steps, sum matches)\n", fails ? fails : ITER);
+    return fails != 0;
+}

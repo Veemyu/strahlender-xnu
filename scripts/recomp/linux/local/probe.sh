@@ -7,7 +7,7 @@
 #   gc        stopping a guest thread at any point (Linux: signal instead of Mach)   (run_gc_proof.sh)
 #   bench     micro benchmarks recompiled against native                (run_bench.sh)
 #   boot      boot probe: main+sdk+subsdk0 up to the first blocker      (run_boot_probe.sh; needs compile.sh)
-#   bdsp      build and start the Gate-1 runtime scripts/recomp/rt-bdsp (ap-recomp-3) under Linux; ends at the RomFS (not available on Linux)
+#   bdsp      build and start the Gate-1 runtime scripts/recomp/runtime (ap-recomp-3) under Linux; ends at the RomFS (not available on Linux)
 # Everything under work/recomp/probe/. Nothing is played back, no graphics.
 source "$(dirname "$0")/common.sh"
 T=scripts/recomp/test
@@ -144,9 +144,9 @@ probe_boot() {
   tm "$S/boot_probe" "$S" "$(START_ADDR)"
 }
 
-probe_bdsp() {   # Gate-1 runtime (scripts/recomp/rt-bdsp), Mach API via scripts/recomp/linux/compat
-  local RTD=scripts/recomp/rt-bdsp OBJ=$W/obj4-c O=$W/rt-bdsp-x86
-  [ -d "$RTD" ] || die "scripts/recomp/rt-bdsp is missing."
+probe_bdsp() {   # Gate-1 runtime (scripts/recomp/runtime), Mach API via scripts/recomp/linux/compat
+  local RTD=scripts/recomp/runtime OBJ=$W/obj4-c O=$W/runtime-x86
+  [ -d "$RTD" ] || die "scripts/recomp/runtime is missing."
   ls "$OBJ"/*.o > /dev/null 2>&1 || die "No objects in $OBJ (run build_all.sh first)."
   mkdir -p "$O"
   export O CF2="-O1 -g -w -fPIC $CPU_FLAGS -Wno-error=implicit-function-declaration -I scripts/recomp/linux/compat -I scripts/recomp/rt -I $LAS/runtime -I $RTD"

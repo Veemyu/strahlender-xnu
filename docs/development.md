@@ -33,8 +33,8 @@ macOS tools are BSD variants (no GNU `ls --time-style` and similar); Xcode is se
 | Names for guest functions | `python3 -I scripts/recomp/il2sym.py` writes `work/recomp/il2sym.tsv`; `BDSP_IL2SYM=work/recomp/il2sym.tsv` logs each game method on first call; `scripts/recomp/symres.py` annotates crash reports. Engine code has no names |
 | Performance and rendering | counters and switches in [rendering.md](rendering.md) (`BDSP_XW_LOG`, `BDSP_PASS_TIMES`, flush causes in the `[metal]` line) |
 | Metal validation | `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1`, group the messages by text; slows the game to 20–30 fps, so never measure with it |
-| Run with a mod | `BDSP_MODS_DIR=<folder> BDSP_MOD=<name>` (or `--mod <name>`); the mod's save lives in `<BDSP_SAVE>/mods/<name>`; see [mods.md](mods.md). Test: `scripts/recomp/rt-bdsp/test/run_mods_test.sh` |
-| Save into the runtime | `scripts/recomp/rt-bdsp/install_save.sh` (sources `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`) |
+| Run with a mod | `BDSP_MODS_DIR=<folder> BDSP_MOD=<name>` (or `--mod <name>`); the mod's save lives in `<BDSP_SAVE>/mods/<name>`; see [mods.md](mods.md). Test: `scripts/recomp/runtime/test/run_mods_test.sh` |
+| Save into the runtime | `scripts/recomp/runtime/install_save.sh` (sources `BDSP_SAVE_SRC`, optional `BDSP_SAVE_EXTRA`) |
 | iPad | `scripts/recomp/ios/deploy_ios.sh build\|install\|run [SEC]\|data\|save\|shots\|files` ([recomp-ios.md](recomp-ios.md)); save: `scripts/ios_push_save.sh [--source FILE] [--reimport] [--dry-run]` |
 | Linux | scripts in `scripts/recomp/linux/local/` ([recomp-linux.md](recomp-linux.md)) |
 | QA scenarios | `scripts/recomp/qa/qa_run.sh <scenario>\|--list\|--report <dir>` ([recomp-qa.md](recomp-qa.md)) |

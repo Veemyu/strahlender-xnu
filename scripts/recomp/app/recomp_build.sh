@@ -37,7 +37,7 @@ case "$JOBS" in ''|*[!0-9]*) die 2 "--jobs needs a number >= 1" ;; esac
 [ "$JOBS" -ge 1 ] || die 2 "--jobs needs a number >= 1"
 case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
 
-GEN="$R/gen4" OBJ="$R/obj4" IMG="$R/img_app" RTO="$R/rt-bdsp-app" NVNRT="$R/rt-bdsp" NVNSRC="$R/nvn-src" BIN="$R/bdsp_app"
+GEN="$R/gen4" OBJ="$R/obj4" IMG="$R/img_app" RTO="$R/runtime-app" NVNRT="$R/runtime" NVNSRC="$R/nvn-src" BIN="$R/bdsp_app"
 O0_BYTES=$((O0_KB * 1000))
 # The mod build uses an isolated ExeFS staging directory; the base RomFS stays shared.
 [ -s "$EXEFS_DIR/main" ] || die 10 "$EXEFS_DIR/main missing: run the extract stage first"
@@ -111,19 +111,19 @@ fi
 # ---------- 3 Module images ----------
 log "3/6 module images (relocations, imports, HLE slots)"
 if [ "$DRY" -eq 1 ]; then
-  printf '    [dry-run] module images: env IMG=%q HLE_LIST=hle_nvn.txt scripts/recomp/rt-bdsp/mkimages.sh\n' "$IMG"
+  printf '    [dry-run] module images: env IMG=%q HLE_LIST=hle_nvn.txt scripts/recomp/runtime/mkimages.sh\n' "$IMG"
 else
-  IMG="$IMG" HLE_LIST="$ROOT/scripts/recomp/rt-bdsp/hle_nvn.txt" "$ROOT/scripts/recomp/rt-bdsp/mkimages.sh" > "$WORK/logs/recomp-images.log" 2>&1 \
+  IMG="$IMG" HLE_LIST="$ROOT/scripts/recomp/runtime/hle_nvn.txt" "$ROOT/scripts/recomp/runtime/mkimages.sh" > "$WORK/logs/recomp-images.log" 2>&1 \
     || { tail -n 10 "$WORK/logs/recomp-images.log" >&2; die 4 "mkimages.sh failed (log: $WORK/logs/recomp-images.log)"; }
 fi
 
 # ---------- 4 Runtime and NVN/Metal ----------
 log "4/6 building runtime and NVN/Metal, linking with libgame into bdsp_app"
 if [ "$DRY" -eq 1 ]; then
-  printf '    [dry-run] runtime: env BDSP_APP=1 OBJ=%q RT=%q NVN_RT=%q NVN_SRC=%q OUT=%q scripts/recomp/rt-bdsp/build.sh\n' "$OBJ" "$RTO" "$NVNRT" "$NVNSRC" "$BIN"
+  printf '    [dry-run] runtime: env BDSP_APP=1 OBJ=%q RT=%q NVN_RT=%q NVN_SRC=%q OUT=%q scripts/recomp/runtime/build.sh\n' "$OBJ" "$RTO" "$NVNRT" "$NVNSRC" "$BIN"
 else
   mkdir -p "$RTO" "$NVNRT"
-  BDSP_APP=1 OBJ="$OBJ" RT="$RTO" NVN_RT="$NVNRT" NVN_SRC="$NVNSRC" OUT="$BIN" "$ROOT/scripts/recomp/rt-bdsp/build.sh" > "$WORK/logs/recomp-runtime.log" 2>&1 \
+  BDSP_APP=1 OBJ="$OBJ" RT="$RTO" NVN_RT="$NVNRT" NVN_SRC="$NVNSRC" OUT="$BIN" "$ROOT/scripts/recomp/runtime/build.sh" > "$WORK/logs/recomp-runtime.log" 2>&1 \
     || { tail -n 20 "$WORK/logs/recomp-runtime.log" >&2; die 4 "Runtime build failed (log: $WORK/logs/recomp-runtime.log). Prerequisite: brew install sdl3 ffmpeg pkg-config llvm; Xcode Command Line Tools"; }
   tail -n 1 "$WORK/logs/recomp-runtime.log" | sed 's/^/    /'
 fi

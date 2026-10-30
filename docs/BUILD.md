@@ -318,7 +318,7 @@ For headless renderer checks use `bash scripts/recomp/linux/local/vk_build.sh`,
 then `bash scripts/recomp/linux/local/vk_run.sh --headless --timeout 40 --screenshot-after 300`.
 Captures are written to `work/recomp/shots/`; the run prints its log to the terminal. The runtime reads its
 module images from `work/recomp/img_gfx` (`BDSP_IMG` changes the folder; `vk_qt.sh` uses the same folder). Create them
-once, with the inputs in place: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh`.
+once, with the inputs in place: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/runtime/hle_nvn.txt bash scripts/recomp/runtime/mkimages.sh`.
 The `HLE_LIST` binding matches the macOS app build (`scripts/recomp/app/recomp_build.sh`).
 No display is required for headless rendering. Generated code/data remain under work/.
 
@@ -425,15 +425,15 @@ The Unity-era stages `il2cpp`, `masterdata`, `video`, `audio` and `shaders` were
 2. **Compile:** C → objects in `work/recomp/obj4`. The default number of parallel Clang processes is based on available CPUs and total RAM (2 GiB system reserve, about 1.5 GiB per compiler); `--recomp-jobs N` overrides it. Functions above `--recomp-o0-kb` use `-O0`.
    Marker `recomp-obj`.
 3. **Module images:** `mkimages.sh` with `hle_nvn.txt` → `work/recomp/img_app`.
-4. **Runtime:** `rt-bdsp/build.sh` with `BDSP_APP=1` → `work/recomp/bdsp_app`.
+4. **Runtime:** `runtime/build.sh` with `BDSP_APP=1` → `work/recomp/bdsp_app`.
 5. **App:** bundle, `Info.plist`, icon, libraries, ad hoc signature.
 6. **Data:** APFS clone of `work/romfs` into Application Support.
 
 ### 7.2 The NVN stamp (`prepare.sh`)
 
-`scripts/recomp/rt-bdsp/nvn/prepare.sh` prepares the Metal copy of the NVN layer in `work/recomp/nvn-src`.
+`scripts/recomp/runtime/nvn/prepare.sh` prepares the Metal copy of the NVN layer in `work/recomp/nvn-src`.
 
-- The stamp is a SHA-256 over `scripts/recomp/rt-bdsp/nvn/src` (all files, sorted), `shader_translator/translate.c`,
+- The stamp is a SHA-256 over `scripts/recomp/runtime/nvn/src` (all files, sorted), `shader_translator/translate.c`,
   `shader_translator/shader.h`, and `prepare.sh` itself. The hash is written to `work/recomp/nvn-src/.stamp`.
 - The script copies the sources only when the stamp differs. It does not patch them.
 - `prepare.sh --check` copies nothing and exits 0 if the stamp matches, 1 if not.
@@ -442,7 +442,7 @@ The Unity-era stages `il2cpp`, `masterdata`, `video`, `audio` and `shaders` were
 
 ### 7.3 Compiler flags (`flags.inc.sh`)
 
-`scripts/recomp/rt-bdsp/nvn/flags.inc.sh` defines the flags shared by the NVN builds:
+`scripts/recomp/runtime/nvn/flags.inc.sh` defines the flags shared by the NVN builds:
 `BDSP_OPT="-O1 -g"`, `BDSP_NOWARN="-w"`, `BDSP_WARN_GLUE="-Wall -Wextra -Wno-unused-parameter"`.
 The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source it. Platform defines stay in each script.
 
@@ -450,7 +450,7 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 
 | Symptom | Cause and fix |
 |---|---|
-| `NVN stamp does not match` (from `prepare.sh --check`) | The copy in `work/recomp/nvn-src` is out of date. Run `scripts/recomp/rt-bdsp/nvn/prepare.sh`. Normal builds do this automatically. |
+| `NVN stamp does not match` (from `prepare.sh --check`) | The copy in `work/recomp/nvn-src` is out of date. Run `scripts/recomp/runtime/nvn/prepare.sh`. Normal builds do this automatically. |
 | Build uses old NVN code | `NVN_KEEP=1` is set, so `prepare.sh` was skipped. Unset it or run `prepare.sh`. |
 | `marker matches` … `skipped` / stage skipped | Inputs did not change. Use `--force` to rebuild. |
 | `work/exefs/main missing` (exit 10) | Run stage `extract` first. |

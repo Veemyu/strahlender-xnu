@@ -1,5 +1,5 @@
 // Synthetic integration test of the actual Qt icon menu; generated files belong under work/.
-#include "../recomp/rt-bdsp/app/linux/bdsp_icons.h"
+#include "../recomp/runtime/app/linux/bdsp_icons.h"
 #include <QImage>
 #include <QJsonDocument>
 #include <cassert>

@@ -26,7 +26,7 @@ Xcode 27.1 (iOS 27.1 SDK) builds the iPad app and the iPhone compile target
 
 Mac reference runs before this date used module images without HLE bindings
 (`work/recomp/img`); their crashes were not code regressions. Regenerate images
-with `HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt`. Details: section 4.5 of the
+with `HLE_LIST=scripts/recomp/runtime/hle_nvn.txt`. Details: section 4.5 of the
 German document.
 
 PCM16 output through Audio Queue Services and AVAudioSession is implemented.
@@ -133,7 +133,7 @@ the touch overlay scales with the screen and the safe area. `DEVICE_NAME=<part o
   ASTC 4x4, BC4 and BC5 into R8/RG8 texels; BC6H is not converted (not seen in the game). In the field the game holds only 34.6 MiB of BC textures (BC3 25.2,
   BC1 5.7, BC7 2.5, BC4/BC5 1.2; ASTC 6x6 18.7 MiB runs natively; measured with `BDSP_TEX_INVENTORY=1`), so the conversion costs about 6 MiB and, on an M1 Pro,
   0.6 µs per BC1 block and 1 to 1.4 µs per BC3/BC7 block. `BDSP_TEST_NO_BC=1` forces the path on any GPU (iPad: same picture as with BC).
-  `scripts/recomp/rt-bdsp/test/run_bctc_test.sh` checks the decoders and the written ASTC blocks against Metal's own decoders.
+  `scripts/recomp/runtime/test/run_bctc_test.sh` checks the decoders and the written ASTC blocks against Metal's own decoders.
 - The next limit on the phone is memory: with the save in the field the footprint reached 1.9 GiB while loading and iOS ended the app (signal 9) after 28 s.
   Measured with `BDSP_MEM_REPORT=1`: the title screen sits at about 1.3 GiB; entering the game adds about 300 MiB of guest memory within a second (1.05 to
   1.43 GiB), GPU resources are about 340 MiB, and the app is killed at roughly 1.8 to 2.0 GiB. The shader source text (330 MiB of malloc) is freed after compiling now,
@@ -256,7 +256,7 @@ alias-region values for model B. The model-B runtime header also defined
 command buffers remained untouched. Every rewrite rule had to match or the
 script aborted. It separately rewrote `movie_glue.c` as `movie_glue32.c`,
 placing host pointers read by the guest into guest memory through `H2G` and
-`gstr`. The checked-in `scripts/recomp/rt-bdsp/nvn/` sources stayed unchanged
+`gstr`. The checked-in `scripts/recomp/runtime/nvn/` sources stayed unchanged
 for model A. `build_rt32.sh mac` made the model-B runtime and NVN (Metal, SDL3,
 FFmpeg) at `work/recomp/bdsp_boot32`; `build_rt32.sh ios` made the iPhoneOS
 `libbdsp_rt.a` without SDL, since the app supplied the window and input. The

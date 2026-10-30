@@ -2,7 +2,7 @@
 
 # strahlender-xnu
 
-Statische Rekompilation des ARM64-Codes von Pokémon Brilliant Diamond (BDSP) für macOS und iPadOS, mit einem Vulkan-Weg für Linux (in Arbeit). Die Laufzeit (Kernel-SVCs, IPC-Dienste, Dateisystem, Grafik über Metal bzw. Vulkan) liegt in `scripts/recomp/rt-bdsp/`; sie enthält Teile aus LASRecomp (siehe unten).
+Statische Rekompilation des ARM64-Codes von Pokémon Brilliant Diamond (BDSP) für macOS und iPadOS, mit einem Vulkan-Weg für Linux (in Arbeit). Die Laufzeit (Kernel-SVCs, IPC-Dienste, Dateisystem, Grafik über Metal bzw. Vulkan) liegt in `scripts/recomp/runtime/`; sie enthält Teile aus LASRecomp (siehe unten).
 
 Das Repository enthält **keine Spieldaten**, keine Schlüssel, keine Speicherstände und keinen erzeugten Code. Zum Bauen braucht man einen eigenen Dump des Spiels. Pokémon ist eine Marke von Nintendo, Game Freak und Creatures; dieses Projekt steht mit keiner dieser Firmen in Verbindung.
 
@@ -27,9 +27,9 @@ Der Weg über das Original-Unity-Projekt und die Rekreation in modernem Unity wu
 Dieses Projekt übernimmt und verändert Teile von **LASRecomp** (https://github.com/peiikai/LASRecomp, Commit `09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5`), Copyright (c) 2026 Peiikai, MIT-Lizenz. Betroffen sind:
 
 - `shader_translator/`: Maxwell-zu-MSL/GLSL-Übersetzer, aus dem Original abgeleitet und verändert (`shader_translator/NOTICE.md`, Lizenz `shader_translator/LICENSE-LASRecomp`).
-- `scripts/recomp/rt-bdsp/`: Laufzeit im Entwurf des Originals, enthält Teile davon wörtlich (`scripts/recomp/rt-bdsp/NOTICE.md`, Lizenz `scripts/recomp/rt-bdsp/LICENSE-LASRecomp`).
+- `scripts/recomp/runtime/`: Laufzeit im Entwurf des Originals, enthält Teile davon wörtlich (`scripts/recomp/runtime/NOTICE.md`, Lizenz `scripts/recomp/runtime/LICENSE-LASRecomp`).
 - Header `cpu.h`, `simd.h`, `simd_fp.h`: unverändert in `scripts/recomp/upstream/runtime/` (Lizenz `scripts/recomp/upstream/LICENSE`).
-- NVN-Grafikschicht (Metal und Vulkan): geändert gegenüber LASRecomp, Quellen unter `scripts/recomp/rt-bdsp/nvn/src/`; Original zum Vergleich in `scripts/recomp/upstream/runtime/`.
+- NVN-Grafikschicht (Metal und Vulkan): geändert gegenüber LASRecomp, Quellen unter `scripts/recomp/runtime/nvn/src/`; Original zum Vergleich in `scripts/recomp/upstream/runtime/`.
 
 Vollständige Liste, Drittkomponenten und Nicht-Übernommenes: `THIRD_PARTY_NOTICES.md`.
 
@@ -37,4 +37,4 @@ Der Nutzer dieses Repositorys hat die Übernahme und Weiterentwicklung des MIT-l
 
 ## Lizenz des eigenen Codes
 
-Der eigene Code dieses Repositorys steht unter der MIT-Lizenz (`LICENSE`, Copyright (c) 2026 Veemyu). Ausgenommen sind die Fremdteile oben: Sie behalten ihre eigene Lizenz (`scripts/recomp/rt-bdsp/LICENSE-LASRecomp`, `scripts/recomp/upstream/LICENSE`, `shader_translator/LICENSE-LASRecomp`). Spieldaten, Keys und Dumps gehören nicht zum Repository und fallen nicht unter diese Lizenz.
+Der eigene Code dieses Repositorys steht unter der MIT-Lizenz (`LICENSE`, Copyright (c) 2026 Veemyu). Ausgenommen sind die Fremdteile oben: Sie behalten ihre eigene Lizenz (`scripts/recomp/runtime/LICENSE-LASRecomp`, `scripts/recomp/upstream/LICENSE`, `shader_translator/LICENSE-LASRecomp`). Spieldaten, Keys und Dumps gehören nicht zum Repository und fallen nicht unter diese Lizenz.

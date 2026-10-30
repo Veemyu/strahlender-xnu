@@ -93,6 +93,6 @@ Shining Pearl (`010018E011D92000`) was not examined.
 
 **The app:** the macOS app keeps its save under `~/Library/Application Support/dev.local.xnubdsp`; development runs use
 `work/recomp/save/save_1`. The app imports a save with Cmd+I, drag and drop, or `--import-save`; all three validate it first and back up the previous one.
-`scripts/recomp/rt-bdsp/install_save.sh` copies a Ryujinx save into the development folder (previous version kept in a
+`scripts/recomp/runtime/install_save.sh` copies a Ryujinx save into the development folder (previous version kept in a
 `backup-<time>` folder; it logs sizes and hashes only). On the iPad a `SaveData.bin` dropped into `Documents/` is imported on the
 next "Continue" (`scripts/ios_push_save.sh`). A test save should always be a copy (`BDSP_SAVE=<dir>`).

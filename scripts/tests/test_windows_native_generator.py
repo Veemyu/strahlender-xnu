@@ -140,7 +140,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         executable = self.root / "eh.exe"
         result = subprocess.run([self.compiler, "-std=gnu17", "-mcx16",
                                  "-D__USE_MINGW_SETJMP_NON_SEH", "-Werror=macro-redefined",
-                                 "-I", str(ROOT / "scripts/recomp/rt-bdsp"),
+                                 "-I", str(ROOT / "scripts/recomp/runtime"),
                                  "-I", str(ROOT / "scripts/recomp/rt"),
                                  "-I", str(ROOT / "scripts/recomp/upstream/runtime"),
                                  str(source), "-o", str(executable)],
@@ -150,7 +150,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_native_controller_lifecycle_with_stub_devices(self):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         executable = self.root / "pad_sdl_win_test.exe"
         result = subprocess.run([
             self.compiler, "-std=c17", "-Wall", "-Wextra", "-Werror",
@@ -163,7 +163,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
 
     @unittest.skipUnless(os.environ.get("BDSP_WINDOWS_SDL_ROOT"), "Set the private SDL bundle root")
     def test_real_sdl_entry_virtual_controller_and_dummy_audio_without_path(self):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         sdl = Path(os.environ["BDSP_WINDOWS_SDL_ROOT"]).resolve()
         executable = self.root / "sdl_runtime_test.exe"
         result = subprocess.run([
@@ -204,7 +204,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         qt = build.qt_development(os.environ["BDSP_WINDOWS_QT_ROOT"], self.compiler,
                                   windows.profile("x86_64"))
         sdl = Path(os.environ["BDSP_WINDOWS_SDL_ROOT"]).resolve()
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         compiler = Path(self.compiler).with_name("x86_64-w64-mingw32-clang++.exe")
         executable = self.root / ("qt_keyboard_test.exe" if keyboard else "qt_controller_menu_test.exe")
         includes = [sdl / "include", qt / "include",
@@ -291,7 +291,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
                 self.assertNotIn("surface stopped:", result.stderr)
 
     def test_real_swkbd_applet_submit_cancel(self):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         executable = self.root / "swkbd_applet_test.exe"
         result = subprocess.run([
             self.compiler, "-std=gnu17", "-O2", "-D_WIN32_WINNT=0x0A00",
@@ -314,7 +314,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         self.assertIn("UTF-8/UTF-16 submit, cancel and interactive verdict passed", result.stdout)
 
     def build_nvn_probe(self, compiler, sdl, target):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         fixture = runtime / "test/nvn_glue_win_test.c"
         executable = self.root / ("nvn_glue_test-" + target + ".exe")
         second = self.root / ("second-" + target + ".o")
@@ -359,7 +359,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         self.assertEqual(windows.PE(executable).machine, 0xaa64)
 
     def test_windows_unicode_files_and_app_entry(self):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         for name in ("files", "entry", "entry_paths"):
             is_entry = name != "files"
             executable = self.root / ("win32_" + name + ".exe")
@@ -463,7 +463,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
                 self.assertIn("24 live host-context roots absent from exported guest contexts", result.stdout)
 
     def run_kernel_probe(self, guest, optimization, extra=()):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         executable = self.root / (guest.stem + optimization + ".exe")
         result = subprocess.run([
             self.compiler, "-std=gnu17", optimization, "-Wall", "-Wextra", "-Werror",
@@ -483,7 +483,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
     @unittest.skipUnless(all(os.environ.get("BDSP_WINDOWS_" + name + "_ROOT") for name in ("VULKAN", "FFMPEG", "SDL", "QT")),
                          "Explicit SDL, Vulkan, FFmpeg and Qt bundles required")
     def test_full_graphical_runtime_link_boot_and_host_crash(self):
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         selected = windows.profile("x86_64", "x86_64")
         generated = self.root / "synthetic tables"
         (generated / "main").mkdir(parents=True)
@@ -546,7 +546,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         result = subprocess.run([
             self.compiler, "-std=c17", "-Wall", "-Wextra", "-Werror",
             "-I", str(vulkan / "include"), "-I", str(ffmpeg / "include"),
-            str(ROOT / "scripts/recomp/rt-bdsp/test/dependency_probe.c"),
+            str(ROOT / "scripts/recomp/runtime/test/dependency_probe.c"),
             str(vulkan / "lib/libshaderc_shared.dll.a"),
             *(str(ffmpeg / f"lib/lib{name}.dll.a") for name in ("avformat", "avcodec", "avutil")),
             "-o", str(executable)], capture_output=True, text=True, timeout=30)
@@ -564,7 +564,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         if os.environ.get("BDSP_WINDOWS_DEPENDENCY_REPORT"):
             build.atomic_json(os.environ["BDSP_WINDOWS_DEPENDENCY_REPORT"], {
                 "schema": 1, "profile": selected, "stdout": result.stdout, "stderr": result.stderr,
-                "probe_sha256": windows.sha256(ROOT / "scripts/recomp/rt-bdsp/test/dependency_probe.c"),
+                "probe_sha256": windows.sha256(ROOT / "scripts/recomp/runtime/test/dependency_probe.c"),
                 "compiler": build.compiler_identity(self.compiler, selected),
                 "bundles": {name: windows.sha256(path / "build.json")
                             for name, path in (("vulkan", vulkan), ("ffmpeg", ffmpeg))},
@@ -697,7 +697,7 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
 
     def test_runtime_memory_faults_clock_and_unicode_image_loading(self):
         executable = self.root / "win32_host.exe"
-        runtime = ROOT / "scripts/recomp/rt-bdsp"
+        runtime = ROOT / "scripts/recomp/runtime"
         result = subprocess.run([
             self.compiler, "-std=gnu17", "-Wall", "-Wextra", "-Werror", "-mcx16",
             "-D_WIN32_WINNT=0x0A00", "-DBDSP_HAS_SUBSDK1=0", "-municode",

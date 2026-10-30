@@ -155,7 +155,7 @@ stage() {   # stage <label key> <command...>
 }
 stage lx_s1 scripts/build_all.sh --only tools,extract "${INPUT_ARGS[@]}" --min-free-gb "$MINFREE"
 stage lx_s2 bash scripts/recomp/linux/local/build_all.sh
-stage lx_s3 env IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh
+stage lx_s3 env IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/runtime/hle_nvn.txt bash scripts/recomp/runtime/mkimages.sh
 stage lx_s4 bash scripts/recomp/linux/local/vk_build.sh --qt
 
 if [ "$INSTALL_DRY" = 1 ]; then finish 0; fi

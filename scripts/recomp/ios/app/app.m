@@ -17,9 +17,9 @@
 #import "../../app/icon_variants.h"
 #import "data_manager.h"
 #include <strings.h>
-#include "../../rt-bdsp/mods.h"
-#include "../../rt-bdsp/pad_gc.h"
-#include "../../rt-bdsp/swkbd_ui.h"
+#include "../../runtime/mods.h"
+#include "../../runtime/pad_gc.h"
+#include "../../runtime/swkbd_ui.h"
 
 static BOOL sceneActive;   // state of the scene, set by SceneDelegate
 

@@ -203,7 +203,7 @@ werden während des Builds deterministisch in Linux-Assets unter
 `work/recomp/icons/` umgewandelt. Starten lässt sich die App lokal mit
 `bash scripts/recomp/linux/local/vk_qt.sh`. Diese Variante unterstützt natives
 Wayland und X11.
-Modulbilder für `vk_qt.sh` und `vk_run.sh` liegen unter `work/recomp/img_gfx`. Einmal erzeugen: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/rt-bdsp/hle_nvn.txt bash scripts/recomp/rt-bdsp/mkimages.sh` (wie bei der macOS-App, `scripts/recomp/app/recomp_build.sh`).
+Modulbilder für `vk_qt.sh` und `vk_run.sh` liegen unter `work/recomp/img_gfx`. Einmal erzeugen: `IMG=work/recomp/img_gfx HLE_LIST=scripts/recomp/runtime/hle_nvn.txt bash scripts/recomp/runtime/mkimages.sh` (wie bei der macOS-App, `scripts/recomp/app/recomp_build.sh`).
 Konkrete Sitzungs-IDs und Authentifizierungspfade committe nie.
 
 Am 23.10.2026 wurde ein frischer Fedora-Linux-x86_64-Checkout mit Basis-XCI und
@@ -265,15 +265,15 @@ Die Unity-Stufen `il2cpp`, `masterdata`, `video`, `audio` und `shaders` wurden e
 1. **Generator:** Module aus `work/exefs` → C in `work/recomp/gen4` (rund 1 GB). Marker `recomp-gen`.
 2. **Übersetzen:** C → Objekte in `work/recomp/obj4`. Die Zahl paralleler Clang-Prozesse wird aus verfügbaren CPUs und RAM bestimmt (2 GiB Systemreserve, etwa 1,5 GiB pro Compiler); `--recomp-jobs N` überschreibt sie. Funktionen ab `--recomp-o0-kb` werden mit `-O0` übersetzt. Marker `recomp-obj`.
 3. **Modulbilder:** `mkimages.sh` mit `hle_nvn.txt` → `work/recomp/img_app`.
-4. **Laufzeit:** `rt-bdsp/build.sh` mit `BDSP_APP=1` → `work/recomp/bdsp_app`.
+4. **Laufzeit:** `runtime/build.sh` mit `BDSP_APP=1` → `work/recomp/bdsp_app`.
 5. **App:** Bundle, `Info.plist`, Symbol, Bibliotheken, ad hoc Signatur.
 6. **Daten:** APFS-Klon von `work/romfs` nach Application Support.
 
 ### 7.2 Der NVN-Stempel (`prepare.sh`)
 
-`scripts/recomp/rt-bdsp/nvn/prepare.sh` bereitet die Metal-Fassung der NVN-Schicht in `work/recomp/nvn-src` vor.
+`scripts/recomp/runtime/nvn/prepare.sh` bereitet die Metal-Fassung der NVN-Schicht in `work/recomp/nvn-src` vor.
 
-- Der Stempel ist ein SHA-256 über `scripts/recomp/rt-bdsp/nvn/src` (alle Dateien, sortiert),
+- Der Stempel ist ein SHA-256 über `scripts/recomp/runtime/nvn/src` (alle Dateien, sortiert),
   `shader_translator/translate.c`, `shader_translator/shader.h` und `prepare.sh` selbst. Der Hash steht in
   `work/recomp/nvn-src/.stamp`.
 - Das Skript kopiert die Quellen nur, wenn der Stempel abweicht. Es verändert sie nicht.
@@ -283,7 +283,7 @@ Die Unity-Stufen `il2cpp`, `masterdata`, `video`, `audio` und `shaders` wurden e
 
 ### 7.3 Compiler-Flags (`flags.inc.sh`)
 
-`scripts/recomp/rt-bdsp/nvn/flags.inc.sh` legt die gemeinsamen Flags der NVN-Bauten fest:
+`scripts/recomp/runtime/nvn/flags.inc.sh` legt die gemeinsamen Flags der NVN-Bauten fest:
 `BDSP_OPT="-O1 -g"`, `BDSP_NOWARN="-w"`, `BDSP_WARN_GLUE="-Wall -Wextra -Wno-unused-parameter"`.
 Die Skripte `build_nvn.sh`, `vulkan/build_vk.sh` und `ios/build_rt32.sh` binden sie ein.
 Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
@@ -292,7 +292,7 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 
 | Symptom | Ursache und Lösung |
 |---|---|
-| `NVN-Stempel passt nicht` (von `prepare.sh --check`) | Die Kopie in `work/recomp/nvn-src` ist veraltet. Führe `scripts/recomp/rt-bdsp/nvn/prepare.sh` aus. Normale Bauten tun das automatisch. |
+| `NVN-Stempel passt nicht` (von `prepare.sh --check`) | Die Kopie in `work/recomp/nvn-src` ist veraltet. Führe `scripts/recomp/runtime/nvn/prepare.sh` aus. Normale Bauten tun das automatisch. |
 | Bau nutzt alten NVN-Code | `NVN_KEEP=1` ist gesetzt, daher wurde `prepare.sh` übersprungen. Entferne die Variable oder führe `prepare.sh` aus. |
 | `Marker passt, übersprungen` | Eingaben haben sich nicht geändert. Mit `--force` neu bauen. |
 | `work/exefs/main fehlt` (Exit 10) | Stufe `extract` zuerst ausführen. |

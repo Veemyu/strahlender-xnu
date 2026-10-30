@@ -87,10 +87,10 @@ venv_pip fixture_native fixture-native==2.1.4
     def test_native_runtime_includes_preserve_application_support_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "Library/Application Support/O'Brien installer"
-            here = root / "scripts/recomp/rt-bdsp/nvn"
+            here = root / "scripts/recomp/runtime/nvn"
             here.mkdir(parents=True)
             for name in ("build_nvn.sh", "flags.inc.sh"):
-                shutil.copyfile(ROOT / "scripts/recomp/rt-bdsp/nvn" / name, here / name)
+                shutil.copyfile(ROOT / "scripts/recomp/runtime/nvn" / name, here / name)
             source = root / "work/native sources"
             (source / "nvn/maxwell").mkdir(parents=True)
             (source / "nvn/path_probe.h").write_text("#define PATH_PROBE 7\n")

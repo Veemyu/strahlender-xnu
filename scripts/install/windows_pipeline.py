@@ -226,7 +226,7 @@ def build_game(args, emit):
             progress=lambda completed, total: emit("progress", id="clang", completed=completed, total=total)))
         def prepare_images():
             build.images(generator, work / "exefs", output / "images",
-                         root / "scripts/recomp/rt-bdsp/hle_nvn.txt", commands)
+                         root / "scripts/recomp/runtime/hle_nvn.txt", commands)
             prepare_icons()
         stage("images", prepare_images)
         runtime = stage("runtime", lambda: build.compile_runtime(
@@ -254,14 +254,14 @@ def build_game(args, emit):
                         "exefs/main.npdm": work / "exefs/main.npdm",
                         "icons/windows": output / "icons/windows",
                         "plugins/platforms/qwindows.dll": plugin, "qt.conf": qt_conf,
-                        "lproj": root / "scripts/recomp/rt-bdsp/app/linux/lproj"}
+                        "lproj": root / "scripts/recomp/runtime/app/linux/lproj"}
                 providers = build.runtime_dll_candidates(compiler, selected, dependencies)
                 dynamic = [path.name for path in build.windows.dll_closure(plugin, providers, selected["target"]) if path != plugin]
                 packaged = build.package_game(
                     executable, build.runtime_dll_candidates(compiler, selected, dependencies),
                     selected["target"], Path(temporary) / "BDSP",
-                    {"runtime.md": root / "scripts/recomp/rt-bdsp/NOTICE.md",
-                     "vulkan.md": root / "scripts/recomp/rt-bdsp/nvn/vulkan/NOTICE.md",
+                    {"runtime.md": root / "scripts/recomp/runtime/NOTICE.md",
+                     "vulkan.md": root / "scripts/recomp/runtime/nvn/vulkan/NOTICE.md",
                      "toolchain.txt": toolchain_license},
                     dynamic=dynamic, notice_trees=notices, data=data)
                 return publish_package(packaged, destination)

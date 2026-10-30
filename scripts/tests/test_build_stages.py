@@ -250,7 +250,7 @@ class RecompStageTests(unittest.TestCase):
         write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"))
         write(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
         write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"), "gen")
-        write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){}")
+        write(os.path.join(self.root, "scripts", "recomp", "runtime", "main.c"), "int main(){}")
         write(os.path.join(self.root, "scripts", "recomp", "app", "make_app.sh"), "#!/bin/sh")
         write(os.path.join(self.work, "recomp", "icons", "source", "icons.json"),
               json.dumps({"schema": 1, "variants": [{"id": "en-US"}]}))
@@ -330,7 +330,7 @@ class RecompStageTests(unittest.TestCase):
         env = {"XNU_RECOMP_OPTS": "o0kb=300"}
         h0, _ = bs.stage_hash("recomp", self.root, self.work, env=env)
         self.assertEqual(h0, bs.stage_hash("recomp", self.root, self.work, env=env)[0])
-        write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){return 1;}")
+        write(os.path.join(self.root, "scripts", "recomp", "runtime", "main.c"), "int main(){return 1;}")
         h1, _ = bs.stage_hash("recomp", self.root, self.work, env=env)
         self.assertNotEqual(h0, h1)
         write(os.path.join(self.work, "exefs", "main"), "anderer Dump")
@@ -341,12 +341,12 @@ class RecompStageTests(unittest.TestCase):
 
     @unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
     def test_nvn_stamp_covers_src_translator_and_prepare(self):
-        nvn = os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "nvn")
+        nvn = os.path.join(self.root, "scripts", "recomp", "runtime", "nvn")
         os.makedirs(nvn, exist_ok=True)
         for name in ("prepare.sh", "hash.inc.sh"):
-            shutil.copy(os.path.join(os.path.dirname(bs.__file__), "recomp", "rt-bdsp", "nvn", name), nvn)
+            shutil.copy(os.path.join(os.path.dirname(bs.__file__), "recomp", "runtime", "nvn", name), nvn)
         for rel in ("nvn/src/nvn/metal.m", "nvn/src/rt.h", "shader_translator/translate.c", "shader_translator/shader.h"):
-            write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", rel) if rel.startswith("nvn") else os.path.join(self.root, rel), "v1")
+            write(os.path.join(self.root, "scripts", "recomp", "runtime", rel) if rel.startswith("nvn") else os.path.join(self.root, rel), "v1")
         rec = os.path.join(self.root, "scripts", "recomp")
         s0 = bs.nvn_source_stamp(rec)
         self.assertEqual(s0, bs.nvn_source_stamp(rec))
@@ -360,7 +360,7 @@ class RecompStageTests(unittest.TestCase):
 
     def test_generator_hash_ignores_runtime(self):
         h0, _ = bs.stage_hash("recomp-gen", self.root, self.work)
-        write(os.path.join(self.root, "scripts", "recomp", "rt-bdsp", "main.c"), "int main(){return 2;}")
+        write(os.path.join(self.root, "scripts", "recomp", "runtime", "main.c"), "int main(){return 2;}")
         self.assertEqual(h0, bs.stage_hash("recomp-gen", self.root, self.work)[0])
         write(os.path.join(self.root, "scripts", "recomp", "native-generator", "src", "generator.c"), "gen v2")
         self.assertNotEqual(h0, bs.stage_hash("recomp-gen", self.root, self.work)[0])

@@ -2,7 +2,7 @@
 """Memory model B (--rebase32) for the copied NVN sources (work/recomp/nvn-src, created by prepare.sh).
 
 The clone (LASRecomp) converts guest addresses to host pointers with (uintptr_t) (guest address == host address, variant A). In variant B
-the guest memory lives at g_base + 32-bit offset: every such spot must go through G2H() (rt-bdsp/guestmem.h). This script rewrites
+the guest memory lives at g_base + 32-bit offset: every such spot must go through G2H() (runtime/guestmem.h). This script rewrites
 the copy to OUT (the input stays unchanged, none of it is in the repo). Every rule must hit at least once, otherwise the script
 aborts (the sources have changed and the list needs a review).
 
@@ -91,7 +91,7 @@ if bad:
     sys.exit("Rules without a hit: %s" % bad)
 
 # movie_glue.c (repo, unchanged) -> out/movie_glue32.c: guest pointers via G2H, host pointers that the guest reads placed into the guest memory
-mp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rt-bdsp", "nvn", "movie_glue.c")
+mp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime", "nvn", "movie_glue.c")
 s = open(mp, encoding="utf-8").read()
 mreps = [
     (r"\(uintptr_t\)(c->x\[\d\])", r"GA(\1)"),

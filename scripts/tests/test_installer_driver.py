@@ -717,8 +717,8 @@ class InstallerDriverTests(unittest.TestCase):
                 self.assertFalse(list(applications.glob("*.app-staging-*")))
 
     def test_clean_build_removes_generated_outputs_but_keeps_game_data_and_unknown_files(self):
-        for target, generated in (("macos", ("gen4", "obj4", "rt-bdsp-app", "img_app")),
-                                  ("linux", ("gen4-c", "obj4-c", "rt-bdsp-vk", "img_gfx")),
+        for target, generated in (("macos", ("gen4", "obj4", "runtime-app", "img_app")),
+                                  ("linux", ("gen4-c", "obj4-c", "runtime-vk", "img_gfx")),
                                   ("ios", ("gen", "obj", "rt", "derived"))):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
@@ -823,12 +823,12 @@ class InstallerDriverTests(unittest.TestCase):
             work = os.path.join(root, "work")
             for directory in ("romfs/Data", "recomp/img_gfx", "recomp/icons/linux", "exefs"):
                 os.makedirs(os.path.join(work, directory), exist_ok=True)
-            os.makedirs(os.path.join(root, "scripts/recomp/rt-bdsp/app/linux/lproj/en.lproj"))
+            os.makedirs(os.path.join(root, "scripts/recomp/runtime/app/linux/lproj/en.lproj"))
             for relative in ("romfs/Data/game.bin", "recomp/img_gfx/main.img", "exefs/main.npdm",
                              "recomp/icons/linux/icon.png"):
                 with open(os.path.join(work, relative), "wb") as file:
                     file.write(b"fixture")
-            with open(os.path.join(root, "scripts/recomp/rt-bdsp/app/linux/lproj/en.lproj/Localizable.strings"), "w") as file:
+            with open(os.path.join(root, "scripts/recomp/runtime/app/linux/lproj/en.lproj/Localizable.strings"), "w") as file:
                 file.write("fixture")
             manifest = {"default": "en-US", "variants": [{"id": "en-US", "image": "icon.png"}]}
             with open(os.path.join(work, "recomp/icons/linux/icons.json"), "w") as file:

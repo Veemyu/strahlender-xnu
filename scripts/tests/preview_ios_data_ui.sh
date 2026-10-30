@@ -42,7 +42,7 @@ SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
 xcrun --sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator -isysroot "$SDK" \
   -fobjc-arc -Wno-deprecated-declarations -framework UIKit -framework Foundation -framework UniformTypeIdentifiers \
   scripts/tests/ios_data_ui_preview.m scripts/recomp/ios/app/data_manager.m \
-  scripts/recomp/ios/app/data_library.m scripts/recomp/ios/app/save_archive.m scripts/recomp/rt-bdsp/save_snapshot.c \
+  scripts/recomp/ios/app/data_library.m scripts/recomp/ios/app/save_archive.m scripts/recomp/runtime/save_snapshot.c \
   -o "$APP/Dialogs" > "$REPORT/menu-ui-build.log" 2>&1
 codesign --force --sign - "$APP" > "$REPORT/menu-ui-sign.log" 2>&1
 xcrun simctl install "$SIMULATOR_ID" "$APP"

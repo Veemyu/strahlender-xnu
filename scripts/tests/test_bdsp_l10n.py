@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 
-LINUX = Path(__file__).resolve().parent.parent / "recomp" / "rt-bdsp" / "app" / "linux"
+LINUX = Path(__file__).resolve().parent.parent / "recomp" / "runtime" / "app" / "linux"
 sys.path.insert(0, str(LINUX))
 import bdsp_l10n as l10n  # noqa: E402
 

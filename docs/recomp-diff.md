@@ -116,7 +116,7 @@ In fast path (FPCR = 0), recompiled code uses host FPU and assumes “round to n
 | `0x9FC0` (FTZ + DAZ) | **1,560** | 737,630 |
 | `0x7F80` (round toward zero) | **386** | 79,119 |
 
-**Fix:** `scripts/recomp/c_exact/fp_env.h` (`rt_fp_guest_mode()`: set MXCSR to `0x1F80`, or FPCR to 0 on arm64 hosts), built into `ctest.c` with `-DCEXACT_GUARD`: with guard, **0 mismatches under both injected states**. **Runtime integration point** (not changed by me; `rt-bdsp` belongs to another agent): at every guest-thread start and after every foreign call (HLE services, Vulkan/audio callbacks); call costs one `stmxcsr` and a comparison.
+**Fix:** `scripts/recomp/c_exact/fp_env.h` (`rt_fp_guest_mode()`: set MXCSR to `0x1F80`, or FPCR to 0 on arm64 hosts), built into `ctest.c` with `-DCEXACT_GUARD`: with guard, **0 mismatches under both injected states**. **Runtime integration point** (not changed by me; `runtime` belongs to another agent): at every guest-thread start and after every foreign call (HLE services, Vulkan/audio callbacks); call costs one `stmxcsr` and a comparison.
 
 ## 6. Float benchmark (`recomp-linux.md`, sections 6/8): cause and resolution (measured)
 

@@ -175,7 +175,7 @@ were: `scripts/recomp/gen_all.sh`/`eh_gen.py` generated about 1 GB and 2,495 C
 files in `work/recomp/gen4`; `scripts/recomp/build_all.sh` used clang `-O1`,
 with `-O0` for individual functions at least 300 KB and at most four jobs into
 `work/recomp/obj4`; `mkimages.sh` with `hle_nvn.txt` created
-`work/recomp/img_app`; `rt-bdsp/build.sh` with `BDSP_APP=1` ran `prepare.sh` /
+`work/recomp/img_app`; `runtime/build.sh` with `BDSP_APP=1` ran `prepare.sh` /
 `build_nvn.sh` and Apple clang for Objective-C, linking `libgame` into
 `work/recomp/bdsp_app`; `make_app.sh` assembled, bundled dylibs, ad-hoc signed,
 verified with `codesign --verify --deep --strict`, and checked for Homebrew
@@ -201,7 +201,7 @@ mapped shell buttons/sticks (`g_ext_buttons` / `g_ext_stick`) into
 `buttons_now` / `npad_fill` and provided weak `menu_handle_event` and
 `menu_apply_window_requests` stubs; `services_gfx.c` paused the Vsync event via
 `g_bdsp_paused`; `build.sh` added `BDSP_APP=1` and `NVN_RT`; and
-`recomp/build_all.sh` added `O0_BYTES`. New areas were `rt-bdsp/app/`
+`recomp/build_all.sh` added `O0_BYTES`. New areas were `runtime/app/`
 (`app.h`, `app_config.c`, `app_save.c`, `app_ui.m`) and
 `scripts/recomp/app/`.
 

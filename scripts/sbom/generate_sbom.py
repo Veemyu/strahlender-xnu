@@ -71,18 +71,18 @@ def C(cid, name, version, purl, license_expr, distribution, tracked, evidence, *
 # ---------------------------------------------------------------- catalogue
 CATALOG = [
     # Vendored source code (tracked). LASRecomp is MIT, see THIRD_PARTY_NOTICES.md.
-    C("lasrecomp", "LASRecomp (vendored parts: shader_translator, scripts/recomp/upstream, scripts/recomp/rt-bdsp)",
+    C("lasrecomp", "LASRecomp (vendored parts: shader_translator, scripts/recomp/upstream, scripts/recomp/runtime)",
       "09f8e5e", "pkg:github/peiikai/LASRecomp@09f8e5ebf28aeefd6daa1456c73ae1b7a51efec5", "MIT", SHIPPED, TRACKED,
-      ["THIRD_PARTY_NOTICES.md", "shader_translator/NOTICE.md", "scripts/recomp/rt-bdsp/NOTICE.md",
+      ["THIRD_PARTY_NOTICES.md", "shader_translator/NOTICE.md", "scripts/recomp/runtime/NOTICE.md",
        "scripts/recomp/upstream/LICENSE", "scripts/recomp/native-generator/NOTICE.md"],
       download="https://github.com/peiikai/LASRecomp", copyright_text="Copyright (c) 2026 Peiikai", category="vendored-source",
-      notes="Verbatim portions in scripts/recomp/rt-bdsp (see NOTICE.md). Upstream license excludes Nintendo property and "
+      notes="Verbatim portions in scripts/recomp/runtime (see NOTICE.md). Upstream license excludes Nintendo property and "
             "third_party/ (imgui, smaa, fonts, LAS randomizer), none of which is included. "
             "The native generator adapts the analysis/lifter/emitter algorithms and preserves attribution."),
 
     C("stb-truetype", "stb_truetype (as shipped by Dear ImGui; on-screen keyboard text)", "1.26",
       "pkg:github/nothings/stb@stb_truetype-1.26", "MIT OR Unlicense", SHIPPED, TRACKED,
-      ["scripts/recomp/rt-bdsp/third_party/stb_truetype.h", "scripts/recomp/rt-bdsp/NOTICE.md", "scripts/recomp/rt-bdsp/NOTICE.de.md"],
+      ["scripts/recomp/runtime/third_party/stb_truetype.h", "scripts/recomp/runtime/NOTICE.md", "scripts/recomp/runtime/NOTICE.de.md"],
       download="https://github.com/nothings/stb", copyright_text="Copyright (c) 2017 Sean Barrett", category="vendored-source",
       notes="Single header, MIT or public domain at the user's choice. Rasterizes the user's own firmware fonts for the on-screen keyboard; "
             "not meant for untrusted font files."),
@@ -125,7 +125,7 @@ CATALOG = [
             "configure flags for the LGPL claim. The macOS app bundles the host's FFmpeg libraries through "
             "scripts/recomp/app/bundle_dylibs.py (make_app.sh); Linux uses distribution packages."),
     C("vma", "Vulkan Memory Allocator (Linux build input)", "3.3.0", "pkg:github/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@v3.3.0",
-      "MIT", BUILD, TRACKED, ["scripts/recomp/rt-bdsp/nvn/vulkan/src/nvn/vulkan/vma.cpp"],
+      "MIT", BUILD, TRACKED, ["scripts/recomp/runtime/nvn/vulkan/src/nvn/vulkan/vma.cpp"],
       download="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator"),
     C("ghidra", "Ghidra (optional headless analysis)", "unpinned", "pkg:generic/ghidra", "Apache-2.0", OPTIONAL, TRACKED,
       ["scripts/ghidra/run_headless.sh"], download="https://github.com/NationalSecurityAgency/ghidra", notes="Not installed by the project."),
@@ -182,19 +182,19 @@ CATALOG = [
     C("brew-python", "Python 3 (Homebrew)", "unpinned", "pkg:generic/python3", "PSF-2.0", USER, EXTERNAL,
       ["install.command", "scripts/build_stages.py"], category="system-package"),
     C("linux-clang", "clang / LLVM (apt clang, dnf clang, pacman clang)", "unpinned", "pkg:generic/clang", "Apache-2.0 WITH LLVM-exception",
-      USER, EXTERNAL, ["install-linux.sh", "scripts/recomp/rt-bdsp/app/linux/deps.txt"], category="system-package"),
+      USER, EXTERNAL, ["install-linux.sh", "scripts/recomp/runtime/app/linux/deps.txt"], category="system-package"),
     C("linux-gcc", "GCC / g++ and build-essential (apt build-essential, dnf gcc-c++, pacman base-devel)", "unpinned", "pkg:generic/gcc",
-      "GPL-3.0-or-later WITH GCC-exception-3.1", USER, EXTERNAL, ["install-linux.sh", "scripts/recomp/rt-bdsp/app/linux/deps.txt"],
+      "GPL-3.0-or-later WITH GCC-exception-3.1", USER, EXTERNAL, ["install-linux.sh", "scripts/recomp/runtime/app/linux/deps.txt"],
       category="system-package"),
     C("linux-make", "GNU make", "unpinned", "pkg:generic/make", "GPL-3.0-or-later", USER, EXTERNAL, ["install-linux.sh"],
       category="system-package"),
     C("linux-git", "git", "unpinned", "pkg:generic/git", "GPL-2.0-only", USER, EXTERNAL, ["install-linux.sh"], category="system-package"),
     C("linux-cmake", "CMake", "unpinned", "pkg:generic/cmake", "BSD-3-Clause", USER, EXTERNAL,
-      ["scripts/recomp/rt-bdsp/app/linux/deps.txt"], category="system-package"),
+      ["scripts/recomp/runtime/app/linux/deps.txt"], category="system-package"),
     C("linux-time", "GNU time (/usr/bin/time)", "unpinned", "pkg:generic/time", "GPL-3.0-or-later", USER, EXTERNAL,
       ["install-linux.sh"], category="system-package"),
     C("linux-qt6", "Qt 6 Widgets (qt6-base)", "unpinned", "pkg:generic/qt6-base", "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      USER, EXTERNAL, ["scripts/recomp/rt-bdsp/app/linux/deps.txt", "scripts/recomp/rt-bdsp/app/linux/CMakeLists.txt"],
+      USER, EXTERNAL, ["scripts/recomp/runtime/app/linux/deps.txt", "scripts/recomp/runtime/app/linux/CMakeLists.txt"],
       category="system-package", download="https://www.qt.io",
       notes="Qt is offered under the LGPL/GPL or a commercial license. The choice is the distributor's."),
     C("linux-qt6-wayland", "Qt 6 Wayland platform plugin (qt6-wayland)", "unpinned", "pkg:generic/qt6-wayland",

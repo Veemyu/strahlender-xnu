@@ -146,7 +146,7 @@ class WindowsBuildTests(unittest.TestCase):
                 build.compile_runtime(root / "objects", compiler, selected, None,
                                       qt=qt, sdl=qt, vulkan=qt, ffmpeg=qt)
                 options = compile_sources.call_args.kwargs
-                self.assertIn(ROOT / "scripts/recomp/rt-bdsp/app/linux/qt_ui.cpp", options["source_paths"])
+                self.assertIn(ROOT / "scripts/recomp/runtime/app/linux/qt_ui.cpp", options["source_paths"])
                 self.assertIn("-DBDSP_QT", options["extra"])
                 self.assertIn(str(qt / "include/QtWidgets"), options["extra"])
 
@@ -612,7 +612,7 @@ class WindowsBuildTests(unittest.TestCase):
     def test_overlay_is_deterministic_and_preserves_manual_changes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
-            base = root / "scripts/recomp/rt-bdsp/nvn"
+            base = root / "scripts/recomp/runtime/nvn"
             for folder, text in (("src/nvn", "base"), ("vulkan/src/nvn", "vulkan")):
                 path = base / folder / "test.c"
                 path.parent.mkdir(parents=True)

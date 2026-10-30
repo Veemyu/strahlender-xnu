@@ -768,7 +768,7 @@ def _clean_game_build(args, directory):
     if directory == work or not directory.is_relative_to(work):
         raise ValueError("The clean build directory must be inside this checkout's work folder.")
     names = ("gen4", "gen4-c", "obj4", "obj4-c", "img_app", "img_gfx",
-             "rt-bdsp-app", "rt-bdsp", "rt-bdsp-vk", "nvn-src", "bdsp_app",
+             "runtime-app", "runtime", "runtime-vk", "nvn-src", "bdsp_app",
              "bdsp_boot_vk", "bdsp_boot_vk_qt")
     if args.target == "ios":
         names = ("gen", "obj", "img", "rt", "nvn-base", "nvn-ios", "res",
@@ -912,7 +912,7 @@ def install_artifact(args, artifact):
         source_trees = ((work / "romfs", staging / "romfs"),
                         (work / "recomp/img_gfx", staging / "img"),
                         (work / "recomp/icons/linux", staging / "icons/linux"),
-                        (root / "scripts/recomp/rt-bdsp/app/linux/lproj", staging / "lproj"))
+                        (root / "scripts/recomp/runtime/app/linux/lproj", staging / "lproj"))
         if getattr(args, "firmware_root", None):
             source_trees += ((Path(args.firmware_root), staging / "Firmware"),)
         total = sum(_file_count(source) for source, _ in source_trees) + 2
@@ -1094,7 +1094,7 @@ def build(args):
             ("eh_gen", ["bash", "scripts/recomp/linux/local/gen.sh", "c"], None),
             ("clang", ["bash", "scripts/recomp/linux/local/compile.sh", "c"],
              lambda _phase: _compile_count(work, "linux", not_before_ns=getattr(args, "compile_epoch_ns", None))),
-            ("images", ["bash", "scripts/recomp/rt-bdsp/mkimages.sh"], None),
+            ("images", ["bash", "scripts/recomp/runtime/mkimages.sh"], None),
             ("runtime", ["bash", "scripts/recomp/linux/local/vk_build.sh", "--qt"], None),
         ]
         code = 0
@@ -1104,7 +1104,7 @@ def build(args):
                     _clean_game_build(args, work / "recomp")
                 emit("step", id="exefs", status="skipped")
             image_env = {"IMG": "work/recomp/img_gfx",
-                         "HLE_LIST": "scripts/recomp/rt-bdsp/hle_nvn.txt"} if stage == "images" else None
+                         "HLE_LIST": "scripts/recomp/runtime/hle_nvn.txt"} if stage == "images" else None
             code = _run_command(command, args, stage, progress, extra_env=image_env)
             if code:
                 break

@@ -14,7 +14,7 @@ exists; treat them as reference values from 2026-10-19/20.
 | `setup.sh` | checks tools and Python packages (`lz4`, `capstone`, `unicorn`), compares the inputs with `work/exefs.sha256` if present; installs nothing |
 | `gen.sh [c\|asm]` | generates the C of the four modules with the LAS lifter; `c` (portable SIMD) is the default, `asm` is only for comparison |
 | `compile.sh`, `build_all.sh` | compile in parallel with `-O1` (chunks above `THRESH_O0`, default 300 KB, get `-O0`) and link `libgame.so`; `build_all.sh` runs generation and compile with timing |
-| `vk_build.sh [--qt]` | builds `rt-bdsp` with the Vulkan backend (`NVN_BACKEND=vulkan`); `--qt` adds the in-process Qt frontend |
+| `vk_build.sh [--qt]` | builds `runtime` with the Vulkan backend (`NVN_BACKEND=vulkan`); `--qt` adds the in-process Qt frontend |
 | `vk_run.sh` | runs the Vulkan build, headless by default (`--headless`, `--window WxH`, `--timeout S`, `--screenshot-after N`) |
 | `vk_qt.sh` | launches the in-process Qt frontend (`bdsp_boot_vk_qt`, built by `vk_build.sh --qt`) |
 | `probe.sh <test>` | Linux counterparts of the spike probes: `eh`, `eh-real`, `rebase32`, `gc`, `bench`, `boot`, `bdsp` |
@@ -54,7 +54,7 @@ macOS. The float microbenchmark differed only by the NaN sign (ARM default NaN a
 Unicorn, recompilation agrees in all runs (see [recomp-diff.md](recomp-diff.md)). Limits: `c` mode lowers FP/SIMD to portable C and
 is bit-exact against Unicorn for the cases tested except for the FPSR cumulative flags.
 
-## 4. The Vulkan backend (`scripts/recomp/rt-bdsp/nvn/vulkan/`)
+## 4. The Vulkan backend (`scripts/recomp/runtime/nvn/vulkan/`)
 
 It reuses the shared NVN layer (objects, command recording, formats, ASTC, our shader translator) and replaces the Metal part with
 the LAS Vulkan code (`device.c`, `exec.c`, `shaders.c`, `textures.c`, VMA) plus our changes (full source in `vulkan/src/`):
@@ -83,7 +83,7 @@ title movie (the codec path) and stopped; the movie support of the Mac path is n
   window. At run time F5, F6, F7 = 30, 60, 120 fps.
 - `BDSP_WINDOW=WxH` at launch; F1 to F4 = 960x540, 1280x720, 1920x1080, 2560x1440; F11 = full screen (not verified).
 - `BDSP_MANGOHUD=1` enables the MangoHud overlay (runtime package `mangohud`, off by default; `MANGOHUD_CONFIG` overrides it).
-- The Qt shell (`scripts/recomp/rt-bdsp/app/linux/`, C++/Qt6 Widgets) provides menus, keyboard input, pause, window sizes, frame-rate
+- The Qt shell (`scripts/recomp/runtime/app/linux/`, C++/Qt6 Widgets) provides menus, keyboard input, pause, window sizes, frame-rate
   choices and original-icon language selection, with translations in `lproj/*.lproj/Localizable.strings` (selected by
   `LC_ALL`/`LANG`). The in-process host owns its Vulkan surface (native Wayland or X11, `QT_QPA_PLATFORM=wayland|xcb`).
   Run with `XDG_RUNTIME_DIR=/run/user/<UID>` and the session's `WAYLAND_DISPLAY`/`DISPLAY`; never commit session IDs.

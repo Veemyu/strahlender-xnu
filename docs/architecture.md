@@ -11,7 +11,7 @@ Numbers below were measured on the project's own dump unless marked *inferred* o
   keys, saves, screenshots or generated C. Everything generated lives under `work/` (gitignored).
 - A built app contains your own game data and is for personal use only; only the repository is shared.
 - The recompiler and the NVN layer are based on LASRecomp (`peiikai/LASRecomp`, MIT; only `LICENSE`, `cpu.h`, `simd.h`, `simd_fp.h` are kept in
-  `scripts/recomp/upstream/`, the rest of the former full copy is in the git history; changes and provenance in `scripts/recomp/rt-bdsp/NOTICE.md` and `shader_translator/NOTICE.md`).
+  `scripts/recomp/upstream/`, the rest of the former full copy is in the git history; changes and provenance in `scripts/recomp/runtime/NOTICE.md` and `shader_translator/NOTICE.md`).
   `raulzrrs/letsgo-recomp` (a LASRecomp derivative) was read as a second reference. Both target other, non-Unity games on macOS only; iPadOS
   and Boehm GC/exception support are our own work. No code of third-party game ports (for example opendpr) is used.
 
@@ -106,12 +106,12 @@ everything from `0x10_0000_0000` up is invalid, which is why the Mac address cou
 A needs about 31 ms CPU per frame, B about 36 ms, the M2 iPad Pro with B about 47 ms. Build: `MODEL=a scripts/recomp/ios/gen32.sh all`,
 `IOS_MODEL=a scripts/recomp/ios/deploy_ios.sh build`.
 
-Rules: host code converts guest addresses only through `G2H()`/`H2G()` (`rt-bdsp/guestmem.h`). The game obtains all its
+Rules: host code converts guest addresses only through `G2H()`/`H2G()` (`runtime/guestmem.h`). The game obtains all its
 application memory (3.14 GB, as reported by `GetInfo`) as one `MapPhysicalMemory` region from the alias region in `nninitStartup`;
 it never calls `SetHeapSize`. For variant B the reported total must be capped so that everything fits below 4 GiB. A scan of
 `main` found no pointer tags. iPadOS memory entitlements and measured limits are in [recomp-ios.md](recomp-ios.md).
 
-## The runtime (`scripts/recomp/rt-bdsp/`)
+## The runtime (`scripts/recomp/runtime/`)
 
 The LAS runtime was used as a design reference and reimplemented for BDSP; only `cpu.h`/`simd.h` are reused. Main parts:
 
@@ -128,7 +128,7 @@ self-deadlock after a timed wait (do not reacquire the mutex on timeout, as the 
 seconds. Host-side `HLE_FUNC` overrides replace individual guest symbols (`nvnBootstrapLoader`, `nn::vi`, `nv::*`, `movie::*`,
 `nn::hid::GetNpadState`).
 
-## Graphics (`scripts/recomp/rt-bdsp/nvn/`)
+## Graphics (`scripts/recomp/runtime/nvn/`)
 
 BDSP draws through NVN; the runtime implements NVN, so the game's own command stream is executed by us.
 

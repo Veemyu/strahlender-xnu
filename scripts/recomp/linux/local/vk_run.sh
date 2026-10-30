@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs locally on Linux: starts work/recomp/bdsp_boot_vk (Vulkan build of rt-bdsp), by default without window (--headless: offscreen rendering into
+# Runs locally on Linux: starts work/recomp/bdsp_boot_vk (Vulkan build of runtime), by default without window (--headless: offscreen rendering into
 # images of their own size, no display needed, nothing on the user's desktop) and silent (the runtime has no audio path).
 # Usage: vk_run.sh [NAME=WERT ...] [options of bdsp_boot_vk]   (words of the form NAME=WERT with uppercase names are environment variables)
 #   Default: --headless --timeout 60 (belongs to the runtime; environment BDSP_IMG=work/recomp/img_gfx)

@@ -1,4 +1,4 @@
-"""Host test of the shared platform helpers (scripts/recomp/rt-bdsp/plat.c)."""
+"""Host test of the shared platform helpers (scripts/recomp/runtime/plat.c)."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-RUNTIME = Path(__file__).resolve().parents[1] / "recomp/rt-bdsp"
+RUNTIME = Path(__file__).resolve().parents[1] / "recomp/runtime"
 
 
 @unittest.skipIf(sys.platform == "win32" or not (shutil.which("cc") or shutil.which("clang")),

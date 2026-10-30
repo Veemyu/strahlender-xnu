@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 TARGET=${1:-mac}
-SRC=scripts/recomp/rt-bdsp
+SRC=scripts/recomp/runtime
 MODEL=${MODEL:-b}
 ORG=${ORG:-0x800000000}
 if [ "$MODEL" = a ]; then
@@ -26,9 +26,9 @@ else
 fi
 export NVN_SRC=${NVN_SRC:-work/recomp/nvn-src}
 # Recreate the copy if it is missing or the repo sources are newer (otherwise the iPad runs with an outdated renderer)
-scripts/recomp/rt-bdsp/nvn/prepare.sh > /dev/null   # copies only if the stamp differs
+scripts/recomp/runtime/nvn/prepare.sh > /dev/null   # copies only if the stamp differs
 # nvn-src32: stamp from the source stamp plus nvn_rebase32.py and movie_glue.c (model A-low: nvn_ios.py and ui_ios.inc instead)
-. scripts/recomp/rt-bdsp/nvn/hash.inc.sh
+. scripts/recomp/runtime/nvn/hash.inc.sh
 if [ "$MODEL" = a ]; then
   want32=$({ cat "$NVN_SRC/.stamp"; sha256 scripts/recomp/ios/nvn_ios.py scripts/recomp/ios/ui_ios.inc; } | sha256 | cut -d' ' -f1)
   if [ ! -d "$NVN32/nvn" ] || [ "$(cat "$NVN32/.stamp32" 2>/dev/null || true)" != "$want32" ]; then
@@ -46,7 +46,7 @@ fi
 
 case "$TARGET" in
   mac)
-    RT=work/recomp/rt-bdsp32; OUT=work/recomp/bdsp_boot32
+    RT=work/recomp/runtime32; OUT=work/recomp/bdsp_boot32
     CCFLAGS=(); MCC=/usr/bin/clang
     read -r -a SDLFLAGS <<< "$(pkg-config --cflags sdl3)"
     NVINC=(-I "$NVN32" -I "$NVN32/nvn" "${BASEINC[@]}" "${SDLFLAGS[@]}")
@@ -69,7 +69,7 @@ HAS_SUBSDK1=0
 # Toolchain stamp: reuse objects only with the compiler and SDKs they were built with
 TC_STAMP=$({ xcrun --sdk macosx --show-sdk-version; xcrun --sdk iphoneos --show-sdk-version; xcode-select -p; clang --version; echo "model ${MODEL:-b} ${ORG:-} subsdk1=$HAS_SUBSDK1"; } | sha256 | cut -d' ' -f1)
 if [ "$(cat "$RT/.stamp" 2>/dev/null || true)" != "$TC_STAMP" ]; then rm -f "$RT"/*.o "$RT"/nvn/*.o; echo "$TC_STAMP" > "$RT/.stamp"; fi
-. scripts/recomp/rt-bdsp/nvn/flags.inc.sh
+. scripts/recomp/runtime/nvn/flags.inc.sh
 DEFS="-DBDSP_REBASE32"; [ "$MODEL" = a ] && DEFS="-DBDSP_COMPACT_BASE=${ORG}ull"
 DEFS="$DEFS -DBDSP_HAS_SUBSDK1=$HAS_SUBSDK1"
 SDLINC=(); [ "$TARGET" != ios ] || SDLINC=(-I scripts/recomp/ios/shim)

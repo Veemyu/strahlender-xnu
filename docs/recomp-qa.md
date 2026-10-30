@@ -77,9 +77,9 @@ All build; version v5 and the local debug build were linked from this state.
 |---|---|---|
 | `scripts/recomp/qa/qa_run.sh`, `qa_run.py` | Harness (anchors, control file, reports, contact sheets) | done, tested only with scenarios above |
 | `scripts/recomp/qa/scenarios/*.txt` | 7 files (2 explorations prefixed with `_`; `language_select` untested) | partly done |
-| `scripts/recomp/rt-bdsp/services_audio.c` | Audio pacing, lock, timer, `BDSP_TRACE_AUDIO` | done (issue 1 fixed) |
-| `scripts/recomp/rt-bdsp/nvn/nvn_glue.c` | Input script up to 8,192 steps, `@file`, `BDSP_INPUT_CTL` (the `ap-recomp-macapp` branch also added `g_ext_buttons` in the same area; compatible) | done |
-| `scripts/recomp/rt-bdsp/kernel.c` | Report only: mutex owners in thread state (`BDSP_BT`); timeout fix came from `ap-recomp-ios` | done |
+| `scripts/recomp/runtime/services_audio.c` | Audio pacing, lock, timer, `BDSP_TRACE_AUDIO` | done (issue 1 fixed) |
+| `scripts/recomp/runtime/nvn/nvn_glue.c` | Input script up to 8,192 steps, `@file`, `BDSP_INPUT_CTL` (the `ap-recomp-macapp` branch also added `g_ext_buttons` in the same area; compatible) | done |
+| `scripts/recomp/runtime/kernel.c` | Report only: mutex owners in thread state (`BDSP_BT`); timeout fix came from `ap-recomp-ios` | done |
 | `docs/recomp-qa.md` | This document | done (status as described) |
 | `work/recomp/nvn-qa/nvn/renderer.m` (not in repo) | Debug output `BDSP_LOG_WATER` | local only, **no** repo patch (`scripts/recomp/qa/patches/` empty) |
 

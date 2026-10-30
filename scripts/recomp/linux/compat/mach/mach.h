@@ -1,4 +1,4 @@
-// Linux replacement for the small part of the Mach API that scripts/recomp/rt-bdsp (kernel.c, main.c) uses.
+// Linux replacement for the small part of the Mach API that scripts/recomp/runtime (kernel.c, main.c) uses.
 // Own code, only for the Linux build (docs/recomp-linux.md): makes it possible to compile the runtime unchanged on Linux
 // (`-I scripts/recomp/linux/compat`) without touching its files. Not a replacement for the Mach semantics on the
 // Mac: suspending via signal (SIGUSR2), memory usage from /proc, regions via mincore.

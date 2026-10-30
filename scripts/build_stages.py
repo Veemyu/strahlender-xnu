@@ -196,7 +196,7 @@ def read_env_value(path, key):
 
 def nvn_source_stamp(rec):
     """Source hash of the NVN layer (nvn/src, translate.c, shader.h, prepare.sh); the only definition is in prepare.sh."""
-    script = os.path.join(rec, "rt-bdsp", "nvn", "prepare.sh")
+    script = os.path.join(rec, "runtime", "nvn", "prepare.sh")
     if not os.path.isfile(script):
         return "no-prepare"
     r = subprocess.run(["bash", script, "--print"], capture_output=True, text=True, timeout=120)
@@ -228,7 +228,7 @@ def stage_hash(stage, root, work, target="all", env=None):
             skip = ("test", "vulkan", "__pycache__")
             parts["gen"] = _marker_hash(work, "recomp-gen")
             parts["obj"] = _marker_hash(work, "recomp-obj")
-            parts["runtime"] = hash_tree_content(os.path.join(rec, "rt-bdsp"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
+            parts["runtime"] = hash_tree_content(os.path.join(rec, "runtime"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
             parts["nvn_stamp"] = nvn_source_stamp(rec)
             parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".h", ".in", ".entitlements"), skip_dirs=("__pycache__",))
             parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh")
