@@ -30,7 +30,7 @@ jobs:
           $bin = ("$PWD\work\toolchain\bin").Replace("\", "/")
           $prefix = ("$PWD\work\unicorn").Replace("\", "/")
           $env:PATH = "$PWD\work\toolchain\bin;$env:PATH"
-          cmake -S unicorn-2.1.4 -B work/unicorn-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$bin\x86_64-w64-mingw32-clang.exe" -DCMAKE_CXX_COMPILER="$bin\x86_64-w64-mingw32-clang++.exe" -DCMAKE_RC_COMPILER="$bin\x86_64-w64-mingw32-windres.exe" -DBUILD_SHARED_LIBS=ON -DUNICORN_ARCH=aarch64 -DUNICORN_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake -S unicorn-2.1.4 -B work/unicorn-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$bin/x86_64-w64-mingw32-clang.exe" -DCMAKE_CXX_COMPILER="$bin/x86_64-w64-mingw32-clang++.exe" -DCMAKE_RC_COMPILER="$bin/x86_64-w64-mingw32-windres.exe" -DBUILD_SHARED_LIBS=ON -DUNICORN_ARCH=aarch64 -DUNICORN_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build work/unicorn-build --parallel
           cmake --install work/unicorn-build
           Get-ChildItem work/unicorn -Recurse -File | Select-Object -First 30 FullName, Length
