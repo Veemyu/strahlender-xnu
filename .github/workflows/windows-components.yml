@@ -28,7 +28,7 @@ permissions:
   contents: read
 concurrency:
   group: windows-components-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}  # a newer push replaces an unfinished test run; schedule and publish runs finish
 jobs:
   components:
     runs-on: windows-2022
@@ -71,13 +71,26 @@ jobs:
           $pthread = Get-ChildItem work/toolchain -Recurse -Filter libwinpthread-1.dll | Where-Object { $_.FullName -match 'x86_64' } | Select-Object -First 1
           if (-not $pthread) { throw 'libwinpthread-1.dll not found in the toolchain' }
           Copy-Item $pthread.FullName work/unicorn/lib/
-      - name: Build the tools the installer ships (Vulkan with shaderc, hactool, the code generator)
+      - name: Cache key of the Vulkan bundle (its source revisions and the compiler version)
+        run: |
+          python -c "import json; s=json.load(open('work/resolved/windows-sources.json'))['sources']; q=json.load(open('work/resolved/qt.json')); print(' '.join(s[n]['revision'] for n in ('vulkan-headers', 'vma', 'shaderc', 'glslang', 'spirv-headers', 'spirv-tools')), q['toolchain_version'])" | Set-Content work/vulkan-key.txt
+          Get-Content work/vulkan-key.txt
+      - name: Reuse the Vulkan/shaderc bundle while its sources, recipe and compiler are unchanged (about 5 minutes saved)
+        id: vulkan-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: work/tools/vulkan
+          key: vulkan-bundle-${{ hashFiles('work/vulkan-key.txt', 'scripts/recomp/dependency_build.py', 'scripts/recomp/portable_build.py', 'scripts/recomp/windows_support.py') }}
+      - name: Build the Vulkan bundle with shaderc
+        if: steps.vulkan-cache.outputs.cache-hit != 'true'
         run: |
           $env:PYTHONPATH = "$PWD"
           $cc = "$PWD\work\toolchain\bin\x86_64-w64-mingw32-clang.exe"
-          $cmake = (Get-Command cmake).Source
-          $ninja = (Get-Command ninja).Source
-          python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake $cmake --ninja $ninja --prefix work/tools/vulkan
+          python scripts/recomp/dependency_build.py vulkan --archives work/downloads --cc $cc --cmake (Get-Command cmake).Source --ninja (Get-Command ninja).Source --prefix work/tools/vulkan
+      - name: Build the tools the installer ships (hactool, the code generator)
+        run: |
+          $env:PYTHONPATH = "$PWD"
+          $cc = "$PWD\work\toolchain\bin\x86_64-w64-mingw32-clang.exe"
           python scripts/recomp/dependency_build.py hactool --archives work/downloads --cc $cc --prefix work/tools/hactool
           python scripts/recomp/portable_build.py generator --cc $cc --host-cc $cc --unicorn-root work/unicorn
           Copy-Item work/native-generator/windows-x86_64 work/tools/generator -Recurse
