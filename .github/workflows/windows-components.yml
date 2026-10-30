@@ -68,6 +68,9 @@ jobs:
           cmake --build work/unicorn-build --parallel
           cmake --install work/unicorn-build
           Copy-Item work/unicorn/bin/libunicorn.dll work/unicorn/lib/
+          $pthread = Get-ChildItem work/components/toolchain -Recurse -Filter libwinpthread-1.dll | Where-Object { $_.FullName -match 'x86_64' } | Select-Object -First 1
+          if (-not $pthread) { throw 'libwinpthread-1.dll not found in the toolchain' }
+          Copy-Item $pthread.FullName work/unicorn/lib/
       - name: Build the dependency bundles
         run: |
           $env:PYTHONPATH = "$PWD"
