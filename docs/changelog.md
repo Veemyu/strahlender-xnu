@@ -2,6 +2,10 @@
 
 Chronological, newest entries first. Each item records the date, goal, and files.
 
+## 2026-11-01
+
+- **Platform status and READMEs:** Windows (x86-64) and Linux x86-64 are documented as supported; Linux aarch64 compiles and is untested, testers are welcome. The root `README.md` and `README.de.md` were rewritten in plain wording (what it is, platform table, getting started, features) and now explain the name: strahlender is German for "brilliant", xnu is the kernel under macOS, iOS and iPadOS (Apple platforms came first). Status lines and headings were updated in `docs/README.md`, `docs/README.de.md`, `docs/BUILD.md`, `docs/BUILD.de.md`, `docs/recomp-linux.md`, `docs/architecture.md`, `docs/input.md` and `installer/README.md`; measurement notes were left as they were.
+
 ## 2026-10-29
 
 - **Cleanup and refactoring (log in `todo/refactoring.md`):** LZ4 is no longer in the repository (`build.py` downloads the pinned sources, checks SHA-256); the Unity-era `shaders` stage, the ShaderLab wrapper chain and the HLSL backend of the shader translator are gone (MSL/GLSL output byte-identical on 4,276 game shaders); `base_of()` has one definition (`scripts/recomp/module_bases.sh`); the nested lock file of the vendored `iced_winit` was dropped.

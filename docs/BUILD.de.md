@@ -6,14 +6,14 @@
 
 BDSP ist eine Rekompilation des Originalcodes von *Pokémon Brilliant Diamond*. Der Bau wandelt den
 Maschinencode des Spiels in C um, übersetzt ihn und bindet ihn mit einer Laufzeit, die die Konsolendienste
-und ein Grafik-Backend bereitstellt (Metal auf macOS und iPadOS, Vulkan unter Linux).
+und ein Grafik-Backend bereitstellt (Metal auf macOS und iPadOS, Vulkan unter Linux und Windows).
 
 - Das Repository enthält nur eigenen Code, Skripte und Dokumentation. Es enthält keine Spieldaten, keine
   Schlüssel, keine Speicherstände und keine Screenshots.
 - Du brauchst einen eigenen Dump des Spiels: die Basis-`.xci` (optional das `.nsp`-Update) und deine
   `prod.keys` (plus `title.keys`). Lege sie außerhalb des Repositorys ab. Die Skripte lesen sie nur.
 - Alles, was die Skripte erzeugen, landet in `work/`. Dieser Ordner ist von Git ignoriert. Committe ihn nie.
-- Ziele: die macOS-App (am weitesten), die iPadOS-App, Linux mit Vulkan (in Arbeit, Abschnitt 6).
+- Ziele: die macOS-App, die iPadOS- und iPhone-App, Linux mit Vulkan (Abschnitt 6), Windows mit Vulkan (Abschnitt „Windows“ nach Abschnitt 6).
 
 ## Schnellstart (geführt)
 
@@ -28,7 +28,7 @@ Zwei geführte Installer erledigen alles aus dieser Anleitung für dich. Mit `--
   installiert sie nach deiner Zustimmung (der Paketmanager fragt per `sudo` nach deinem Administrator-Passwort, das Skript sieht
   es nie). Der Vulkan Memory Allocator steckt auf Arch nicht in den offiziellen Paketen: Das Skript bittet dich, ihn selbst aus dem
   AUR zu installieren. Danach richtet es `work/venv` ein, fragt nach deinen Dateien und führt den Bau aus Abschnitt 6.2 aus.
-  Mehrere Stunden; die Linux-Version ist in Arbeit (Abschnitt 6.4).
+  Mehrere Stunden (Abschnitt 6.4).
 
 Beide Skripte sprechen Englisch, Deutsch, Spanisch und Portugiesisch (Systemsprache oder `BDSP_LANG=de|en|es|pt`). Die Texte
 liegen in `scripts/install/lang/<Kürzel>.sh`; für eine neue Sprache `en.sh` kopieren, die Werte übersetzen und das Kürzel in
@@ -173,6 +173,8 @@ Das Skript übergibt `TEAM_ID` und `-allowProvisioningUpdates` an `xcodebuild`. 
 
 ## 6. Linux mit Vulkan und Qt6
 
+Linux x86-64 wird unterstützt. Linux aarch64 lässt sich bauen, ist aber ungetestet; Tester sind willkommen.
+
 Die vollständige, gepflegte Paketliste steht in [BUILD.md](BUILD.md), Abschnitt 6.
 Der Linux-Build läuft direkt auf dem Linux-Rechner, vom Repo-Hauptverzeichnis aus; seine Skripte liegen unter `scripts/recomp/linux/local/` (die Abhängigkeitsprüfung unter `scripts/recomp/linux/deps.sh`).
 
@@ -217,10 +219,11 @@ Frames. Der erneute geführte Lauf erzeugte C und linkte die Bibliothek in 68 s;
 keine C-Objekte mussten erneut kompiliert werden. Die Binärdatei nutzt dynamisch
 die installierten Systembibliotheken. Die vollständigen Optimierungslisten
 stehen in [clang-optimierungsstufen.md](../todo/clang-optimierungsstufen.md).
-Linux-Ton und längere Spiel-/Darstellungstests bleiben offen.
 Messungen und Vulkan-Stand: [recomp-linux.md](recomp-linux.md) (englisch).
 
-## Windows (in Arbeit, noch kein spielbares Release)
+## Windows (x86-64)
+
+Windows 10 22H2 und Windows 11 auf x86-64 werden unterstützt. Windows auf ARM64 wird noch nicht unterstützt.
 
 Für den Windows-Build müssen keine Compiler oder Bibliotheken vorbereitet werden. Der Installer lädt **ein Archiv**, die
 *Windows-Build-Umgebung*, und baut damit das Spiel:
@@ -240,8 +243,8 @@ Für den Windows-Build müssen keine Compiler oder Bibliotheken vorbereitet werd
 - **Tests:** Die Windows-Tests laufen nur in der CI (`tests.yml` bei jedem Push, die Toolchain-Tests in `windows-components.yml`).
   Sie lesen die entpackte Umgebung über `BDSP_WINDOWS_NATIVE_CC`, `BDSP_WINDOWS_NATIVE_BINARY`, `BDSP_WINDOWS_PRIVATE_CATALOG`
   und `BDSP_WINDOWS_{SDL,VULKAN,FFMPEG,HACTOOL,QT}_ROOT`.
-- **Offen:** Weitergabeprüfung der mitgelieferten Fremdbinärdateien (Hinweise, Quellcode-Angebote), Hardware-Abnahme unter
-  Windows 10/11 und Controller-Matrix, ARM64. Bis dahin ist die Umgebung ein Entwicklungsstand, kein Release.
+- **Offene Punkte:** Weitergabeprüfung der mitgelieferten Fremdbinärdateien (Hinweise, Quellcode-Angebote), Hardware-Abnahme unter
+  Windows 10/11 und Controller-Matrix, ARM64.
 
 ## 7. Überblick über die Bau-Stufen
 

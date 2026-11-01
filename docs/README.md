@@ -6,7 +6,7 @@ Documentation is English; German exists only for the root README, this index and
 ## Goal
 
 This repository and your own copy of Pokémon Brilliant Diamond (an XCI, optionally the update NSP, and your `prod.keys`) must be
-enough to build the app for macOS, iPadOS and (in progress) Linux. The repository contains only original code, scripts and
+enough to build the app for macOS, iPadOS, iPhone, Linux and Windows. The repository contains only original code, scripts and
 documentation: no game data, keys, saves or generated code. Everything derived from the game is produced locally under `work/`, and
 a built app is for personal use only. The game's own code runs, so logic, UI and saves behave like the original.
 
@@ -25,7 +25,8 @@ a built app is for personal use only. The game's own code runs, so logic, UI and
 | macOS app: controls, saves, diagnostics, measurements | [recomp-macapp.md](recomp-macapp.md) |
 | On-screen keyboard, text entry, test hooks | [input.md](input.md) |
 | iPadOS: build, deployment, memory model and entitlements, known issues | [recomp-ios.md](recomp-ios.md) |
-| Linux: build host and Vulkan backend (work in progress) | [recomp-linux.md](recomp-linux.md) |
+| Linux: build host and Vulkan backend | [recomp-linux.md](recomp-linux.md) |
+| Windows: build and install | [BUILD.md](BUILD.md), section "Windows" |
 | Audio output | [recomp-audio.md](recomp-audio.md) |
 | App icons | [recomp-icons.md](recomp-icons.md) |
 

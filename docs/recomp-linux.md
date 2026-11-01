@@ -1,7 +1,8 @@
 # Linux: build host and Vulkan backend
 
-The same recompilation also builds for Linux x86-64 with a Vulkan renderer and a Qt 6 frontend. Linux is tested on x86-64 only. A Linux ARM64
-build compiles but is not tested yet; its backend and installer path are complete. **Status: work in progress, not playable.** Rendering, input and frame rate work in a window; audio, compute-heavy scenes, long sessions and Windows are not done.
+The same recompilation also builds for Linux x86-64 with a Vulkan renderer and a Qt 6 frontend, and Windows is supported (see [BUILD.md](BUILD.md)).
+Linux x86-64 is supported. A Linux ARM64 (aarch64) build compiles but is not tested yet; its backend and installer path are complete,
+testers are welcome.
 The user workflow (packages, commands, session variables) is in [BUILD.md](BUILD.md), section 6, and the guided installer
 `./install-linux.sh`. This page records how the Linux path is put together and what was measured. The figures come from an earlier
 workflow with a dedicated remote Linux machine (x86-64, 6 cores / 12 threads, 30 GB RAM, RTX 2080 Ti, Fedora 44) that no longer
@@ -98,7 +99,5 @@ title movie (the codec path) and stopped; the movie support of the Mac path is n
 3. The pipeline cache is not saved at exit; X11 and full screen are untested; no audio; input state is not reported to the game.
 4. The fixes made on the Mac since (the vertex and index ring buffer, MSAA resolve, the crop inside the window, the worker and
    `-O2` performance work in [rendering.md](rendering.md)) are not ported everywhere.
-5. Windows is not supported. It would need Win32 replacements for the Mach calls (time, thread suspension, stack size, memory
-   reporting), `VirtualAlloc` for the window, and a toolchain such as MSYS2 `clang64`; a small platform layer for those four Mach
-   sites would also remove `compat/`.
+5. Windows: see [BUILD.md](BUILD.md), section "Windows". The measurements on this page are from Linux only.
 6. A package-only full native build (after installing the packages) has to be repeated and verified on a clean machine.

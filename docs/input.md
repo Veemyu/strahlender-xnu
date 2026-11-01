@@ -90,8 +90,7 @@ the answer is automatic:
 
 ## Controllers (game input)
 
-On the implemented Apple/Linux paths, plug in or pair over Bluetooth; no mapper or Steam Input is needed. Windows remains a preparation
-target, not hardware-verified support. All connected pads act as player 1 (BDSP is a
+On the implemented Apple, Linux and Windows paths, plug in or pair over Bluetooth; no mapper or Steam Input is needed. All connected pads act as player 1 (BDSP is a
 single-player game). The keyboard stays available next to the pad on every platform.
 
 - **macOS, iPadOS:** `GameController.framework` only (Switch Pro, Joy-Con, DualShock, DualSense, Xbox, MFi). SDL's gamepad subsystem is

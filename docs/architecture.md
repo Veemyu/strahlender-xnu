@@ -2,7 +2,7 @@
 
 This project turns the ARM64 code of Pokémon Brilliant Diamond (BDSP) into C, compiles it on your machine, and links it with a
 runtime that replaces the Switch operating system and the NVN graphics API. The result runs natively on macOS (Metal), iPadOS
-(Metal) and, in progress, Linux (Vulkan). This page is the technical overview; build steps are in [BUILD.md](BUILD.md).
+(Metal), Linux (Vulkan) and Windows (Vulkan). This page is the technical overview; build steps are in [BUILD.md](BUILD.md).
 Numbers below were measured on the project's own dump unless marked *inferred* or *unverified*.
 
 ## Principles

@@ -6,14 +6,14 @@ German version: [BUILD.de.md](BUILD.de.md).
 
 BDSP is a recompilation of the original *Pokémon Brilliant Diamond* code. The build turns the game's
 machine code into native C, compiles it, and links it with a runtime that provides the console
-services and a graphics backend (Metal on macOS, Vulkan on Linux, Metal on iPadOS).
+services and a graphics backend (Metal on macOS and iPadOS, Vulkan on Linux and Windows).
 
 - The repository contains only our own code, scripts, and documentation. It contains no game content,
   no keys, no saves, and no screenshots.
 - You need your own dump of the game: the base `.xci` (optional `.nsp` update) and your `prod.keys`
   (plus `title.keys`). Keep them outside the repository. The scripts only read them.
 - Everything the scripts produce goes to `work/`, which is git-ignored. Never commit `work/`.
-- Targets: macOS app (most complete), iPadOS app, Linux with Vulkan (work in progress, section 6).
+- Targets: macOS app, iPadOS and iPhone app, Linux with Vulkan (section 6), Windows with Vulkan (section "Windows" after section 6).
 
 ## Quick start (guided)
 
@@ -27,8 +27,7 @@ Two guided installers do everything in this guide for you. Run `--dry-run` first
 - **Linux:** run `./install-linux.sh`. It detects `apt`, `dnf` or `pacman`, lists the missing development packages and installs
   them after you agree (the package manager asks for your administrator password through `sudo`; the script never sees it).
   The Vulkan Memory Allocator is not in the official Arch packages: the script asks you to install it from the AUR yourself.
-  It then sets up `work/venv`, asks for your files, and runs the build of section 6.2. Several hours; the Linux port is
-  work in progress (section 6.4).
+  It then sets up `work/venv`, asks for your files, and runs the build of section 6.2. Several hours (section 6.4).
 
 Both scripts speak English, German, Spanish and Portuguese (system language, or `BDSP_LANG=de|en|es|pt`). The texts are in
 `scripts/install/lang/<code>.sh`; to add a language, copy `en.sh`, translate the values and add the code in
@@ -209,13 +208,14 @@ Signing is your job. Select your team and provisioning in Xcode if the build fai
 `TEAM_ID` and `-allowProvisioningUpdates` to `xcodebuild`. Do not change `project.pbxproj` in the
 repository to set the team.
 
-## 6. Linux with Vulkan (work in progress)
+## 6. Linux with Vulkan
 
-Work in progress. Not playable yet. See section 6.4 for the known limits.
+Linux x86-64 is supported. Linux aarch64 compiles but is untested, testers are welcome. See section 6.4 for the known limits.
 
 ### 6.1 Requirements
 
-Use a Linux x86-64 machine with a Vulkan-capable GPU and its driver. AVX2 is optional.
+Use a Linux x86-64 machine with a Vulkan-capable GPU and its driver. AVX2 is optional. A Linux aarch64 machine
+should work as well but has not been tested.
 Local game builds default to `BDSP_CPU_TARGET=native`: the compiler enables the build CPU's
 supported instructions, including AVX/AVX2 where available. An older CPU builds without
 unsupported extensions. This does not guarantee compatibility with a different, older CPU.
@@ -374,13 +374,13 @@ Never commit concrete session IDs or authentication paths.
 - FFmpeg headers/libraries come from matching installed development packages;
   the Fedora Linux package-only build and short native Wayland run passed on 2026-10-23.
 - **Frame rate:** `BDSP_FPS` caps the frame rate (30, 60, 120). Measured in a window only; not verified across sessions.
-- SDL audio output now shares its bounded queue/lifecycle implementation with Windows;
-  actual device playback is not accepted yet. Input state is not reported. Compute workloads are not supported.
-- Windows is not supported. X11 and full screen (F11) are not tested.
+- X11 and full screen (F11) are not tested.
 
 Details: `docs/recomp-linux.md`.
 
-## Windows (work in progress, not a playable release)
+## Windows (x86-64)
+
+Windows 10 22H2 and Windows 11 on x86-64 are supported. Windows on ARM64 is not supported yet.
 
 The Windows build does not ask you to prepare compilers or libraries. The installer downloads **one archive**, the
 *Windows components*, and builds the game with it:
@@ -400,8 +400,8 @@ The Windows build does not ask you to prepare compilers or libraries. The instal
 - **Tests:** the Windows tests run in CI only (`tests.yml` on every push, the toolchain tests inside `windows-components.yml`).
   They read the unpacked environment through `BDSP_WINDOWS_NATIVE_CC`, `BDSP_WINDOWS_NATIVE_BINARY`, `BDSP_WINDOWS_PRIVATE_CATALOG`
   and `BDSP_WINDOWS_{SDL,VULKAN,FFMPEG,HACTOOL,QT}_ROOT`.
-- **Open:** redistribution review of the bundled third-party binaries (notices and source offers), hardware acceptance on
-  Windows 10/11 and the controller matrix, ARM64. Until then the environment is a development build, not a release.
+- **Known gaps:** redistribution review of the bundled third-party binaries (notices and source offers), hardware acceptance on
+  Windows 10/11 and the controller matrix, ARM64.
 
 ## 7. Build stages overview
 
