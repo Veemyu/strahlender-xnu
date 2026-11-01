@@ -153,7 +153,7 @@ class InstallerReleaseTests(unittest.TestCase):
             self.assertIn("--draft", run.call_args.args[0])
 
     def test_release_message_comes_from_versioned_markdown(self):
-        notes = release.release_notes(self.plan("nightly"), "Veemyu/strahlender-xnu")
+        notes = release.release_notes(release.plan("0.1.1", "workflow_dispatch", "main", "nightly", SHA, "123", "1"), "Veemyu/strahlender-xnu")
         self.assertIn("Strahlender Installer", notes)
         self.assertIn("The downloads contain no game files", notes)
         self.assertIn(SHA, notes)
