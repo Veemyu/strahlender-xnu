@@ -7,6 +7,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def crate_version(manifest):
+    return tomllib.loads((ROOT / manifest).read_text())["package"]["version"]
 SPEC = importlib.util.spec_from_file_location("generate_sbom", ROOT / "scripts/sbom/generate_sbom.py")
 gen = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(gen)
@@ -73,12 +77,12 @@ class SbomGeneratorTest(unittest.TestCase):
                 self.assertIn(target, known)
 
     def test_installer_is_marked_as_tracked(self):
-        installer = self.components["pkg:cargo/strahlender-xnu-installer@0.1.0"]
+        installer = self.components[f"pkg:cargo/strahlender-xnu-installer@{crate_version('installer/Cargo.toml')}"]
         self.assertEqual(installer["tracked"], gen.TRACKED)
         self.assertEqual(installer["license"], "MIT")
 
     def test_extract_crate_and_its_dependencies_are_listed(self):
-        extract = self.components["pkg:cargo/bdsp-extract@0.1.0"]
+        extract = self.components[f"pkg:cargo/bdsp-extract@{crate_version('installer/extract/Cargo.toml')}"]
         self.assertEqual(extract["category"], "application")
         self.assertIn("installer/extract/Cargo.lock", extract["evidence"])
         self.assertTrue(any(d.startswith("pkg:cargo/sha2@") for d in extract["depends_on"]))

@@ -466,7 +466,9 @@ fn run_driver(
                 );
                 if let Some(source) = firmware {
                     let helper = crate::bundle::helper("firmware_import").unwrap_or_else(|| {
-                        std::env::current_exe().unwrap_or_default().with_file_name("firmware_import")
+                        std::env::current_exe()
+                            .unwrap_or_default()
+                            .with_file_name("firmware_import")
                     });
                     command
                         .arg("--firmware")

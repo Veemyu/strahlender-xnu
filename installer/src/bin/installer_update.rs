@@ -73,7 +73,10 @@ fn main() {
         // A running .exe cannot be opened for writing: this succeeds once the installer has closed.
         let destination = PathBuf::from(&args[2]);
         let closed = (0..600).any(|_| {
-            let free = std::fs::OpenOptions::new().write(true).open(&destination).is_ok();
+            let free = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&destination)
+                .is_ok();
             if !free {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }

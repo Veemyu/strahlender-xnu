@@ -21,7 +21,9 @@ pub fn dir() -> Option<PathBuf> {
         return Some(beside.to_path_buf());
     }
     let data = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")?;
-    unpacked(&exe, &data.data_dir().join("bundle")).ok().flatten()
+    unpacked(&exe, &data.data_dir().join("bundle"))
+        .ok()
+        .flatten()
 }
 
 #[allow(dead_code)] // the installer_setup binary shares this module but starts no helper
@@ -43,7 +45,8 @@ pub fn unpacked(exe: &Path, root: &Path) -> Result<Option<PathBuf>, String> {
         return Ok(Some(target));
     }
     let mut file = fs::File::open(exe).map_err(|e| e.to_string())?;
-    file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|e| e.to_string())?;
     let mut bytes = vec![0u8; length as usize];
     file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
     if Sha256::digest(&bytes).as_slice() != sha {
@@ -84,7 +87,8 @@ fn trailer(exe: &Path) -> Result<Option<(u64, u64, [u8; 32])>, String> {
     if size < TRAILER {
         return Ok(None);
     }
-    file.seek(SeekFrom::Start(size - TRAILER)).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(size - TRAILER))
+        .map_err(|e| e.to_string())?;
     let mut tail = [0u8; TRAILER as usize];
     file.read_exact(&mut tail).map_err(|e| e.to_string())?;
     if &tail[..8] != MAGIC {
@@ -114,7 +118,9 @@ mod tests {
     fn archive() -> Vec<u8> {
         let mut out = Cursor::new(Vec::new());
         let mut zipped = zip::ZipWriter::new(&mut out);
-        zipped.start_file("resources/a.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        zipped
+            .start_file("resources/a.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
         zipped.write_all(b"hello").unwrap();
         zipped.finish().unwrap();
         out.into_inner()
@@ -138,7 +144,10 @@ mod tests {
         let first = unpacked(&exe, &dir.join("bundle")).unwrap().unwrap();
         assert_eq!(fs::read(first.join("resources/a.txt")).unwrap(), b"hello");
         fs::write(first.join("resources/a.txt"), b"kept").unwrap();
-        assert_eq!(unpacked(&exe, &dir.join("bundle")).unwrap(), Some(first.clone()));
+        assert_eq!(
+            unpacked(&exe, &dir.join("bundle")).unwrap(),
+            Some(first.clone())
+        );
         assert_eq!(fs::read(first.join("resources/a.txt")).unwrap(), b"kept");
         let _ = fs::remove_dir_all(&dir);
     }
@@ -164,7 +173,11 @@ mod tests {
         with_bundle(&bad, &zip, [7; 32]);
         assert!(unpacked(&bad, &dir.join("bundle")).is_err());
         let plain = dir.join("plain.exe");
-        fs::write(&plain, b"MZ no bundle at all, just a program of some size......").unwrap();
+        fs::write(
+            &plain,
+            b"MZ no bundle at all, just a program of some size......",
+        )
+        .unwrap();
         assert_eq!(unpacked(&plain, &dir.join("bundle")).unwrap(), None);
         let cut = dir.join("cut.exe");
         let mut bytes = Vec::from(MAGIC.as_slice());
