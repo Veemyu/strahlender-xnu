@@ -495,7 +495,7 @@ def build_ios(source, output, bundle, settings, mod_root=None, mod_name=None):
         if not path.exists():
             # A locale folder without its own Root.strings (en-US, fr, ja ...) would hide every other Settings text: iOS picks the
             # folder of the device language and does not fall back to English per key. Start from the app's own strings.
-            seed = settings / ((lang if lang in base_languages else "en") + ".lproj") / "Root.strings"
+            seed = Path(settings) / ((lang if lang in base_languages else "en") + ".lproj") / "Root.strings"
             if seed.is_file():
                 shutil.copyfile(seed, path)
         with path.open("a", encoding="utf-8") as file:

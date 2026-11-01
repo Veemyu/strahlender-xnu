@@ -343,7 +343,8 @@ class GameIconTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0, "")
 
         with patch.object(icons.subprocess, "run", side_effect=actool):
-            icons.build_ios(self.source, output, bundle, APP.parent / "ios/app/Settings.bundle")
+            # exactly the arguments the command line passes: all four are plain strings, not Path objects
+            icons.build_ios(str(self.source), str(output), str(bundle), str(APP.parent / "ios/app/Settings.bundle"))
         # Equal images share one compiled app icon, but remain independently selectable by language.
         self.assertEqual(len(list((output / "Documents").glob("*.icon"))), 2)
         for path in (output / "Documents").glob("*.icon"):
