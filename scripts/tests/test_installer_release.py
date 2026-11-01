@@ -18,9 +18,9 @@ class InstallerReleaseTests(unittest.TestCase):
     def test_published_names_match_the_update_manifest_of_installer_release(self):
         # installer/src/bin/installer_release.rs asset_name() lists the same downloads.
         source = (ROOT / "installer/src/bin/installer_release.rs").read_text()
-        for name in ("installer-macos-universal.zip", "Strahlender-Installer-x86_64.exe"):
+        for name in ("Strahlender-Installer-macOS-universal.zip", "Strahlender-Installer-x86_64.exe"):
             self.assertIn(name, release.PACKAGES)
-        self.assertIn('"installer-macos-universal.zip"', source)
+        self.assertIn('"Strahlender-Installer-macOS-universal.zip"', source)
         self.assertIn('format!("Strahlender-Installer-{arch}.exe")', source)
         for arch in ("aarch64", "x86_64"):
             self.assertIn(f"Strahlender-Installer-{arch}.AppImage", release.PACKAGES)
@@ -157,7 +157,7 @@ class InstallerReleaseTests(unittest.TestCase):
         self.assertIn("Strahlender Installer", notes)
         self.assertIn("The downloads contain no game files", notes)
         self.assertIn(SHA, notes)
-        self.assertLess(len(notes.splitlines()), 25)  # release messages stay short
+        self.assertLess(len(notes.splitlines()), 60)  # release messages stay short
         self.assertIn("/releases/download/installer-nightly-123-1/Strahlender-Installer-aarch64.AppImage", notes)
 
 

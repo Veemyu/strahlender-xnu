@@ -72,7 +72,7 @@ ditto "$INTEL_APP/Contents/Resources/runtime" "$RESOURCES/runtime/macos-x86_64"
 
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
-ditto -c -k --keepParent "$APP" "$OUTPUT/installer-macos-universal.zip"
+ditto -c -k --keepParent "$APP" "$OUTPUT/Strahlender-Installer-macOS-universal.zip"
 cd "$OUTPUT"
-shasum -a 256 installer-macos-universal.zip > SHA256SUMS
+shasum -a 256 Strahlender-Installer-macOS-universal.zip > SHA256SUMS
 printf 'Packaged universal installer: %s\n' "$APP"

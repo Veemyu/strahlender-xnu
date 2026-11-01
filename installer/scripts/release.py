@@ -17,13 +17,13 @@ SBOM = ("sbom-strahlender-xnu.spdx.json", "sbom-strahlender-xnu.spdx", "sbom-str
 UPDATE = ("installer-update.json", "installer-update.json.sig")
 # Which public download updates which installer (the installer's own host name); one universal zip serves both Macs.
 UPDATE_TARGETS = {
-    "macos-aarch64": "installer-macos-universal.zip",
-    "macos-x86_64": "installer-macos-universal.zip",
+    "macos-aarch64": "Strahlender-Installer-macOS-universal.zip",
+    "macos-x86_64": "Strahlender-Installer-macOS-universal.zip",
     "linux-aarch64": "Strahlender-Installer-aarch64.AppImage",
     "linux-x86_64": "Strahlender-Installer-x86_64.AppImage",
     "windows-x86_64": "Strahlender-Installer-x86_64.exe",
 }
-PACKAGES = ("installer-macos-universal.zip", "Strahlender-Installer-aarch64.AppImage", "Strahlender-Installer-x86_64.AppImage",
+PACKAGES = ("Strahlender-Installer-macOS-universal.zip", "Strahlender-Installer-aarch64.AppImage", "Strahlender-Installer-x86_64.AppImage",
             "Strahlender-Installer-x86_64.exe")
 
 
@@ -127,7 +127,10 @@ def release_notes(release, repository):
         link = f"https://github.com/{repository}/releases/download/{release['tag']}/{name}"
         notes = notes.replace(f"`{name}`", f"[{name}]({link})")
     return notes + (
-        f"\n\n`sbom-*`: software bill of materials, for auditors. [Source](https://github.com/{repository}/commit/{release['revision']})\n")
+        "\n\n<details>\n<summary>Software bill of materials</summary>\n\n"
+        "The `sbom-*` files (SPDX, CycloneDX, CSV) list every component and licence, for auditors and compliance tools. "
+        "You do not need them to use the installer.\n\n"
+        f"Built from [this commit](https://github.com/{repository}/commit/{release['revision']}).\n\n</details>\n")
 
 
 def publish(folder, release, repository):

@@ -118,7 +118,7 @@ Rust slice selects its matching profile. Native libraries and Python build
 configuration stay within their original architecture profile. Homebrew/LLVM
 search order also follows the current Rust slice (Apple Silicon: /opt/homebrew,
 Intel: /usr/local). The final app is ad-hoc signed once and packaged only as
-`installer-macos-universal.zip`, then extracted and smoke-tested on both native
+`Strahlender-Installer-macOS-universal.zip`, then extracted and smoke-tested on both native
 Mac runners. The native intermediate ZIPs are not public release downloads.
 
 The initial Linux GUI build baseline is Ubuntu 22.04 (glibc 2.35). Runtime wheels

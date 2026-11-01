@@ -242,7 +242,7 @@ jobs:
         with:
           name: installer-macos-universal
           path: |
-            work/installer-packages/macos-universal/installer-macos-universal.zip
+            work/installer-packages/macos-universal/Strahlender-Installer-macOS-universal.zip
             work/installer-packages/macos-universal/SHA256SUMS
           if-no-files-found: error
           retention-days: 1
@@ -262,7 +262,7 @@ jobs:
         run: |
           cd universal
           shasum -a 256 -c SHA256SUMS
-          ditto -x -k installer-macos-universal.zip "$RUNNER_TEMP/universal-installer"
+          ditto -x -k Strahlender-Installer-macOS-universal.zip "$RUNNER_TEMP/universal-installer"
           APP="$RUNNER_TEMP/universal-installer/Strahlender Installer.app"
           for binary in strahlender-xnu-installer ips_patch firmware_import installer_update installer_setup; do
             lipo "$APP/Contents/MacOS/$binary" -verify_arch arm64

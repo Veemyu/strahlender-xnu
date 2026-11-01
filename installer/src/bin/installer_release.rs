@@ -7,7 +7,7 @@ use std::path::Path;
 /// The public download for a target: one universal Mac zip, one AppImage per Linux architecture, one Windows zip.
 fn asset_name(host: &str) -> String {
     match host.split_once('-') {
-        Some(("macos", _)) => "installer-macos-universal.zip".into(),
+        Some(("macos", _)) => "Strahlender-Installer-macOS-universal.zip".into(),
         Some(("linux", arch)) => format!("Strahlender-Installer-{arch}.AppImage"),
         Some(("windows", arch)) => format!("Strahlender-Installer-{arch}.exe"),
         _ => format!("installer-{host}.zip"),
@@ -106,7 +106,7 @@ mod tests {
         );
         assert_eq!(
             super::asset_name("macos-x86_64"),
-            "installer-macos-universal.zip"
+            "Strahlender-Installer-macOS-universal.zip"
         );
         // The release publishes exactly these names (installer/scripts/release.py PACKAGES).
     }
@@ -116,7 +116,7 @@ mod tests {
         let folder =
             std::env::temp_dir().join(format!("universal-manifest-test-{}", std::process::id()));
         std::fs::create_dir(&folder).unwrap();
-        std::fs::write(folder.join("installer-macos-universal.zip"), b"fixture").unwrap();
+        std::fs::write(folder.join("Strahlender-Installer-macOS-universal.zip"), b"fixture").unwrap();
         let manifest: serde_json::Value =
             serde_json::from_slice(&super::manifest("0.2.0", &folder).unwrap()).unwrap();
         let assets = manifest["assets"].as_array().unwrap();
@@ -124,7 +124,7 @@ mod tests {
         assert_eq!(assets[0]["target"], "macos-aarch64");
         assert_eq!(assets[1]["target"], "macos-x86_64");
         for asset in assets {
-            assert_eq!(asset["name"], "installer-macos-universal.zip");
+            assert_eq!(asset["name"], "Strahlender-Installer-macOS-universal.zip");
         }
         assert_eq!(assets[0]["sha256"], assets[1]["sha256"]);
         std::fs::remove_dir_all(folder).unwrap();
