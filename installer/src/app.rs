@@ -1786,6 +1786,14 @@ impl Installer {
                 } => {
                     self.build_progress.count(&id, completed, total);
                 }
+                crate::backend::Event::Transfer {
+                    id,
+                    completed,
+                    total,
+                } => {
+                    self.build_progress
+                        .transfer(&id, completed, total, Instant::now());
+                }
                 crate::backend::Event::Log { level, message } => {
                     let message = redact_home_path(&message);
                     if level == "error" {
@@ -2597,6 +2605,27 @@ impl Installer {
                 if self.details {
                     self.copied_log_line = Some((1, Instant::now()));
                 }
+            }
+            "device-copy" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Running;
+                self.build_progress = crate::progress::BuildProgress::default();
+                self.build_progress.step("install", "started");
+                self.build_progress.count("install", 11520, 18025);
+                let now = Instant::now();
+                let (gb, total) = (1u64 << 30, 47 * (1u64 << 30) / 10);
+                self.build_progress.transfer(
+                    "install",
+                    gb,
+                    total,
+                    now.checked_sub(Duration::from_secs(60)).unwrap_or(now),
+                );
+                self.build_progress.transfer("install", 3 * gb, total, now);
+                let stage = crate::progress::Stage::Install;
+                self.motion
+                    .snap(stage.index() as f32 + self.build_progress.fraction(stage));
+                self.record("BACKEND", "Copying 18025 files (4.7 GB) to the device.");
+                self.record("BACKEND", "Copying game data to the device.");
             }
             "preflight-running" | "preflight-details" => {
                 self.page = Page::Progress;

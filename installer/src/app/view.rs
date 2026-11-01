@@ -1325,6 +1325,33 @@ impl Installer {
                     state.total,
                     self.language.t(L::ModulesGenerated)
                 ),
+                crate::progress::Stage::Install if state.total > 0 && !state.done => {
+                    let copy = &self.build_progress.copy;
+                    let mut text = format!(
+                        "{} / {} {}",
+                        state.completed,
+                        state.total,
+                        self.language.t(L::FilesCopied)
+                    );
+                    if copy.total > 0 {
+                        text.push_str(&format!(
+                            " \u{b7} {} / {}",
+                            crate::progress::format_bytes(copy.completed),
+                            crate::progress::format_bytes(copy.total)
+                        ));
+                        if let Some(speed) = copy.speed() {
+                            text.push_str(&format!("\n{}", crate::progress::format_speed(speed)));
+                            if let Some(left) = copy.remaining() {
+                                text.push_str(&format!(
+                                    " \u{b7} {} {}",
+                                    crate::progress::format_duration(left),
+                                    self.language.t(L::TimeLeft)
+                                ));
+                            }
+                        }
+                    }
+                    text
+                }
                 _ => self
                     .language
                     .t(match self.backend_status {

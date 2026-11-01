@@ -1,4 +1,9 @@
 //! Build progress comes from backend events. An unknown total stays indeterminate.
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
     Source,
@@ -74,6 +79,83 @@ impl StageProgress {
     }
 }
 
+/// Bytes of a copy stage and the speed measured from them. Samples arrive once per copied portion, so the speed is
+/// averaged over the last `WINDOW`; it is unknown until two samples at least `MIN_SPAN` apart exist.
+#[derive(Debug, Clone, Default)]
+pub struct Transfer {
+    samples: VecDeque<(Instant, u64)>,
+    pub completed: u64,
+    pub total: u64,
+}
+
+impl Transfer {
+    const WINDOW: Duration = Duration::from_secs(90);
+    const MIN_SPAN: Duration = Duration::from_secs(3);
+
+    pub fn record(&mut self, now: Instant, completed: u64, total: u64) {
+        if completed < self.completed || total != self.total {
+            self.samples.clear(); // a new copy started
+        }
+        self.completed = completed.min(total);
+        self.total = total;
+        self.samples.push_back((now, self.completed));
+        while self
+            .samples
+            .front()
+            .is_some_and(|(at, _)| now.saturating_duration_since(*at) > Self::WINDOW)
+            && self.samples.len() > 2
+        {
+            self.samples.pop_front();
+        }
+    }
+
+    /// Bytes per second, if enough has been measured.
+    pub fn speed(&self) -> Option<f64> {
+        let (first_at, first) = *self.samples.front()?;
+        let (last_at, last) = *self.samples.back()?;
+        let span = last_at.saturating_duration_since(first_at);
+        (span >= Self::MIN_SPAN && last > first).then(|| (last - first) as f64 / span.as_secs_f64())
+    }
+
+    pub fn remaining(&self) -> Option<Duration> {
+        let speed = self.speed()?;
+        Some(Duration::from_secs_f64(
+            self.total.saturating_sub(self.completed) as f64 / speed,
+        ))
+    }
+
+    pub fn fraction(&self) -> Option<f32> {
+        (self.total > 0).then(|| (self.completed as f64 / self.total as f64) as f32)
+    }
+}
+
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1 << 30 {
+        format!("{:.1} GB", bytes as f64 / (1u64 << 30) as f64)
+    } else {
+        format!("{:.0} MB", bytes as f64 / (1u64 << 20) as f64)
+    }
+}
+
+pub fn format_speed(bytes_per_second: f64) -> String {
+    let mb = bytes_per_second / (1u64 << 20) as f64;
+    if mb >= 10.0 {
+        format!("{mb:.0} MB/s")
+    } else {
+        format!("{mb:.1} MB/s")
+    }
+}
+
+/// "<1 min", "7 min", "1 h 05 min": rounded up, because a countdown that ends early is friendlier than one that overruns.
+pub fn format_duration(left: Duration) -> String {
+    let minutes = left.as_secs().div_ceil(60);
+    match minutes {
+        0 | 1 => "<1 min".to_owned(),
+        2..=89 => format!("{minutes} min"),
+        _ => format!("{} h {:02} min", minutes / 60, minutes % 60),
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct GeneratorProgress {
     pub module: String,
@@ -89,6 +171,7 @@ pub struct BuildProgress {
     pub stages: [StageProgress; Stage::ALL.len()],
     pub active: Stage,
     pub generator: GeneratorProgress,
+    pub copy: Transfer,
 }
 
 impl Default for BuildProgress {
@@ -97,6 +180,7 @@ impl Default for BuildProgress {
             stages: [StageProgress::default(); Stage::ALL.len()],
             active: Stage::Source,
             generator: GeneratorProgress::default(),
+            copy: Transfer::default(),
         }
     }
 }
@@ -104,6 +188,12 @@ impl Default for BuildProgress {
 impl BuildProgress {
     pub fn fraction(&self, stage: Stage) -> f32 {
         let state = self.stages[stage.index()];
+        if stage == Stage::Install
+            && !state.done
+            && let Some(bytes) = self.copy.fraction()
+        {
+            return bytes; // the copy is mostly a few large files: bytes show the real progress
+        }
         let g = &self.generator;
         if stage != Stage::Generate || state.done || g.modules_total == 0 {
             return state.fraction();
@@ -132,6 +222,12 @@ impl BuildProgress {
             if item.total > 0 {
                 item.completed = item.total;
             }
+        }
+    }
+
+    pub fn transfer(&mut self, id: &str, completed: u64, total: u64, now: Instant) {
+        if Stage::from_id(id) == Some(Stage::Install) {
+            self.copy.record(now, completed, total);
         }
     }
 
@@ -223,5 +319,59 @@ mod tests {
         assert_eq!(progress.stages[Stage::Compile.index()].completed, 2368);
         assert!(progress.stages[Stage::Compile.index()].fraction() < 1.0);
         assert_eq!(progress.stages[Stage::Generate.index()].fraction(), 1.0);
+    }
+
+    #[test]
+    fn transfer_speed_and_remaining_time_come_from_the_copied_bytes() {
+        let start = Instant::now();
+        let mb = 1u64 << 20;
+        let mut copy = Transfer::default();
+        copy.record(start, 0, 1000 * mb);
+        assert_eq!(copy.speed(), None); // nothing measured yet
+        copy.record(start + Duration::from_secs(1), 20 * mb, 1000 * mb);
+        assert_eq!(copy.speed(), None); // too short a span to trust
+        copy.record(start + Duration::from_secs(10), 200 * mb, 1000 * mb);
+        assert_eq!(copy.speed().map(|s| (s / mb as f64).round()), Some(20.0));
+        assert_eq!(copy.remaining(), Some(Duration::from_secs(40)));
+        assert_eq!(copy.fraction(), Some(0.2));
+    }
+
+    #[test]
+    fn an_old_transfer_is_forgotten_when_a_new_copy_starts() {
+        let start = Instant::now();
+        let mut copy = Transfer::default();
+        copy.record(start, 0, 100);
+        copy.record(start + Duration::from_secs(10), 100, 100);
+        copy.record(start + Duration::from_secs(20), 0, 500); // another copy
+        assert_eq!(copy.speed(), None);
+        assert_eq!((copy.completed, copy.total), (0, 500));
+    }
+
+    #[test]
+    fn the_install_stage_follows_bytes_not_files() {
+        let start = Instant::now();
+        let mut progress = BuildProgress::default();
+        progress.step("install", "started");
+        progress.count("install", 10, 1000); // 1 % of the files
+        progress.transfer("install", 600, 1000, start); // but 60 % of the bytes
+        assert!((progress.fraction(Stage::Install) - 0.6).abs() < 1e-6);
+        progress.step("install", "complete");
+        assert_eq!(progress.fraction(Stage::Install), 1.0);
+    }
+
+    #[test]
+    fn sizes_speeds_and_times_are_short_and_readable() {
+        assert_eq!(format_bytes(5 << 20), "5 MB");
+        assert_eq!(format_bytes(5 << 30), "5.0 GB");
+        assert_eq!(format_speed(24.4 * (1u64 << 20) as f64), "24 MB/s");
+        assert_eq!(format_speed(2.46 * (1u64 << 20) as f64), "2.5 MB/s");
+        assert_eq!(format_duration(Duration::from_secs(20)), "<1 min");
+        assert_eq!(format_duration(Duration::from_secs(61)), "2 min");
+        assert_eq!(format_duration(Duration::from_secs(7 * 60)), "7 min");
+        assert_eq!(format_duration(Duration::from_secs(66 * 60 + 5)), "67 min");
+        assert_eq!(
+            format_duration(Duration::from_secs(95 * 60 + 5)),
+            "1 h 36 min"
+        );
     }
 }

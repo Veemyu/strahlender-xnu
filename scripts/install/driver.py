@@ -668,6 +668,60 @@ def _ios_data_copies(info):
     return resolved
 
 
+_COPY_CHUNK_BYTES = 256 << 20   # one devicectl call per portion: progress is reported between calls
+_COPY_LOOSE_FILES = 50          # a big folder with more direct files than this is copied whole (no per-file calls)
+
+
+def _tree_stats(path):
+    files = size = 0
+    for root, _, names in os.walk(path):
+        for name in names:
+            files += 1
+            size += os.lstat(os.path.join(root, name)).st_size
+    return files, size
+
+
+def _copy_portions(source, limit=_COPY_CHUNK_BYTES):
+    """Splits a folder into portions for devicectl: [(relative folder, kind, loose file names, files, bytes)]. A folder up to `limit`
+    bytes is one "tree" portion; a bigger one is split into its sub-folders plus one "loose" portion for its own few files. A folder
+    without sub-folders, or with many loose files, stays whole. Only folders are ever copied (source/rel -> destination/rel), the
+    layout devicectl is already known to handle for the whole RomFS."""
+    source = Path(source)
+    portions = []
+
+    def walk(folder):
+        rel = folder.relative_to(source)
+        files, size = _tree_stats(folder)
+        entries = sorted(folder.iterdir())
+        subfolders = [e for e in entries if e.is_dir() and not e.is_symlink()]
+        loose = [e for e in entries if e.is_file() and not e.is_symlink()]
+        if size <= limit or not subfolders or len(loose) > _COPY_LOOSE_FILES:
+            portions.append((rel, "tree", (), files, size))
+            return
+        if loose:
+            portions.append((rel, "loose", tuple(e.name for e in loose), len(loose), sum(e.lstat().st_size for e in loose)))
+        for entry in subfolders:
+            walk(entry)
+
+    walk(source)
+    return portions
+
+
+def _stage_loose_files(folder, names, stage):
+    """A folder holding only the named files (hard links; a copy where linking is impossible), so devicectl copies folders only."""
+    stage.mkdir(parents=True)
+    for name in names:
+        try:
+            os.link(folder / name, stage / name)
+        except OSError:
+            shutil.copy2(folder / name, stage / name)
+    return stage
+
+
+def _format_bytes(value):
+    return f"{value / (1 << 30):.1f} GB" if value >= 1 << 30 else f"{value / (1 << 20):.0f} MB"
+
+
 def _install_ios(args, artifact):
     info = args.ios_install
     device, bundle = info["device"]["id"], info["bundle_id"]
@@ -686,14 +740,35 @@ def _install_ios(args, artifact):
                         args, "install", emit_steps=False)
     if code:
         raise ValueError(getattr(args, "command_failure_hint", None) or "Device app installation failed; see the device diagnostics above.")
-    for source, destination in copies:
-        emit("log", level="diagnostic", message="Copying " + ("mod files" if destination.startswith("Mods/") else "game data") + " to the device.")
-        code = _run_command(["xcrun", "devicectl", "device", "copy", "to", "--device", device,
-                             "--domain-type", "appDataContainer", "--domain-identifier", bundle,
-                             "--source", str(source), "--destination", "Documents/" + destination],
-                            args, "install", emit_steps=False)
-        if code:
-            raise ValueError("Device data copy failed. Retry installation to resume copying; saves are not copied or removed.")
+    plan = [(source, destination, _copy_portions(source)) for source, destination in copies]
+    total_files = sum(p[3] for _, _, portions in plan for p in portions)
+    total_bytes = sum(p[4] for _, _, portions in plan for p in portions)
+    done_files = done_bytes = 0
+    emit("log", level="diagnostic", message=f"Copying {total_files} files ({_format_bytes(total_bytes)}) to the device.")
+    emit("progress", id="install", completed=0, total=total_files, bytes_completed=0, bytes_total=total_bytes)
+    stage_root = info["build_dir"] / "copy-stage"
+    shutil.rmtree(stage_root, ignore_errors=True)
+    try:
+        for source, destination, portions in plan:
+            what = "mod files" if destination.startswith("Mods/") else "game data"
+            emit("log", level="diagnostic", message="Copying " + what + " to the device.")
+            for number, (rel, kind, names, files, size) in enumerate(portions):
+                local = source / rel
+                if kind == "loose":
+                    local = _stage_loose_files(local, names, stage_root / str(number))
+                remote = "Documents/" + destination + ("/" + rel.as_posix() if rel.parts else "")
+                code = _run_command(["xcrun", "devicectl", "device", "copy", "to", "--device", device,
+                                     "--domain-type", "appDataContainer", "--domain-identifier", bundle,
+                                     "--source", str(local), "--destination", remote],
+                                    args, "install", emit_steps=False)
+                if code:
+                    raise ValueError("Device data copy failed. Retry installation to resume copying; saves are not copied or removed.")
+                done_files += files
+                done_bytes += size
+                emit("progress", id="install", completed=done_files, total=total_files,
+                     bytes_completed=done_bytes, bytes_total=total_bytes)
+    finally:
+        shutil.rmtree(stage_root, ignore_errors=True)
     emit("artifact", kind="ipa", path=str(info["build_dir"] / "BDSP.ipa"))
     return Path(artifact)
 

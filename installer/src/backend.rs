@@ -34,6 +34,12 @@ pub enum Event {
         completed: u64,
         total: u64,
     },
+    /// Bytes of a copy stage (device data): the installer derives speed and remaining time from them.
+    Transfer {
+        id: String,
+        completed: u64,
+        total: u64,
+    },
     GeneratorProgress {
         module: String,
         phase: String,
@@ -78,6 +84,10 @@ enum ProtocolEvent {
         modules_completed: u64,
         #[serde(default)]
         modules_total: u64,
+        #[serde(default)]
+        bytes_completed: u64,
+        #[serde(default)]
+        bytes_total: u64,
     },
     Log {
         level: String,
@@ -588,14 +598,17 @@ fn run_driver(
                             Ok(ProtocolEvent::Step { id, status }) => {
                                 let _ = output.send((run_id, Event::Step { id, status })).await;
                             }
-                            Ok(ProtocolEvent::Progress { id, completed, total, module, phase, modules_completed, modules_total }) => {
+                            Ok(ProtocolEvent::Progress { id, completed, total, module, phase, modules_completed, modules_total, bytes_completed, bytes_total }) => {
                                 let event = match (id.as_str(), module, phase) {
                                     ("eh_gen", Some(module), Some(phase)) => Event::GeneratorProgress {
                                         module, phase, completed, total, modules_completed, modules_total,
                                     },
-                                    _ => Event::Progress { id, completed, total },
+                                    _ => Event::Progress { id: id.clone(), completed, total },
                                 };
                                 let _ = output.send((run_id, event)).await;
+                                if bytes_total > 0 {
+                                    let _ = output.send((run_id, Event::Transfer { id, completed: bytes_completed, total: bytes_total })).await;
+                                }
                             }
                             Ok(ProtocolEvent::Log { level, message }) => {
                                 let _ = output.send((run_id, Event::Log { level, message })).await;
