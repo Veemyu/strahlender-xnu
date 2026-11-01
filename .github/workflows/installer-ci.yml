@@ -198,18 +198,23 @@ jobs:
           rm -rf "$RUNNER_TEMP/unpacked" && mkdir "$RUNNER_TEMP/unpacked"
           cd work/installer-packages/windows-x86_64
           sha256sum -c SHA256SUMS
-          unzip -q installer-windows-x86_64.zip -d "$RUNNER_TEMP/unpacked"
+          cp Strahlender-Installer-x86_64.exe "$RUNNER_TEMP/unpacked/"
           cd "$RUNNER_TEMP"
-          "unpacked/Strahlender Installer/strahlender-xnu-installer.exe" --check-runtime
-          # What a user's first start does: the packaged installer sets the Windows environment up from its own tools
+          # One file: the first start unpacks its bundle (runtime, tools, helpers), the second reuses it.
+          ls -l unpacked
+          "unpacked/Strahlender-Installer-x86_64.exe" --check-runtime
+          "unpacked/Strahlender-Installer-x86_64.exe" --check-runtime
+          test "$(ls "$APPDATA/Veemyu/strahlender-xnu-installer/data/bundle" | wc -l)" = 1
+          # What a user's first start does: the installer sets the Windows environment up from its own tools
           # (Qt, FFmpeg and SDL3 come from their publishers). It carries no scripts, so it fetches the current main source.
-          "unpacked/Strahlender Installer/installer_setup.exe" --install
+          helper="$(ls -d "$APPDATA"/Veemyu/strahlender-xnu-installer/data/bundle/*/)installer_setup.exe"
+          BDSP_INSTALLER_EXE="$PWD/unpacked/Strahlender-Installer-x86_64.exe" "$helper" --install
           find "$APPDATA/Veemyu/strahlender-xnu-installer/data/windows-components" -maxdepth 2 -name catalog.json | grep .
       - uses: actions/upload-artifact@v7
         with:
           name: installer-windows-x86_64
           path: |
-            work/installer-packages/windows-x86_64/installer-windows-x86_64.zip
+            work/installer-packages/windows-x86_64/Strahlender-Installer-x86_64.exe
             work/installer-packages/windows-x86_64/SHA256SUMS
           if-no-files-found: error
           retention-days: 1

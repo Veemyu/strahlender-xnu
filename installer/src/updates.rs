@@ -254,9 +254,11 @@ pub fn apply(download: &std::path::Path) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
         }
         start_helper(&exe, download, std::path::Path::new(&appimage))
+    } else if cfg!(windows) {
+        start_helper(&exe, download, &exe)
     } else {
         Err(format!(
-            "The verified update was saved as {}. Extract it to replace your portable installer.",
+            "The verified update was saved as {}. Replace your installer with it.",
             download.file_name().unwrap_or_default().to_string_lossy()
         ))
     }
@@ -272,11 +274,12 @@ fn start_helper(
         .map_err(|_| format!("This installation folder is read-only. Your verified update remains saved as {}. Copy it to a writable Applications folder to update.", source.file_name().unwrap_or_default().to_string_lossy()))?;
     drop(file);
     std::fs::remove_file(probe).map_err(|e| e.to_string())?;
-    let helper = exe.with_file_name("installer_update");
+    let helper = crate::bundle::helper("installer_update")
+        .unwrap_or_else(|| exe.with_file_name("installer_update"));
     let temporary = source
         .parent()
         .ok_or("Update folder missing.")?
-        .join("installer_update");
+        .join(format!("installer_update{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(helper, &temporary).map_err(|e| e.to_string())?;
     std::process::Command::new(temporary)
         .arg(std::process::id().to_string())

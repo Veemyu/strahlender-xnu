@@ -1,3 +1,5 @@
+#[path = "../bundle.rs"]
+mod bundle;
 #[path = "../components.rs"]
 mod components;
 #[path = "../dependencies.rs"]

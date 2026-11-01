@@ -192,14 +192,14 @@ fn set_cpu_target(command: &mut Command, target: &str, portable: bool) {
 }
 
 fn ips_helper() -> Option<PathBuf> {
-    let executable = std::env::current_exe().ok()?;
-    let sibling = executable.with_file_name(if cfg!(windows) {
-        "ips_patch.exe"
+    let sibling = if cfg!(windows) {
+        crate::bundle::helper("ips_patch")
     } else {
-        "ips_patch"
-    });
-    if sibling.is_file() {
-        return Some(sibling);
+        let executable = std::env::current_exe().ok()?;
+        Some(executable.with_file_name("ips_patch")).filter(|path| path.is_file())
+    };
+    if sibling.is_some() {
+        return sibling;
     }
     if cfg!(debug_assertions) {
         let root = project_root()?;
@@ -465,13 +465,9 @@ fn run_driver(
                     std::env::var_os("BDSP_INSTALLER_DEV_INSTALL_ROOT"),
                 );
                 if let Some(source) = firmware {
-                    let helper = std::env::current_exe().unwrap_or_default().with_file_name(
-                        if cfg!(windows) {
-                            "firmware_import.exe"
-                        } else {
-                            "firmware_import"
-                        },
-                    );
+                    let helper = crate::bundle::helper("firmware_import").unwrap_or_else(|| {
+                        std::env::current_exe().unwrap_or_default().with_file_name("firmware_import")
+                    });
                     command
                         .arg("--firmware")
                         .arg(source)

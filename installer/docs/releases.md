@@ -1,7 +1,8 @@
 # Installer release preparation
 
-The public downloads are one universal macOS app ZIP and two Linux AppImages
-(x86_64 and aarch64). Windows installers and Android remain
+The public downloads are one universal macOS app ZIP, two Linux AppImages
+(x86_64 and aarch64) and one Windows `.exe` (the resources are appended to the
+executable and unpacked on first start, see `installer/src/bundle.rs`). Android remains
 follow-up work. CI never processes game files or keys.
 
 ## Deliberate builds and publication
@@ -181,7 +182,7 @@ cargo run --locked --manifest-path installer/Cargo.toml --bin installer_release 
 ```
 
 macOS updates use the same universal `.zip` as manual downloads (extracted with macOS ditto); both Mac
-architecture entries refer to that file. Linux updates use `.AppImage`, Windows the `.zip`.
+architecture entries refer to that file. Linux updates use `.AppImage`, Windows the `.exe`.
 The public key printed by the signing tool must match the
 one embedded in the installer. 
 Update metadata signatures and downloaded bytes are verified before replacement.

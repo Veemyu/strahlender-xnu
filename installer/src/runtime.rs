@@ -109,7 +109,7 @@ pub fn bundled_runtime() -> Option<PathBuf> {
 pub fn runtime_beside_executable(executable: &Path) -> Option<PathBuf> {
     let parent = executable.parent()?;
     if cfg!(target_os = "windows") {
-        runtime_in_resources(&parent.join("resources"))
+        runtime_in_resources(&crate::bundle::dir()?.join("resources"))
     } else {
         runtime_in_resources(&parent.parent()?.join("Resources"))
     }

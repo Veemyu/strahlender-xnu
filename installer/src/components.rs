@@ -156,9 +156,14 @@ fn setup_source(
     }
 }
 
-/// The executable that answers `--cli unpack`: the installer itself. The helper `installer_setup` runs from the same
-/// folder and does not know `--cli`, so it points at its sibling.
+/// The executable that answers `--cli unpack`: the installer itself. The helper `installer_setup` does not know `--cli`,
+/// so it points at the installer: `BDSP_INSTALLER_EXE`, else the sibling.
 fn extract_tool(own: &Path) -> PathBuf {
+    if let Some(installer) = std::env::var_os("BDSP_INSTALLER_EXE").map(PathBuf::from)
+        && installer.is_file()
+    {
+        return installer;
+    }
     let main = format!("strahlender-xnu-installer{}", std::env::consts::EXE_SUFFIX);
     let sibling = own.with_file_name(&main);
     if own.file_name().is_some_and(|name| name != main.as_str()) && sibling.is_file() {
@@ -200,9 +205,9 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
         .to_string())
 }
 
-/// The tools archive shipped inside the installer (resources/ beside the executable), with its metadata.
+/// The tools archive shipped inside the installer (resources/ of the unpacked bundle), with its metadata.
 pub fn bundled() -> Option<(PathBuf, Meta)> {
-    let resources = std::env::current_exe().ok()?.parent()?.join("resources");
+    let resources = crate::bundle::dir()?.join("resources");
     let meta: Meta =
         serde_json::from_slice(&fs::read(resources.join("windows-components.json")).ok()?).ok()?;
     meta.check().ok()?;

@@ -18,10 +18,10 @@ class InstallerReleaseTests(unittest.TestCase):
     def test_published_names_match_the_update_manifest_of_installer_release(self):
         # installer/src/bin/installer_release.rs asset_name() lists the same downloads.
         source = (ROOT / "installer/src/bin/installer_release.rs").read_text()
-        for name in ("installer-macos-universal.zip", "installer-windows-x86_64.zip"):
+        for name in ("installer-macos-universal.zip", "Strahlender-Installer-x86_64.exe"):
             self.assertIn(name, release.PACKAGES)
         self.assertIn('"installer-macos-universal.zip"', source)
-        self.assertIn('format!("installer-{host}.zip")', source)
+        self.assertIn('format!("Strahlender-Installer-{arch}.exe")', source)
         for arch in ("aarch64", "x86_64"):
             self.assertIn(f"Strahlender-Installer-{arch}.AppImage", release.PACKAGES)
         self.assertIn("Strahlender-Installer-{arch}.AppImage", source)
@@ -48,10 +48,10 @@ class InstallerReleaseTests(unittest.TestCase):
             self.assertEqual({a["target"] for a in data["assets"]}, set(release.UPDATE_TARGETS))
             for asset in data["assets"]:
                 self.assertEqual(asset["sha256"], hashlib.sha256(asset["name"].encode()).hexdigest())
-            (folder / "installer-windows-x86_64.zip").unlink()
+            (folder / "Strahlender-Installer-x86_64.exe").unlink()
             with self.assertRaisesRegex(ValueError, "Missing download for windows-x86_64"):
                 release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode(), public)
-            (folder / "installer-windows-x86_64.zip").write_bytes(b"w")
+            (folder / "Strahlender-Installer-x86_64.exe").write_bytes(b"w")
             with self.assertRaisesRegex(ValueError, "does not match"):
                 release.sign_update(folder, "0.2.0", base64.b64encode(seed).decode(), "")
             with self.assertRaisesRegex(ValueError, "does not match"):
@@ -154,10 +154,10 @@ class InstallerReleaseTests(unittest.TestCase):
 
     def test_release_message_comes_from_versioned_markdown(self):
         notes = release.release_notes(self.plan("nightly"), "Veemyu/strahlender-xnu")
-        self.assertIn("Luminescent Platinum", notes)
-        self.assertIn("Full Lumi playthrough validation remains in progress", notes)
+        self.assertIn("Strahlender Installer", notes)
+        self.assertIn("The downloads contain no game files", notes)
         self.assertIn(SHA, notes)
-        self.assertIn("**nightly**", notes)
+        self.assertLess(len(notes.splitlines()), 25)  # release messages stay short
         self.assertIn("/releases/download/installer-nightly-123-1/Strahlender-Installer-aarch64.AppImage", notes)
 
 

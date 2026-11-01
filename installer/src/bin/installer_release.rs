@@ -9,6 +9,7 @@ fn asset_name(host: &str) -> String {
     match host.split_once('-') {
         Some(("macos", _)) => "installer-macos-universal.zip".into(),
         Some(("linux", arch)) => format!("Strahlender-Installer-{arch}.AppImage"),
+        Some(("windows", arch)) => format!("Strahlender-Installer-{arch}.exe"),
         _ => format!("installer-{host}.zip"),
     }
 }
@@ -101,7 +102,7 @@ mod tests {
         );
         assert_eq!(
             super::asset_name("windows-x86_64"),
-            "installer-windows-x86_64.zip"
+            "Strahlender-Installer-x86_64.exe"
         );
         assert_eq!(
             super::asset_name("macos-x86_64"),

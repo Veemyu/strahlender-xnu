@@ -21,10 +21,10 @@ UPDATE_TARGETS = {
     "macos-x86_64": "installer-macos-universal.zip",
     "linux-aarch64": "Strahlender-Installer-aarch64.AppImage",
     "linux-x86_64": "Strahlender-Installer-x86_64.AppImage",
-    "windows-x86_64": "installer-windows-x86_64.zip",
+    "windows-x86_64": "Strahlender-Installer-x86_64.exe",
 }
 PACKAGES = ("installer-macos-universal.zip", "Strahlender-Installer-aarch64.AppImage", "Strahlender-Installer-x86_64.AppImage",
-            "installer-windows-x86_64.zip")
+            "Strahlender-Installer-x86_64.exe")
 
 
 def plan(version, event, ref, channel, revision, run_id, attempt, draft=False):
@@ -127,9 +127,7 @@ def release_notes(release, repository):
         link = f"https://github.com/{repository}/releases/download/{release['tag']}/{name}"
         notes = notes.replace(f"`{name}`", f"[{name}]({link})")
     return notes + (
-        "\n\nThe `sbom-*` files are the software bill of materials for auditors and compliance tools. You do not need them to use the installer.\n"
-        f"\n---\nChannel: **{release['channel']}** · "
-        f"[Installer source](https://github.com/{repository}/commit/{release['revision']})\n")
+        f"\n\n`sbom-*`: software bill of materials, for auditors. [Source](https://github.com/{repository}/commit/{release['revision']})\n")
 
 
 def publish(folder, release, repository):

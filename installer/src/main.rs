@@ -1,5 +1,6 @@
 mod app;
 mod backend;
+mod bundle;
 mod capture;
 mod components;
 mod dependencies;

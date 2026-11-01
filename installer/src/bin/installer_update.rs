@@ -68,6 +68,22 @@ fn main() {
             std::process::exit(1);
         }
     }
+    #[cfg(windows)]
+    {
+        // A running .exe cannot be opened for writing: this succeeds once the installer has closed.
+        let destination = PathBuf::from(&args[2]);
+        let closed = (0..600).any(|_| {
+            let free = std::fs::OpenOptions::new().write(true).open(&destination).is_ok();
+            if !free {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            free
+        });
+        if !closed {
+            eprintln!("Installer is still running; update deferred.");
+            std::process::exit(1);
+        }
+    }
     if let Err(error) = replace(&PathBuf::from(&args[1]), &PathBuf::from(&args[2])) {
         eprintln!("{error}");
         std::process::exit(1);
