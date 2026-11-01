@@ -482,7 +482,8 @@ def build_ios(source, output, bundle, settings, mod_root=None, mod_name=None):
     default_word = {"de": "Standard", "es": "Predeterminado", "pt": "Padrão"}
     recommended_word = {"de": " (empfohlen)", "es": " (recomendado)", "pt": " (recomendado)"}
     translations = {row[0]: row[1:] for row in texts}
-    for locale in sorted({"de", "en", "es", "pt"} | {v["id"] for v in manifest["variants"]}):
+    base_languages = ("de", "es", "pt", "ru")   # the languages the app's Settings.bundle ships; every other locale starts from English
+    for locale in sorted({"de", "en", "es", "pt", "ru"} | {v["id"] for v in manifest["variants"]}):
         lang = locale.split("-")[0]   # pt-BR -> pt, es-419 -> es; English variants -> en
         group, title, default, footer = translations.get(lang, translations["en"])
         if not manifest["default"].startswith("en-"):
@@ -491,6 +492,12 @@ def build_ios(source, output, bundle, settings, mod_root=None, mod_name=None):
         recommended = recommend(manifest["variants"], [locale])
         path = settings_out / (locale + ".lproj") / "Root.strings"
         path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            # A locale folder without its own Root.strings (en-US, fr, ja ...) would hide every other Settings text: iOS picks the
+            # folder of the device language and does not fall back to English per key. Start from the app's own strings.
+            seed = settings / ((lang if lang in base_languages else "en") + ".lproj") / "Root.strings"
+            if seed.is_file():
+                shutil.copyfile(seed, path)
         with path.open("a", encoding="utf-8") as file:
             for key, text in (("ICON_GROUP", group), ("ICON_TITLE", title), ("ICON_DEFAULT", default), ("ICON_FOOTER", footer)):
                 file.write("\n%s = %s;\n" % (json.dumps(key), json.dumps(text, ensure_ascii=False)))

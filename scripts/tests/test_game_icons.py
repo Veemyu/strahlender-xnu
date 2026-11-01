@@ -359,6 +359,16 @@ class GameIconTests(unittest.TestCase):
         self.assertEqual(set(icon_setting["Values"]), {"default", "de", "en-US", "ja"})
         self.assertIn("empfohlen", (bundle / "Settings.bundle/de.lproj/Root.strings").read_text(encoding="utf-8"))
         self.assertIn("recommended", (bundle / "Settings.bundle/ja.lproj/Root.strings").read_text(encoding="utf-8"))
+        # Every locale folder must carry every Settings text: iOS uses the folder of the device language without a per-key
+        # fallback to English, so a folder that only holds the icon keys turns the other rows into raw keys (DATA_GROUP ...).
+        import re
+        keys = {p.parent.name: set(re.findall(r'^"([A-Za-z0-9_-]+)"\s*=', p.read_text(encoding="utf-8"), re.M))
+                for p in (bundle / "Settings.bundle").glob("*.lproj/Root.strings")}
+        self.assertIn("ja.lproj", keys)
+        self.assertIn("DATA_GROUP", keys["ja.lproj"])
+        self.assertIn("FPS_TITLE", keys["en-US.lproj"])
+        for locale, found in keys.items():
+            self.assertEqual(found, keys["en.lproj"], locale)
         info = plistlib.loads((bundle / "Info.plist").read_bytes())
         self.assertEqual(info["CFBundleIdentifier"], "synthetic.icons")
         self.assertIn("CFBundleIcons", info)
