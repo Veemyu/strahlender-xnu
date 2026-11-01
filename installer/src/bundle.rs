@@ -15,13 +15,17 @@ const DONE: &str = ".complete";
 
 /// The folder holding `resources/` and the helper programs of this installer.
 pub fn dir() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
+    dir_of(&std::env::current_exe().ok()?)
+}
+
+/// The same for the installer executable `exe`.
+pub fn dir_of(exe: &Path) -> Option<PathBuf> {
     let beside = exe.parent()?;
     if beside.join("resources").is_dir() {
         return Some(beside.to_path_buf());
     }
     let data = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")?;
-    unpacked(&exe, &data.data_dir().join("bundle"))
+    unpacked(exe, &data.data_dir().join("bundle"))
         .ok()
         .flatten()
 }
