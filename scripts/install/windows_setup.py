@@ -11,8 +11,10 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
+import time
 import urllib.request
 
 from scripts.install import windows_pipeline as pipeline
@@ -20,6 +22,70 @@ from scripts.recomp import dependency_build as dependencies
 from scripts.recomp import portable_build as build
 from scripts.recomp import resolve_inputs
 from scripts.recomp import resolve_qt
+
+
+# Windows keeps freshly unpacked files open for a while (Defender scans them, the indexer reads them). Renaming or deleting such a folder
+# then fails with "access denied", "in use" or "directory not empty" (WinError 5, 32, 145) and succeeds a few seconds later.
+RETRY_SECONDS = 90
+
+
+def retry(action, seconds=RETRY_SECONDS, pause=1.0, sleep=time.sleep, clock=time.monotonic):
+    deadline = clock() + seconds
+    while True:
+        try:
+            return action()
+        except OSError:
+            if clock() >= deadline:
+                raise
+            sleep(pause)
+
+
+def _writable(function, path, *_):
+    """rmtree handler: a read-only file blocks deleting its folder."""
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
+def remove_tree(path, seconds=RETRY_SECONDS, sleep=time.sleep, clock=time.monotonic):
+    """Deletes a folder, waiting for Windows to release it. Returns False (never raises) when it stays locked: the leftover is renamed
+    out of the way, because cleaning up must not fail the setup."""
+    path = Path(path)
+    if not path.exists():
+        return True
+    handler = {"onexc": _writable} if sys.version_info >= (3, 12) else {"onerror": _writable}
+    try:
+        retry(lambda: shutil.rmtree(path, **handler) if path.exists() else None, seconds, sleep=sleep, clock=clock)
+        return True
+    except OSError:
+        try:
+            os.replace(path, path.with_name("%s.old-%d" % (path.name, os.getpid())))
+        except OSError:
+            pass
+        return False
+
+
+def move_tree(source, destination, seconds=RETRY_SECONDS, sleep=time.sleep, clock=time.monotonic):
+    """Renames a folder (same volume); if it stays locked, copies it and removes the source in the background of the setup."""
+    source, destination = Path(source), Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        retry(lambda: os.replace(source, destination), seconds, sleep=sleep, clock=clock)
+    except OSError:
+        shutil.copytree(source, destination, symlinks=True)
+        remove_tree(source, 10, sleep=sleep, clock=clock)
+
+
+LEFTOVERS = ("downloads", "raw", "toolchain", "qt", "sdl", "ffmpeg", "vulkan", "hactool", "generator", "NOTICES", "catalog.json")
+
+
+def clear_leftovers(out):
+    """A setup that was interrupted (or failed on a locked folder) leaves its parts behind; start from nothing."""
+    for name in LEFTOVERS:
+        part = Path(out) / name
+        if part.is_dir():
+            remove_tree(part)
+        elif part.exists():
+            part.unlink()
 
 
 def fetch(url, destination, *, sha1=None, sha256=None, progress=print):
@@ -63,6 +129,7 @@ def setup(tools, out, target=None, progress=print, get=fetch, unpacker=unpack):
     tools, out = Path(tools).resolve(), Path(out).resolve()
     selected = build.windows.profile(target)
     downloads, raw = out / "downloads", out / "raw"
+    clear_leftovers(out)
     qt = resolve_qt.resolve()
     sdl, ffmpeg = resolve_inputs.latest_sdl_devel(), resolve_inputs.latest_ffmpeg()
     sources = {
@@ -76,7 +143,7 @@ def setup(tools, out, target=None, progress=print, get=fetch, unpacker=unpack):
         progress("Unpacking " + name)
         unpacker(downloads / name, raw / name.split(".")[0])
     compiler_in_raw = find(raw / "toolchain", selected["target"] + "-w64-mingw32-clang.exe")
-    shutil.move(str(compiler_in_raw.parent.parent), str(out / "toolchain"))
+    move_tree(compiler_in_raw.parent.parent, out / "toolchain")
     compiler = out / "toolchain/bin" / compiler_in_raw.name
     qt_root = find(raw / "qtbase", "Qt6Core.dll").parent.parent
     progress("Bundling Qt, FFmpeg and SDL3")
@@ -86,8 +153,9 @@ def setup(tools, out, target=None, progress=print, get=fetch, unpacker=unpack):
     build.import_sdl(sdl_root, out / "sdl", selected)
     for name in ("vulkan", "hactool", "generator", "NOTICES"):
         shutil.copytree(tools / name, out / name)
-    shutil.rmtree(downloads)
-    shutil.rmtree(raw)
+    for part in (downloads, raw):   # the setup is done: a folder Windows still holds is only a leftover
+        if not remove_tree(part):
+            progress("Could not remove %s yet; it is cleaned up with the next build." % part.name)
     progress("Registering the build environment")
     pipeline.write_catalog(out / "catalog.json", compiler, out / "generator/bdsp_codegen.exe", selected,
                            sdl=out / "sdl", vulkan=out / "vulkan", ffmpeg=out / "ffmpeg", hactool=out / "hactool", qt=out / "qt")
