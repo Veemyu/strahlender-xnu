@@ -191,7 +191,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bdsp-extract"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "flate2",
  "image",
@@ -3651,7 +3651,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strahlender-xnu-installer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "bdsp-extract",

@@ -258,10 +258,17 @@ impl Installer {
                 );
             }
             actions = actions.push(
-                button(text(self.language.t(L::DismissError)).size(12))
-                    .padding([8, 12])
-                    .on_press(Message::DismissNotice)
-                    .style(move |_, status| style::action(c, true, status)),
+                button(
+                    text(self.language.t(if self.update_confirmation {
+                        L::UpdateLater
+                    } else {
+                        L::DismissError
+                    }))
+                    .size(12),
+                )
+                .padding([8, 12])
+                .on_press(Message::DismissNotice)
+                .style(move |_, status| style::action(c, true, status)),
             );
             let card = container(column![dialog, actions].spacing(18))
                 .width(360)

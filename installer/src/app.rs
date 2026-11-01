@@ -621,15 +621,25 @@ impl Installer {
     fn handle(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::UpdateChecked(result) => match result {
-                Ok(release) => self.available_update = release,
+                Ok(release) => {
+                    self.available_update = release;
+                    // Ask right away, so nobody stays on an old installer by never clicking the header button.
+                    if self.available_update.is_some()
+                        && self.notice.is_none()
+                        && !self.updating
+                        && self.backend_status != BackendStatus::Running
+                    {
+                        return self.handle(Message::ShowUpdateDetails);
+                    }
+                }
                 Err(error) => self.record("UPDATE", &error),
             },
             Message::ShowUpdateDetails => {
                 if let Some(release) = &self.available_update {
                     self.update_confirmation = true;
                     self.notice = Some(format!(
-                        "{} {}. {}",
-                        self.language.t(L::UpdateAvailable),
+                        "{} \u{2192} {}\n{}",
+                        env!("CARGO_PKG_VERSION"),
                         release.version,
                         self.language.t(L::UpdateRestartHint)
                     ));
@@ -2499,14 +2509,14 @@ impl Installer {
                     self.record("SETUP", &description);
                 }
             }
-            "update-available" | "update-confirmation" => {
+            "update-available" | "update-confirmation" | "update-prompt" => {
                 self.page = Page::Target;
                 self.available_update = Some(crate::updates::Release {
                     tag: None,
                     version: "0.2.0".into(),
                     assets: vec![],
                 });
-                if scenario == "update-confirmation" {
+                if matches!(scenario, "update-confirmation" | "update-prompt") {
                     let _ = self.handle(Message::ShowUpdateDetails);
                 }
             }
@@ -3200,6 +3210,48 @@ mod tests {
             app.build_progress.stages[crate::progress::Stage::Compile.index()].completed,
             2368
         );
+    }
+
+    fn newer_release() -> crate::updates::Release {
+        crate::updates::Release {
+            tag: None,
+            version: "9.9.9".into(),
+            assets: vec![],
+        }
+    }
+
+    #[test]
+    fn a_newer_installer_is_offered_right_after_the_start() {
+        let (mut app, _) = Installer::new();
+        app.notice = None;
+        let _ = app.update(Message::UpdateChecked(Ok(Some(newer_release()))));
+        assert!(app.update_confirmation);
+        let notice = app.notice.clone().unwrap();
+        assert!(notice.contains("9.9.9") && notice.contains(env!("CARGO_PKG_VERSION")));
+        let _ = app.update(Message::DismissNotice); // "Later": the header button stays
+        assert!(app.notice.is_none() && app.available_update.is_some());
+    }
+
+    #[test]
+    fn the_update_prompt_never_hides_another_message_or_interrupts_a_build() {
+        let (mut app, _) = Installer::new();
+        app.notice = Some("A build error".into());
+        let _ = app.update(Message::UpdateChecked(Ok(Some(newer_release()))));
+        assert!(!app.update_confirmation);
+        assert_eq!(app.notice.as_deref(), Some("A build error"));
+        assert!(app.available_update.is_some());
+
+        let (mut app, _) = Installer::new();
+        app.notice = None;
+        app.backend_status = BackendStatus::Running;
+        let _ = app.update(Message::UpdateChecked(Ok(Some(newer_release()))));
+        assert!(!app.update_confirmation && app.notice.is_none());
+
+        let (mut app, _) = Installer::new();
+        app.notice = None;
+        let _ = app.update(Message::UpdateChecked(Ok(None)));
+        let _ = app.update(Message::UpdateChecked(Err("offline".into())));
+        assert!(!app.update_confirmation && app.notice.is_none());
     }
 
     #[test]

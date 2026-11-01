@@ -232,18 +232,18 @@ pub fn apply(download: &std::path::Path) -> Result<(), String> {
             return Err("The downloaded installer ZIP could not be opened.".into());
         }
         let app = stage.join("Strahlender Installer.app");
-        for (tool, args) in [
-            ("codesign", vec!["--verify", "--deep", "--strict"]),
-            ("spctl", vec!["--assess", "--type", "execute"]),
-        ] {
-            if !std::process::Command::new(tool)
-                .args(args)
-                .arg(&app)
-                .status()
-                .is_ok_and(|s| s.success())
-            {
-                return Err("The update is not signed and approved by macOS. The current installer remains installed.".into());
-            }
+        // Authenticity is the Ed25519-signed manifest plus the SHA-256 checked in `download`. The installer is not
+        // notarized, so `spctl --assess` would reject every update; the bundle only has to be intact.
+        if !std::process::Command::new("codesign")
+            .args(["--verify", "--deep", "--strict"])
+            .arg(&app)
+            .status()
+            .is_ok_and(|s| s.success())
+        {
+            return Err(
+                "The downloaded installer is damaged. The current installer remains installed."
+                    .into(),
+            );
         }
         start_helper(&exe, &app, current)
     } else if let Some(appimage) = std::env::var_os("APPIMAGE") {

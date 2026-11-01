@@ -162,6 +162,7 @@ messages! {
     UpdateShort => ["Update", "Update", "Actualización", "Atualização", "Обновление"],
     UpdateAvailable => ["Installer update available", "Installer-Update verfügbar", "Hay una actualización del instalador", "Atualização do instalador disponível", "Доступно обновление установщика"],
     UpdateRestartHint => ["Download the verified update and restart the installer? Your files and settings will be kept.", "Geprüftes Update herunterladen und den Installer neu starten? Deine Dateien und Einstellungen bleiben erhalten.", "¿Descargar la actualización verificada y reiniciar el instalador? Se conservarán tus archivos y ajustes.", "Descarregar a atualização verificada e reiniciar o instalador? Os teus ficheiros e definições serão mantidos.", "Скачать проверенное обновление и перезапустить установщик? Ваши файлы и настройки сохранятся."],
+    UpdateLater => ["Later", "Später", "Más tarde", "Mais tarde", "Позже"],
     UpdateInstaller => ["Update & restart", "Update & Neustart", "Actualizar y reiniciar", "Atualizar e reiniciar", "Обновить и перезапустить"],
     UpdateDownloading => ["Downloading update…", "Update wird geladen…", "Descargando actualización…", "A descarregar a atualização…", "Загрузка обновления…"],
     DependenciesTitle => ["Prepare your computer", "Computer vorbereiten", "Prepara tu ordenador", "Prepara o teu computador", "Подготовьте компьютер"],
