@@ -88,9 +88,8 @@ HLE slots: 0x0A000000. Thread stacks occupy 252 MiB from 0x10400000.
 The alias region starts at 0x20000000. SDK allocation constraints leave about
 1.98 GiB of application memory versus 3.14 GiB in model A.
 
-nvn_rebase32.py rewrites guest-address uses in copied NVN sources under work/,
-preserving host pointers. Rules must match or generation aborts.
-build_rt32.sh supports Mac validation and iPhoneOS static-library builds.
+(Model B, removed on 2026-11-01: nvn_rebase32.py rewrote guest-address uses in the NVN sources. Model A-low uses them unchanged.)
+build_rt32.sh builds the iPhoneOS static library.
 FFmpeg provides software VP8/VP9 decoding and Matroska/WebM demuxing; the guest
 shader converts YUV. The source movies have no audio streams.
 
@@ -103,9 +102,9 @@ performance guarantees.
 ## Memory model A-low, iPhone target and the thermal limit (2026-10-23)
 
 **Model A-low** is the compact layout of model B shifted to a fixed host address (`0x8_0000_0000`, free on iPad and iPhone), so guest address == host address again
-(see [architecture.md](architecture.md)). Build: `MODEL=a scripts/recomp/ios/gen32.sh all` (folders `gen4i`, `img4i`, `obj4i`, about 15 minutes cold),
-`IOS_MODEL=a scripts/recomp/ios/deploy_ios.sh build` and `install` (own runtime folder `ios-rt-a`, own build output). Model B stays the default
-(`deploy_ios.sh` without `IOS_MODEL`). A fixed 12.5 GiB `vm_allocate` on the M2 iPad Pro succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start
+(see [architecture.md](architecture.md)). Build: `scripts/recomp/ios/gen32.sh all` (folders `gen4i`, `img4i`, `obj4i`, about 15 minutes cold),
+`scripts/recomp/ios/deploy_ios.sh build` and `install` (runtime folder `ios-rt-a`). Model B, the former default, was removed from the repository
+on 2026-11-01; the installer has built A-low only for a long time. A fixed 12.5 GiB `vm_allocate` on the M2 iPad Pro succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start
 (`BDSP_PROBE_FIXED=1`, three starts); `0x1_` is invalid, `0x2_`/`0x3_` are used by the system, everything from `0x10_0000_0000` up is invalid.
 
 Measured on the M2 iPad Pro, 240 s, the same input script (left/right walking on the Route 222 beach, `BDSP_INPUT_SCRIPT`), 120 fps target,
@@ -226,6 +225,9 @@ design iteration; the current icon design and language selection are described
 at the top of this guide and in [recomp-icons.md](recomp-icons.md).
 
 ### Model B implementation details
+
+*History: model B (the 32-bit-offset window) and its scripts (`rt32/`, `nvn_rebase32.py`, `build_rt32.sh mac`, `run_eh_rebase32.sh`) were removed on
+2026-11-01; the repository's git history has them. The notes below describe how it worked.*
 
 The `gen32.sh` pipeline generated all modules below 4 GiB (`main` at
 `0x01000000`, `sdk` at `0x07000000`, `subsdk0` at `0x08000000`, and `rtld` at
@@ -449,7 +451,7 @@ not checked despite `UIFileSharingEnabled`. Performance was not capped at 60
 or 30 fps: 50–52 fps exceeded the 30 fps target but was not tied to the
 ProMotion refresh rate.
 
-The historical Mac reproduction used:
+The historical Mac reproduction (model B, no longer in the repository) used:
 
 ```sh
 scripts/recomp/ios/gen32.sh all 3

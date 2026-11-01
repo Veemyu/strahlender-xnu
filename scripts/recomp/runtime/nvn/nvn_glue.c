@@ -31,10 +31,7 @@ void bdsp_gate_hit(const char *what);
 void kernel_phys_range(uint64_t *lo, uint64_t *hi);
 uint64_t loader_find_symbol(const char *name);
 void rt_fatal(const char *fmt, ...);
-#ifdef BDSP_REBASE32   // fallback values as in bdsp.h (variant B)
-#define ALIAS_BASE 0x20000000ull
-#define ALIAS_SIZE 0xE0000000ull
-#elif defined(BDSP_COMPACT_BASE)   // variant A-low
+#if defined(BDSP_COMPACT_BASE)   // fallback values as in bdsp.h: variant A-low
 #define ALIAS_BASE (BDSP_COMPACT_BASE + 0x20000000ull)
 #define ALIAS_SIZE 0xE0000000ull
 #else

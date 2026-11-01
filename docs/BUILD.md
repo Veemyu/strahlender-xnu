@@ -177,7 +177,7 @@ Limits: no network. The first launch may need right-click → Open (Gatekeeper, 
 
 - `TEAM_ID` in `work/local.env` (section 3).
 - A paired iPad, unlocked, trusted, and connected. The script selects the first connected iPad.
-- The iOS build inputs in `work/recomp/obj32` and `work/recomp/img32`. Create them with
+- The iOS build inputs in `work/recomp/obj4i` and `work/recomp/img4i`. Create them with
   `scripts/recomp/ios/gen32.sh` (see `docs/recomp-ios.md`).
 - `work/exefs` with `main.npdm`, from stage `extract`.
 

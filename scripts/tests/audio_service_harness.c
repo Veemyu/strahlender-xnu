@@ -1,9 +1,13 @@
 // Synthetic regression cases: no game data, real audio device or guest threads.
 #include <assert.h>
 #include <stdatomic.h>
+#include <sys/mman.h>
 #include "../recomp/runtime/services_audio.c"
 
-uint8_t *g_base;
+// Guest addresses are host pointers inside the guest window (GUEST_LO..GUEST_HI, which the service checks): the test memory is mapped
+// there and A(offset) is the address of an offset in it.
+static uint8_t *arena;
+#define A(offset) ((uint64_t)(uintptr_t)(arena + (offset)))
 pthread_mutex_t g_klock = PTHREAD_MUTEX_INITIALIZER;
 static atomic_uint_fast64_t clock_ns;
 static unsigned writes, starts, stops, closes;
@@ -40,8 +44,8 @@ void audio_output_write(AudioOutput *out, const void *pcm, size_t bytes) {
 
 static IpcResp request(Service *s, uint32_t cmd, uint64_t value) {
     IpcReq req = {.cmd = cmd, .data = (const uint8_t *)&value, .data_size = 8};
-    if (cmd == 7) { req.na = 1; req.a[0] = (IpcBuf){0x1000, 0x28}; }
-    if (cmd == 8) { req.nb = 1; req.b[0] = (IpcBuf){0x2000, 8}; }
+    if (cmd == 7) { req.na = 1; req.a[0] = (IpcBuf){A(0x1000), 0x28}; }
+    if (cmd == 8) { req.nb = 1; req.b[0] = (IpcBuf){A(0x2000), 8}; }
     IpcResp resp = {0};
     s->handler(s, &req, &resp);
     return resp;
@@ -51,23 +55,23 @@ static void pacing_and_bounds(void) {
     AudOut a = {.rate = 48000, .channels = 2};
     pthread_mutex_init(&a.lk, NULL);
     Service s = {.state = &a, .handler = audout_obj};
-    uint64_t *desc = G2H64(0x1000);
-    desc[1] = 0x3000; desc[2] = 4104; desc[3] = 4096; desc[4] = 8;
-    memset(G2H(0x3000), 0x55, 8);
-    memset(G2H(0x3008), 0x33, 4096);
+    uint64_t *desc = G2H64(A(0x1000));
+    desc[1] = A(0x3000); desc[2] = 4104; desc[3] = 4096; desc[4] = 8;
+    memset(G2H(A(0x3000)), 0x55, 8);
+    memset(G2H(A(0x3008)), 0x33, 4096);
     atomic_store(&clock_ns, 1000000000);
     IpcResp resp = request(&s, 7, 11);
     assert(!resp.result && writes == 1 && last_bytes == 4096 && last_pcm[0] == 0x33);
     // Copying to the host must never release a guest buffer early.
-    *G2H64(0x2000) = 999;
+    *G2H64(A(0x2000)) = 999;
     resp = request(&s, 8, 0);
-    assert(!*(uint32_t *)resp.data && !*G2H64(0x2000));
+    assert(!*(uint32_t *)resp.data && !*G2H64(A(0x2000)));
     atomic_store(&clock_ns, 1021333332);
     resp = request(&s, 8, 0);
     assert(!*(uint32_t *)resp.data);
     atomic_store(&clock_ns, 1021333333);
     resp = request(&s, 8, 0);
-    assert(*(uint32_t *)resp.data == 1 && *G2H64(0x2000) == 11);
+    assert(*(uint32_t *)resp.data == 1 && *G2H64(A(0x2000)) == 11);
     // Duration follows the negotiated mono sample rate rather than fixed stereo/48 kHz.
     a.rate = 24000; a.channels = 1;
     resp = request(&s, 7, 12);
@@ -79,7 +83,7 @@ static void pacing_and_bounds(void) {
     desc[4] = 0; desc[1] = GUEST_HI - 4;
     resp = request(&s, 7, 13);
     assert(resp.result == R_INVALID_ADDRESS && writes == 2);
-    desc[1] = 0x3000; desc[3] = 3;
+    desc[1] = A(0x3000); desc[3] = 3;
     resp = request(&s, 7, 13);
     assert(resp.result == R_INVALID_ADDRESS && writes == 2);
     desc[3] = 2; a.ntags = 64;
@@ -110,8 +114,8 @@ static void output_lifetime(void) {
 }
 
 int main(void) {
-    g_base = calloc(1, 0x10000);
-    assert(g_base);
+    arena = mmap((void *)(uintptr_t)(GUEST_LO + 0x10000), 0x10000, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+    assert(arena != MAP_FAILED);
     pacing_and_bounds();
     output_lifetime();
     // The detached timer is terminated with this test process; it no longer holds guest pointers.

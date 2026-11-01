@@ -27,9 +27,6 @@
 #include "app/app.h"
 #endif
 
-#ifdef BDSP_REBASE32
-uint8_t *g_base;
-#endif
 
 static void runtime_setenv(const char *name, const char *value) {
     if (!plat_setenv(name, value, true)) rt_fatal("cannot set runtime option %s\n", name);
@@ -39,13 +36,8 @@ static void runtime_setenv(const char *name, const char *value) {
 #ifdef _WIN32
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
     void *base;
-#ifdef BDSP_REBASE32
-    void *requested = NULL;
-    size_t guard = 0x10000;
-#else
     void *requested = (void *)(uintptr_t)GUEST_LO;
     size_t guard = 0;
-#endif
 #ifdef BDSP_NVN_NONE
     bool reserved = bdsp_win32_reserve(requested, GUEST_HI - GUEST_LO, guard, &base);
 #else
@@ -56,18 +48,6 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
         fprintf(stderr, "FATAL: Windows guest memory reservation failed (%lu).\n", GetLastError());
         _exit(1);
     }
-#ifdef BDSP_REBASE32
-    g_base = base;
-#endif
-}
-#elif defined(BDSP_REBASE32)
-// Variant B: 4 GiB window anywhere in the host address space; pages are only committed on access (anonymous, zero). The first 64 KiB stay
-// blocked, so null pointers of the guest crash as on the console.
-__attribute__((constructor(101))) static void reserve_guest_space(void) {
-    void *p = mmap(NULL, GUEST_HI - GUEST_LO, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (p == MAP_FAILED) { fprintf(stderr, "FATAL: guest window (4 GiB) cannot be reserved: %s\n", strerror(errno)); _exit(1); }
-    g_base = p;
-    mprotect(p, 0x10000, PROT_NONE);
 }
 #elif defined(BDSP_COMPACT_BASE)
 // Variant A-low (iOS): the compact layout at a fixed address (guest address == host address). mach_vm_allocate does not exist on iOS.

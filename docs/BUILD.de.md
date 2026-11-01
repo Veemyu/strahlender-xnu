@@ -140,7 +140,7 @@ Signatur).
 
 - `TEAM_ID` in `work/local.env` (Abschnitt 3).
 - Ein gekoppeltes iPad, entsperrt, als Gerät vertraut und verbunden. Das Skript wählt das erste verbundene iPad.
-- Die iOS-Bauteile `work/recomp/obj32` und `work/recomp/img32`. Erzeuge sie mit
+- Die iOS-Bauteile `work/recomp/obj4i` und `work/recomp/img4i`. Erzeuge sie mit
   `scripts/recomp/ios/gen32.sh` (siehe `docs/recomp-ios.md`).
 - `work/exefs` mit `main.npdm` aus der Stufe `extract`.
 

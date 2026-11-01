@@ -4,6 +4,7 @@ Chronological, newest entries first. Each item records the date, goal, and files
 
 ## 2026-11-01
 
+- **Memory model B removed:** iPhone and iPad build with model A-low only (the installer always did). Removed: `scripts/recomp/rt32/`, `ios/nvn_rebase32.py`, `test/run_eh_rebase32.sh`, the `rebase32` probe, the `mac` target and model B of `ios/build_rt32.sh`, model B in `gen32.sh`, `compile_chunk_ios.sh` and `deploy_ios.sh`, and every `BDSP_REBASE32` branch in the runtime (`bdsp.h`, `guestmem.h`, `main.c`, `nvn_glue.c`, `metal.m`). The audio service test maps its test memory inside the guest window instead of using a 32-bit base. Mac and iOS A-low sources compile the same before and after (syntax check of `main.c`, `kernel.c`, `loader.c`, `nvn_glue.c`).
 - **Platform status and READMEs:** Windows (x86-64) and Linux x86-64 are documented as supported; Linux aarch64 compiles and is untested, testers are welcome. The root `README.md` and `README.de.md` were rewritten in plain wording (what it is, platform table, getting started, features) and now explain the name: strahlender is German for "brilliant", xnu is the kernel under macOS, iOS and iPadOS (Apple platforms came first). Status lines and headings were updated in `docs/README.md`, `docs/README.de.md`, `docs/BUILD.md`, `docs/BUILD.de.md`, `docs/recomp-linux.md`, `docs/architecture.md`, `docs/input.md` and `installer/README.md`; measurement notes were left as they were.
 
 ## 2026-10-29

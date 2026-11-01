@@ -32,7 +32,7 @@
 
 // ---- Guest address space, variant A (fixed window, guest address == host address). The modules sit where the generator
 // expects them (gen_all.sh); everything else is freely chosen. Variant B (iPad) is in guestmem.h.
-#if !defined(BDSP_REBASE32) && !defined(BDSP_COMPACT_BASE)
+#ifndef BDSP_COMPACT_BASE
 #define GUEST_LO     0x7000000000ull
 #define GUEST_HI     0x7320000000ull   // 12,5 GiB
 #define MAIN_BASE    0x7000000000ull
@@ -56,15 +56,11 @@
 // In nninitStartup BDSP asks for almost all application memory (3.14 GB) as one contiguous region, which the SDK
 // takes from the alias region with MapPhysicalMemory: it must be at least that large (measured: abort in StandardAllocator::Initialize).
 #else
-// ---- Compact layout. Variant B (--rebase32, iPad): everything below 4 GiB, window at g_base. Variant A-low (BDSP_COMPACT_BASE, iOS): the same
-// layout shifted to a fixed host address, guest address == host address (no G2H), NEON inline assembler (scripts/recomp/ios/gen_a.sh).
-// gen32.sh generates C and images for variant B with these bases. The alias region takes the application-memory chunk (SDK: 3.14 GiB in one piece via MapPhysicalMemory), the heap region
+// ---- Compact layout, variant A-low (BDSP_COMPACT_BASE, iPhone and iPad): everything within 4 GiB, shifted to a fixed host address,
+// guest address == host address (no G2H), NEON inline assembler.
+// gen32.sh generates C and images for this variant with these bases. The alias region takes the application-memory chunk (SDK: 3.14 GiB in one piece via MapPhysicalMemory), the heap region
 // (SetHeapSize) stays small: BDSP does not call SetHeapSize (measured, docs/recomp-ios.md).
-#ifdef BDSP_COMPACT_BASE
 #define LAYOUT_ORG   (BDSP_COMPACT_BASE)
-#else
-#define LAYOUT_ORG   0x00000000ull
-#endif
 #define GUEST_LO     LAYOUT_ORG
 #define GUEST_HI     (LAYOUT_ORG + 0x100000000ull)
 #define MAIN_BASE    (LAYOUT_ORG + 0x01000000ull)
@@ -86,9 +82,7 @@
 #define APP_MEMORY   0x83000000ull   // application memory reported to the SDK (GetInfo 6/21; it deducts 64 MiB of system resources): 1.98 GiB from 0x8000_0000
 #define HEAP_REPORT  0xD0000000ull   // reported size of the heap region (GetInfo 5); the SDK checks the application memory against it, SetHeapSize does not use it
 #endif
-#if defined(BDSP_REBASE32)
-#define ADDR_SPACE_END (1ull << 32)
-#elif defined(BDSP_COMPACT_BASE)
+#if defined(BDSP_COMPACT_BASE)
 #define ADDR_SPACE_END GUEST_HI
 #else
 #define ADDR_SPACE_END (1ull << 39)

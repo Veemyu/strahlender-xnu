@@ -1,9 +1,8 @@
 #!/bin/bash
 # Runs locally on Linux: Linux counterparts of the spike tests from scripts/recomp/test/ (x86 host, c mode, `weak_import` → `weak`).
-# Usage: probe.sh <test>   with test = eh | eh-real | rebase32 | gc | bench | boot | all
+# Usage: probe.sh <test>   with test = eh | eh-real | gc | bench | boot | all
 #   eh        exception test (T0-T6) with the real SDK module          (Mac: run_eh_test.sh)
 #   eh-real   throw test with real LSDA functions from main (PER_KIND, default 60)   (run_eh_real.sh; after eh)
-#   rebase32  32-bit guest addresses (rt32)                               (run_eh_rebase32.sh)
 #   gc        stopping a guest thread at any point (Linux: signal instead of Mach)   (run_gc_proof.sh)
 #   bench     micro benchmarks recompiled against native                (run_bench.sh)
 #   boot      boot probe: main+sdk+subsdk0 up to the first blocker      (run_boot_probe.sh; needs compile.sh)
@@ -78,25 +77,6 @@ probe_eh_real() {
     alloc=$(sym "$S/sdk.syms.json" __cxa_allocate_exception) throw=$(sym "$S/sdk.syms.json" __cxa_throw) zti=$(sym "$S/sdk.syms.json" _ZTIi) test_run="$RUN"
 }
 
-probe_rebase32() {
-  local S=$P/r32 G=$P/r32/gen SDKB=0x01000000 EHTB=0x02000000
-  mkdir -p "$S/obj" "$G"; rm -f "$S/hle.txt"
-  bash scripts/recomp/codegen.sh image work/exefs/sdk sdk --base $SDKB --out "$S" --hle-base 0x08000000 > /dev/null
-  bash scripts/recomp/codegen.sh gen sdk work/exefs/sdk $SDKB "$G/sdk" --simd c --hle $T/hle_symbols.txt 2>&1 | grep -E "wrote|eh_gen"
-  guest_aarch64 $T/eh_guest.cpp "$S/eh_guest.s"
-  clang --target=aarch64-linux-gnu -c "$S/eh_guest.s" -o "$S/eh_guest.o"
-  python3 scripts/recomp/mini_link.py "$S/eh_guest.o" "$S/eht" --base $EHTB --syms "$S/sdk.syms.json" > /dev/null
-  bash scripts/recomp/codegen.sh gen eht "$S/eht.nso" $EHTB "$G/eht" --simd c 2>&1 | grep -E "wrote|eh_gen"
-  export EXTRA="-DREBASE32 -I scripts/recomp/rt32 -Dweak_import=weak"
-  cc_all "$S/obj" -O1 "$G"/sdk/*.c "$G"/eht/*.c $T/eh_harness.c
-  clang -o "$S/eh_test32" "$S"/obj/*.o -lm -lpthread || die "Link failed."
-  local TESTS; TESTS=$(eh_list "$S/eht.json" 0x02000000)
-  tm "$S/eh_test32" "$S" "$S/sdk.img" "$S/eht.img" $TESTS || {
-    echo "NOTE: run with all tests failed; repeat without test_longjmp (T7)"
-    tm "$S/eh_test32" "$S" "$S/sdk.img" "$S/eht.img" $(EXCL=test_longjmp eh_list "$S/eht.json" 0x02000000)
-  }
-}
-
 probe_gc() {
   local S=$P/gc; mkdir -p "$S/gen"; echo '{}' > "$S/empty.json"
   clang --target=aarch64-linux-gnu -O1 -ffreestanding -fno-pic -fno-asynchronous-unwind-tables -funwind-tables -c $T/gc_guest.c -o "$S/gc_guest.o"
@@ -161,11 +141,10 @@ run() { echo "=================== $1"; "probe_$2"; local rc=$?; echo "==========
 case "${1:-}" in
   eh) run eh eh;;
   eh-real) run eh-real eh_real;;
-  rebase32) run rebase32 rebase32;;
   gc) run gc gc;;
   bench) run bench bench;;
   boot) run boot boot;;
   bdsp) run bdsp bdsp;;
-  all) for t in eh eh_real rebase32 gc bench boot; do run "$t" "$t" || true; done;;
-  *) die "Usage: probe.sh eh|eh-real|rebase32|gc|bench|boot|bdsp|all";;
+  all) for t in eh eh_real gc bench boot; do run "$t" "$t" || true; done;;
+  *) die "Usage: probe.sh eh|eh-real|gc|bench|boot|bdsp|all";;
 esac

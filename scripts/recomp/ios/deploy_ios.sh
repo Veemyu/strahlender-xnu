@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Builds the iPadOS app of the recompilation (memory model B), installs it on the paired iPad, starts it and fetches files.
+# Builds the iPadOS app of the recompilation (memory model A-low), installs it on the paired iPad, starts it and fetches files.
 # Own code; pattern like scripts/ios_push_save.sh. The team ID comes from work/local.env (TEAM_ID=..., gitignored)
 # and is never printed or stored.
 #
-# Usage:   deploy_ios.sh build            build runtime library, libgame.a (from work/recomp/obj32), resources and app (xcodebuild)
+# Usage:   deploy_ios.sh build            build runtime library, libgame.a (from work/recomp/obj4i), resources and app (xcodebuild)
 #          deploy_ios.sh install          install the app on the iPad
 #          deploy_ios.sh run [seconds]    start (--console), log to work/builds/logs/ipad-recomp-<time>.log; without a time until Ctrl-C
 #          deploy_ios.sh data             copy RomFS (work/romfs) to Documents/GameData/romfs (once, about 4.7 GB)
 #          deploy_ios.sh save             put SaveData.bin/Backup.bin/user_id.hex from work/recomp/save into Documents/ (the app imports them)
 #          deploy_ios.sh shots            fetch Documents/Shots to work/visual/ipad-recomp/
 #          deploy_ios.sh files [path]     file list of the container (default Documents)
-# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables),
-#              IOS_MODEL=a (memory model A-low instead of B, see gen32.sh)
+# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables)
 set -euo pipefail
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -19,13 +18,8 @@ cd "$ROOT"
 [[ -f work/local.env ]] && source work/local.env
 BUNDLE_ID="${BUNDLE_ID:-dev.local.xnubdsp}"
 DD="$ROOT/work/builds/ios-recomp-derived"
-RT=work/recomp/ios-rt
-OBJD=work/recomp/obj32
-IMGD=work/recomp/img32
-# IOS_MODEL=a: memory model A-low (gen32.sh and build_rt32.sh with MODEL=a): own folders and build output, the app project is the same
-if [[ "${IOS_MODEL:-b}" = a ]]; then
-  export MODEL=a; RT=work/recomp/ios-rt-a; OBJD=work/recomp/obj4i; IMGD=work/recomp/img4i; DD="$ROOT/work/builds/ios-recomp-derived-a"
-fi
+# Memory model A-low (gen32.sh and build_rt32.sh): the only iPhone/iPad model
+export MODEL=a; RT=work/recomp/ios-rt-a; OBJD=work/recomp/obj4i; IMGD=work/recomp/img4i; DD="$ROOT/work/builds/ios-recomp-derived-a"
 RES=work/ios/res
 mkdir -p work/builds work/builds/logs work/visual/ipad-recomp work/ios   # logs of builds and runs: work/builds/logs/
 

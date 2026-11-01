@@ -78,7 +78,7 @@ same save, the same script and a cool device; check the screenshots (`BDSP_SCREE
 
 | Needed (do not delete) | `exefs`, `romfs`, `local.env`, `.stages/`, `recomp/gen4` and `recomp/obj4` (guest code), `recomp/img_*`, `recomp/icons`, `recomp/cache` (shader cache copied into every app), `builds/macos-recomp`, `venv`, saves (`save-*`, `ipad-save*`) |
 |---|---|
-| iPad chain (needed for the iPad build) | `recomp/gen32`, `obj32`, `obj32m`, `img32`, `ios-rt`, `nvn-src32`, `ios/`, `builds/ios-recomp-derived` |
+| iPad chain (needed for the iPad build) | `recomp/gen4i`, `obj4i`, `img4i`, `ios-rt-a`, `nvn-src-a`, `ios/`, `builds/ios-recomp-derived-a` |
 | Disposable | logs, traces, screenshots, `recomp/tree-*`, `rt-*`, `nvnsrc-*` (test builds), old bundles in `builds/` |
 
 Also outside the repository and never touched by cleanups: `nsp/`, `Ryujinx/`, `Ryujinx_*/` (your dumps and emulator data).

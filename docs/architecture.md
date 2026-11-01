@@ -92,23 +92,22 @@ test with the real GC on a running game.
 
 ## Memory model
 
-| | Variant A (macOS) | Variant B (`--rebase32`, iPadOS) |
+| | Variant A (macOS, Linux) | Variant A-low (iPhone and iPad, `-DBDSP_COMPACT_BASE`) |
 |---|---|---|
-| Guest address | equals host address | 32-bit offset: `*(T*)(g_base + (uint32_t)ea)` |
-| Window | fixed 12.5 GiB at `0x70_0000_0000` (`mach_vm_allocate`, `VM_FLAGS_FIXED`) | everything below 4 GiB |
-| Why | simplest; no per-access cost | iOS allows far less address space, a fixed 448 GiB base fails, and the free-team profile has no Extended Virtual Addressing |
-| Cost | none | about 5 % in the exception test; FP/SIMD must be generated in `c` mode |
+| Guest address | equals host address | equals host address |
+| Window | fixed 12.5 GiB at `0x70_0000_0000` (`mach_vm_allocate`, `VM_FLAGS_FIXED`) | 4 GiB at a fixed host address, default `0x8_0000_0000` (`vm_allocate`, `VM_FLAGS_FIXED`) |
+| Why | simplest; no per-access cost | iOS allows far less address space: a fixed 448 GiB base fails, and the free-team profile has no Extended Virtual Addressing |
+| Cost | none | none: no `G2H`, NEON inline assembler (`--simd asm`), the same compile flags as the Mac build |
 
-**Variant A-low (iOS, `MODEL=a`).** The compact layout of variant B shifted to a fixed host address (`BDSP_COMPACT_BASE`, default `0x8_0000_0000`),
-so guest address == host address again: no `G2H`, NEON inline assembler (`--simd asm`), the same compile flags as the Mac build. A probe on the M2 iPad Pro
-showed that a fixed 12.5 GiB `vm_allocate` succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start (`0x1_` is invalid, `0x2_`/`0x3_` are taken by the system,
-everything from `0x10_0000_0000` up is invalid, which is why the Mac address could never work). Measured on the Mac with the beach scene (same game work per frame):
-A needs about 31 ms CPU per frame, B about 36 ms, the M2 iPad Pro with B about 47 ms. Build: `MODEL=a scripts/recomp/ios/gen32.sh all`,
-`IOS_MODEL=a scripts/recomp/ios/deploy_ios.sh build`.
+A probe on the M2 iPad Pro showed that a fixed 12.5 GiB `vm_allocate` succeeds at `0x4_0000_0000` and `0x8_0000_0000` in every start (`0x1_` is invalid,
+`0x2_`/`0x3_` are taken by the system, everything from `0x10_0000_0000` up is invalid, which is why the Mac address could never work). The layout is compact:
+everything within 4 GiB above `BDSP_COMPACT_BASE`. Measured on the Mac with the beach scene (same game work per frame): about 31 ms CPU per frame,
+against about 36 ms for the 32-bit-offset model it replaced (a 4 GiB window reached through `g_base`, removed) and about 47 ms of that model on the M2 iPad Pro.
+Build: `scripts/recomp/ios/gen32.sh all`, then `scripts/recomp/ios/deploy_ios.sh build` (the installer runs the same scripts).
 
 Rules: host code converts guest addresses only through `G2H()`/`H2G()` (`runtime/guestmem.h`). The game obtains all its
 application memory (3.14 GB, as reported by `GetInfo`) as one `MapPhysicalMemory` region from the alias region in `nninitStartup`;
-it never calls `SetHeapSize`. For variant B the reported total must be capped so that everything fits below 4 GiB. A scan of
+it never calls `SetHeapSize`. For variant A-low the reported total must be capped so that everything fits into the 4 GiB window. A scan of
 `main` found no pointer tags. iPadOS memory entitlements and measured limits are in [recomp-ios.md](recomp-ios.md).
 
 ## The runtime (`scripts/recomp/runtime/`)
@@ -159,7 +158,7 @@ BDSP draws through NVN; the runtime implements NVN, so the game's own command st
 | Audio, icons | [recomp-audio.md](recomp-audio.md), [recomp-icons.md](recomp-icons.md) |
 | QA harness, bit-exactness test | [recomp-qa.md](recomp-qa.md), [recomp-diff.md](recomp-diff.md) |
 
-Reproduction scripts for the spike measurements (`scripts/recomp/test/run_eh_test.sh`, `run_gc_proof.sh`, `run_eh_rebase32.sh`,
+Reproduction scripts for the spike measurements (`scripts/recomp/test/run_eh_test.sh`, `run_gc_proof.sh`,
 `run_bench.sh`, `run_boot_probe.sh`) and the survey tool `scripts/recomp_survey.py` are still in the repository. The original
 feasibility, spike and gate reports (about 1,700 lines) are in the git history.
 

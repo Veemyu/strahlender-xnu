@@ -12,18 +12,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-#ifdef REBASE32
-// Memory model B: guest addresses < 4 GiB, access through g_base (rt32/cpu.h)
-#define SDK_BASE  0x01000000ull
-#define EHT_BASE  0x02000000ull
-#define MAIN_BASE 0x10000000ull
-#define STACK_LO  0x03000000ull
-#define HLE_BASE  0x08000000ull
-#define HEAP_LO   0x20000000ull
-uint8_t *g_base;
-#define H(a) ((void *)(g_base + (uint32_t)(a)))
-#define GA(p) ((uint64_t)((uint8_t *)(p) - g_base))
-#else
 #define SDK_BASE  0x7004000000ull
 #define EHT_BASE  0x7008000000ull
 #define MAIN_BASE 0x7040000000ull
@@ -31,7 +19,6 @@ uint8_t *g_base;
 #define HLE_BASE  0x7080000000ull
 #define H(a) ((void *)(uintptr_t)(a))
 #define GA(p) ((uint64_t)(uintptr_t)(p))
-#endif
 #define STACK_SZ  (4ull << 20)
 
 extern const uint64_t sdk_fn_addrs[]; extern const GuestFn sdk_fn_ptrs[]; extern const uint64_t sdk_fn_count;
@@ -67,12 +54,8 @@ static void map_file(const char *path, uint64_t addr) {
     if (fd < 0) die("open %s", path);
     struct stat st; fstat(fd, &st);
     size_t len = (st.st_size + 0x3FFF) & ~0x3FFFull;
-#ifdef REBASE32
-    void *p = H(addr);
-#else
     void *p = mmap((void *)addr, len + 0x4000, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
     if (p != (void *)addr) die("mmap %s @%llx failed", path, addr);
-#endif
     if (read(fd, p, st.st_size) != st.st_size) die("read %s", path);
     close(fd);
 }
@@ -172,31 +155,6 @@ void rt_udf(Cpu *c, uint64_t pc) { (void)c; die("UDF at %llx", pc); }
 uint64_t rt_ticks(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec * 19200000ull + t.tv_nsec * 19200000ull / 1000000000ull; }
 
 // ---- HLE (host replacement for imports and selected SDK functions)
-#ifdef REBASE32
-// Guest heap in the 4 GiB window: simple bump pointer with a 16-byte header (size), free has no effect
-static uint64_t heap_next = HEAP_LO + 0x1000;
-static uint64_t galloc(uint64_t n, uint64_t al) {
-    if (n > (64ull << 20)) return 0;
-    if (al < 16) al = 16;
-    uint64_t a = (heap_next + 16 + al - 1) & ~(al - 1);
-    heap_next = a + n;
-    *(uint64_t *)H(a - 8) = n;
-    memset(H(a), 0, n);
-    return a;
-}
-static void h_malloc(Cpu *c) { c->x[0] = galloc(c->x[0] ? c->x[0] : 1, 16); }
-static void h_calloc(Cpu *c) { c->x[0] = galloc(c->x[0] * c->x[1], 16); }
-static void h_realloc(Cpu *c) {
-    uint64_t old = c->x[0], n = c->x[1], a = galloc(n, 16);
-    if (old && a) { uint64_t on = *(uint64_t *)H(old - 8); memcpy(H(a), H(old), on < n ? on : n); }
-    c->x[0] = a;
-}
-static void h_free(Cpu *c) { (void)c; }
-static void h_aligned_alloc(Cpu *c) { c->x[0] = galloc(c->x[1], c->x[0]); }
-static uint64_t cxa_globals_g;
-void hle___cxa_get_globals(Cpu *c) { if (!cxa_globals_g) cxa_globals_g = galloc(16, 16); c->x[0] = cxa_globals_g; }
-void hle___cxa_get_globals_fast(Cpu *c) { hle___cxa_get_globals(c); }
-#else
 static void h_malloc(Cpu *c) { uint64_t n = c->x[0]; c->x[0] = n > (1ull << 40) ? 0 : (uint64_t)(uintptr_t)malloc(n ? n : 1); }
 static void h_calloc(Cpu *c) { c->x[0] = (uint64_t)(uintptr_t)calloc(c->x[0], c->x[1]); }
 static void h_realloc(Cpu *c) { c->x[0] = (uint64_t)(uintptr_t)realloc((void *)(uintptr_t)c->x[0], c->x[1]); }
@@ -206,7 +164,6 @@ static void h_aligned_alloc(Cpu *c) { void *p = NULL; if (posix_memalign(&p, c->
 static struct { uint64_t caught; uint32_t uncaught; } cxa_globals;
 void hle___cxa_get_globals(Cpu *c) { c->x[0] = (uint64_t)(uintptr_t)&cxa_globals; }
 void hle___cxa_get_globals_fast(Cpu *c) { c->x[0] = (uint64_t)(uintptr_t)&cxa_globals; }
-#endif
 
 void hle__ZN2nn2os9LockMutexEPNS0_9MutexTypeE(Cpu *c) { (void)c; }
 void hle__ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE(Cpu *c) { (void)c; }
@@ -321,24 +278,13 @@ int main(int argc, char **argv) {
     FILE *f = fopen(path, "r");
     if (f) { char line[512]; while (fgets(line, sizeof line, f) && hle_count < 256) { line[strcspn(line, "\n")] = 0; hle_names[hle_count++] = strdup(line); } fclose(f); }
     hle_bind();
-#ifdef REBASE32
-    g_base = mmap(NULL, 1ull << 32, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
-    if (g_base == MAP_FAILED) die("4 GiB window cannot be reserved");
-    printf("Gastfenster 4 GiB bei Host %p\n", (void *)g_base);
-#endif
     map_file(argv[2], SDK_BASE);
     map_file(argv[3], EHT_BASE);
-#ifndef REBASE32
     if (mmap((void *)STACK_LO, STACK_SZ, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0) != (void *)STACK_LO) die("stack");
-#endif
     tabs[0] = (Tab){ sdk_fn_addrs, sdk_fn_ptrs, sdk_fn_count };
     tabs[1] = (Tab){ eht_fn_addrs, eht_fn_ptrs, eht_fn_count };
     cpu = aligned_alloc(16, sizeof(Cpu)); memset(cpu, 0, sizeof(Cpu));
-#ifdef REBASE32
-    cpu->tpidrro = cpu->tpidr = galloc(0x400, 16);
-#else
     cpu->tpidrro = cpu->tpidr = (uint64_t)(uintptr_t)calloc(1, 0x400);  // ThreadLocalRegion (0x200) of the guest thread
-#endif
     uint64_t t_basic = 0, t_rethrow = 0, t_deep = 0, t_bad = 0, t_nothrow = 0, t_bench = 0, t_bt = 0, t_lj = 0;
     uint64_t a_alloc = 0, a_throw = 0, a_zti = 0, t_run = 0;
     const char *real_spec = NULL, *main_img = NULL;

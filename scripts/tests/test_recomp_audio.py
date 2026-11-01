@@ -18,8 +18,7 @@ class AudioServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="audio-", dir=work) as directory:
             binary = Path(directory) / "audio_service_test"
             command = [
-                "clang", "-std=gnu11", "-DBDSP_REBASE32", "-pthread",
-                "-I", str(ROOT / "scripts/recomp/rt32"),
+                "clang", "-std=gnu11", "-pthread",
                 "-I", str(ROOT / "scripts/recomp/rt"),
                 "-I", str(ROOT / "scripts/recomp/upstream/runtime"),
                 str(ROOT / "scripts/tests/audio_service_harness.c"), "-o", str(binary),

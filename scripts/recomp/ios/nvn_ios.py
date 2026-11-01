@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Generates the iOS counterpart metal_ios.m from the rewritten metal.m (nvn_rebase32.py): AppKit replaced by UIKit, the SDL window part
-(from the marker "UI thread") by scripts/recomp/ios/ui_ios.inc. Usage: nvn_ios.py <nvn-src32>"""
+"""Generates the iOS counterpart metal_ios.m from metal.m: AppKit replaced by UIKit, the SDL window part
+(from the marker "UI thread") by scripts/recomp/ios/ui_ios.inc. Usage: nvn_ios.py <nvn-src-a>"""
 import os
 import sys
 

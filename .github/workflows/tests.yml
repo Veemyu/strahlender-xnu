@@ -44,7 +44,7 @@ jobs:
         run: python -m unittest discover -s scripts/tests
       - name: Runtime compile check for iPhone/iPad (the runtime must build for the iPad, not only for the desktop targets)
         if: runner.os == 'macOS'
-        run: MODEL=a ORG=0x400000000 BDSP_SYNTAX_ONLY=1 bash scripts/recomp/ios/build_rt32.sh ios
+        run: BDSP_SYNTAX_ONLY=1 bash scripts/recomp/ios/build_rt32.sh ios
   rust:
     strategy:
       fail-fast: false

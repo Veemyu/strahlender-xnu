@@ -1,4 +1,4 @@
-// iPadOS shell of the BDSP recompilation (memory model B): UIKit window with CAMetalLayer, touch gamepad, GameController, hardware keyboard,
+// iPadOS shell of the BDSP recompilation (memory model A-low): UIKit window with CAMetalLayer, touch gamepad, GameController, hardware keyboard,
 // paths (Documents), save import, measurement lines. The runtime runs on a thread of its own (bdsp_runtime_main = main.c with -Dmain=...).
 // PCM sound through Audio Queue Services and AVAudioSession. Own code.
 #import <AVFAudio/AVFAudio.h>

@@ -136,7 +136,7 @@ void rt_nle_fatal(Cpu *c) __attribute__((noreturn));
 
 // ---- Exclusive pairs (LDXP/LDAXP/STXP/STLXP), gate 1: the monitor of the original (cpu.h) remembers only one 64-bit value.
 // The second part is added here at Cpu offset 344 (in the unused padding, behind EH_TOP at 336). Memory
-// access goes through GPTR(a); memory model B (rt32/cpu.h) replaces GPTR. Success of STXP as on the hardware: 0.
+// access goes through GPTR(a); memory model A-low uses the same GPTR (guest address == host address). Success of STXP as on the hardware: 0.
 #ifndef GPTR
 #define GPTR(a) ((void *)(uintptr_t)(a))
 #endif

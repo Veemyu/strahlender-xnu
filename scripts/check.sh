@@ -27,7 +27,7 @@ make -s -C shader_translator test 2>&1 | grep -E "^(OK|FAILED|Ran)"
 
 if [ "$(uname)" = Darwin ] && xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
   step "runtime compile check: iPhone/iPad (model A-low, the iPad build)"
-  MODEL=a ORG=0x400000000 BDSP_SYNTAX_ONLY=1 bash scripts/recomp/ios/build_rt32.sh ios
+  BDSP_SYNTAX_ONLY=1 bash scripts/recomp/ios/build_rt32.sh ios
 else
   step "runtime compile check skipped (needs macOS with Xcode and the iPhoneOS SDK)"
 fi
