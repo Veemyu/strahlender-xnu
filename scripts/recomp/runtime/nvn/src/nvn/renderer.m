@@ -1305,8 +1305,16 @@ static id<MTLLibrary> prebuilt_library_hash(uint64_t h, char kind) {
     return lib;
 }
 
+static uint32_t prebuilt_hits, prebuilt_misses;   // draw-time lookups only (the startup gate looks up by hash directly)
 static id<MTLLibrary> prebuilt_library(const char *msl, char kind) {
-    return prebuilt_library_hash(fnv64(msl), kind);
+    id<MTLLibrary> lib = prebuilt_library_hash(fnv64(msl), kind);
+    if (prebuilt_dir()) {   // no directory (BDSP_NO_PREBUILT, nothing bundled) is already logged once
+        uint32_t seen = lib ? __atomic_add_fetch(&prebuilt_hits, 1, __ATOMIC_RELAXED) + __atomic_load_n(&prebuilt_misses, __ATOMIC_RELAXED)
+                            : __atomic_add_fetch(&prebuilt_misses, 1, __ATOMIC_RELAXED) + __atomic_load_n(&prebuilt_hits, __ATOMIC_RELAXED);
+        if (seen % 50 == 0 || (!lib && __atomic_load_n(&prebuilt_misses, __ATOMIC_RELAXED) == 1))
+            LOG("[shader] prebuilt libraries: %u found, %u compiled now\n", __atomic_load_n(&prebuilt_hits, __ATOMIC_RELAXED), __atomic_load_n(&prebuilt_misses, __ATOMIC_RELAXED));
+    }
+    return lib;
 }
 // Compiler warnings of the shader translator (unused functions and variables from the translated shaders) only
 // clutter the console; they are placed in front of every shader source.
