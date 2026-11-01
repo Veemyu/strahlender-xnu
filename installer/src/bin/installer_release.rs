@@ -116,7 +116,11 @@ mod tests {
         let folder =
             std::env::temp_dir().join(format!("universal-manifest-test-{}", std::process::id()));
         std::fs::create_dir(&folder).unwrap();
-        std::fs::write(folder.join("Strahlender-Installer-macOS-universal.zip"), b"fixture").unwrap();
+        std::fs::write(
+            folder.join("Strahlender-Installer-macOS-universal.zip"),
+            b"fixture",
+        )
+        .unwrap();
         let manifest: serde_json::Value =
             serde_json::from_slice(&super::manifest("0.2.0", &folder).unwrap()).unwrap();
         let assets = manifest["assets"].as_array().unwrap();
