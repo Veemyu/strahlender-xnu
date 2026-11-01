@@ -362,7 +362,7 @@ int main(int argc, char **argv) {
 #ifdef BDSP_QT
     extern void bdsp_qt_set_arguments(int count, char **arguments);
     bdsp_qt_set_arguments(argc, argv);
-#else
+#elif !defined(__APPLE__)   // Linux: linked only in Qt builds (weak); Apple's ld rejects undefined weak symbols and has no Qt host
     extern void bdsp_qt_set_arguments(int count, char **arguments) __attribute__((weak));
     if (bdsp_qt_set_arguments) bdsp_qt_set_arguments(argc, argv);
 #endif
