@@ -283,6 +283,7 @@ static uint64_t buttons_now(void) {
 
 static bool text_composing;
 
+#if !defined(__APPLE__)   // SDL text input: only the Vulkan device (Linux/Windows) drives it; iOS has the SDL shim without it, the Mac shell does it natively
 bool input_update_text(SDL_Window *window, bool enabled) {
     if (!SDL_IsMainThread() || !window) {
         LOG("[input] text input requires a window on the SDL main thread\n");
@@ -296,7 +297,6 @@ bool input_update_text(SDL_Window *window, bool enabled) {
     return ok;
 }
 
-#if !defined(__APPLE__)
 // Events for the on-screen keyboard (swkbd_ui.c) while it is open: typed text, editing keys, mouse and touch (the Mac shell, app_ui.m, does the same);
 // the game sees no input then. Returns true when consumed.
 #include "swkbd_ui.h"
