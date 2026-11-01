@@ -27,7 +27,9 @@ done
 [ -f "$NPDM" ] || { echo "ERROR: main.npdm missing: $NPDM (extract stage)" >&2; exit 4; }
 case "$OUT" in *.app) ;; *) echo "ERROR: --out must end in .app" >&2; exit 2 ;; esac
 case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
-git check-ignore -q "$OUT" 2>/dev/null || [ "${OUT#"$PWD"/}" = "$OUT" ] || { echo "ERROR: $OUT is inside the repo and not gitignored" >&2; exit 2; }
+# Only meaningful in a git checkout; the source the installer downloads has no .git.
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || GITLESS=1
+[ -n "${GITLESS:-}" ] || git check-ignore -q "$OUT" 2>/dev/null || [ "${OUT#"$PWD"/}" = "$OUT" ] || { echo "ERROR: $OUT is inside the repo and not gitignored" >&2; exit 2; }
 
 NEW="$OUT.new"
 rm -rf "$NEW"
