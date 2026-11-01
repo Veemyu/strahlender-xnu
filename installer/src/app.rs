@@ -383,6 +383,7 @@ fn build_error_notice(detail: &str, language: Language, exporting: bool) -> Stri
             Some(crate::progress::Stage::Extract) => L::Prepare,
             Some(crate::progress::Stage::Exefs) => L::ExeFS,
             Some(crate::progress::Stage::Signing) => L::VerifySigning,
+            Some(crate::progress::Stage::Shaders) => L::PrepareShaders,
             Some(crate::progress::Stage::Generate) => L::Generate,
             Some(crate::progress::Stage::Compile) => L::Compile,
             Some(crate::progress::Stage::Images) => L::Images,
@@ -2045,6 +2046,11 @@ impl Installer {
             .filter(|stage| *stage != crate::progress::Stage::Firmware || self.firmware.is_some())
             .filter(|stage| *stage != crate::progress::Stage::Exefs || code_mod)
             .filter(|stage| {
+                // prebuilt Metal libraries: only the Apple targets (Mac and iPhone/iPad)
+                *stage != crate::progress::Stage::Shaders
+                    || matches!(self.target, InstallTarget::Mac | InstallTarget::Ios)
+            })
+            .filter(|stage| {
                 *stage != crate::progress::Stage::Signing
                     || (self.target == InstallTarget::Ios
                         && self.ios_delivery == crate::backend::IosDelivery::Device)
@@ -2052,7 +2058,7 @@ impl Installer {
             .collect()
     }
 
-    fn build_labels(&self) -> [L; 12] {
+    fn build_labels(&self) -> [L; 13] {
         [
             L::FetchSource,
             L::Tools,
@@ -2060,6 +2066,7 @@ impl Installer {
             L::Prepare,
             L::ExeFS,
             L::VerifySigning,
+            L::PrepareShaders,
             L::Generate,
             L::Compile,
             L::Images,
@@ -2627,6 +2634,17 @@ impl Installer {
                 self.record("BACKEND", "Copying 18025 files (4.7 GB) to the device.");
                 self.record("BACKEND", "Copying game data to the device.");
             }
+            "shaders" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Running;
+                self.build_progress = crate::progress::BuildProgress::default();
+                self.build_progress.step("shaders", "started");
+                self.build_progress.count("shaders", 1710, 2739);
+                let stage = crate::progress::Stage::Shaders;
+                self.motion
+                    .snap(stage.index() as f32 + self.build_progress.fraction(stage));
+                self.record("BACKEND", "shaders: 2739 distinct shaders from 4336 programs (180 use global memory and compile at run time)");
+            }
             "preflight-running" | "preflight-details" => {
                 self.page = Page::Progress;
                 self.build_progress = crate::progress::BuildProgress::default();
@@ -3094,7 +3112,7 @@ mod tests {
         app.build_progress.step("eh_gen", "started");
         let active = app.active_step();
         assert!(matches!(app.step_labels()[active], L::Generate));
-        assert_eq!(app.step_labels().len(), 7 + 9);
+        assert_eq!(app.step_labels().len(), 7 + 10); // the Mac target now has the shader step too
         app.page = Page::Finished;
         assert_eq!(app.active_step(), app.step_labels().len() - 1);
     }

@@ -12,6 +12,7 @@ pub enum Stage {
     Extract,
     Exefs,
     Signing,
+    Shaders,
     Generate,
     Compile,
     Images,
@@ -21,13 +22,14 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Source,
         Self::Requirements,
         Self::Firmware,
         Self::Extract,
         Self::Exefs,
         Self::Signing,
+        Self::Shaders,
         Self::Generate,
         Self::Compile,
         Self::Images,
@@ -44,6 +46,7 @@ impl Stage {
             "extract" => Self::Extract,
             "exefs" => Self::Exefs,
             "signing" => Self::Signing,
+            "shaders" => Self::Shaders,
             "eh_gen" => Self::Generate,
             "clang" => Self::Compile,
             "images" => Self::Images,
@@ -261,6 +264,7 @@ mod tests {
             "extract",
             "exefs",
             "signing",
+            "shaders",
             "eh_gen",
             "clang",
             "images",

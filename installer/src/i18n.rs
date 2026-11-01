@@ -162,6 +162,8 @@ messages! {
     UpdateShort => ["Update", "Update", "Actualización", "Atualização", "Обновление"],
     UpdateAvailable => ["Installer update available", "Installer-Update verfügbar", "Hay una actualización del instalador", "Atualização do instalador disponível", "Доступно обновление установщика"],
     UpdateRestartHint => ["Download the verified update and restart the installer? Your files and settings will be kept.", "Geprüftes Update herunterladen und den Installer neu starten? Deine Dateien und Einstellungen bleiben erhalten.", "¿Descargar la actualización verificada y reiniciar el instalador? Se conservarán tus archivos y ajustes.", "Descarregar a atualização verificada e reiniciar o instalador? Os teus ficheiros e definições serão mantidos.", "Скачать проверенное обновление и перезапустить установщик? Ваши файлы и настройки сохранятся."],
+    PrepareShaders => ["Prepare shaders", "Shader vorbereiten", "Preparar shaders", "Preparar shaders", "Подготовка шейдеров"],
+    ShadersPrepared => ["shaders prepared", "Shader vorbereitet", "shaders preparados", "shaders preparados", "шейдеров подготовлено"],
     FilesCopied => ["files copied", "Dateien kopiert", "archivos copiados", "ficheiros copiados", "файлов скопировано"],
     TimeLeft => ["left", "übrig", "restante", "restante", "осталось"],
     UpdateLater => ["Later", "Später", "Más tarde", "Mais tarde", "Позже"],

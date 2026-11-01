@@ -1325,6 +1325,12 @@ impl Installer {
                     state.total,
                     self.language.t(L::ModulesGenerated)
                 ),
+                crate::progress::Stage::Shaders if state.total > 0 && !state.done => format!(
+                    "{} / {} {}",
+                    state.completed,
+                    state.total,
+                    self.language.t(L::ShadersPrepared)
+                ),
                 crate::progress::Stage::Install if state.total > 0 && !state.done => {
                     let copy = &self.build_progress.copy;
                     let mut text = format!(

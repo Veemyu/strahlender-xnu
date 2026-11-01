@@ -46,10 +46,12 @@ if [ -n "${BDSP_FIRMWARE_SOURCE:-}" ]; then
   cp -R "$BDSP_FIRMWARE_SOURCE" "$NEW/Contents/Resources/Firmware"
 fi
 # Shader cache (generated locally, gitignored) into the bundle, if present
-if [[ -d work/recomp/cache/shaders ]]; then cp -R work/recomp/cache/shaders "$NEW/Contents/Resources/shaders"; fi
+# (BDSP_SHADER_CACHE_DIR: the installer keeps the cache between builds, scripts/shader_bootstrap.py fills it from the game's own shaders)
+SHADER_CACHE="${BDSP_SHADER_CACHE_DIR:-work/recomp/cache}"
+if [[ -d "$SHADER_CACHE/shaders" ]]; then cp -R "$SHADER_CACHE/shaders" "$NEW/Contents/Resources/shaders"; fi
 # precompiled Metal libraries (scripts/recomp/shader_bin.sh macosx)
-if [[ -d work/recomp/cache/shaders-bin-macosx ]]; then cp -R work/recomp/cache/shaders-bin-macosx "$NEW/Contents/Resources/shaders-bin"; fi
-if [[ -f work/recomp/cache/pipelines.bin ]]; then cp work/recomp/cache/pipelines.bin "$NEW/Contents/Resources/pipelines.bin"; fi
+if [[ -d "$SHADER_CACHE/shaders-bin-macosx" ]]; then cp -R "$SHADER_CACHE/shaders-bin-macosx" "$NEW/Contents/Resources/shaders-bin"; fi
+if [[ -f "$SHADER_CACHE/pipelines.bin" ]]; then cp "$SHADER_CACHE/pipelines.bin" "$NEW/Contents/Resources/pipelines.bin"; fi
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" "$HERE/Info.plist.in" > "$NEW/Contents/Info.plist"
 if [ -n "$MOD_NAME" ]; then
   [ -n "$MODS_DIR" ] && [ -n "$MOD_ROOT" ] && [ -n "$BUNDLE_ID" ] && [ -n "$DISPLAY_NAME" ] || { echo "ERROR: mod app metadata is incomplete" >&2; exit 2; }

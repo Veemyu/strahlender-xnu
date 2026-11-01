@@ -248,6 +248,27 @@ def _compile_count(work, target, recomp_dir=None, not_before_ns=None):
     return min(sum(1 for _ in obj.glob("*.o")), total), total
 
 
+def _prepare_shaders(args, sdk):
+    """Prebuilt Metal libraries for the game's own shaders (scripts/shader_bootstrap.py), so the first start does not compile them
+    while the game runs. Never fails the build: without them the game compiles shaders at run time, as before."""
+    if os.environ.get("BDSP_NO_SHADER_BOOTSTRAP"):
+        return
+    cache = Path(os.environ.get("BDSP_SHADER_CACHE_DIR") or Path(args.work) / "recomp/cache")
+    libraries = cache / ("shaders-bin-" + sdk)
+
+    def counted(_phase):
+        total = sum(1 for _ in (cache / "shaders").glob("[vf]_*.metal"))
+        done = sum(1 for _ in libraries.glob("[vf]_*.metallib")) if libraries.is_dir() else 0
+        return (min(done, total), total) if total else None
+
+    emit("step", id="shaders", status="started")
+    code = _run_command([sys.executable, str(Path(args.root) / "scripts/shader_bootstrap.py"), "--sdk", sdk,
+                         "--work", str(args.work), "--cache", str(cache)], args, "shaders", counted, emit_steps=False)
+    if code:
+        emit("log", level="warning", message="Shader libraries were not prepared; the game compiles its shaders while it runs.")
+    emit("step", id="shaders", status="complete" if code == 0 else "skipped")
+
+
 def _mac_phase(line):
     for marker, stage in (("1/6 generator:", "eh_gen"), ("2/6 compile:", "clang"),
                           ("3/6 module images", "images"), ("4/6 building runtime", "runtime"),
@@ -895,6 +916,8 @@ def _build_ios(args, common):
         environment["BDSP_IOS_TEAM_ID"] = team
         if code == 0:
             code = _run_command(["/bin/bash", str(root / "scripts/recomp/ios/signing_preflight.sh")], args, "signing", extra_env=environment)
+    if code == 0:
+        _prepare_shaders(args, "iphoneos")
     for stage, phase in (("eh_gen", "gen"), ("clang", "compile"), ("images", "images"), ("runtime", "runtime")):
         if code:
             break
@@ -1152,6 +1175,7 @@ def build(args):
                             "BDSP_MOD_BUNDLE_ID": mod_build["bundle_id"],
                             "BDSP_MOD_DISPLAY_NAME": mod_build["name"],
                             "BDSP_ICON_SOURCE": str(work / "recomp/icons/source")} if mod_build else {})
+            _prepare_shaders(args, "macosx")
             command = [str(root / "scripts/recomp/app/recomp_build.sh")]
             if mod_build:
                 command += ["--out", str(artifact)]

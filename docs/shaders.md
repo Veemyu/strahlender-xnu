@@ -104,6 +104,25 @@ test: synthetic inputs, one draw, 2D textures only, a Ryujinx reference rather t
 5. Hardening, the GLSL path, and removing the dead handle-word reads from the MSL (they force an extra buffer binding).
 6. Subgroup shuffle instructions and a second storage buffer are not supported (a few fragment blobs).
 
+## 6a. Prebuilt Metal libraries (shader bootstrap)
+
+The runtime looks up a prebuilt library by the FNV-1a 64 hash of the MSL it is about to compile (`prebuilt_library_hash`, `renderer.m`),
+so a shader found there is not compiled while the game runs. `scripts/shader_bootstrap.py` fills that cache from the user's own RomFS
+during the build (the installer's "Prepare shaders" step, Mac and iPhone/iPad only):
+
+1. `scripts/shader_extract_blobs.py --extra` cuts the Maxwell programs out of the game's Unity bundles (`work/shaders/blobs`).
+2. `maxwell2msl --batch <list> --emit-cache <dir>` translates all of them in one process with the key the game uses almost everywhere
+   (float attributes and targets, `flip_y` and `depth_minus_one` off, `vs_out_mask` 0) and writes `{v,f}_<fnv64>.metal`. Identical text
+   is written once: about 4300 programs give about 2700 files. Programs that access global memory are skipped (their text holds the
+   guest-memory window, which only a running game knows) and compile at run time.
+3. `scripts/recomp/shader_bin.sh <macosx|iphoneos>` compiles them to `.metallib` (about 70 s on 8 cores).
+
+Measured against a cache recorded during play: 340 of 378 vertex and 842 of 871 fragment shaders are reproduced byte for byte; the
+rest are programs this translator input does not produce (other variants), which compile at run time like before. A stamp (translator
+sources, compile script, the game's shader files, Metal compiler, SDK) skips the work when nothing changed; the installer keeps the cache
+between builds (`BDSP_SHADER_CACHE_DIR`). The recorded pipeline list `pipelines.bin` cannot be derived from the shaders and stays optional.
+Nothing derived from the game is distributed: it all happens on the user's machine under `work/` and the installer's data folder.
+
 ## 7. The offscreen harness (`scripts/shader_harness/`)
 
 A Swift command-line program that translates a vertex/fragment pair (from the Ryujinx cache or MSL), compiles it with Metal and

@@ -339,6 +339,12 @@ fn run_driver(
                 .env("BDSP_EXTRACT", own)
                 .env("BDSP_EXTRACT_PREFIX", "--cli");
         }
+        // The shader libraries prepared from the game's own shaders stay between builds (a later build or a game update reuses them).
+        if std::env::var_os("BDSP_SHADER_CACHE_DIR").is_none()
+            && let Ok(data) = crate::workspace::data_dir()
+        {
+            command.env("BDSP_SHADER_CACHE_DIR", data.join("shader-cache"));
+        }
         // LLVM still leads PATH; select Git separately so Brew cannot shadow Apple Git.
         if !cfg!(target_os = "windows") {
             command.env("BDSP_GIT", crate::dependencies::git());
