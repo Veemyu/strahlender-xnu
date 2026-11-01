@@ -63,6 +63,9 @@ case "$TARGET" in
     ;;
   *) echo "Usage: build_rt32.sh mac|ios" >&2; exit 2 ;;
 esac
+# BDSP_SYNTAX_ONLY=1: only checks that every runtime source compiles for the target (flags and headers exactly as a real build,
+# no objects, no link, no guest code needed); scripts/check.sh runs it for ios (model a and b) and mac.
+[ -z "${BDSP_SYNTAX_ONLY:-}" ] || RT=$(mktemp -d)
 mkdir -p "$RT/nvn"
 HAS_SUBSDK1=0
 [ ! -f "${BDSP_EXEFS_DIR:-work/exefs}/subsdk1" ] || HAS_SUBSDK1=1
@@ -76,6 +79,7 @@ SDLINC=(); [ "$TARGET" != ios ] || SDLINC=(-I scripts/recomp/ios/shim)
 
 compile() {  # Quelle Objekt Compiler Flags...
   local f=$1 o=$2 cc=$3; shift 3
+  if [ -n "${BDSP_SYNTAX_ONLY:-}" ]; then "$cc" "${CCFLAGS[@]}" "$@" -fsyntax-only "$f"; return; fi
   if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$NVN32" scripts/recomp/rt32 -name '*.h' -newer "$o" -print -quit)" ]; then
     "$cc" "${CCFLAGS[@]}" "$@" -c "$f" -o "$o"
   fi
@@ -107,6 +111,8 @@ if [ "$TARGET" = mac ] || [ "${#FFINC[@]}" -gt 0 ]; then
   MG="$NVN32/movie_glue32.c"; [ "$MODEL" = a ] && MG="$SRC/nvn/movie_glue.c"
   compile "$MG" "$RT/nvn/movie_glue.o" "$CC" $BDSP_OPT $BDSP_NOWARN $DEFS "${NVINC[@]}" "${FFINC[@]}"
 fi
+
+if [ -n "${BDSP_SYNTAX_ONLY:-}" ]; then rm -rf "$RT"; echo "syntax ok: $TARGET${MODEL:+ model $MODEL}"; exit 0; fi
 
 if [ "$TARGET" = mac ]; then
   # Guest objects: platformless copies (the objects are compiled for iOS; vtool removes the platform, then the Mac can link them too)
