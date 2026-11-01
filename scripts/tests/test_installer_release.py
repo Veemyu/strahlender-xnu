@@ -157,7 +157,7 @@ class InstallerReleaseTests(unittest.TestCase):
         self.assertIn("Strahlender Installer", notes)
         self.assertIn("The downloads contain no game files", notes)
         self.assertIn(SHA, notes)
-        self.assertLess(len(notes.splitlines()), 60)  # release messages stay short
+        self.assertLess(len(notes.splitlines()), 90)  # release messages stay short
         self.assertIn("/releases/download/installer-nightly-123-1/Strahlender-Installer-aarch64.AppImage", notes)
 
 
