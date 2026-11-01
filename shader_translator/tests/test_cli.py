@@ -116,6 +116,39 @@ class Cli(unittest.TestCase):
         self.assertEqual(data["instructions"], 2)
         self.assertEqual(data["textures"], [])
 
+    @staticmethod
+    def fnv64(data):
+        h = 0xcbf29ce484222325
+        for c in data:
+            h = ((h ^ c) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+        return "%016x" % h
+
+    def test_emit_cache_names_the_msl_by_the_runtimes_hash_and_writes_it_once(self):
+        listing = self.p("emit.txt")
+        listing.write_text("".join("%s %s\n" % (stage, self.p(name)) for stage, name in
+                                   (("vs", "ok.bin"), ("fs", "ok.bin"), ("vs", "ok.bin"), ("fs", "bad.bin"), ("vs", "garbage.bin"))))
+        cache = self.p("cache")
+        cache.mkdir()
+        log = self.p("emit.jsonl")
+        r = run("--batch", listing, "--emit-cache", cache, "-o", log)
+        self.assertEqual(r.returncode, 3, r.stderr)  # an unreadable input (garbage.bin) outranks the failed translation
+        rows = [json.loads(line) for line in log.read_text().splitlines()]
+        self.assertEqual(len(rows), 5)
+        expected = {}
+        for stage, letter in (("vs", "v"), ("fs", "f")):
+            msl = run("--stage", stage, self.p("ok.bin")).stdout.encode()
+            expected[letter + "_" + self.fnv64(msl) + ".metal"] = msl
+        self.assertEqual({p.name for p in cache.iterdir()}, set(expected))  # nothing else, no temporary files
+        for name, msl in expected.items():
+            self.assertEqual((cache / name).read_bytes(), msl)
+        self.assertEqual([row.get("new") for row in rows[:3]], [True, True, False])  # the second vs is a duplicate
+        self.assertIn("error", rows[3])
+        self.assertIn("inputError", rows[4])
+
+    def test_emit_cache_usage(self):
+        self.assertEqual(run("--emit-cache", self.p("cache"), self.p("ok.bin")).returncode, 2)  # needs --batch
+        self.assertEqual(run("--emit-cache", self.p("cache"), "--batch", "x", "--survey").returncode, 2)
+
     def test_unsupported_fails_with_exit_1(self):
         r = run("--stage", "fs", self.p("bad.bin"))
         self.assertEqual(r.returncode, 1)

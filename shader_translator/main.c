@@ -30,6 +30,9 @@ static void usage(FILE *f) {
         "  --survey              coverage mode: do not stop at the first unsupported instruction, print every\n"
         "                        unknown opcode / unsupported form of the shader as JSON (no MSL)\n"
         "  --batch <list>        (with --survey) list file with one '<vs|fs|cs> <path>' per line, JSON lines out\n"
+        "  --emit-cache <dir>    (with --batch, no --survey) translate every listed shader in this one process and write the MSL as\n"
+        "                        <dir>/v_<fnv64>.metal or f_<fnv64>.metal, named like the runtime's shader cache (the FNV-1a 64 hash of\n"
+        "                        the MSL text); identical MSL is written once. JSON line per shader out: file, stage, fnv, new\n"
         "  --attr-kind N=f|i|u   vertex attribute N is float / signed int / unsigned int (default float)\n"
         "  --rt-kind N=f|i|u     render target N type (default float)\n"
         "  --vs-out-mask <hex>   fragment: varyings the vertex shader writes (0 = unknown, all inputs kept)\n"
@@ -271,6 +274,51 @@ static int survey_one(FILE *out, const char *path, const uint8_t *blob, size_t b
     return bad;
 }
 
+// FNV-1a 64 over the MSL text, exactly the runtime's fnv64 (renderer.m): the name under which it finds a prebuilt library.
+static uint64_t fnv64_text(const char *t) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (; *t; t++) { h ^= (uint8_t)*t; h *= 0x100000001B3ull; }
+    return h;
+}
+
+// One --emit-cache line: translates, names the MSL by its hash and writes it unless that file exists (identical MSL is written once;
+// a file appears complete or not at all: written under a temporary name, then renamed). Returns 1 when the shader could not be
+// translated or written.
+static int emit_one(FILE *out, const char *dir, const char *path, const uint8_t *blob, size_t blob_n, int stage, const ShaderKey *key) {
+    ShaderInfo *info = maxwell_translate(blob, blob_n, stage, key);
+    fprintf(out, "{\"file\": ");
+    json_str(out, path);
+    if (!info->msl) {
+        fprintf(out, ", \"error\": ");
+        json_str(out, info->error[0] ? info->error : "unknown error");
+        fprintf(out, "}\n");
+        maxwell_free(info);
+        return 1;
+    }
+    if (info->uses_gmem) {   // its text holds the runtime's guest-memory window, which only a running game knows
+        fprintf(out, ", \"stage\": \"%s\", \"skipped\": \"global memory\"}\n", stage_name(stage));
+        maxwell_free(info);
+        return 0;
+    }
+    unsigned long long h = fnv64_text(info->msl);
+    char name[4200], tmp[4300];
+    snprintf(name, sizeof name, "%s/%c_%016llx.metal", dir, stage == STAGE_VERTEX ? 'v' : stage == STAGE_FRAGMENT ? 'f' : 'c', h);
+    int created = 0, bad = 0;
+    FILE *exists = fopen(name, "rb");
+    if (exists) fclose(exists);
+    else {
+        snprintf(tmp, sizeof tmp, "%s.tmp%ld", name, (long)clock() ^ (long)(uintptr_t)info);
+        FILE *f = fopen(tmp, "wb");
+        if (!f || fputs(info->msl, f) < 0 || fclose(f) != 0) bad = 1;
+        else if (rename(tmp, name) != 0) { remove(tmp); FILE *again = fopen(name, "rb"); if (again) fclose(again); else bad = 1; }
+        else created = 1;
+        if (bad) remove(tmp);
+    }
+    fprintf(out, ", \"stage\": \"%s\", \"fnv\": \"%016llx\", \"new\": %s%s}\n", stage_name(stage), h, created ? "true" : "false", bad ? ", \"error\": \"cannot write the cache file\"" : "");
+    maxwell_free(info);
+    return bad;
+}
+
 static int parse_kind(const char *arg, uint8_t *table, int max) {
     char *eq;
     long idx = strtol(arg, &eq, 10);
@@ -284,7 +332,7 @@ static int parse_kind(const char *arg, uint8_t *table, int max) {
 int main(int argc, char **argv) {
     Opts o = {0};
     o.key.no_rscale = true;
-    const char *input = NULL, *out_path = NULL, *info_path = NULL, *batch = NULL, *cbuf1_path = NULL;
+    const char *input = NULL, *out_path = NULL, *info_path = NULL, *batch = NULL, *cbuf1_path = NULL, *emit_dir = NULL;
     int survey = 0;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -296,6 +344,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--cbuf1")) cbuf1_path = NEED_ARG();
         else if (!strcmp(a, "--survey")) survey = 1;
         else if (!strcmp(a, "--batch")) batch = NEED_ARG();
+        else if (!strcmp(a, "--emit-cache")) emit_dir = NEED_ARG();
         else if (!strcmp(a, "--attr-kind")) { if (!parse_kind(NEED_ARG(), o.key.attr_kind, 32)) { fprintf(stderr, "maxwell2msl: bad --attr-kind\n"); return EXIT_USAGE; } }
         else if (!strcmp(a, "--rt-kind")) { if (!parse_kind(NEED_ARG(), o.key.rt_kind, 8)) { fprintf(stderr, "maxwell2msl: bad --rt-kind\n"); return EXIT_USAGE; } }
         else if (!strcmp(a, "--vs-out-mask")) o.key.vs_out_mask = (uint32_t)strtoul(NEED_ARG(), NULL, 16);
@@ -322,7 +371,8 @@ int main(int argc, char **argv) {
         stage_arg = parse_stage(o.stage_arg);
         if (stage_arg < 0) { fprintf(stderr, "maxwell2msl: unknown stage '%s' (vs, fs, cs)\n", o.stage_arg); return EXIT_USAGE; }
     }
-    if (batch && !survey) { fprintf(stderr, "maxwell2msl: --batch needs --survey\n"); return EXIT_USAGE; }
+    if (batch && !survey && !emit_dir) { fprintf(stderr, "maxwell2msl: --batch needs --survey or --emit-cache <dir>\n"); return EXIT_USAGE; }
+    if (emit_dir && (survey || !batch)) { fprintf(stderr, "maxwell2msl: --emit-cache needs --batch <list> and excludes --survey\n"); return EXIT_USAGE; }
     if (batch && input) { fprintf(stderr, "maxwell2msl: --batch and an input file exclude each other\n"); return EXIT_USAGE; }
     if (!batch && !input) { usage(stderr); return EXIT_USAGE; }
 
@@ -363,7 +413,8 @@ int main(int argc, char **argv) {
                 fprintf(bout, "}\n");
                 io_err++;
             } else {
-                bad += survey_one(bout, path, blob, blob_n, st, &o.key);
+                bad += emit_dir ? emit_one(bout, emit_dir, path, blob, blob_n, st, &o.key)
+                                : survey_one(bout, path, blob, blob_n, st, &o.key);
             }
             free(data);
         }
