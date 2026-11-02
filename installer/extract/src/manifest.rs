@@ -10,6 +10,9 @@ use std::{
 
 pub const SCHEMA: u64 = 1;
 
+/// Bytes hashed so far by this process; the progress reporter of the extraction polls it.
+pub static HASHED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn file_sha256(path: &Path) -> std::io::Result<String> {
     let mut file = fs::File::open(path)?;
     let mut digest = Sha256::new();
@@ -20,6 +23,7 @@ pub fn file_sha256(path: &Path) -> std::io::Result<String> {
             return Ok(crate::nca::hex(&digest.finalize()));
         }
         digest.update(&buffer[..n]);
+        HASHED.fetch_add(n as u64, std::sync::atomic::Ordering::Relaxed);
     }
 }
 

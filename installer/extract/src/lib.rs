@@ -107,7 +107,12 @@ pub fn up_to_date(request: &Request) -> Result<bool, Failure> {
         .icons
         .as_ref()
         .is_none_or(|dir| dir.join("icons.json").is_file());
-    Ok(icons_present && manifest::matches(&request.work, &inputs(request, kind)))
+    let inputs = inputs(request, kind);
+    let expected = inputs.base_size + inputs.update_size;
+    Ok(icons_present
+        && hashing(expected, 0, 1000, || {
+            manifest::matches(&request.work, &inputs)
+        }))
 }
 
 struct Tool {
@@ -259,6 +264,83 @@ fn publish(stage: &Path, work: &Path) -> Result<(), Failure> {
     Ok(())
 }
 
+/// Size of everything below `dir` (missing folders count as 0).
+fn tree_size(dir: &Path) -> u64 {
+    let mut total = 0;
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(folder) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            match entry.metadata() {
+                Ok(meta) if meta.is_dir() => pending.push(entry.path()),
+                Ok(meta) => total += meta.len(),
+                Err(_) => {}
+            }
+        }
+    }
+    total
+}
+
+/// Runs `work` while a helper reports `done()` bytes out of `expected` as `extract progress <permille>` lines between
+/// `from` and `to` (of 1000). hactool and the hashing of the inputs give no progress of their own.
+fn reported<T>(
+    done: impl Fn() -> u64 + Sync,
+    expected: u64,
+    from: u64,
+    to: u64,
+    work: impl FnOnce() -> T,
+) -> T {
+    use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+    let stop = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let mut last = 0;
+            'poll: loop {
+                let permille = from + (to - from) * done().min(expected.max(1)) / expected.max(1);
+                if permille != last {
+                    println!("extract progress {permille}");
+                    last = permille;
+                }
+                for _ in 0..10 {
+                    if stop.load(Relaxed) {
+                        break 'poll;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        });
+        let result = work();
+        stop.store(true, Relaxed);
+        result
+    })
+}
+
+/// Progress by the growth of the output folders below `dirs`.
+fn watched<T>(dirs: &[&Path], expected: u64, from: u64, to: u64, work: impl FnOnce() -> T) -> T {
+    reported(
+        || dirs.iter().map(|dir| tree_size(dir)).sum(),
+        expected,
+        from,
+        to,
+        work,
+    )
+}
+
+/// Progress by the bytes hashed while `work` runs (the SHA-256 of the inputs is the slowest silent part).
+fn hashing<T>(expected: u64, from: u64, to: u64, work: impl FnOnce() -> T) -> T {
+    use std::sync::atomic::Ordering::Relaxed;
+    let start = manifest::HASHED.load(Relaxed);
+    reported(
+        || manifest::HASHED.load(Relaxed).saturating_sub(start),
+        expected,
+        from,
+        to,
+        work,
+    )
+}
+
 pub fn extract(request: &Request, log: &mut dyn FnMut(&str)) -> Result<Outcome, Failure> {
     // hactool runs in a private working directory, so every path must be absolute first.
     let absolute = |path: &Path| {
@@ -349,11 +431,18 @@ fn run_stage(
     let base_dir = if kind == "nca" {
         request.base.clone()
     } else {
-        tool.unpack(&request.base, &base_dir, kind)
-            .map_err(|_| Failure {
-                code: 5,
-                message: "The base game cannot be unpacked (file damaged or keys missing)".into(),
-            })?;
+        let input = fs::metadata(&request.base).map_or(0, |m| m.len())
+            + request
+                .update
+                .as_ref()
+                .map_or(0, |u| fs::metadata(u).map_or(0, |m| m.len()));
+        watched(&[&base_dir, &update_dir], input, 0, 250, || {
+            tool.unpack(&request.base, &base_dir, kind)
+        })
+        .map_err(|_| Failure {
+            code: 5,
+            message: "The base game cannot be unpacked (file damaged or keys missing)".into(),
+        })?;
         base_dir
     };
     if let Some(update) = &request.update {
@@ -435,7 +524,17 @@ fn run_stage(
         option("--romfsdir=", &stage.join("romfs")),
         program.path.clone().into(),
     ]);
-    tool.run(&arguments).map_err(|_| Failure {
+    let expected = program
+        .size
+        .max(fs::metadata(&program.path).map_or(0, |m| m.len()));
+    watched(
+        &[&stage.join("exefs"), &stage.join("romfs")],
+        expected,
+        250,
+        700,
+        || tool.run(&arguments),
+    )
+    .map_err(|_| Failure {
         code: 5,
         message: "The game NCA cannot be extracted (master key revision in prod.keys?)".into(),
     })?;
@@ -507,17 +606,19 @@ fn run_stage(
         display_version: &display,
         update_applied: update,
     };
-    let record = manifest::build(
-        stage,
-        &game,
-        &manifest::Inputs {
-            base_kind: kind,
-            base: &request.base,
-            update: request.update.as_deref(),
-            base_size,
-            update_size,
-        },
-    )
+    let record = hashing(base_size + update_size, 700, 1000, || {
+        manifest::build(
+            stage,
+            &game,
+            &manifest::Inputs {
+                base_kind: kind,
+                base: &request.base,
+                update: request.update.as_deref(),
+                base_size,
+                update_size,
+            },
+        )
+    })
     .map_err(io)?;
     fs::write(
         stage.join("manifest.json"),

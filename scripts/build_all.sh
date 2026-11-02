@@ -223,7 +223,8 @@ stage_extract() {
     stage_result extract "skipped"
     return 0
   fi
-  [ "$FORCE" -eq 0 ] || EXTRACT_ARGS+=(--force)
+  # The check above already found the result stale: --force spares the extract step hashing the inputs a second time.
+  EXTRACT_ARGS+=(--force)
   [ "$KEEP_NCA" -eq 0 ] || EXTRACT_ARGS+=(--keep-nca)
   mkdir -p "$WORK/recomp/icons"
 
