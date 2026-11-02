@@ -27,13 +27,16 @@ class FfmpegCacheTests(unittest.TestCase):
         self.assertEqual(ffmpeg_cache.ffmpeg_dir(None, {}), ROOT / "work/ios/ffmpeg-ios")
 
     def test_environment_variable_selects_a_persistent_folder(self):
-        folder = ffmpeg_cache.ffmpeg_dir("/repo", {"BDSP_IOS_FFMPEG_DIR": "/data/ios-ffmpeg"})
-        self.assertEqual(folder, Path("/data/ios-ffmpeg"))
+        with tempfile.TemporaryDirectory() as temporary:
+            persistent = Path(temporary) / "ios-ffmpeg"
+            self.assertEqual(ffmpeg_cache.ffmpeg_dir("/repo", {"BDSP_IOS_FFMPEG_DIR": str(persistent)}), persistent)
 
     def test_command_line_prints_the_resolved_folder(self):
-        env = dict(os.environ, BDSP_IOS_FFMPEG_DIR="/data/ios-ffmpeg")
-        out = subprocess.run([sys.executable, str(HELPER), "dir"], env=env, capture_output=True, text=True, check=True)
-        self.assertEqual(out.stdout.strip(), "/data/ios-ffmpeg")
+        with tempfile.TemporaryDirectory() as temporary:
+            persistent = Path(temporary) / "ios-ffmpeg"
+            env = dict(os.environ, BDSP_IOS_FFMPEG_DIR=str(persistent))
+            out = subprocess.run([sys.executable, str(HELPER), "dir"], env=env, capture_output=True, text=True, check=True)
+            self.assertEqual(Path(out.stdout.strip()), persistent)
 
     def test_stamp_changes_with_every_input(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -79,7 +82,8 @@ class FfmpegCacheTests(unittest.TestCase):
 
     def test_build_script_builds_aside_and_stamps_last(self):
         text = SCRIPT.read_text()
-        self.assertEqual(subprocess.run(["bash", "-n", str(SCRIPT)]).returncode, 0)
+        if sys.platform != "win32":   # a macOS build script; Windows has no bash to parse it
+            self.assertEqual(subprocess.run(["bash", "-n", str(SCRIPT)]).returncode, 0)
         self.assertLess(text.index('mktemp -d "$FFDIR.building'), text.index('> "$PREFIX/.bdsp-stamp"'))
         self.assertLess(text.index('> "$PREFIX/.bdsp-stamp"'), text.index('mv "$PREFIX" "$FFDIR"'))
 
