@@ -281,8 +281,19 @@ pub fn reset_setup_progress() {
 fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let (python, _) =
         crate::runtime::backend_python().ok_or("The bundled Python runtime is missing.")?;
-    let project = setup_source(crate::runtime::project_root(), || {
-        let parent = crate::source_download::data_dir()?.join("sources");
+    let sources = crate::source_download::data_dir().map(|dir| dir.join("sources"));
+    if let Ok(parent) = &sources {
+        // leftovers of earlier runs; a running setup is younger than two hours
+        crate::source_download::prune_unused(
+            parent,
+            None,
+            std::time::Duration::from_secs(2 * 3600),
+        );
+    }
+    let checkout = crate::runtime::project_root();
+    let downloaded = checkout.is_none();
+    let project = setup_source(checkout, || {
+        let parent = sources.clone()?;
         crate::source_download::download_main(&parent, &std::sync::atomic::AtomicBool::new(false))
     })?;
     let mut child = std::process::Command::new(python)
@@ -325,6 +336,9 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let text = errors
         .and_then(|handle| handle.join().ok())
         .unwrap_or_default();
+    if downloaded {
+        let _ = fs::remove_dir_all(&project); // this run's copy of main: the next run downloads its own
+    }
     if status.success() {
         return Ok(());
     }

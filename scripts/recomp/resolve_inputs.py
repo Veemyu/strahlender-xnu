@@ -18,6 +18,11 @@ import subprocess
 import sys
 import urllib.request
 
+try:
+    from scripts.recomp import web
+except ImportError:   # run as a plain script from scripts/recomp
+    import web
+
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / "installer/assets"
 FFMPEG_MAJOR = 8
@@ -28,12 +33,12 @@ def api(url):
     token = os.environ.get("GITHUB_TOKEN")
     if token:
         request.add_header("Authorization", "Bearer " + token)
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with web.urlopen(request, timeout=60) as response:
         return json.load(response)
 
 
 def text(url):
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "strahlender-xnu-ci"}), timeout=60) as response:
+    with web.urlopen(urllib.request.Request(url, headers={"User-Agent": "strahlender-xnu-ci"}), timeout=60) as response:
         return response.read().decode("utf-8")
 
 
@@ -47,8 +52,7 @@ def sha256(path):
 
 def download(url, destination):
     try:
-        with urllib.request.urlopen(url, timeout=300) as response, open(destination, "wb") as output:
-            shutil.copyfileobj(response, output)
+        web.download_file(url, destination, timeout=300)
     except OSError:
         curl = shutil.which("curl")
         if not curl:

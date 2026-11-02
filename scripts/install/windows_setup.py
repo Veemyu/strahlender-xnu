@@ -23,6 +23,7 @@ from scripts.recomp import dependency_build as dependencies
 from scripts.recomp import portable_build as build
 from scripts.recomp import resolve_inputs
 from scripts.recomp import resolve_qt
+from scripts.recomp import web
 
 
 # Windows keeps freshly unpacked files open for a while (Defender scans them, the indexer reads them). Renaming or deleting such a folder
@@ -90,30 +91,20 @@ def clear_leftovers(out):
 
 
 def fetch(url, destination, *, sha1=None, sha256=None, progress=print, on_bytes=None):
+    """Downloads one archive and checks it against the hash its publisher gives. A certificate error from Python's own TLS is retried
+    once with the system curl (scripts/recomp/web.py); the hash check is the same either way."""
     destination = Path(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    digests = {"sha1": hashlib.sha1(), "sha256": hashlib.sha256()}
     progress("Downloading " + destination.name)
-    partial = destination.with_suffix(destination.suffix + ".partial")
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "strahlender-xnu-installer"}), timeout=600) as response, \
-            open(partial, "wb") as output:
-        total = int(response.headers.get("Content-Length") or 0)
-        received, reported = 0, 0.0
-        for chunk in iter(lambda: response.read(1 << 20), b""):
+    web.download_file(url, destination, on_bytes=on_bytes)
+    digests = {"sha1": hashlib.sha1(), "sha256": hashlib.sha256()}
+    with open(destination, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
             for digest in digests.values():
                 digest.update(chunk)
-            output.write(chunk)
-            received += len(chunk)
-            if on_bytes and time.monotonic() - reported >= 0.25:   # a quarter of a second is smooth enough and keeps the pipe quiet
-                reported = time.monotonic()
-                on_bytes(received, total)
-        if on_bytes:
-            on_bytes(received, total)
     for name, expected in (("sha1", sha1), ("sha256", sha256)):
         if expected and digests[name].hexdigest() != expected:
-            partial.unlink(missing_ok=True)
+            destination.unlink(missing_ok=True)
             raise ValueError(f"{name.upper()} mismatch for {destination.name}")
-    partial.replace(destination)
     return destination
 
 

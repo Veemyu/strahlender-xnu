@@ -108,6 +108,33 @@ fn revision_from_refs(text: &str) -> Option<String> {
     valid_revision(sha).then(|| sha.to_owned())
 }
 
+/// Deletes source downloads under `parent` that nothing uses any more: older than `older_than`, without a `work` folder (a build that
+/// is still running or kept its work has one) and not `keep`. Every setup and every build downloads its own copy of `main`; a failed
+/// or interrupted run leaves it behind. Never fails, never touches anything that is not a plain folder of the form <revision>-<number>.
+pub fn prune_unused(parent: &Path, keep: Option<&Path>, older_than: Duration) {
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let plain = path.is_dir()
+            && !entry.file_type().is_ok_and(|t| t.is_symlink())
+            && name.split_once('-').is_some_and(|(revision, number)| {
+                valid_revision(revision) && number.bytes().all(|b| b.is_ascii_digit())
+            });
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|time| time.elapsed().ok())
+            .is_some_and(|age| age >= older_than);
+        if plain && old && Some(path.as_path()) != keep && !path.join("work").exists() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
 fn valid_revision(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
@@ -124,6 +151,37 @@ mod tests {
         assert_eq!(super::revision_from_refs(&text).as_deref(), Some(sha));
         assert_eq!(super::revision_from_refs("0000 refs/heads/main\n"), None);
         assert_eq!(super::revision_from_refs("no refs here"), None);
+    }
+
+    #[test]
+    fn unused_source_downloads_are_pruned_but_kept_work_and_other_folders_stay() {
+        let parent = std::env::temp_dir().join(format!("bdsp-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        let revision = "a".repeat(40);
+        let mk = |name: &str, with_work: bool| {
+            let dir = parent.join(name);
+            std::fs::create_dir_all(dir.join("scripts")).unwrap();
+            if with_work {
+                std::fs::create_dir_all(dir.join("work")).unwrap();
+            }
+            dir
+        };
+        let old = mk(&format!("{revision}-111"), false);
+        let with_work = mk(&format!("{revision}-222"), true);
+        let current = mk(&format!("{revision}-333"), false);
+        let foreign = mk("notes", false);
+        // nothing is old enough yet
+        super::prune_unused(
+            &parent,
+            Some(&current),
+            std::time::Duration::from_secs(3600),
+        );
+        assert!(old.exists() && with_work.exists() && current.exists() && foreign.exists());
+        // with a zero age everything unused goes, except the work folder, the current one and folders that are not ours
+        super::prune_unused(&parent, Some(&current), std::time::Duration::ZERO);
+        assert!(!old.exists());
+        assert!(with_work.exists() && current.exists() && foreign.exists());
+        let _ = std::fs::remove_dir_all(&parent);
     }
 
     #[test]

@@ -14,12 +14,17 @@ import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 
+try:
+    from scripts.recomp import web
+except ImportError:   # run as a plain script from scripts/recomp
+    import web
+
 BASE = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/"
 SOURCES = "https://download.qt.io/official_releases/qt/%s/%s/submodules/qtbase-everywhere-src-%s.tar.xz"
 
 
 def text(url):
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "strahlender-xnu-ci"}), timeout=120) as response:
+    with web.urlopen(urllib.request.Request(url, headers={"User-Agent": "strahlender-xnu-ci"}), timeout=120) as response:
         return response.read().decode("utf-8")
 
 
@@ -57,11 +62,11 @@ def resolve(get=text):
 
 
 def download(url, destination, expected_sha1=None):
+    web.download_file(url, destination)
     digest = hashlib.sha1()
-    with urllib.request.urlopen(url, timeout=600) as response, open(destination, "wb") as output:
-        for chunk in iter(lambda: response.read(1 << 20), b""):
+    with open(destination, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(chunk)
-            output.write(chunk)
     if expected_sha1 and digest.hexdigest() != expected_sha1:
         Path(destination).unlink(missing_ok=True)
         raise ValueError("SHA-1 mismatch: " + url)
