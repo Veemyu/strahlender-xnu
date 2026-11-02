@@ -72,5 +72,18 @@ class PatchBundleTests(unittest.TestCase):
         self.assertEqual(self.count("ContextMenu_Scroll"), 0)
 
 
+class ScalerTests(unittest.TestCase):
+    def test_constant_pixel_size_becomes_scale_with_screen_size_on_the_reference(self):
+        tree = {"m_UiScaleMode": 0, "m_ScaleFactor": 1.0, "m_ReferenceResolution": {"x": 800.0, "y": 600.0}, "m_ScreenMatchMode": 0, "m_MatchWidthOrHeight": 0.0}
+        self.assertTrue(patch.fix_constant_scaler(tree))
+        self.assertEqual((tree["m_UiScaleMode"], tree["m_ReferenceResolution"], tree["m_MatchWidthOrHeight"]), (1, {"x": 1920.0, "y": 1080.0}, 0.5))
+
+    def test_a_scaler_that_already_scales_is_left_alone(self):
+        tree = {"m_UiScaleMode": 1, "m_ReferenceResolution": {"x": 1280.0, "y": 720.0}, "m_MatchWidthOrHeight": 1.0}
+        before = {k: v for k, v in tree.items()}
+        self.assertFalse(patch.fix_constant_scaler(tree))
+        self.assertEqual(tree, before)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -153,6 +153,17 @@ def patch_bundle(UnityPy, source, destination, dry_run, demo=False):
     return len(changed)
 
 
+def fix_constant_scaler(tree):
+    """Turns a CanvasScaler typetree from ConstantPixelSize into ScaleWithScreenSize on the 1920x1080 reference; False when it is none of those."""
+    if tree.get("m_UiScaleMode") != CONSTANT_PIXEL_SIZE:
+        return False
+    tree["m_UiScaleMode"] = SCALE_WITH_SCREEN_SIZE
+    tree["m_ReferenceResolution"] = {"x": 1920.0, "y": 1080.0}
+    tree["m_ScreenMatchMode"] = 0
+    tree["m_MatchWidthOrHeight"] = 0.5   # a 16:9 screen is on the reference either way; the runtime's canvas match slot decides on other shapes
+    return True
+
+
 def patch_title_scene(UnityPy, source, destination, dry_run):
     env = UnityPy.load(str(source))
     changed = 0
@@ -165,12 +176,8 @@ def patch_title_scene(UnityPy, source, destination, dry_run):
         except Exception:   # a behaviour without a readable script
             continue
         tree = obj.read_typetree()
-        if tree.get("m_UiScaleMode") != CONSTANT_PIXEL_SIZE:
+        if not fix_constant_scaler(tree):
             continue
-        tree["m_UiScaleMode"] = SCALE_WITH_SCREEN_SIZE
-        tree["m_ReferenceResolution"] = {"x": 1920.0, "y": 1080.0}
-        tree["m_ScreenMatchMode"] = 0
-        tree["m_MatchWidthOrHeight"] = 0.5   # a 16:9 screen is on the reference either way; the runtime's canvas match slot decides on other shapes
         obj.save_typetree(tree)
         changed += 1
     if changed and not dry_run:
