@@ -2501,6 +2501,11 @@ impl Installer {
                 self.target = InstallTarget::Ios;
                 self.mods_folder = mod_support::folder_for(self.host, self.target);
             }
+            "mods-folder-windows" => {
+                self.page = Page::ModsFolder;
+                self.target = InstallTarget::Windows;
+                self.mods_folder = mod_support::folder_for(self.host, self.target);
+            }
             "mods-empty" => self.page = Page::Mods,
             "mods-ips-ready"
             | "mods-ips-ios-ready"

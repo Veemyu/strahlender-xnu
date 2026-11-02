@@ -906,9 +906,14 @@ impl Installer {
         let mut body = column![
             self.title(self.language.t(L::ModsTitle), self.language.t(L::ModsHint)),
             folder_card,
-            text(self.language.t(L::RomFSNoBuild))
-                .size(12)
-                .color(c.muted),
+            // Windows has no mod dialog in the game app: a mod becomes its own app and is read from this folder.
+            text(self.language.t(if self.target == InstallTarget::Windows {
+                L::ModsOwnApp
+            } else {
+                L::RomFSNoBuild
+            }))
+            .size(12)
+            .color(c.muted),
         ]
         .spacing(14);
         if self.target == InstallTarget::Ios {
