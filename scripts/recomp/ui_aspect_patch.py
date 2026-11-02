@@ -11,6 +11,7 @@ Usage: ui_aspect_patch.py --romfs <romfs dir> --out <overlay dir> [--only <bundl
 """
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,9 @@ EXTRA_FILE = Path("Data/resources.assets")
 SCREEN = (1280.0, 720.0)
 # Render-texture views keep their proportions: stretching them would distort 3D models.
 KEEP_NAMES = ("rawimage", "modelview", "rawimagemodel")
+# Only prefab roots, screen windows and backdrops are stretched. Other full-size containers (party lists, maps) hold the screen's content: they stay a
+# centered 16:9 block, so top-anchored and centered parts of one layout never drift apart on a taller or wider canvas.
+BACKDROP = re.compile(r"(^|_)(bg|back|backdrop|background|blur|flash|frash|fade|border)(_|\d|$)|^netbg$", re.IGNORECASE)
 
 
 def import_unitypy():
@@ -85,8 +89,9 @@ def patch_bundle(UnityPy, source, destination, dry_run):
         t = trees[pid]
         name = names.get(gameobject_of[pid], "")
         keep = any(k in name.lower() for k in KEEP_NAMES)
+        eligible = is_root or name == "Window" or bool(BACKDROP.search(name))
         screen = False
-        if parent_is_screen and not keep and covers_parent(t):
+        if parent_is_screen and not keep and eligible and covers_parent(t):
             make_stretch(t)
             changed.append(pid)
             screen = True

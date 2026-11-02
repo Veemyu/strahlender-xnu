@@ -193,3 +193,13 @@ Findings for the Canalave City pool (zone 24) in the original, measured on a Ryu
   opaque and transparent passes. Zone 24 does not need it.
 - Check: the same measurements as above on a recompiled frame. No movement suggests a missing `_Time`; movement without the net
   suggests a missing caustics texture. Water that covers the whole scene is the stale-vertex-data symptom described in section 5.
+
+## 8. Aspect ratio and render resolution
+
+Every build renders at any aspect ratio natively (no stretching, no cropped area). It is not a separate build and not a mod.
+
+- **Choose:** menu View > Aspect Ratio / Render Resolution (macOS), `aspect` and `render_height` in `config.ini`, or `BDSP_ASPECT` / `BDSP_RENDER_H` / `BDSP_RENDER=WxH`. With nothing set the game keeps the stock 1920x1080. The choice applies after a restart.
+  Aspect presets: `16:9`, `16:10`, `4:3` (also the 12.9" iPad Pro), `21:9`, `mbp` (14"/16" MacBook Pro panel), `ipad11` (11" iPad Pro), `auto` (shape of the window), or a ratio such as `1.6`. Render height: a number, or `auto` (native pixel height of the window's drawable, so a 1440p or Retina window renders at its own pixel height).
+- **How it works:** the game reads its screen size from ten constants in `main`. The generator replaces them with calls to small stubs (`native-generator/src/builtin_patches.c`) that read slots in the module image; `runtime/display_size.c` writes the slots before the guest starts. A slot of 0 keeps the original constant. The same step makes the canvas scaler match the height when the image is wider than 16:9 and the width when it is narrower, so the 16:9 UI is never cropped. The presenter fits the guest's swapchain image into the drawable at its own aspect (`output_scale()`).
+- **UI overlay:** the UI is authored on a 1280x720 canvas. `scripts/recomp/ui_aspect_patch.py` (stage 7 of `recomp_build.sh`, from your own extraction) stretches the fixed-size screen windows, backdrops, key-guide bar and the menu blur; on 16:9 this changes nothing. The result is `romfs-patch/` next to the RomFS and is laid over the game by the runtime (`BDSP_ROMFS_PATCH=none` disables it).
+- **Verified (Mac, native, unstretched):** 16:10 at 1920x1200, 4:3 at 1440x1080, and a 21:9 reference run with the community ultrawide patch (3440x1440). Open: camera field of view for narrow aspects, switching in game without a restart, iPad and Vulkan menus, some backdrops inside screens (for example the Pokémon list), movies.
