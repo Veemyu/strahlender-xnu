@@ -5,6 +5,8 @@
 # scripts/install_hooks.sh installs it as the pre-push hook. Own code.
 # In a git worktree the installer would be compiled into a fresh installer/target (about 10 GB); share one build folder instead:
 #   CARGO_TARGET_DIR=$HOME/.cache/bdsp-cargo-target scripts/check.sh      (cargo uses it for both crates; the first run compiles, later runs reuse it)
+# A worktree has no tools/pydeps (gitignored), so with --full the native generator tests report "Unicorn 2.1.4 ... required"; point them at the main checkout:
+#   TOOLS_DIR=<main checkout>/tools scripts/check.sh --full
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FULL=0; [ "${1:-}" = "--full" ] && FULL=1
