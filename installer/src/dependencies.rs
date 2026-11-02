@@ -46,24 +46,36 @@ pub struct Plan {
     pub manager: String,
     pub packages: Vec<String>,
     pub missing: Vec<Missing>,
+    /// The failed probe of each entry in `missing`, in the same order.
+    #[serde(default)]
+    pub checks: Vec<String>,
     pub manual: Vec<String>,
     pub bootstrap_brew: bool,
 }
 impl Plan {
-    pub fn ready(&self) -> bool {
-        self.missing.is_empty() && self.manual.is_empty() && !self.bootstrap_brew
-    }
-    pub fn description(&self) -> String {
+    /// One log line per unmet requirement, naming the check that failed.
+    pub fn log_lines(&self) -> Vec<String> {
         let mut lines: Vec<String> = self
             .missing
             .iter()
-            .map(|m| format!("{}: {}", m.id, m.purpose))
+            .enumerate()
+            .map(|(i, m)| match self.checks.get(i) {
+                Some(check) => format!("Missing: {} (failed check: {check})", m.id),
+                None => format!("Missing: {}", m.id),
+            })
             .collect();
-        lines.extend(self.manual.clone());
+        lines.extend(
+            self.manual
+                .iter()
+                .map(|note| format!("Manual step: {note}")),
+        );
         if !self.packages.is_empty() {
             lines.push(format!("{}: {}", self.manager, self.packages.join(", ")));
         }
-        lines.join("\n")
+        lines
+    }
+    pub fn ready(&self) -> bool {
+        self.missing.is_empty() && self.manual.is_empty() && !self.bootstrap_brew
     }
 }
 fn succeeds(program: &str, args: &[&str]) -> bool {
@@ -251,7 +263,6 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
     if target == "ios" && !succeeds("xcrun", &["--sdk", "iphoneos", "--show-sdk-path"]) {
         plan.manual.push("Install and open Xcode, accept its license, and install the iOS platform. An Apple signing team is needed only for direct device installation.".into());
     }
-    let mut packages = BTreeSet::new();
     if target == "ios"
         && succeeds("xcrun", &["--sdk", "iphoneos", "--show-sdk-path"])
         && !succeeds("xcodebuild", &["-checkFirstLaunchStatus"])
@@ -261,57 +272,78 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
                 .into(),
         );
     }
-    for component in catalog.components {
+    let wayland = std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland");
+    check_components(
+        catalog.components,
+        &mut plan,
+        mac,
+        wayland,
+        &mut succeeds,
+        &mut vma_header_found,
+    );
+    Ok(plan)
+}
+
+/// Probes every catalog component; `run` and `header` are injected so tests need no real host tools.
+fn check_components(
+    components: Vec<Component>,
+    plan: &mut Plan,
+    mac: bool,
+    wayland: bool,
+    run: &mut dyn FnMut(&str, &[&str]) -> bool,
+    header: &mut dyn FnMut() -> bool,
+) {
+    let manager = plan.manager.clone();
+    let mut packages = BTreeSet::new();
+    for component in components {
         if component.linux && mac {
             continue;
         }
-        if component.wayland && std::env::var("XDG_SESSION_TYPE").as_deref() != Ok("wayland") {
+        if component.wayland && !wayland {
             continue;
         }
-        let names = match manager {
+        let names = match manager.as_str() {
             "brew" => &component.brew,
             "apt" => &component.apt,
             "dnf" => &component.dnf,
             _ => &component.pacman,
         };
-        let present = if mac && component.id == "git" {
+        let (present, check) = if mac && component.id == "git" {
             // Git is provided by Apple's tools; it need not be a Brew formula.
-            succeeds(&git(), &["--version"])
+            (run(&git(), &["--version"]), "git --version".to_string())
         } else if mac {
-            names
-                .iter()
-                .all(|p| succeeds(&brew(), &["list", "--versions", p]))
+            (
+                names
+                    .iter()
+                    .all(|p| run(&brew(), &["list", "--versions", p])),
+                format!("brew list --versions {}", names.join(" ")),
+            )
         } else if let Some(module) = &component.module {
-            succeeds("pkg-config", &["--exists", module])
-                || component
-                    .alternative
-                    .as_ref()
-                    .is_some_and(|m| succeeds("pkg-config", &["--exists", m]))
-        } else if component.header && !succeeds("clang++", &["--version"]) {
-            false
-        } else if component.header {
-            let mut child = Command::new("clang++")
-                .hidden()
-                .args(["-x", "c++", "-fsyntax-only", "-"])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .map_err(|e| e.to_string())?;
-            use std::io::Write;
-            if let Some(mut input) = child.stdin.take() {
-                let _ = input.write_all(b"#if __has_include(<vma/vk_mem_alloc.h>)\n#include <vma/vk_mem_alloc.h>\n#else\n#include <vk_mem_alloc.h>\n#endif\n");
+            let mut check = format!("pkg-config --exists {module}");
+            let mut found = run("pkg-config", &["--exists", module]);
+            if let Some(alternative) = component.alternative.as_ref().filter(|_| !found) {
+                found = run("pkg-config", &["--exists", alternative]);
+                check.push_str(&format!(" and pkg-config --exists {alternative}"));
             }
-            child.wait().is_ok_and(|s| s.success())
+            (found, check)
+        } else if component.header && !run("clang++", &["--version"]) {
+            (false, "clang++ --version".to_string())
+        } else if component.header {
+            (
+                header(),
+                "clang++ -fsyntax-only with <vma/vk_mem_alloc.h> or <vk_mem_alloc.h>".to_string(),
+            )
         } else {
-            !component.probe.is_empty()
-                && succeeds(
+            let check = component.probe.join(" ");
+            let found = !component.probe.is_empty()
+                && run(
                     &component.probe[0],
                     &component.probe[1..]
                         .iter()
                         .map(String::as_str)
                         .collect::<Vec<_>>(),
-                )
+                );
+            (found, check)
         };
         if present
             && !mac
@@ -334,10 +366,28 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
                 id: component.id,
                 purpose: component.purpose,
             });
+            plan.checks.push(check);
         }
     }
     plan.packages = packages.into_iter().collect();
-    Ok(plan)
+}
+
+fn vma_header_found() -> bool {
+    let Ok(mut child) = Command::new("clang++")
+        .hidden()
+        .args(["-x", "c++", "-fsyntax-only", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    use std::io::Write;
+    if let Some(mut input) = child.stdin.take() {
+        let _ = input.write_all(b"#if __has_include(<vma/vk_mem_alloc.h>)\n#include <vma/vk_mem_alloc.h>\n#else\n#include <vk_mem_alloc.h>\n#endif\n");
+    }
+    child.wait().is_ok_and(|s| s.success())
 }
 
 pub fn installation_script(plan: &Plan) -> Result<String, String> {
@@ -388,11 +438,19 @@ pub fn installation_script(plan: &Plan) -> Result<String, String> {
     Ok(script)
 }
 
+/// Linux plans with only manual steps (such as VMA on Arch) have nothing a terminal script could do.
+fn nothing_to_install(plan: &Plan, mac: bool) -> bool {
+    plan.packages.is_empty() && !plan.bootstrap_brew && !mac
+}
+
 pub fn install(plan: &Plan) -> Result<(), String> {
     if plan.manager == "windows-components" {
         return crate::components::install_latest(&crate::components::root()?).map(|_| ());
     }
     let script = installation_script(plan)?;
+    if nothing_to_install(plan, cfg!(target_os = "macos")) {
+        return Err("Nothing can be installed automatically. Follow the manual steps in the list, then check again.".into());
+    }
     let directory = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
         .ok_or("Application data unavailable.")?
         .data_dir()
@@ -556,6 +614,41 @@ mod tests {
             };
             assert!(super::installation_script(&bad).is_err());
         }
+    }
+    #[test]
+    fn steamos_with_all_packages_but_no_vma_stays_blocked_and_names_the_check() {
+        let manager = super::detect_manager("NAME=\"SteamOS\"\nID=steamos\nID_LIKE=arch\n");
+        assert_eq!(manager, Some("pacman"));
+        let catalog: super::Catalog =
+            serde_json::from_str(include_str!("../assets/dependencies.json")).unwrap();
+        let mut plan = super::Plan {
+            manager: "pacman".into(),
+            ..Default::default()
+        };
+        let mut probes = Vec::new();
+        super::check_components(
+            catalog.components,
+            &mut plan,
+            false,
+            false,
+            &mut |program, args| {
+                probes.push(format!("{program} {}", args.join(" ")));
+                true
+            },
+            &mut || false,
+        );
+        assert!(!plan.ready());
+        assert_eq!(plan.missing.len(), 1);
+        assert_eq!(plan.missing[0].id, "vma");
+        assert!(plan.packages.is_empty(), "nothing pacman can install");
+        assert!(plan.manual[0].contains("AUR"));
+        let lines = plan.log_lines();
+        assert!(
+            lines[0].starts_with("Missing: vma (failed check: clang++ "),
+            "{lines:?}"
+        );
+        assert!(super::nothing_to_install(&plan, false));
+        assert!(probes.iter().any(|p| p == "pkg-config --exists sdl3"));
     }
     #[test]
     fn detects_distribution_families() {

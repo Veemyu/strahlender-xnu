@@ -260,6 +260,11 @@ use development packages matching the FFmpeg provider already installed; do not
 blindly replace or mix providers. BDSP_NO_MOVIE=1 explicitly omits movie support
 and its FFmpeg requirement, but the intro path is then unsupported.
 
+SteamOS (Arch based): the tool step cannot finish until the Vulkan Memory Allocator headers are installed from the AUR; the
+installer log names every missing requirement and the check that failed. The root file system is read-only
+(`sudo steamos-readonly disable`), pacman needs `sudo pacman-key --init && sudo pacman-key --populate archlinux holo`, and
+SteamOS updates remove packages installed this way.
+
 Native Wayland also needs the Qt platform plugin (Debian qt6-wayland; Fedora
 qt6-qtwayland). X11 uses the xcb plugin and may need its distribution's cursor
 support package. No Qt private-devel headers, PySide6, or vendored Qt is required.

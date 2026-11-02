@@ -725,7 +725,9 @@ impl Installer {
                         return self.handle(Message::Preview);
                     }
                     Ok(plan) => {
-                        self.record("SETUP", &plan.description());
+                        for line in plan.log_lines() {
+                            self.record("SETUP", &line);
+                        }
                         self.requirements = Some(plan);
                     }
                     Err(error) => self.notice = Some(error),

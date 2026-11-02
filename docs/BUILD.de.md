@@ -27,7 +27,9 @@ Zwei geführte Installer erledigen alles aus dieser Anleitung für dich. Mit `--
 - **Linux:** `./install-linux.sh` starten. Er erkennt `apt`, `dnf` oder `pacman`, listet die fehlenden Entwicklungspakete und
   installiert sie nach deiner Zustimmung (der Paketmanager fragt per `sudo` nach deinem Administrator-Passwort, das Skript sieht
   es nie). Der Vulkan Memory Allocator steckt auf Arch nicht in den offiziellen Paketen: Das Skript bittet dich, ihn selbst aus dem
-  AUR zu installieren. Danach richtet es `work/venv` ein, fragt nach deinen Dateien und führt den Bau aus Abschnitt 6.2 aus.
+  AUR zu installieren. Auf SteamOS (Arch) ist das Dateisystem schreibgeschützt (`sudo steamos-readonly disable`), pacman braucht
+  `sudo pacman-key --init && sudo pacman-key --populate archlinux holo`, und SteamOS-Updates entfernen so installierte Pakete; das Log
+  des Installers nennt jede fehlende Anforderung samt fehlgeschlagener Prüfung. Danach richtet es `work/venv` ein, fragt nach deinen Dateien und führt den Bau aus Abschnitt 6.2 aus.
   Mehrere Stunden (Abschnitt 6.4).
 
 Beide Skripte sprechen Englisch, Deutsch, Spanisch und Portugiesisch (Systemsprache oder `BDSP_LANG=de|en|es|pt`). Die Texte

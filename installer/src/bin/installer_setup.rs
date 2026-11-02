@@ -36,7 +36,7 @@ fn main() {
         Ok(plan) => {
             println!("{}", serde_json::to_string_pretty(&plan).unwrap());
             if args.iter().any(|a| a == "--install") && !plan.ready() {
-                eprintln!("{}", plan.description());
+                eprintln!("{}", plan.log_lines().join("\n"));
                 if let Err(error) = dependencies::install(&plan) {
                     eprintln!("{error}");
                     std::process::exit(1);
