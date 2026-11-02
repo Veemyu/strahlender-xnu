@@ -422,7 +422,7 @@ The Windows build does not ask you to prepare compilers or libraries. The instal
 - **Where it comes from:** `.github/workflows/windows-components.yml` builds it on a Windows runner, runs the Windows tests against
   it, and (weekly, or on request) publishes it as the release `windows-components`. The recipes are `scripts/recomp/resolve_inputs.py`,
   `resolve_qt.py`, `portable_build.py` and `dependency_build.py`; nothing is pinned in the repository.
-- **Build stages** (driver `--target windows`): extract (`installer/extract`, hactool), generate C, compile, images, runtime,
+- **Build stages** (driver `--target windows`): extract (`installer/extract`, hactool), generate C, compile, images, UI overlay, runtime,
   link, package. The game is installed to `%LOCALAPPDATA%\StrahlenderXnu\app`, saves and settings go to `%APPDATA%\StrahlenderXnu`.
 - **Requirements:** Windows 10 22H2 (build 19045) or Windows 11, x86-64, a Vulkan-capable GPU driver, about 40 GB of free space.
   ARM64 is not supported yet.
@@ -454,7 +454,7 @@ The Unity-era stages `il2cpp`, `masterdata`, `video`, `audio` and `shaders` were
 
 ### 7.1 The `recomp` stage
 
-`scripts/recomp/app/recomp_build.sh` runs six steps:
+`scripts/recomp/app/recomp_build.sh` runs seven steps:
 
 1. **Generator:** `work/exefs` modules → C in `work/recomp/gen4` (about 1 GB). Marker `recomp-gen`.
 2. **Compile:** C → objects in `work/recomp/obj4`. The default number of parallel Clang processes is based on available CPUs and total RAM (2 GiB system reserve, about 1.5 GiB per compiler); `--recomp-jobs N` overrides it. Functions above `--recomp-o0-kb` use `-O0`.
@@ -463,6 +463,7 @@ The Unity-era stages `il2cpp`, `masterdata`, `video`, `audio` and `shaders` were
 4. **Runtime:** `runtime/build.sh` with `BDSP_APP=1` → `work/recomp/bdsp_app`.
 5. **App:** bundle, `Info.plist`, icon, libraries, ad hoc signature.
 6. **Data:** APFS clone of `work/romfs` into Application Support.
+7. **UI overlay:** `scripts/recomp/ui_aspect_patch.py` stretches the UI's fixed 1280x720 rectangles (needed for non-16:9 aspect ratios, see `docs/rendering.md` section 8) into `romfs-patch/` next to the RomFS; skipped when its inputs are unchanged. The Windows pipeline has the same step (`ui_overlay`), the Linux launchers `vk_run.sh` / `vk_qt.sh` run it before the game starts, and `deploy_ios.sh` copies it to the iPad.
 
 ### 7.2 The NVN stamp (`prepare.sh`)
 

@@ -770,7 +770,7 @@ int bdsp_qt_ui_run(void) {
     }
 #endif
     QApplication app(argc, argv);
-    if (qEnvironmentVariableIsEmpty("BDSP_DISPLAY_CONFIG")) {   // where the View menu keeps aspect ratio and render resolution (runtime/display_size.c)
+    if (qEnvironmentVariableIsEmpty("BDSP_DISPLAY_CONFIG")) {   // where the View menu keeps aspect ratio and render resolution (runtime/display_size.c); Windows sets it in win32_entry.c
         const QString dir = QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)).filePath(QStringLiteral("StrahlenderXnu"));
         QDir().mkpath(dir);
         qputenv("BDSP_DISPLAY_CONFIG", QDir(dir).filePath(QStringLiteral("display.conf")).toUtf8());

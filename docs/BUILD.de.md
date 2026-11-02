@@ -253,7 +253,7 @@ Für den Windows-Build müssen keine Compiler oder Bibliotheken vorbereitet werd
 - **Herkunft:** `.github/workflows/windows-components.yml` baut es auf einem Windows-Runner, führt die Windows-Tests dagegen aus
   und veröffentlicht es (wöchentlich oder auf Anforderung) als Release `windows-components`. Die Rezepte sind
   `scripts/recomp/resolve_inputs.py`, `resolve_qt.py`, `portable_build.py` und `dependency_build.py`; im Repository ist nichts festgepinnt.
-- **Bau-Stufen** (Treiber `--target windows`): extract (`installer/extract`, hactool), C erzeugen, kompilieren, Images, Runtime,
+- **Bau-Stufen** (Treiber `--target windows`): extract (`installer/extract`, hactool), C erzeugen, kompilieren, Images, UI-Overlay, Runtime,
   Link, Paket. Installiert wird nach `%LOCALAPPDATA%\StrahlenderXnu\app`, Spielstände und Einstellungen liegen in `%APPDATA%\StrahlenderXnu`.
 - **Voraussetzungen:** Windows 10 22H2 (Build 19045) oder Windows 11, x86-64, Vulkan-fähiger GPU-Treiber, etwa 40 GB freier Platz.
   ARM64 wird noch nicht unterstützt.
@@ -280,7 +280,7 @@ Die Unity-Stufen `il2cpp`, `masterdata`, `video`, `audio` und `shaders` wurden e
 
 ### 7.1 Die Stufe `recomp`
 
-`scripts/recomp/app/recomp_build.sh` führt sechs Schritte aus:
+`scripts/recomp/app/recomp_build.sh` führt sieben Schritte aus:
 
 1. **Generator:** Module aus `work/exefs` → C in `work/recomp/gen4` (rund 1 GB). Marker `recomp-gen`.
 2. **Übersetzen:** C → Objekte in `work/recomp/obj4`. Die Zahl paralleler Clang-Prozesse wird aus verfügbaren CPUs und RAM bestimmt (2 GiB Systemreserve, etwa 1,5 GiB pro Compiler); `--recomp-jobs N` überschreibt sie. Funktionen ab `--recomp-o0-kb` werden mit `-O0` übersetzt. Marker `recomp-obj`.
@@ -288,6 +288,7 @@ Die Unity-Stufen `il2cpp`, `masterdata`, `video`, `audio` und `shaders` wurden e
 4. **Laufzeit:** `runtime/build.sh` mit `BDSP_APP=1` → `work/recomp/bdsp_app`.
 5. **App:** Bundle, `Info.plist`, Symbol, Bibliotheken, ad hoc Signatur.
 6. **Daten:** APFS-Klon von `work/romfs` nach Application Support.
+7. **UI-Overlay:** `scripts/recomp/ui_aspect_patch.py` streckt die festen 1280x720-Rechtecke der Oberfläche (nötig für andere Seitenverhältnisse als 16:9, siehe `docs/rendering.md` Abschnitt 8) nach `romfs-patch/` neben dem RomFS; wird übersprungen, wenn sich die Eingaben nicht geändert haben. Die Windows-Pipeline hat denselben Schritt (`ui_overlay`), die Linux-Starter `vk_run.sh` / `vk_qt.sh` führen ihn vor dem Spielstart aus, und `deploy_ios.sh` kopiert ihn aufs iPad.
 
 ### 7.2 Der NVN-Stempel (`prepare.sh`)
 

@@ -122,6 +122,7 @@ static int prepare_paths(void) {
     if (!root) { errno = ENOMEM; return -1; }
     if (!plat_ensure_directory(root)) { free(root); return -1; }
     result = set_path("BDSP_CONTROLLER_CONFIG", root, "controller-mode.txt", false) ||
+             set_path("BDSP_DISPLAY_CONFIG", root, "display.conf", false) ||   // aspect ratio and render height (display_size.c)
              set_path("BDSP_SAVE", root, "save", true) ||
              set_path("BDSP_CACHE_DIR", root, "cache", true) ||
              set_path("BDSP_SHOT_DIR", root, "shots", true) ||
