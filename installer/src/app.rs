@@ -3061,6 +3061,33 @@ mod tests {
     }
 
     #[test]
+    fn the_ipa_result_names_the_size_only_when_it_is_known() {
+        use crate::i18n::Language;
+        let (mut app, _) = Installer::new();
+        app.exported_ipa = Some(PathBuf::from("exports/game.ipa"));
+        app.game_library = Some(PathBuf::from("exports/Game Library"));
+        for language in [
+            Language::English,
+            Language::German,
+            Language::Spanish,
+            Language::Portuguese,
+            Language::Russian,
+        ] {
+            app.language = language;
+            for with_library in [true, false] {
+                app.game_library = with_library.then(|| PathBuf::from("exports/Game Library"));
+                app.ios_export_no_embed = true;
+                app.exported_ipa_size = None;
+                let without = app.ipa_result_text();
+                assert!(!without.contains("()") && !without.contains("{size}"), "{without}");
+                assert!(without.contains("game.ipa"), "{without}");
+                app.exported_ipa_size = Some(229_768_040);
+                assert!(app.ipa_result_text().contains("(230 MB)"));
+            }
+        }
+    }
+
+    #[test]
     fn copy_feedback_timer_cannot_clear_a_newer_copy() {
         let (mut app, _) = Installer::new();
         let older = Instant::now();

@@ -1426,7 +1426,7 @@ impl Installer {
     }
 
     /// What was exported: where, how large, with or without the game data, and whether a Game Library exists.
-    fn ipa_result_text(&self) -> String {
+    pub(super) fn ipa_result_text(&self) -> String {
         let Some(path) = &self.exported_ipa else {
             return String::new();
         };
@@ -1437,16 +1437,15 @@ impl Installer {
         } else {
             L::IpaResultEmbedded
         };
-        self.language
+        let text = self
+            .language
             .t(key)
-            .replace("{path}", &super::redact_home_path(&path.to_string_lossy()))
-            .replace(
-                "{size}",
-                &self
-                    .exported_ipa_size
-                    .map(super::human_size)
-                    .unwrap_or_default(),
-            )
+            .replace("{path}", &super::redact_home_path(&path.to_string_lossy()));
+        match self.exported_ipa_size {
+            Some(size) => text.replace("{size}", &super::human_size(size)),
+            // Without a size the " ({size})" part goes, not just the number (no empty brackets).
+            None => text.replace(" ({size})", ""),
+        }
     }
 
     fn progress_view(&self) -> Element<'_, Message> {
