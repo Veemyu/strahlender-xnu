@@ -133,7 +133,13 @@ jobs:
       - name: Vulkan loader and the unpack/extract tool
         run: |
           # The renderer links the Vulkan loader statically; runners have no GPU driver, so install LunarG's loader (latest).
-          Invoke-WebRequest https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-runtime.exe -OutFile vulkan-runtime.exe -UseBasicParsing
+          # LunarG sometimes announces a version whose download is not published yet (404): then the last version known to work is used.
+          try {
+            Invoke-WebRequest https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-runtime.exe -OutFile vulkan-runtime.exe -UseBasicParsing
+          } catch {
+            Write-Host "The latest Vulkan runtime is not downloadable ($($_.Exception.Message)); using 1.4.350.0"
+            Invoke-WebRequest https://sdk.lunarg.com/sdk/download/1.4.350.0/windows/vulkan-runtime.exe -OutFile vulkan-runtime.exe -UseBasicParsing
+          }
           Start-Process ./vulkan-runtime.exe -ArgumentList '/S' -Wait
           if (-not (Test-Path C:\Windows\System32\vulkan-1.dll)) { throw "Vulkan loader was not installed" }
           cargo build --release --manifest-path installer/extract/Cargo.toml
