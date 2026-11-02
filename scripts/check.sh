@@ -3,6 +3,8 @@
 #   scripts/check.sh          fast: repo check, rustfmt, clippy, Rust and release tests, runtime compile checks
 #   scripts/check.sh --full   additionally the whole Python test suite
 # scripts/install_hooks.sh installs it as the pre-push hook. Own code.
+# In a git worktree the installer would be compiled into a fresh installer/target (about 10 GB); share one build folder instead:
+#   CARGO_TARGET_DIR=$HOME/.cache/bdsp-cargo-target scripts/check.sh      (cargo uses it for both crates; the first run compiles, later runs reuse it)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FULL=0; [ "${1:-}" = "--full" ] && FULL=1
