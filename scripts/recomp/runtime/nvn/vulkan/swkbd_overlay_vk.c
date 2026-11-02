@@ -326,6 +326,20 @@ static uint64_t clock_ns(void) { return SDL_GetTicksNS(); }
 static const SwkbdKeepalive k_keepalive = {clock_ns, vk_last_game_present_ns, backend_represent};
 static void keepalive_wake(void) { swkbd_keepalive_wake(&k_keepalive); }
 
+// Test hook (as in the Metal overlay): BDSP_SWKBD_PREVIEW=<frame> opens the keyboard at that presented frame without the game asking.
+static void preview_check(void) {
+    static long at = -1, frame;
+    if (at < 0) at = getenv("BDSP_SWKBD_PREVIEW") ? atol(getenv("BDSP_SWKBD_PREVIEW")) : 0;
+    if (!at || ++frame != at) return;
+    SwkbdParams p = {0};
+    p.minlen = 1; p.maxlen = 12;
+    snprintf(p.header, sizeof p.header, "Enter your name");
+    snprintf(p.sub, sizeof p.sub, "Up to 12 characters");
+    snprintf(p.guide, sizeof p.guide, "Name");
+    SwkbdCallbacks cb = {0};
+    swkbd_ui_open(&p, cb, NULL);
+}
+
 void menu_render(void *cmd, uint32_t w, uint32_t h) {
     static int once;
     if (!once) {   // first frame: the keyboard can be drawn when the firmware's text font is there
@@ -333,6 +347,7 @@ void menu_render(void *cmd, uint32_t w, uint32_t h) {
         const char *root = getenv("BDSP_FIRMWARE_DATA");
         if (root && *root && swkbd_text_available(root)) { swkbd_ui_set_display(1); swkbd_ui_set_wake(keepalive_wake); }
     }
+    preview_check();
     int active = swkbd_ui_visible();
     if (active != V.was_active) {
         V.was_active = active;
