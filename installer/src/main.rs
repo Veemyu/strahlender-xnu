@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod app;
 mod backend;
 mod bundle;
@@ -17,6 +19,7 @@ mod mod_support;
 mod motion;
 mod platform;
 mod preferences;
+mod process;
 mod progress;
 mod project_link;
 mod runtime;
@@ -32,6 +35,10 @@ use app::Installer;
 
 fn main() -> iced::Result {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    // A window program has no console of its own on Windows; the command line modes print into the terminal that started them.
+    if args.iter().any(|a| a.starts_with("--")) {
+        process::attach_parent_console();
+    }
     match args.as_slice() {
         [flag] if flag == "--check-source" => {
             match workspace::source_smoke() {

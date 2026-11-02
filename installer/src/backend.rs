@@ -1,3 +1,4 @@
+use crate::process::Hidden;
 use crate::runtime::{backend_python, project_root};
 use iced::futures::SinkExt;
 use serde::Deserialize;
@@ -333,6 +334,7 @@ fn run_driver(
             return;
         };
         let mut command = Command::new(&python);
+        command.hidden();
         // The scripts run the extract step through this very executable (`--cli extract`), so no Rust toolchain is needed.
         if let Ok(own) = std::env::current_exe() {
             command

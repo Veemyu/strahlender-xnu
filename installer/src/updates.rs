@@ -1,4 +1,5 @@
 //! Only separately signed release metadata may authorize an installer replacement.
+use crate::process::Hidden;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
@@ -282,6 +283,7 @@ fn start_helper(
         .join(format!("installer_update{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(helper, &temporary).map_err(|e| e.to_string())?;
     std::process::Command::new(temporary)
+        .hidden()
         .arg(std::process::id().to_string())
         .arg(source)
         .arg(destination)

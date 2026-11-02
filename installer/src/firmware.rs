@@ -1,4 +1,5 @@
 //! Local firmware import. Proprietary resources and key material never leave the host.
+use crate::process::Hidden;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -197,6 +198,7 @@ fn hash_file(path: &Path) -> Result<String> {
 }
 fn tool(tool: &Path, keys: &Path, args: &[String]) -> Result<String> {
     let out = Command::new(tool)
+        .hidden()
         .arg("-k")
         .arg(keys)
         .args(args)

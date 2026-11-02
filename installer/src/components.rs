@@ -2,6 +2,7 @@
 //! GitHub Actions builds from the newest upstream releases (.github/workflows/windows-components.yml). The installer
 //! ships it inside the installer (resources/), so the user prepares nothing; integrity comes from the SHA-256 in the
 //! metadata that travels with it. Builds without the bundle (development) cannot set the Windows environment up.
+use crate::process::Hidden;
 use serde::Deserialize;
 
 use std::{
@@ -182,6 +183,7 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
         crate::source_download::download_main(&parent, &std::sync::atomic::AtomicBool::new(false))
     })?;
     let output = std::process::Command::new(python)
+        .hidden()
         .current_dir(&project)
         .env(
             "BDSP_EXTRACT",

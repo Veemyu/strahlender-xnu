@@ -1,4 +1,5 @@
 //! Shared package plans. Only explicit install actions may change the host.
+use crate::process::Hidden;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -67,6 +68,7 @@ impl Plan {
 }
 fn succeeds(program: &str, args: &[&str]) -> bool {
     Command::new(program)
+        .hidden()
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -145,7 +147,11 @@ fn clang_major_from(text: &str) -> Option<u32> {
 }
 
 fn clang_major() -> Option<u32> {
-    let output = Command::new("clang").arg("--version").output().ok()?;
+    let output = Command::new("clang")
+        .hidden()
+        .arg("--version")
+        .output()
+        .ok()?;
     clang_major_from(&String::from_utf8_lossy(&output.stdout))
 }
 
@@ -285,6 +291,7 @@ pub fn inspect(target: &str) -> Result<Plan, String> {
             false
         } else if component.header {
             let mut child = Command::new("clang++")
+                .hidden()
                 .args(["-x", "c++", "-fsyntax-only", "-"])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::null())

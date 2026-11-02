@@ -1,5 +1,8 @@
 #[path = "../firmware.rs"]
 mod firmware;
+#[allow(dead_code)]
+#[path = "../process.rs"]
+mod process;
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() != 5 {

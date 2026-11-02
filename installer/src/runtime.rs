@@ -1,4 +1,5 @@
 //! Locating the source checkout and the private Python runtime. Shared by the GUI and the `installer_setup` binary.
+use crate::process::Hidden;
 use std::path::{Path, PathBuf};
 
 pub fn project_root() -> Option<PathBuf> {
@@ -169,6 +170,7 @@ pub fn runtime_smoke() -> Result<(), String> {
         .to_string()
     };
     let status = std::process::Command::new(python)
+        .hidden()
         .args(["-I", "-B", "-c", &code])
         .status()
         .map_err(|e| e.to_string())?;

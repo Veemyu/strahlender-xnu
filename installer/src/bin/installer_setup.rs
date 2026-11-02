@@ -5,6 +5,9 @@ mod components;
 #[path = "../dependencies.rs"]
 mod dependencies;
 #[allow(dead_code)]
+#[path = "../process.rs"]
+mod process;
+#[allow(dead_code)]
 #[path = "../runtime.rs"]
 mod runtime;
 #[allow(dead_code)]
