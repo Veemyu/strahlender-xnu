@@ -2330,6 +2330,16 @@ ShaderInfo *maxwell_translate_ex(const uint8_t *blob, size_t max_size, int stage
         if (c->pred_used[i]) sp(&s, "  bool p%d = false;\n", i);
     if (c->uses_cc) sp(&s, "  uint cc = 0; bool ccz = false, ccs = false;\n");
     if (c->uses_local) sp(&s, "  uint lmem[%d] = {};\n", LMEM_WORDS);
+    // XNU: Apple GPUs interpolate a NaN or infinite vertex output to +-FLT_MAX (measured on an M1 Pro, macOS 26: any
+    // NaN/Inf vertex of the triangle, perspective and no-perspective). The game's shaders expect NaN, as the Switch's GPU
+    // evidently passes it on: fmax(0, NaN) is 0, fmax(0, FLT_MAX) is not. The player's room TV (a frame period of 0 makes its vertex
+    // colour NaN) became a block of pixels at the format maximum that the bloom spread over the whole picture (issue #25).
+    // Interpolating finite outputs does not land on exactly +-FLT_MAX in practice, so that value is read back as NaN.
+    // Flat inputs are not interpolated (and may carry integer bits): they keep their value.
+    if (stage == STAGE_FRAGMENT)
+        for (int i = 0; i < 32; i++)
+            if ((c->in_attr_mask & (1u << i)) && !(c->flat_mask & (1u << i)))
+                sp(&s, "  in.v%d = select(in.v%d, float4(as_type<float>(0x7fffffffu)), abs(in.v%d) == float4(FLT_MAX));\n", i, i, i);
     if (any_branch) {
         sp(&s, "  uint pc = 8u; uint ssy[16]; uint ssy_n = 0; uint pbk[16]; uint pbk_n = 0; uint pcnt[16]; uint pcnt_n = 0;\n");
         sp(&s, "  bool exit_now = false;\n");

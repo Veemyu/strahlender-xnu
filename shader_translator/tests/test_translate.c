@@ -278,6 +278,25 @@ static void test_no_rscale_flag(void) {
     free(b);
 }
 
+static void test_varying_nan(void) {
+    // Apple GPUs interpolate a NaN vertex output to FLT_MAX: interpolated inputs read FLT_MAX back as NaN, flat ones do not.
+    // R3 = a[0x80] (generic input 0, x) through ALD (interpolated), then through IPA with constant (flat) interpolation.
+    const uint64_t ald = 0xefd800000007ff03ull | (0x80ull << 20);
+    const uint64_t ipa_flat = 0xe00000000007ff03ull | (2ull << 54) | (0x80ull << 28) | (0xffull << 20);
+    const uint64_t code[] = {W_SCHED, ald, W_EXIT, W_BRA_SELF_8};
+    ShaderInfo *s = translate(code, 4, STAGE_FRAGMENT, NULL);
+    CHECK(s->msl && strstr(s->msl, "in.v0 = select(in.v0, float4(as_type<float>(0x7fffffffu)), abs(in.v0) == float4(FLT_MAX));"));
+    maxwell_free(s);
+    const uint64_t flat[] = {W_SCHED, ipa_flat, W_EXIT, W_BRA_SELF_8};
+    s = translate(flat, 4, STAGE_FRAGMENT, NULL);
+    CHECK(s->msl && strstr(s->msl, "v0 [[user(locn0)]] [[flat]]"));
+    CHECK(s->msl && !strstr(s->msl, "select(in.v0"));
+    maxwell_free(s);
+    s = translate(code, 4, STAGE_VERTEX, NULL);  // (a vertex shader reads attributes, not interpolated inputs)
+    CHECK(s->msl && !strstr(s->msl, "FLT_MAX"));
+    maxwell_free(s);
+}
+
 // ---------------------------------------------------------------- container
 static size_t put32(uint8_t *b, size_t o, uint32_t v) {
     memcpy(b + o, &v, 4);
@@ -354,6 +373,7 @@ int main(void) {
     test_code_end_detection();
     test_input_checks();
     test_no_rscale_flag();
+    test_varying_nan();
     test_container();
     printf("test_translate: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

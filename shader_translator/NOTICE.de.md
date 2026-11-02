@@ -67,6 +67,10 @@ Teil 4 (2026-10-19, Instancing und Speicherpuffer):
 18. **Globaler Speicher (LDG) in HLSL.** Der Zweig „hlsl: global memory“ wurde durch einen eigenen Pfad ersetzt: 32-, 64-, 128-Bit- und Teilwort-Lesezugriffe über `ByteAddressBuffer mx_gmem` (Adresse = Byte-Offset, weil der Wrapper die Puffer-Adresse in Treiber-cbuf 0 auf Null lässt; hohes Adresswort ≠ 0 liest 0). STG und mehrere Speicherpuffer bleiben abgelehnt („hlsl: global memory store“). Ein Sprungziel `insn_done:` am Ende von `emit_insn()` lässt den HLSL-Pfad die gemeinsame Nachbehandlung (Prädikat) durchlaufen.
 19. **`main.c`:** `--gmem-base`/`--gmem-size` für die MSL-/GLSL-Ausgabe (Testbank des Harness; Standard unverändert 0/0). Tests: fünf neue C-Prüfungen (LDG, STG-Ablehnung).
 
+Teil 5 (2026-11-02, Issue #25):
+
+20. **NaN in interpolierten Fragment-Eingängen (nur MSL).** Apple-GPUs interpolieren eine NaN- oder unendliche Vertex-Ausgabe zu +-FLT_MAX, die Shader des Spiels erwarten NaN (wie auf der Switch). Der Fragment-Einstieg liest jetzt jeden nicht flachen Eingang, der genau +-FLT_MAX ist, als NaN (`in.vN = select(...)` vor dem Rumpf). GLSL-Ausgabe unverändert. Test: `test_varying_nan`.
+
 ### Bewusst (noch) unverändert
 
 Globale Variablen `maxwell_gmem_base/size`, `flip_x`, der GLSL-Zweig (TEX.B und `half_compat` gelten nur für MSL; der GLSL-Zweig wurde nicht getestet), statische Puffer in `RSC2` (nicht threadsicher; die Übersetzung läuft in einem Thread), `sprintf` ohne Längenprüfung. Siehe die offenen Punkte in `docs/shaders.md`.

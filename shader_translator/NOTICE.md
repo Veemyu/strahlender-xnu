@@ -67,6 +67,10 @@ Part 4 (2026-10-19, instancing and storage buffers):
 18. **Global memory (LDG) in HLSL.** Replaced “hlsl: global memory” error with a dedicated path: 32-, 64-, 128-bit and subword reads via `ByteAddressBuffer mx_gmem` (address is byte offset because wrapper leaves buffer address in driver cbuf 0 as zero; a nonzero high address word reads 0). STG and multiple storage buffers remain rejected (“hlsl: global memory store”). An `insn_done:` branch target at end of `emit_insn()` lets HLSL path run shared postprocessing (predicate).
 19. **`main.c`:** `--gmem-base`/`--gmem-size` for MSL/GLSL output (harness test bank; default remains 0/0). Tests: five new C checks (LDG, STG rejection).
 
+Part 5 (2026-11-02, issue #25):
+
+20. **NaN in interpolated fragment inputs (MSL only).** Apple GPUs interpolate a NaN or infinite vertex output to +-FLT_MAX; the game's shaders expect NaN (as on the Switch). The fragment entry point now reads every non-flat input that is exactly +-FLT_MAX as NaN (`in.vN = select(...)` before the body). GLSL output unchanged. Test: `test_varying_nan`.
+
 ### Deliberately unchanged (for now)
 
 Global variables `maxwell_gmem_base/size`, `flip_x`, GLSL branch (TEX.B and `half_compat` are MSL-only; GLSL branch untested), static buffers in `RSC2` (not thread-safe; translation runs in one thread), and `sprintf` without length check. See the open items in `docs/shaders.md`.

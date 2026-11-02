@@ -10,7 +10,7 @@ The game must look like the original. The game's own command stream and shaders 
 faithful. Settings measured in the game data: the **built-in render pipeline** (no SRP), **gamma** color space, one quality level
 (shadows on, distance 20, no MSAA setting; the G-buffer itself is 4x multisampled), GPU skinning on. The game renders 1280x720
 internally. Reference images come from Ryujinx (copied by hand into `work/visual/ref/ryujinx/raw/`); the language selection screen
-is pixel-identical to Ryujinx (SSIM 0.999), city colors are close, water was the long-standing difference (section 6).
+is pixel-identical to Ryujinx (SSIM 0.999), city colors are close, water was the long-standing difference (section 8).
 
 ## 2. Finding: no MSAA resolve (Professor Rowan missing)
 
@@ -55,7 +55,33 @@ compute programs report `64x1x1` in every run.
 stream, NaN in the first floats of the vertex uniform buffers, the guest rewriting storage buffers after they were encoded,
 missed texture updates in the cheap change check, stale shader caches.
 
-## 4. Method that worked
+## 4. Finding: NaN vertex colours reach the bloom as FLT_MAX (white cloud in the player's room, issue #25)
+
+**Symptom.** Right after loading a save in the player's room a white area covered about 85 % of the picture, only a strip at the
+right showed the room. It stayed as long as the room was on screen.
+
+**Cause.** The TV screen's vertex shader animates its colour with `cos(2 pi * fract(time / period))`. In this scene the period in
+its constant buffer is 0, so `1 / 0 = inf`, `inf - floor(inf) = NaN` and the vertex colour is NaN (the same arithmetic
+runs on the Switch). The original shows no cloud, so its GPU evidently passes the NaN on to the pixel and the post-processing
+drops it: the bloom bright pass computes `fmax(0, colour - threshold)`, which is 0 for NaN. The Windows build
+(Vulkan, GeForce RTX 2080 Ti) shows the same save without a cloud and with a black TV, the picture the fix gives on the Mac.
+Apple GPUs interpolate a NaN or infinite vertex output to +-FLT_MAX (measured on an M1 Pro, macOS 26: any NaN or Inf vertex of the triangle, perspective and no-perspective). The TV pixels became 65024 (the R11G11B10 maximum), the bright
+pass kept them, the half-float bloom chain overflowed to infinity and every blur level spread it further until the composite
+was white.
+
+**Fix.** The translator's fragment entry point reads every non-flat input that is exactly +-FLT_MAX as NaN (MSL only; flat
+inputs are not interpolated and may carry integer bits). The TV is black now, the rest of the frame unchanged. A vertex shader
+that writes exactly FLT_MAX on purpose would read NaN (not checked against every game shader). Every fragment shader's source
+changes, so the prebuilt libraries are rebuilt: `scripts/shader_bootstrap.py` (the installer's shader step) does that when the
+translator sources change; an app with the old `shaders-bin` compiles each fragment shader on first use.
+
+**How it was found.** Metal validation was clean. Pass dumps of one frame (`BDSP_PASS_DIR`) showed the TV as a white rectangle in
+the scene target and a growing white rectangle through the bloom levels; `BDSP_PASS_STATS` gave no NaN but 53 574 colour components
+above 64 (maximum 65024) in the scene target and thousands of Inf values in the bloom targets; hiding the TV draw (`BDSP_SKIP_FSHASH=55c7d1b77e2ec612`) removed
+the cloud; the vertex constant buffer dump (`BDSP_DUMP_VSUBO`) showed the period 0; small Metal test programs showed that NaN
+survives arithmetic, blending and storage on Apple GPUs and only the interpolation turns it into FLT_MAX.
+
+## 5. Method that worked
 
 0. Run `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1` and group the messages by text (`sort | uniq -c`).
 1. Reproduce deterministically: one instance, scripted input, a fixed save, no keys pressed in the window.
@@ -76,7 +102,7 @@ Debug tools (`nvn/src/nvn/render_debug.inc`, all off unless the variable is set)
 | `BDSP_DEBUG_ON_FS=<fs hash>[:<frames>[:<from>]]` | The debug frame comes `frames` (default 60) frames after the first draw with this fragment shader (hash as `BDSP_LOG_FSHASH=1` prints it) at or after frame `from`: load times vary between runs |
 | `BDSP_DEBUG_SPAN=<n>` | The debug frame covers `n` presents (default 1): with slow dumps a game frame may straddle a present |
 
-## 5. Performance: the render worker, not the GPU, was the limit
+## 6. Performance: the render worker, not the GPU, was the limit
 
 Setup: M1 Pro, 120 fps target. On Route 222 the game ran at about 61 fps and the GPU showed the same utilisation at 60 and 110 fps.
 A Metal System Trace showed only ~25 % fragment, ~9 % vertex and ~5 % compute time; the render worker (`xw_main`, the single thread
@@ -121,7 +147,7 @@ Hang diagnostics (runtime, not rendering); none does anything in a normal sessio
 Known: Metal validation reports one start-up message (a 1D texture used as a render attachment, 21 times) and nothing else.
 `gpudebug` and `gpucapture` are documented in the macOS 27 SDK but not part of Xcode 27.1 on macOS 26.6.
 
-## 6. Frame rate, pacing and the HUD
+## 7. Frame rate, pacing and the HUD
 
 - **Target:** 30, 60 or 120 fps. It sets the vsync interval (`services_gfx.c`, `bdsp_set_fps()`) and presentation (`frame_pace` in
   `nvn_glue.c`). `BDSP_FPS` overrides the saved setting; Mac: "Frame Rate" menu (`config.ini` key `fps`); iPad: Settings bundle key
@@ -149,7 +175,7 @@ Known: Metal validation reports one start-up message (a 1D texture used as a ren
   because the engine ties them to the 30 fps design (`Application.targetFrameRate(30)`); the runtime's time sources are real-time
   exact, so there is no runtime-only correction. Not measured at 30/60/120 in the recompilation.
 
-## 7. Water
+## 8. Water
 
 Findings for the Canalave City pool (zone 24) in the original, measured on a Ryujinx reference image and the game's material data:
 
