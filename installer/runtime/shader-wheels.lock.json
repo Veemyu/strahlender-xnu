@@ -43,6 +43,15 @@
       "texture2ddecoder-1.0.6-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl": "e83343e9ec30e2c9a5c83c1ae39ff6ec3010bf92b00ddb612f764066528f02bf",
       "tpk_ar-0.2.4-py3-none-any.whl": "914447f5d3b8317661bbe2c3ee0b7b864d31e4625117e6680534c314a22995f0",
       "unitypy-1.25.4-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl": "a79c264168a3ee4f7538cf9d8178ff9145a3e37b8941fa0fb88c150da3f6e4a5"
+    },
+    "windows-x86_64": {
+      "astc_encoder_py-0.1.12-cp37-abi3-win_amd64.whl": "a45d375fc6b0ff2cd3d772aab3eef19a6b7f3e067306e11fab37820ea9576121",
+      "brotli-1.2.1-cp313-cp313-win_amd64.whl": "e6c4fa55eab6b5684b33239597876a18a35ce1280b63ab960164032afbb8783f",
+      "etcpak-0.9.15-cp37-abi3-win_amd64.whl": "669d902eeb774bc6d4df226183c09c3d03c9fc0f47b4c0c20030fc2b39eec2f2",
+      "fmod_toolkit-0.1.3-cp38-abi3.abi3t-win_amd64.whl": "a56432c291d0cfbf9e88dcb94e144bc9f244672590871398f8e1891d5d6f3c2e",
+      "texture2ddecoder-1.0.6-cp311-abi3-win_amd64.whl": "1bad8209d9dfbfc7daf13ea2e545236ea2bbc1e423b2992b6e7563909975a47b",
+      "tpk_ar-0.2.4-py3-none-any.whl": "914447f5d3b8317661bbe2c3ee0b7b864d31e4625117e6680534c314a22995f0",
+      "unitypy-1.25.4-cp313-cp313-win_amd64.whl": "4107c14c551d5978484b5d7852190bc1d9283eaab4b7657be8ad150c8facf711"
     }
   }
 }

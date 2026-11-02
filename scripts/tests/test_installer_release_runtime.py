@@ -54,12 +54,12 @@ class ReleaseRuntimeTests(unittest.TestCase):
             (root / "python/DLLs/test.pyd").write_bytes(b"changed")
             self.assertNotEqual(assemble_runtime.windows_inventory(root), expected)
 
-    def test_shader_lock_covers_four_native_release_hosts(self):
+    def test_shader_lock_covers_the_native_release_hosts(self):
         lock = json.loads((ROOT / "installer/runtime/shader-wheels.lock.json").read_text())
         base = json.loads(assemble_runtime.LOCK.read_text())
         self.assertEqual(lock["python"], base["python"])
         self.assertEqual(set(lock["targets"]), {
-            "macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64"})
+            "macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64", "windows-x86_64"})
         for target, wheels in lock["targets"].items():
             self.assertEqual(len(wheels), 7)
             self.assertEqual(sum(w.startswith("unitypy-") for w in wheels), 1)
