@@ -494,6 +494,7 @@ class InstallerDriverTests(unittest.TestCase):
             args = SimpleNamespace(root=temporary, work=temporary, target="ios", ios_delivery="device", ios_team=None)
             with patch.object(driver, "load_build_stages", return_value=stages), \
                  patch.object(stages, "preflight", return_value=[]), \
+                 patch.object(stages, "actool_version", return_value="26.0"), \
                  patch.object(driver, "required_free_gb", return_value=40), \
                  patch.object(driver, "missing_generator_modules", return_value=[]), \
                  patch.object(driver.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
@@ -504,6 +505,7 @@ class InstallerDriverTests(unittest.TestCase):
             args.ios_delivery = "ipa"
             with patch.object(driver, "load_build_stages", return_value=stages), \
                  patch.object(stages, "preflight", return_value=[]), \
+                 patch.object(stages, "actool_version", return_value="26.0"), \
                  patch.object(driver, "required_free_gb", return_value=40), \
                  patch.object(driver, "missing_generator_modules", return_value=[]), \
                  patch.object(driver.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \

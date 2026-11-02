@@ -19,14 +19,13 @@ def write(path, text="x"):
         f.write(text)
 
 
-
-def actool_version(version):
+def actool_plist(version):
     return ('<plist version="1.0"><dict><key>com.apple.actool.version</key><dict>'
             '<key>short-bundle-version</key><string>%s</string></dict></dict></plist>' % version)
 
 
 def fake_run(cmd, env=None, timeout=60, actool="26.0"):
-    return True, (actool_version(actool) if "actool" in cmd else "ok")
+    return True, (actool_plist(actool) if "actool" in cmd else "ok")
 
 
 class StageSelectionTests(unittest.TestCase):
@@ -342,6 +341,16 @@ class RecompStageTests(unittest.TestCase):
         self.assertEqual(self.missing(items), [])
         items = self.pf(run=lambda cmd, env=None, timeout=60: (cmd[1:3] != ["actool", "--version"], ""))
         self.assertEqual(self.missing(items), [name])
+
+    def test_actool_version_is_read_from_the_plist_only(self):
+        reordered = ('<plist version="1.0"><dict><key>com.apple.actool.version</key><dict><key>bundle-version</key>'
+                     '<string>1</string><key>short-bundle-version</key><string> 27.1 </string></dict></dict></plist>')
+        self.assertEqual(bs.actool_version(lambda cmd: (True, "warning: x\n" + reordered)), "27.1")
+        for out in ("", "no plist", "<plist><dict/></plist>", "<plist><dict></plist>"):
+            self.assertIsNone(bs.actool_version(lambda cmd: (True, out)))
+        self.assertIsNone(bs.actool_version(lambda cmd: (False, actool_plist("27.1"))))
+        self.assertTrue(bs.icon_compiler_check(lambda cmd: (True, actool_plist("26")))[1])
+        self.assertFalse(bs.icon_compiler_check(lambda cmd: (True, actool_plist("beta")))[1])
 
     def test_ios_target_does_not_check_mac_app_tools(self):
         names = [i["name"] for i in self.pf(which=lambda c: None, target="ios")]

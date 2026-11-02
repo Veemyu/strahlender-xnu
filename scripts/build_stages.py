@@ -18,11 +18,13 @@ import argparse
 import hashlib
 import json
 import os
+import plistlib
 import re
 import shutil
 import subprocess
 import sys
 import time
+from xml.parsers.expat import ExpatError
 
 # Exit codes (must match build_all.sh)
 EX_USAGE = 2
@@ -267,6 +269,28 @@ def _run_ok(cmd, env=None, timeout=60):
         return False, ""
 
 
+def actool_version(run=_run_ok):
+    """Short version of the selected actool (for example "27.1"), or None."""
+    ok, out = run(["/usr/bin/xcrun", "actool", "--version"])
+    start, end = out.find("<plist"), out.rfind("</plist>")
+    if not ok or start < 0 or end < 0:
+        return None
+    try:
+        return str(plistlib.loads(out[start:end + len("</plist>")].encode())["com.apple.actool.version"]["short-bundle-version"]).strip()
+    except (ValueError, KeyError, TypeError, ExpatError):
+        return None
+
+
+def icon_compiler_check(run=_run_ok):
+    """Entry arguments (name, ok, detail, hint): Icon Composer (.icon) needs actool from Xcode 26, older ones skip it without an error."""
+    version = actool_version(run)
+    major = (version or "").split(".")[0]
+    return ("Xcode 26 or newer (actool for the app icons)", major.isdigit() and int(major) >= XCODE_ICON_COMPOSER_MAJOR,
+            "actool " + version if version else "actool not found or unreadable",
+            "Install Xcode 26 or newer from the App Store, open it once (accept the license) and select it under "
+            "Xcode > Settings > Locations > Command Line Tools")
+
+
 def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_GB,
               which=shutil.which, run=_run_ok, free=free_gb):
     """Checks only what the selected stages need; nothing is installed. Entry: dict(name, ok, detail, hint, level)."""
@@ -340,13 +364,7 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         add("clang (Homebrew LLVM in PATH)", which("clang"), which("clang") or "", "brew install llvm and put /opt/homebrew/opt/llvm/bin before /usr/bin in the PATH")
         ok, _ = run(["/usr/bin/xcrun", "--find", "clang"])
         add("Apple clang (Objective-C, Command Line Tools)", ok, "", "xcode-select --install")
-        # Icon Composer (.icon) documents need actool from Xcode 26; older versions skip them without an error.
-        ok, out = run(["/usr/bin/xcrun", "actool", "--version"])
-        m = re.search(r"<key>short-bundle-version</key>\s*<string>((\d+)[\d.]*)</string>", out) if ok else None
-        add("Xcode 26 or newer (actool for the app icons)", m and int(m.group(2)) >= XCODE_ICON_COMPOSER_MAJOR,
-            "actool " + m.group(1) if m else "actool not found or unreadable",
-            "Install Xcode 26 or newer from the App Store, open it once (accept the license) and select it under "
-            "Xcode > Settings > Locations > Command Line Tools")
+        add(*icon_compiler_check(run))
         for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync is part of macOS"), ("strip", "xcode-select --install"), ("codesign", "xcode-select --install"),
                         ("install_name_tool", "xcode-select --install"), ("otool", "xcode-select --install"),
                         ("iconutil", "xcode-select --install"), ("plutil", "plutil is part of macOS")):

@@ -333,7 +333,7 @@ class GameIconTests(unittest.TestCase):
         def actool(command, **kwargs):
             if "--version" in command:
                 version = {"com.apple.actool.version": {"short-bundle-version": "16.2"}}
-                return subprocess.CompletedProcess(command, 0, plistlib.dumps(version))
+                return subprocess.CompletedProcess(command, 0, plistlib.dumps(version).decode(), "")
             Path(command[command.index("--output-partial-info-plist") + 1]).write_bytes(plistlib.dumps({}))
             return subprocess.CompletedProcess(command, 0, "")
 

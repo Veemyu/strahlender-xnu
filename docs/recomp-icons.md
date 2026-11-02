@@ -60,7 +60,8 @@ assets. The user provides these files on that machine.
 Outputs outside work/ are rejected. Icons and processing scripts participate in
 the Mac packaging fingerprint, independently of guest generation/object markers.
 Pillow and Xcode 26 with Icon Composer/actool are required for Apple builds.
-Missing tools fail rather than installing software automatically.
+Missing tools fail rather than installing software automatically. The preflight reports an `actool` older
+than Xcode 26 up front, because it would skip the `.icon` documents without an error.
 
 Geometry, interpolation, source hashes, and generated document definitions are
 deterministic. Native rendering/compilation is Apple-toolchain-dependent; this

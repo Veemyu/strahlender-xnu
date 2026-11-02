@@ -423,6 +423,8 @@ def check_build_dependencies(args):
             sdk = subprocess.run(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], capture_output=True, check=False)
             items.append({"name": "Xcode iPhoneOS SDK", "ok": sdk.returncode == 0, "level": "missing", "detail": "",
                           "hint": "Install and open Xcode once, then select its developer directory."})
+            name, ok, detail, hint = stages.icon_compiler_check()
+            items.append({"name": name, "ok": ok, "level": "missing", "detail": detail, "hint": hint})
             shader_cache = Path(os.environ.get("BDSP_SHADER_CACHE_DIR", str(Path(args.root) / "work/recomp/cache")))
             if any((shader_cache / "shaders").glob("[vf]_*.metal")):
                 metal = subprocess.run(["xcrun", "--sdk", "iphoneos", "metal", "--version"], capture_output=True, check=False)

@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 import game_icons
+import build_stages   # scripts/ is on sys.path once game_icons is imported
 
 STYLE = "liquid-glass-full-bleed-v1"
 
@@ -56,19 +57,8 @@ def compile_icons(documents, primary, output, platform):
     if missing:
         raise ValueError("Native icon compilation produced no %s (actool %s). Icon Composer documents need "
                          "Xcode 26 or newer: install it in /Applications/Xcode.app, open it once, then build again."
-                         % (", ".join(missing), actool_version() or "of unknown version"))
+                         % (", ".join(missing), build_stages.actool_version() or "of unknown version"))
     return plistlib.loads(partial.read_bytes())
-
-
-def actool_version():
-    """Short version of the selected actool (for example "16.2"), or None."""
-    try:
-        result = subprocess.run(["xcrun", "actool", "--version"], stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL, timeout=60)
-        info = plistlib.loads(result.stdout)
-        return str(info["com.apple.actool.version"]["short-bundle-version"])
-    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
-        return None
 
 
 def document(data, specular=True):
