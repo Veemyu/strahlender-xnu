@@ -1132,6 +1132,8 @@ impl Installer {
                         .on_toggle(Message::OptimizeCpu),
                     text(self.language.t(if self.portable_cpu {
                         L::PortableCpuHint
+                    } else if self.experimental_target() {
+                        L::OptimizeCpuHintArm
                     } else {
                         L::OptimizeCpuHint
                     }))
@@ -1346,6 +1348,14 @@ impl Installer {
         } else {
             space().height(0).into()
         };
+        let experimental_note: Element<'_, Message> = if self.experimental_target() {
+            text(self.language.t(L::ExperimentalArm))
+                .size(12)
+                .color(c.muted)
+                .into()
+        } else {
+            space().height(0).into()
+        };
         column![
             self.title(
                 self.language.t(L::SetupTitle),
@@ -1379,6 +1389,7 @@ impl Installer {
             }))
             .size(12)
             .color(c.muted),
+            experimental_note,
             device_actions,
             self.text_action(
                 self.language.t(L::BuildOptions),

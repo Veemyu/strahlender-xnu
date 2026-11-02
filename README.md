@@ -16,7 +16,7 @@ The repository contains **no game data**, no keys, no save files and no generate
 ## Where it runs
 
 **Supported:** iPad, iPhone (iPhone 11 family and newer, A13 chip with 4 GB RAM or more), Mac (Apple Silicon), Linux x86-64, Windows 10 22H2 and 11 (x86-64).<br>
-**Untested:** Linux aarch64. It compiles, testers are welcome.<br>
+**Experimental:** Linux aarch64 (needs Vulkan 1.3). The installer and the build tools work on a real aarch64 machine, a full game build and rendering are not verified yet, testers are welcome (see [docs/BUILD.md](docs/BUILD.md), section 6.5).<br>
 **Planned:** Apple TV.
 
 The iPhone is tested on an iPhone 11 Pro Max.

@@ -211,14 +211,14 @@ repository to set the team.
 
 ## 6. Linux with Vulkan
 
-Linux x86-64 is supported. Linux aarch64 compiles but is untested, testers are welcome. See section 6.4 for the known limits.
+Linux x86-64 is supported. Linux aarch64 is experimental (section 6.5): installer, build tools and generator work on a real aarch64 machine, but a full game build and rendering are not verified yet; testers are welcome. See section 6.4 for the known limits.
 
 ### 6.1 Requirements
 
-Use a Linux x86-64 machine with a Vulkan-capable GPU and its driver. AVX2 is optional. A Linux aarch64 machine
-should work as well but has not been tested.
+Use a Linux x86-64 or aarch64 machine with a Vulkan 1.3 capable GPU and its driver. AVX2 is not required.
 Local game builds default to `BDSP_CPU_TARGET=native`: the compiler enables the build CPU's
-supported instructions, including AVX/AVX2 where available. An older CPU builds without
+supported instructions (`-march=native` on x86-64, `-mcpu=native` on aarch64), including AVX/AVX2 where
+available. An older CPU builds without
 unsupported extensions. This does not guarantee compatibility with a different, older CPU.
 Set `BDSP_CPU_TARGET=portable` for the x86-64 baseline (AArch64: ARMv8-A).
 Changing CPU profiles or moving native builds between hosts invalidates generated-code and
@@ -383,6 +383,27 @@ Never commit concrete session IDs or authentication paths.
 - X11 and full screen (F11) are not tested.
 
 Details: `docs/recomp-linux.md`.
+
+### 6.5 Linux aarch64 (experimental)
+
+`./install-linux.sh` and the graphical installer accept aarch64 and say so. Everything below is what is known today.
+
+- **Needs:** a GPU driver with Vulkan 1.3 (the renderer refuses devices below 1.3) and the same packages as in 6.1;
+  the package names are the same, only the architecture differs. On Debian and Ubuntu the Qt Wayland plugin is
+  searched in `/usr/lib/aarch64-linux-gnu/qt6` as well.
+- **BC textures:** the game uses BC compressed textures. Many ARM GPUs (Mali, some Adreno) support ASTC but not BC.
+  On such a GPU the Vulkan backend converts BC1/2/3/7 into ASTC 4x4 and BC4/5 into R8/RG8 while uploading
+  (the same conversion as the iPhone path, `bctc.c`; BC1 is exact in most blocks, BC2/3/7 lose some quality).
+  GPUs with neither BC nor ASTC get empty textures, and BC6H and 3D BC textures are not converted on any GPU without BC.
+  `BDSP_TEST_NO_BC=1` forces the conversion on a GPU that has BC, for testing on a machine with ASTC.
+  This conversion compiles but has not been run on a real GPU without BC.
+- **Verified on Fedora Asahi Remix aarch64 (16 KiB pages):** the installer's private Python runtime (`--check-runtime`), the native
+  C generator on synthetic inputs, `install-linux.sh --dry-run` (system step, package and tool checks, notice in four languages),
+  the dependency and CPU flag scripts (`-mcpu=native`, `-march=armv8-a` for portable), and CI tests on a 4 KiB page ARM64 runner.
+- **Not verified yet:** a full game build, building the Vulkan/Qt runtime on aarch64 (the Asahi test machine had no Vulkan,
+  SDL3, shaderc or Qt development packages), and rendering. Please report results on GitHub issue 23.
+- Generated code is compiled with `-O1` like on x86-64; the exact-float tests (`docs/recomp-diff.md`, 6.1) found 0 mismatches
+  on arm64 at `-O1`. Do not raise the optimization level without re-running them.
 
 ## Windows (x86-64)
 

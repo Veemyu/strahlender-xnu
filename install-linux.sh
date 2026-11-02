@@ -1,11 +1,12 @@
 #!/bin/bash
-# Guided installer for Linux (x86-64 with Vulkan): from your own game dump to a built Vulkan/Qt runtime (work/recomp/bdsp_boot_vk_qt).
+# Guided installer for Linux (x86-64 or experimental ARM64/aarch64, with Vulkan 1.3): from your own game dump to a built Vulkan/Qt runtime (work/recomp/bdsp_boot_vk_qt).
 # Run it with ./install-linux.sh (--dry-run only shows what it would do). It detects your package manager (apt, dnf or pacman),
 # installs missing development packages after you agree (the package manager asks for your administrator password via sudo),
 # sets up a private Python environment, asks for your files (drag them into the terminal), and runs the build.
 # Safe to run again: finished stages are skipped. The Linux port is work in progress and not playable yet (docs/BUILD.md, 6.4).
 # Helpers and texts: scripts/install/ (common.sh, lang/<code>.sh). Test hooks: BDSP_INSTALL_OS_RELEASE=<file> (instead of
-# /etc/os-release), BDSP_INSTALL_FAKE_OS=1 (skip the Linux/CPU checks), BDSP_INSTALL_FAKE_MISSING=pkg,python,venv,pip (common.sh).
+# /etc/os-release), BDSP_INSTALL_FAKE_OS=1 (skip the Linux/CPU checks), BDSP_INSTALL_ARCH=<name> (instead of uname -m; with
+# FAKE_OS the architecture check still runs when this is set), BDSP_INSTALL_FAKE_MISSING=pkg,python,venv,pip (common.sh).
 cd "$(dirname "$0")" || exit 1
 ROOT="$PWD"
 # shellcheck source=scripts/install/common.sh
@@ -19,11 +20,13 @@ say lx_intro1; say lx_intro2; say intro_files; say lx_intro3
 
 # ------------------------------------------------------------------ 1 system
 step lx_st_system
-if [ -z "${BDSP_INSTALL_FAKE_OS:-}" ]; then
-  [ "$(uname -s)" = Linux ] || die lx_not_linux
-  [ "$(uname -m)" = x86_64 ] || die lx_not_x86
+ARCH="${BDSP_INSTALL_ARCH:-$(uname -m)}"
+if [ -z "${BDSP_INSTALL_FAKE_OS:-}" ]; then [ "$(uname -s)" = Linux ] || die lx_not_linux; fi
+if [ -z "${BDSP_INSTALL_FAKE_OS:-}" ] || [ -n "${BDSP_INSTALL_ARCH:-}" ]; then
+  case "$ARCH" in x86_64|aarch64) ;; *) die lx_bad_arch "$ARCH" ;; esac
 fi
-ok lx_cpu_ok
+ok lx_cpu_ok "$ARCH"
+if [ "$ARCH" = aarch64 ]; then warn lx_arm_experimental; warn lx_arm_needs; fi
 
 OSR="${BDSP_INSTALL_OS_RELEASE:-/etc/os-release}"
 OS_IDS="$( ( . "$OSR" 2>/dev/null; echo "${ID:-} ${ID_LIKE:-}" ) )"
@@ -65,9 +68,15 @@ t_vma() {
   printf '#if __has_include(<vma/vk_mem_alloc.h>)\n#include <vma/vk_mem_alloc.h>\n#else\n#include <vk_mem_alloc.h>\n#endif\n' \
     | "${CXX:-clang++}" -x c++ -std=c++17 -fsyntax-only $(pkg-config --cflags vulkan 2>/dev/null) $(linux_vma_flags) - >/dev/null 2>&1
 }
+# The plugin is libqwayland-generic.so up to Qt 6.7 and libqwayland.so from Qt 6.8; Debian and Ubuntu use a multiarch folder.
 t_qtwayland() {
-  [ -f /usr/lib/qt6/plugins/platforms/libqwayland-generic.so ] || [ -f /usr/lib64/qt6/plugins/platforms/libqwayland-generic.so ] \
-    || [ -f /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqwayland-generic.so ]
+  local dir name
+  for dir in /usr/lib/qt6 /usr/lib64/qt6 "/usr/lib/$ARCH-linux-gnu/qt6"; do
+    for name in libqwayland-generic.so libqwayland.so; do
+      [ -f "$dir/plugins/platforms/$name" ] && return 0
+    done
+  done
+  return 1
 }
 check_packages() {
   MISSING_PKGS=""; MISSING_LABELS=""

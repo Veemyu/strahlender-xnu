@@ -175,7 +175,22 @@ Das Skript übergibt `TEAM_ID` und `-allowProvisioningUpdates` an `xcodebuild`. 
 
 ## 6. Linux mit Vulkan und Qt6
 
-Linux x86-64 wird unterstützt. Linux aarch64 lässt sich bauen, ist aber ungetestet; Tester sind willkommen.
+Linux x86-64 wird unterstützt. Linux aarch64 ist experimentell (siehe unten): Installer, Build-Werkzeuge und Generator laufen auf einem echten aarch64-Rechner, ein vollständiger Spiel-Build und die Darstellung sind aber noch nicht verifiziert; Tester sind willkommen.
+
+Anforderungen für aarch64: ein GPU-Treiber mit Vulkan 1.3 und dieselben Pakete wie auf x86-64. AVX2 wird auf keiner Architektur verlangt.
+`./install-linux.sh` und der grafische Installer akzeptieren aarch64 und weisen darauf hin, dass es experimentell ist.
+
+- **BC-Texturen:** Das Spiel nutzt BC-komprimierte Texturen. Viele ARM-GPUs (Mali, manche Adreno) unterstützen ASTC, aber kein BC.
+  Auf so einer GPU wandelt das Vulkan-Backend beim Hochladen BC1/2/3/7 in ASTC 4x4 und BC4/5 in R8/RG8 um (dieselbe Umwandlung wie auf dem iPhone,
+  `bctc.c`; BC1 ist in den meisten Blöcken exakt, BC2/3/7 verlieren etwas Qualität). GPUs ohne BC und ohne ASTC bekommen leere Texturen,
+  BC6H und 3D-BC-Texturen werden auf GPUs ohne BC nicht umgewandelt. `BDSP_TEST_NO_BC=1` erzwingt die Umwandlung auf einer GPU mit BC (zum Testen mit ASTC).
+  Die Umwandlung lässt sich kompilieren, lief aber noch nicht auf einer echten GPU ohne BC.
+- **Geprüft auf Fedora Asahi Remix aarch64 (16-KiB-Seiten):** die private Python-Laufzeit des Installers (`--check-runtime`), der native C-Generator
+  mit synthetischen Eingaben, `install-linux.sh --dry-run` (Systemschritt, Paket- und Werkzeugprüfung, Hinweis in vier Sprachen), die Skripte für
+  Abhängigkeiten und CPU-Flags (`-mcpu=native`, portabel `-march=armv8-a`) sowie CI-Tests auf einem ARM64-Runner mit 4-KiB-Seiten.
+- **Noch nicht geprüft:** ein vollständiger Spiel-Build, der Bau der Vulkan/Qt-Laufzeit auf aarch64 (auf dem Asahi-Testrechner fehlten die Entwicklungspakete
+  für Vulkan, SDL3, shaderc und Qt) und die Darstellung. Rückmeldungen bitte im GitHub-Issue 23.
+- Der erzeugte Code wird wie auf x86-64 mit `-O1` übersetzt; die Float-Genauigkeitstests (`docs/recomp-diff.md`, 6.1) fanden auf arm64 bei `-O1` keine Abweichung.
 
 Die vollständige, gepflegte Paketliste steht in [BUILD.md](BUILD.md), Abschnitt 6.
 Der Linux-Build läuft direkt auf dem Linux-Rechner, vom Repo-Hauptverzeichnis aus; seine Skripte liegen unter `scripts/recomp/linux/local/` (die Abhängigkeitsprüfung unter `scripts/recomp/linux/deps.sh`).

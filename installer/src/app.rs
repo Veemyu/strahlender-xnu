@@ -2248,27 +2248,23 @@ impl Installer {
     }
 
     fn backend_supported(&self) -> bool {
-        matches!(
-            (self.host, self.target, std::env::consts::ARCH),
-            (Platform::Mac, InstallTarget::Mac, "aarch64")
-                | (Platform::Mac, InstallTarget::Ios, "aarch64")
-                | (Platform::Linux, InstallTarget::Linux, "x86_64")
-                | (
-                    Platform::Windows,
-                    InstallTarget::Windows,
-                    "x86_64" | "aarch64"
-                )
-        ) && self.base.as_ref().is_some_and(|source| {
-            source.path.is_dir()
-                || source.path.extension().is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("xci") || ext.eq_ignore_ascii_case("nsp")
-                })
-        }) && self.selected_mod.as_ref().is_none_or(|name| {
-            self.mods.iter().any(|item| {
-                &item.name == name
-                    && (!item.has_exefs || (self.host == Platform::Mac && item.ips_buildable()))
+        platform_backend_supported(self.host, self.target, std::env::consts::ARCH)
+            && self.base.as_ref().is_some_and(|source| {
+                source.path.is_dir()
+                    || source.path.extension().is_some_and(|ext| {
+                        ext.eq_ignore_ascii_case("xci") || ext.eq_ignore_ascii_case("nsp")
+                    })
             })
-        })
+            && self.selected_mod.as_ref().is_none_or(|name| {
+                self.mods.iter().any(|item| {
+                    &item.name == name
+                        && (!item.has_exefs || (self.host == Platform::Mac && item.ips_buildable()))
+                })
+            })
+    }
+
+    fn experimental_target(&self) -> bool {
+        experimental_target(self.host, self.target, std::env::consts::ARCH)
     }
 
     fn apple_ips_target(&self) -> bool {
@@ -2763,6 +2759,28 @@ impl Installer {
     }
 }
 
+/// Which host, target and CPU architecture have a real build path. Linux aarch64 is allowed but experimental
+/// (`experimental_target`).
+fn platform_backend_supported(host: Platform, target: InstallTarget, arch: &str) -> bool {
+    matches!(
+        (host, target, arch),
+        (
+            Platform::Mac,
+            InstallTarget::Mac | InstallTarget::Ios,
+            "aarch64"
+        ) | (Platform::Linux, InstallTarget::Linux, "x86_64" | "aarch64")
+            | (
+                Platform::Windows,
+                InstallTarget::Windows,
+                "x86_64" | "aarch64"
+            )
+    )
+}
+
+fn experimental_target(host: Platform, target: InstallTarget, arch: &str) -> bool {
+    host == Platform::Linux && target == InstallTarget::Linux && arch == "aarch64"
+}
+
 fn index(slot: Slot) -> usize {
     match slot {
         Slot::Base => 0,
@@ -2786,6 +2804,27 @@ fn compact_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_support_matrix_unlocks_linux_aarch64_and_keeps_the_rest() {
+        use InstallTarget::{Ios, Linux, Mac, Windows};
+        let supported = |host, target, arch| platform_backend_supported(host, target, arch);
+        assert!(supported(Platform::Linux, Linux, "x86_64"));
+        assert!(supported(Platform::Linux, Linux, "aarch64"));
+        assert!(!supported(Platform::Linux, Linux, "riscv64"));
+        assert!(!supported(Platform::Linux, Windows, "x86_64"));
+        assert!(supported(Platform::Mac, Mac, "aarch64"));
+        assert!(supported(Platform::Mac, Ios, "aarch64"));
+        assert!(!supported(Platform::Mac, Mac, "x86_64"));
+        assert!(!supported(Platform::Mac, Linux, "aarch64"));
+        assert!(supported(Platform::Windows, Windows, "x86_64"));
+        assert!(supported(Platform::Windows, Windows, "aarch64"));
+        assert!(!supported(Platform::Windows, Linux, "x86_64"));
+        assert!(experimental_target(Platform::Linux, Linux, "aarch64"));
+        assert!(!experimental_target(Platform::Linux, Linux, "x86_64"));
+        assert!(!experimental_target(Platform::Mac, Mac, "aarch64"));
+        assert!(!experimental_target(Platform::Windows, Windows, "aarch64"));
+    }
 
     #[test]
     fn real_progress_renders_every_stage_with_and_without_firmware() {
