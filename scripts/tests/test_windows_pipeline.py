@@ -287,7 +287,7 @@ class WindowsPipelineTests(unittest.TestCase):
                 self.assertTrue(args.prod_keys.exists())
             self.assertEqual(list(output.parent.glob("*-previous-*")), [])
 
-    def run_mod_build(self, root, mod_root, staged=None, artwork_error=None):
+    def run_mod_build(self, root, mod_root, staged=None, artwork_error=None, emit=None, icons=None, artwork=None, mod_name="Luminescent Platinum"):
         """Runs build_game with a validated mod selection; the native tools are replaced by recording fakes."""
         (root / "work/exefs").mkdir(parents=True)
         for name in ("rtld", "main", "sdk", "subsdk0", "main.npdm"):
@@ -296,7 +296,7 @@ class WindowsPipelineTests(unittest.TestCase):
         args = SimpleNamespace(root=root, work=root / "work", windows_catalog=root / "catalog",
                                target="windows", base=root / "input", prod_keys=root / "selected.keys",
                                update=None, install_root=root / "install", clean_build=False,
-                               mod_root=str(mod_root), mod_name="Luminescent Platinum", mods_dir=str(mod_root.parent))
+                               mod_root=str(mod_root), mod_name=mod_name, mods_dir=str(mod_root.parent))
         mod = driver._selected_mod(args)
         selected = windows.profile("x86_64")
         bundles = {name: root / name for name in ("sdl", "vulkan", "ffmpeg", "hactool", "qt")}
@@ -319,15 +319,36 @@ class WindowsPipelineTests(unittest.TestCase):
                          "graphical_libraries", "runtime_dll_candidates"):
                 record[name] = stack.enter_context(patch.object(build, name, return_value=[]))
             stack.enter_context(patch.object(pipeline, "extract_game"))
-            record["icons"] = stack.enter_context(patch.object(pipeline.game_icons, "build_windows"))
-            stack.enter_context(patch.object(pipeline.game_icons, "check_mod_artwork", side_effect=artwork_error))
+            record["icons"] = stack.enter_context(patch.object(pipeline.game_icons, "build_windows", side_effect=icons))
+            stack.enter_context(patch.object(pipeline.game_icons, "check_mod_artwork", side_effect=artwork or artwork_error))
             record["link"] = stack.enter_context(patch.object(build, "link_executable", return_value=root / "BDSP.exe"))
             stack.enter_context(patch.object(build, "package_game", side_effect=package))
             stack.enter_context(patch.object(pipeline, "install_package",
                 side_effect=lambda *a: record["installed"].append(a)))
-            pipeline.build_game(args, lambda event, **fields: record["events"].append({"event": event, **fields}),
+            pipeline.build_game(args, emit or (lambda event, **fields: record["events"].append({"event": event, **fields})),
                                 mod=mod, stage_code_mod=stage_code_mod)
         return mod, selected, record
+
+    def test_what_the_icon_code_prints_stays_a_protocol_line_or_becomes_a_log_event(self):
+        # The installer rejects every non-JSON stdout line ("Invalid backend protocol event"); game_icons reports with print().
+        def icons(*arguments, **options):
+            print("Mod icons: 0 supplied variants, 3 base variants marked MOD")
+            print("partial line without newline", end="")
+        def artwork(*arguments, **options):
+            print("Mod artwork: 3 language variants extracted from RomFS title-logo bundles")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            mod_root = root / "mods/Luminescent Platinum"
+            (mod_root / "RomFS").mkdir(parents=True)
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                self.run_mod_build(root, mod_root, emit=driver.emit, icons=icons, artwork=artwork)
+        events = [json.loads(line) for line in printed.getvalue().splitlines()]
+        self.assertTrue(events and all("event" in event for event in events))
+        messages = [event.get("message", "") for event in events if event["event"] == "log"]
+        for expected in ("Mod icons: 0 supplied variants, 3 base variants marked MOD", "partial line without newline",
+                         "Mod artwork: 3 language variants extracted from RomFS title-logo bundles"):
+            self.assertIn(expected, messages)
 
     def test_romfs_mod_becomes_a_separate_app_on_the_game_code_with_its_own_launch_file(self):
         with tempfile.TemporaryDirectory() as temporary:

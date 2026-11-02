@@ -1,5 +1,7 @@
 """Private offline Windows pipeline; public release qualification stays separate."""
 import argparse
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +17,41 @@ from scripts.recomp import portable_build as build
 from scripts.recomp.app import game_icons
 from scripts.install import pathlimits
 from scripts.install.progress import GeneratorProgress
+
+
+class _PrintedAsLog(io.TextIOBase):
+    """What a library prints becomes log events: the driver's stdout carries only protocol lines (the installer rejects anything else)."""
+
+    def __init__(self, emit):
+        self.emit = emit
+        self.target = sys.stdout
+        self.pending = ""
+
+    def writable(self):
+        return True
+
+    def write(self, text):
+        self.pending += text
+        *lines, self.pending = self.pending.split("\n")
+        for line in lines:
+            self._log(line)
+        return len(text)
+
+    def _log(self, line):
+        if line.strip():
+            current, sys.stdout = sys.stdout, self.target
+            try:
+                self.emit("log", level="diagnostic", message=line.rstrip())
+            finally:
+                sys.stdout = current
+
+
+@contextlib.contextmanager
+def printed_as_log(emit):
+    writer = _PrintedAsLog(emit)
+    with contextlib.redirect_stdout(writer):
+        yield
+    writer._log(writer.pending)
 
 
 def toolchain_files(root):
@@ -290,16 +327,19 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
         stage("exefs", verify_exefs)
         def prepare_icons():
             if not mod:
-                return game_icons.build_windows(icons, app_output / "icons/windows")
+                with printed_as_log(emit):
+                    return game_icons.build_windows(icons, app_output / "icons/windows")
             embedded = True
             try:
-                game_icons.check_mod_artwork(mod["root"])
+                with printed_as_log(emit):
+                    game_icons.check_mod_artwork(mod["root"])
             except ValueError:
                 embedded = False
                 emit("log", level="warning", message="The mod's title logo is stored in Unity bundles and could not be read by the Windows "
                      "build runtime; the mod app uses the game icon with a MOD badge.")
-            return game_icons.build_windows(icons, app_output / "icons/windows", mod["root"], mod["name"],
-                                            embedded_logos=embedded)
+            with printed_as_log(emit):
+                return game_icons.build_windows(icons, app_output / "icons/windows", mod["root"], mod["name"],
+                                                embedded_logos=embedded)
         if getattr(args, "clean_build", False) and output.exists():
             # Keep all old outputs recoverable while building a fresh target cache.
             previous = output.with_name(output.name + "-previous-" + uuid.uuid4().hex)
