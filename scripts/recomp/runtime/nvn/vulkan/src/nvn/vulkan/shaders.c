@@ -9,9 +9,7 @@
 #include "shaders.h"
 #include "plat.h"
 #include "runtime_paths.h"
-#ifdef _WIN32
-#include "win32_files.h"
-#endif
+#include "win32_files.h"   // stat() and BdspFileInfo on every platform
 
 void vk_shaders_init(void) {  // (compilers are per thread: check shaderc works at all)
     shaderc_compiler_t c = shaderc_compiler_initialize();
@@ -53,7 +51,12 @@ static void cache_store(uint64_t h, const uint32_t *spv, size_t nwords) {
     char path[4096], name[96];
     snprintf(name, sizeof name, "spirv/%016llx.spv", (unsigned long long)h);
     bdsp_cache_path(path, sizeof path, name);
-    if (!plat_write_file_atomic(path, spv, nwords * 4)) LOG("[vk] SPIR-V cache publication failed\n");
+    if (!plat_write_file_atomic(path, spv, nwords * 4)) {
+        // Two threads compiling the same shader publish the same hash; on Windows the rename of the loser is refused (access denied).
+        // The file is there then and nothing is lost, so only a missing file is reported.
+        BdspFileInfo info;
+        if (stat(path, &info) != 0) LOG("[vk] SPIR-V cache publication failed\n");
+    }
 }
 
 // Vertex shaders: every float add/sub/mul/div/fma gets NoContraction, so no compiler fuses or splits them. Depth
