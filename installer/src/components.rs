@@ -193,6 +193,7 @@ pub struct SetupProgress {
     step_started: Option<std::time::Instant>,
 }
 
+#[allow(dead_code)] // the installer_setup binary shares this module but has no window
 impl SetupProgress {
     /// 0.0 to 1.0 over all steps; a running download moves its step.
     pub fn fraction(&self) -> f32 {
@@ -256,11 +257,13 @@ fn with_progress<T>(change: impl FnOnce(&mut SetupProgress) -> T) -> T {
 }
 
 /// The current state of the setup for the window (a copy).
+#[allow(dead_code)]
 pub fn setup_progress() -> SetupProgress {
     with_progress(|progress| progress.clone())
 }
 
 /// Called when the window starts the setup, so an old state is not shown.
+#[allow(dead_code)]
 pub fn reset_setup_progress() {
     with_progress(|progress| {
         *progress = SetupProgress {
