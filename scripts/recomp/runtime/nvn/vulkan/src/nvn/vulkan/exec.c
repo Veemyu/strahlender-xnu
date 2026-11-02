@@ -2515,9 +2515,16 @@ static CsProg *compute_program(NvnProgram *np) {
         atomic_store(&cp->p.state, 2);
         return cp;
     }
+    // Work group size as copied at nvnProgramSetShaders: the game may reuse the control section afterwards, and a size read
+    // here at the first dispatch could be garbage (skinning computed only part of the vertices: vertex explosions, as on Metal)
     for (int i = 0; i < 3; i++) {
-        cp->local[i] = ss->control ? *(const uint32_t *)(ss->control + 0x748 + 4 * i) : 1;
+        cp->local[i] = ss->control ? ss->local_size[i] : 1;
         if (!cp->local[i]) cp->local[i] = 1;
+    }
+    if (ss->control) {
+        const uint32_t *now = (const uint32_t *)(ss->control + 0x748);
+        LOG("[compute] program %llx: local size %ux%ux%u (control section now %ux%ux%u)\n", (unsigned long long)ss->code_addr,
+            cp->local[0], cp->local[1], cp->local[2], now[0], now[1], now[2]);
     }
     save_glsl(cp->si->msl, ss->code_addr, "cs");
     run_job(build_compute, cp);
