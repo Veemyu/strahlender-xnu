@@ -24,7 +24,7 @@ class PathLimitTests(unittest.TestCase):
         self.assertTrue(full.risk)
         self.assertIn("result RISK", full.line())
 
-    def test_the_default_installer_folder_is_too_deep_without_long_paths_and_a_short_folder_is_not(self):
+    def test_the_default_installer_folder_is_too_deep_and_a_short_folder_is_not(self):
         default = "C:\\Users\\someone\\AppData\\Roaming\\Veemyu\\strahlender-xnu-installer\\data\\sources\\" + "a" * 60 + "\\work"
         deep = pathlimits.check(default, KEY, long_paths=False)
         self.assertTrue(deep.risk)
@@ -33,14 +33,16 @@ class PathLimitTests(unittest.TestCase):
         self.assertIn("C:\\bdsp", deep.failure())
         self.assertFalse(pathlimits.check("C:\\bdsp\\work", KEY, long_paths=False).risk)
 
-    def test_enabled_long_paths_let_the_build_start_with_a_caution_and_unknown_counts_as_off(self):
+    def test_enabled_long_paths_do_not_help_because_the_generator_is_not_long_path_aware(self):
         default = root_of(200)
-        enabled = pathlimits.check(default, KEY, long_paths=True)
-        self.assertTrue(enabled.too_long)
-        self.assertFalse(enabled.risk)
-        self.assertIn("result OK", enabled.line())
-        self.assertIn("not checked", enabled.caution())
-        self.assertTrue(pathlimits.check(default, KEY, long_paths=None).risk)
+        for setting in (True, False, None):
+            check = pathlimits.check(default, KEY, long_paths=setting)
+            self.assertTrue(check.too_long)
+            self.assertTrue(check.risk)
+            self.assertIn("result RISK", check.line())
+            self.assertNotIn("LongPathsEnabled", check.failure())
+            self.assertIn("C:\\bdsp", check.failure())
+        self.assertIn("LongPathsEnabled=yes", pathlimits.check(default, KEY, long_paths=True).line())
         self.assertIn("LongPathsEnabled=unknown", pathlimits.check(default, KEY).line())
 
     def test_a_deep_game_folder_decides_once_the_data_is_extracted(self):

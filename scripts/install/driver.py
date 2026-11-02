@@ -394,8 +394,6 @@ def windows_prerequisites(args, *, emit_result=True):
             emit("result", ok=False, code=4)
             return 4
         emit("log", level="ok", message="OK  Path length (%d of %d characters)" % (paths.total, pathlimits.LIMIT))
-        if paths.too_long:
-            emit("log", level="note", message=paths.caution())
         emit("step", id="prerequisites", status="complete")
         if emit_result:
             emit("result", ok=True, code=0)

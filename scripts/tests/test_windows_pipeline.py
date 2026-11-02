@@ -219,7 +219,7 @@ class WindowsPipelineTests(unittest.TestCase):
             selected = windows.profile("x86_64")
             args = SimpleNamespace(root=root, work=root / ("d" * 120) / "work", windows_catalog=root / "catalog",
                                    target="windows", min_free_gb=1)
-            for enabled, code in ((False, 4), (True, 0)):
+            for enabled, code in ((False, 4), (True, 4)):
                 output = io.StringIO()
                 with patch.object(driver, "load_windows_pipeline", return_value=pipeline), \
                         patch.object(pipeline, "prerequisites", return_value=(selected, None, None, {})), \
@@ -233,10 +233,7 @@ class WindowsPipelineTests(unittest.TestCase):
                     self.assertIn("too deep for Windows", errors[0]["message"])
                     self.assertIn("of 260 characters", errors[0]["message"])
                     self.assertEqual(events[-3], {"event": "step", "id": "prerequisites", "status": "needs attention"})
-                else:
-                    self.assertEqual(errors, [])
-                    self.assertTrue(any(e.get("level") == "note" and "long paths are enabled" in e["message"] for e in events))
-                    self.assertEqual(events[-1], {"event": "step", "id": "prerequisites", "status": "complete"})
+                    self.assertNotIn("LongPathsEnabled", errors[0]["message"])
 
     def test_a_deep_game_folder_stops_the_build_before_generation(self):
         with tempfile.TemporaryDirectory() as temporary:

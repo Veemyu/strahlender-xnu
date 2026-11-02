@@ -306,8 +306,6 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
             emit("log", level="diagnostic", message="[Diagnostics] " + paths.line())
             if paths.risk:
                 raise ValueError(paths.failure())
-            if paths.too_long:
-                emit("log", level="note", message=paths.caution())
         def verify_exefs():
             nonlocal exefs, output, app_output
             build.modules(work / "exefs")

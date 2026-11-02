@@ -1,7 +1,8 @@
 """Windows MAX_PATH planning for the native build. Standard library only.
 
-Without long path support Windows refuses any path of 260 characters or more (the limit counts the terminating NUL), and the
-generator reports that as "cannot create output file (No such file or directory)" in the middle of a build. The pipeline
+Windows refuses any path of 260 characters or more (the limit counts the terminating NUL) to a program that is not long path
+aware, and the native generator is not (no longPathAware manifest, no wide-character paths): it reports the failure as "cannot
+create output file (No such file or directory)" in the middle of a build, also when Windows long paths are enabled. The pipeline
 knows the shape of every path it creates below the work folder, so the longest one can be computed before any work starts:
 the work folder is one fixed prefix, the generated names add a known tail.
 
@@ -77,8 +78,8 @@ class PathCheck(object):
 
     @property
     def risk(self):
-        """Too long and no long path support: the build would stop in the middle."""
-        return self.too_long and self.long_paths is not True
+        """Too long: the generator would stop in the middle, whatever the Windows long path setting says."""
+        return self.too_long
 
     def line(self):
         state = {True: "yes", False: "no"}.get(self.long_paths, "unknown")
@@ -86,13 +87,8 @@ class PathCheck(object):
                 "result %s" % (self.root, self.longest, LIMIT, state, "RISK" if self.risk else "OK"))
 
     def failure(self):
-        return ("The install folder is too deep for Windows (%d of %d characters). Choose a shorter folder, for example "
-                "C:\\bdsp, or enable long paths in Windows (LongPathsEnabled)." % (self.total, LIMIT))
-
-    def caution(self):
-        """Long paths are on, but the tools of the build were not checked for them."""
-        return ("Windows long paths are enabled, but the build tools were not checked for them. If the generator reports "
-                "\"cannot create output file\", use a shorter folder (%d of %d characters)." % (self.total, LIMIT))
+        return ("The install folder is too deep for Windows (%d of %d characters). The build tools cannot create paths this long, "
+                "even when Windows long paths are enabled. Choose a shorter folder, for example C:\\bdsp." % (self.total, LIMIT))
 
 
 def check(work, cache_key, modules=MODULES, romfs=(), long_paths=None):
