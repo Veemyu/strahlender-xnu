@@ -373,35 +373,51 @@ def prepared(source, output, mod_root=None, mod_name=None):
 
 def build_mac(source, output, mod_root=None, mod_name=None):
     image_module()
+    import icon_composer
     from icon_composer import write_documents, compile_icons, STYLE
     output = output_path(output)
     manifest = prepared(source, output / "AppIcons", mod_root, mod_name)
     write_bundle_names(manifest, output)
+    classic = icon_composer.use_classic()
     scratch = output_path(ROOT / "work/recomp/icons/native-build")
     scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="mac-", dir=scratch) as temporary:
         temporary = Path(temporary)
-        documents = write_documents(manifest, output / "AppIcons", temporary / "sources")
+        if classic:
+            icon_composer.classic_names(manifest)
+            documents = {}
+        else:
+            documents = write_documents(manifest, output / "AppIcons", temporary / "sources")
         primary = next(v["icon"] for v in manifest["variants"] if v["id"] == manifest["default"])
         compiled = {}
-        for name, document_path in documents.items():
-            destination = temporary / name
-            partial = compile_icons({name: document_path}, name, destination, "macosx")
+        for variant in manifest["variants"]:
+            name = variant["icon"]
+            if name in compiled:
+                continue
             filename = name + ".icns"
-            shutil.copyfile(destination / filename, output / "AppIcons" / filename)
+            if classic:
+                icon_composer.classic_icns((output / "AppIcons" / variant["image"]).read_bytes(), output / "AppIcons" / filename)
+                partial = {}
+            else:
+                destination = temporary / name
+                partial = compile_icons({name: documents[name]}, name, destination, "macosx")
+                shutil.copyfile(destination / filename, output / "AppIcons" / filename)
             compiled[name] = filename
             if name == primary:
-                shutil.copyfile(destination / filename, output / "BDSP.icns")
-                shutil.copyfile(destination / "Assets.car", output / "Assets.car")
+                shutil.copyfile(output / "AppIcons" / filename, output / "BDSP.icns")
+                if not classic:
+                    shutil.copyfile(destination / "Assets.car", output / "Assets.car")
                 partial["CFBundleIconFile"] = "BDSP"
                 info_path = output.parent / "Info.plist"
                 if info_path.is_file():
                     info = plistlib.loads(info_path.read_bytes())
+                    if classic:
+                        info.pop("CFBundleIconName", None)
                     info.update(partial)
                     info_path.write_bytes(plistlib.dumps(info))
         for variant in manifest["variants"]:
             variant["mac_image"] = compiled[variant["icon"]]
-    manifest["mac_style"] = STYLE
+    manifest["mac_style"] = icon_composer.CLASSIC_STYLE if classic else STYLE
     manifest["primary_icon"] = primary
     write_json(output / "AppIcons/icons.json", manifest)
 

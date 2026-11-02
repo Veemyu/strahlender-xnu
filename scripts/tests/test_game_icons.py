@@ -284,7 +284,8 @@ class GameIconTests(unittest.TestCase):
             Image.new("RGBA", (1024, 1024), "red").save(destination / (primary + ".icns"), "ICNS")
             (destination / "Assets.car").write_bytes(b"synthetic archive")
             return {"CFBundleIconName": primary}
-        with patch.object(icon_composer, "compile_icons", side_effect=compile_icons):
+        with patch.object(icon_composer, "compile_icons", side_effect=compile_icons), \
+                patch.object(icon_composer, "use_classic", return_value=False):
             icons.build_mac(self.source, output)
         with Image.open(output / "BDSP.icns") as image:
             self.assertEqual(image.format, "ICNS")
@@ -323,6 +324,103 @@ class GameIconTests(unittest.TestCase):
         self.assertLess(ipad.getpixel((63, 512))[0], 100)
         self.assertLess(ipad.getpixel((64, 64))[0], 100)
         self.assertGreater(ipad.getpixel((200, 200))[0], 240)
+
+    def tools(self, version, calls=None):
+        """Fake xcrun actool and iconutil; `version` None means actool cannot be read."""
+        self.calls = calls if calls is not None else []
+        self.iconsets = []
+        plist = plistlib.dumps({"com.apple.actool.version": {"short-bundle-version": version or "x"}}).decode()
+
+        def run(command, **kwargs):
+            command = [str(part) for part in command]
+            self.calls.append(command)
+            if command[1:3] == ["actool", "--version"]:
+                return subprocess.CompletedProcess(command, 0 if version else 1, plist if version else "no actool", "")
+            if command[:2] == ["xcrun", "actool"]:
+                option = lambda name: command[command.index(name) + 1]
+                output, platform, primary = Path(option("--compile")), option("--platform"), option("--app-icon")
+                if version and version.split(".")[0].isdigit() and int(version.split(".")[0]) >= 26:
+                    (output / "Assets.car").write_bytes(b"synthetic archive")
+                    if platform == "macosx":
+                        (output / (primary + ".icns")).write_bytes(b"icns")
+                    Path(option("--output-partial-info-plist")).write_bytes(plistlib.dumps(
+                        {"CFBundleIconName": primary} if platform == "macosx" else
+                        {"CFBundleIcons": {"CFBundlePrimaryIcon": {"CFBundleIconName": primary}}}))
+                return subprocess.CompletedProcess(command, 0, "")
+            if command[0] == "iconutil":
+                iconset = Path(command[-1])
+                sizes = {}
+                for file in sorted(iconset.iterdir()):
+                    with Image.open(file) as image:
+                        sizes[file.name] = image.size
+                self.iconsets.append(sizes)
+                Path(command[command.index("--output") + 1]).write_bytes(b"icns")
+                return subprocess.CompletedProcess(command, 0, "")
+            raise AssertionError(command)
+        return run
+
+    def mac_app(self, version, legacy=""):
+        self.fixture()
+        resources = self.root / ("mac-%s-%s" % (version or "unreadable", legacy or "auto")) / "Contents/Resources"
+        resources.mkdir(parents=True)
+        (resources.parent / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIconFile": "BDSP"}))
+        with patch.dict(os.environ, {"BDSP_LEGACY_ICONS": legacy}), patch.object(icons.subprocess, "run", side_effect=self.tools(version)), \
+                patch("builtins.print"):
+            icons.build_mac(self.source, resources)
+        return resources, plistlib.loads((resources.parent / "Info.plist").read_bytes())
+
+    def test_mac_icon_path_follows_the_actool_version(self):
+        for version, legacy, classic in (("15.4", "", True), ("16.2", "", True), (None, "", True), ("26.0", "", False),
+                                         ("27.1", "", False), ("27.1", "1", True)):
+            with self.subTest(version=version, legacy=legacy):
+                resources, info = self.mac_app(version, legacy)
+                compiled = [c for c in self.calls if c[:3] == ["xcrun", "actool", "--compile"]]
+                self.assertEqual(bool(self.iconsets), classic)
+                self.assertEqual(bool(compiled), not classic)
+                self.assertEqual((resources / "Assets.car").exists(), not classic)
+                self.assertEqual("CFBundleIconName" in info, not classic)
+                self.assertEqual(info["CFBundleIconFile"], "BDSP")
+                self.assertTrue((resources / "BDSP.icns").is_file())
+                manifest = json.loads((resources / "AppIcons/icons.json").read_text())
+                self.assertEqual(manifest["mac_style"], "classic-v1" if classic else "liquid-glass-full-bleed-v1")
+                for variant in manifest["variants"]:
+                    self.assertTrue((resources / "AppIcons" / variant["mac_image"]).is_file())
+                self.assertFalse(list((resources / "AppIcons").glob("*.icon")))
+                if classic:
+                    # 3 languages, but red and red share one artwork
+                    self.assertEqual(len(self.iconsets), 2)
+                    self.assertEqual(self.iconsets[0]["icon_16x16.png"], (16, 16))
+                    self.assertEqual(self.iconsets[0]["icon_512x512@2x.png"], (1024, 1024))
+                    self.assertEqual(len(self.iconsets[0]), 10)
+
+    def test_classic_mac_tile_keeps_the_system_margin_and_rounded_corners(self):
+        self.fixture()
+        data = (self.source / icons.load_source(self.source)["variants"][0]["image"]).read_bytes()
+        import icon_composer
+        sizes = {}
+
+        def iconutil(command, **kwargs):
+            iconset = Path(command[-1])
+            for name in ("icon_512x512@2x.png", "icon_32x32.png"):
+                with Image.open(iconset / name) as image:
+                    sizes[name] = (image.size, image.getpixel((0, 0))[3], image.getpixel((image.width // 2, image.height // 2))[3])
+            Path(command[command.index("--output") + 1]).write_bytes(b"icns")
+            return subprocess.CompletedProcess(command, 0, "")
+        with patch.object(icons.subprocess, "run", side_effect=iconutil):
+            icon_composer.classic_icns(data, self.root / "tile.icns")
+        self.assertEqual(sizes["icon_512x512@2x.png"], ((1024, 1024), 0, 255))
+        self.assertEqual(sizes["icon_32x32.png"], ((32, 32), 0, 255))
+
+    @unittest.skipUnless(sys.platform == "darwin" and shutil.which("iconutil"), "iconutil required")
+    def test_classic_icns_is_accepted_by_the_real_iconutil(self):
+        import icon_composer
+        self.fixture()
+        data = (self.source / icons.load_source(self.source)["variants"][0]["image"]).read_bytes()
+        icon_composer.classic_icns(data, self.root / "real.icns")
+        with Image.open(self.root / "real.icns") as image:
+            self.assertEqual(image.format, "ICNS")
+            self.assertEqual(image.size, (1024, 1024))
+            self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
 
     def test_actool_without_icon_composer_support_is_named(self):
         # Xcode 16 actool skips .icon documents, exits 0 and writes only an empty partial Info.plist.
