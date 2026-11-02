@@ -1,7 +1,7 @@
 use super::{InstallTarget, Installer, Message, Page, compact_name, index};
 use crate::{
     drop_target,
-    i18n::Label as L,
+    i18n::{Label as L, Language},
     icons::{self, Icon},
     platform::Platform,
     preferences::Appearance,
@@ -59,6 +59,7 @@ impl Installer {
                 },
                 Message::ToggleTheme,
             ),
+            self.icon_action(Icon::Settings, L::Settings, Message::OpenSettings(true)),
             self.icon_action(Icon::Github, L::OpenRepository, Message::OpenRepository),
         ]
         .align_y(Center)
@@ -79,7 +80,9 @@ impl Installer {
             }
             header = header.push(action);
         }
-        let body = if self.ios_signing_open {
+        let body = if self.settings_open {
+            self.settings_view()
+        } else if self.ios_signing_open {
             self.ios_signing_view()
         } else if self.ios_devices_open {
             self.ios_devices_view()
@@ -1251,6 +1254,33 @@ impl Installer {
         .into()
     }
 
+    fn settings_view(&self) -> Element<'_, Message> {
+        let c = style::colors(self.appearance);
+        column![
+            text(self.language.t(L::Settings)).size(23),
+            text(self.language.t(L::InterfaceLanguage))
+                .size(13)
+                .color(c.muted),
+            pick_list(
+                Language::ALL.as_slice(),
+                Some(self.language),
+                Message::SelectLanguage,
+            )
+            .padding(10)
+            .text_size(13)
+            .width(Fill)
+            .style(move |theme, status| {
+                let mut look = iced::widget::pick_list::default(theme, status);
+                look.border.radius = 10.into();
+                look.background = c.surface.into();
+                look.border.color = c.line;
+                look
+            }),
+        ]
+        .spacing(10)
+        .into()
+    }
+
     fn setup_view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
         if self.setup_busy {
@@ -1651,6 +1681,11 @@ impl Installer {
 
     fn navigation(&self) -> Element<'_, Message> {
         let mut actions = row![].spacing(12).align_y(Center);
+        if self.settings_open {
+            return actions
+                .push(self.text_action(self.language.t(L::Back), Message::Back))
+                .into();
+        }
         if self.ios_devices_open
             || self.ios_signing_open
             || (self.page != Page::Target && self.page != Page::Progress)

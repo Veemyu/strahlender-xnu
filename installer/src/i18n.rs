@@ -7,8 +7,13 @@ pub enum Language {
     Russian,
 }
 
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 impl Language {
-    #[cfg(test)]
     pub const ALL: [Self; 5] = [
         Self::English,
         Self::German,
@@ -71,6 +76,41 @@ impl Language {
             Label::Files
         };
         self.t(label)
+    }
+
+    /// Language names are shown in their own language and are not translated.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::English => "English",
+            Self::German => "Deutsch",
+            Self::Spanish => "Español",
+            Self::Portuguese => "Português",
+            Self::Russian => "Русский",
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::English => "en",
+            Self::German => "de",
+            Self::Spanish => "es",
+            Self::Portuguese => "pt",
+            Self::Russian => "ru",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|language| language.code() == code)
+    }
+
+    /// BDSP_LANG, then the saved choice, then the system language.
+    pub fn startup() -> Self {
+        if std::env::var("BDSP_LANG").is_ok() {
+            return Self::detect();
+        }
+        crate::preferences::load_language().unwrap_or_else(Self::detect)
     }
 
     pub fn detect() -> Self {
@@ -288,6 +328,8 @@ messages! {
     Back => ["Back", "Zurück", "Atrás", "Voltar", "Назад"],
     ReviewTitle => ["Ready for a preview.", "Bereit für die Vorschau.", "Todo listo para la vista previa.", "Tudo pronto para a pré-visualização.", "Всё готово к предпросмотру."],
     ReviewHint => ["Your selection, at a glance.", "Deine Auswahl auf einen Blick.", "Tu selección, de un vistazo.", "A tua seleção, num relance.", "Ваш выбор перед началом."],
+    Settings => ["Settings", "Einstellungen", "Ajustes", "Definições", "Настройки"],
+    InterfaceLanguage => ["Language", "Sprache", "Idioma", "Idioma", "Язык"],
     BuildOptions => ["Build options", "Build-Optionen", "Opciones de compilación", "Opções de compilação", "Параметры сборки"],
     BuildOptionsHint => ["Choose how this build uses temporary files.", "Wähle, wie dieser Build temporäre Dateien nutzt.", "Elige cómo usar los archivos temporales.", "Escolhe como usar os ficheiros temporários.", "Выберите, как использовать временные файлы."],
     CleanBuild => ["Clean build", "Sauberer Neuaufbau", "Compilar desde cero", "Compilar de raiz", "Чистая сборка"],

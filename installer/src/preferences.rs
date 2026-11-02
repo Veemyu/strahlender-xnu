@@ -29,6 +29,8 @@ struct Preferences {
     ios_signing_team: Option<String>,
     #[serde(default)]
     appearance: Appearance,
+    #[serde(default)]
+    language: Option<String>,
     #[serde(default, with = "stored_path")]
     keys_path: Option<PathBuf>,
     #[serde(default, with = "stored_path")]
@@ -88,7 +90,22 @@ mod stored_path {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static TEST_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Redirects this thread's preferences to a test folder.
+#[cfg(test)]
+pub fn use_test_dir(dir: PathBuf) {
+    TEST_DIR.with(|cell| *cell.borrow_mut() = Some(dir));
+}
+
 fn path() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(dir) = TEST_DIR.with(|cell| cell.borrow().clone()) {
+        return Some(dir.join("preferences.json"));
+    }
     ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
         .map(|dirs| dirs.config_dir().join("preferences.json"))
 }
@@ -100,6 +117,18 @@ pub fn load() -> Appearance {
 pub fn save(appearance: Appearance) -> io::Result<()> {
     let mut preferences = load_preferences();
     preferences.appearance = appearance;
+    write(preferences)
+}
+
+pub fn load_language() -> Option<crate::i18n::Language> {
+    load_preferences()
+        .language
+        .and_then(|code| crate::i18n::Language::from_code(&code))
+}
+
+pub fn save_language(language: crate::i18n::Language) -> io::Result<()> {
+    let mut preferences = load_preferences();
+    preferences.language = Some(language.code().into());
     write(preferences)
 }
 
@@ -196,6 +225,24 @@ mod tests {
         let restored: Preferences = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.keys_path, preferences.keys_path);
         assert_eq!(restored.last_directory, preferences.last_directory);
+    }
+
+    #[test]
+    fn language_round_trips_and_unknown_values_fall_back() {
+        use crate::i18n::Language;
+        let dir = std::env::temp_dir().join(format!("xnu-prefs-language-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        use_test_dir(dir.clone());
+        assert_eq!(load_language(), None);
+        for language in Language::ALL {
+            save_language(language).unwrap();
+            assert_eq!(load_language(), Some(language));
+        }
+        fs::write(dir.join("preferences.json"), br#"{"language":"xx"}"#).unwrap();
+        assert_eq!(load_language(), None);
+        fs::write(dir.join("preferences.json"), b"not json").unwrap();
+        assert_eq!(load_language(), None);
+        let _ = fs::remove_dir_all(dir);
     }
 }
 

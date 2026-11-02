@@ -115,6 +115,8 @@ pub enum Message {
     OpenRepository,
     RepositoryOpened(Result<(), ()>),
     ToggleTheme,
+    OpenSettings(bool),
+    SelectLanguage(Language),
     SelectTarget(InstallTarget),
     OptimizeCpu(bool),
     BuildOptions(bool),
@@ -227,6 +229,7 @@ pub struct Installer {
     clean_build: bool,
     auto_cleanup: bool,
     build_options_open: bool,
+    settings_open: bool,
     cleanup_busy: bool,
     host: Platform,
     simulated_platform: bool,
@@ -464,6 +467,7 @@ impl Installer {
     pub fn with_options(options: Options) -> (Self, Task<Message>) {
         let host = options.platform.unwrap_or_else(Platform::native);
         let demo = options.demo;
+        let capturing = options.capture.is_some();
         let capture = options
             .capture
             .map(|path| Capture::new(path, options.scenes));
@@ -501,7 +505,11 @@ impl Installer {
             tick: 0,
             details: false,
             capture,
-            language: Language::detect(),
+            language: if capturing {
+                Language::detect()
+            } else {
+                Language::startup()
+            },
             key_hint: None,
             log: Vec::new(),
             demo,
@@ -510,6 +518,7 @@ impl Installer {
             clean_build: false,
             auto_cleanup: true,
             build_options_open: false,
+            settings_open: false,
             cleanup_busy: false,
             host,
             simulated_platform: options.platform.is_some(),
@@ -1219,6 +1228,14 @@ impl Installer {
                     self.notice = None;
                 }
             }
+            Message::OpenSettings(open) => self.settings_open = open,
+            Message::SelectLanguage(language) => {
+                self.language = language;
+                if self.capture.is_none() && preferences::save_language(language).is_err() {
+                    self.notice = Some(self.language.t(L::PreferenceError).into());
+                }
+            }
+            Message::Back if self.settings_open => self.settings_open = false,
             Message::ToggleTheme => {
                 self.appearance = match self.appearance {
                     Appearance::Dark => Appearance::Light,
@@ -2565,6 +2582,7 @@ impl Installer {
                     self.record("SETUP", &description);
                 }
             }
+            "settings" => self.settings_open = true,
             "update-available" | "update-confirmation" | "update-prompt" => {
                 self.page = Page::Target;
                 self.available_update = Some(crate::updates::Release {
@@ -2854,6 +2872,24 @@ mod tests {
             assert!(notice.contains(language.t(L::ExportOutput)));
             assert!(notice.contains("Existing output differs"));
         }
+    }
+
+    #[test]
+    fn settings_page_opens_closes_and_language_choice_is_saved() {
+        let dir = std::env::temp_dir().join(format!("xnu-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        preferences::use_test_dir(dir.clone());
+        let (mut app, _) = Installer::new();
+        assert!(!app.settings_open);
+        let _ = app.update(Message::OpenSettings(true));
+        assert!(app.settings_open);
+        let _ = app.update(Message::SelectLanguage(Language::Portuguese));
+        assert_eq!(app.language, Language::Portuguese);
+        assert_eq!(preferences::load_language(), Some(Language::Portuguese));
+        let _ = app.update(Message::Back);
+        assert!(!app.settings_open);
+        assert_eq!(app.page, Page::Target);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

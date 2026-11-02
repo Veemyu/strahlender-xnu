@@ -11,6 +11,7 @@ pub enum Icon {
     Phone,
     GenericPhone,
     Github,
+    Settings,
     Copy,
     Check,
 }
@@ -42,6 +43,7 @@ pub fn view_for_host<'a>(
         Icon::Tablet => include_bytes!("../assets/lucide/tablet.svg"),
         Icon::Phone => include_bytes!("../assets/lucide/smartphone.svg"),
         Icon::GenericPhone => include_bytes!("../assets/lucide/smartphone.svg"),
+        Icon::Settings => include_bytes!("../assets/lucide/settings.svg"),
         Icon::Github => include_bytes!("../assets/github.svg"),
         Icon::Copy => include_bytes!("../assets/ui/copy.svg"),
         Icon::Check => include_bytes!("../assets/ui/check.svg"),
