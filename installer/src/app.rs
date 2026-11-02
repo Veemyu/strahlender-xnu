@@ -121,6 +121,7 @@ pub enum Message {
     OptimizeCpu(bool),
     BuildOptions(bool),
     CleanBuild(bool),
+    ExportWithoutData(bool),
     AutoCleanup(bool),
     AnimationFrame(Instant),
     #[cfg(target_os = "macos")]
@@ -227,6 +228,7 @@ pub struct Installer {
     target: InstallTarget,
     portable_cpu: bool,
     clean_build: bool,
+    ios_export_no_embed: bool,
     auto_cleanup: bool,
     build_options_open: bool,
     settings_open: bool,
@@ -521,6 +523,7 @@ impl Installer {
             target: InstallTarget::native(host),
             portable_cpu: false,
             clean_build: false,
+            ios_export_no_embed: false,
             auto_cleanup: true,
             build_options_open: false,
             settings_open: false,
@@ -1081,6 +1084,9 @@ impl Installer {
             }
             Message::CleanBuild(enabled) if self.page == Page::Setup => {
                 self.clean_build = enabled;
+            }
+            Message::ExportWithoutData(enabled) if self.page == Page::Setup => {
+                self.ios_export_no_embed = enabled;
             }
             Message::AutoCleanup(enabled) if self.page == Page::Setup => {
                 self.auto_cleanup = enabled;
@@ -1798,6 +1804,7 @@ impl Installer {
                                 ios_new_profile: self.ios_new_profile.clone(),
                                 portable_cpu: self.portable_cpu,
                                 clean_build: self.clean_build,
+                                ios_export_no_embed: self.ios_export_no_embed,
                                 auto_cleanup: self.auto_cleanup,
                                 base: base.path.clone(),
                                 prod_keys: keys.path.clone(),
@@ -2276,6 +2283,7 @@ impl Installer {
         self.appearance = Appearance::Dark;
         self.portable_cpu = false;
         self.clean_build = false;
+        self.ios_export_no_embed = false;
         self.auto_cleanup = true;
         self.build_options_open = false;
         self.cleanup_busy = false;
@@ -2955,11 +2963,15 @@ mod tests {
         assert!(app.auto_cleanup);
         let _ = app.update(Message::CleanBuild(true));
         assert!(!app.clean_build);
+        let _ = app.update(Message::ExportWithoutData(true));
+        assert!(!app.ios_export_no_embed);
         app.page = Page::Setup;
         let _ = app.update(Message::BuildOptions(true));
         let _ = app.update(Message::CleanBuild(true));
+        let _ = app.update(Message::ExportWithoutData(true));
         let _ = app.update(Message::AutoCleanup(false));
         assert!(app.clean_build);
+        assert!(app.ios_export_no_embed);
         assert!(!app.auto_cleanup);
         let _ = app.update(Message::Back);
         assert_eq!(app.page, Page::Setup);

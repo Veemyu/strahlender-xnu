@@ -170,6 +170,7 @@ pub struct BuildRequest {
     pub ios_new_profile: Option<String>,
     pub portable_cpu: bool,
     pub clean_build: bool,
+    pub ios_export_no_embed: bool,
     pub auto_cleanup: bool,
     pub base: PathBuf,
     pub prod_keys: PathBuf,
@@ -394,6 +395,7 @@ fn run_driver(
                 ios_new_profile,
                 portable_cpu,
                 clean_build,
+                ios_export_no_embed,
                 auto_cleanup: _,
                 base,
                 prod_keys,
@@ -467,6 +469,9 @@ fn run_driver(
                 }
                 if clean_build {
                     command.arg("--clean-build");
+                }
+                if target == "ios" && ios_delivery == IosDelivery::Ipa && ios_export_no_embed {
+                    command.arg("--ios-export-no-embed");
                 }
                 if target == "ios"
                     && ios_delivery == IosDelivery::Ipa

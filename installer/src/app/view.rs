@@ -1304,6 +1304,22 @@ impl Installer {
                         .color(c.muted),
                 ]
                 .spacing(5),
+                if self.target == InstallTarget::Ios
+                    && self.ios_delivery == crate::backend::IosDelivery::Ipa
+                {
+                    column![
+                        toggler(self.ios_export_no_embed)
+                            .label(self.language.t(L::ExportWithoutData))
+                            .text_size(14)
+                            .on_toggle(Message::ExportWithoutData),
+                        text(self.language.t(L::ExportWithoutDataHint))
+                            .size(12)
+                            .color(c.muted),
+                    ]
+                    .spacing(5)
+                } else {
+                    column![]
+                },
                 column![
                     toggler(self.auto_cleanup)
                         .label(self.language.t(L::AutoCleanup))
@@ -1567,18 +1583,26 @@ impl Installer {
                     && self.target == InstallTarget::Ios
                 {
                     column![
-                        text(self.language.t(L::IpaInstallSteps))
-                            .size(12)
-                            .color(c.muted),
+                        text(self.language.t(if self.game_library.is_some() {
+                            L::IpaInstallSteps
+                        } else {
+                            L::IpaInstallStepsEmbedded
+                        }))
+                        .size(12)
+                        .color(c.muted),
                         row![
                             self.text_action(
                                 self.language.t(L::ShowIpa),
                                 Message::ShowInstalledApp
                             ),
-                            self.text_action(
-                                self.language.t(L::ShowGameLibrary),
-                                Message::ShowGameLibrary
-                            )
+                            if self.game_library.is_some() {
+                                self.text_action(
+                                    self.language.t(L::ShowGameLibrary),
+                                    Message::ShowGameLibrary,
+                                )
+                            } else {
+                                space().width(0).into()
+                            }
                         ]
                         .spacing(12),
                     ]
