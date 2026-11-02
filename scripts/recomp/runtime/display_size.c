@@ -13,6 +13,8 @@
 #include "display_size.h"
 
 #define SLOT_OFFSET 0x2cf6e00u   // builtin_patches.c: SLOT_BASE
+#define CAMERA_GET_ASPECT 0x26a4c90u   // UnityEngine.Camera::get_aspect (il2cpp wrapper of the native getter)
+#define PI_D 3.14159265358979323846
 
 int __attribute__((weak)) ui_drawable_size(int *w, int *h) { (void)w; (void)h; return 0; }
 void __attribute__((weak)) ui_window_init(void) {}
@@ -90,6 +92,39 @@ static Module *main_module(void) {
     return NULL;
 }
 
+// Camera field of view. Unity's angle is vertical; on a screen narrower than 16:9 the horizontal view would shrink, so cameras that render at the
+// screen's shape (the screen itself, or a render texture of the same aspect) get a wider vertical angle that keeps the 16:9 horizontal view.
+// The game keeps setting and reading the angles it knows: these hooks run in the Camera::set_/get_fieldOfView wrappers (builtin_patches.c).
+// Cameras with another aspect (model views, previews) are left alone.
+static double fov_factor(Cpu *c, Module *m, uint64_t camera) {
+    c->x[0] = camera;
+    guest_call(c, m->base + CAMERA_GET_ASPECT);
+    float a;
+    memcpy(&a, &c->v[0], sizeof a);
+    if (!(a > 0.1f) || fabs(a - g_render_aspect) > 0.01 * g_render_aspect) return 1.0;
+    return (16.0 / 9) / a;
+}
+
+static void fov_adjust(Cpu *c, bool in) {
+    Module *m = main_module();
+    float fov;
+    memcpy(&fov, &c->v[0], sizeof fov);
+    if (!m || !(fov > 0.0f) || fov >= 179.0f) return;
+    uint64_t x[31], camera = c->x[0];
+    __uint128_t v[32];
+    memcpy(x, c->x, sizeof x);
+    memcpy(v, c->v, sizeof v);
+    double k = fov_factor(c, m, camera);
+    memcpy(c->x, x, sizeof x);
+    memcpy(c->v, v, sizeof v);
+    if (k == 1.0) return;
+    double half = tan(fov * PI_D / 360);
+    float out = (float)(2 * atan(in ? half * k : half / k) * 180 / PI_D);
+    memcpy(&c->v[0], &out, sizeof out);   // the rest of the register stays as it was
+}
+static void fov_set_hook(Cpu *c) { fov_adjust(c, true); }
+static void fov_get_hook(Cpu *c) { fov_adjust(c, false); }
+
 // Writes the slots; returns false when this build's main module carries no slot block (other game version).
 bool display_size_set(int w, int h) {
     Module *m = main_module();
@@ -105,6 +140,9 @@ bool display_size_set(int w, int h) {
     memcpy(&v[4], &ui_w, sizeof ui_w);
     memcpy(&v[5], &ui_h, sizeof ui_h);
     memcpy(slot + 12, v, sizeof v);
+    uint64_t fov[2] = {0, 0};   // only for screens narrower than 16:9; elsewhere the wrappers skip the hook
+    if (aspect < 16.0 / 9 - 0.005) { fov[0] = hle_register("<bdsp fov set>", fov_set_hook); fov[1] = hle_register("<bdsp fov get>", fov_get_hook); }
+    memcpy(slot + 40, fov, sizeof fov);
     return true;
 }
 

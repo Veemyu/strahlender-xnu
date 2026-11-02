@@ -20,6 +20,11 @@ enum {
     SLOT_MATCH = SLOT_BASE + 24,        /* float: CanvasScaler match (0 = width, 1 = height) */
     SLOT_UI_WIDTH = SLOT_BASE + 28,     /* float bits: canvas width in UI units (1280 at 16:9), for full-screen RawImages */
     SLOT_UI_HEIGHT = SLOT_BASE + 32,    /* float bits: canvas height in UI units (720 at 16:9) */
+    SLOT_FOV_SET = SLOT_BASE + 40,      /* 64 bit: host function that adjusts a camera's field of view on its way in (0 = off) */
+    SLOT_FOV_GET = SLOT_BASE + 48,      /* 64 bit: ... and on its way out */
+    FOV_SET_MOV = 0x26a4988,            /* UnityEngine.Camera::set_fieldOfView wrapper: mov v8.16b, v0.16b */
+    FOV_GET_EXIT1 = 0x26a493c,          /* Camera::get_fieldOfView wrapper: the two exits (icall cached / resolved) that tail-call the native getter */
+    FOV_GET_EXIT2 = 0x26a4960,
     CANVAS_MATCH_LOAD = 0x2263734,      /* CanvasScaler scale factor: ldr s2, [x19, #48] (matchWidthOrHeight) */
 };
 
@@ -28,6 +33,13 @@ static const unsigned char MAIN_BUILD_ID[16] = {0x94, 0xce, 0xae, 0x32, 0x5c, 0x
 static uint32_t ldr_w_literal(unsigned rt, uint32_t from, uint32_t to) { return 0x18000000u | ((((to - from) >> 2) & 0x7ffffu) << 5) | rt; }
 static uint32_t cbnz_w(unsigned rt, int words) { return 0x35000000u | (((unsigned)words & 0x7ffffu) << 5) | rt; }
 static uint32_t ldr_s_literal(unsigned rt, uint32_t from, uint32_t to) { return 0x1c000000u | ((((to - from) >> 2) & 0x7ffffu) << 5) | rt; }
+static uint32_t ldr_x_literal(unsigned rt, uint32_t from, uint32_t to) { return 0x58000000u | ((((to - from) >> 2) & 0x7ffffu) << 5) | rt; }
+static uint32_t cbz_x(unsigned rt, int words) { return 0xb4000000u | (((unsigned)words & 0x7ffffu) << 5) | rt; }
+static uint32_t b_to(uint32_t from, uint32_t to) { return 0x14000000u | ((((int32_t)(to - from)) >> 2) & 0x3ffffff); }
+#define BLR_X16 0xd63f0200u
+#define BLR_X1 0xd63f0020u
+#define STR_X30_PRE 0xf81f0ffeu     /* str x30, [sp, #-16]! */
+#define LDR_X30_POST 0xf84107feu    /* ldr x30, [sp], #16 */
 static uint32_t cbz_w(unsigned rt, int words) { return 0x34000000u | (((unsigned)words & 0x7ffffu) << 5) | rt; }
 static uint32_t bl_to(uint32_t from, uint32_t to) { return 0x94000000u | ((((int32_t)(to - from)) >> 2) & 0x3ffffff); }
 #define RET_INSTRUCTION 0xd65f03c0u
@@ -98,9 +110,41 @@ void cg_builtin_patches(Nso *n) {
     put_word(n, cursor + 20, RET_INSTRUCTION);
     put_word(n, CANVAS_MATCH_LOAD, bl_to(CANVAS_MATCH_LOAD, cursor));
     cursor += 24;
+    /* Field of view: Unity's camera angle is vertical, so a screen narrower than 16:9 would lose horizontal view. The runtime registers two host
+       functions (only for such aspects) that widen the vertical angle on the way in and undo it on the way out, so the game keeps working with
+       the angles it knows. Both wrappers are patched in place: set at its argument copy, get at the two exits that tail-call the native getter. */
+    static const struct { uint32_t offset, word; } fov_checks[] = {
+        {FOV_SET_MOV, 0x4ea01c08u}, {FOV_GET_EXIT1, 0xa9417bfdu}, {FOV_GET_EXIT1 + 4, 0xaa1303e0u}, {FOV_GET_EXIT1 + 8, 0xa8c24ff4u},
+        {FOV_GET_EXIT1 + 12, 0xd61f0020u}, {FOV_GET_EXIT2, 0xa9417bfdu}, {FOV_GET_EXIT2 + 4, 0xaa1303e0u}, {FOV_GET_EXIT2 + 8, 0xa8c24ff4u},
+        {FOV_GET_EXIT2 + 12, 0xd61f0020u}};
+    for (size_t i = 0; i < sizeof fov_checks / sizeof fov_checks[0]; i++)
+        if (cg_u32(n->image + fov_checks[i].offset) != fov_checks[i].word) cg_fail(4, "builtin patch: unexpected instruction at 0x%x", fov_checks[i].offset);
+    uint32_t set_stub = cursor;
+    put_word(n, cursor, STR_X30_PRE);
+    put_word(n, cursor + 4, ldr_x_literal(16, cursor + 4, SLOT_FOV_SET));
+    put_word(n, cursor + 8, cbz_x(16, 2));
+    put_word(n, cursor + 12, BLR_X16);
+    put_word(n, cursor + 16, LDR_X30_POST);
+    put_word(n, cursor + 20, 0x4ea01c08u);   /* original: mov v8.16b, v0.16b */
+    put_word(n, cursor + 24, RET_INSTRUCTION);
+    cursor += 28;
+    uint32_t get_stub = cursor;
+    put_word(n, cursor, 0xaa1303e0u);        /* mov x0, x19 (the camera) */
+    put_word(n, cursor + 4, BLR_X1);         /* native getter; the wrapper's frame stays alive, so x30 is free */
+    put_word(n, cursor + 8, ldr_x_literal(16, cursor + 8, SLOT_FOV_GET));
+    put_word(n, cursor + 12, cbz_x(16, 3));
+    put_word(n, cursor + 16, 0xaa1303e0u);   /* x0 = camera for the host function, the angle is in s0 */
+    put_word(n, cursor + 20, BLR_X16);
+    put_word(n, cursor + 24, 0xa9417bfdu);   /* the wrapper's own epilogue, now ending in ret */
+    put_word(n, cursor + 28, 0xa8c24ff4u);
+    put_word(n, cursor + 32, RET_INSTRUCTION);
+    cursor += 36;
+    put_word(n, FOV_SET_MOV, bl_to(FOV_SET_MOV, set_stub));
+    put_word(n, FOV_GET_EXIT1, b_to(FOV_GET_EXIT1, get_stub));
+    put_word(n, FOV_GET_EXIT2, b_to(FOV_GET_EXIT2, get_stub));
     if (cursor > SLOT_BASE) cg_fail(4, "builtin patch: stubs overflow the padding");
     memcpy(n->image + SLOT_BASE, "BDSPASPC", 8);
     put_word(n, SLOT_BASE + 8, 1);   /* slot layout version */
-    if (SLOT_UI_HEIGHT + 4 > SLOT_LIMIT) cg_fail(4, "builtin patch: slots overflow the padding");
+    if (SLOT_FOV_GET + 8 > SLOT_LIMIT) cg_fail(4, "builtin patch: slots overflow the padding");
     n->segments[0].size = cursor;
 }
