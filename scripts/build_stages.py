@@ -36,6 +36,7 @@ MIN_FREE_GB = 40
 RECOMP_MIN_FREE_GB = 25   # generator C, objects, binary, app, intermediate copies (measured about 3 GB; the rest is reserve for the compiler and swapping)
 HEAVY_STAGES = {"extract"}
 TARGETS = ("macos", "ios", "all")
+XCODE_ICON_COMPOSER_MAJOR = 26   # first actool that compiles Icon Composer (.icon) documents
 
 
 def normalize_stage(name):
@@ -339,6 +340,13 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         add("clang (Homebrew LLVM in PATH)", which("clang"), which("clang") or "", "brew install llvm and put /opt/homebrew/opt/llvm/bin before /usr/bin in the PATH")
         ok, _ = run(["/usr/bin/xcrun", "--find", "clang"])
         add("Apple clang (Objective-C, Command Line Tools)", ok, "", "xcode-select --install")
+        # Icon Composer (.icon) documents need actool from Xcode 26; older versions skip them without an error.
+        ok, out = run(["/usr/bin/xcrun", "actool", "--version"])
+        m = re.search(r"<key>short-bundle-version</key>\s*<string>((\d+)[\d.]*)</string>", out) if ok else None
+        add("Xcode 26 or newer (actool for the app icons)", m and int(m.group(2)) >= XCODE_ICON_COMPOSER_MAJOR,
+            "actool " + m.group(1) if m else "actool not found or unreadable",
+            "Install Xcode 26 or newer from the App Store, open it once (accept the license) and select it under "
+            "Xcode > Settings > Locations > Command Line Tools")
         for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync is part of macOS"), ("strip", "xcode-select --install"), ("codesign", "xcode-select --install"),
                         ("install_name_tool", "xcode-select --install"), ("otool", "xcode-select --install"),
                         ("iconutil", "xcode-select --install"), ("plutil", "plutil is part of macOS")):

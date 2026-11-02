@@ -324,6 +324,26 @@ class GameIconTests(unittest.TestCase):
         self.assertLess(ipad.getpixel((64, 64))[0], 100)
         self.assertGreater(ipad.getpixel((200, 200))[0], 240)
 
+    def test_actool_without_icon_composer_support_is_named(self):
+        # Xcode 16 actool skips .icon documents, exits 0 and writes only an empty partial Info.plist.
+        import icon_composer
+        document = self.root / "docs/BDSP_test.icon"
+        document.mkdir(parents=True)
+
+        def actool(command, **kwargs):
+            if "--version" in command:
+                version = {"com.apple.actool.version": {"short-bundle-version": "16.2"}}
+                return subprocess.CompletedProcess(command, 0, plistlib.dumps(version))
+            Path(command[command.index("--output-partial-info-plist") + 1]).write_bytes(plistlib.dumps({}))
+            return subprocess.CompletedProcess(command, 0, "")
+
+        with patch.object(icon_composer.subprocess, "run", side_effect=actool):
+            with self.assertRaises(ValueError) as raised:
+                icon_composer.compile_icons({"BDSP_test": document}, "BDSP_test", self.root / "out", "macosx")
+        self.assertIn("BDSP_test.icns", str(raised.exception))
+        self.assertIn("actool 16.2", str(raised.exception))
+        self.assertIn("Xcode 26 or newer", str(raised.exception))
+
     def test_outputs_cannot_write_into_tracked_source_tree(self):
         with self.assertRaises(ValueError):
             icons.output_path(ROOT / "scripts/AppIcon.png")
@@ -339,6 +359,7 @@ class GameIconTests(unittest.TestCase):
         def actool(command, **kwargs):
             partial = Path(command[command.index("--output-partial-info-plist") + 1])
             partial.write_bytes(plistlib.dumps({"CFBundleIcons": {"CFBundlePrimaryIcon": {"CFBundleIconName": "test"}}}))
+            (Path(command[command.index("--compile") + 1]) / "Assets.car").write_bytes(b"car")
             import subprocess
             return subprocess.CompletedProcess(command, 0, "")
 

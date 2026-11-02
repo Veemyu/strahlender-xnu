@@ -19,6 +19,16 @@ def write(path, text="x"):
         f.write(text)
 
 
+
+def actool_version(version):
+    return ('<plist version="1.0"><dict><key>com.apple.actool.version</key><dict>'
+            '<key>short-bundle-version</key><string>%s</string></dict></dict></plist>' % version)
+
+
+def fake_run(cmd, env=None, timeout=60, actool="26.0"):
+    return True, (actool_version(actool) if "actool" in cmd else "ok")
+
+
 class StageSelectionTests(unittest.TestCase):
     def test_all_is_ordered(self):
         self.assertEqual(bs.select_stages(["all"]), bs.STAGES)
@@ -163,7 +173,7 @@ class PreflightTests(unittest.TestCase):
 
     def run_pf(self, stages, target="all", which=None, run=None, free=lambda p: 200.0):
         which = which or (lambda c: "/usr/bin/" + c)
-        run = run or (lambda cmd, env=None, timeout=60: (True, "ok"))
+        run = run or fake_run
         return bs.preflight(stages, target, self.root, self.work, self.tools, bs.MIN_FREE_GB,
                             which=which, run=run, free=free)
 
@@ -260,7 +270,7 @@ class RecompStageTests(unittest.TestCase):
 
     def pf(self, free=30.0, min_free=60, which=None, run=None, target="all", stages=("recomp",)):
         which = which or (lambda c: "/usr/bin/" + c)
-        run = run or (lambda cmd, env=None, timeout=60: (True, "ok"))
+        run = run or fake_run
         return bs.preflight(list(stages), target, self.root, self.work, self.tools, min_free,
                             which=which, run=run, free=lambda p: free)
 
@@ -286,7 +296,7 @@ class RecompStageTests(unittest.TestCase):
     def test_missing_clone_and_packages_get_hints(self):
         os.remove(os.path.join(self.root, "scripts", "recomp", "upstream", "runtime", "cpu.h"))
         def run(cmd, env=None, timeout=60):
-            return (cmd[-1] != "--check-unicorn", "")
+            return (False, "") if cmd[-1] == "--check-unicorn" else fake_run(cmd)
 
         items = self.pf(run=run)
         self.assertEqual(sorted(self.missing(items)), ["Native generator sources and runtime headers",
@@ -321,6 +331,17 @@ class RecompStageTests(unittest.TestCase):
         self.assertTrue(imports)
         self.assertTrue(all(cmd[0] == sys.executable and cmd[1] == "-I" for cmd, _ in imports))
         self.assertTrue(all(env.get("PYTHONPATH") == os.environ.get("PYTHONPATH") for _, env in imports))
+
+    def test_xcode_before_26_cannot_compile_the_app_icons(self):
+        name = "Xcode 26 or newer (actool for the app icons)"
+        items = self.pf(run=lambda cmd, env=None, timeout=60: fake_run(cmd, actool="16.2"))
+        self.assertEqual(self.missing(items), [name])
+        self.assertEqual(next(i["detail"] for i in items if i["name"] == name), "actool 16.2")
+        self.assertIn("Command Line Tools", "\n".join(bs.install_list(bs.format_preflight(items)[1])))
+        items = self.pf(run=lambda cmd, env=None, timeout=60: fake_run(cmd, actool="27.1"))
+        self.assertEqual(self.missing(items), [])
+        items = self.pf(run=lambda cmd, env=None, timeout=60: (cmd[1:3] != ["actool", "--version"], ""))
+        self.assertEqual(self.missing(items), [name])
 
     def test_ios_target_does_not_check_mac_app_tools(self):
         names = [i["name"] for i in self.pf(which=lambda c: None, target="ios")]
