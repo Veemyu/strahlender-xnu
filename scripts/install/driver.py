@@ -34,7 +34,7 @@ EMIT_LOCK = threading.Lock()
 IPA_EMBED_NOTICE = ("Exporting the IPA WITH your game data embedded (about {gb:.1f} GB, ZIP64; about {minutes} more minutes after the build, "
                     "2 were measured for 5.3 GB on a fast SSD; it needs that much free space in the export folder). "
                     "For your own devices only, do not share it: it contains game data from your own dump, and this project distributes no game data. "
-                    "To export without game data, pass --ios-export-no-embed (command line) or use \"Export without game data\" in installer 0.1.4 and newer.")
+                    "To export without game data, pass --ios-export-no-embed (command line) or use \"Export without game data\" in the installer.")
 IPA_NO_EMBED_NOTICE = ("Exporting the IPA WITHOUT game data, as requested (--ios-export-no-embed). The IPA alone does not run: "
                        "a Game Library folder with the game files is written next to it, and the app asks for that folder at its first start.")
 

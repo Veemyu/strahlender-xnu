@@ -191,7 +191,7 @@ def space_message(needed, free):
     """The refusal for too little space. There is deliberately no automatic switch to an export without game data."""
     return ("Not enough free space for the IPA with your game data: about %.1f GB are needed in the export folder, %.1f GB are free. "
             "Nothing was exported. Free at least %.1f GB and run the export again, or export without game data on purpose: "
-            "--ios-export-no-embed on the command line, or \"Export without game data\" in installer 0.1.4 and newer."
+            "--ios-export-no-embed on the command line, or \"Export without game data\" in the installer."
             % (needed / 1e9, free / 1e9, max(0.0, needed - free) / 1e9 + 0.5))
 
 

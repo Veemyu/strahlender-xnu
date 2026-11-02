@@ -3,8 +3,7 @@
 
 Every line has the form ``[Diagnostics] <text>`` and states one fact, so that
 bug reports (for example a Windows "cannot create output file" error) come
-with the relevant platform data and older installers can show the lines
-unchanged in their log.
+with the relevant platform data.
 
 Run it standalone with::
 
