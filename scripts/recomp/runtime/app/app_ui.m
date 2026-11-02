@@ -266,8 +266,7 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
 // Display preferences (aspect ratio, render height): environment > menu choice (defaults) > config.ini, applied to the environment before the game starts.
 static int g_display_env_from_defaults;
 static NSString *display_pref_current(BOOL aspect) {
-    const char *v = getenv(aspect ? "BDSP_ASPECT" : "BDSP_RENDER_H");
-    return v && *v ? [NSString stringWithUTF8String:v] : (aspect ? @"16:9" : @"1080");
+    return [NSString stringWithUTF8String:display_pref_or_default(aspect ? "aspect" : "render_height")];
 }
 void bdsp_app_apply_display_defaults(void) {
     NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
@@ -386,6 +385,15 @@ static NSMenuItem *item(NSMenu *m, NSString *title, SEL sel, NSString *key, NSEv
     return i;
 }
 
+// The choices of one display preference as menu items (tag 1: aspect ratio, 2: render height); the checkmark follows display_pref_current.
+static void add_display_choices(NSMenu *menu, const DisplayChoice *choices, int count, NSInteger tag) {
+    for (int i = 0; i < count; i++) {
+        NSMenuItem *it = item(menu, NSLocalizedString([NSString stringWithUTF8String:choices[i].label], nil), @selector(setDisplayPref:), @"", 0, g_target);
+        it.tag = tag;
+        it.representedObject = [NSString stringWithUTF8String:choices[i].value];
+    }
+}
+
 static void install_menu(void) {
     g_target = [BdspMenu new];
     NSMenu *bar = [NSMenu new];
@@ -457,19 +465,13 @@ static void install_menu(void) {
     NSMenu *aspm = [[NSMenu alloc] initWithTitle:L("Aspect Ratio")];
     aspi.submenu = aspm;
     int nchoices;
-    for (const DisplayChoice *c = display_aspect_choices(&nchoices); c < display_aspect_choices(&nchoices) + nchoices; c++) {
-        NSMenuItem *it = item(aspm, NSLocalizedString([NSString stringWithUTF8String:c->label], nil), @selector(setDisplayPref:), @"", 0, g_target);
-        it.tag = 1;
-        it.representedObject = [NSString stringWithUTF8String:c->value];
-    }
+    const DisplayChoice *aspects = display_aspect_choices(&nchoices);
+    add_display_choices(aspm, aspects, nchoices, 1);
     NSMenuItem *ri = [vm addItemWithTitle:L("Render Resolution") action:nil keyEquivalent:@""];
     NSMenu *rm = [[NSMenu alloc] initWithTitle:L("Render Resolution")];
     ri.submenu = rm;
-    for (const DisplayChoice *c = display_height_choices(&nchoices); c < display_height_choices(&nchoices) + nchoices; c++) {
-        NSMenuItem *it = item(rm, NSLocalizedString([NSString stringWithUTF8String:c->label], nil), @selector(setDisplayPref:), @"", 0, g_target);
-        it.tag = 2;
-        it.representedObject = [NSString stringWithUTF8String:c->value];
-    }
+    const DisplayChoice *heights = display_height_choices(&nchoices);
+    add_display_choices(rm, heights, nchoices, 2);
     [vm addItem:[NSMenuItem separatorItem]];
     static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
     for (int i = 0; i < 4; i++) {

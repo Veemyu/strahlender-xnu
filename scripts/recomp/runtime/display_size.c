@@ -61,6 +61,11 @@ const char *display_pref_get(const char *key) {
 }
 
 // Stores both preferences in BDSP_DISPLAY_CONFIG (an empty value removes the line). Returns false if the file cannot be written.
+const char *display_pref_or_default(const char *key) {
+    const char *v = display_pref_get(key);
+    return v && *v ? v : !strcmp(key, "aspect") ? "16:9" : "1080";
+}
+
 bool display_pref_store(const char *aspect, const char *render_height) {
     const char *path = getenv("BDSP_DISPLAY_CONFIG");
     if (!path || !*path) return false;

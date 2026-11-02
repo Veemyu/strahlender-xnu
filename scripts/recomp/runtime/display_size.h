@@ -11,6 +11,8 @@ const DisplayChoice *display_aspect_choices(int *count);
 const DisplayChoice *display_height_choices(int *count);
 // Preference "aspect" or "render_height": environment variable, else the file named by BDSP_DISPLAY_CONFIG; NULL when unset.
 const char *display_pref_get(const char *key);
+// The same, or the default when unset: "16:9" for "aspect", "1080" for "render_height".
+const char *display_pref_or_default(const char *key);
 bool display_pref_store(const char *aspect, const char *render_height);
 double display_aspect(void);   // aspect of the render size of this run (16:9 when stock)
 void display_size_init(void);  // chooses the size and writes the slots of the main module before the guest starts

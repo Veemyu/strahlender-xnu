@@ -442,26 +442,12 @@ private:
             fpsActs_.insert(f, a);
         }
         aspectMenu_ = m->addMenu(tr_("Aspect Ratio"));
-        QActionGroup *aspectGroup = new QActionGroup(this);
-        aspectGroup->setExclusive(true);
+        renderMenu_ = m->addMenu(tr_("Render Resolution"));
         int count = 0;
         const DisplayChoice *aspects = display_aspect_choices(&count);
-        for (int i = 0; i < count; i++) {
-            const QString value = QString::fromUtf8(aspects[i].value);
-            QAction *a = act(aspectMenu_, tr_(aspects[i].label), [this, value] { setDisplayPref(true, value); }, nullptr, true, aspectGroup);
-            a->setData(value);
-            a->setChecked(displayPref(true) == value);
-        }
-        renderMenu_ = m->addMenu(tr_("Render Resolution"));
-        QActionGroup *renderGroup = new QActionGroup(this);
-        renderGroup->setExclusive(true);
+        addDisplayChoices(aspectMenu_, aspects, count, true);
         const DisplayChoice *heights = display_height_choices(&count);
-        for (int i = 0; i < count; i++) {
-            const QString value = QString::fromUtf8(heights[i].value);
-            QAction *a = act(renderMenu_, tr_(heights[i].label), [this, value] { setDisplayPref(false, value); }, nullptr, true, renderGroup);
-            a->setData(value);
-            a->setChecked(displayPref(false) == value);
-        }
+        addDisplayChoices(renderMenu_, heights, count, false);
         m->addSeparator();
         for (int i = 0; i < 4; i++) {
             const int w = kSizes[i][0], h = kSizes[i][1];
@@ -526,10 +512,21 @@ private:
     }
 #endif
 
+    // The choices of one display preference as exclusive, checkable menu entries.
+    void addDisplayChoices(QMenu *menu, const DisplayChoice *choices, int count, bool aspect) {
+        QActionGroup *group = new QActionGroup(this);
+        group->setExclusive(true);
+        for (int i = 0; i < count; i++) {
+            const QString value = QString::fromUtf8(choices[i].value);
+            QAction *a = act(menu, tr_(choices[i].label), [this, aspect, value] { setDisplayPref(aspect, value); }, nullptr, true, group);
+            a->setData(value);
+            a->setChecked(displayPref(aspect) == value);
+        }
+    }
+
     // Current choice (environment variable, else the stored file); the game reads it when it starts, so a change needs a restart.
     static QString displayPref(bool aspect) {
-        const char *v = display_pref_get(aspect ? "aspect" : "render_height");
-        return v && *v ? QString::fromUtf8(v) : (aspect ? QStringLiteral("16:9") : QStringLiteral("1080"));
+        return QString::fromUtf8(display_pref_or_default(aspect ? "aspect" : "render_height"));
     }
     void setDisplayPref(bool aspect, const QString &value) {
         if (value == displayPref(aspect)) return;
