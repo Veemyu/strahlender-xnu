@@ -176,8 +176,8 @@ if [ "$INSTALL_DATA" -ne 0 ]; then
   else
     log "7/7 UI overlay for any aspect ratio"
     python3 "$ROOT/scripts/recomp/ui_aspect_patch.py" --if-needed --romfs "$ROOT/work/romfs" --out "$HOME_DIR/romfs-patch" > "$WORK/logs/recomp-ui-overlay.log" 2>&1 \
-      || die 4 "UI overlay failed (log: $WORK/logs/recomp-ui-overlay.log)"
-    tail -n 1 "$WORK/logs/recomp-ui-overlay.log" | sed 's/^/    /'
+      && tail -n 1 "$WORK/logs/recomp-ui-overlay.log" | sed 's/^/    /' \
+      || echo "    UI overlay not generated (log: $WORK/logs/recomp-ui-overlay.log): the game runs, other aspect ratios leave gaps around the UI"   # a per-game fix, never a reason to fail the build
   fi
 fi
 [ "$DRY" -eq 1 ] || log "done: $OUT ($(du -sh "$OUT" | cut -f1))"

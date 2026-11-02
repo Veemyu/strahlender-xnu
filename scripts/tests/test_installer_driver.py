@@ -132,6 +132,27 @@ class InstallerDriverTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "does not match"):
                 driver._prepare_ios(args, prepared, None)
 
+    def test_ios_data_copies_place_the_ui_fix_next_to_the_romfs_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            romfs, overlay = Path(directory) / "romfs", Path(directory) / "romfs-patch"
+            romfs.mkdir()
+            overlay.mkdir()
+            info = {"romfs": romfs, "mod_root": None, "overlay": overlay, "metadata": {"RomFSDirectory": "GameData/abc123/romfs"}}
+            copies = driver._ios_data_copies(info)
+            self.assertEqual([destination for _, destination in copies], ["GameData/abc123/romfs", "GameData/abc123/romfs-patch"])
+            del info["overlay"]
+            self.assertEqual(len(driver._ios_data_copies(info)), 1)
+
+    def test_a_failing_ui_fix_never_fails_the_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(root=ROOT, work=Path(directory))
+            failed = SimpleNamespace(returncode=1, stderr="No module named UnityPy", stdout="")
+            with patch.object(driver.subprocess, "run", return_value=failed), contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertIsNone(driver.build_ui_overlay(args))
+            self.assertIn("UI aspect overlay was not generated", output.getvalue())
+            with patch.object(driver.subprocess, "run", side_effect=OSError("missing interpreter")), contextlib.redirect_stdout(io.StringIO()):
+                self.assertIsNone(driver.build_ui_overlay(args))
+
     def test_ipa_export_rejects_destination_in_temporary_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             args = SimpleNamespace(root=directory, ios_export_dir=Path(directory) / "exports", ios_install={})
