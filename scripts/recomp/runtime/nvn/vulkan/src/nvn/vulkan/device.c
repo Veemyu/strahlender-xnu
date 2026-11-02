@@ -935,7 +935,10 @@ int ui_run(void) {
                     continue;
                 }
                 if (k == SDLK_F5 || k == SDLK_F6 || k == SDLK_F7) { bdsp_set_fps(k == SDLK_F5 ? 30 : k == SDLK_F6 ? 60 : 120); continue; }
-                if (k == SDLK_F11) { SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN)); continue; }
+                if (k == SDLK_F11 || (k == SDLK_RETURN && (e.key.mod & SDL_KMOD_ALT))) {   // borderless full screen on the desktop size (SDL3 default without a set mode)
+                    SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
+                    continue;
+                }
             }
             input_handle_event(&e);
         }

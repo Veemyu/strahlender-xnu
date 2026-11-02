@@ -28,6 +28,7 @@
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QMessageBox>
+#include <QShortcut>
 #include <QPalette>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -352,6 +353,16 @@ public:
     }
 #endif
 
+    /// Borderless full screen on the window's monitor (Qt's full screen is a borderless window, not exclusive mode: the Vulkan swapchain
+    /// just follows the new size). The menu bar is hidden meanwhile; F11 or Alt+Enter bring everything back.
+    void setFullscreen(bool on) {
+        if (on == isFullScreen()) return;
+        if (on) showFullScreen(); else showNormal();
+        menuBar()->setVisible(!on);
+        fullAct_->setChecked(on);
+        out(QStringLiteral("[qt] Full screen %1").arg(on ? QStringLiteral("on") : QStringLiteral("off")));
+    }
+
     void runScript(const QString &spec) {
         for (const QString &tok : spec.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
             const int colon = tok.indexOf(QLatin1Char(':'));
@@ -401,7 +412,13 @@ private:
         act(m, tr_("Quit BDSP"), [this] { close(); }, "Ctrl+Q");
 
         m = viewMenu_ = bar->addMenu(tr_("View"));
-        fullAct_ = act(m, tr_("Full Screen"), [this] { toggleFullscreen(); }, "Ctrl+F", true);
+        fullAct_ = act(m, tr_("Full Screen") + QStringLiteral("\tF11"), [this] { toggleFullscreen(); }, nullptr, true);
+        // F11, Alt+Enter and Ctrl+F: application-wide shortcuts, because the menu bar (and with it every menu shortcut) is hidden in full screen
+        for (const char *key : {"F11", "Alt+Return", "Alt+Enter", "Ctrl+F"}) {
+            QShortcut *shortcut = new QShortcut(QKeySequence(QString::fromLatin1(key)), this);
+            shortcut->setContext(Qt::ApplicationShortcut);
+            connect(shortcut, &QShortcut::activated, this, [this] { toggleFullscreen(); });
+        }
         fpsMenu_ = m->addMenu(tr_("Frame Rate"));
         QActionGroup *grp = new QActionGroup(this);
         grp->setExclusive(true);
@@ -482,10 +499,7 @@ private:
     }
 
     void setSize(int w, int h) {  // Requested logical canvas size; window adds menus/decorations.
-        if (isFullScreen()) {
-            showNormal();
-            fullAct_->setChecked(false);
-        }
+        setFullscreen(false);   // a fixed window size is a window, not full screen
         resize(w + width() - stage_->width(), h + height() - stage_->height());
         QTimer::singleShot(300, this, [this] { reportCanvas(); });
     }
@@ -498,10 +512,7 @@ private:
                 .arg(r, 0, 'f', 2).arg(stage_->width()).arg(stage_->height()).arg(width()).arg(height()).arg(QGuiApplication::platformName()));
     }
 
-    void toggleFullscreen() {
-        if (isFullScreen()) showNormal(); else showFullScreen();
-        fullAct_->setChecked(isFullScreen());
-    }
+    void toggleFullscreen() { setFullscreen(!isFullScreen()); }
 
     void togglePause() {
         paused_ = !paused_;
@@ -719,6 +730,7 @@ int bdsp_qt_ui_run(void) {
     host.resize(1280, 760);
     host.embed(&rw);
     host.show();
+    if (qEnvironmentVariableIntValue("BDSP_FULLSCREEN") > 0) host.setFullscreen(true);   // start in full screen
     for (int i = 0; i < 20; i++) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
     host.applyDefaultSize();
     for (int i = 0; i < 300 && !rw.handle(); i++) {  // Wait for Qt to create the platform window for the surface.
