@@ -184,6 +184,18 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
             elif line:
                 message = _safe_line(line, args)
                 if message:
+                    scan = re.fullmatch(r"Firmware NCA scan: (\d+)/(\d+)", message)
+                    if scan and active == "firmware":
+                        emit("progress", id="firmware", completed=int(scan.group(1)), total=int(scan.group(2)))
+                        continue
+                    extract_progress = re.fullmatch(r"extract progress (\d+)", message)
+                    if extract_progress and active == "extract":
+                        emit("progress", id="extract", completed=int(extract_progress.group(1)), total=1000)
+                        continue
+                    # Shown as "Step n of m"; the line itself stays in the log.
+                    ffmpeg_step = re.fullmatch(r"FFmpeg step (\d+)/(\d+):.*", message)
+                    if ffmpeg_step and active == "prerequisites":
+                        emit("progress", id="prerequisites", completed=int(ffmpeg_step.group(1)), total=int(ffmpeg_step.group(2)))
                     live_counter = re.fullmatch(
                         r"[A-Za-z_][A-Za-z_0-9]*: (?:progress \d+/\d+ files \d+|scan round \d+ progress \d+/\d+)", message)
                     if not live_counter:
@@ -453,8 +465,10 @@ def _prepare_firmware(args):
     if not Path(source).exists():
         raise ValueError("The selected firmware ZIP or NCA folder is unavailable. Choose it again or skip firmware.")
     # Bootstrap hactool only; reject firmware before game extraction/generation.
+    emit("step", id="firmware", status="started")
     code = _run_command([str(Path(args.root) / "scripts/build_all.sh"), "--only", "tools",
-                         "--target", args.target, "--min-free-gb", str(required_free_gb(args))], args, "firmware")
+                         "--target", args.target, "--min-free-gb", str(required_free_gb(args))], args, "firmware",
+                        emit_steps=False)
     if code:
         return code
     cache = Path(getattr(args, "firmware_cache", None) or Path(args.work) / "firmware-cache")

@@ -481,7 +481,7 @@ pub fn import(source: &Path, keys: &Path, tool_path: &Path, cache: &Path) -> Res
                 selected.insert(id, (path.clone(), size, hash));
             }
         }
-        if (i + 1) % 100 == 0 || i + 1 == files.len() {
+        if (i + 1) % 10 == 0 || i + 1 == files.len() {
             println!("Firmware NCA scan: {}/{}", i + 1, files.len());
         }
     }

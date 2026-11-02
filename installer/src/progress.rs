@@ -159,6 +159,15 @@ pub fn format_duration(left: Duration) -> String {
     }
 }
 
+/// "4:07", "1:05:09": minutes and seconds, hours only when needed.
+pub fn format_clock(elapsed: Duration) -> String {
+    let seconds = elapsed.as_secs();
+    match seconds / 3600 {
+        0 => format!("{}:{:02}", seconds / 60, seconds % 60),
+        hours => format!("{hours}:{:02}:{:02}", seconds / 60 % 60, seconds % 60),
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct GeneratorProgress {
     pub module: String,
@@ -175,6 +184,8 @@ pub struct BuildProgress {
     pub active: Stage,
     pub generator: GeneratorProgress,
     pub copy: Transfer,
+    started: Option<Instant>,
+    finished: Option<Instant>,
 }
 
 impl Default for BuildProgress {
@@ -184,6 +195,8 @@ impl Default for BuildProgress {
             active: Stage::Source,
             generator: GeneratorProgress::default(),
             copy: Transfer::default(),
+            started: None,
+            finished: None,
         }
     }
 }
@@ -211,10 +224,27 @@ impl BuildProgress {
             .min(1.0) as f32
     }
 
+    /// Time since the first step started; it stops counting at `finish`.
+    pub fn elapsed(&self, now: Instant) -> Option<Duration> {
+        let started = self.started?;
+        Some(
+            self.finished
+                .unwrap_or(now)
+                .saturating_duration_since(started),
+        )
+    }
+
+    pub fn finish(&mut self, now: Instant) {
+        if self.started.is_some() && self.finished.is_none() {
+            self.finished = Some(now);
+        }
+    }
+
     pub fn step(&mut self, id: &str, status: &str) {
         let Some(stage) = Stage::from_id(id) else {
             return;
         };
+        self.started.get_or_insert_with(Instant::now);
         let item = &mut self.stages[stage.index()];
         if status == "started" {
             self.active = stage;
@@ -238,6 +268,7 @@ impl BuildProgress {
         let Some(stage) = Stage::from_id(id) else {
             return;
         };
+        self.started.get_or_insert_with(Instant::now);
         let item = &mut self.stages[stage.index()];
         item.started = true;
         item.total = total;
@@ -249,6 +280,26 @@ impl BuildProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_clock_shows_minutes_and_seconds() {
+        assert_eq!(format_clock(Duration::from_secs(7)), "0:07");
+        assert_eq!(format_clock(Duration::from_secs(247)), "4:07");
+        assert_eq!(format_clock(Duration::from_secs(3909)), "1:05:09");
+    }
+
+    #[test]
+    fn elapsed_time_starts_with_the_first_step_and_stops_at_the_end() {
+        let mut progress = BuildProgress::default();
+        let now = Instant::now();
+        assert_eq!(progress.elapsed(now), None);
+        progress.step("source", "started");
+        let later = now + Duration::from_secs(90);
+        assert!(progress.elapsed(later).unwrap() >= Duration::from_secs(89));
+        progress.finish(later);
+        let much_later = later + Duration::from_secs(500);
+        assert_eq!(progress.elapsed(much_later), progress.elapsed(later));
+    }
 
     #[test]
     fn every_declared_stage_has_storage_including_installation() {

@@ -21,7 +21,7 @@ for crate in installer installer/extract; do
 done
 
 step "release scripts and SBOM tests"
-python3 -m unittest scripts.tests.test_installer_release scripts.tests.test_generate_sbom scripts.tests.test_shader_bootstrap 2>&1 | tail -3
+python3 -m unittest scripts.tests.test_installer_release scripts.tests.test_generate_sbom scripts.tests.test_shader_bootstrap scripts.tests.test_installer_driver 2>&1 | tail -3
 step "shader translator tests (C and CLI)"
 make -s -C shader_translator test 2>&1 | grep -E "^(OK|FAILED|Ran)" 
 

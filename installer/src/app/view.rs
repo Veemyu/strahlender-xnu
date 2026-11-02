@@ -1445,6 +1445,20 @@ impl Installer {
                     state.total,
                     self.language.t(L::ModulesGenerated)
                 ),
+                crate::progress::Stage::Requirements if state.total > 0 && !state.done => self
+                    .language
+                    .t(L::StepOf)
+                    .replacen("{}", &state.completed.to_string(), 1)
+                    .replacen("{}", &state.total.to_string(), 1),
+                crate::progress::Stage::Extract if state.total > 0 && !state.done => {
+                    format!("{} %", state.completed * 100 / state.total)
+                }
+                crate::progress::Stage::Firmware if state.total > 0 && !state.done => format!(
+                    "{} / {} {}",
+                    state.completed,
+                    state.total,
+                    self.language.t(L::FirmwareChecked)
+                ),
                 crate::progress::Stage::Shaders if state.total > 0 && !state.done => format!(
                     "{} / {} {}",
                     state.completed,
@@ -1508,6 +1522,19 @@ impl Installer {
                         column![
                             text(self.language.t(status)).size(16).width(Fill),
                             text(counter).size(12).color(c.muted).width(Fill),
+                            text(
+                                self.build_progress
+                                    .elapsed(std::time::Instant::now())
+                                    .map(|elapsed| format!(
+                                        "{} {}",
+                                        crate::progress::format_clock(elapsed),
+                                        self.language.t(L::TimeElapsed)
+                                    ))
+                                    .unwrap_or_default()
+                            )
+                            .size(12)
+                            .color(c.muted)
+                            .width(Fill),
                         ]
                         .spacing(8)
                         .width(Fill),

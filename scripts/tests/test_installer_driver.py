@@ -37,7 +37,7 @@ class InstallerDriverTests(unittest.TestCase):
             args = SimpleNamespace(root=root, work=root / "work", target="macos", firmware=source,
                                    firmware_helper=helper, firmware_cache=cache, prod_keys=keys, base=source, update=None)
             stages = []
-            def run(command, _args, stage):
+            def run(command, _args, stage, **_options):
                 stages.append(stage)
                 self.assertEqual(stage, "firmware")
                 if command[0] == str(helper):
@@ -1012,6 +1012,21 @@ class InstallerDriverTests(unittest.TestCase):
             events = [json.loads(line) for line in output.getvalue().splitlines()]
             self.assertEqual(events[-2]["event"], "artifact")
             self.assertEqual(events[-1], {"event": "result", "ok": True, "code": 0})
+
+    def test_progress_lines_of_the_scripts_become_progress_events_of_their_stage(self):
+        lines = ["FFmpeg step 3/4: configuring", "extract progress 420", "Firmware NCA scan: 10/200"]
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(root=temporary, work=temporary, target="macos")
+            for stage, expected in (("prerequisites", {"id": "prerequisites", "completed": 3, "total": 4}),
+                                    ("extract", {"id": "extract", "completed": 420, "total": 1000}),
+                                    ("firmware", {"id": "firmware", "completed": 10, "total": 200}),
+                                    ("compile", None)):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    driver._run_command(["/bin/echo", "\n".join(lines)], args, stage)
+                progress = [event for event in map(json.loads, output.getvalue().splitlines())
+                            if event["event"] == "progress"]
+                self.assertEqual(progress, [] if expected is None else [{"event": "progress", **expected}], stage)
 
 
 if __name__ == "__main__":

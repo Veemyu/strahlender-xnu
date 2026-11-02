@@ -25,7 +25,9 @@ if python3 scripts/install/ffmpeg_cache.py current "$FFDIR" "$STAMP"; then echo 
 JOBS=${2:-$(python3 scripts/recomp/parallel_jobs.py)}
 case "$JOBS" in ''|*[!0-9]*) echo "JOBS must be a positive integer" >&2; exit 2;; esac
 [ "$JOBS" -ge 1 ] || { echo "JOBS must be at least 1" >&2; exit 2; }
+# "FFmpeg step n/4" lines drive the installer's progress display; keep the format.
 ARCHIVE="$W/ffmpeg-$VER.tar.xz"
+echo "FFmpeg step 1/4: getting the source"
 if [ ! -f "$ARCHIVE" ]; then
   DOWNLOAD=$(mktemp "$W/.ffmpeg-download.XXXXXX")
   trap 'rm -f "$DOWNLOAD"' EXIT
@@ -36,6 +38,7 @@ if [ ! -f "$ARCHIVE" ]; then
   mv "$DOWNLOAD" "$ARCHIVE"
 fi
 [ "$(shasum -a 256 "$ARCHIVE" | cut -c1-64)" = "$EXPECTED_SHA" ] || { echo "Cached FFmpeg source checksum mismatch; nothing extracted." >&2; exit 4; }
+echo "FFmpeg step 2/4: unpacking"
 [ -d "$W/ffmpeg-$VER" ] || tar -xf "$W/ffmpeg-$VER.tar.xz" -C "$W"
 mkdir -p "$(dirname "$FFDIR")"
 rm -rf "$FFDIR".building.*
@@ -44,6 +47,7 @@ trap 'rm -rf "$PREFIX"' EXIT
 cd "$W/ffmpeg-$VER"
 # The prefix differs per build, so a configured source tree is always cleaned first.
 if [ -f config.h ]; then make distclean > /dev/null; fi
+echo "FFmpeg step 3/4: configuring"
 ./configure --prefix="$PREFIX" --enable-cross-compile --target-os=darwin --arch=arm64 \
   --cc="clang -target arm64-apple-ios17.0 -isysroot $SDKP" --as="clang -target arm64-apple-ios17.0 -isysroot $SDKP" \
   --ar="$(xcrun -f ar)" --ranlib="$(xcrun -f ranlib)" --nm="$(xcrun -f nm)" --strip="$(xcrun -f strip)" \
@@ -51,6 +55,7 @@ if [ -f config.h ]; then make distclean > /dev/null; fi
   --disable-network --disable-iconv --disable-securetransport --disable-videotoolbox --disable-audiotoolbox --disable-autodetect \
   --enable-static --disable-shared --enable-pic \
   --enable-decoder=vp8,vp9 --enable-parser=vp8,vp9 --enable-demuxer=matroska --enable-protocol=file > "../ffmpeg-configure.log" 2>&1
+echo "FFmpeg step 4/4: compiling (about 1 minute)"
 make -j"$JOBS" > "../ffmpeg-make.log" 2>&1
 make install > "../ffmpeg-install.log" 2>&1
 # Stamp last, then swap in: the folder looks complete only after the rename.

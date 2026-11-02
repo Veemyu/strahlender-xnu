@@ -1907,6 +1907,7 @@ impl Installer {
                         Some(self.language.t(L::PythonRuntimeError).into());
                 }
                 crate::backend::Event::Finished { ok, code } => {
+                    self.build_progress.finish(Instant::now());
                     self.backend_status = if ok {
                         BackendStatus::Passed
                     } else {
@@ -1937,6 +1938,7 @@ impl Installer {
                     );
                 }
                 crate::backend::Event::Stopped => {
+                    self.build_progress.finish(Instant::now());
                     self.backend_status = BackendStatus::Stopped;
                     self.backend_cancel = None;
                     self.record("BACKEND", self.language.t(L::CheckStopped));
