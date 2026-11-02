@@ -102,6 +102,49 @@ def classic_icns(data, destination):
         raise ValueError("iconutil produced no %s: %s" % (destination.name, result.stdout[-1000:]))
 
 
+# Loose iPhone/iPad icons (the classic way iOS still reads): name suffix, point size, scale suffix, pixels, idiom suffix
+IOS_ICONS = (("60x60", "@2x", 120, ""), ("60x60", "@3x", 180, ""), ("76x76", "", 76, "~ipad"),
+             ("76x76", "@2x", 152, "~ipad"), ("83.5x83.5", "@2x", 167, "~ipad"))
+
+
+def write_loose_icons(manifest, images, bundle):
+    """Classic fallback for iOS without actool: opaque square PNGs in the bundle and the matching Info.plist keys.
+
+    The system applies the corner mask. CFBundleAlternateIcons keys are the names setAlternateIconName: takes."""
+    Image = game_icons.image_module()[0]
+    images, bundle = Path(images), game_icons.output_path(bundle)
+    classic_names(manifest)
+    primary = next(v["icon"] for v in manifest["variants"] if v["id"] == manifest["default"])
+    done = set()
+    for variant in manifest["variants"]:
+        name = variant["icon"]
+        if name in done:
+            continue
+        done.add(name)
+        base = foreground((images / variant["image"]).read_bytes(), layout="full-bleed").convert("RGB")
+        for size, scale, pixels, idiom in IOS_ICONS:
+            icon = base if pixels == base.width else base.resize((pixels, pixels), Image.Resampling.LANCZOS)
+            icon.save(bundle / ("%s%s%s%s.png" % (name, size, scale, idiom)))
+    phone = lambda name: [name + "60x60"]
+    pad = lambda name: [name + "60x60", name + "76x76", name + "83.5x83.5"]
+
+    def entry(files):
+        return {"CFBundlePrimaryIcon": {"CFBundleIconFiles": files(primary)},
+                "CFBundleAlternateIcons": {name: {"CFBundleIconFiles": files(name)} for name in sorted(done - {primary})}}
+    info = {"CFBundleIcons": entry(phone), "CFBundleIcons~ipad": entry(pad)}
+    for key in info:
+        if not info[key]["CFBundleAlternateIcons"]:
+            del info[key]["CFBundleAlternateIcons"]
+    return info
+
+
+def clear_app_icons(bundle):
+    """Remove icon files of an earlier build in the same bundle (an incremental Xcode build keeps them)."""
+    bundle = game_icons.output_path(bundle)
+    for stale in [bundle / "Assets.car", *bundle.glob("BDSP_*[0-9]x[0-9]*.png")]:
+        stale.unlink(missing_ok=True)
+
+
 def document(data, specular=True):
     from icon_artwork import background, square
 

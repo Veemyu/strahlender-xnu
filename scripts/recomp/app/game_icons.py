@@ -456,18 +456,25 @@ def build_linux(source, output, executable, mod_root=None, mod_name=None):
 
 def build_ios(source, output, bundle, settings, mod_root=None, mod_name=None):
     image_module()
+    import icon_composer
     from icon_composer import write_documents, compile_icons, STYLE
     output = output_path(output)
     bundle = output_path(bundle)
     manifest = prepared(source, bundle / "AppIcons", mod_root, mod_name)
     write_bundle_names(manifest, bundle)
-    documents = write_documents(manifest, bundle / "AppIcons", output / "Documents")
-    primary = next(v["icon"] for v in manifest["variants"] if v["id"] == manifest["default"])
-    partial_info = compile_icons(documents, primary, output / "Compiled", "iphoneos")
-    for file in (output / "Compiled").iterdir():
-        if file.suffix in (".car", ".png"):
-            shutil.copyfile(file, bundle / file.name)
-    manifest["ios_style"] = STYLE
+    classic = icon_composer.use_classic()
+    icon_composer.clear_app_icons(bundle)
+    if classic:
+        partial_info = icon_composer.write_loose_icons(manifest, bundle / "AppIcons", bundle)
+        primary = next(v["icon"] for v in manifest["variants"] if v["id"] == manifest["default"])
+    else:
+        documents = write_documents(manifest, bundle / "AppIcons", output / "Documents")
+        primary = next(v["icon"] for v in manifest["variants"] if v["id"] == manifest["default"])
+        partial_info = compile_icons(documents, primary, output / "Compiled", "iphoneos")
+        for file in (output / "Compiled").iterdir():
+            if file.suffix in (".car", ".png"):
+                shutil.copyfile(file, bundle / file.name)
+    manifest["ios_style"] = icon_composer.CLASSIC_STYLE if classic else STYLE
     info_path = bundle / "Info.plist"
     info = plistlib.loads(info_path.read_bytes())
     for key in ("CFBundleIcons", "CFBundleIcons~ipad"):

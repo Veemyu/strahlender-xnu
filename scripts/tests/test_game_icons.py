@@ -422,6 +422,43 @@ class GameIconTests(unittest.TestCase):
             self.assertEqual(image.size, (1024, 1024))
             self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
 
+    def test_classic_ios_icons_are_loose_files_without_actool(self):
+        self.fixture()
+        for version, legacy in (("16.2", ""), (None, ""), ("27.1", "1")):
+            with self.subTest(version=version, legacy=legacy):
+                bundle = self.root / ("classic-ios-%s-%s/BDSP.app" % (version, legacy or "auto"))
+                bundle.mkdir(parents=True)
+                (bundle / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "synthetic.icons"}))
+                (bundle / "Assets.car").write_bytes(b"stale")
+                (bundle / "BDSP_old60x60@2x.png").write_bytes(b"stale")
+                with patch.dict(os.environ, {"BDSP_LEGACY_ICONS": legacy}), \
+                        patch.object(icons.subprocess, "run", side_effect=self.tools(version)), patch("builtins.print"):
+                    icons.build_ios(str(self.source), str(self.root / "classic-ios-out"), str(bundle),
+                                    str(APP.parent / "ios/app/Settings.bundle"))
+                self.assertFalse([c for c in self.calls if "--compile" in c], "no actool run in the classic path")
+                self.assertFalse((bundle / "Assets.car").exists())
+                self.assertFalse((bundle / "BDSP_old60x60@2x.png").exists())
+                manifest = json.loads((bundle / "AppIcons/icons.json").read_text())
+                names = {v["icon"] for v in manifest["variants"]}
+                self.assertEqual(len(names), 2)   # red and red share one artwork
+                for name in names:
+                    for suffix, pixels in (("60x60@2x", 120), ("60x60@3x", 180), ("76x76~ipad", 76), ("76x76@2x~ipad", 152),
+                                           ("83.5x83.5@2x~ipad", 167)):
+                        with Image.open(bundle / (name + suffix + ".png")) as image:
+                            self.assertEqual((image.size, image.mode), ((pixels, pixels), "RGB"))
+                info = plistlib.loads((bundle / "Info.plist").read_bytes())
+                primary = manifest["primary_icon"]
+                self.assertEqual(info["CFBundleIcons"]["CFBundlePrimaryIcon"]["CFBundleIconFiles"], [primary + "60x60"])
+                self.assertEqual(info["CFBundleIcons~ipad"]["CFBundlePrimaryIcon"]["CFBundleIconFiles"],
+                                 [primary + "60x60", primary + "76x76", primary + "83.5x83.5"])
+                for key, files in (("CFBundleIcons", ["60x60"]), ("CFBundleIcons~ipad", ["60x60", "76x76", "83.5x83.5"])):
+                    alternates = info[key]["CFBundleAlternateIcons"]
+                    self.assertEqual(set(alternates), names - {primary})
+                    for name, entry in alternates.items():
+                        self.assertEqual(entry["CFBundleIconFiles"], [name + f for f in files])
+                self.assertNotIn("CFBundleIconName", str(info))
+                self.assertEqual(manifest["ios_style"], "classic-v1")
+
     def test_actool_without_icon_composer_support_is_named(self):
         # Xcode 16 actool skips .icon documents, exits 0 and writes only an empty partial Info.plist.
         import icon_composer
@@ -454,14 +491,7 @@ class GameIconTests(unittest.TestCase):
         (bundle / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "synthetic.icons"}))
         output = self.root / "ios"
 
-        def actool(command, **kwargs):
-            partial = Path(command[command.index("--output-partial-info-plist") + 1])
-            partial.write_bytes(plistlib.dumps({"CFBundleIcons": {"CFBundlePrimaryIcon": {"CFBundleIconName": "test"}}}))
-            (Path(command[command.index("--compile") + 1]) / "Assets.car").write_bytes(b"car")
-            import subprocess
-            return subprocess.CompletedProcess(command, 0, "")
-
-        with patch.object(icons.subprocess, "run", side_effect=actool):
+        with patch.dict(os.environ, {"BDSP_LEGACY_ICONS": ""}), patch.object(icons.subprocess, "run", side_effect=self.tools("26.0")):
             # exactly the arguments the command line passes: all four are plain strings, not Path objects
             icons.build_ios(str(self.source), str(output), str(bundle), str(APP.parent / "ios/app/Settings.bundle"))
         # Equal images share one compiled app icon, but remain independently selectable by language.
