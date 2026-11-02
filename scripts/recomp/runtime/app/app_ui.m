@@ -241,6 +241,8 @@ static const char *const k_default_config =
     "# pause_on_focus_loss = 0   # 1: the game pauses when the window loses focus\n"
     "# pad_layout = nintendo     # nintendo (button position as on the Switch) or xbox (labels)\n"
     "# backups = 10              # number of backups at start\n"
+    "# aspect = 16:9             # render aspect ratio: 16:9, 16:10, 4:3, 21:9, mbp (MacBook Pro display), ipad11, auto (window shape), or a ratio like 1.6\n"
+    "# render_height = 1080      # render image height in pixels, or auto = the window's native pixel height\n"
     "# fps = 60                  # frame rate: 30, 60 or 120 (the menu View > Frame Rate takes precedence)\n";
 
 #define KEYS_HELP_EN \
@@ -259,6 +261,19 @@ static const char *const k_default_config =
 @end
 static bool g_user_paused, g_focus_paused;
 static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused; }
+
+// Display preferences (aspect ratio, render height): environment > menu choice (defaults) > config.ini, applied to the environment before the game starts.
+static int g_display_env_from_defaults;
+static NSString *display_pref_current(BOOL aspect) {
+    const char *v = getenv(aspect ? "BDSP_ASPECT" : "BDSP_RENDER_H");
+    return v && *v ? [NSString stringWithUTF8String:v] : (aspect ? @"16:9" : @"1080");
+}
+void bdsp_app_apply_display_defaults(void) {
+    NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+    NSString *a = [d stringForKey:@"bdsp_aspect"], *h = [d stringForKey:@"bdsp_render_h"];
+    if (a.length && !getenv("BDSP_ASPECT")) { setenv("BDSP_ASPECT", a.UTF8String, 0); g_display_env_from_defaults = 1; }
+    if (h.length && !getenv("BDSP_RENDER_H")) setenv("BDSP_RENDER_H", h.UTF8String, 0);
+}
 
 @implementation BdspMenu
 - (void)openSave:(id)s { char d[1300]; bdsp_save_dir(d, sizeof d); open_folder(d); }
@@ -300,6 +315,17 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
     bdsp_set_fps((int)s.tag);
     [[NSUserDefaults standardUserDefaults] setInteger:s.tag forKey:@"bdsp_fps"];
 }
+// View > Aspect Ratio / Render Resolution: kept in the defaults (env BDSP_ASPECT / BDSP_RENDER_H and config.ini win at the start); the game reads them
+// when it starts, so the choice applies after a restart.
+- (void)setDisplayPref:(NSMenuItem *)it {
+    NSString *key = it.tag == 1 ? @"bdsp_aspect" : @"bdsp_render_h";
+    NSString *value = it.representedObject;
+    if ([value isEqualToString:display_pref_current(it.tag == 1)]) return;
+    [[NSUserDefaults standardUserDefaults] setObject:value forKey:key];
+    if (getenv(it.tag == 1 ? "BDSP_ASPECT" : "BDSP_RENDER_H") && !g_display_env_from_defaults)
+        ask(L("Aspect Ratio"), L("The environment variable BDSP_ASPECT / BDSP_RENDER_H is set and takes precedence."), @[@"OK"]);
+    if (ask(L("Display"), L("The new size applies after a restart. Unsaved progress is lost."), @[L("Restart"), L("Later")]) == 1) bdsp_app_restart();
+}
 - (void)toggleNotice:(NSMenuItem *)sender {
     NSString *key = sender.representedObject;
     [NSUserDefaults.standardUserDefaults setBool:!BDSPNoticeEnabled(key) forKey:key];
@@ -332,6 +358,8 @@ static void apply_pause(void) { g_bdsp_paused = g_user_paused || g_focus_paused;
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     if (item.action == @selector(toggleNotice:)) item.state = BDSPNoticeEnabled(item.representedObject) ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(togglePause:)) item.state = g_user_paused ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(setDisplayPref:))
+        item.state = [item.representedObject isEqualToString:display_pref_current(item.tag == 1)] ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setFps:)) item.state = item.tag == g_bdsp_fps ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(toggleMetalHud:)) item.state = [[NSUserDefaults standardUserDefaults] boolForKey:@"bdsp_metal_hud"] ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(selectAppIcon:)) {
@@ -424,6 +452,24 @@ static void install_menu(void) {
     }
     NSInteger savedFps = [[NSUserDefaults standardUserDefaults] integerForKey:@"bdsp_fps"];
     if (savedFps && !getenv("BDSP_FPS")) bdsp_set_fps((int)savedFps);
+    NSMenuItem *aspi = [vm addItemWithTitle:L("Aspect Ratio") action:nil keyEquivalent:@""];
+    NSMenu *aspm = [[NSMenu alloc] initWithTitle:L("Aspect Ratio")];
+    aspi.submenu = aspm;
+    static NSString *const aspects[][2] = {{@"16:9", @"16:9"}, {@"16:10", @"16:10"}, {@"4:3", @"4:3"}, {@"21:9", @"21:9"}, {@"mbp", @"MacBook Pro Display"}, {@"ipad11", @"iPad Pro 11\""}, {@"auto", @"Window Shape"}};
+    for (int i = 0; i < 7; i++) {
+        NSMenuItem *it = item(aspm, aspects[i][1], @selector(setDisplayPref:), @"", 0, g_target);
+        it.tag = 1;
+        it.representedObject = aspects[i][0];
+    }
+    NSMenuItem *ri = [vm addItemWithTitle:L("Render Resolution") action:nil keyEquivalent:@""];
+    NSMenu *rm = [[NSMenu alloc] initWithTitle:L("Render Resolution")];
+    ri.submenu = rm;
+    static NSString *const heights[][2] = {{@"720", @"720p"}, {@"1080", @"1080p"}, {@"1440", @"1440p"}, {@"2160", @"2160p"}, {@"auto", @"Native (window pixels)"}};
+    for (int i = 0; i < 5; i++) {
+        NSMenuItem *it = item(rm, heights[i][1], @selector(setDisplayPref:), @"", 0, g_target);
+        it.tag = 2;
+        it.representedObject = heights[i][0];
+    }
     [vm addItem:[NSMenuItem separatorItem]];
     static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
     for (int i = 0; i < 4; i++) {

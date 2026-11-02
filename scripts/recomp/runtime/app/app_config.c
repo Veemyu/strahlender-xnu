@@ -257,6 +257,11 @@ void bdsp_app_init(int argc, char **argv) {
     snprintf(g_app.pad_layout, sizeof g_app.pad_layout, "%s", pl && !strcmp(pl, "xbox") ? "xbox" : "nintendo");
     g_app.pause_on_focus_loss = cfg_int("BDSP_PAUSE_ON_FOCUS_LOSS", cfg_get(keys, vals, n, "pause_on_focus_loss"), 0);
     g_app.fullscreen = cfg_int("BDSP_FULLSCREEN", cfg_get(keys, vals, n, "fullscreen"), 0);
+    extern void bdsp_app_apply_display_defaults(void);
+    bdsp_app_apply_display_defaults();   // menu choice (defaults); the environment stays first, config.ini below
+    const char *as = cfg_get(keys, vals, n, "aspect"), *rh = cfg_get(keys, vals, n, "render_height");
+    if (as && *as) setenv("BDSP_ASPECT", as, 0);
+    if (rh && *rh) setenv("BDSP_RENDER_H", rh, 0);
     g_app.backups = cfg_int("BDSP_BACKUPS", cfg_get(keys, vals, n, "backups"), 10);
     bdsp_set_fps(cfg_int("BDSP_FPS", cfg_get(keys, vals, n, "fps"), 60));
     g_app.win_w = 1280;

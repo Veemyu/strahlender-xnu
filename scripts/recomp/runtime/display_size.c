@@ -2,7 +2,7 @@
 // two slots in the main module image (native-generator/src/builtin_patches.c); this file chooses the size and writes the slots before
 // the guest starts. A slot of 0 keeps the stock 1920x1080.
 //   BDSP_RENDER=WxH            exact render size (tests)
-//   BDSP_ASPECT=<preset|auto>  16:9 (default), 16:10, 4:3, 21:9, mbp (14"/16" MacBook Pro panel), auto (shape of the window), or a ratio like 1.6
+//   BDSP_ASPECT=<preset|auto>  16:9 (default), 16:10, 4:3, 21:9, mbp (14"/16" MacBook Pro panel), ipad11 (11" iPad Pro), auto (shape of the window), or a ratio like 1.6
 //   BDSP_RENDER_H=<pixels|auto> height of the render image; auto = native height of the window's drawable (default 1080)
 #include <math.h>
 
@@ -14,7 +14,7 @@ int __attribute__((weak)) ui_drawable_size(int *w, int *h) { (void)w; (void)h; r
 void __attribute__((weak)) ui_window_init(void) {}
 
 typedef struct { const char *name; double aspect; } Preset;
-static const Preset presets[] = {{"16:9", 16.0 / 9}, {"16:10", 1.6}, {"4:3", 4.0 / 3}, {"21:9", 3440.0 / 1440}, {"mbp", 3024.0 / 1964}};
+static const Preset presets[] = {{"16:9", 16.0 / 9}, {"16:10", 1.6}, {"4:3", 4.0 / 3}, {"21:9", 3440.0 / 1440}, {"mbp", 3024.0 / 1964}, {"ipad11", 2388.0 / 1668}};   // 12.9" iPad Pro is 4:3; 11" iPad Pro is about 1.43:1
 
 static bool parse_aspect(const char *text, double *out) {
     for (size_t i = 0; i < sizeof presets / sizeof presets[0]; i++)
