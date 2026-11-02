@@ -15,9 +15,17 @@ linux_shaderc_module() {
   linux_deps_fail "shaderc (Fedora: libshaderc-devel; Debian: libshaderc-dev)"
 }
 
-# Verified pinned VMA copy from the installer (BDSP_VMA_DIR, see installer/src/vma.rs); searched after the system headers. Never downloads.
+# Verified pinned VMA copy from the installer or install-linux.sh (installer/src/vma.rs, scripts/install/vma_header.py): BDSP_VMA_DIR, else
+# the newest verified one in the installer data folder. Searched after the system headers. Never downloads.
 linux_vma_flags() {
-  if [ -n "${BDSP_VMA_DIR:-}" ] && [ -f "$BDSP_VMA_DIR/.verified" ]; then echo "-idirafter $BDSP_VMA_DIR/include"; fi
+  local dir="${BDSP_VMA_DIR:-}" candidate
+  if [ -z "$dir" ]; then
+    for candidate in "${XDG_DATA_HOME:-${HOME:-}/.local/share}"/strahlender-xnu-installer/vma/*/; do
+      if [ -f "${candidate}.verified" ]; then dir="${candidate%/}"; fi
+    done
+  fi
+  if [ -n "$dir" ] && [ -f "$dir/.verified" ]; then echo "-idirafter $dir/include"; fi
+  return 0
 }
 
 linux_require_runtime() {

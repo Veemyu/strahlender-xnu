@@ -26,8 +26,8 @@ Two guided installers do everything in this guide for you. Run `--dry-run` first
   Plan for at least 40 GB of free space; a measured run on a prepared 8-thread Mac took about 8 minutes (section 4.2).
 - **Linux:** run `./install-linux.sh`. It detects `apt`, `dnf` or `pacman`, lists the missing development packages and installs
   them after you agree (the package manager asks for your administrator password through `sudo`; the script never sees it).
-  The Vulkan Memory Allocator is not in the official Arch packages: the script asks you to install it from the AUR yourself. The graphical installer
-  instead downloads the header itself (pinned version, SHA-256 checked, no sudo).
+  The Vulkan Memory Allocator is not in the official Arch packages: the installer and the script download the header
+  themselves (pinned version, SHA-256 checked, no sudo).
   It then sets up `work/venv`, asks for your files, and runs the build of section 6.2. Several hours (section 6.4).
 
 Both scripts speak English, German, Spanish and Portuguese (system language, or `BDSP_LANG=de|en|es|pt`). The texts are in
@@ -237,7 +237,7 @@ include-vk/ or deps/include/ fallback is used. Runtime-only packages are not eno
 | Vulkan headers and loader development | libvulkan-dev | vulkan-headers, vulkan-loader-devel | vulkan-headers, vulkan-icd-loader |
 | SDL3 development | libsdl3-dev | SDL3-devel | sdl3 |
 | shaderc development | libshaderc-dev | libshaderc-devel | shaderc |
-| Vulkan Memory Allocator headers | libvulkan-memory-allocator-dev | VulkanMemoryAllocator-devel | vulkan-memory-allocator (AUR, not official) |
+| Vulkan Memory Allocator headers | libvulkan-memory-allocator-dev | VulkanMemoryAllocator-devel | none (pinned download by the installer) |
 | FFmpeg development | libavcodec-dev, libavformat-dev, libavutil-dev | libavcodec-free-devel, libavformat-free-devel, libavutil-free-devel | ffmpeg |
 | Icon conversion | python3-pil | python3-pillow | python-pillow |
 | GNU time (`/usr/bin/time`) | time | time | time |
@@ -279,8 +279,8 @@ Verified primary package references:
 [FFmpeg](https://packages.fedoraproject.org/pkgs/ffmpeg/).
 Debian lists [SDL3](https://packages.debian.org/forky/libsdl3-dev) and
 [VMA](https://packages.debian.org/sid/armhf/libvulkan-memory-allocator-dev).
-The Arch official package search does not list VMA; its AUR recipe is not an
-official Arch binary package and is never installed by these scripts.
+The Arch official package search does not list VMA; the installer and
+`install-linux.sh` download a pinned, SHA-256 checked header instead of using the AUR.
 
 ### 6.2 Build and run locally
 

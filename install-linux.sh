@@ -10,6 +10,8 @@ cd "$(dirname "$0")" || exit 1
 ROOT="$PWD"
 # shellcheck source=scripts/install/common.sh
 . "$ROOT/scripts/install/common.sh"
+# shellcheck source=scripts/recomp/linux/deps.sh
+. "$ROOT/scripts/recomp/linux/deps.sh"
 parse_install_args "$@"
 STEP_TOTAL=6
 banner
@@ -36,7 +38,7 @@ if [ -n "$PM" ]; then ok lx_distro_ok "$OS_NAME" "$PM"; else warn lx_distro_unkn
 
 # ------------------------------------------------------------------ 2 packages
 step lx_st_pkgs
-MISSING_PKGS=""; AUR_NOTE=0; MISSING_LABELS=""
+MISSING_PKGS=""; MISSING_LABELS=""
 add_pkgs() {
   local p
   for p in "$@"; do
@@ -54,7 +56,6 @@ check() {
   case "$PM" in apt) names="$3" ;; dnf) names="$4" ;; pacman) names="$5" ;; esac
   # shellcheck disable=SC2086
   add_pkgs $names
-  if [ "$names" = "-" ] && [ "$PM" = pacman ] && [ "$label" = "Vulkan Memory Allocator" ]; then AUR_NOTE=1; fi
   return 0
 }
 t_cmds() { local c; for c in "$@"; do command -v "$c" >/dev/null 2>&1 || return 1; done; }
@@ -62,14 +63,14 @@ t_pc() { command -v pkg-config >/dev/null 2>&1 && pkg-config --exists "$@"; }
 t_vma() {
   command -v "${CXX:-clang++}" >/dev/null 2>&1 || return 1
   printf '#if __has_include(<vma/vk_mem_alloc.h>)\n#include <vma/vk_mem_alloc.h>\n#else\n#include <vk_mem_alloc.h>\n#endif\n' \
-    | "${CXX:-clang++}" -x c++ -std=c++17 -fsyntax-only $(pkg-config --cflags vulkan 2>/dev/null) - >/dev/null 2>&1
+    | "${CXX:-clang++}" -x c++ -std=c++17 -fsyntax-only $(pkg-config --cflags vulkan 2>/dev/null) $(linux_vma_flags) - >/dev/null 2>&1
 }
 t_qtwayland() {
   [ -f /usr/lib/qt6/plugins/platforms/libqwayland-generic.so ] || [ -f /usr/lib64/qt6/plugins/platforms/libqwayland-generic.so ] \
     || [ -f /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqwayland-generic.so ]
 }
 check_packages() {
-  MISSING_PKGS=""; AUR_NOTE=0; MISSING_LABELS=""
+  MISSING_PKGS=""; MISSING_LABELS=""
   t_cmds clang clang++;                  check "clang" $? "clang" "clang" "clang"
   t_cmds make cc git;                    check "make, cc, git" $? "build-essential git" "make gcc gcc-c++ git" "base-devel git"
   t_cmds cmake;                          check "cmake" $? "cmake" "cmake" "cmake"
@@ -110,8 +111,16 @@ if [ -n "$MISSING_LABELS" ] && [ -n "$PM" ] && [ -n "${MISSING_PKGS# }" ]; then
   install_pkgs || die lx_install_failed
   if [ "$INSTALL_DRY" = 0 ]; then printf '\n'; say lx_recheck; check_packages; fi
 fi
+# Arch and SteamOS have no package for the Vulkan Memory Allocator: fetch the pinned, SHA-256 checked header (no sudo, no AUR).
+case "$MISSING_LABELS" in
+  *"Vulkan Memory Allocator"*)
+    if [ "$PM" = pacman ]; then
+      say lx_vma_fetch
+      run python3 "$ROOT/scripts/install/vma_header.py" ensure || die lx_vma_failed
+      if [ "$INSTALL_DRY" = 0 ]; then printf '\n'; say lx_recheck; check_packages; fi
+    fi ;;
+esac
 if [ "$INSTALL_DRY" = 0 ] && [ -n "$MISSING_LABELS" ]; then
-  if [ "$AUR_NOTE" = 1 ]; then say lx_aur; fi
   die lx_still_missing "$MISSING_LABELS"
 fi
 

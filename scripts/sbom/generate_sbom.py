@@ -211,7 +211,7 @@ CATALOG = [
       EXTERNAL, ["docs/BUILD.md"], category="system-package"),
     C("linux-shaderc", "shaderc development package", "unpinned", "pkg:generic/shaderc-dev", "Apache-2.0", USER, EXTERNAL,
       ["docs/BUILD.md"], category="system-package"),
-    C("linux-vma", "Vulkan Memory Allocator headers (libvulkan-memory-allocator-dev, VulkanMemoryAllocator-devel; AUR on Arch)",
+    C("linux-vma", "Vulkan Memory Allocator headers (libvulkan-memory-allocator-dev, VulkanMemoryAllocator-devel; pinned download on Arch)",
       "unpinned", "pkg:generic/vulkan-memory-allocator", "MIT", USER, EXTERNAL, ["docs/BUILD.md"], category="system-package"),
     C("linux-ffmpeg", "FFmpeg development packages (libavcodec, libavformat, libavutil)", "unpinned", "pkg:generic/ffmpeg-dev",
       "LGPL-2.1-or-later OR GPL-2.0-or-later", USER, EXTERNAL, ["docs/BUILD.md", "scripts/recomp/linux/deps.sh"],

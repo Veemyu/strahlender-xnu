@@ -4,7 +4,7 @@
 # Format: package family | user-run install command | caveat
 apt | apt install clang build-essential cmake pkg-config qt6-base-dev libvulkan-dev libsdl3-dev libshaderc-dev libvulkan-memory-allocator-dev libavcodec-dev libavformat-dev libavutil-dev python3-pil | Debian current/testing; older Ubuntu releases may lack SDL3/VMA packages
 dnf | dnf install clang gcc-c++ cmake pkgconf-pkg-config qt6-qtbase-devel vulkan-headers vulkan-loader-devel SDL3-devel libshaderc-devel VulkanMemoryAllocator-devel libavcodec-free-devel libavformat-free-devel libavutil-free-devel python3-pillow | Fedora package names verified; derivative distributions must match their installed FFmpeg provider
-pacman | pacman -S --needed clang base-devel cmake pkgconf qt6-base vulkan-headers vulkan-icd-loader sdl3 shaderc ffmpeg python-pillow | VMA is separate: vulkan-memory-allocator is in AUR, not the official repositories; review/install it yourself
+pacman | pacman -S --needed clang base-devel cmake pkgconf qt6-base vulkan-headers vulkan-icd-loader sdl3 shaderc ffmpeg python-pillow | VMA has no official Arch package: the installer and install-linux.sh download a pinned, SHA-256 checked header (installer/assets/vma.json); no AUR needed
 # Wayland platform plugin: Debian qt6-wayland; Fedora qt6-qtwayland; check the Qt platform-plugin packaging for your Arch release.
 # X11 platform support and a GPU-specific Vulkan driver must also be installed.
 # Runtime-only packages are insufficient: pkg-config modules and vk_mem_alloc.h are required.

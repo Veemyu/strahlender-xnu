@@ -31,7 +31,8 @@ esac
         self.tool("cxx-check", '#!/bin/bash\nexit "${FAKE_VMA_FAIL:-0}"\n')
         self.env = dict(os.environ, PATH=str(self.tools) + os.pathsep + os.environ["PATH"],
                         CXX=str(self.tools / "cxx-check"), BDSP_NO_MOVIE="",
-                        AVAILABLE_MODULES="vulkan sdl3 shaderc Qt6Widgets libavcodec libavformat libavutil")
+                        AVAILABLE_MODULES="vulkan sdl3 shaderc Qt6Widgets libavcodec libavformat libavutil",
+                        XDG_DATA_HOME=str(self.root / "data"))
 
     def tool(self, name, source):
         path = self.tools / name

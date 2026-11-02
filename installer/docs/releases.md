@@ -136,8 +136,8 @@ packages leave setup incomplete and never start the game build.
 
 Package availability depends on distribution version and enabled repositories.
 No PPA, AUR helper, foreign repository or graphics driver is enabled automatically.
-In particular, Arch's VMA headers currently require the community AUR package
-`vulkan-memory-allocator`; this remains a manual setup gap. Ubuntu releases
+Arch has no VMA package: the graphical installer and `install-linux.sh` download the
+pinned, SHA-256 checked header themselves (`installer/assets/vma.json`). Ubuntu releases
 without SDL3 development packages also need a supported dependency source before
 the game build can proceed. Do not advertise these cases as unattended setup.
 
