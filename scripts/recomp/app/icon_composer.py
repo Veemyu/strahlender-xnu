@@ -49,7 +49,26 @@ def compile_icons(documents, primary, output, platform):
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if result.returncode:
         raise ValueError("Native icon compilation failed: " + result.stdout[-2500:])
+    # actool before Xcode 26 does not know Icon Composer (.icon) documents: it skips them, exits 0
+    # and writes only an empty partial Info.plist, so the missing outputs are the only sign.
+    expected = ["Assets.car"] + ([primary + ".icns"] if platform == "macosx" else [])
+    missing = [name for name in expected if not (output / name).is_file()]
+    if missing:
+        raise ValueError("Native icon compilation produced no %s (actool %s). Icon Composer documents need "
+                         "Xcode 26 or newer: install it in /Applications/Xcode.app, open it once, then build again."
+                         % (", ".join(missing), actool_version() or "of unknown version"))
     return plistlib.loads(partial.read_bytes())
+
+
+def actool_version():
+    """Short version of the selected actool (for example "16.2"), or None."""
+    try:
+        result = subprocess.run(["xcrun", "actool", "--version"], stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, timeout=60)
+        info = plistlib.loads(result.stdout)
+        return str(info["com.apple.actool.version"]["short-bundle-version"])
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        return None
 
 
 def document(data, specular=True):
