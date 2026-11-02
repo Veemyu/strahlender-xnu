@@ -101,6 +101,13 @@ fn inputs<'a>(request: &'a Request, kind: &'a str) -> manifest::Inputs<'a> {
     }
 }
 
+/// An earlier extraction is verified by hashing the game files again, which is silent and takes minutes: say so.
+fn announce_check(request: &Request, log: &mut dyn FnMut(&str)) {
+    if request.work.join("manifest.json").is_file() {
+        log("    checking the earlier extraction (SHA-256 of the game files)");
+    }
+}
+
 /// True if the existing extraction matches these inputs (used by `check` and the cache).
 pub fn up_to_date(request: &Request) -> Result<bool, Failure> {
     let kind = base_kind(&request.base)?;
@@ -459,6 +466,9 @@ pub fn extract(request: &Request, log: &mut dyn FnMut(&str)) -> Result<Outcome, 
             "Choose your original input outside the replaceable extraction folders",
         );
     }
+    if !request.force {
+        announce_check(request, log);
+    }
     if !request.force && up_to_date(request)? {
         log("extract: manifest.json matches, skipped (--force to regenerate)");
         return Ok(Outcome::Skipped);
@@ -520,6 +530,7 @@ fn run_stage(
         base_dir
     };
     if let Some(update) = &request.update {
+        log("    unpacking the update (NSP)");
         tool.unpack(update, &update_dir, "nsp")
             .map_err(|detail| Failure {
                 code: 5,
@@ -684,6 +695,7 @@ fn run_stage(
         })?;
     }
     let (base_size, update_size) = sizes(request, kind);
+    log("    recording the SHA-256 of the game files");
     let game = manifest::Game {
         title_id: &title_id,
         title_version: version,
@@ -796,6 +808,9 @@ pub fn cli(args: Vec<OsString>) -> i32 {
         keep_nca,
     };
     if command == "check" {
+        if !request.force {
+            announce_check(&request, &mut |line| println!("{line}"));
+        }
         return match up_to_date(&request) {
             Ok(true) => 0,
             Ok(false) => 1,

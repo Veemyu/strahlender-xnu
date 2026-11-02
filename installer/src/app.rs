@@ -666,6 +666,11 @@ impl Installer {
     }
 
     fn handle(&mut self, message: Message) -> Task<Message> {
+        if let Message::BackendEvent(run_id, _) = &message
+            && *run_id == self.backend_run_id
+        {
+            self.build_progress.touch(Instant::now());
+        }
         match message {
             Message::UpdateChecked(result) => match result {
                 Ok(release) => {
@@ -1888,6 +1893,7 @@ impl Installer {
                 }
                 crate::backend::Event::Log { level, message } => {
                     let message = redact_home_path(&message);
+                    self.build_progress.note_log(&level, &message);
                     if level == "error" {
                         self.backend_failure_detail = Some(message.clone());
                     } else if level == "warning" || level == "hint" {
@@ -2737,11 +2743,55 @@ impl Installer {
                 self.backend_status = BackendStatus::Running;
                 self.build_progress = crate::progress::BuildProgress::default();
                 self.build_progress.step("shaders", "started");
+                self.build_progress.note_log(
+                    "diagnostic",
+                    "shaders: compiling the Metal libraries for macosx",
+                );
                 self.build_progress.count("shaders", 1710, 2739);
                 let stage = crate::progress::Stage::Shaders;
                 self.motion
                     .snap(stage.index() as f32 + self.build_progress.fraction(stage));
                 self.record("BACKEND", "shaders: 2739 distinct shaders from 4336 programs (180 use global memory and compile at run time)");
+            }
+            "shaders-translate" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Running;
+                self.build_progress = crate::progress::BuildProgress::default();
+                self.build_progress.step("shaders", "started");
+                self.build_progress
+                    .note_log("diagnostic", "shaders: translating");
+                self.build_progress.count("shaders", 491, 0);
+                self.motion
+                    .snap(crate::progress::Stage::Shaders.index() as f32);
+                self.record("BACKEND", "shaders: translating");
+            }
+            "extract-step" | "extract-silent" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Running;
+                self.build_progress = crate::progress::BuildProgress::default();
+                self.build_progress.step("extract", "started");
+                for line in [
+                    "4/5 extract ExeFS and RomFS (the update applied to the base NCA)",
+                    "5/5 version, icons and manifest",
+                    "Original icons: 9 language variants",
+                    "    recording the SHA-256 of the game files",
+                ] {
+                    self.build_progress.note_log("diagnostic", line);
+                    self.record("BACKEND", line);
+                }
+                self.build_progress.count("extract", 962, 1000);
+                if scenario == "extract-silent" {
+                    self.build_progress
+                        .shift_clock(crate::progress::SILENCE * 3 + Duration::from_secs(7));
+                    self.build_progress.touch(
+                        Instant::now()
+                            .checked_sub(crate::progress::SILENCE * 3)
+                            .unwrap_or_else(Instant::now),
+                    );
+                }
+                let stage = crate::progress::Stage::Extract;
+                self.motion
+                    .snap(stage.index() as f32 + self.build_progress.fraction(stage));
             }
             "preflight-running" | "preflight-details" => {
                 self.page = Page::Progress;
@@ -3438,6 +3488,64 @@ mod tests {
             app.build_progress.stages[crate::progress::Stage::Compile.index()].completed,
             2368
         );
+    }
+
+    #[test]
+    fn backend_log_lines_tell_the_extraction_step_and_a_silent_backend_is_still_working() {
+        use crate::progress::{SILENCE, Stage};
+        let (mut app, _) = Installer::new();
+        app.page = Page::Progress;
+        app.backend_status = BackendStatus::Running;
+        app.backend_run_id = 3;
+        let send = |app: &mut Installer, event| {
+            let _ = app.update(Message::BackendEvent(3, event));
+        };
+        send(
+            &mut app,
+            crate::backend::Event::Step {
+                id: "extract".into(),
+                status: "started".into(),
+            },
+        );
+        for message in [
+            "1/5 unpack the game containers",
+            "4/5 extract ExeFS and RomFS (the update applied to the base NCA)",
+            "extract progress 420",
+            "    recording the SHA-256 of the game files",
+            "Original icons: 9 language variants",
+        ] {
+            send(
+                &mut app,
+                crate::backend::Event::Log {
+                    level: "diagnostic".into(),
+                    message: message.into(),
+                },
+            );
+        }
+        assert_eq!(app.build_progress.active, Stage::Extract);
+        assert_eq!(app.build_progress.step, Some((4, 5)));
+        let now = Instant::now();
+        let text = app.build_progress.activity_text(app.language, now).unwrap();
+        assert_eq!(text.headline, app.language.t(L::ActHashing));
+        assert_eq!(
+            text.detail.as_deref(),
+            Some("Original icons: 9 language variants")
+        );
+        let later = app
+            .build_progress
+            .activity_text(app.language, now + SILENCE + Duration::from_secs(1))
+            .unwrap();
+        assert!(later.headline.contains(app.language.t(L::ActHashing)));
+        assert_ne!(later.headline, text.headline);
+        // Events of another run do not count as a sign of life.
+        let _ = app.update(Message::BackendEvent(
+            2,
+            crate::backend::Event::Log {
+                level: "diagnostic".into(),
+                message: "2/5 classify NCAs".into(),
+            },
+        ));
+        assert_eq!(app.build_progress.step, Some((4, 5)));
     }
 
     fn newer_release() -> crate::updates::Release {

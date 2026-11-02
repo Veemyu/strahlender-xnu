@@ -1469,6 +1469,13 @@ impl Installer {
                 super::BackendStatus::Stopped => L::BuildStopped,
                 super::BackendStatus::Idle => unreachable!(),
             };
+            let activity = (self.backend_status == super::BackendStatus::Running
+                && !self.cleanup_busy)
+                .then(|| {
+                    self.build_progress
+                        .activity_text(self.language, std::time::Instant::now())
+                })
+                .flatten();
             let counter = match stage {
                 crate::progress::Stage::Compile if state.total > 0 => format!(
                     "{} / {} {}",
@@ -1510,8 +1517,22 @@ impl Installer {
                     .t(L::StepOf)
                     .replacen("{}", &state.completed.to_string(), 1)
                     .replacen("{}", &state.total.to_string(), 1),
-                crate::progress::Stage::Extract if state.total > 0 && !state.done => {
-                    format!("{} %", state.completed * 100 / state.total)
+                crate::progress::Stage::Extract
+                    if !state.done && (state.total > 0 || self.build_progress.step.is_some()) =>
+                {
+                    let mut parts = Vec::new();
+                    if let Some((n, m)) = self.build_progress.step {
+                        parts.push(
+                            self.language
+                                .t(L::StepOf)
+                                .replacen("{}", &n.to_string(), 1)
+                                .replacen("{}", &m.to_string(), 1),
+                        );
+                    }
+                    if state.total > 0 {
+                        parts.push(format!("{} %", state.completed * 100 / state.total));
+                    }
+                    parts.join(" \u{b7} ")
                 }
                 crate::progress::Stage::Firmware if state.total > 0 && !state.done => format!(
                     "{} / {} {}",
@@ -1524,6 +1545,11 @@ impl Installer {
                     state.completed,
                     state.total,
                     self.language.t(L::ShadersPrepared)
+                ),
+                crate::progress::Stage::Shaders if state.completed > 0 && !state.done => format!(
+                    "{} {}",
+                    state.completed,
+                    self.language.t(L::ShadersTranslated)
                 ),
                 crate::progress::Stage::Install if state.total > 0 && !state.done => {
                     let copy = &self.build_progress.copy;
@@ -1552,6 +1578,7 @@ impl Installer {
                     }
                     text
                 }
+                _ if activity.is_some() => String::new(),
                 _ => self
                     .language
                     .t(match self.backend_status {
@@ -1579,25 +1606,39 @@ impl Installer {
                 self.title(self.language.t(L::ProgressTitle), self.language.t(detail)),
                 container(
                     column![
-                        column![
-                            text(self.language.t(status)).size(16).width(Fill),
-                            text(counter).size(12).color(c.muted).width(Fill),
-                            text(
-                                self.build_progress
-                                    .elapsed(std::time::Instant::now())
-                                    .map(|elapsed| format!(
+                        {
+                            let elapsed = self
+                                .build_progress
+                                .elapsed(std::time::Instant::now())
+                                .map(|elapsed| {
+                                    format!(
                                         "{} {}",
                                         crate::progress::format_clock(elapsed),
                                         self.language.t(L::TimeElapsed)
-                                    ))
-                                    .unwrap_or_default()
-                            )
-                            .size(12)
-                            .color(c.muted)
-                            .width(Fill),
-                        ]
-                        .spacing(8)
-                        .width(Fill),
+                                    )
+                                })
+                                .unwrap_or_default();
+                            let mut lines = column![
+                                row![
+                                    text(self.language.t(status)).size(16).width(Fill),
+                                    text(elapsed).size(12).color(c.muted),
+                                ]
+                                .spacing(8)
+                                .align_y(Center)
+                            ];
+                            if let Some(activity) = activity {
+                                lines = lines.push(text(activity.headline).size(14).width(Fill));
+                                if let Some(detail) = activity.detail {
+                                    lines = lines
+                                        .push(text(detail).size(11).color(c.muted).width(Fill));
+                                }
+                            }
+                            if !counter.is_empty() {
+                                lines =
+                                    lines.push(text(counter).size(12).color(c.muted).width(Fill));
+                            }
+                            lines.spacing(8).width(Fill)
+                        },
                         progress_bar(
                             0.0..=1.0,
                             (self.motion.value - stage.index() as f32).clamp(0.0, 1.0)

@@ -167,6 +167,45 @@ class WindowsPipelineTests(unittest.TestCase):
                 self.assertEqual(bool(installed), not fail)
                 self.assertFalse(any(e["event"] == "result" for e in events))
 
+    def test_extract_lines_reach_the_installer_while_the_tool_runs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            script = root / "fake_extract.py"
+            script.write_text("import sys\n"
+                              "print('1/5 unpack the game containers', flush=True)\n"
+                              "print('extract progress 120', flush=True)\n"
+                              "sys.stdin.close()\n"
+                              "print('ERROR: The game NCA cannot be extracted', file=sys.stderr, flush=True)\n"
+                              "sys.exit(5)\n", encoding="utf-8")
+            lines = []
+            environment = {"BDSP_EXTRACT": sys.executable, "BDSP_EXTRACT_PREFIX": str(script)}
+            with patch.dict(os.environ, environment), self.assertRaisesRegex(ValueError, "cannot be extracted"):
+                pipeline.extract_game(root / "game.xci", root / "prod.keys", root / "work", root / "hactool",
+                                      progress=lines.append)
+            self.assertEqual(lines, ["1/5 unpack the game containers", "extract progress 120"])
+
+    def test_the_permille_counter_of_the_extract_tool_becomes_progress_events(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            selected = windows.profile("x86_64")
+            args = SimpleNamespace(root=root, work=root / "work", windows_catalog=root / "catalog",
+                                   target="windows", base=root / "input", prod_keys=root / "selected.keys",
+                                   update=None, clean_build=False)
+            bundles = {name: root / name for name in ("sdl", "vulkan", "ffmpeg", "hactool", "qt")}
+            events = []
+
+            def extract(*_arguments, progress, **_options):
+                progress("4/5 extract ExeFS and RomFS")
+                progress("extract progress 420")
+                raise ValueError("stop here")
+
+            with patch.object(pipeline, "prerequisites", return_value=(selected, root / "cc.exe", root / "gen.exe", bundles)), \
+                    patch.object(pipeline, "extract_game", side_effect=extract), self.assertRaisesRegex(ValueError, "stop here"):
+                pipeline.build_game(args, lambda event, **fields: events.append({"event": event, **fields}))
+            self.assertIn({"event": "progress", "id": "extract", "completed": 420, "total": 1000}, events)
+            self.assertIn({"event": "log", "level": "diagnostic", "message": "4/5 extract ExeFS and RomFS"}, events)
+            self.assertFalse(any(e.get("message") == "extract progress 420" for e in events))
+
     def test_failed_extraction_does_not_move_clean_build_outputs_or_selected_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()

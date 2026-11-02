@@ -1,8 +1,15 @@
 //! Build progress comes from backend events. An unknown total stays indeterminate.
+use crate::{
+    activity::{self, Activity},
+    i18n::{Label, Language},
+};
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
 };
+
+/// A stage that reports nothing for this long is shown as "still working".
+pub const SILENCE: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
@@ -184,8 +191,21 @@ pub struct BuildProgress {
     pub active: Stage,
     pub generator: GeneratorProgress,
     pub copy: Transfer,
+    /// What the active stage is doing, the step it announced and the last log line nobody here knows.
+    pub activity: Option<Activity>,
+    pub step: Option<(u32, u32)>,
+    pub detail: Option<String>,
+    last_event: Option<Instant>,
+    stage_started: [Option<Instant>; Stage::ALL.len()],
     started: Option<Instant>,
     finished: Option<Instant>,
+}
+
+/// The text under the stage title: the headline always names the current work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityText {
+    pub headline: String,
+    pub detail: Option<String>,
 }
 
 impl Default for BuildProgress {
@@ -195,6 +215,11 @@ impl Default for BuildProgress {
             active: Stage::Source,
             generator: GeneratorProgress::default(),
             copy: Transfer::default(),
+            activity: None,
+            step: None,
+            detail: None,
+            last_event: None,
+            stage_started: [None; Stage::ALL.len()],
             started: None,
             finished: None,
         }
@@ -244,11 +269,14 @@ impl BuildProgress {
         let Some(stage) = Stage::from_id(id) else {
             return;
         };
-        self.started.get_or_insert_with(Instant::now);
+        let now = Instant::now();
+        self.started.get_or_insert(now);
         let item = &mut self.stages[stage.index()];
         if status == "started" {
             self.active = stage;
             item.started = true;
+            self.stage_started[stage.index()].get_or_insert(now);
+            self.enter(Activity::for_step(id, stage));
         } else if status == "complete" || status == "skipped" {
             item.started = true;
             item.done = true;
@@ -268,12 +296,96 @@ impl BuildProgress {
         let Some(stage) = Stage::from_id(id) else {
             return;
         };
-        self.started.get_or_insert_with(Instant::now);
+        let now = Instant::now();
+        self.started.get_or_insert(now);
+        self.stage_started[stage.index()].get_or_insert(now);
+        if self.active != stage {
+            self.enter(Activity::for_stage(stage));
+        }
         let item = &mut self.stages[stage.index()];
         item.started = true;
         item.total = total;
-        item.completed = completed.min(total);
+        // Without a total (shader translation) the number is only a count of what is done so far.
+        item.completed = if total == 0 {
+            completed
+        } else {
+            completed.min(total)
+        };
         self.active = stage;
+    }
+
+    fn enter(&mut self, activity: Activity) {
+        self.activity = Some(activity);
+        self.step = None;
+        self.detail = None;
+    }
+
+    /// Pretends that `by` more time has passed since everything so far (preview scenes).
+    pub fn shift_clock(&mut self, by: Duration) {
+        let back = |at: &mut Option<Instant>| *at = at.and_then(|at| at.checked_sub(by)).or(*at);
+        back(&mut self.started);
+        back(&mut self.last_event);
+        self.stage_started.iter_mut().for_each(back);
+    }
+
+    /// Any event of the backend proves it is alive.
+    pub fn touch(&mut self, now: Instant) {
+        self.last_event = Some(now);
+    }
+
+    /// A log line of the backend can name the current work (known lines) or be shown as it is (unknown lines).
+    pub fn note_log(&mut self, level: &str, message: &str) {
+        if level == "error" || self.stages[self.active.index()].done {
+            return;
+        }
+        let seen = activity::observe(self.active, message);
+        if let Some(activity) = seen.activity {
+            self.activity = Some(activity);
+            self.detail = None;
+        }
+        if seen.step.is_some() {
+            self.step = seen.step;
+        }
+        if seen.detail.is_some() {
+            self.detail = seen.detail;
+        }
+    }
+
+    /// What to show under the stage title while the backend runs; `None` once the stage is done.
+    pub fn activity_text(&self, language: Language, now: Instant) -> Option<ActivityText> {
+        let stage = self.active;
+        let state = self.stages[stage.index()];
+        if state.done {
+            return None;
+        }
+        let activity = self.activity.unwrap_or_else(|| Activity::for_stage(stage));
+        let counted = |label: Label| {
+            language
+                .t(label)
+                .replacen("{}", &state.completed.to_string(), 1)
+                .replacen("{}", &state.total.to_string(), 1)
+        };
+        let mut headline = match activity {
+            Activity::Compile if state.total > 0 => counted(Label::ActCompileCount),
+            Activity::ShadersCompile if state.total > 0 => counted(Label::ActShadersCompileCount),
+            _ => language.t(activity.label()).to_owned(),
+        };
+        let silent = self
+            .last_event
+            .is_some_and(|at| now.saturating_duration_since(at) >= SILENCE);
+        if silent {
+            let in_stage = self.stage_started[stage.index()]
+                .map(|at| format_clock(now.saturating_duration_since(at)))
+                .unwrap_or_default();
+            headline = language
+                .t(Label::ActStillWorking)
+                .replacen("{}", &headline, 1)
+                .replacen("{}", &in_stage, 1);
+        }
+        Some(ActivityText {
+            headline,
+            detail: self.detail.clone(),
+        })
     }
 }
 
@@ -412,6 +524,124 @@ mod tests {
         assert!((progress.fraction(Stage::Install) - 0.6).abs() < 1e-6);
         progress.step("install", "complete");
         assert_eq!(progress.fraction(Stage::Install), 1.0);
+    }
+
+    fn english(progress: &BuildProgress, now: Instant) -> ActivityText {
+        progress.activity_text(Language::English, now).unwrap()
+    }
+
+    #[test]
+    fn every_stage_names_its_work_from_the_moment_it_starts() {
+        let mut progress = BuildProgress::default();
+        let now = Instant::now();
+        for stage in Stage::ALL {
+            let id = [
+                "source",
+                "prerequisites",
+                "firmware",
+                "extract",
+                "exefs",
+                "signing",
+                "shaders",
+                "eh_gen",
+                "clang",
+                "images",
+                "runtime",
+                "package",
+                "install",
+            ][stage.index()];
+            progress.step(id, "started");
+            let text = english(&progress, now);
+            assert!(!text.headline.is_empty() && text.detail.is_none(), "{id}");
+            assert_eq!(progress.activity, Some(Activity::for_stage(stage)));
+        }
+        progress.step("link", "started"); // Windows links in a step of its own, still part of the runtime stage
+        assert_eq!(progress.active, Stage::Runtime);
+        assert_eq!(
+            english(&progress, now).headline,
+            "Linking the game executable"
+        );
+    }
+
+    #[test]
+    fn compilation_and_shader_counters_are_part_of_the_activity() {
+        let mut progress = BuildProgress::default();
+        let now = Instant::now();
+        progress.step("clang", "started");
+        progress.count("clang", 3, 10);
+        assert_eq!(
+            english(&progress, now).headline,
+            "Compiling objects: 3 of 10"
+        );
+        progress.step("shaders", "started");
+        progress.note_log("diagnostic", "shaders: translating");
+        progress.count("shaders", 120, 0); // translating: written so far, the total is unknown
+        assert_eq!(progress.stages[Stage::Shaders.index()].completed, 120);
+        assert_eq!(progress.fraction(Stage::Shaders), 0.0);
+        assert_eq!(english(&progress, now).headline, "Translating shaders");
+        progress.note_log(
+            "diagnostic",
+            "shaders: compiling the Metal libraries for macosx",
+        );
+        progress.count("shaders", 5, 2739);
+        assert_eq!(
+            english(&progress, now).headline,
+            "Compiling Metal libraries: 5 of 2739"
+        );
+    }
+
+    #[test]
+    fn a_known_line_replaces_the_activity_and_an_unknown_one_is_shown_below_it() {
+        let mut progress = BuildProgress::default();
+        let now = Instant::now();
+        progress.step("extract", "started");
+        progress.note_log("diagnostic", "1/5 unpack the game containers");
+        progress.note_log(
+            "diagnostic",
+            "    prod.keys: master_key_00 to master_key_15",
+        );
+        let text = english(&progress, now);
+        assert_eq!(text.headline, "Unpacking the game container (XCI or NSP)");
+        assert!(text.detail.unwrap().starts_with("prod.keys:"));
+        progress.note_log("diagnostic", "2/5 classify NCAs (content type, title ID)");
+        let text = english(&progress, now);
+        assert_eq!(
+            text.headline,
+            "Identifying the game files (content type, title ID)"
+        );
+        assert_eq!(text.detail, None);
+        assert_eq!(progress.step, Some((2, 5)));
+        // Errors are reported elsewhere, and a finished stage ignores late lines.
+        progress.note_log("error", "something failed");
+        assert_eq!(english(&progress, now).detail, None);
+        progress.step("extract", "complete");
+        progress.note_log("diagnostic", "3/5 title keys");
+        assert_eq!(progress.step, Some((2, 5)));
+        assert_eq!(progress.activity_text(Language::English, now), None);
+    }
+
+    #[test]
+    fn a_quiet_backend_shows_still_working_with_the_last_activity_and_the_time_in_the_stage() {
+        let mut progress = BuildProgress::default();
+        progress.step("extract", "started");
+        let now = Instant::now();
+        progress.note_log("diagnostic", "    recording the SHA-256 of the game files");
+        progress.touch(now);
+        let quiet = SILENCE - Duration::from_secs(1);
+        assert_eq!(
+            english(&progress, now + quiet).headline,
+            "Verifying the game files (SHA-256)"
+        );
+        let text = english(&progress, now + Duration::from_secs(200));
+        assert_eq!(
+            text.headline,
+            "Still working: Verifying the game files (SHA-256) (3:20 in this step)"
+        );
+        progress.touch(now + Duration::from_secs(200));
+        assert_eq!(
+            english(&progress, now + Duration::from_secs(201)).headline,
+            "Verifying the game files (SHA-256)"
+        );
     }
 
     #[test]

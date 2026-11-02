@@ -3,10 +3,12 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import uuid
 
 from scripts.recomp import portable_build as build
@@ -153,13 +155,28 @@ def extract_game(base, prod_keys, work, hactool, *, update=None, title_keys=None
     for flag, value in (("--update", update), ("--title-keys", title_keys), ("--icons", icons)):
         if value:
             command += [flag, str(value)]
-    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
-    for line in result.stdout.splitlines():
-        if progress:
-            progress(line)
-    if result.returncode:
+    # Lines are forwarded while the tool runs, so the installer shows each sub-step and the progress as they happen.
+    process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, encoding="utf-8", errors="replace")
+    errors = []
+    reader = threading.Thread(target=lambda: errors.extend(process.stderr), daemon=True)
+    reader.start()
+    try:
+        for line in process.stdout:
+            if progress:
+                progress(line.rstrip("\r\n"))
+        code = process.wait()
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        reader.join(timeout=5)
+        process.stdout.close()
+        process.stderr.close()
+    if code:
         # The tool prints only its own messages, never hactool output.
-        message = next((line[7:] for line in reversed(result.stderr.splitlines()) if line.startswith("ERROR: ")), "")
+        message = next((line[7:].rstrip() for line in reversed(errors) if line.startswith("ERROR: ")), "")
         raise ValueError(message or "Native extraction failed; check the selected dump, update and keys.")
     return Path(work) / "manifest.json"
 
@@ -226,11 +243,18 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
             raise
         emit("step", id=name, status="complete")
         return result
+    def extract_line(text):
+        # The tool's permille counter becomes progress; every other line stays in the log.
+        counter = re.fullmatch(r"extract progress (\d+)", text.strip())
+        if counter:
+            emit("progress", id="extract", completed=int(counter.group(1)), total=1000)
+        else:
+            emit("log", level="diagnostic", message=text)
     try:
         stage("extract", lambda: extract_game(
             args.base, args.prod_keys, work, bundles["hactool"] / "hactool.exe",
             update=args.update, title_keys=getattr(args, "title_keys", None),
-            progress=lambda text: emit("log", level="diagnostic", message=text), icons=icons))
+            progress=extract_line, icons=icons))
         def verify_exefs():
             nonlocal exefs, output, app_output
             build.modules(work / "exefs")

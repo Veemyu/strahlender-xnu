@@ -1,5 +1,6 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod activity;
 mod app;
 mod backend;
 mod bundle;

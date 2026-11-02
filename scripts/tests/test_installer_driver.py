@@ -1041,6 +1041,47 @@ class InstallerDriverTests(unittest.TestCase):
         error = [event for event in map(json.loads, output.getvalue().splitlines()) if event["event"] == "error"][0]
         self.assertEqual(error["message"], "Build step failed: extract\n" + message)
 
+    def test_shader_counter_has_a_real_number_in_every_phase(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Path(temporary) / "cache"
+            libraries = cache / "shaders-bin-macosx"
+            (cache / "shaders").mkdir(parents=True)
+            libraries.mkdir()
+            self.assertIsNone(driver._shader_progress(cache, libraries, "prepare"))
+            self.assertIsNone(driver._shader_progress(cache, libraries, "translate"))
+            for name in ("v_1", "v_2", "f_3", "f_4"):
+                (cache / "shaders" / (name + ".metal")).write_text("x")
+            (libraries / "v_1.metallib").write_text("x")  # left by an earlier run
+            # Translating: the written files are counted, the old library does not make it look compiled.
+            self.assertEqual(driver._shader_progress(cache, libraries, "translate"), (4, 0))
+            self.assertEqual(driver._shader_progress(cache, libraries, "compile"), (1, 4))
+            (libraries / "f_4.metallib").write_text("x")
+            self.assertEqual(driver._shader_progress(cache, libraries, "compile"), (2, 4))
+
+    def test_shader_stage_follows_the_phase_lines_of_the_bootstrap(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(root=temporary, work=temporary, target="macos")
+            cache = Path(temporary) / "cache"
+            seen = []
+
+            def run(_command, _args, stage, progress, **options):
+                self.assertEqual(stage, "shaders")
+                (cache / "shaders").mkdir(parents=True)
+                seen.append(progress(stage))  # reading the programs: nothing to count
+                options["on_line"]("shaders: translating")
+                (cache / "shaders/v_1.metal").write_text("x")
+                seen.append(progress(stage))
+                options["on_line"]("shaders: 1 distinct shaders from 1 programs (0 use global memory and compile at run time)")
+                options["on_line"]("shaders: compiling the Metal libraries for macosx")
+                seen.append(progress(stage))
+                return 0
+
+            output = io.StringIO()
+            with patch.dict(os.environ, {"BDSP_SHADER_CACHE_DIR": str(cache)}), patch.object(driver, "_run_command", side_effect=run), \
+                    contextlib.redirect_stdout(output):
+                driver._prepare_shaders(args, "macosx")
+            self.assertEqual(seen, [None, (1, 0), (0, 1)])
+
 
 if __name__ == "__main__":
     unittest.main()

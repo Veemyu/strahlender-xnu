@@ -144,7 +144,7 @@ def _safe_line(line, args):
     return replace_path(line, _login_home(), "~").rstrip()
 
 
-def _run_command(command, args, stage, progress=None, phase_from_line=None, extra_env=None, emit_steps=True):
+def _run_command(command, args, stage, progress=None, phase_from_line=None, extra_env=None, emit_steps=True, on_line=None):
     args.command_failure_hint = None
     active = stage
     stage_started = time.monotonic()
@@ -196,6 +196,8 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
             elif line:
                 message = _safe_line(line, args)
                 if message:
+                    if on_line:
+                        on_line(message)
                     scan = re.fullmatch(r"Firmware NCA scan: (\d+)/(\d+)", message)
                     if scan and active == "firmware":
                         emit("progress", id="firmware", completed=int(scan.group(1)), total=int(scan.group(2)))
@@ -273,6 +275,18 @@ def _compile_count(work, target, recomp_dir=None, not_before_ns=None):
     return min(sum(1 for _ in obj.glob("*.o")), total), total
 
 
+def _shader_progress(cache, libraries, phase):
+    """(completed, total) of the shader preparation. Translating writes <cache>/shaders/{v,f}_*.metal and its total is unknown
+    (identical programs share a file), so only the count is reported. Compiling turns each of them into a .metallib."""
+    written = sum(1 for _ in (Path(cache) / "shaders").glob("[vf]_*.metal"))
+    if phase == "translate":
+        return (written, 0) if written else None
+    if phase == "compile" and written:
+        done = sum(1 for _ in Path(libraries).glob("[vf]_*.metallib")) if Path(libraries).is_dir() else 0
+        return min(done, written), written
+    return None
+
+
 def _prepare_shaders(args, sdk):
     """Prebuilt Metal libraries for the game's own shaders (scripts/shader_bootstrap.py), so the first start does not compile them
     while the game runs. Never fails the build: without them the game compiles shaders at run time, as before."""
@@ -281,14 +295,19 @@ def _prepare_shaders(args, sdk):
     cache = Path(os.environ.get("BDSP_SHADER_CACHE_DIR") or Path(args.work) / "recomp/cache")
     libraries = cache / ("shaders-bin-" + sdk)
 
-    def counted(_phase):
-        total = sum(1 for _ in (cache / "shaders").glob("[vf]_*.metal"))
-        done = sum(1 for _ in libraries.glob("[vf]_*.metallib")) if libraries.is_dir() else 0
-        return (min(done, total), total) if total else None
+    phase = {"name": "prepare"}
+
+    def follow(message):
+        for marker, name in (("shaders: translating", "translate"), ("shaders: compiling the Metal libraries", "compile")):
+            if message.startswith(marker):
+                phase["name"] = name
+
+    def counted(_stage):
+        return _shader_progress(cache, libraries, phase["name"])
 
     emit("step", id="shaders", status="started")
     code = _run_command([sys.executable, str(Path(args.root) / "scripts/shader_bootstrap.py"), "--sdk", sdk,
-                         "--work", str(args.work), "--cache", str(cache)], args, "shaders", counted, emit_steps=False)
+                         "--work", str(args.work), "--cache", str(cache)], args, "shaders", counted, emit_steps=False, on_line=follow)
     if code:
         emit("log", level="warning", message="Shader libraries were not prepared; the game compiles its shaders while it runs.")
     emit("step", id="shaders", status="complete" if code == 0 else "skipped")
