@@ -1250,7 +1250,7 @@ static void tick(double dt) {
     G.animating = anim;
 }
 
-const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float off[2]) {
+static const LytScene *scene_inner(double dt, int tw, int th, float *scale, float off[2]) {
     LOCK();
     if (!G.active && !G.closing) { pthread_mutex_unlock(&G.lock); return NULL; }
     tick(dt);
@@ -1260,8 +1260,8 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     Screen *s = cur();
     float sc = fminf((float)tw / SWKBD_CANVAS_W, (float)th / SWKBD_CANVAS_H);
     G.scale = sc; G.tw = tw; G.th = th;
-    G.off[0] = (tw - SWKBD_CANVAS_W * sc) / 2;
-    G.off[1] = (th - SWKBD_CANVAS_H * sc) / 2;
+    G.off[0] = (tw - SWKBD_CANVAS_W * sc) / 2;   // wider than 16:9: centered, narrower: the keyboard sits at the bottom edge
+    G.off[1] = th - SWKBD_CANVAS_H * sc;
     *scale = sc; off[0] = G.off[0]; off[1] = G.off[1];
     if (G.native_input) {
         G.scene.n = 0;
@@ -1373,6 +1373,24 @@ const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float of
     }
     if (trace_on() && ((int)(G.clock * 2) != (int)((G.clock - dt) * 2))) fprintf(stderr, "[swkbd_ui] items %d\n", G.scene.n);
     return &G.scene;
+}
+
+// The screens are laid out for 1280x720. On another aspect ratio the panes that touch the canvas edge (dimming mask, text area and keyboard
+// base) reach out to the window edge, so the keyboard keeps its proportions and the blur and dimming cover the whole picture.
+const LytScene *swkbd_ui_scene(double dt, int tw, int th, float *scale, float off[2]) {
+    const LytScene *sc = scene_inner(dt, tw, th, scale, off);
+    if (!sc) return NULL;
+    float ex = off[0] / *scale, ey_top = off[1] / *scale, ey_bottom = (th - off[1]) / *scale - SWKBD_CANVAS_H;
+    if (ex < 0.5f && ey_top < 0.5f) return sc;
+    for (int i = 0; i < G.scene.n; i++) {
+        LytItem *it = &G.scene.items[i];
+        if (it->type != LYT_ITEM_QUAD) continue;
+        for (int k = 0; k < 4; k++) {
+            if (it->x[k] <= 0.5f) it->x[k] -= ex; else if (it->x[k] >= SWKBD_CANVAS_W - 0.5f) it->x[k] += ex;
+            if (it->y[k] <= 0.5f) it->y[k] -= ey_top; else if (it->y[k] >= SWKBD_CANVAS_H - 0.5f) it->y[k] += ey_bottom;
+        }
+    }
+    return sc;
 }
 
 void swkbd_ui_unlock(void) { pthread_mutex_unlock(&G.lock); }
