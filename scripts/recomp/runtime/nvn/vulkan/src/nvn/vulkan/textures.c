@@ -9,6 +9,7 @@
 
 #include "vk.h"
 #include "../astc.h"
+#include "../bctc.h"
 #include "../renderer.h"
 #include "../texpatch.h"
 
@@ -163,6 +164,19 @@ static bool format_supports(VkFormat f, VkFormatFeatureFlags want) {
     return (p.optimalTilingFeatures & want) == want;
 }
 
+// What a BC texture becomes on a GPU without BC support (Mali, Adreno; same conversion as the Metal path, bctc.c).
+static VkFormat bc_substitute(int kind) {
+    switch (kind) {
+    case BCTC_ASTC: return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+    case BCTC_ASTC_SRGB: return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
+    case BCTC_R8: return VK_FORMAT_R8_UNORM;
+    case BCTC_R8S: return VK_FORMAT_R8_SNORM;
+    case BCTC_RG8: return VK_FORMAT_R8G8_UNORM;
+    case BCTC_RG8S: return VK_FORMAT_R8G8_SNORM;
+    default: return VK_FORMAT_UNDEFINED;
+    }
+}
+
 // ================================================================== output resolution / per-frame clears
 // Same rules as metal.m (see the comments there).
 static float g_rs_x = 1, g_rs_y = 1;
@@ -295,14 +309,26 @@ static void create_image(NvnTexture *t, TexBackend *b) {
     VkFormat vf = mf.vf;
     VkFormatFeatureFlags need = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
     b->astc_bw = b->astc_bh = 0;
-    if (!format_supports(vf, need)) {
+    b->bc_kind = 0;
+    // BC without GPU support: converted while uploading (bctc.c). BDSP_TEST_NO_BC=1 forces this on a GPU that has BC
+    // (same switch as the Metal path), as long as the converted format is supported.
+    const FormatInfo *fi = t->layout.fmt;
+    int bckind = t->target == 2 ? BCTC_NONE : bctc_kind(t->format);  // (no 3D images: 3D ASTC is optional)
+    VkFormat bcf = bc_substitute(bckind);
+    bool bc_usable = fi && bcf != VK_FORMAT_UNDEFINED && format_supports(bcf, need);
+    bool bc_native = format_supports(vf, need);
+    if (!bc_native || (bc_usable && getenv("BDSP_TEST_NO_BC") && bckind != BCTC_NONE)) {
         bool astc = vf >= VK_FORMAT_ASTC_4x4_UNORM_BLOCK && vf <= VK_FORMAT_ASTC_12x12_SRGB_BLOCK;
-        const FormatInfo *fi = t->layout.fmt;
         if (astc && fi && fi->bpb == 16) {  // desktop GPUs: decoded on the CPU into an RGBA8 image of the same colour space
             b->astc_bw = fi->bw;
             b->astc_bh = fi->bh;
             b->astc_srgb = t->format >= 0x87;
             vf = b->astc_srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+        } else if (bc_usable) {
+            static int nlog;
+            if (nlog++ == 0) LOG("[vk] BC textures are converted while uploading (bctc.c)\n");
+            b->bc_kind = (uint8_t)bckind;
+            vf = bcf;
         } else {
             static int nlog;
             if (nlog++ < 20) LOG("[vk] format %d (nvn %#x) not supported: RGBA8 instead\n", vf, t->format);
@@ -540,7 +566,7 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     if (b->tp > 0) b->tp_gen = texpatch_generation();
     b->data_hash = h;
     b->uploaded = true;
-    if (b->format != mf.vf && !b->astc_bw) return;  // unsupported format: nothing sensible to copy
+    if (b->format != mf.vf && !b->astc_bw && !b->bc_kind) return;  // unsupported format: nothing sensible to copy
     VkCommandBuffer cb = vk_upload_cmd();
     uint32_t layers = t->layout.layers ? t->layout.layers : 1;
     if (layers > b->layers && b->depth == 1) layers = b->layers;
@@ -560,6 +586,26 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
                 astc_decode_ldr(blocks, l.w, l.h, b->astc_bw, b->astc_bh, b->astc_srgb, s.ptr);
                 free(blocks);
                 VkBufferImageCopy rg = {.bufferOffset = s.off, .bufferRowLength = l.w, .bufferImageHeight = l.h,
+                                        .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, lv, layer, 1},
+                                        .imageExtent = {l.w < level_w(b, lv) ? l.w : level_w(b, lv), l.h < level_h(b, lv) ? l.h : level_h(b, lv), 1}};
+                vk_dl_note_upload((void *)b->image, rg.imageExtent.width, rg.imageExtent.height, rg.imageSubresource.mipLevel);
+                vkCmdCopyBufferToImage(cb, s.buf, b->image, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
+                continue;
+            }
+            if (b->bc_kind) {  // BC blocks -> ASTC 4x4 / R8 / RG8 texels for a GPU without BC
+                uint32_t bc_row = l.wb * fi->bpb;
+                const uint8_t *src = (const uint8_t *)(uintptr_t)t->addr + layer * layer_size + l.offset;
+                uint8_t *blocks = malloc((uint64_t)bc_row * l.hb * l.d);
+                if (linear) for (uint32_t y = 0; y < l.hb; y++) memcpy(blocks + (uint64_t)y * bc_row, src + (uint64_t)y * t->stride, bc_row);
+                else tegra_deswizzle(src, blocks, l.wb, l.hb, l.d, fi->bpb, l.block_height_log2, l.block_depth_log2);
+                if (b->tp > 0 && layer == 0) texpatch_apply(b->tp - 1, lv, blocks, l.w, l.h, bc_row);
+                uint32_t out_row, out_rows;
+                uint8_t *conv = bctc_convert(t->format, blocks, l.wb, l.hb, l.d, &out_row, &out_rows);
+                free(blocks);
+                VkSpan s = vk_transient((uint64_t)out_row * out_rows * l.d, 16);
+                memcpy(s.ptr, conv, (uint64_t)out_row * out_rows * l.d);
+                free(conv);
+                VkBufferImageCopy rg = {.bufferOffset = s.off, .bufferRowLength = l.wb * fi->bw, .bufferImageHeight = l.hb * fi->bh,
                                         .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, lv, layer, 1},
                                         .imageExtent = {l.w < level_w(b, lv) ? l.w : level_w(b, lv), l.h < level_h(b, lv) ? l.h : level_h(b, lv), 1}};
                 vk_dl_note_upload((void *)b->image, rg.imageExtent.width, rg.imageExtent.height, rg.imageSubresource.mipLevel);

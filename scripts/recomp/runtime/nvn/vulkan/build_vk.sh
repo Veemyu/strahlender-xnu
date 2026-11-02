@@ -50,7 +50,7 @@ build() {  # Quelle Objekt [Zusatzflags]
   fi
 }
 O=$RT/nvnvk
-for f in objects cmdbuf formats tegra astc; do build "$SRC/nvn/$f.c" "$O/$f.o" "$@"; done
+for f in objects cmdbuf formats tegra astc bctc; do build "$SRC/nvn/$f.c" "$O/$f.o" "$@"; done
 build "$SRC/nvn/maxwell/translate.c" "$O/translate.o" "$@"
 for f in device exec shaders textures; do build "$SRC/nvn/vulkan/$f.c" "$O/vk_$f.o" "$@"; done
 build "$SRC/nvn/vulkan/vma.cpp" "$O/vk_vma.o" "$@"
