@@ -153,6 +153,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				BDSP_RT_DIR = "ios-rt-a";
+				BDSP_FFMPEG_DIR = "$(SRCROOT)/../../../../work/ios/ffmpeg-ios";
 				BDSP_RES_DIR = "$(SRCROOT)/../../../../work/ios/res";
 				CLANG_ENABLE_OBJC_ARC = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
@@ -169,6 +170,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				BDSP_RT_DIR = "ios-rt-a";
+				BDSP_FFMPEG_DIR = "$(SRCROOT)/../../../../work/ios/ffmpeg-ios";
 				BDSP_RES_DIR = "$(SRCROOT)/../../../../work/ios/res";
 				CLANG_ENABLE_OBJC_ARC = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
@@ -203,7 +205,7 @@
 					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libgame.a\"",
 					"-force_load",
 					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libbdsp_rt.a\"",
-					"-L\"$(SRCROOT)/../../../../work/ios/ffmpeg-ios/lib\"",
+					"-L\"$(BDSP_FFMPEG_DIR)/lib\"",
 					"-lavformat",
 					"-lavcodec",
 					"-lavutil",
@@ -258,7 +260,7 @@
 					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libgame.a\"",
 					"-force_load",
 					"\"$(SRCROOT)/../../../../work/recomp/$(BDSP_RT_DIR)/libbdsp_rt.a\"",
-					"-L\"$(SRCROOT)/../../../../work/ios/ffmpeg-ios/lib\"",
+					"-L\"$(BDSP_FFMPEG_DIR)/lib\"",
 					"-lavformat",
 					"-lavcodec",
 					"-lavutil",

@@ -85,7 +85,7 @@ case "${1:-}" in
     cp work/exefs/main.npdm "$RES/main.npdm"
     device
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release -destination "id=$UDID" \
-      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates BDSP_RT_DIR="$(basename "$RT")" OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/logs/ios-recomp-xcodebuild.log 2>&1 \
+      -derivedDataPath "$DD" ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} -allowProvisioningUpdates BDSP_RT_DIR="$(basename "$RT")" BDSP_FFMPEG_DIR="$(python3 scripts/install/ffmpeg_cache.py dir)" OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' build > work/builds/logs/ios-recomp-xcodebuild.log 2>&1 \
       || { tail -n 30 work/builds/logs/ios-recomp-xcodebuild.log >&2; exit 4; }
     echo "built:$(find "$DD/Build/Products" -maxdepth 2 -name 'BDSP.app' | head -1)"
     # The Xcode build phase puts the shader cache, metallibs and pipelines.bin into the bundle (app/copy_bundle_resources.sh)

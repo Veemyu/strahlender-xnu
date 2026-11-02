@@ -326,7 +326,11 @@ entitlement: SVC 0x32/0x33 were called 344/135 times in the run, without
 errors.
 
 The iOS FFmpeg build used FFmpeg 9.0.2 fetched from ffmpeg.org into
-`work/ios`. It enabled native software VP8/VP9 decoders, parsers,
+`work/ios`; the static libraries go to `work/ios/ffmpeg-ios`, or to
+`$BDSP_IOS_FFMPEG_DIR` (the installer sets `<data dir>/ios-ffmpeg`, so a new
+build workspace reuses them). A stamp inside the folder (source checksum, SDK,
+compiler, script) decides reuse; a mismatch rebuilds into a temporary sibling
+folder and renames it. It enabled native software VP8/VP9 decoders, parsers,
 Matroska/WebM demuxing, and the file protocol, but not swscale: runtime code
 gave YUV to the guest and the guest shader converted it. VideoToolbox could
 not decode VP8. At 720p/30, playback had no dropped frames; the film ran at

@@ -30,7 +30,8 @@ RT=${BDSP_IOS_RT_DIR:-work/recomp/ios-rt-a}
 SDKP=$(xcrun --sdk iphoneos --show-sdk-path)
 CCFLAGS=(-target arm64-apple-ios17.0 -isysroot "$SDKP" -DBDSP_IOS); MCC=/usr/bin/clang
 NVINC=(-I scripts/recomp/ios/shim -I "$NVN32" -I "$NVN32/nvn" "${BASEINC[@]}")
-FFINC=(); [ ! -d work/ios/ffmpeg-ios/include ] || FFINC=(-I work/ios/ffmpeg-ios/include)
+FFDIR=$(python3 scripts/install/ffmpeg_cache.py dir)
+FFINC=(); [ ! -d "$FFDIR/include" ] || FFINC=(-I "$FFDIR/include")
 [ -z "${BDSP_SYNTAX_ONLY:-}" ] || RT=$(mktemp -d)
 mkdir -p "$RT/nvn"
 HAS_SUBSDK1=0

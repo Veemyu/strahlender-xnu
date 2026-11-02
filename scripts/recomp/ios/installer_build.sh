@@ -10,6 +10,7 @@ export MODEL=a ORG=0x800000000
 export GEN="$R/gen" IMG="$R/img" OBJ="$R/obj"
 export BDSP_EXEFS_DIR=${BDSP_EXEFS_DIR:-$ROOT/work/exefs}
 export NVN_SRC="$R/nvn-base" BDSP_IOS_NVN_DIR="$R/nvn-ios" BDSP_IOS_RT_DIR="$R/rt"
+export BDSP_IOS_FFMPEG_DIR=$(python3 scripts/install/ffmpeg_cache.py dir)   # set by the installer, else work/ios/ffmpeg-ios
 mkdir -p "$R"
 run_script() {
   local script="$1" source; shift
@@ -25,7 +26,7 @@ gen_hash() {
 }
 case "${1:-}" in
   tools)
-    if [ -f work/ios/ffmpeg-ios/lib/libavformat.a ] && [ -f work/ios/ffmpeg-ios/lib/libavcodec.a ] && [ -f work/ios/ffmpeg-ios/lib/libavutil.a ]; then
+    if scripts/recomp/ios/build_ffmpeg_ios.sh --check > /dev/null 2>&1; then
       echo "iPhone/iPad movie libraries are ready."
     else
       echo "Preparing native iPhone/iPad movie libraries (FFmpeg, LGPL). No system packages are changed."
@@ -44,7 +45,7 @@ case "${1:-}" in
   images) run_script scripts/recomp/ios/gen32.sh img ;;
   runtime)
     for library in avformat avcodec avutil; do
-      [ -f "work/ios/ffmpeg-ios/lib/lib${library}.a" ] || { echo "iOS FFmpeg libraries are missing; prepare scripts/recomp/ios/build_ffmpeg_ios.sh first." >&2; exit 10; }
+      [ -f "$BDSP_IOS_FFMPEG_DIR/lib/lib${library}.a" ] || { echo "iOS FFmpeg libraries are missing; prepare scripts/recomp/ios/build_ffmpeg_ios.sh first." >&2; exit 10; }
     done
     run_script scripts/recomp/ios/build_rt32.sh ios
     libtool -static -o "$R/rt/libgame.a" "$OBJ"/*.o 2>/dev/null ;;
@@ -93,7 +94,7 @@ case "${1:-}" in
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release \
       -destination "$DESTINATION" -derivedDataPath "$R/derived" \
       "${XCODE_SIGNING[@]}" PRODUCT_BUNDLE_IDENTIFIER="$BDSP_IOS_BUNDLE_ID" \
-      BDSP_RT_DIR="${R#"$ROOT/work/recomp/"}/rt" BDSP_RES_DIR="$R/res" \
+      BDSP_RT_DIR="${R#"$ROOT/work/recomp/"}/rt" BDSP_FFMPEG_DIR="$BDSP_IOS_FFMPEG_DIR" BDSP_RES_DIR="$R/res" \
       OTHER_LDFLAGS='$(inherited) -framework CoreText -framework AudioToolbox -framework AVFAudio' \
       build > "$R/xcodebuild.log" 2>&1 \
       || { tail -n 35 "$R/xcodebuild.log" >&2; exit 4; }

@@ -18,10 +18,11 @@ import traceback
 from pathlib import Path
 
 if __package__:
-    from . import filesystem
+    from . import ffmpeg_cache, filesystem
     from .progress import GeneratorProgress
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import ffmpeg_cache
     import filesystem
     from progress import GeneratorProgress
 
@@ -404,7 +405,7 @@ def check_build_dependencies(args):
                 items.append({"name": "iPhoneOS Metal compiler for recorded shaders", "ok": metal.returncode == 0,
                               "level": "missing", "detail": "",
                               "hint": "Install Apple's Metal compiler before building: xcodebuild -downloadComponent MetalToolchain"})
-            libraries = Path(args.root) / "work/ios/ffmpeg-ios/lib"
+            libraries = ffmpeg_cache.ffmpeg_dir(args.root) / "lib"
             items.append({"name": "iPhoneOS FFmpeg static libraries",
                           "ok": True, "level": "note", "detail": "",
                           "hint": "The tools stage prepares native iPhoneOS movie libraries from pinned, checksum-verified FFmpeg source when missing."})
