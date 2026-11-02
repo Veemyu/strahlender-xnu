@@ -18,6 +18,13 @@ supported, how to install a mod on each platform, and what is not supported yet.
 A mod that changes only data (text, models, textures, movies, master data) can work with its RomFS alone. A mod that also patches the code
 (Luminescent Platinum does: 155 instruction patches in `main` that branch into an added `subsdk1`) is only partly there without its ExeFS.
 
+## Mods and other aspect ratios
+
+The aspect ratio and widescreen fixes (`docs/rendering.md`) are built into every app, not a mod, and work together with mods. A mod that replaces
+a UI file the fix also changes (Luminescent Platinum: `Data/resources.assets`, `uiresidentwindow`) gets the same fix made from its own files
+(`romfs-patch-mods/<mod>`) when the installer builds its app. A RomFS-only mod copied by hand into an installed app has none of that: its replaced
+UI files show gaps on other aspect ratios (16:9 is unaffected).
+
 ## Installing a mod
 
 Copy the folder that holds `romfs/` (and `exefs/`) into the app's mods folder. The app finds it up to four levels down, so an unpacked

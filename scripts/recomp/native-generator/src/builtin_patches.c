@@ -5,7 +5,11 @@
  *
  * Display size: the game takes its screen size from a few constants (see the sites below). Each constant load is replaced by a call
  * to a tiny stub that reads the size from a slot in the module image; the runtime writes the slot before the guest starts, so the
- * resolution and aspect ratio change without recompiling. A slot value of 0 keeps the original constant (stock 16:9 behavior). */
+ * resolution and aspect ratio change without recompiling. A slot value of 0 keeps the original constant (stock 16:9 behavior).
+ * Cutscenes: their render texture and the image that shows it follow the same slots (render size, canvas size in UI units).
+ * Canvas: the scaler's match value comes from a slot (height when wider than 16:9, width when narrower: the UI is never cropped).
+ * Camera: the field-of-view wrappers call host functions (registered by the runtime for aspects below 16:9) that keep the 16:9 horizontal view.
+ * The slot block is laid out as AspectSlots in runtime/display_size.c; the SLOT_* offsets below must match it. */
 #include "codegen.h"
 #include <string.h>
 
@@ -34,15 +38,15 @@ static uint32_t ldr_w_literal(unsigned rt, uint32_t from, uint32_t to) { return 
 static uint32_t cbnz_w(unsigned rt, int words) { return 0x35000000u | (((unsigned)words & 0x7ffffu) << 5) | rt; }
 static uint32_t ldr_s_literal(unsigned rt, uint32_t from, uint32_t to) { return 0x1c000000u | ((((to - from) >> 2) & 0x7ffffu) << 5) | rt; }
 static uint32_t ldr_x_literal(unsigned rt, uint32_t from, uint32_t to) { return 0x58000000u | ((((to - from) >> 2) & 0x7ffffu) << 5) | rt; }
+static uint32_t cbz_w(unsigned rt, int words) { return 0x34000000u | (((unsigned)words & 0x7ffffu) << 5) | rt; }
 static uint32_t cbz_x(unsigned rt, int words) { return 0xb4000000u | (((unsigned)words & 0x7ffffu) << 5) | rt; }
 static uint32_t b_to(uint32_t from, uint32_t to) { return 0x14000000u | ((((int32_t)(to - from)) >> 2) & 0x3ffffff); }
+static uint32_t bl_to(uint32_t from, uint32_t to) { return 0x94000000u | ((((int32_t)(to - from)) >> 2) & 0x3ffffff); }
+#define RET_INSTRUCTION 0xd65f03c0u
 #define BLR_X16 0xd63f0200u
 #define BLR_X1 0xd63f0020u
 #define STR_X30_PRE 0xf81f0ffeu     /* str x30, [sp, #-16]! */
 #define LDR_X30_POST 0xf84107feu    /* ldr x30, [sp], #16 */
-static uint32_t cbz_w(unsigned rt, int words) { return 0x34000000u | (((unsigned)words & 0x7ffffu) << 5) | rt; }
-static uint32_t bl_to(uint32_t from, uint32_t to) { return 0x94000000u | ((((int32_t)(to - from)) >> 2) & 0x3ffffff); }
-#define RET_INSTRUCTION 0xd65f03c0u
 
 typedef struct { uint32_t offset, orig; unsigned reg; uint32_t slot; } Site;
 /* offset: instruction to replace; orig: its encoding (a register move of a constant); the stub loads the slot into reg instead. */

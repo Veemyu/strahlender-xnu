@@ -245,6 +245,39 @@ static void write_dir(RDir *d) {
     for (int i = 0; i < d->ndirs; i++) write_dir(d->dirs[i]);
 }
 
+// Folder of the built-in overlay: files the build derived from the game's own data (UI bundles for any aspect ratio, scripts/recomp/ui_aspect_patch.py).
+// BDSP_ROMFS_PATCH=<folder> ("none": off), else <parent of the romfs folder>/romfs-patch. "" when switched off.
+static void overlay_folder(char *out, size_t n) {
+    const char *env = getenv("BDSP_ROMFS_PATCH");
+    out[0] = 0;
+    if (env && !strcmp(env, "none")) return;
+    if (env && *env) { snprintf(out, n, "%s", env); return; }
+    char parent[1200];   // the sibling of the romfs folder (textually: the folder may be a symlink)
+    snprintf(parent, sizeof parent, "%s", g_romfs_dir);
+    size_t len = strlen(parent);
+    while (len > 1 && parent[len - 1] == '/') parent[--len] = 0;
+    char *slash = strrchr(parent, '/');
+#ifdef _WIN32
+    char *back = strrchr(parent, '\\');
+    if (back && (!slash || back > slash)) slash = back;
+#endif
+    if (slash) *slash = 0;
+    snprintf(out, n, "%s/romfs-patch", slash ? parent : ".");   // (Windows accepts the forward slash)
+}
+
+// Lays the folder over the tree when it exists; `what` names it in the log.
+static void merge_overlay(RDir *root, const char *folder, const char *what, int *total) {
+    if (!folder[0] || access(folder, R_OK) != 0) return;
+    int count = 0;
+    RDir *over = scan(folder, "", NULL, 0, &count);
+    if (!over) return;
+    mod_replaced = mod_added = 0;
+    merge_dir(root, over, 1);
+    *total += mod_added;
+    LOG("[fs] %s %s: %d game files replaced, %d added\n", what, folder, mod_replaced, mod_added);
+    mod_replaced = mod_added = 0;
+}
+
 static void romfs_build_index(void) {
     pthread_mutex_lock(&rom_lock);
     if (rom.tables) { pthread_mutex_unlock(&rom_lock); return; }
@@ -252,37 +285,11 @@ static void romfs_build_index(void) {
     RDir *root = scan(g_romfs_dir, "", NULL, 0, &total);
     if (!root) rt_fatal("RomFS folder %s not readable (BDSP_ROMFS)\n", g_romfs_dir);
     if (!total) rt_fatal("RomFS folder %s holds no files: the game data is missing or empty (BDSP_ROMFS)\n", g_romfs_dir);
-    char patch_dir[1300] = "";   // the built-in overlay's folder ("" when switched off)
-    {   // Built-in overlay: files the build derived from the game's own data (UI bundles for any aspect ratio, scripts/recomp/ui_aspect_patch.py).
-        // BDSP_ROMFS_PATCH=<folder>, else <parent of the romfs folder>/romfs-patch when it exists. Laid over the game first, a mod over both.
-        const char *env = getenv("BDSP_ROMFS_PATCH");
-        if (env && *env) snprintf(patch_dir, sizeof patch_dir, "%s", env);
-        else {   // the sibling of the romfs folder (textually: the folder may be a symlink)
-            char parent[1200];
-            snprintf(parent, sizeof parent, "%s", g_romfs_dir);
-            size_t n = strlen(parent);
-            while (n > 1 && parent[n - 1] == '/') parent[--n] = 0;
-            char *slash = strrchr(parent, '/');
-#ifdef _WIN32
-            char *back = strrchr(parent, '\\');
-            if (back && (!slash || back > slash)) slash = back;
-#endif
-            if (slash) *slash = 0;
-            snprintf(patch_dir, sizeof patch_dir, "%s/romfs-patch", slash ? parent : ".");   // (Windows accepts the forward slash)
-        }
-        if (env && !strcmp(env, "none")) patch_dir[0] = 0;
-        if (patch_dir[0] && access(patch_dir, R_OK) == 0) {
-            int patch_total = 0;
-            RDir *over = scan(patch_dir, "", NULL, 0, &patch_total);
-            if (over) {
-                mod_replaced = mod_added = 0;
-                merge_dir(root, over, 1);
-                total += mod_added;
-                LOG("[fs] built-in overlay %s: %d game files replaced, %d added\n", patch_dir, mod_replaced, mod_added);
-                mod_replaced = mod_added = 0;
-            }
-        }
-    }
+    // Layers, later ones win: the game, the built-in overlay, the mod, and the built-in overlay made from the mod's own files (the mod overrules the
+    // game's overlay for the files it replaces, the build makes the same fix for them: <overlay folder>-mods/<mod name>)
+    char patch_dir[1300];
+    overlay_folder(patch_dir, sizeof patch_dir);
+    merge_overlay(root, patch_dir, "built-in overlay", &total);
     const ModInfo *mod = mods_active();
     if (mod && mod->romfs[0]) {
         int mod_total = 0;
@@ -292,20 +299,9 @@ static void romfs_build_index(void) {
         total += mod_added;
         LOG("[fs] mod \"%s\": %d game files replaced, %d files added (%d files in the mod)%s\n", mod->name, mod_replaced, mod_added,
             mod_total, mod_case ? ", some names matched ignoring case" : "");
-        // The same fix for the files this mod replaces (it overrules the game's overlay for them): <overlay folder>-mods/<mod name>, made by the
-        // build from the mod's own files (ui_aspect_patch.py --romfs <mod romfs>)
-        char mod_patch[1500];
-        snprintf(mod_patch, sizeof mod_patch, "%s-mods/%s", patch_dir[0] ? patch_dir : "", mod->name);
-        if (patch_dir[0] && access(mod_patch, R_OK) == 0) {
-            int mod_patch_total = 0;
-            RDir *fix = scan(mod_patch, "", NULL, 0, &mod_patch_total);
-            if (fix) {
-                mod_replaced = mod_added = 0;
-                merge_dir(root, fix, 1);
-                total += mod_added;
-                LOG("[fs] built-in overlay for mod \"%s\" %s: %d files replaced, %d added\n", mod->name, mod_patch, mod_replaced, mod_added);
-            }
-        }
+        char mod_patch[1500] = "";
+        if (patch_dir[0]) snprintf(mod_patch, sizeof mod_patch, "%s-mods/%s", patch_dir, mod->name);
+        merge_overlay(root, mod_patch, "built-in overlay for the mod", &total);
     }
     nfiles_total = total;
     count_dirs(root);

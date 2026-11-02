@@ -7,12 +7,27 @@
 // A shell without its own settings store (Qt on Linux/Windows) persists the choice in the file named by BDSP_DISPLAY_CONFIG ("aspect=4:3" and
 // "render_height=1080" lines); the environment variables win over the file.
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 
 #include "bdsp.h"
 #include "display_size.h"
 
-#define SLOT_OFFSET 0x2cf6e00u   // builtin_patches.c: SLOT_BASE
+// The slot block in the main module's image (native-generator/src/builtin_patches.c, SLOT_BASE and the SLOT_* offsets): the runtime writes it before
+// the guest starts, the patched guest code reads it. A value of 0 keeps what the game does by itself.
+#define SLOT_OFFSET 0x2cf6e00u
+typedef struct {
+    char magic[8];                 // "BDSPASPC"
+    uint32_t version;
+    uint32_t width, height;        // render size (0: the game's own 1920x1080)
+    uint32_t match_mode;           // 1: use `match` as the canvas scaler's match, 0: the canvas keeps its own
+    float match;                   // 0 = match width, 1 = match height
+    float ui_width, ui_height;     // canvas size in UI units (1280x720 at 16:9)
+    uint32_t reserved;
+    uint64_t fov_set, fov_get;     // guest addresses of the host functions that widen / restore a camera's vertical angle (0: none)
+} AspectSlots;
+_Static_assert(offsetof(AspectSlots, width) == 12 && offsetof(AspectSlots, match_mode) == 20 && offsetof(AspectSlots, ui_height) == 32 &&
+               offsetof(AspectSlots, fov_set) == 40 && offsetof(AspectSlots, fov_get) == 48, "slot layout differs from builtin_patches.c");
 #define CAMERA_GET_ASPECT 0x26a4c90u   // UnityEngine.Camera::get_aspect (il2cpp wrapper of the native getter)
 #define PI_D 3.14159265358979323846
 
@@ -129,20 +144,20 @@ static void fov_get_hook(Cpu *c) { fov_adjust(c, false); }
 bool display_size_set(int w, int h) {
     Module *m = main_module();
     if (!m) return false;
-    uint8_t *slot = G2H8(m->base + SLOT_OFFSET);
-    if (memcmp(slot, "BDSPASPC", 8)) return false;
-    float match = (double)w / h >= 16.0 / 9 ? 1.0f : 0.0f;   // canvas: wider keeps the height scale, narrower the width scale (UI is never cropped)
-    // canvas size in UI units (reference 1280x720): the units the scaler lays out, used for full-screen RawImages
+    AspectSlots *slots = (AspectSlots *)G2H8(m->base + SLOT_OFFSET);
+    if (memcmp(slots->magic, "BDSPASPC", 8)) return false;
     double aspect = (double)w / h;
-    float ui_w = aspect >= 16.0 / 9 ? (float)(720 * aspect) : 1280.0f, ui_h = aspect >= 16.0 / 9 ? 720.0f : (float)(1280 / aspect);
-    uint32_t v[6] = {(uint32_t)w, (uint32_t)h, 1, 0, 0, 0};
-    memcpy(&v[3], &match, sizeof match);
-    memcpy(&v[4], &ui_w, sizeof ui_w);
-    memcpy(&v[5], &ui_h, sizeof ui_h);
-    memcpy(slot + 12, v, sizeof v);
-    uint64_t fov[2] = {0, 0};   // only for screens narrower than 16:9; elsewhere the wrappers skip the hook
-    if (aspect < 16.0 / 9 - 0.005) { fov[0] = hle_register("<bdsp fov set>", fov_set_hook); fov[1] = hle_register("<bdsp fov get>", fov_get_hook); }
-    memcpy(slot + 40, fov, sizeof fov);
+    bool wide = aspect >= 16.0 / 9;
+    slots->width = (uint32_t)w;
+    slots->height = (uint32_t)h;
+    slots->match_mode = 1;
+    slots->match = wide ? 1.0f : 0.0f;   // wider keeps the height scale, narrower the width scale: the UI is never cropped
+    slots->ui_width = wide ? (float)(720 * aspect) : 1280.0f;
+    slots->ui_height = wide ? 720.0f : (float)(1280 / aspect);
+    if (aspect < 16.0 / 9 - 0.005) {   // only for screens narrower than 16:9; elsewhere the wrappers skip the hook
+        slots->fov_set = hle_register("<bdsp fov set>", fov_set_hook);
+        slots->fov_get = hle_register("<bdsp fov get>", fov_get_hook);
+    }
     return true;
 }
 
