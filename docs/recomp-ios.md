@@ -43,8 +43,9 @@ and glass effects from compiled layered assets. See [icons](recomp-icons.md).
 
 Game data gate (2026-11-02): the runtime thread starts only after the RomFS was verified against `res/expected-library.json`
 (`data_manager.m`, `data_library.m`); missing, empty or half copied data produce a dialog (en, de, es, pt, ru) instead of a start, and
-`StartSelectedRuntime` checks `Data/` once more. An exported IPA never contains game data, so it shows the library dialog until the
-**Game Library** folder is chosen (see `installer/docs/ios-delivery.md`). Not run on a device.
+`StartSelectedRuntime` checks `Data/` once more. **Export IPA** embeds the RomFS in the app (`res/EmbeddedData`, `EmbeddedLibrary` in
+`res/install-data.plist`, read-only, first launch checks all files once); an IPA exported without data (`--ios-export-no-embed`) shows the
+library dialog until the **Game Library** folder is chosen (see `installer/docs/ios-delivery.md`). Not run on a device.
 
 ## Build and deployment
 

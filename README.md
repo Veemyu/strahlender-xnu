@@ -29,7 +29,7 @@ The iPhone is tested on an iPhone 11 Pro Max.
 
 What you need: your own copy of the game (XCI, optionally the update NSP) and your `prod.keys`. Apps for iPhone and iPad are built on a Mac with Xcode and signed with your own Apple ID.
 
-An exported IPA runs only together with its game data: install directly from the installer, or choose the exported **Game Library** folder in the app ([details](installer/docs/ios-delivery.md#an-ipa-alone-does-not-run)).
+**Export IPA** embeds the game data of your own dump in the IPA (about 5 GB), so a sideloading tool such as iloader needs nothing else. That IPA is for your own devices only: never share it. An IPA exported without game data needs its **Game Library** folder ([details](installer/docs/ios-delivery.md#an-ipa-alone-does-not-run)).
 
 ## What is in it
 

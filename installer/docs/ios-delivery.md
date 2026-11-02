@@ -82,6 +82,7 @@ The JSONL build driver adds:
 --ios-delivery device|ipa     # CLI default: device, preserving old callers
 --ios-team TEAM_ID           # development signing team for direct install
 --ios-export-dir DIRECTORY   # required for IPA export; outside the source checkout
+--ios-export-no-embed        # IPA without game data plus a separate Game Library (default: embed)
 --ios-profile-id ID          # reuse the opaque mod identity from an earlier IPA
 --ios-profile-game TITLE_ID  # validate its original game
 --ios-bundle-id BUNDLE_ID    # preserve that IPA's application identity
@@ -96,10 +97,14 @@ exported IPA. Development checkouts remain outside automatic workspace cleanup.
 
 To use an exported build:
 
-1. Import its IPA into SideStore, or into a configured LiveContainer for an
-   explicit compatibility test. The installer does not collect Apple credentials.
-2. Transfer the **Game Library** folder to Files, keeping game data locally
-   available. Select it in the game; each separate app grants its own folder access.
+1. Import its IPA into SideStore, iloader or a similar tool, or into a configured
+   LiveContainer for an explicit compatibility test. The installer does not
+   collect Apple credentials. The default IPA contains your game data and needs
+   no further step (see "Game data inside the IPA").
+2. Only for an export without game data (`--ios-export-no-embed`, "Export without
+   game data" in the build options): transfer the **Game Library** folder to
+   Files, keeping game data locally available. Select it in the game; each
+   separate app grants its own folder access.
 3. After selecting Vanilla or a mod, choose an independent save-backup folder.
    iCloud Drive can be selected through Files without an app-specific cloud service.
 4. Update the installed application in place. Do not delete the app or its
@@ -111,23 +116,70 @@ hosting model rather than a new game package format. See the primary
 [SideStore FAQ](https://docs.sidestore.io/docs/faq) and
 [LiveContainer repository](https://github.com/LiveContainer/LiveContainer).
 
+## Game data inside the IPA
+
+**Export IPA** embeds the RomFS of the user's own dump in the IPA by default, so
+one file runs without a second step. The direct installation on a connected
+device never embeds; it keeps copying the data with `devicectl`. The switch
+`--ios-export-no-embed` (build option "Export without game data") restores the
+earlier export: a small IPA and a separate **Game Library** folder. The default
+needs no new argument, so installers that predate the switch export the new way.
+
+Legal note: the project distributes no game data. The embedded data come from
+your own dump and stay on your machine. The IPA is for your own devices only; do
+not share it. The installer says so in its log and in the export options.
+
+How it works:
+
+- The IPA is built in two steps. `installer_build.sh package` places the data
+  below `res/EmbeddedData/<RomFSDirectory>` of the app (an APFS clone, hard links
+  or copies; no extra disk space on APFS) before the ad hoc signature, so the
+  seal covers the data. A mod adds its `romfs` and `exefs` folders below its
+  `ModDirectory`. Data of an earlier export are removed from the reused app
+  folder first, so no other build ever carries them.
+- The driver (`scripts/install/ipa_pack.py`) writes the IPA once: ZIP64 where the
+  4 GiB limits of the format are passed, embedded files stored without
+  compression, everything else deflated, modes and links kept. The file name
+  carries the SHA-256 of the written bytes (hashed once). It checks the free
+  space before the build and reports `progress` events with `bytes_completed`.
+- `res/install-data.plist` gets `EmbeddedLibrary = true` next to
+  `ExternalLibrary = true`, so the save layout (`Documents/Profiles/...`) is
+  the same as for an export with a Game Library and a later switch keeps the
+  saves. `res/expected-library.json` is the inventory.
+- At launch the app treats `res/EmbeddedData` as a verified library: the first
+  launch checks every file against the inventory (SHA-256) and writes a receipt
+  to `Library/Caches`; later launches compare only metadata. **Game files...
+  > Check game files again** repeats the full check. The runtime only reads the
+  data (RomFS and mod folders are opened read-only; saves, shots and caches
+  live in `Documents`), so the signed bundle is never written.
+
+Measured on the development Mac (APFS) with the real 4.7 GB RomFS of the game:
+IPA 5.30 GB (20,583 files, ZIP64), package step including Xcode link, clone and
+signature about 80 to 90 s, writing and hashing the IPA 29 s, `unzip -t` 33 s,
+extracting 36 s, `codesign --verify --deep --strict` of the extracted app 10 s,
+file tree identical to the RomFS. An app-side full check of the extracted data
+took 5.6 s on the Mac; the time on a phone is not measured.
+
+Not verified: any run on a device. Whether SideStore, iloader, Sideloadly or
+LiveContainer accept a 5.3 GB ZIP64 IPA and re-sign 20,000 files in acceptable
+time and memory, how long the first full check takes on a phone, and the
+free-account limits for an app of this size are open.
+
 ## An IPA alone does not run
 
-An exported IPA never contains game data. Installed with a sideloading tool
-(SideStore, iloader and similar) and nothing else, the app does not start the
+An IPA exported with `--ios-export-no-embed`, or by an installer before this
+change, contains no game data and does not run alone. Installed alone, the app does not start the
 game: it shows **Choose game library** and explains that the game files are
 missing. Choose the **Game Library** folder that the installer exported next to
-the IPA, or install directly from the installer with a connected device, which
-copies the data itself. The dialogs exist in English, German, Spanish,
-Portuguese and Russian and have a Help button that opens this section.
+the IPA, install directly from the installer with a connected device, or export
+the IPA again with the data included. The dialogs exist in English, German,
+Spanish, Portuguese and Russian and have a Help button that opens this section.
 
-The runtime starts only after the data were verified against the inventory
-that is part of the app. Before the slow checksum pass, a quick check names the
+The runtime starts only after the data were verified against the inventory that
+is part of the app. Before the slow checksum pass, a quick check names the
 problem: folder missing, folder empty, files of length 0, or a number of files
-missing. A folder that is verified once is remembered; an interrupted copy
-(files of length 0) is reported instead of being used. If the data still
-disappear later, the runtime stops with a message in its log
-(`RomFS folder ... holds no files`) instead of starting an empty game.
+missing. If the data still disappear later, the runtime stops with a message in
+its log (`RomFS folder ... holds no files`) instead of starting an empty game.
 
 A crash right at launch without this dialog has another cause (for example a
 signing tool that removed the increased-memory-limit entitlement, or an address
@@ -137,26 +189,11 @@ Security, Analytics and Improvements, Analytics Data; or Xcode, Devices and
 Simulators, View Device Logs), device model, iOS version, sideloading tool and
 signing type are needed.
 
-### Game data inside the IPA (experimental idea, not implemented)
-
-An opt-in export switch could embed the RomFS of the user's own dump in the
-IPA, so that one file runs without a second step. It is not built, because it
-is not small: the RomFS is about 4.7 GB in 18,000 files, so the IPA would be
-about 5 GB (ZIP64) and the exporter copies and hashes it several times; free
-account signing tools must re-sign every file and may not handle that size; the
-result could not be checked without a device here. If built, the design is:
-default off, a warning that the IPA is huge, only for the owner's own use and
-contains game data that must not be shared; the exporter copies the library
-layout into `res/EmbeddedData` of the app bundle before signing; the app marks
-it with `EmbeddedLibrary` in `res/install-data.plist` and uses the bundle as the
-library (the same inventory check, no folder picker); saves stay in `Documents`;
-a new additive CLI switch, old installers unaffected. The project distributes no
-game data; such an IPA exists only on the owner's machine.
-
 ## Shared data and stable identities
 
-An IPA contains executable code, module images, icons and localizations. It does
-not contain RomFS, production keys or saves. The data exporter includes only the
+An IPA contains executable code, module images, icons and localizations. It never
+contains production keys or saves. It contains the RomFS only when exported with
+the default embedding (see "Game data inside the IPA"); otherwise it does not. The data exporter includes only the
 selected mod's `romfs` and `exefs` trees; unrelated files in its outer directory
 are not copied. No personal source path appears in the library manifest.
 
@@ -279,6 +316,9 @@ Still required before a compatibility claim:
 
 - Native filesystem tests passed on a physical iPad using a separate temporary
   test app; it was removed afterwards. Repeat on iPhone during device acceptance.
+- Install the default IPA with embedded game data (5.3 GB, ZIP64) through iloader
+  and SideStore on a device: acceptance of the size, re-signing time, the first
+  full data check and a game start from the bundle.
 - Import, refresh and update the IPA through SideStore without changing its ID;
   compare disposable save hashes and actually load the test save afterwards.
 - Repeat under LiveContainer, including container-preserving updates, folder
