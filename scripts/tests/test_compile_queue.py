@@ -16,7 +16,7 @@ class CompileQueueTests(unittest.TestCase):
     def test_levels_share_slots_and_headers_and_flags_invalidate_objects(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder) / "O'Brien build with spaces"
-            for relative in ("scripts/recomp/build_all.sh", "scripts/recomp/test/compile_chunk.sh"):
+            for relative in ("scripts/recomp/build_all.sh", "scripts/recomp/test/compile_chunk.sh", "scripts/recomp/macos_target.sh"):
                 dst = root / relative
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(ROOT / relative, dst)

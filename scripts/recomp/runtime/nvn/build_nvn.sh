@@ -7,6 +7,13 @@ RT=${RT:-work/recomp/runtime}
 SRC=${NVN_SRC:-work/recomp/nvn-src}
 HERE=scripts/recomp/runtime/nvn
 mkdir -p "$RT/nvn"
+. scripts/recomp/macos_target.sh
+TARGET="-mmacosx-version-min=$BDSP_MACOS_MIN"
+# Objects built for another deployment target are discarded
+if [ "$(cat "$RT/nvn/.target" 2>/dev/null || true)" != "$TARGET" ]; then
+  rm -f "$RT"/nvn/*.o
+  echo "$TARGET" > "$RT/nvn/.target"
+fi
 if [ -z "${NVN_KEEP:-}" ]; then
   NVN_SRC="$SRC" "$HERE/prepare.sh" > /dev/null   # copies only when the stamp differs
 fi
@@ -23,7 +30,7 @@ build() {  # Quelle Objekt [Zusatzflags]
   if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ -n "$(find "$SRC" "$HERE/src" \( -name '*.h' -o -name '*.inc' \) -newer "$o" -print -quit)" ]; then
     # Objective-C with the Apple compiler: the Homebrew LLVM generates class stubs that the Apple linker does not resolve
     local cc=clang; case "$f" in *.m) cc=/usr/bin/clang;; esac
-    $cc $BDSP_OPT "$BDSP_PATHMAP" $W "${INC[@]}" "$@" -c "$f" -o "$o"
+    $cc $BDSP_OPT "$BDSP_PATHMAP" $W "${INC[@]}" "$TARGET" "$@" -c "$f" -o "$o"
   fi
 }
 for f in objects cmdbuf formats tegra astc bctc; do build "$SRC/nvn/$f.c" "$RT/nvn/$f.o" "$@"; done

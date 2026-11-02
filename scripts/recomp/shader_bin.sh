@@ -8,6 +8,7 @@
 # Vertex shaders (v_*) with -fpreserve-invariance, like the runtime (MTLCompileOptions.preserveInvariance).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. scripts/recomp/macos_target.sh
 SDK="${1:?Usage: shader_bin.sh <iphoneos|macosx> [source] [target]}"
 SRC="${2:-work/recomp/cache/shaders}"
 OUT="${3:-work/recomp/cache/shaders-bin-$SDK}"
@@ -18,7 +19,7 @@ if ! xcrun -sdk "$SDK" metal --version >/dev/null 2>&1; then
 fi
 case "$SDK" in
   iphoneos) AIR_TARGET=air64-apple-ios17.0 ;;
-  macosx) AIR_TARGET=air64-apple-macos26.0 ;;
+  macosx) AIR_TARGET=air64-apple-macos$BDSP_MACOS_MIN ;;
   *) echo "Unsupported shader SDK: $SDK" >&2; exit 2;;
 esac
 export AIR_TARGET
@@ -38,7 +39,7 @@ one() {
   local flags=()
   [[ "$base" == v_* ]] && flags+=(-fpreserve-invariance)
   # Pin the deployment target, rather than inheriting the newest Xcode OS.
-  # iPhoneOS libraries remain loadable on the app's minimum supported iOS 17.
+  # iPhoneOS libraries remain loadable on the app's minimum supported iOS 17, macOS ones on macos_target.sh's minimum.
   flags+=(-target "$AIR_TARGET")
   if xcrun -sdk "$sdk" metal -c "${flags[@]}" "$src" -o "$tmp/$base.air" 2>"$tmp/$base.err" \
      && xcrun -sdk "$sdk" metallib "$tmp/$base.air" -o "$tmp/$base.metallib" 2>>"$tmp/$base.err"; then

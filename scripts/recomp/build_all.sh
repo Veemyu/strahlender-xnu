@@ -30,7 +30,7 @@ done
 echo "O1: $(wc -l < "$OBJ/list_O1.txt") files, O0: $(wc -l < "$OBJ/list_O0.txt") files, jobs $JOBS"
 # One bounded queue keeps all slots busy across optimization levels.
 # The outer app stage also hashes these inputs; this stamp protects direct CLI use.
-SIGNATURE=$( { cat scripts/recomp/rt/cpu.h scripts/recomp/upstream/runtime/{cpu,simd,simd_fp}.h scripts/recomp/hot_o2.txt scripts/recomp/test/compile_chunk.sh; clang --version; printf '%s\n' "${EXTRA:-}" "${O0_BYTES:-1000000}" "$PWD" "$GEN"; } | shasum -a 256 | cut -d' ' -f1)
+SIGNATURE=$( { cat scripts/recomp/rt/cpu.h scripts/recomp/upstream/runtime/{cpu,simd,simd_fp}.h scripts/recomp/hot_o2.txt scripts/recomp/test/compile_chunk.sh scripts/recomp/macos_target.sh; clang --version; printf '%s\n' "${EXTRA:-}" "${O0_BYTES:-1000000}" "$PWD" "$GEN"; } | shasum -a 256 | cut -d' ' -f1)
 if [ ! -f "$OBJ/.compile-signature" ] || [ "$(cat "$OBJ/.compile-signature")" != "$SIGNATURE" ]; then
   for object in "$OBJ"/*.o "$OBJ"/*.o.o2; do [ ! -f "$object" ] || rm -f "$object"; done
 fi

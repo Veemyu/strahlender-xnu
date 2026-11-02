@@ -17,6 +17,7 @@ def layout(directory):
     (root / "scripts/recomp").mkdir(parents=True)
     (root / "shader_translator").mkdir()
     (root / "scripts/recomp/shader_bin.sh").write_text("bin")
+    (root / "scripts/recomp/macos_target.sh").write_text("BDSP_MACOS_MIN=14.0\n")
     (root / "scripts/shader_extract_blobs.py").write_text("extract")
     for name in boot.TRANSLATOR_SOURCES:
         (root / "shader_translator" / name).write_text(name)
@@ -44,6 +45,8 @@ class ShaderBootstrapTests(unittest.TestCase):
         self.assertNotEqual(first, boot.stamp(root, work, "macosx", "Metal 2"))     # another compiler
         (root / "shader_translator/translate.c").write_text("changed")              # another translator
         self.assertNotEqual(first, boot.stamp(root, work, "macosx", "Metal 1"))
+        (root / "scripts/recomp/macos_target.sh").write_text("BDSP_MACOS_MIN=15.0\n")   # another deployment target
+        self.assertNotEqual(boot.stamp(root, work, "macosx", "Metal 1"), first)
         again = boot.stamp(root, work, "macosx", "Metal 1")
         (work / boot.BUNDLES[0]).write_bytes(b"y" * 11)                             # another game version
         self.assertNotEqual(again, boot.stamp(root, work, "macosx", "Metal 1"))

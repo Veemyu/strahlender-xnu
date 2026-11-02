@@ -60,7 +60,8 @@ def metal_version(sdk):
 
 def stamp(root, work, sdk, metal):
     """Everything the output depends on: the translator, the compile script, the game's shader files and the Metal compiler."""
-    parts = [sdk, metal, (root / "scripts/recomp/shader_bin.sh").read_bytes(), (root / "scripts/shader_extract_blobs.py").read_bytes()]
+    parts = [sdk, metal, (root / "scripts/recomp/shader_bin.sh").read_bytes(), (root / "scripts/recomp/macos_target.sh").read_bytes(),
+             (root / "scripts/shader_extract_blobs.py").read_bytes()]
     parts += [(root / "shader_translator" / name).read_bytes() for name in TRANSLATOR_SOURCES]
     for bundle in BUNDLES:
         path = work / bundle

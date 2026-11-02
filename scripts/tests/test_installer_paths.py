@@ -22,7 +22,7 @@ class InstallerPathTests(unittest.TestCase):
                          "scripts/recomp/native-generator/src/generator.c", "scripts/recomp/hot_o2.txt",
                          "scripts/recomp/rt/cpu.h", "scripts/recomp/upstream/runtime/cpu.h",
                          "scripts/recomp/upstream/runtime/simd.h", "scripts/recomp/upstream/runtime/simd_fp.h",
-                         "scripts/recomp/test/compile_chunk.sh", "scripts/recomp/build_all.sh"):
+                         "scripts/recomp/test/compile_chunk.sh", "scripts/recomp/build_all.sh", "scripts/recomp/macos_target.sh"):
                 file = root / name
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text("synthetic\n")
@@ -91,6 +91,7 @@ venv_pip fixture_native fixture-native==2.1.4
             here.mkdir(parents=True)
             for name in ("build_nvn.sh", "flags.inc.sh"):
                 shutil.copyfile(ROOT / "scripts/recomp/runtime/nvn" / name, here / name)
+            shutil.copyfile(ROOT / "scripts/recomp/macos_target.sh", root / "scripts/recomp/macos_target.sh")
             source = root / "work/native sources"
             (source / "nvn/maxwell").mkdir(parents=True)
             (source / "nvn/path_probe.h").write_text("#define PATH_PROBE 7\n")

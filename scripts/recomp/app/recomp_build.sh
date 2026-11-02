@@ -75,7 +75,7 @@ fi
 
 # ---------- 2 Compile ----------
 H_HOT="$(shasum -a 256 < "$ROOT/scripts/recomp/hot_o2.txt" | cut -c1-16)"   # list of the functions built with -O2
-H_COMPILE="$(cat "$ROOT/scripts/recomp/rt/cpu.h" "$ROOT/scripts/recomp/upstream/runtime/"{cpu,simd,simd_fp}.h "$ROOT/scripts/recomp/test/compile_chunk.sh" "$ROOT/scripts/recomp/build_all.sh" | shasum -a 256 | cut -c1-64)"
+H_COMPILE="$(cat "$ROOT/scripts/recomp/rt/cpu.h" "$ROOT/scripts/recomp/upstream/runtime/"{cpu,simd,simd_fp}.h "$ROOT/scripts/recomp/test/compile_chunk.sh" "$ROOT/scripts/recomp/build_all.sh" "$ROOT/scripts/recomp/macos_target.sh" | shasum -a 256 | cut -c1-64)"
 H_OBJ="$(printf '%s|%s|%s|%s|%s' "$H_GEN" "$O0_BYTES" "$(clang --version | head -n 1)" "$H_HOT" "file-prefix-map-v1:$H_COMPILE:${EXTRA:-}" | shasum -a 256 | cut -c1-64)"
 if [ "$FORCE" -eq 0 ] && [ -d "$OBJ" ] && marker_ok recomp-obj "$H_OBJ"; then
   log "2/6 compile: marker matches ($(ls "$OBJ"/*.o | wc -l | tr -d ' ') objects), skipped"

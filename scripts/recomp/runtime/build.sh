@@ -4,6 +4,9 @@
 # Usage: build.sh [-DMacro ...]      Environment: OBJ=work/recomp/obj4  RT=work/recomp/runtime  OUT=work/recomp/bdsp_boot
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
+# macOS: one deployment target for every object and the link, so the binary's minos is the app's minimum (scripts/recomp/macos_target.sh)
+TARGET=()
+if [ "$(uname -s)" = Darwin ]; then . scripts/recomp/macos_target.sh; TARGET=("-mmacosx-version-min=$BDSP_MACOS_MIN"); fi
 OBJ=${OBJ:-work/recomp/obj4}
 RT=${RT:-work/recomp/runtime}
 OUT=${OUT:-work/recomp/bdsp_boot}
@@ -53,6 +56,11 @@ if [ "$(cat "$RT/.subsdk1" 2>/dev/null || true)" != "$HAS_SUBSDK1" ]; then
   rm -f "$RT"/*.o
   echo "$HAS_SUBSDK1" > "$RT/.subsdk1"
 fi
+# Objects built for another deployment target are discarded (the file is empty or absent on non-macOS)
+if [ "$(cat "$RT/.target" 2>/dev/null || true)" != "${TARGET[*]-}" ]; then
+  rm -f "$RT"/*.o
+  echo "${TARGET[*]-}" > "$RT/.target"
+fi
 rm -f "$RT/nvn_null.o"
 # macOS app (BDSP_APP=1): additionally the shell from app/ (configuration, save, menu, input); objects and output kept separate (RT, OUT)
 if [ -n "${BDSP_APP:-}" ]; then
@@ -65,7 +73,7 @@ for f in "$SRC"/*.c; do
   o="$RT/$(basename "$f" .c).o"
   objs+=("$o")
   if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/bdsp.h" -nt "$o" ] || [ "$SRC/guestmem.h" -nt "$o" ] || [ "$SRC/audio_output.h" -nt "$o" ] || { [ -n "${BDSP_APP:-}" ] && [ "$SRC/app/app.h" -nt "$o" ]; }; then
-    clang -O1 -g "$PATHMAP" -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function $INC $EXTRA "$@" -c "$f" -o "$o"
+    clang -O1 -g "$PATHMAP" -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function $INC $EXTRA ${TARGET[@]+"${TARGET[@]}"} "$@" -c "$f" -o "$o"
   fi
 done
 if [ -n "${BDSP_APP:-}" ]; then
@@ -75,8 +83,8 @@ if [ -n "${BDSP_APP:-}" ]; then
     objs+=("$o")
     if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$SRC/app/app.h" -nt "$o" ] || [ scripts/recomp/app/icon_variants.h -nt "$o" ] || [ scripts/recomp/app/shader_status.h -nt "$o" ]; then
       case "$f" in
-        *.m) /usr/bin/clang -O1 -g "$PATHMAP" -Wall -Wno-unused-parameter -fobjc-arc $INC $(pkg-config --cflags sdl3) -c "$f" -o "$o" ;;
-        *) clang -O1 -g "$PATHMAP" -Wall -Wextra -Wno-unused-parameter $INC -c "$f" -o "$o" ;;
+        *.m) /usr/bin/clang -O1 -g "$PATHMAP" -Wall -Wno-unused-parameter -fobjc-arc $INC $(pkg-config --cflags sdl3) ${TARGET[@]+"${TARGET[@]}"} -c "$f" -o "$o" ;;
+        *) clang -O1 -g "$PATHMAP" -Wall -Wextra -Wno-unused-parameter $INC ${TARGET[@]+"${TARGET[@]}"} -c "$f" -o "$o" ;;
       esac
     fi
   done
@@ -84,7 +92,7 @@ fi
 objs+=(${nvnobjs[@]+"${nvnobjs[@]}"})
 newest=$(ls -t "${objs[@]}" | head -1)
 if [ ! -x "$OUT" ] || [ "$newest" -nt "$OUT" ] || [ -n "$(find "$OBJ" -name '*.o' -newer "$OUT" -print -quit)" ]; then
-  clang -o "$OUT" "${objs[@]}" "$OBJ"/*.o $FW
+  clang ${TARGET[@]+"${TARGET[@]}"} -o "$OUT" "${objs[@]}" "$OBJ"/*.o $FW
   echo "linked: $OUT"
 else
   echo "up to date: $OUT"

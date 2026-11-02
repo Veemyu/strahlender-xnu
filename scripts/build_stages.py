@@ -235,7 +235,7 @@ def stage_hash(stage, root, work, target="all", env=None):
             parts["runtime"] = hash_tree_content(os.path.join(rec, "runtime"), (".c", ".h", ".m", ".sh", ".patch", ".txt"), skip_dirs=skip)
             parts["nvn_stamp"] = nvn_source_stamp(rec)
             parts["app"] = hash_tree_content(os.path.join(rec, "app"), (".sh", ".py", ".h", ".in", ".entitlements"), skip_dirs=("__pycache__",))
-            parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh")
+            parts["build_scripts"] = files("recomp/build_all.sh", "recomp/test/compile_chunk.sh", "recomp/macos_target.sh")
             parts["npdm"] = hash_file(os.path.join(work, "exefs", "main.npdm"))
             parts["icons"] = hash_tree_content(env.get("BDSP_ICON_SOURCE", os.path.join(work, "recomp/icons/source")), (".json", ".png"))
             parts["options"] = env.get("XNU_RECOMP_OPTS", "")

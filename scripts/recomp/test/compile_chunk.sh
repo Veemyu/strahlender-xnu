@@ -3,6 +3,7 @@
 # Usage: compile_chunk.sh <file.c> [output folder]
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
+. scripts/recomp/macos_target.sh
 src=$1
 S=${2:-work/recomp/spike2/obj}
 OPT=${3:-${OPT:--O1}}
@@ -19,7 +20,7 @@ fi
 t0=$(date +%s)
 tmp="$o.tmp.$$"
 trap 'rm -f "$tmp"' EXIT
-/usr/bin/time -l clang ${OPT:--O1} ${EXTRA:-} "-ffile-prefix-map=$PWD=." -fno-strict-aliasing -fvisibility=hidden -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c "$src" -o "$tmp" 2> "$o.time" || { rm -f "$tmp"; echo "ERROR $src"; cat "$o.time"; exit 1; }
+/usr/bin/time -l clang ${OPT:--O1} ${EXTRA:-} -mmacosx-version-min="$BDSP_MACOS_MIN" "-ffile-prefix-map=$PWD=." -fno-strict-aliasing -fvisibility=hidden -w -I scripts/recomp/rt -I scripts/recomp/upstream/runtime -c "$src" -o "$tmp" 2> "$o.time" || { rm -f "$tmp"; echo "ERROR $src"; cat "$o.time"; exit 1; }
 mv "$tmp" "$o"
 t1=$(date +%s)
 rss=$(awk '/maximum resident/ {print int($1/1048576)}' "$o.time")
