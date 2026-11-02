@@ -316,6 +316,41 @@ def parse_sw_vers(text):
     return result
 
 
+def parse_actool_version(text):
+    """Short version from ``actool --version`` (a property list), for example 27.1."""
+    match = re.search(r"<key>short-bundle-version</key>\s*<string>([^<]+)</string>", text or "")
+    if not match:
+        raise _Unavailable("version not found in the output")
+    return match.group(1).strip()
+
+
+def parse_pkg_version(text):
+    """The ``version:`` row of ``pkgutil --pkg-info``."""
+    return parse_sw_vers(text).get("version", "")
+
+
+def parse_devicectl(text):
+    """Connected-device facts from ``devicectl list devices`` JSON: model, iOS version and state only, never a name or an ID."""
+    try:
+        devices = json.loads(text).get("result", {}).get("devices", [])
+    except (ValueError, AttributeError) as exc:
+        raise _Unavailable("unparsable output: %s" % exc.__class__.__name__)
+    found = []
+    for device in devices if isinstance(devices, list) else []:
+        hardware = device.get("hardwareProperties") or {}
+        if hardware.get("platform") != "iOS" or hardware.get("reality") == "simulated":
+            continue
+        model = hardware.get("marketingName") or hardware.get("productType") or "unknown model"
+        if hardware.get("productType") and hardware.get("productType") not in model:
+            model += " (%s)" % hardware["productType"]
+        found.append({
+            "model": model,
+            "os": (device.get("deviceProperties") or {}).get("osVersionNumber") or "unknown",
+            "state": (device.get("connectionProperties") or {}).get("tunnelState") or "unknown",
+        })
+    return found
+
+
 def parse_vm_stat(text):
     """Return approximate reclaimable memory in bytes (free + inactive + speculative)."""
     match = re.search(r"page size of (\d+) bytes", text or "")
@@ -940,16 +975,106 @@ def _mac_xcode(ctx):
     return lines
 
 
+def _mac_developer_dir(ctx):
+    return "DEVELOPER_DIR: %s" % (ctx.env.get("DEVELOPER_DIR") or "unset")
+
+
+def _has_dev_tools(ctx):
+    """The developer tools are installed; xcrun, clang and git are shims that open an install dialog otherwise."""
+    if "dev_tools" not in ctx.cache:
+        ctx.cache["dev_tools"] = ctx.try_cmd(["xcode-select", "-p"])[0]
+    return ctx.cache["dev_tools"]
+
+
+def _mac_dev_tools(ctx):
+    if not _has_dev_tools(ctx):
+        raise _Unavailable("not checked, developer tools not installed")
+
+
+def _mac_clt(ctx):
+    ok, text = ctx.try_cmd(["pkgutil", "--pkg-info=com.apple.pkg.CLTools_Executables"])
+    if ok:
+        return "Command Line Tools package: version %s" % (parse_pkg_version(text) or "unknown")
+    if text.startswith("exit code"):
+        return "Command Line Tools package: not installed (Xcode only)"
+    raise _Unavailable(text)
+
+
 def _mac_xcodebuild(ctx):
     text = ctx.cmd(["xcodebuild", "-version"])
     rows = [r.strip() for r in text.splitlines() if r.strip()][:2]
     return "xcodebuild: %s" % "; ".join(rows)
 
 
-def _mac_sdk(ctx):
-    path = ctx.cmd(["xcrun", "--show-sdk-path"]).strip()
-    version = ctx.cmd(["xcrun", "--show-sdk-version"]).strip()
-    return "SDK: version %s, path %s" % (version, path)
+def _mac_sdk(ctx, sdk):
+    path = ctx.cmd(["xcrun", "--sdk", sdk, "--show-sdk-path"]).strip()
+    version = ctx.cmd(["xcrun", "--sdk", sdk, "--show-sdk-version"]).strip()
+    return "SDK %s: version %s, path %s" % (sdk, version, path)
+
+
+def _mac_actool(ctx):
+    _mac_dev_tools(ctx)
+    return "actool: version %s (Icon Composer icons need 26 or newer)" % parse_actool_version(
+        ctx.cmd(["xcrun", "actool", "--version"]))
+
+
+def _mac_metal(ctx, sdk):
+    _mac_dev_tools(ctx)
+    return "Metal compiler (%s): %s" % (sdk, version_first_line(ctx.cmd(["xcrun", "-sdk", sdk, "metal", "--version"])) or "unknown")
+
+
+_CLANGS = (("Apple clang (/usr/bin/clang)", "/usr/bin/clang"),
+           ("Homebrew LLVM clang (Apple silicon)", "/opt/homebrew/opt/llvm/bin/clang"),
+           ("Homebrew LLVM clang (Intel)", "/usr/local/opt/llvm/bin/clang"))
+
+
+def _mac_clangs(ctx):
+    lines = []
+    for label, path in _CLANGS:
+        if path != "/usr/bin/clang" and not ctx.fs.exists(path):
+            lines.append("%s: not installed" % label)
+            continue
+        if path == "/usr/bin/clang" and not _has_dev_tools(ctx):
+            lines.append("%s: not checked (developer tools not installed)" % label)
+            continue
+        ok, text = ctx.try_cmd([path, "--version"])
+        lines.append("%s: %s" % (label, version_first_line(text) if ok else "unavailable (%s)" % text))
+    return lines
+
+
+def _mac_libraries(ctx):
+    """pkg-config versions of the libraries the Mac build links (SDL3, FFmpeg)."""
+    found = []
+    for name in ("sdl3", "libavcodec", "libavformat", "libavutil"):
+        ok, text = ctx.try_cmd(["pkg-config", "--modversion", name])
+        found.append("%s %s" % (name, version_first_line(text) if ok else "not found" if text.startswith(("exit code", "not found")) else "unavailable (%s)" % text))
+    return "Libraries (pkg-config): " + ", ".join(found)
+
+
+def _mac_rosetta(ctx):
+    if platform.machine().lower() not in ("arm64", "aarch64"):
+        return None
+    return "Rosetta 2 installed: %s" % _yes_no(ctx.fs.exists("/Library/Apple/usr/libexec/oah/libRosettaRuntime"))
+
+
+def _mac_devices(ctx):
+    """Connected iPhones and iPads for an iOS build: model, iOS version and connection state only."""
+    _mac_dev_tools(ctx)
+    handle, path = tempfile.mkstemp(prefix="devices-", suffix=".json")
+    os.close(handle)
+    try:
+        ctx.cmd(["xcrun", "devicectl", "list", "devices", "--json-output", path], timeout=LONG_TIMEOUT)
+        with open(path, "r", encoding="utf-8") as stream:
+            devices = parse_devicectl(stream.read())
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    if not devices:
+        return "Apple devices for the iOS target: none found"
+    return ["Apple device %d: %s, iOS %s, %s" % (index, item["model"], item["os"], item["state"])
+            for index, item in enumerate(devices, 1)]
 
 
 def _mac_sip(ctx):
@@ -1317,7 +1442,7 @@ def _default_names():
 
 
 def collect(work=None, runner=None, env=None, system=None, home=None, user=None,
-            host=None, fs=None, longest_generated=None):
+            host=None, fs=None, longest_generated=None, target=None):
     """Return the already-redacted ``[Diagnostics] ...`` report lines."""
     env = os.environ if env is None else env
     system = system or _detect_system()
@@ -1334,6 +1459,7 @@ def collect(work=None, runner=None, env=None, system=None, home=None, user=None,
     def add(label, function):
         _item(lines, label, lambda: function(ctx))
 
+    lines.append(PREFIX + "This report stays on this computer. It only leaves it if you share this log.")
     lines.append(PREFIX + "Diagnostics script version %d, target %s" % (
         DIAGNOSTICS_VERSION, system))
     add("OS (Python)", _os_python_info)
@@ -1393,10 +1519,21 @@ def collect(work=None, runner=None, env=None, system=None, home=None, user=None,
         add("VC++ runtime", lambda c: _win_dll(c, "VC++ runtime", "vcruntime140.dll"))
     elif system == "darwin":
         add("Developer directory", _mac_xcode)
+        add("DEVELOPER_DIR", _mac_developer_dir)
         add("xcodebuild", _mac_xcodebuild)
-        add("SDK", _mac_sdk)
+        add("Command Line Tools package", _mac_clt)
+        add("SDK macosx", lambda c: _mac_sdk(c, "macosx"))
+        add("SDK iphoneos", lambda c: _mac_sdk(c, "iphoneos"))
+        add("actool", _mac_actool)
+        add("Metal compiler (macosx)", lambda c: _mac_metal(c, "macosx"))
+        add("Metal compiler (iphoneos)", lambda c: _mac_metal(c, "iphoneos"))
+        add("clang", _mac_clangs)
+        add("Libraries (pkg-config)", _mac_libraries)
+        add("Rosetta 2", _mac_rosetta)
         add("System Integrity Protection", _mac_sip)
         add("GPU", _mac_gpu)
+        if target == "ios":
+            add("Apple devices", _mac_devices)
     else:
         add("GPU", _linux_gpu)
         add("Vulkan", _vulkan_lines)

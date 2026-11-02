@@ -1131,7 +1131,7 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertEqual(events[1]["message"], lines[0])
             self.assertEqual(events[2]["message"], "[Diagnostics] Project at <project>")
             self.assertEqual(events[3]["event"], "error")
-            collect.assert_called_once_with(work=root / "elsewhere", longest_generated=None)
+            collect.assert_called_once_with(work=root / "elsewhere", longest_generated=None, target="linux")
 
     def test_a_failing_system_report_never_stops_the_build_and_can_be_switched_off(self):
         args = SimpleNamespace(root=".", work=".", target="linux")

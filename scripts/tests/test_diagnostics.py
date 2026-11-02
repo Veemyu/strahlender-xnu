@@ -166,6 +166,25 @@ WIN_DATA = {
 }
 
 
+ACTOOL = '''<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>com.apple.actool.version</key><dict>
+<key>bundle-version</key><string>22685</string><key>short-bundle-version</key><string>15.3</string>
+</dict></dict></plist>
+'''
+
+DEVICES = {"result": {"devices": [
+    {"identifier": "11111111-2222-3333-4444-555555555555",
+     "hardwareProperties": {"platform": "iOS", "udid": "00008103-001A2B3C4D5E001E", "marketingName": "iPad Pro 11-inch (3rd generation)",
+                            "productType": "iPad13,4", "reality": "physical"},
+     "deviceProperties": {"name": "Someones iPad", "osVersionNumber": "17.4.1"},
+     "connectionProperties": {"tunnelState": "connected"}},
+    {"hardwareProperties": {"platform": "iOS", "udid": "x", "productType": "iPhone15,2", "reality": "physical"},
+     "deviceProperties": {"osVersionNumber": "18.0"}, "connectionProperties": {"tunnelState": "disconnected"}},
+    {"hardwareProperties": {"platform": "iOS", "reality": "simulated", "productType": "iPhone99,9"}},
+    {"hardwareProperties": {"platform": "watchOS", "productType": "Watch7,1"}},
+]}}
+
+
 class FakeResult(object):
     def __init__(self, out="", code=0, err=""):
         self.stdout = out
@@ -182,7 +201,7 @@ class FakeRunner(object):
 
     def __call__(self, args, **kwargs):
         self.calls.append((list(args), kwargs))
-        for size in (3, 2, 1):
+        for size in (5, 4, 3, 2, 1):
             key = " ".join(args[:size])
             if key in self.table:
                 value = self.table[key]
@@ -487,8 +506,17 @@ class CollectTests(unittest.TestCase):
             "system_profiler SPDisplaysDataType": SP_APPLE + "Serial Number: %s\n" % SERIAL,
             "xcode-select -p": "/Users/someone/Xcode/Developer\n",
             "xcodebuild -version": "Xcode 15.3\nBuild version 15E204a\n",
-            "xcrun --show-sdk-path": "/Users/someone/SDKs/MacOSX.sdk\n",
-            "xcrun --show-sdk-version": "14.4\n",
+            "xcrun --sdk macosx --show-sdk-path": "/Users/someone/SDKs/MacOSX.sdk\n",
+            "xcrun --sdk macosx --show-sdk-version": "14.4\n",
+            "xcrun --sdk iphoneos --show-sdk-path": "/Users/someone/SDKs/iPhoneOS.sdk\n",
+            "xcrun --sdk iphoneos --show-sdk-version": "17.4\n",
+            "xcrun actool --version": ACTOOL,
+            "xcrun -sdk macosx": "Apple metal version 32023.100 (metalfe-32023.100.1)\nTarget: air64-apple-darwin23.4.0\n",
+            "xcrun -sdk iphoneos": ("1", "error: sdk \"iphoneos\" cannot be located"),
+            "pkgutil --pkg-info=com.apple.pkg.CLTools_Executables": "package-id: com.apple.pkg.CLTools_Executables\nversion: 15.3.0.0.1.1708646388\n",
+            "/usr/bin/clang --version": "Apple clang version 15.0.0 (clang-1500.3.9.4)\nTarget: arm64-apple-darwin23.4.0\n",
+            "pkg-config --modversion sdl3": "3.2.8\n",
+            "pkg-config --modversion libavcodec": "61.3.100\n",
             "csrutil status": "System Integrity Protection status: enabled.\n",
             "df -P": DF,
             "mount": MOUNT_MAC + "en0 aa:bb:cc:dd:ee:ff\n",
@@ -505,13 +533,51 @@ class CollectTests(unittest.TestCase):
         self.assertIn("GPU 1: Apple M2 Pro, 19 cores, Metal: Metal 3", text)
         self.assertIn("Developer directory (xcode-select -p): <home>/Xcode/Developer", text)
         self.assertIn("xcodebuild: Xcode 15.3; Build version 15E204a", text)
-        self.assertIn("SDK: version 14.4, path <home>/SDKs/MacOSX.sdk", text)
+        self.assertIn("SDK macosx: version 14.4, path <home>/SDKs/MacOSX.sdk", text)
+        self.assertIn("SDK iphoneos: version 17.4, path <home>/SDKs/iPhoneOS.sdk", text)
+        self.assertIn("Command Line Tools package: version 15.3.0.0.1.1708646388", text)
+        self.assertIn("actool: version 15.3 (Icon Composer icons need 26 or newer)", text)
+        self.assertIn("Metal compiler (macosx): Apple metal version 32023.100 (metalfe-32023.100.1)", text)
+        self.assertIn("Metal compiler (iphoneos): unavailable (exit code 1)", text)
+        self.assertIn("Apple clang (/usr/bin/clang): Apple clang version 15.0.0 (clang-1500.3.9.4)", text)
+        self.assertIn("Homebrew LLVM clang (Apple silicon): not installed", text)
+        self.assertIn("Libraries (pkg-config): sdl3 3.2.8, libavcodec 61.3.100, libavformat not found, libavutil not found", text)
+        self.assertIn("DEVELOPER_DIR: unset", text)
+        self.assertNotIn("Apple devices", text)
+        self.assertEqual(lines[0], "[Diagnostics] This report stays on this computer. It only leaves it if you share this log.")
         self.assertIn("System Integrity Protection: enabled", text)
         self.assertIn("Work folder file system: apfs", text)
         self.assertIn("Tool git: git version 2.39.3 (Apple Git-146)", text)
         self.assertIn("Tool cmake: not found", text)
         self.assertIn("Environment BDSP_* variables: BDSP_FOO=1, BDSP_TOKEN", text)
         self.assert_private(lines)
+
+    def test_darwin_ios_target_lists_connected_devices_without_names_or_ids(self):
+        def runner(args, **kwargs):
+            if args[:4] == ["xcrun", "devicectl", "list", "devices"]:
+                with open(args[args.index("--json-output") + 1], "w") as stream:
+                    json.dump(DEVICES, stream)
+                return FakeResult("")
+            if args[:2] == ["xcode-select", "-p"]:
+                return FakeResult("/Applications/Xcode.app/Contents/Developer\n")
+            raise FileNotFoundError(args[0])
+        lines = diag.collect(work="/Users/someone/Work/build", runner=runner, env={"HOME": HOME_POSIX, "USER": USER}, system="darwin",
+                             home=HOME_POSIX, user=USER, host=HOST, fs=FakeFs(), target="ios")
+        text = joined(lines)
+        self.assertIn("Apple device 1: iPad Pro 11-inch (3rd generation) (iPad13,4), iOS 17.4.1, connected", text)
+        self.assertIn("Apple device 2: iPhone15,2, iOS 18.0, disconnected", text)
+        self.assertNotIn("iPhone99,9", text)
+        self.assertNotIn("Watch7", text)
+        for private in ("Someones", "00008103", "11111111"):
+            self.assertNotIn(private, text)
+        def empty(args, **kwargs):
+            if args[:3] == ["xcrun", "devicectl", "list"]:
+                with open(args[args.index("--json-output") + 1], "w") as stream:
+                    json.dump({"result": {"devices": []}}, stream)
+            return FakeResult("/Applications/Xcode.app/Contents/Developer\n")
+        none = diag.collect(work=None, runner=empty, env={}, system="darwin", home=HOME_POSIX, user=USER, host=HOST,
+                            fs=FakeFs(), target="ios")
+        self.assertIn("Apple devices for the iOS target: none found", joined(none))
 
     def test_darwin_without_developer_tools_skips_shims(self):
         runner = FakeRunner({"xcode-select -p": ("2", "")})
@@ -521,6 +587,8 @@ class CollectTests(unittest.TestCase):
         self.assertIn("Tool git: not checked (developer tools not installed)", text)
         self.assertNotIn("git", [c[0][0] for c in runner.calls])
         self.assertIn("Developer directory: unavailable (exit code 2)", text)
+        self.assertIn("Apple clang (/usr/bin/clang): not checked (developer tools not installed)", text)
+        self.assertIn("actool: unavailable (not checked, developer tools not installed)", text)
 
     def test_linux(self):
         runner = FakeRunner({

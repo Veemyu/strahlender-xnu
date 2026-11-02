@@ -1286,7 +1286,8 @@ def log_diagnostics(args):
     if os.environ.get("BDSP_NO_DIAGNOSTICS"):
         return
     try:
-        for line in diagnostics.collect(work=args.work, longest_generated=_longest_generated_path(args)):
+        for line in diagnostics.collect(work=args.work, longest_generated=_longest_generated_path(args),
+                                         target=getattr(args, "target", None)):
             emit("log", level="diagnostic", message=_safe_line(line, args))
     except Exception as error:
         emit("log", level="diagnostic", message="[Diagnostics] unavailable (" + type(error).__name__ + ")")
