@@ -44,6 +44,13 @@ Chronological, newest entries first. Each item records the date, goal, and files
   now uses `all` because the tools stage is target-independent; Linux firmware is imported into `app/Firmware` and loaded
   through `BDSP_FIRMWARE_DATA`, like the other platforms. Test:
   `test_linux_firmware_bootstrap_uses_a_target_the_tools_stage_accepts`.
+- **Linux "Show installation folder" (issue #34):** the four `No such file or directory (os error 2)` lines came from
+  `Command::new("xdg-open")` on Lubuntu, which does not install `xdg-utils`; the app itself was installed in
+  `$XDG_DATA_HOME/strahlender-xnu/app` (default `~/.local/share/strahlender-xnu/app`). Linux now requires `xdg-utils`
+  in the dependency catalog and falls back to `gio open` if `xdg-open` is missing or fails. One shared opener serves
+  the installed-app, mods and repository actions (`installer/src/open.rs`, `backend.rs`, `mod_support.rs`,
+  `project_link.rs`); the failure gives the `xdg-utils` hint instead of the raw OS error. Test:
+  `linux_catalog_installs_xdg_utils_for_folder_actions`.
 
 ## 2026-11-01
 - **iPhone/iPad builds keep FFmpeg between builds:** the installer sets `BDSP_IOS_FFMPEG_DIR` to `<data dir>/ios-ffmpeg` (default for checkouts stays `work/ios/ffmpeg-ios`), so the download, verification and compile (about 45 s) happen only when the SDK, compiler or `build_ffmpeg_ios.sh` changes. The folder carries a stamp (`scripts/install/ffmpeg_cache.py`), is built in a temporary sibling folder and renamed; readers are `build_rt32.sh`, `installer_build.sh`, `deploy_ios.sh` and the Xcode project (`BDSP_FFMPEG_DIR`). Test: `scripts/tests/test_ffmpeg_cache.py`. A checkout's old unstamped `work/ios/ffmpeg-ios` is rebuilt once.

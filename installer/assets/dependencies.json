@@ -12,6 +12,7 @@
     {"id":"shaderc","purpose":"Compile Vulkan shaders","module":"shaderc","alternative":"shaderc_shared","linux":true,"apt":["libshaderc-dev"],"dnf":["libshaderc-devel"],"pacman":["shaderc"]},
     {"id":"vma","purpose":"Manage GPU memory","header":true,"linux":true,"apt":["libvulkan-memory-allocator-dev"],"dnf":["VulkanMemoryAllocator-devel"],"pacman":[],"fetch":"vma"},
     {"id":"time","purpose":"Report build timings","probe":["/usr/bin/time","--version"],"linux":true,"apt":["time"],"dnf":["time"],"pacman":["time"]},
-    {"id":"wayland","purpose":"Open the game in a Wayland desktop session","module":"Qt6WaylandClient","linux":true,"wayland":true,"apt":["qt6-wayland"],"dnf":["qt6-qtwayland"],"pacman":["qt6-wayland"]}
+    {"id":"wayland","purpose":"Open the game in a Wayland desktop session","module":"Qt6WaylandClient","linux":true,"wayland":true,"apt":["qt6-wayland"],"dnf":["qt6-qtwayland"],"pacman":["qt6-wayland"]},
+    {"id":"xdg-utils","purpose":"Open installation and mod folders from the installer","probe":["xdg-open","--version"],"linux":true,"apt":["xdg-utils"],"dnf":["xdg-utils"],"pacman":["xdg-utils"]}
   ]
 }
