@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 
 #include <QAction>
+#include <QCursor>
 #include <QActionGroup>
 #include <QApplication>
 #include <QPlatformSurfaceEvent>
@@ -360,6 +361,8 @@ public:
         if (on) showFullScreen(); else showNormal();
         menuBar()->setVisible(!on);
         fullAct_->setChecked(on);
+        updateCursor();
+        if (on) cursorTimer_.start(250); else cursorTimer_.stop();
         out(QStringLiteral("[qt] Full screen %1").arg(on ? QStringLiteral("on") : QStringLiteral("off")));
     }
 
@@ -414,6 +417,7 @@ private:
         m = viewMenu_ = bar->addMenu(tr_("View"));
         fullAct_ = act(m, tr_("Full Screen") + QStringLiteral("\tF11"), [this] { toggleFullscreen(); }, nullptr, true);
         // F11, Alt+Enter and Ctrl+F: application-wide shortcuts, because the menu bar (and with it every menu shortcut) is hidden in full screen
+        connect(&cursorTimer_, &QTimer::timeout, this, [this] { updateCursor(); });
         for (const char *key : {"F11", "Alt+Return", "Alt+Enter", "Ctrl+F"}) {
             QShortcut *shortcut = new QShortcut(QKeySequence(QString::fromLatin1(key)), this);
             shortcut->setContext(Qt::ApplicationShortcut);
@@ -513,6 +517,17 @@ private:
     }
 
     void toggleFullscreen() { setFullscreen(!isFullScreen()); }
+
+    /// A controller game: no mouse pointer in full screen, except while the on-screen keyboard is open (it can be clicked).
+    void updateCursor() {
+        const bool hide = isFullScreen() && !swkbd_ui_active();
+        if (hide == cursorHidden_ && !hide) return;
+        cursorHidden_ = hide;
+        const QCursor cursor(hide ? Qt::BlankCursor : Qt::ArrowCursor);
+        setCursor(cursor);
+        if (container_) container_->setCursor(cursor);
+        if (rw_) rw_->setCursor(cursor);
+    }
 
     void togglePause() {
         paused_ = !paused_;
@@ -664,6 +679,8 @@ private:
     QWidget *container_ = nullptr;
     RenderWindow *rw_ = nullptr;
     QAction *pauseAct_ = nullptr, *fullAct_ = nullptr, *hudAct_ = nullptr;
+    QTimer cursorTimer_;
+    bool cursorHidden_ = false;
     QMenu *viewMenu_ = nullptr, *fpsMenu_ = nullptr, *debugMenu_ = nullptr;
     QHash<int, QAction *> fpsActs_;
 #ifdef _WIN32

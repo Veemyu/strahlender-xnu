@@ -24,6 +24,14 @@ class FullscreenKeyTests(unittest.TestCase):
         self.assertIn("showNormal()", body)
         self.assertIn("menuBar()->setVisible(!on)", body)
 
+    def test_the_mouse_pointer_is_hidden_in_full_screen_except_for_the_on_screen_keyboard(self):
+        cursor = QT[QT.index("void updateCursor()"):]
+        cursor = cursor[:cursor.index("\n    }")]
+        self.assertIn("isFullScreen() && !swkbd_ui_active()", cursor)
+        self.assertIn("Qt::BlankCursor", cursor)
+        self.assertIn("rw_->setCursor", cursor)   # the Vulkan window is its own native window and has its own pointer
+        self.assertIn("updateCursor();", QT[QT.index("void setFullscreen(bool on)"):QT.index("void runScript")])
+
     def test_a_fixed_window_size_leaves_full_screen_through_the_same_path(self):
         size = QT[QT.index("void setSize(int w, int h)"):]
         self.assertIn("setFullscreen(false)", size[:size.index("resize(")])
