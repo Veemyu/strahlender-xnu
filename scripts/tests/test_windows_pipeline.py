@@ -170,7 +170,7 @@ class WindowsPipelineTests(unittest.TestCase):
                                          root / "work/recomp" / selected["cache_key"] / "icons/windows")
                 steps = [e["id"] for e in events if e["event"] == "step" and e["status"] == "started"]
                 self.assertEqual(steps, ["extract", "exefs", "eh_gen", "clang"] +
-                                 ([] if fail else ["images", "runtime", "link", "package"]))
+                                 ([] if fail else ["images", "ui_overlay", "runtime", "link", "package"]))
                 self.assertEqual(bool(installed), not fail)
                 self.assertFalse(any(e["event"] == "result" for e in events))
 
