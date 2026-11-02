@@ -140,6 +140,31 @@ impl Keys {
     }
 }
 
+/// hactool 1.4.0 stops reading the whole key file at the first key of the wrong length ("Key (...) must be 32 hex digits!")
+/// and then behaves as if prod.keys did not exist. Lockpick_RCM dumps of newer firmware (seen with 22.5.0) write the
+/// `master_kek_source_NN` and `mariko_master_kek_source_NN` entries with 34 hex digits. Extraction never uses them (the
+/// master keys themselves are in the file), so they are dropped from the copy hactool reads. Returns the copy and how many
+/// entries were dropped.
+pub fn for_hactool(text: &str) -> (String, usize) {
+    let mut dropped = 0;
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let (name, value) = line.split_once('=').unwrap_or((line, ""));
+        let name = name
+            .trim()
+            .trim_start_matches('\u{feff}')
+            .to_ascii_lowercase();
+        let kek_source =
+            name.starts_with("master_kek_source_") || name.starts_with("mariko_master_kek_source_");
+        if kek_source && value.trim().len() != 32 {
+            dropped += 1;
+        } else {
+            out.push_str(line);
+        }
+    }
+    (out, dropped)
+}
+
 /// The `Error:` lines of hactool's stderr, long hex strings masked (a few lines at most).
 pub fn safe_error_lines(stderr: &[u8]) -> Vec<String> {
     String::from_utf8_lossy(stderr)
@@ -219,6 +244,25 @@ mod tests {
         );
         assert!(problems.iter().all(|p| !p.contains("abc123")));
         assert!(Keys::parse("hello").problems(None)[0].starts_with("prod.keys has no master_key"));
+    }
+
+    #[test]
+    fn kek_sources_of_the_wrong_length_are_dropped_for_hactool_and_everything_else_stays() {
+        let long = "d".repeat(34);
+        let text = format!(
+            "header_key = {}\r\nmaster_kek_source_05 = {long}\r\nMariko_Master_Kek_Source_0a = {long}\r\nmaster_kek_source_06 = {}\r\nmaster_key_00 = {}\r\n",
+            "a".repeat(64),
+            "e".repeat(32),
+            "c".repeat(32)
+        );
+        let (kept, dropped) = for_hactool(&text);
+        assert_eq!(dropped, 2);
+        assert_eq!(kept.lines().count(), 3);
+        assert!(
+            kept.contains("master_kek_source_06")
+                && kept.contains("master_key_00")
+                && !kept.contains(&long)
+        );
     }
 
     #[test]

@@ -427,6 +427,16 @@ fn inventory(root: &Path) -> Result<BTreeMap<String, String>> {
 pub fn import(source: &Path, keys: &Path, tool_path: &Path, cache: &Path) -> Result<PathBuf> {
     inspect_source(source)?;
     let scratch = Scratch::new(cache)?;
+    // hactool rejects the whole key file over entries it cannot read (see bdsp_extract::keys::for_hactool).
+    let keys_copy = scratch.0.join("prod.keys");
+    let keys = match fs::read(keys) {
+        Ok(bytes) => {
+            let (text, _) = bdsp_extract::keys::for_hactool(&String::from_utf8_lossy(&bytes));
+            fs::write(&keys_copy, text).map_err(err)?;
+            keys_copy.as_path()
+        }
+        Err(_) => keys,
+    };
     let input = if source.is_dir() {
         source.to_owned()
     } else {

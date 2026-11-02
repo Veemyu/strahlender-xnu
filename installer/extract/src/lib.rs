@@ -118,8 +118,11 @@ pub fn up_to_date(request: &Request) -> Result<bool, Failure> {
 
 struct Tool {
     executable: PathBuf,
+    /// The copy of prod.keys that hactool reads (see `keys::for_hactool`).
     keys: PathBuf,
     home: PathBuf,
+    /// Entries of the user's prod.keys left out of that copy.
+    dropped: usize,
 }
 
 impl Tool {
@@ -128,10 +131,20 @@ impl Tool {
             code: 9,
             message: e.to_string(),
         })?;
+        let (keys, dropped) = match fs::read(&request.keys) {
+            Ok(bytes) => {
+                let (text, dropped) = keys::for_hactool(&String::from_utf8_lossy(&bytes));
+                let copy = home.join("prod.keys");
+                fs::write(&copy, text).map_err(io)?;
+                (copy, dropped)
+            }
+            Err(_) => (request.keys.clone(), 0),
+        };
         Ok(Self {
             executable: request.hactool.clone(),
-            keys: request.keys.clone(),
+            keys,
             home,
+            dropped,
         })
     }
 
@@ -479,6 +492,12 @@ fn run_stage(
     log("1/5 unpack the game containers");
     if let Some(keys) = tool.keys() {
         log(&format!("    prod.keys: {}", keys.summary()));
+    }
+    if tool.dropped > 0 {
+        log(&format!(
+            "    prod.keys: {} master_kek_source entries with 34 hex digits left out, hactool cannot read them and extraction does not need them",
+            tool.dropped
+        ));
     }
     let base_dir = if kind == "nca" {
         request.base.clone()
