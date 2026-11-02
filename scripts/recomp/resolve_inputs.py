@@ -89,8 +89,59 @@ def digest_of(asset):
     return value.removeprefix("sha256:")
 
 
+def rate_limited(error):
+    """GitHub answers anonymous API calls above 60 per hour and address with HTTP 403 (or 429); a network that blocks the API host
+    shows up as another OSError. In both cases the same facts are available from github.com itself."""
+    return isinstance(error, OSError) and (getattr(error, "code", None) in (403, 429) or not hasattr(error, "code"))
+
+
+def sdl_without_api():
+    """The newest SDL3 release and its MinGW development package from github.com pages, which are not rate limited like the API: the
+    releases feed names the releases, the release page shows the SHA-256 GitHub computed next to each file (the same value the API calls
+    `digest`)."""
+    feed = text("https://github.com/libsdl-org/SDL/releases.atom")
+    tags = re.findall(r'/libsdl-org/SDL/releases/tag/(release-3\.\d+\.\d+)"', feed)
+    if not tags:
+        raise ValueError("The SDL releases feed lists no SDL3 release")
+    tag = max(set(tags), key=version_key)
+    version = tag.removeprefix("release-")
+    name = "SDL3-devel-%s-mingw.tar.gz" % version
+    page = text("https://github.com/libsdl-org/SDL/releases/expanded_assets/" + tag)
+    link = page.find("/download/%s/%s" % (tag, name))
+    digest = re.search(r"sha256:([0-9a-f]{64})", page[link:]) if link >= 0 else None
+    if not digest:
+        raise ValueError("The SDL release page shows no SHA-256 for " + name)
+    return {"version": version, "name": name, "url": "https://github.com/libsdl-org/SDL/releases/download/%s/%s" % (tag, name),
+            "sha256": digest.group(1)}
+
+
+def ffmpeg_without_api():
+    """BtbN publishes the SHA-256 of every build in one file next to the builds; no API call is needed."""
+    listing = text("https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256")
+    hashes = {}
+    for line in listing.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and re.fullmatch(r"[0-9a-f]{64}", parts[0]):
+            hashes[parts[1].lstrip("*")] = parts[0]
+    name = newest(list(hashes), r"ffmpeg-n%d\.\d+-latest-win64-lgpl-shared-%d\.\d+\.zip" % (FFMPEG_MAJOR, FFMPEG_MAJOR))
+    return {"version": name, "name": name, "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/" + name,
+            "sha256": hashes[name]}
+
+
 def latest_sdl_devel(get=api):
     """The newest SDL3 release's MinGW development package, with the SHA-256 GitHub publishes for it."""
+    try:
+        return _latest_sdl_devel(get)
+    except OSError as error:
+        if get is not api or not rate_limited(error):
+            raise
+        try:
+            return sdl_without_api()
+        except (OSError, ValueError):
+            raise error from None   # the original message (HTTP 403) is the one that explains what to do
+
+
+def _latest_sdl_devel(get):
     releases = [r for r in get("https://api.github.com/repos/libsdl-org/SDL/releases?per_page=40")
                 if re.fullmatch(r"release-3\.\d+\.\d+", r["tag_name"]) and not r["prerelease"] and not r["draft"]]
     release = max(releases, key=lambda r: version_key(r["tag_name"]))
@@ -101,6 +152,18 @@ def latest_sdl_devel(get=api):
 
 def latest_ffmpeg(get=api):
     """BtbN's newest LGPL shared build of the FFmpeg major the movie code uses, with its published SHA-256."""
+    try:
+        return _latest_ffmpeg(get)
+    except OSError as error:
+        if get is not api or not rate_limited(error):
+            raise
+        try:
+            return ffmpeg_without_api()
+        except (OSError, ValueError):
+            raise error from None
+
+
+def _latest_ffmpeg(get):
     release = get("https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest")
     name = newest([a["name"] for a in release["assets"]],
                   r"ffmpeg-n%d\.\d+-latest-win64-lgpl-shared-%d\.\d+\.zip" % (FFMPEG_MAJOR, FFMPEG_MAJOR))

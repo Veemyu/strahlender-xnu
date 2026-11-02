@@ -214,7 +214,10 @@ def main(argv=None):
     try:
         print(setup(args.tools, args.out, events=Events() if args.events else None), flush=True)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        print("Windows setup failed: " + str(error), file=sys.stderr)
+        hint = ""
+        if "403" in str(error) or "429" in str(error):
+            hint = " GitHub limits requests per internet address. Please try again in an hour, or from another network."
+        print("Windows setup failed: " + str(error) + hint, file=sys.stderr)
         return 4
     return 0
 
