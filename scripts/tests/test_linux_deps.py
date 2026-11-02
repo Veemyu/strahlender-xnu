@@ -60,6 +60,17 @@ esac
         self.assertEqual(result.returncode, 3)
         self.assertIn("VulkanMemoryAllocator-devel", result.stderr)
 
+    def test_a_verified_pinned_vma_copy_is_searched_after_the_system_headers_and_an_unverified_one_is_ignored(self):
+        folder = self.root / "vma"
+        (folder / "include").mkdir(parents=True)
+        flags = self.run_check("linux_vma_flags", BDSP_VMA_DIR=str(folder))
+        self.assertEqual(flags.stdout.strip(), "")
+        (folder / ".verified").write_text("")
+        flags = self.run_check("linux_vma_flags", BDSP_VMA_DIR=str(folder))
+        self.assertEqual(flags.stdout.strip(), f"-idirafter {folder}/include")
+        result = self.run_check("linux_vulkan_cflags", BDSP_VMA_DIR=str(folder))
+        self.assertTrue(result.stdout.strip().endswith(f"-idirafter {folder}/include"), result.stdout)
+
     def test_movie_support_requires_matching_ffmpeg_devel_modules(self):
         modules = "vulkan sdl3 shaderc Qt6Widgets"
         result = self.run_check("linux_require_runtime", AVAILABLE_MODULES=modules)

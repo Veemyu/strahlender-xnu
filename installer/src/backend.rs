@@ -353,6 +353,10 @@ fn run_driver(
         {
             command.env("BDSP_IOS_FFMPEG_DIR", data.join("ios-ffmpeg"));
         }
+        // A verified copy of the pinned Vulkan Memory Allocator header (Linux systems without a package for it).
+        if let Some(folder) = crate::vma::cached() {
+            command.env("BDSP_VMA_DIR", folder);
+        }
         // LLVM still leads PATH; select Git separately so Brew cannot shadow Apple Git.
         if !cfg!(target_os = "windows") {
             command.env("BDSP_GIT", crate::dependencies::git());

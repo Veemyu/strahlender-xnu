@@ -13,6 +13,8 @@ mod runtime;
 #[allow(dead_code)]
 #[path = "../source_download.rs"]
 mod source_download;
+#[path = "../vma.rs"]
+mod vma;
 
 fn main() {
     let log = dependencies::read_setup_log();

@@ -129,7 +129,9 @@ CATALOG = [
             "scripts/recomp/app/bundle_dylibs.py (make_app.sh); Linux uses distribution packages."),
     C("vma", "Vulkan Memory Allocator (Linux build input)", "3.3.0", "pkg:github/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@v3.3.0",
       "MIT", BUILD, TRACKED, ["scripts/recomp/runtime/nvn/vulkan/src/nvn/vulkan/vma.cpp"],
-      download="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator"),
+      download="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
+      notes="Distribution packages provide it where they exist; on Arch and SteamOS the installer downloads the pinned commit and "
+            "checks its SHA-256 (installer/assets/vma.json, installer/src/vma.rs). Keep the version in sync with that file."),
     C("ghidra", "Ghidra (optional headless analysis)", "unpinned", "pkg:generic/ghidra", "Apache-2.0", OPTIONAL, TRACKED,
       ["scripts/ghidra/run_headless.sh"], download="https://github.com/NationalSecurityAgency/ghidra", notes="Not installed by the project."),
 

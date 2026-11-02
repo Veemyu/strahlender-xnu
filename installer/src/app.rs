@@ -329,6 +329,11 @@ fn localized_plan_description(plan: &crate::dependencies::Plan, language: Langua
         })
         .collect();
     lines.extend(
+        plan.fetch
+            .iter()
+            .map(|id| format!("{id}: {}", language.t(L::PinnedDownload))),
+    );
+    lines.extend(
         plan.manual
             .iter()
             .map(|note| language.dependency_note(note).unwrap_or(note).to_owned()),
@@ -765,9 +770,17 @@ impl Installer {
                         self.requirements = None;
                     }
                     Ok(()) => {
+                        let terminal = self
+                            .requirements
+                            .as_ref()
+                            .is_none_or(crate::dependencies::needs_terminal);
                         self.record(
                             "SETUP",
-                            "Complete the installation in the terminal, then check again here.",
+                            if terminal {
+                                "Complete the installation in the terminal, then check again here."
+                            } else {
+                                "The pinned download was verified and stored. Check again here."
+                            },
                         );
                         self.requirements = None;
                     }

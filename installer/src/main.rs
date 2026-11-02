@@ -28,6 +28,7 @@ mod source_download;
 mod sources;
 mod style;
 mod updates;
+mod vma;
 mod window_layout;
 mod workspace;
 mod workspace_cleanup;

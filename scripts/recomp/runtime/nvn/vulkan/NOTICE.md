@@ -23,5 +23,9 @@ game content is not included. Existing approved runtime source and its notices
 remain intact.
 
 See docs/BUILD.md section 6 and scripts/recomp/linux/deps.sh for the dependency
-checks. The previous automatic VMA download and Homebrew-header copying scripts
-have been removed; package installation is the user's responsibility.
+checks. The previous automatic VMA download from `master` and the Homebrew-header
+copying scripts have been removed. Where a distribution has no VMA package (Arch,
+SteamOS), the installer downloads one pinned commit with a SHA-256 check
+(`installer/assets/vma.json`, `installer/src/vma.rs`); `deps.sh` itself never
+downloads and only reads a verified copy given in `BDSP_VMA_DIR`. Package
+installation is otherwise the user's responsibility.

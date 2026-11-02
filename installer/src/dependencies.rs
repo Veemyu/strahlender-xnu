@@ -21,6 +21,8 @@ struct Component {
     module: Option<String>,
     alternative: Option<String>,
     manual_pacman: Option<String>,
+    /// Pinned download done by the installer when the package manager has no package (see vma.rs).
+    fetch: Option<String>,
     #[serde(default)]
     header: bool,
     #[serde(default)]
@@ -50,6 +52,9 @@ pub struct Plan {
     #[serde(default)]
     pub checks: Vec<String>,
     pub manual: Vec<String>,
+    /// Components the installer downloads itself, pinned and SHA-256 checked (no package exists on this system).
+    #[serde(default)]
+    pub fetch: Vec<String>,
     pub bootstrap_brew: bool,
 }
 impl Plan {
@@ -64,6 +69,16 @@ impl Plan {
                 None => format!("Missing: {}", m.id),
             })
             .collect();
+        lines.extend(self.fetch.iter().map(|id| {
+            if id == "vma" {
+                format!(
+                    "Download: {id} {} (pinned, SHA-256 checked)",
+                    crate::vma::lock().version
+                )
+            } else {
+                format!("Download: {id}")
+            }
+        }));
         lines.extend(
             self.manual
                 .iter()
@@ -75,7 +90,10 @@ impl Plan {
         lines
     }
     pub fn ready(&self) -> bool {
-        self.missing.is_empty() && self.manual.is_empty() && !self.bootstrap_brew
+        self.missing.is_empty()
+            && self.manual.is_empty()
+            && self.fetch.is_empty()
+            && !self.bootstrap_brew
     }
 }
 fn succeeds(program: &str, args: &[&str]) -> bool {
@@ -356,7 +374,11 @@ fn check_components(
             ));
         }
         if !present {
-            if manager == "pacman"
+            if names.is_empty()
+                && let Some(id) = &component.fetch
+            {
+                plan.fetch.push(id.clone());
+            } else if manager == "pacman"
                 && let Some(note) = &component.manual_pacman
             {
                 plan.manual.push(note.clone());
@@ -373,9 +395,14 @@ fn check_components(
 }
 
 fn vma_header_found() -> bool {
-    let Ok(mut child) = Command::new("clang++")
-        .hidden()
-        .args(["-x", "c++", "-fsyntax-only", "-"])
+    let mut command = Command::new("clang++");
+    command.hidden().args(["-x", "c++", "-fsyntax-only"]);
+    // The pinned copy comes after the system's own headers.
+    if let Some(folder) = crate::vma::cached() {
+        command.arg("-idirafter").arg(folder.join("include"));
+    }
+    let Ok(mut child) = command
+        .arg("-")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -438,9 +465,9 @@ pub fn installation_script(plan: &Plan) -> Result<String, String> {
     Ok(script)
 }
 
-/// Linux plans with only manual steps (such as VMA on Arch) have nothing a terminal script could do.
-fn nothing_to_install(plan: &Plan, mac: bool) -> bool {
-    plan.packages.is_empty() && !plan.bootstrap_brew && !mac
+/// False for Linux plans that only download (VMA on Arch) or only list manual steps: no terminal script has anything to do.
+pub fn needs_terminal(plan: &Plan) -> bool {
+    cfg!(target_os = "macos") || !plan.packages.is_empty() || plan.bootstrap_brew
 }
 
 pub fn install(plan: &Plan) -> Result<(), String> {
@@ -448,8 +475,18 @@ pub fn install(plan: &Plan) -> Result<(), String> {
         return crate::components::install_latest(&crate::components::root()?).map(|_| ());
     }
     let script = installation_script(plan)?;
-    if nothing_to_install(plan, cfg!(target_os = "macos")) {
-        return Err("Nothing can be installed automatically. Follow the manual steps in the list, then check again.".into());
+    let downloaded = !plan.fetch.is_empty();
+    for id in &plan.fetch {
+        if id == "vma" {
+            crate::vma::fetch()?;
+        }
+    }
+    if !needs_terminal(plan) {
+        return if downloaded {
+            Ok(())
+        } else {
+            Err("Nothing can be installed automatically. Follow the manual steps in the list, then check again.".into())
+        };
     }
     let directory = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
         .ok_or("Application data unavailable.")?
@@ -616,7 +653,7 @@ mod tests {
         }
     }
     #[test]
-    fn steamos_with_all_packages_but_no_vma_stays_blocked_and_names_the_check() {
+    fn steamos_with_all_packages_but_no_vma_plans_the_pinned_download_and_names_the_check() {
         let manager = super::detect_manager("NAME=\"SteamOS\"\nID=steamos\nID_LIKE=arch\n");
         assert_eq!(manager, Some("pacman"));
         let catalog: super::Catalog =
@@ -641,13 +678,19 @@ mod tests {
         assert_eq!(plan.missing.len(), 1);
         assert_eq!(plan.missing[0].id, "vma");
         assert!(plan.packages.is_empty(), "nothing pacman can install");
-        assert!(plan.manual[0].contains("AUR"));
+        assert_eq!(
+            plan.fetch,
+            ["vma"],
+            "the installer downloads the pinned header itself"
+        );
+        assert!(plan.manual.is_empty());
         let lines = plan.log_lines();
         assert!(
             lines[0].starts_with("Missing: vma (failed check: clang++ "),
             "{lines:?}"
         );
-        assert!(super::nothing_to_install(&plan, false));
+        assert!(lines[1].starts_with("Download: vma 3."), "{lines:?}");
+        assert!(!super::needs_terminal(&plan) || cfg!(target_os = "macos"));
         assert!(probes.iter().any(|p| p == "pkg-config --exists sdl3"));
     }
     #[test]

@@ -26,7 +26,8 @@ Two guided installers do everything in this guide for you. Run `--dry-run` first
   Plan for at least 40 GB of free space; a measured run on a prepared 8-thread Mac took about 8 minutes (section 4.2).
 - **Linux:** run `./install-linux.sh`. It detects `apt`, `dnf` or `pacman`, lists the missing development packages and installs
   them after you agree (the package manager asks for your administrator password through `sudo`; the script never sees it).
-  The Vulkan Memory Allocator is not in the official Arch packages: the script asks you to install it from the AUR yourself.
+  The Vulkan Memory Allocator is not in the official Arch packages: the script asks you to install it from the AUR yourself. The graphical installer
+  instead downloads the header itself (pinned version, SHA-256 checked, no sudo).
   It then sets up `work/venv`, asks for your files, and runs the build of section 6.2. Several hours (section 6.4).
 
 Both scripts speak English, German, Spanish and Portuguese (system language, or `BDSP_LANG=de|en|es|pt`). The texts are in
@@ -250,7 +251,7 @@ dnf install clang gcc-c++ cmake pkgconf-pkg-config qt6-qtbase-devel vulkan-heade
 # Debian / sufficiently recent Ubuntu
 apt install clang build-essential cmake pkg-config qt6-base-dev libvulkan-dev libsdl3-dev libshaderc-dev libvulkan-memory-allocator-dev libavcodec-dev libavformat-dev libavutil-dev python3-pil time
 
-# Arch official packages; VMA must be installed separately after reviewing its AUR package
+# Arch official packages; the installer downloads a pinned VMA header (installer/assets/vma.json), no AUR needed
 pacman -S --needed clang base-devel cmake pkgconf qt6-base vulkan-headers vulkan-icd-loader sdl3 shaderc ffmpeg python-pillow time
 ```
 
@@ -260,10 +261,10 @@ use development packages matching the FFmpeg provider already installed; do not
 blindly replace or mix providers. BDSP_NO_MOVIE=1 explicitly omits movie support
 and its FFmpeg requirement, but the intro path is then unsupported.
 
-SteamOS (Arch based): the tool step cannot finish until the Vulkan Memory Allocator headers are installed from the AUR; the
-installer log names every missing requirement and the check that failed. The root file system is read-only
-(`sudo steamos-readonly disable`), pacman needs `sudo pacman-key --init && sudo pacman-key --populate archlinux holo`, and
-SteamOS updates remove packages installed this way.
+SteamOS (Arch based): the installer downloads the Vulkan Memory Allocator header itself (pinned version, SHA-256 checked, no
+sudo, stored in its data folder), so the AUR is not needed. The root file system is read-only (`sudo steamos-readonly disable`),
+pacman needs `sudo pacman-key --init && sudo pacman-key --populate archlinux holo`, and SteamOS updates remove packages
+installed this way.
 
 Native Wayland also needs the Qt platform plugin (Debian qt6-wayland; Fedora
 qt6-qtwayland). X11 uses the xcb plugin and may need its distribution's cursor

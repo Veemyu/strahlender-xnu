@@ -10,7 +10,7 @@
     {"id":"qt","purpose":"Provide the Linux game window controls","module":"Qt6Widgets","linux":true,"apt":["qt6-base-dev"],"dnf":["qt6-qtbase-devel"],"pacman":["qt6-base"]},
     {"id":"vulkan","purpose":"Render the game on your GPU","module":"vulkan","linux":true,"apt":["libvulkan-dev"],"dnf":["vulkan-headers","vulkan-loader-devel"],"pacman":["vulkan-headers","vulkan-icd-loader"]},
     {"id":"shaderc","purpose":"Compile Vulkan shaders","module":"shaderc","alternative":"shaderc_shared","linux":true,"apt":["libshaderc-dev"],"dnf":["libshaderc-devel"],"pacman":["shaderc"]},
-    {"id":"vma","purpose":"Manage GPU memory","header":true,"linux":true,"apt":["libvulkan-memory-allocator-dev"],"dnf":["VulkanMemoryAllocator-devel"],"pacman":[],"manual_pacman":"Vulkan Memory Allocator headers are available from the community AUR package vulkan-memory-allocator, not the official Arch repositories. Install that package through your trusted AUR workflow, then check again. The installer does not enable foreign repositories."},
+    {"id":"vma","purpose":"Manage GPU memory","header":true,"linux":true,"apt":["libvulkan-memory-allocator-dev"],"dnf":["VulkanMemoryAllocator-devel"],"pacman":[],"fetch":"vma"},
     {"id":"time","purpose":"Report build timings","probe":["/usr/bin/time","--version"],"linux":true,"apt":["time"],"dnf":["time"],"pacman":["time"]},
     {"id":"wayland","purpose":"Open the game in a Wayland desktop session","module":"Qt6WaylandClient","linux":true,"wayland":true,"apt":["qt6-wayland"],"dnf":["qt6-qtwayland"],"pacman":["qt6-wayland"]}
   ]

@@ -25,6 +25,7 @@ The installer vendors **iced_winit 0.14.1** under the MIT license in
 `installer/vendor/iced_winit/`. The original license is included there. A local
 fix for synchronous window resizing is documented in `PATCHES.md` beside it.
 
+- **Vulkan Memory Allocator 3.3.0** (MIT, Copyright (c) 2017-2025 Advanced Micro Devices, Inc.): header-only, used by the Linux Vulkan backend. Distribution packages provide it where they exist; on systems without a package (Arch, SteamOS) the installer downloads the pinned commit from GitHub, checks its SHA-256 and stores it with its `LICENSE.txt` in the installer data folder (`vma/3.3.0/`); nothing is distributed here (`installer/assets/vma.json`).
 - **FFmpeg** (LGPL/GPL depending on its build configuration): Linked for video playback, not distributed here. Check the build configuration as described in `docs/BUILD.md`.
 - **Build tools** `capstone` and `lz4` (`tools/pydeps`): Used locally, not distributed.
 - **Unicorn 2.1.4** (GPL-2.0-only, the wheel's "BSD" classifier is wrong): distributed with the installer runtime and the Windows tools archive. The project owner accepted the GPL-2.0 terms on 2026-10-30; the Windows archive contains the unmodified source, `COPYING` and a written offer (`NOTICES/README.md`).
