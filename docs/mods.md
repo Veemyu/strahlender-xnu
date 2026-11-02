@@ -9,9 +9,9 @@ supported, how to install a mod on each platform, and what is not supported yet.
 | | State |
 |---|---|
 | RomFS files (Unity assets, `Data/StreamingAssets/...`, movies) | **Supported.** Files with the same path replace the game's, new files are added. Names match ignoring case. |
-| Separate save | **Supported.** A mod gets `Saves/mods/<name>/` (macOS: `<save>/mods/<name>/`). The game's save folder is not opened while a mod is active. |
-| ExeFS IPS/IPS32 | **Build-time support on native Mac and Mac → iPhone/iPad.** Select the mod in the installer to build a separate compiled app. Dropping ExeFS into an existing app does not apply code patches. |
-| Additional `subsdk1` | **Apple build path connected.** Compiled alongside IPS/IPS32, with cross-module entry points, imports and constructors. Its fixed main-relative layout must fit before the SDK. See device validation below. |
+| Separate save | **Supported.** A mod gets `Saves/mods/<name>/` (macOS and Windows: `<save>/mods/<name>/`). The game's save folder is not opened while a mod is active. |
+| ExeFS IPS/IPS32 | **Build-time support on native Mac, Mac → iPhone/iPad and native Windows.** Select the mod in the installer to build a separate compiled app. Dropping ExeFS into an existing app does not apply code patches. Linux: not yet (see Code mods). |
+| Additional `subsdk1` | **Apple and Windows build paths connected.** Compiled alongside IPS/IPS32, with cross-module entry points, imports and constructors. Its fixed main-relative layout must fit before the SDK. See device validation below. |
 | Other added NSOs, rtld patches | **Not supported yet.** The installer rejects these code mods. |
 | Several mods at once | No. One mod is active; most big mods replace the same files. |
 
@@ -27,6 +27,7 @@ archive with a wrapper folder works, and folder names may differ in case (`ROMFS
 |---|---|
 | iPhone, iPad | `Documents/Mods/` (Files app: On My iPhone/iPad > BDSP > Mods) |
 | macOS | `~/Library/Application Support/dev.local.xnubdsp/mods/` (`mods =` in `config.ini`, or `BDSP_MODS_DIR`) |
+| Windows | `%LOCALAPPDATA%\StrahlenderXnu\mods\` (or `BDSP_MODS_DIR`); a mod app built by the installer reads the mod from the folder chosen there |
 | Linux, tests | `BDSP_MODS_DIR=<folder> BDSP_MOD=<name>` |
 
 Large mods are unpacked with a program that copes with their size (Luminescent Platinum asks for 7-Zip); a corrupt archive gives a
@@ -38,6 +39,10 @@ corrupt game. The mod folder is separate from `GameData/romfs`, so copying the g
   choice is preselected. Without a mod there is no dialog.
 - **macOS:** the same dialog with a "Don't ask again" box; hold Option at launch to ask again. `--mod <name|none>` or `BDSP_MOD`
   skips the dialog. The window title shows the active mod.
+- **Windows:** there is no dialog. A mod selected in the installer gets its own app, `%LOCALAPPDATA%\StrahlenderXnu\mod-apps\BDSP-<name>-<id>\BDSP.exe`;
+  its `mod.txt` (mod name, mods folder, `romfs` or `exefs`) makes it start that mod. The game's own app
+  (`%LOCALAPPDATA%\StrahlenderXnu\app`) stays unchanged. A RomFS mod app also accepts `BDSP_MOD`/`--mod <name|none>`; an app with
+  compiled ExeFS always starts its own mod.
 - To switch a mod off, start "Brilliant Diamond", or remove the folder from `Mods`.
 
 ## Saves
@@ -75,15 +80,43 @@ merges the mod's `romfs/` over it before the layout, so the game's own file look
 
 ## Code mods
 
-On a native Mac build or a Mac-hosted iPhone/iPad build, the installer accepts a selected mod folder containing IPS/IPS32 files and an optional `subsdk1` in `exefs/`. Its Rust `ips_patch` helper matches patch filenames to the NSO build IDs, validates the records, decompresses and patches the NSOs, and stages them without touching the original extraction or mod. It checks the additional module's size including BSS and emits cross-module branch entry offsets, including returns into the middle of the game code. The generator consumes those offsets; image linking includes the extra exports and imports, and the runtime loads its function table and runs its constructors before the game's. The generator, compiler and runtime build in a mod-specific work folder. The result has its own bundle identifier. The Mac app also has its own installation receipt and shares the base game's RomFS. On iOS, the app has its own data container and base-data copy. The chosen code mod is fixed at launch and uses a mod-specific save directory. The base `BDSP.app` is not replaced.
+On a native Mac build, a Mac-hosted iPhone/iPad build or a native Windows build, the installer accepts a selected mod folder containing IPS/IPS32 files and an optional `subsdk1` in `exefs/`. Its Rust `ips_patch` helper matches patch filenames to the NSO build IDs, validates the records, decompresses and patches the NSOs, and stages them without touching the original extraction or mod. It checks the additional module's size including BSS and emits cross-module branch entry offsets, including returns into the middle of the game code. The generator consumes those offsets; image linking includes the extra exports and imports, and the runtime loads its function table and runs its constructors before the game's. The generator, compiler and runtime build in a mod-specific work folder. The result has its own bundle identifier. The Mac app also has its own installation receipt and shares the base game's RomFS. On iOS, the app has its own data container and base-data copy. The chosen code mod is fixed at launch and uses a mod-specific save directory. The base `BDSP.app` is not replaced.
 
 Choose the whole downloaded mod folder in the GUI. It finds `romfs/` and `exefs/` inside common wrapper folders without copying the mod. A mod-provided `icon.png`/JPEG/WebP or localized `icon_<language>.dat` and `control.nacp` take precedence over the game's icons and title strings in the separate app. Without standalone icons, the icon pipeline reads matching `Texture2D` artwork from the mod's known `Dpr/movie/dia|pea/logo/logo_*` RomFS bundles. It uses the existing UnityPy reader and native texture/image decoders, fits the actual logo into an opaque square, and preserves all extracted languages. Languages without their own mod logo use the mod's English artwork. The manifest records each source bundle, texture name and SHA-256. No artwork is downloaded or committed. A mod with neither standalone nor embedded artwork gets a visible MOD badge on the base icon. The mod folder name supplies title strings where no mod control metadata exists.
 
 Lumi 2.2F supplies its artwork inside those RomFS bundles, rather than as `icon.png`. The shared pipeline now extracts twelve locale variants and builds all sixteen icon selections from that actual Lumi artwork; it does **not** use the original Diamond icon with a MOD badge. This works before Apple icon compilation and final signing. The existing UnityPy shader profile is required for embedded-logo extraction, and the installer checks that reader before compiling. Standalone icons do not need UnityPy.
 
-A no-op IPS against the local `main` has passed generator/image, compiler, runtime-link and signed-app checks on Mac and iPadOS. This verifies the build plumbing, not the behavior of a real code mod. Rtld patches, additional modules beyond `subsdk1`, arbitrary ExeFS files, Linux code-mod builds and switching code variants inside one app remain unsupported. The GUI blocks unsupported ExeFS file types; patch applicability and module layout are checked during staging, before generation or compilation.
+A no-op IPS against the local `main` has passed generator/image, compiler, runtime-link and signed-app checks on Mac and iPadOS. This verifies the build plumbing, not the behavior of a real code mod. Rtld patches, additional modules beyond `subsdk1`, arbitrary ExeFS files, Linux code-mod builds and switching code variants inside one app remain unsupported. Linux is not a platform limit: the staging and generator scripts accept a staged ExeFS (`BDSP_EXEFS_DIR`), but the Linux install path still installs one fixed app (one build folder, launcher and desktop entry), so the installer refuses ExeFS mods there with that reason. The GUI blocks unsupported ExeFS file types; patch applicability and module layout are checked during staging, before generation or compilation.
 
 Pure RomFS mods still need no rebuild: copy them into the app's mods folder with a file manager. The GUI can also select a downloaded mod folder directly. An in-app choice between multiple compiled ExeFS variants remains a later step; the present IPS path builds a separate app.
+
+### Windows
+
+The Windows build uses the same staging as the Mac: the installer's `ips_patch.exe` patches the NSOs into
+`work/recomp/mods/<key>/exefs` (with `main.entries`/`subsdk1.entries`), and the native generator, compiler, image linker and
+runtime (`BDSP_HAS_SUBSDK1`) build from there into `work/recomp/mods/<key>/<cache key>`. The game's extraction and its compiled
+code stay untouched. A RomFS-only mod needs no new code: its app links the game's objects again with its own icons. Each mod app is
+installed as `%LOCALAPPDATA%\StrahlenderXnu\mod-apps\BDSP-<name>-<id>\` with `mod.txt`; the mod itself stays in the folder chosen
+in the installer and is read from there. The Windows build runtime has no UnityPy, so Lumi's logos (Unity bundles) cannot be
+extracted there yet; the app gets the game icon with a MOD badge and the build log says so.
+
+Measured on Windows 11 (RTX 2080 Ti, 2026-11-02), Luminescent Platinum 2.2F BD, installer driver with the installer's arguments,
+build run without elevation:
+
+| Stage | RomFS only | Full Lumi (155 IPS32 records, `subsdk1`) |
+|---|---|---|
+| extract | 51 s (fresh work folder) | 10 s (unchanged, skipped) |
+| exefs (staging) | 0 s | under 1 s (298 entry points in `main`, 90 in `subsdk1`) |
+| eh_gen | 11 s | 11 s |
+| clang | 274 s | 282 s |
+| images, runtime, link | 10 s | 11 s |
+| package, install | 47 s | 45 s |
+| total | 399 s | 364 s |
+
+Both apps started from their `mod.txt`, with the input hook pressing A every 6 s: `[fs] mod ...: 2197 game files replaced, 1260
+files added`, own save folder `save/mods/<name>`. The code mod app loaded `subsdk1` at `0x7005708000`, ran its 5 constructors before
+the game's, logged "ExeFS for Luminescent Platinum 2.2F BD is already compiled into this app" and reached Rowan's new-game intro at
+about 60 fps (90 s, no crash). Not tested: gameplay beyond the intro, battles, Lumi features that need its code patches.
 
 ### iPhone/iPad deployment
 

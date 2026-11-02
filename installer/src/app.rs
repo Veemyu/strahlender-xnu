@@ -2249,7 +2249,7 @@ impl Installer {
                             && (item.has_romfs || item.has_exefs)
                             && (self.demo
                                 || !item.has_exefs
-                                || (self.apple_ips_target() && item.ips_buildable()))
+                                || (self.ips_target() && item.ips_buildable()))
                     })
                 });
         }
@@ -2277,7 +2277,7 @@ impl Installer {
             && self.selected_mod.as_ref().is_none_or(|name| {
                 self.mods.iter().any(|item| {
                     &item.name == name
-                        && (!item.has_exefs || (self.host == Platform::Mac && item.ips_buildable()))
+                        && (!item.has_exefs || (self.ips_target() && item.ips_buildable()))
                 })
             })
     }
@@ -2286,8 +2286,13 @@ impl Installer {
         experimental_target(self.host, self.target, std::env::consts::ARCH)
     }
 
-    fn apple_ips_target(&self) -> bool {
-        self.host == Platform::Mac && matches!(self.target, InstallTarget::Mac | InstallTarget::Ios)
+    /// Targets whose build stages IPS/IPS32 and subsdk1 into a separate mod app. Linux still installs one fixed app.
+    fn ips_target(&self) -> bool {
+        matches!(
+            (self.host, self.target),
+            (Platform::Mac, InstallTarget::Mac | InstallTarget::Ios)
+                | (Platform::Windows, InstallTarget::Windows)
+        )
     }
 
     fn capture_scenario(&mut self) -> Task<Message> {
@@ -3538,23 +3543,32 @@ mod tests {
     }
 
     #[test]
-    fn apple_code_mod_can_advance_to_a_separate_build() {
+    fn code_mod_can_advance_to_a_separate_build_on_mac_ios_and_windows() {
         let root = std::env::temp_dir().join(format!("installer-ips-ready-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("Code/ExeFS")).unwrap();
         std::fs::write(root.join("Code/ExeFS/0123.ips"), b"PATCHEOF").unwrap();
         std::fs::write(root.join("Code/ExeFS/subsdk1"), b"NSO0").unwrap();
         std::fs::create_dir_all(root.join("Code/RomFS")).unwrap();
-        for target in [InstallTarget::Mac, InstallTarget::Ios] {
+        for (host, target, buildable) in [
+            (Platform::Mac, InstallTarget::Mac, true),
+            (Platform::Mac, InstallTarget::Ios, true),
+            (Platform::Windows, InstallTarget::Windows, true),
+            (Platform::Linux, InstallTarget::Linux, false),
+        ] {
             let (mut app, _) = Installer::new();
-            app.host = Platform::Mac;
+            app.host = host;
             app.target = target;
             app.page = Page::Mods;
             app.mods = mod_support::scan_selected(&root.join("Code")).unwrap();
             app.selected_mod = Some("Code".into());
-            assert!(app.ready());
+            assert_eq!(app.ready(), buildable, "{target:?}");
             let _ = app.update(Message::Review);
-            assert_eq!(app.page, Page::Review);
+            assert_eq!(
+                app.page,
+                if buildable { Page::Review } else { Page::Mods },
+                "{target:?}"
+            );
         }
         std::fs::remove_dir_all(root).unwrap();
     }

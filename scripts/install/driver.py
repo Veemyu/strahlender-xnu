@@ -170,7 +170,7 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     environment["BDSP_FIRMWARE_SOURCE"] = str(getattr(args, "firmware_root", "") or "")
     environment.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1", **(extra_env or {})})
     proc = subprocess.Popen(command, cwd=args.root, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, bufsize=1,
+                            stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1,
                             env=environment)
 
     def reader():
@@ -523,18 +523,14 @@ def _validate_mod_name(name):
         raise ValueError("The mod name is too long for this runtime.")
 
 
-def _prepare_code_mod(args, work, build_cache=None):
-    exefs = _mod_exefs(getattr(args, "mod_root", None))
-    if not exefs:
-        emit("step", id="exefs", status="skipped")
+def _selected_mod(args):
+    """The selected mod's name, library and folder, validated the same way for every target."""
+    if not getattr(args, "mod_root", None):
         return None
-    if args.target not in ("macos", "ios"):
-        raise ValueError("ExeFS builds currently need a native Apple build host.")
     name = getattr(args, "mod_name", None)
     mods_dir = getattr(args, "mods_dir", None)
-    helper = getattr(args, "ips_helper", None)
-    if not name or not mods_dir or not helper or not Path(helper).is_file():
-        raise ValueError("A code mod needs its name, mod library and native ips_patch helper.")
+    if not name or not mods_dir:
+        raise ValueError("A mod build needs the mod's name and its mod library.")
     _validate_mod_name(name)
     root = Path(args.mod_root).resolve()
     library = Path(mods_dir).resolve()
@@ -544,6 +540,21 @@ def _prepare_code_mod(args, work, build_cache=None):
         raise ValueError("Mod name and folder cannot contain newlines.")
     if len(name.encode("utf-8")) > 254 or any(len(str(path).encode("utf-8")) > 1098 for path in (library, root)):
         raise ValueError("The mod name or folder path is too long for this runtime.")
+    identity = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:10]
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:32] or "mod"
+    return {"name": name, "mods_dir": library, "root": root, "identity": identity, "slug": slug}
+
+
+def _prepare_code_mod(args, work, build_cache=None, emit_steps=True):
+    exefs = _mod_exefs(getattr(args, "mod_root", None))
+    if not exefs:
+        if emit_steps:
+            emit("step", id="exefs", status="skipped")
+        return None
+    helper = getattr(args, "ips_helper", None)
+    if not getattr(args, "mod_name", None) or not getattr(args, "mods_dir", None) or not helper or not Path(helper).is_file():
+        raise ValueError("A code mod needs its name, mod library and native ips_patch helper.")
+    selected = _selected_mod(args)
     digest = hashlib.sha256()
     for module in ("rtld", "main", "sdk", "subsdk0"):
         digest.update(_sha256(work / "exefs" / module).encode("ascii"))
@@ -558,19 +569,18 @@ def _prepare_code_mod(args, work, build_cache=None):
     if staged.exists():
         if not (staged / ".source-sha256").is_file() or (staged / ".source-sha256").read_text() != key:
             raise ValueError("The existing mod staging folder does not match this build. Inspect it before retrying.")
-        emit("step", id="exefs", status="skipped")
+        if emit_steps:
+            emit("step", id="exefs", status="skipped")
     else:
         code = _run_command([str(helper), "stage", str(work / "exefs"), str(exefs), str(staged)],
-                            args, "exefs")
+                            args, "exefs", emit_steps=emit_steps)
         if code:
             raise ValueError("IPS staging failed. See the ExeFS details above.")
         (staged / ".source-sha256").write_text(key, encoding="ascii")
-    identity = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:10]
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:32] or "mod"
-    app_name = "BDSP-" + slug + "-" + identity + ".app"
+    app_name = "BDSP-" + selected["slug"] + "-" + selected["identity"] + ".app"
     return {"staged": staged, "build_dir": build_dir / "ios" if args.target == "ios" else build_dir, "app_name": app_name,
-            "bundle_id": "dev.local.xnubdsp.mod." + identity,
-            "name": name, "mods_dir": library, "root": root}
+            "bundle_id": "dev.local.xnubdsp.mod." + selected["identity"],
+            "name": selected["name"], "mods_dir": selected["mods_dir"], "root": selected["root"]}
 
 
 def _ios_device(args):
@@ -1198,13 +1208,24 @@ def build(args):
         code = windows_prerequisites(args, emit_result=False)
         if code:
             return code
+        try:
+            selected_mod = _selected_mod(args)
+            code_mod = _mod_exefs(getattr(args, "mod_root", None)) is not None
+        except (OSError, ValueError) as error:
+            emit("error", message="Mod folder: " + _safe_line(str(error), args), code=3)
+            return 3
+        if code_mod and (not getattr(args, "ips_helper", None) or not Path(args.ips_helper).is_file()):
+            emit("error", message="ExeFS mods need the installer's ips_patch helper, which was not found. Reinstall the installer.", code=3)
+            return 3
         pipeline = load_windows_pipeline(root)
         def windows_event(event, **fields):
             if event == "log":
                 fields["message"] = _safe_line(fields["message"], args)
             emit(event, **fields)
         try:
-            pipeline.build_game(args, windows_event)
+            pipeline.build_game(args, windows_event, mod=selected_mod,
+                                stage_code_mod=lambda extracted, cache: _prepare_code_mod(
+                                    args, extracted, build_cache=cache, emit_steps=False))
         except KeyboardInterrupt:
             emit("error", message="Windows build cancelled.", code=130)
             emit("result", ok=False, code=130)
@@ -1229,9 +1250,13 @@ def build(args):
     except (OSError, ValueError) as error:
         emit("error", message="Mod folder: " + _safe_line(str(error), args), code=3)
         return 3
-    if code_mod and (args.target not in ("macos", "ios") or not getattr(args, "ips_helper", None) or
-                     not Path(args.ips_helper).is_file()):
-        emit("error", message="ExeFS currently needs a Mac host and the packaged ips_patch helper.", code=3)
+    if code_mod and args.target == "linux":
+        # The shared staging works here too; the Linux install path still has one fixed app, build folder and launcher.
+        emit("error", message="ExeFS mods: the Linux install path has no separate mod app yet (own build folder, launcher and "
+                              "desktop entry), so the patched code cannot be installed beside the game. RomFS-only mods work.", code=3)
+        return 3
+    if code_mod and (not getattr(args, "ips_helper", None) or not Path(args.ips_helper).is_file()):
+        emit("error", message="ExeFS mods need the installer's ips_patch helper, which was not found. Reinstall the installer.", code=3)
         return 3
     base = Path(args.base)
     if base.is_dir():

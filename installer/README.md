@@ -45,7 +45,9 @@ the runtime's `mods_scan()` without activating a mod or touching saves. A
 portable scanner follows the same folder rules on Windows. Pure RomFS mods can
 be copied with a file manager and need no rebuild. The installer marks ExeFS
 mods as needing a code build. IPS/IPS32-only mods can build a separate Mac or
-iPhone/iPad app from a Mac, including one additional `subsdk1` module. Unsupported ExeFS files block
+iPhone/iPad app from a Mac, or a separate Windows app on Windows, including one additional `subsdk1` module.
+On Windows every selected mod, RomFS-only too, gets its own app folder that starts the mod; the game's app
+stays unchanged. Linux still installs one fixed app, so ExeFS mods are refused there with that reason. Unsupported ExeFS files block
 advancement. Choose a whole downloaded mod folder, including common wrapper
 folders. The compiled app fixes the selected mod and keeps its own save.
 On iOS the installer deploys versioned base and mod data to the app's own
@@ -56,7 +58,8 @@ extracted from the mod's known RomFS title-logo bundles through the existing Uni
 reader; Lumi's actual localized logos are extracted there. Explicit icon files
 take priority. Only mods with no usable artwork get a visible MOD badge on the
 base icon, without host fonts or network assets. The existing shader profile is
-needed for embedded Unity logos and is checked before compiling.
+needed for embedded Unity logos and is checked before compiling on Apple hosts; the Windows build runtime
+has no UnityPy, so a Windows mod app with embedded logos gets the MOD badge and the log says so.
 All language variants ship.
 
 

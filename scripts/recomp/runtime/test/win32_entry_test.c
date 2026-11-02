@@ -46,6 +46,19 @@ void rt_fatal(const char *format, ...) {
 int bdsp_main(int argc, char **argv) {
     assert(argc == 2 && !strcmp(argv[1], "argument-\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"));
     assert(!strcmp(getenv("BDSP_ENTRY_PROBE"), "environment-\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"));
+    wchar_t expected_mod[1100];
+    if (GetEnvironmentVariableW(L"TEST_EXPECT_MOD", expected_mod, 1100)) {   // mod.txt beside the executable
+        char *mod = bdsp_win32_utf8(expected_mod);
+        GetEnvironmentVariableW(L"TEST_EXPECT_MODS_DIR", expected_mod, 1100);
+        char *dir = bdsp_win32_utf8(expected_mod);
+        assert(mod && dir && getenv("BDSP_MOD") && !strcmp(getenv("BDSP_MOD"), mod));
+        assert(getenv("BDSP_MODS_DIR") && !strcmp(getenv("BDSP_MODS_DIR"), dir));
+        GetEnvironmentVariableW(L"TEST_EXPECT_COMPILED", expected_mod, 1100);
+        assert(expected_mod[0] == L'1' ? getenv("BDSP_COMPILED_EXEFS") && !strcmp(getenv("BDSP_COMPILED_EXEFS"), mod)
+                                       : !getenv("BDSP_COMPILED_EXEFS"));
+        free(mod);
+        free(dir);
+    }
 #ifdef BDSP_ENTRY_PATH_TEST
     char *save = test_environment(L"TEST_EXPECT_SAVE"), *data = test_environment(L"TEST_EXPECT_DATA");
     assert(!strcmp(getenv("BDSP_SAVE"), save));

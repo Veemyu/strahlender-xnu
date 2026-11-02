@@ -183,6 +183,19 @@ class GameIconTests(unittest.TestCase):
         self.assertFalse(result["mod_icon_fallback"])
         self.assertNotIn("mod_artwork", result)
 
+    def test_embedded_mod_logos_can_be_skipped_without_the_unity_reader(self):
+        self.fixture()
+        mod = self.root / "Embedded Without Reader"
+        logos = mod / "romfs/Data/StreamingAssets/AssetAssistant/Dpr/movie/dia/logo"
+        logos.mkdir(parents=True)
+        (logos / "logo_dia_en").write_bytes(b"unity bundle")
+        with patch.dict(sys.modules, {"UnityPy": None}):
+            with self.assertRaisesRegex(ValueError, "UnityPy"):
+                icons.check_mod_artwork(mod)
+            result = icons.prepared(self.source, self.root / "badge-icons", mod, mod.name, embedded_logos=False)
+        self.assertTrue(result["mod_icon_fallback"])
+        self.assertNotIn("mod_artwork", result)
+
     def nacp(self, directory, titles, version="1.0.0"):
         data = bytearray(0x4000)
         for locale, name in titles.items():

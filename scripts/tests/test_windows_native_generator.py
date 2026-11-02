@@ -420,6 +420,27 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
                 result = subprocess.run(command, cwd=other, env=environment,
                                         capture_output=True, text=True, timeout=20)
                 self.assertEqual(result.returncode, 0, result.stderr)
+                # mod.txt beside BDSP.exe: a compiled code mod always starts its mod, a RomFS mod yields to the environment.
+                launch = self.root / "mod.txt"
+                library = self.root / "mods 日本語"
+                library.mkdir()
+                for kind, requested, expected in (("exefs", "none", "Mod 日本語"), ("romfs", "none", "none"),
+                                                  ("romfs", None, "Mod 日本語")):
+                    launch.write_text("Mod 日本語\n%s\n%s\n" % (library, kind), encoding="utf-8")
+                    env = {key: value for key, value in environment.items() if key != "BDSP_MOD"}
+                    if requested:
+                        env["BDSP_MOD"] = requested
+                    env.update(TEST_EXPECT_MOD=expected, TEST_EXPECT_COMPILED="1" if kind == "exefs" else "0",
+                               TEST_EXPECT_MODS_DIR=str(library))
+                    result = subprocess.run(command, cwd=self.root, env=env,
+                                            capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 0, (kind, requested, result.stderr))
+                launch.write_text("Mod without folder\n", encoding="utf-8")
+                result = subprocess.run(command, cwd=self.root, env=environment,
+                                        capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("mod.txt is invalid", result.stderr)
+                launch.unlink()
 
     def test_active_kernel_windows_suspend_context_and_resume(self):
         source = synthetic_nso(self.root / "gc-roots.nso")

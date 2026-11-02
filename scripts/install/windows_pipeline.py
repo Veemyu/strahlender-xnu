@@ -164,21 +164,46 @@ def extract_game(base, prod_keys, work, hactool, *, update=None, title_keys=None
     return Path(work) / "manifest.json"
 
 
-def build_game(args, emit):
+def mod_launch_file(mod, compiled):
+    """mod.txt beside BDSP.exe: the runtime starts this mod by default (win32_entry.c)."""
+    for value in (mod["name"], str(mod["mods_dir"])):
+        if not value or any(character in value for character in "\r\n\0"):
+            raise ValueError("Mod name and folder cannot contain newlines.")
+    return "%s\n%s\n%s\n" % (mod["name"], mod["mods_dir"], "exefs" if compiled else "romfs")
+
+
+def _mod_has_code(mod_root):
+    root = Path(mod_root)
+    for folder in root.iterdir():
+        if folder.name.lower() == "exefs" and folder.is_dir():
+            return any(item.name.lower() not in ("license", "notice", ".ds_store") for item in folder.iterdir())
+    return False
+
+
+def build_game(args, emit, mod=None, stage_code_mod=None):
+    """Builds and installs the game; with a mod, a separate app that starts the mod with its own save.
+
+    mod is the driver's validated selection (name, mods_dir, root, identity, slug). stage_code_mod(work, cache)
+    stages the mod's IPS/IPS32 patches and subsdk1 with ips_patch and returns the staged ExeFS (or None).
+    """
     selected, compiler, generator, bundles = prerequisites(
         args.windows_catalog, "aarch64" if args.target == "windows-arm64" else "x86_64", args.work)
-    if getattr(args, "mod_root", None):
-        raise ValueError("Mod installation is not wired to the native Windows package yet; no mod was ignored")
+    if getattr(args, "mod_root", None) and not mod:
+        raise ValueError("The selected mod was not validated; start the build through the installer driver")
     root, work = Path(args.root).resolve(), Path(args.work).resolve()
     output = work / "recomp" / selected["cache_key"]
     if output.resolve() != output:
         raise ValueError("The native build cache must not pass through a symbolic link or reparse point")
     for name in ("base", "prod_keys", "title_keys", "update", "mod_root", "windows_catalog"):
         value = getattr(args, name, None)
-        if value and Path(value).resolve().is_relative_to(output):
+        if value and any(Path(value).resolve().is_relative_to(cache) for cache in
+                         (output, work / "recomp/mods", work / "recomp/mod-apps")):
             raise ValueError("Selected inputs must remain outside the replaceable native build cache")
     icons = work / "recomp/icons/source"  # outside the replaceable build cache, like the other pipelines
-    generator_progress = GeneratorProgress(4 + int((work / "exefs/subsdk1").is_file()))
+    exefs = work / "exefs"
+    # A mod app links its own executable and icons; RomFS-only mods reuse the game's compiled code.
+    app_output = (work / "recomp/mod-apps" / mod["identity"] / selected["cache_key"]) if mod else output
+    generator_progress = GeneratorProgress(4)
     def tool_line(line):
         progress = generator_progress.feed(line)
         if progress:
@@ -207,38 +232,61 @@ def build_game(args, emit):
             update=args.update, title_keys=getattr(args, "title_keys", None),
             progress=lambda text: emit("log", level="diagnostic", message=text), icons=icons))
         def verify_exefs():
-            names = build.modules(work / "exefs")
+            nonlocal exefs, output, app_output
+            build.modules(work / "exefs")
             if not (work / "exefs/main.npdm").is_file():
                 raise ValueError("The native extractor produced no exefs/main.npdm")
+            staged = stage_code_mod(work, work / "recomp") if mod and stage_code_mod else None
+            if staged:
+                exefs = Path(staged["staged"])
+                output = app_output = Path(staged["build_dir"]) / selected["cache_key"]
+                emit("log", level="diagnostic", message="Code mod staged: the generator, compiler and runtime use the patched "
+                     "modules" + (" and subsdk1" if (exefs / "subsdk1").is_file() else "") + " in a separate build folder.")
+            elif mod and _mod_has_code(args.mod_root):
+                raise ValueError("The selected mod contains ExeFS code, but no ExeFS staging was provided")
+            names = build.modules(exefs)
+            if not (exefs / "main.npdm").is_file():
+                raise ValueError("The staged ExeFS has no main.npdm")
             generator_progress.total = len(names)
         stage("exefs", verify_exefs)
         def prepare_icons():
-            return game_icons.build_windows(icons, output / "icons/windows")
+            if not mod:
+                return game_icons.build_windows(icons, app_output / "icons/windows")
+            embedded = True
+            try:
+                game_icons.check_mod_artwork(mod["root"])
+            except ValueError:
+                embedded = False
+                emit("log", level="warning", message="The mod's title logo is stored in Unity bundles, and the Windows build runtime "
+                     "has no UnityPy reader; the mod app uses the game icon with a MOD badge.")
+            return game_icons.build_windows(icons, app_output / "icons/windows", mod["root"], mod["name"],
+                                            embedded_logos=embedded)
         if getattr(args, "clean_build", False) and output.exists():
             # Keep all old outputs recoverable while building a fresh target cache.
             previous = output.with_name(output.name + "-previous-" + uuid.uuid4().hex)
             output.rename(previous)
             emit("log", level="diagnostic", message="Previous native build outputs were preserved in " + str(previous))
-        stage("eh_gen", lambda: build.generate(generator, work / "exefs", output / "gen", commands))
+        stage("eh_gen", lambda: build.generate(generator, exefs, output / "gen", commands))
         stage("clang", lambda: build.compile_sources(
             output / "gen", output / "objects", compiler, selected, commands,
             source_paths=build.generated_inventory(output / "gen"),
             progress=lambda completed, total: emit("progress", id="clang", completed=completed, total=total)))
         def prepare_images():
-            build.images(generator, work / "exefs", output / "images",
+            build.images(generator, exefs, output / "images",
                          root / "scripts/recomp/runtime/hle_nvn.txt", commands)
             prepare_icons()
         stage("images", prepare_images)
         runtime = stage("runtime", lambda: build.compile_runtime(
             output / "runtime-vulkan", compiler, selected, commands,
-            has_subsdk1=(work / "exefs/subsdk1").is_file(), root=root, qt=bundles["qt"],
+            has_subsdk1=(exefs / "subsdk1").is_file(), root=root, qt=bundles["qt"],
             **{name: bundles[name] for name in ("sdl", "vulkan", "ffmpeg")}))
         executable = stage("link", lambda: build.link_executable(
             output / "objects" / selected["cache_key"] / "compile.json", runtime,
             build.graphical_libraries(compiler, selected, *(bundles[name] for name in ("sdl", "vulkan", "ffmpeg")),
                                       qt=bundles["qt"]),
-            output / "BDSP.exe", compiler, selected, commands, icon=output / "icons/windows"))
-        destination = work / "builds/windows-amd64/BDSP"
+            app_output / "BDSP.exe", compiler, selected, commands, icon=app_output / "icons/windows"))
+        app_folder = "BDSP-" + mod["slug"] + "-" + mod["identity"] if mod else "BDSP"
+        destination = work / "builds/windows-amd64" / app_folder
         destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="windows-package-", dir=destination.parent) as temporary:
             def package():
@@ -251,10 +299,14 @@ def build_game(args, emit):
                 qt_conf.write_text("[Paths]\nPrefix=.\nPlugins=plugins\n", encoding="utf-8")
                 plugin = bundles["qt"] / "plugins/platforms/qwindows.dll"
                 data = {"img": output / "images", "romfs": work / "romfs",
-                        "exefs/main.npdm": work / "exefs/main.npdm",
-                        "icons/windows": output / "icons/windows",
+                        "exefs/main.npdm": exefs / "main.npdm",
+                        "icons/windows": app_output / "icons/windows",
                         "plugins/platforms/qwindows.dll": plugin, "qt.conf": qt_conf,
                         "lproj": root / "scripts/recomp/runtime/app/linux/lproj"}
+                if mod:
+                    launch = Path(temporary) / "mod.txt"
+                    launch.write_text(mod_launch_file(mod, exefs != work / "exefs"), encoding="utf-8")
+                    data["mod.txt"] = launch
                 providers = build.runtime_dll_candidates(compiler, selected, dependencies)
                 dynamic = [path.name for path in build.windows.dll_closure(plugin, providers, selected["target"]) if path != plugin]
                 packaged = build.package_game(
@@ -268,12 +320,13 @@ def build_game(args, emit):
             stage("package", package)
         override = getattr(args, "install_root", None)
         if override:
-            install = Path(override) / "BDSP"
+            install = Path(override) / app_folder
         else:
             local = os.environ.get("LOCALAPPDATA")
             if not local:
                 raise ValueError("The Windows per-user application data directory is unavailable")
-            install = Path(local) / "StrahlenderXnu/app"
+            # A mod app is installed beside the game; the game's app stays unchanged.
+            install = Path(local) / ("StrahlenderXnu/mod-apps/" + app_folder if mod else "StrahlenderXnu/app")
         return install_package(destination, install, emit)
     except BaseException:
         commands.cancel()

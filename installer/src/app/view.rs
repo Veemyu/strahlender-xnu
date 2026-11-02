@@ -927,7 +927,7 @@ impl Installer {
         let mut choices = column![vanilla].spacing(6);
         for item in &self.mods {
             let tag = if item.has_exefs {
-                if self.apple_ips_target() && item.ips_buildable() {
+                if self.ips_target() && item.ips_buildable() {
                     L::ExeFSBuildReadyTag
                 } else {
                     L::ExeFSBuildNeeded
@@ -977,7 +977,7 @@ impl Installer {
                 body = body.push(
                     text(
                         self.language
-                            .t(if self.apple_ips_target() && item.ips_buildable() {
+                            .t(if self.ips_target() && item.ips_buildable() {
                                 L::ExeFSBuildReady
                             } else if item.ips_buildable() {
                                 L::ExeFSWarning

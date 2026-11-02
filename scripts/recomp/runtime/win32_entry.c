@@ -26,6 +26,44 @@ static int set_path(const char *name, const char *parent, const char *child, boo
     return result;
 }
 
+// mod.txt beside BDSP.exe, written by the installer for a mod app: the mod's name, its mods folder and "exefs" when the mod's
+// code is compiled into this executable ("romfs" otherwise). The environment may still choose another RomFS mod or "none";
+// a compiled code mod always starts its own mod, like the macOS mod app (app_config.c).
+static int apply_mod_launch(const char *package) {
+    size_t size = strlen(package) + sizeof "\\mod.txt";
+    char *path = malloc(size);
+    if (!path) { errno = ENOMEM; return -1; }
+    snprintf(path, size, "%s\\mod.txt", package);
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        int missing = errno == ENOENT;
+        free(path);
+        return missing ? 0 : -1;
+    }
+    char name[256], dir[1100], kind[16];
+    bool valid = fgets(name, sizeof name, file) && fgets(dir, sizeof dir, file) && fgets(kind, sizeof kind, file) &&
+                 strchr(name, '\n') && strchr(dir, '\n') && strchr(kind, '\n');
+    fclose(file);
+    if (valid) {
+        name[strcspn(name, "\r\n")] = 0;
+        dir[strcspn(dir, "\r\n")] = 0;
+        kind[strcspn(kind, "\r\n")] = 0;
+        valid = name[0] && dir[0] && (!strcmp(kind, "exefs") || !strcmp(kind, "romfs"));
+    }
+    if (!valid) {
+        fprintf(stderr, "FATAL: %s is invalid; rebuild this mod app with the installer.\n", path);
+        free(path);
+        errno = EINVAL;
+        return -1;
+    }
+    free(path);
+    bool compiled = !strcmp(kind, "exefs");
+    if (!plat_setenv("BDSP_MODS_DIR", dir, compiled) || !plat_setenv("BDSP_MOD", name, compiled) ||
+        (compiled && !plat_setenv("BDSP_COMPILED_EXEFS", name, true)))
+        return -1;
+    return 0;
+}
+
 static int prepare_paths(void) {
     bool explicit_data = getenv("BDSP_DATA_DIR") != NULL;
     wchar_t executable[32768];
@@ -38,7 +76,8 @@ static int prepare_paths(void) {
     if (!package) return -1;
     int result = set_path("BDSP_IMG", package, "img", false) ||
                  set_path("BDSP_ROMFS", package, "romfs", false) ||
-                 set_path("BDSP_NPDM", package, "exefs\\main.npdm", false);
+                 set_path("BDSP_NPDM", package, "exefs\\main.npdm", false) ||
+                 apply_mod_launch(package);
     free(package);
     if (result) return -1;
     if (!explicit_data && !getenv("BDSP_SAVE")) {

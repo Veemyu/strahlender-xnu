@@ -375,7 +375,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // no graphics (gate 1 measurement only): NVN functions stay unused
         else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) runtime_setenv("BDSP_INPUT_SCRIPT", argv[++i]);   // "second:KEY[+KEY]:duration,..." (nvn_glue.c)
         else if (!strcmp(argv[i], "--save") && i + 1 < argc) runtime_setenv("BDSP_SAVE", argv[++i]);   // save folder (default work/recomp/save, see install_save.sh)
-        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) runtime_setenv("BDSP_MOD", argv[++i]);   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
+        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) {   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
+            if (getenv("BDSP_COMPILED_EXEFS")) { fprintf(stderr, "[mods] --mod ignored: this app has %s compiled in\n", getenv("BDSP_COMPILED_EXEFS")); i++; }
+            else runtime_setenv("BDSP_MOD", argv[++i]);
+        }
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) runtime_setenv("BDSP_TIMEOUT", argv[++i]);
         else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }
     }

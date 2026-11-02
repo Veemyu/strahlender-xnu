@@ -211,8 +211,11 @@ def recommend(variants, preferred):
     return default_variant(variants)
 
 
-def overlay_mod(source, mod_root, destination, mod_name):
-    """Keep every base language variant, replacing only icons supplied by a mod."""
+def overlay_mod(source, mod_root, destination, mod_name, embedded_logos=True):
+    """Keep every base language variant, replacing only icons supplied by a mod.
+
+    embedded_logos=False skips the title logos inside the mod's Unity bundles (a runtime without UnityPy); the
+    variants without a mod icon then get the MOD badge."""
     source, mod_root, destination = Path(source), Path(mod_root), output_path(destination)
     if not mod_root.is_dir():
         raise ValueError("The selected mod folder is missing")
@@ -263,7 +266,8 @@ def overlay_mod(source, mod_root, destination, mod_name):
     if generic:
         for locale in NACP_LANGUAGES:
             found.setdefault(locale, generic)
-    embedded, provenance = extract_mod_logos(romfs, manifest.get("title_id", "")) if len(found) < len(NACP_LANGUAGES) else ({}, {})
+    embedded, provenance = (extract_mod_logos(romfs, manifest.get("title_id", ""))
+                            if embedded_logos and len(found) < len(NACP_LANGUAGES) else ({}, {}))
     if embedded:
         default = embedded.get("en-US") or embedded[sorted(embedded)[0]]
         for locale in NACP_LANGUAGES:
@@ -354,12 +358,12 @@ def resized(data, size):
         return image.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
 
 
-def prepared(source, output, mod_root=None, mod_name=None):
+def prepared(source, output, mod_root=None, mod_name=None, embedded_logos=True):
     output = output_path(output)
     output.mkdir(parents=True, exist_ok=True)
     if mod_root:
         with tempfile.TemporaryDirectory(prefix="mod-override-", dir=output.parent) as temporary:
-            overlay_mod(source, mod_root, temporary, mod_name or Path(mod_root).name)
+            overlay_mod(source, mod_root, temporary, mod_name or Path(mod_root).name, embedded_logos)
             return prepared(temporary, output)
     manifest = load_source(source)
     if not manifest["variants"]:
@@ -422,10 +426,10 @@ def build_mac(source, output, mod_root=None, mod_name=None):
     write_json(output / "AppIcons/icons.json", manifest)
 
 
-def build_windows(source, output, mod_root=None, mod_name=None):
+def build_windows(source, output, mod_root=None, mod_name=None, embedded_logos=True):
     """Reuse original variants for Qt and embed the default as a PE icon."""
     output = output_path(output)
-    manifest = prepared(source, output, mod_root, mod_name)
+    manifest = prepared(source, output, mod_root, mod_name, embedded_logos)
     default = next(v for v in manifest["variants"] if v["id"] == manifest["default"])
     Image, _ = image_module()
     with Image.open(output / default["image"]) as image:
