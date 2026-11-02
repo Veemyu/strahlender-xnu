@@ -465,9 +465,11 @@ def _prepare_firmware(args):
     if not Path(source).exists():
         raise ValueError("The selected firmware ZIP or NCA folder is unavailable. Choose it again or skip firmware.")
     # Bootstrap hactool only; reject firmware before game extraction/generation.
+    # The tools stage is target-independent. build_all.sh accepts only macos/ios/all,
+    # while args.target can be linux or windows.
     emit("step", id="firmware", status="started")
     code = _run_command([str(Path(args.root) / "scripts/build_all.sh"), "--only", "tools",
-                         "--target", args.target, "--min-free-gb", str(required_free_gb(args))], args, "firmware",
+                         "--target", "all", "--min-free-gb", str(required_free_gb(args))], args, "firmware",
                         emit_steps=False)
     if code:
         return code

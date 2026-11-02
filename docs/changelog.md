@@ -16,6 +16,11 @@ Chronological, newest entries first. Each item records the date, goal, and files
   `objects.c`). Colour targets Metal cannot render to are left out with a log line, and pipeline records with such formats are refused
   instead of aborting in Metal's validation. `BDSP_XW_DRAIN_DESTROY=0` restores the old behaviour.
 - **Linux aarch64 unlocked as experimental (issue 23):** the graphical installer (`backend_supported` in `installer/src/app.rs`, now `platform_backend_supported`) and `install-linux.sh` stopped refusing aarch64 on purpose; both claimed AVX2 was needed, but the build uses `-march=native` or `-mcpu=native` and needs no AVX2. The GUI and the script show an experimental notice (five and four languages). `install-linux.sh` finds the Qt Wayland plugin in any multiarch folder (`/usr/lib/$(uname -m)-linux-gnu/qt6`) and under its Qt 6.8 name `libqwayland.so`; new test hook `BDSP_INSTALL_ARCH`. The Vulkan backend converts BC textures to ASTC 4x4 / R8 / RG8 on GPUs without BC (`bctc.c`, `BDSP_TEST_NO_BC=1`; `textures.c`, `build_vk.sh`, `portable_build.py`). Tests: `scripts/tests/test_linux_install.py`, `app.rs` support matrix. Docs: `BUILD.md` 6.5, `BUILD.de.md`, READMEs.
+- **Linux firmware target (issue #33):** the firmware stage bootstrapped hactool with `--target linux`, but the shared tools
+  stage accepts only `macos`, `ios` or `all`, so the build failed before the native firmware importer ran. The bootstrap
+  now uses `all` because the tools stage is target-independent; Linux firmware is imported into `app/Firmware` and loaded
+  through `BDSP_FIRMWARE_DATA`, like the other platforms. Test:
+  `test_linux_firmware_bootstrap_uses_a_target_the_tools_stage_accepts`.
 
 ## 2026-11-01
 - **iPhone/iPad builds keep FFmpeg between builds:** the installer sets `BDSP_IOS_FFMPEG_DIR` to `<data dir>/ios-ffmpeg` (default for checkouts stays `work/ios/ffmpeg-ios`), so the download, verification and compile (about 45 s) happen only when the SDK, compiler or `build_ffmpeg_ios.sh` changes. The folder carries a stamp (`scripts/install/ffmpeg_cache.py`), is built in a temporary sibling folder and renamed; readers are `build_rt32.sh`, `installer_build.sh`, `deploy_ios.sh` and the Xcode project (`BDSP_FFMPEG_DIR`). Test: `scripts/tests/test_ffmpeg_cache.py`. A checkout's old unstamped `work/ios/ffmpeg-ios` is rebuilt once.
