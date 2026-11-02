@@ -20,6 +20,7 @@
 #ifdef _WIN32
 #include "win32_files.h"
 #endif
+#include <math.h>
 #include "nvn.h"
 #include "output_scale.h"
 #include "settings.h"
@@ -183,8 +184,12 @@ void output_scale(double dw, double dh, double src_aspect, bool reshape_allowed,
     o->vw = dw;
     o->vh = dw / src_aspect;
     if (o->vh > dh) { o->vh = dh; o->vw = dh * src_aspect; }
-    o->vx = (dw - o->vw) / 2;
-    o->vy = (dh - o->vh) / 2;
+    // A window that is within 0.3% of the image's shape (an iPad 2732x2048 for 4:3, a window rounded to whole pixels) is filled: otherwise a
+    // one pixel black edge remains, and the keyboard's blur smears it over the whole border.
+    if (fabs(dw / dh / src_aspect - 1.0) < 0.003) { o->vw = dw; o->vh = dh; }
+    o->vx = floor((dw - o->vw) / 2);
+    o->vy = floor((dh - o->vh) / 2);
+    o->vw = floor(o->vw + 0.5); o->vh = floor(o->vh + 0.5);
 }
 double output_scale_dynamic_factor(void) { return 1.0; }
 
