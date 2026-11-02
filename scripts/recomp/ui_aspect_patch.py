@@ -28,6 +28,9 @@ TITLE_SCENE = Path("Data/StreamingAssets/AssetAssistant/Dpr/scenes/title")
 CONSTANT_PIXEL_SIZE, SCALE_WITH_SCREEN_SIZE = 0, 1
 EXTRA_FILE = Path("Data/resources.assets")
 SCREEN = (1280.0, 720.0)
+# Prefabs the game places by reading their window rectangle (the Yes/No and choice boxes): stretched, their size reads 0 and the box ends up
+# off screen (the starter selection never showed its Yes/No box). They keep their 16:9 block.
+KEEP_PREFABS = ("ContextMenu", "ContextMenu_Scroll")
 # Render-texture views keep their proportions: stretching them would distort 3D models.
 KEEP_NAMES = ("rawimage", "modelview", "rawimagemodel")
 # Only prefab roots, screen windows and backdrops are stretched. Other full-size containers (party lists, maps) hold the screen's content: they stay a
@@ -98,7 +101,7 @@ def patch_bundle(UnityPy, source, destination, dry_run, demo=False):
     def visit(pid, parent_is_screen, is_root=False):
         t = trees[pid]
         name = names.get(gameobject_of[pid], "")
-        keep = any(k in name.lower() for k in KEEP_NAMES)
+        keep = any(k in name.lower() for k in KEEP_NAMES) or path_of(pid).split("/")[0] in KEEP_PREFABS
         # demo timelines fade with a full-size "Image" under their canvas (elsewhere "Image" can be a render-texture view, which must keep its shape)
         eligible = is_root or name == "Window" or bool(BACKDROP.search(name)) or (demo and name == "Image")
         screen = False

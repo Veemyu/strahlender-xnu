@@ -32,5 +32,45 @@ class CandidateSourcesTests(unittest.TestCase):
         self.assertFalse(patch.is_demo_timeline(Path("Data/StreamingAssets/AssetAssistant/FureaiHiroba/demo/pokemonview")))
 
 
+class FakeUnityPy(object):
+    """Just enough of UnityPy for patch_bundle: a prefab root with a full-screen "Window" child."""
+
+    class Object(object):
+        def __init__(self, kind, path_id, data):
+            self.type = type("Kind", (), {"name": kind})()
+            self.path_id = path_id
+            self.data = data
+            self.byte_start, self.byte_size = 0, 0
+
+        def read(self):
+            return type("Read", (), {"m_Name": self.data})()
+
+        def read_typetree(self):
+            return self.data
+
+    def __init__(self, prefab):
+        def rect(owner, father):
+            return {"m_GameObject": {"m_PathID": owner}, "m_Father": {"m_PathID": father},
+                    "m_AnchorMin": {"x": 0.5, "y": 0.5}, "m_AnchorMax": {"x": 0.5, "y": 0.5},
+                    "m_SizeDelta": {"x": 1280.0, "y": 720.0}, "m_AnchoredPosition": {"x": 0.0, "y": 0.0}, "m_Pivot": {"x": 0.5, "y": 0.5}}
+        kind = self.Object
+        self.objects = [kind("GameObject", 1, prefab), kind("GameObject", 2, "Window"),
+                        kind("RectTransform", 11, rect(1, 0)), kind("RectTransform", 12, rect(2, 11))]
+
+    def load(self, _path):
+        return self
+
+
+class PatchBundleTests(unittest.TestCase):
+    def count(self, prefab):
+        return patch.patch_bundle(FakeUnityPy(prefab), Path("bundle"), Path("unused"), True)
+
+    def test_screens_are_stretched_but_the_boxes_the_game_places_by_their_size_are_not(self):
+        self.assertEqual(self.count("Bag"), 2)
+        # ContextMenu holds the Yes/No box of the starter selection: stretched, its size reads 0 and the box leaves the screen.
+        self.assertEqual(self.count("ContextMenu"), 0)
+        self.assertEqual(self.count("ContextMenu_Scroll"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
