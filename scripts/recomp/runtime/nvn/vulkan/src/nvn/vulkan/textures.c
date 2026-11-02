@@ -450,6 +450,9 @@ void backend_texture_destroyed(NvnTexture *t) {
     t->backend = NULL;
 }
 
+// Command lists run on the game thread here (no render worker): nothing still reads a released program
+void backend_program_destroyed(void) {}
+
 // Reboot (device.c backend_reset; GPU idle): every game texture and its views go.
 void vk_textures_reset(void) {
     int n = g_nlive;

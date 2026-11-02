@@ -19,8 +19,10 @@ Xcode 27.1 (iOS 27.1 SDK) builds the iPad app and the iPhone compile target
   Without any setting, 4 of 10 starts crashed or stalled. Lockstep
   (`BDSP_EXEC_SYNC=1`) avoids that but serializes guest and renderer: about 69
   presentations/s, which was a performance regression. The iOS default is now
-  the asynchronous worker with `BDSP_XW_DRAIN_DESTROY=1` (texture release waits
-  for the worker): 120 presentations/s in 2 of 2 runs. `BDSP_XW_SNAP=1` stays
+  the asynchronous worker where texture release waits for the worker
+  (`BDSP_XW_DRAIN_DESTROY`): 120 presentations/s in 2 of 2 runs. Since
+  2026-11-02 this wait is the default on macOS too and also covers programs
+  (issue #24; `BDSP_XW_DRAIN_DESTROY=0` turns it off). `BDSP_XW_SNAP=1` stays
   off: it produces empty command lists (0 draws). Details: section 4.5 of the
   German document.
 

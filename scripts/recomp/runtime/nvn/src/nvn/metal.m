@@ -547,11 +547,16 @@ static void release_backend_texture(NvnTexture *t, TexBackend *b) {  // (also dr
 
 void backend_texture_destroyed(NvnTexture *t) {
     extern void renderer_xw_destroy_wait(void);
-    renderer_xw_destroy_wait();   // worker mode: with BDSP_XW_DRAIN_DESTROY (iOS default) first wait for the enqueued work
+    renderer_xw_destroy_wait();   // worker mode: first wait for the enqueued work (renderer.m)
     TexBackend *b = t->backend;
     renderer_texture_gone(t, NULL);  // its snapshot copy
     if (b) { reg_remove(b); release_backend_texture(t, b); free(b); }
     t->backend = NULL;
+}
+
+void backend_program_destroyed(void) {
+    extern void renderer_xw_release_wait(void);
+    renderer_xw_release_wait();   // the render worker's command lists point at programs too
 }
 
 static uint64_t g_frame_counter;  // presents so far (texture change detection runs once per frame)

@@ -111,19 +111,28 @@ static inline double now_ms(void) { return (double)clock_gettime_nsec_np(CLOCK_U
 #define TIMED_COMPILE(expr) ({ double t0_ = now_ms(); __auto_type r_ = (expr); stat_compile_ms += now_ms() - t0_; stat_compiles++; r_; })
 
 void renderer_draw_counts(uint64_t *draws, uint64_t *skipped) { *draws = stat_draws; *skipped = stat_skipped; }
-// Texture release waits for the worker while it still has work (BDSP_XW_DRAIN_DESTROY=1, iOS default)
-void renderer_xw_destroy_wait(void) {
+// Releasing a texture or program waits for the render worker while it still has work: its command lists hold NvnTexture and
+// NvnProgram pointers, and the Finalize calls free the objects. Without the wait the worker read freed textures (0x0x0,
+// format 0) or a new texture in the same memory, e.g. a depth format as colour target: a Metal validation abort or a SIGSEGV
+// in the AGX shader compiler at the starter selection (issue #24). BDSP_XW_DRAIN_DESTROY=0 turns the wait off.
+static bool xw_release_waits(void) {
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("BDSP_XW_DRAIN_DESTROY"); on = !e || strcmp(e, "0"); }
+    return on;
+}
+void renderer_xw_release_wait(void) {
+    if (xw_enabled() && !xw_is_worker && xw_release_waits()) xw_drain();
+}
+void renderer_xw_destroy_wait(void) {   // (textures: also counts the releases that found the worker busy)
     if (!xw_enabled() || xw_is_worker) return;
-    static int drain = -1;
     static uint64_t n, pending;
-    if (drain < 0) drain = getenv("BDSP_XW_DRAIN_DESTROY") != NULL;
     n++;
     pthread_mutex_lock(&xw_lock);
     bool busy = xw_done < xw_tail;
     pthread_mutex_unlock(&xw_lock);
     if (busy) pending++;
     if (n % 200 == 0 || n == 1) printf("[xw] textures destroyed %llu, of those with the worker running %llu\n", (unsigned long long)n, (unsigned long long)pending);
-    if (drain) xw_drain();
+    if (xw_release_waits()) xw_drain();
 }
 const char *renderer_stats(void) {
     static int dumps;

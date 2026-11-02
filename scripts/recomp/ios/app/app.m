@@ -686,7 +686,6 @@ static void StartSelectedRuntime(const ModInfo *mod) {
     setenv("BDSP_SHOT_DIR", [docs stringByAppendingPathComponent:@"Shots"].UTF8String, 0);
     setenv("BDSP_TIMEOUT", "86400", 0);
     setenv("BDSP_FPS_INTERVAL", "5", 0);
-    setenv("BDSP_XW_DRAIN_DESTROY", "1", 0);   // texture release waits for the renderer worker (suspected cause of the crash in bind_textures); frame rate stays asynchronous
     NSInteger fps = [NSUserDefaults.standardUserDefaults integerForKey:@"bdsp_fps"];
     bdsp_set_fps(fps ? (int)fps : 60);
     fprintf(stderr, "[ipad] Start: %s, device %s, os_proc_available_memory %zu MiB\n", UIDevice.currentDevice.systemVersion.UTF8String,
