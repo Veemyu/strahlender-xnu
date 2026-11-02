@@ -18,6 +18,7 @@
 #include "renderer.h"
 #include "texpatch.h"
 #include "bctc.h"
+#include "window_title.h"
 
 static id<MTLDevice> dev;
 static id<MTLCommandQueue> queue;
@@ -1601,11 +1602,9 @@ void ui_window_init(void) {
     // BDSP_HIDDEN=1: never shown (automated test runs render off screen without taking the user's focus)
     SDL_WindowFlags wflags = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     if (getenv("BDSP_HIDDEN")) wflags |= SDL_WINDOW_HIDDEN;
-    // BDSP_WINDOW_TAG names the build in the title bar (worktree, agent) so parallel test builds can be told apart
-    char title[160];
-    const char *tag = getenv("BDSP_WINDOW_TAG");
-    if (tag && *tag) snprintf(title, sizeof title, "BDSP Recomp [%.100s]", tag);
-    else snprintf(title, sizeof title, "BDSP Recomp");
+    // the game's own name in the system language (+ BDSP_WINDOW_TAG for parallel test builds), see window_title.h
+    char title[600];
+    bdsp_window_title(title, sizeof title, SDL_GetBasePath(), NULL);
     window = SDL_CreateWindow(title, win_w, win_h, wflags);
     if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
     rt_window_icon(window);

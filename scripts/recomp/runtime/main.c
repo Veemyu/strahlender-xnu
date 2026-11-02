@@ -380,6 +380,10 @@ int main(int argc, char **argv) {
             else runtime_setenv("BDSP_MOD", argv[++i]);
         }
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) runtime_setenv("BDSP_TIMEOUT", argv[++i]);
+#ifdef __APPLE__
+        // standard Cocoa pairs (-AppleLanguages "(de)", -NSDocumentRevisionsDebugMode YES ...) are read by NSUserDefaults itself
+        else if ((!strncmp(argv[i], "-Apple", 6) || !strncmp(argv[i], "-NS", 3)) && i + 1 < argc) i++;
+#endif
         else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }
     }
     g_timeout = getenv("BDSP_TIMEOUT") ? atoi(getenv("BDSP_TIMEOUT")) : 120;

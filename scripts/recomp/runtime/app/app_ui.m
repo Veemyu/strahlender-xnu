@@ -14,6 +14,7 @@
 #include "app.h"
 #include "../mods.h"
 #include "../swkbd_ui.h"
+#include "../window_title.h"
 #import "../../app/icon_variants.h"
 
 #import <QuartzCore/QuartzCore.h>
@@ -637,10 +638,8 @@ void menu_apply_window_requests(void *window) {
             NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(w),
                 SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
             InstallMacShaderStatus(native.contentView);
-            char title[300] = "BDSP";
-            if (mods_active()) snprintf(title, sizeof title, "BDSP - %s", mods_active()->name);
-            const char *tag = getenv("BDSP_WINDOW_TAG");  // names the build for parallel test runs
-            if (tag && *tag) { size_t n = strlen(title); snprintf(title + n, sizeof title - n, " [%.100s]", tag); }
+            char title[600];  // the game's own name in the system language, then the mod and BDSP_WINDOW_TAG (window_title.h)
+            bdsp_window_title(title, sizeof title, g_app.resources, mods_active() ? mods_active()->name : NULL);
             SDL_SetWindowTitle(w, title);
             SDL_SetWindowMinimumSize(w, 640, 360);
             {   // View > Debug > Presentation: the saved choice (the environment variables take precedence)
