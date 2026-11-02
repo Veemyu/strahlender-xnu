@@ -165,8 +165,9 @@ static void region_remove(uint64_t addr) {
     pthread_mutex_unlock(&g_rlock);
 }
 
-static void query_memory(uint64_t addr, uint64_t out) {
-    uint64_t prev_end = 0, info[5] = {0};  // addr, size, type|attr<<32, perm|ipc<<32, device
+static void query_memory_host(uint64_t addr, uint64_t info[5]) {
+    uint64_t prev_end = 0;  // info: addr, size, type|attr<<32, perm|ipc<<32, device
+    memset(info, 0, 5 * sizeof *info);
     pthread_mutex_lock(&g_rlock);
     int done = 0;
     for (int i = 0; i < nregions && !done; i++) {
@@ -181,7 +182,46 @@ static void query_memory(uint64_t addr, uint64_t out) {
     }
     pthread_mutex_unlock(&g_rlock);
     if (!done) { info[0] = prev_end; info[1] = ADDR_SPACE_END - prev_end; }
+}
+static void query_memory(uint64_t addr, uint64_t out) {
+    uint64_t info[5];
+    query_memory_host(addr, info);
     memcpy(G2H(out), info, 0x28);
+}
+
+// Crash report: the memory map QueryMemory reports across [lo, hi)
+static void kernel_log_memory_map(uint64_t lo, uint64_t hi) {
+    for (uint64_t a = lo; a < hi;) {
+        uint64_t info[5];
+        query_memory_host(a, info);
+        LOG("  %010llx..%010llx state %llu perm %llu%s\n", (unsigned long long)info[0], (unsigned long long)(info[0] + info[1]),
+            (unsigned long long)info[2], (unsigned long long)info[3], info[2] ? "" : " (free)");
+        if (!info[1] || info[0] + info[1] <= a) break;
+        a = info[0] + info[1];
+    }
+}
+
+// A C++ throw the SDK cannot unwind aborts inside nn::ro::detail::GetExceptionInfo: it walks QueryMemory from a frame's text
+// through rodata into data and needs them contiguous. Names the throwing frame and prints the module map it walked (issue #24).
+static void eh_abort_report(const uint64_t *x) {
+    uint64_t fp = x[29], off = 0, thrower = 0;
+    int in_lookup = 0, past_throw = 0;
+    for (int n = 0; n < 32 && fp >= STACK_BASE && fp < STACK_BASE + STACK_SIZE; n++) {
+        uint64_t lr = *G2H64(fp + 8);
+        const char *s = loader_symbol_at(lr, &off);
+        if (s && strstr(s, "GetExceptionInfo")) in_lookup = 1;
+        else if (in_lookup && s && (strstr(s, "__cxa_throw") || strstr(s, "__cxa_rethrow") || strstr(s, "_Unwind_Resume"))) past_throw = 1;
+        else if (past_throw) { thrower = lr; break; }
+        uint64_t next = *G2H64(fp);
+        if (next <= fp) break;
+        fp = next;
+    }
+    if (!in_lookup) return;
+    const char *s = thrower ? loader_symbol_at(thrower, &off) : NULL;
+    LOG("[eh] C++ exception thrown from %llx (%s+%llx) could not be unwound: nn::ro::detail::GetExceptionInfo found no contiguous\n"
+        "[eh] text/rodata/data mapping for a frame. Memory map of the modules (QueryMemory):\n",
+        (unsigned long long)thrower, s ? s : "?", (unsigned long long)off);
+    kernel_log_memory_map(MAIN_BASE, SUBSDK0_BASE + 0x1000000ull);
 }
 
 // ------------------------------------------------------------------ Threads
@@ -786,6 +826,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     }
     case 0x26:  // Break(reason, info, size)
         if (x[0] & 0x80000000u) { LOG("[kernel] Break (Benachrichtigung) %llx\n", (unsigned long long)x[0]); x[0] = R_OK; break; }
+        eh_abort_report(x);
         rt_fatal("svcBreak(reason=%llx, info=%llx, size=%llx) bei %llx, lr=%llx\n", (unsigned long long)x[0], (unsigned long long)x[1],
                  (unsigned long long)x[2], (unsigned long long)pc, (unsigned long long)x[30]);
     case 0x27: {
