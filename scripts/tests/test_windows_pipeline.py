@@ -16,6 +16,13 @@ from scripts.recomp import portable_build as build, windows_support as windows
 from scripts.tests.test_windows_build import pe
 
 
+def setUpModule():
+    # The system report runs real commands; build tests must not depend on the machine they run on.
+    patcher = patch.dict(os.environ, {"BDSP_NO_DIAGNOSTICS": "1"})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class WindowsPipelineTests(unittest.TestCase):
     def test_installer_does_not_accept_runtime_controller_settings(self):
         arguments = ["build", "--root", ".", "--work", ".", "--target", "windows",

@@ -17,6 +17,13 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 DRIVER = os.path.join(ROOT, "scripts", "install", "driver.py")
 
 
+def setUpModule():
+    # The system report runs real commands; build tests must not depend on the machine they run on.
+    patcher = patch.dict(os.environ, {"BDSP_NO_DIAGNOSTICS": "1"})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class InstallerDriverTests(unittest.TestCase):
     def test_firmware_skip_does_not_run_tools_or_touch_data(self):
         args = SimpleNamespace(firmware=None, firmware_root="stale")
@@ -1081,6 +1088,42 @@ class InstallerDriverTests(unittest.TestCase):
                     contextlib.redirect_stdout(output):
                 driver._prepare_shaders(args, "macosx")
             self.assertEqual(seen, [None, (1, 0), (0, 1)])
+
+    def test_build_starts_with_the_system_report_as_plain_log_lines(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            args = SimpleNamespace(root=root, work=root / "elsewhere", target="linux")
+            lines = ["[Diagnostics] OS: Example 1.0", "[Diagnostics] Project at " + str(root)]
+            environment = {key: value for key, value in os.environ.items() if key != "BDSP_NO_DIAGNOSTICS"}
+            output = io.StringIO()
+            with patch.dict(os.environ, environment, clear=True), \
+                    patch.object(driver.diagnostics, "collect", return_value=lines) as collect, \
+                    contextlib.redirect_stdout(output):
+                self.assertEqual(driver.build(args), 2)
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(events[0]["event"], "hello")
+            self.assertEqual([(e["event"], e.get("level")) for e in events[1:3]], [("log", "diagnostic")] * 2)
+            self.assertEqual(events[1]["message"], lines[0])
+            self.assertEqual(events[2]["message"], "[Diagnostics] Project at <project>")
+            self.assertEqual(events[3]["event"], "error")
+            collect.assert_called_once_with(work=root / "elsewhere")
+
+    def test_a_failing_system_report_never_stops_the_build_and_can_be_switched_off(self):
+        args = SimpleNamespace(root=".", work=".", target="linux")
+        environment = {key: value for key, value in os.environ.items() if key != "BDSP_NO_DIAGNOSTICS"}
+        output = io.StringIO()
+        with patch.dict(os.environ, environment, clear=True), \
+                patch.object(driver.diagnostics, "collect", side_effect=RuntimeError("boom")), \
+                contextlib.redirect_stdout(output):
+            driver.log_diagnostics(args)
+        self.assertEqual([json.loads(line)["message"] for line in output.getvalue().splitlines()],
+                         ["[Diagnostics] unavailable (RuntimeError)"])
+        output = io.StringIO()
+        with patch.dict(os.environ, {"BDSP_NO_DIAGNOSTICS": "1"}), \
+                patch.object(driver.diagnostics, "collect", side_effect=AssertionError("must not run")), \
+                contextlib.redirect_stdout(output):
+            driver.log_diagnostics(args)
+        self.assertEqual(output.getvalue(), "")
 
 
 if __name__ == "__main__":

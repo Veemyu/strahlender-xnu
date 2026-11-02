@@ -18,10 +18,11 @@ import traceback
 from pathlib import Path
 
 if __package__:
-    from . import ffmpeg_cache, filesystem, ipa_pack
+    from . import diagnostics, ffmpeg_cache, filesystem, ipa_pack
     from .progress import GeneratorProgress
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import diagnostics
     import ffmpeg_cache
     import filesystem
     import ipa_pack
@@ -1218,8 +1219,21 @@ def _linux_desktop(launcher, app):
             "\nTerminal=false\nCategories=Game;\nStartupWMClass=dev.local.xnubdsp\n")
 
 
+def log_diagnostics(args):
+    """System and hardware report as plain log lines (every installer shows them). It never stops a build;
+    BDSP_NO_DIAGNOSTICS=1 skips it."""
+    if os.environ.get("BDSP_NO_DIAGNOSTICS"):
+        return
+    try:
+        for line in diagnostics.collect(work=args.work):
+            emit("log", level="diagnostic", message=_safe_line(line, args))
+    except Exception as error:
+        emit("log", level="diagnostic", message="[Diagnostics] unavailable (" + type(error).__name__ + ")")
+
+
 def build(args):
     emit("hello", protocol=PROTOCOL_VERSION, capabilities=["preflight", "build"])
+    log_diagnostics(args)
     root = Path(args.root)
     work = Path(args.work)
     if args.target in ("windows", "windows-arm64"):

@@ -34,6 +34,13 @@ def container(files):
                      "Set BDSP_WINDOWS_NATIVE_BINARY and BDSP_WINDOWS_NATIVE_CC for native checks")
 
 
+def setUpModule():
+    # The system report runs real commands; build tests must not depend on the machine they run on.
+    patcher = patch.dict(os.environ, {"BDSP_NO_DIAGNOSTICS": "1"})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class WindowsNativeGeneratorTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

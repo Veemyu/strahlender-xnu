@@ -56,6 +56,13 @@ def pe(path, imports=(), delayed=(), machine=0x8664):
     return path
 
 
+def setUpModule():
+    # The system report runs real commands; build tests must not depend on the machine they run on.
+    patcher = patch.dict(os.environ, {"BDSP_NO_DIAGNOSTICS": "1"})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class WindowsBuildTests(unittest.TestCase):
     def test_qt_missing_sdk_stops_before_compiler_or_overlay_work(self):
         selected = windows.profile("x86_64", "x86_64")

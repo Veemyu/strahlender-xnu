@@ -140,9 +140,10 @@ fn step_marker(line: &str) -> Option<(u32, u32)> {
     }
 }
 
-/// Lines that only repeat a counter the progress bar already shows.
+/// Lines that only repeat a counter the progress bar already shows, and the system report, which is not part of any stage.
 fn is_counter(line: &str) -> bool {
-    line.starts_with("extract progress ")
+    line.starts_with("[Diagnostics]")
+        || line.starts_with("extract progress ")
         || line.starts_with("Firmware NCA scan: ")
         || line.contains(": progress ") && line.contains(" files ")
         || line.contains(": scan round ")
@@ -293,6 +294,7 @@ mod tests {
             "Firmware NCA scan: 10/200",
             "main: progress 100/200 files 200",
             "rtld: scan round 1 progress 42/42",
+            "[Diagnostics] CPU: Apple M1 Pro, 8 logical cores (sysctl)",
             "   ",
         ] {
             assert_eq!(
