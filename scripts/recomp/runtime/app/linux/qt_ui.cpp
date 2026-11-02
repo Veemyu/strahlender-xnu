@@ -4,7 +4,7 @@
 // vk_host_surface_ready() initializes the device, swapchain, and runtime. device.c calls bdsp_qt_ui_run() on the main thread
 // through a weak symbol linked only in Qt builds (runtime/build.sh, BDSP_QT=1).
 // Environment: BDSP_LANG, BDSP_LPROJ, BDSP_MANGOHUD=1 (initial overlay), BDSP_FPS, BDSP_SAVE, BDSP_QT_SCRIPT.
-// Script actions: fps30 fps60 fps120 size1920x1080 win1000x900 pause fullscreen hud grab spectacle dumpmenus quit.
+// Script actions: fps30 fps60 fps120 aspect=<preset> renderh=<pixels|auto> size1920x1080 win1000x900 pause fullscreen hud grab spectacle dumpmenus quit.
 #include <SDL3/SDL.h>
 
 #include <QAction>
@@ -59,6 +59,8 @@ void vk_host_set_size(int w, int h);
 void vk_host_surface_ready(unsigned long long surface);
 int vk_host_shutdown(void);
 void bdsp_set_fps(int fps);
+const char *display_pref_get(const char *key);   // display_size.c: environment, else BDSP_DISPLAY_CONFIG
+bool display_pref_store(const char *aspect, const char *render_height);
 extern volatile int g_bdsp_paused;
 extern volatile int g_bdsp_fps;
 void input_handle_event(const void *ev);
@@ -75,6 +77,10 @@ namespace {
 
 const int kSizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
 const int kFps[3] = {30, 60, 120};
+// Aspect ratio and render height (runtime/display_size.c): value, menu text (also the localization key)
+struct DisplayChoice { const char *value; const char *text; };
+const DisplayChoice kAspects[] = {{"16:9", "16:9 (Original)"}, {"auto", "Window Shape"}, {"16:10", "16:10"}, {"4:3", "4:3"}, {"21:9", "21:9"}, {"mbp", "MacBook Pro Display"}};
+const DisplayChoice kRenderHeights[] = {{"720", "720p"}, {"1080", "1080p"}, {"1440", "1440p"}, {"2160", "2160p"}, {"auto", "Native (window pixels)"}};
 
 void out(const QString &line) {
     std::fputs(line.toUtf8().constData(), stdout);
@@ -439,6 +445,22 @@ private:
             a->setChecked(f == fps_);
             fpsActs_.insert(f, a);
         }
+        aspectMenu_ = m->addMenu(tr_("Aspect Ratio"));
+        QActionGroup *aspectGroup = new QActionGroup(this);
+        aspectGroup->setExclusive(true);
+        for (const DisplayChoice &c : kAspects) {
+            QAction *a = act(aspectMenu_, tr_(c.text), [this, c] { setDisplayPref(true, QString::fromLatin1(c.value)); }, nullptr, true, aspectGroup);
+            a->setData(QString::fromLatin1(c.value));
+            a->setChecked(displayPref(true) == QString::fromLatin1(c.value));
+        }
+        renderMenu_ = m->addMenu(tr_("Render Resolution"));
+        QActionGroup *renderGroup = new QActionGroup(this);
+        renderGroup->setExclusive(true);
+        for (const DisplayChoice &c : kRenderHeights) {
+            QAction *a = act(renderMenu_, tr_(c.text), [this, c] { setDisplayPref(false, QString::fromLatin1(c.value)); }, nullptr, true, renderGroup);
+            a->setData(QString::fromLatin1(c.value));
+            a->setChecked(displayPref(false) == QString::fromLatin1(c.value));
+        }
         m->addSeparator();
         for (int i = 0; i < 4; i++) {
             const int w = kSizes[i][0], h = kSizes[i][1];
@@ -502,6 +524,33 @@ private:
         out(QStringLiteral("[qt] Joy-Con mode %1 saved").arg(mode ? QStringLiteral("pair") : QStringLiteral("single")));
     }
 #endif
+
+    // Current choice (environment variable, else the stored file); the game reads it when it starts, so a change needs a restart.
+    static QString displayPref(bool aspect) {
+        const char *v = display_pref_get(aspect ? "aspect" : "render_height");
+        return v && *v ? QString::fromUtf8(v) : (aspect ? QStringLiteral("16:9") : QStringLiteral("1080"));
+    }
+    void setDisplayPref(bool aspect, const QString &value) {
+        if (value == displayPref(aspect)) return;
+        const QString other = displayPref(!aspect);
+        const QByteArray a = (aspect ? value : other).toUtf8(), h = (aspect ? other : value).toUtf8();
+        if (!display_pref_store(a.constData(), h.constData())) {
+            QMessageBox::warning(this, tr_("Display"), tr_("The setting could not be saved."));
+            refreshDisplayMenus();
+            return;
+        }
+        out(QStringLiteral("[qt] Display preference %1 = %2 (applies after a restart)").arg(aspect ? QStringLiteral("aspect") : QStringLiteral("render_height"), value));
+        if (qEnvironmentVariableIsSet(aspect ? "BDSP_ASPECT" : "BDSP_RENDER_H"))
+            QMessageBox::information(this, tr_("Display"), tr_("An environment variable overrides this setting for this launch."));
+        refreshDisplayMenus();
+        if (QMessageBox::question(this, tr_("Display"), tr_("The new size applies after a restart. Unsaved progress is lost.")) == QMessageBox::Yes) restartGame();
+    }
+    void refreshDisplayMenus() {
+        for (QMenu *menu : {aspectMenu_, renderMenu_}) {
+            const QString current = displayPref(menu == aspectMenu_);
+            for (QAction *x : menu->actions()) x->setChecked(x->data().toString() == current);
+        }
+    }
 
     void setFps(int f) {
         fps_ = f;
@@ -622,7 +671,11 @@ private:
 
     void doTest(const QString &a) {
         out(QStringLiteral("[qt] Test: %1").arg(a));
-        if (a.startsWith(QStringLiteral("fps"))) {
+        if (a.startsWith(QStringLiteral("aspect="))) {
+            setDisplayPref(true, a.mid(7));
+        } else if (a.startsWith(QStringLiteral("renderh="))) {
+            setDisplayPref(false, a.mid(8));
+        } else if (a.startsWith(QStringLiteral("fps"))) {
             setFps(a.mid(3).toInt());
         } else if (a.startsWith(QStringLiteral("size"))) {
             const QStringList p = a.mid(4).split(QLatin1Char('x'));
@@ -689,7 +742,7 @@ private:
     QAction *pauseAct_ = nullptr, *fullAct_ = nullptr, *hudAct_ = nullptr;
     QTimer cursorTimer_;
     bool cursorHidden_ = false;
-    QMenu *viewMenu_ = nullptr, *fpsMenu_ = nullptr, *debugMenu_ = nullptr;
+    QMenu *viewMenu_ = nullptr, *fpsMenu_ = nullptr, *aspectMenu_ = nullptr, *renderMenu_ = nullptr, *debugMenu_ = nullptr;
     QHash<int, QAction *> fpsActs_;
 #ifdef _WIN32
     QAction *controllerActs_[2] = {};
@@ -717,6 +770,11 @@ int bdsp_qt_ui_run(void) {
     }
 #endif
     QApplication app(argc, argv);
+    if (qEnvironmentVariableIsEmpty("BDSP_DISPLAY_CONFIG")) {   // where the View menu keeps aspect ratio and render resolution (runtime/display_size.c)
+        const QString dir = QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)).filePath(QStringLiteral("StrahlenderXnu"));
+        QDir().mkpath(dir);
+        qputenv("BDSP_DISPLAY_CONFIG", QDir(dir).filePath(QStringLiteral("display.conf")).toUtf8());
+    }
     bdsp::installTheme();
     const QString platform = QGuiApplication::platformName();
     out(QStringLiteral("[qt] Platform: %1").arg(platform));

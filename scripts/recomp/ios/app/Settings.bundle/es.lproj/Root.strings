@@ -18,3 +18,17 @@
 "NOTIFY_BACKUP" = "Confirmaciones de copias externas";
 "NOTIFY_WARNINGS" = "Avisos de partidas y copias";
 "NOTIFY_VERIFICATION" = "Estado de verificación completa";
+"ASPECT_GROUP" = "Imagen";
+"ASPECT_FOOTER" = "Relación de aspecto y resolución de renderizado del juego. El juego dibuja de forma nativa con esta forma, sin estirar ni recortar. «Forma de pantalla» se ajusta exactamente a este dispositivo; «Nativa» renderiza con la altura en píxeles de la pantalla (más pesado). Se aplica al reiniciar la app. Predeterminado: 16:9, 1080p.";
+"ASPECT_TITLE" = "Relación de aspecto";
+"ASPECT_169" = "16:9 (original)";
+"ASPECT_AUTO" = "Forma de pantalla";
+"ASPECT_43" = "4:3 (iPad, 12,9\")";
+"ASPECT_1610" = "16:10";
+"ASPECT_IPAD11" = "iPad Pro 11\"";
+"ASPECT_219" = "21:9";
+"RENDER_TITLE" = "Altura de renderizado";
+"RENDER_720" = "720p";
+"RENDER_1080" = "1080p";
+"RENDER_1440" = "1440p";
+"RENDER_AUTO" = "Nativa (píxeles de pantalla)";

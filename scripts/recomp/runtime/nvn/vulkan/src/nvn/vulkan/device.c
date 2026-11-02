@@ -47,6 +47,11 @@ static void window_pixel_size(int *w, int *h) {
     if (host_mode) { *w = atomic_load(&host_w); *h = atomic_load(&host_h); }
     else SDL_GetWindowSizeInPixels(window, w, h);
 }
+int ui_drawable_size(int *w, int *h) {   // pixels of the window or of the Qt host's surface (0: none yet)
+    if (!window || headless) return 0;
+    window_pixel_size(w, h);
+    return *w > 0 && *h > 0;
+}
 static VkDebugUtilsMessengerEXT messenger;
 
 // ================================================================== instance / device

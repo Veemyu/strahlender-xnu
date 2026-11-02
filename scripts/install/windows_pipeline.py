@@ -315,6 +315,14 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
                          root / "scripts/recomp/runtime/hle_nvn.txt", commands)
             prepare_icons()
         stage("images", prepare_images)
+        def prepare_overlay():
+            # UI overlay for any aspect ratio, generated from the user's own RomFS. A failure only leaves gaps around the UI on non-16:9 shapes.
+            result = subprocess.run([sys.executable, str(root / "scripts/recomp/ui_aspect_patch.py"), "--if-needed",
+                                     "--romfs", str(work / "romfs"), "--out", str(work / "romfs-patch")],
+                                    capture_output=True, text=True, check=False)
+            if result.returncode:
+                emit("log", level="diagnostic", message="UI aspect overlay was not generated: " + result.stderr.strip()[-400:])
+        stage("ui_overlay", prepare_overlay)
         runtime = stage("runtime", lambda: build.compile_runtime(
             output / "runtime-vulkan", compiler, selected, commands,
             has_subsdk1=(exefs / "subsdk1").is_file(), root=root, qt=bundles["qt"],
@@ -346,6 +354,8 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
                     launch = Path(temporary) / "mod.txt"
                     launch.write_text(mod_launch_file(mod, exefs != work / "exefs"), encoding="utf-8")
                     data["mod.txt"] = launch
+                if (work / "romfs-patch/.stamp").is_file():
+                    data["romfs-patch"] = work / "romfs-patch"
                 providers = build.runtime_dll_candidates(compiler, selected, dependencies)
                 dynamic = [path.name for path in build.windows.dll_closure(plugin, providers, selected["target"]) if path != plugin]
                 packaged = build.package_game(

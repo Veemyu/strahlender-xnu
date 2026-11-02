@@ -19,6 +19,13 @@ void ui_window_init(void) {
 }
 
 SDL_Window *ui_window(void) { return NULL; }
+int ui_drawable_size(int *w, int *h) {   // pixels of the app's Metal layer (set by the app's layout; 0 before)
+    CAMetalLayer *l = layer ?: g_ios_layer;
+    if (!l || l.drawableSize.width < 1 || l.drawableSize.height < 1) return 0;
+    *w = (int)l.drawableSize.width;
+    *h = (int)l.drawableSize.height;
+    return 1;
+}
 void *ui_metal_layer(void) { return (__bridge void *)layer; }
 void *ui_metal_device(void) { return (__bridge void *)dev; }
 

@@ -18,3 +18,17 @@
 "NOTIFY_BACKUP" = "External backup confirmations";
 "NOTIFY_WARNINGS" = "Save and backup warnings";
 "NOTIFY_VERIFICATION" = "Full verification status";
+"ASPECT_GROUP" = "Picture";
+"ASPECT_FOOTER" = "Aspect ratio and render resolution of the game. The game draws natively at this shape with no stretching and no cropped area. \"Screen shape\" fits this device exactly; \"Native\" renders at the screen's own pixel height (heavier). Takes effect after restarting the app. Default: 16:9, 1080p.";
+"ASPECT_TITLE" = "Aspect ratio";
+"ASPECT_169" = "16:9 (original)";
+"ASPECT_AUTO" = "Screen shape";
+"ASPECT_43" = "4:3 (iPad, 12.9\")";
+"ASPECT_1610" = "16:10";
+"ASPECT_IPAD11" = "iPad Pro 11\"";
+"ASPECT_219" = "21:9";
+"RENDER_TITLE" = "Render height";
+"RENDER_720" = "720p";
+"RENDER_1080" = "1080p";
+"RENDER_1440" = "1440p";
+"RENDER_AUTO" = "Native (screen pixels)";

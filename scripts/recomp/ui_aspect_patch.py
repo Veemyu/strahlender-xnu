@@ -7,11 +7,15 @@ is identical on 16:9 and fills any other aspect ratio. Together with the canvas 
 when wider, width matching when narrower than 16:9) nothing is cropped and nothing is stretched out of proportion.
 
 Output is an overlay tree (same relative paths as the RomFS) that the runtime lays over the game's files. The input is never modified.
-Usage: ui_aspect_patch.py --romfs <romfs dir> --out <overlay dir> [--only <bundle name>] [--dry-run]
+Usage: ui_aspect_patch.py --romfs <romfs dir> --out <overlay dir> [--only <bundle name>] [--dry-run] [--if-needed]
+--if-needed skips the work when <overlay dir>/.stamp matches this script and the input bundles; the overlay is written next to the RomFS as
+<parent of romfs>/romfs-patch, where the runtime looks for it.
 """
 import argparse
+import hashlib
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -139,15 +143,34 @@ def patch_bundle(UnityPy, source, destination, dry_run):
     return len(changed)
 
 
+def input_stamp(romfs):
+    digest = hashlib.sha256(Path(__file__).read_bytes())
+    for directory, _, files in sorted(os.walk(romfs / UI_ROOT)):
+        for name in sorted(files):
+            if "." not in name:
+                digest.update(f"{directory}/{name}:{(Path(directory) / name).stat().st_size}".encode())
+    extra = romfs / EXTRA_FILE
+    if extra.is_file():
+        digest.update(f"{extra.stat().st_size}".encode())
+    return digest.hexdigest()[:32]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--romfs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--only")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--if-needed", action="store_true")
     args = parser.parse_args()
-    UnityPy = import_unitypy()
     romfs, out = Path(args.romfs), Path(args.out)
+    stamp = input_stamp(romfs)
+    if args.if_needed and (out / ".stamp").is_file() and (out / ".stamp").read_text() == stamp:
+        print("UI overlay is up to date")
+        return
+    UnityPy = import_unitypy()
+    if not args.dry_run and (out / ".stamp").is_file():
+        shutil.rmtree(out)   # an overlay of this tool from an older version or input: start clean
     total_files = total_changes = 0
     sources = [romfs / EXTRA_FILE] if (romfs / EXTRA_FILE).is_file() and not args.only else []   # UIManager's own objects (blur background)
     for directory, _, files in os.walk(romfs / UI_ROOT):
@@ -165,6 +188,9 @@ def main():
             total_files += 1
             total_changes += count
             print(f"{relative}: {count} rectangles")
+    if not args.dry_run:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / ".stamp").write_text(stamp)
     print(f"{total_changes} rectangles in {total_files} bundles")
 
 

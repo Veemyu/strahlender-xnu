@@ -168,21 +168,15 @@ else
   fi
 fi
 # ---------- 7 UI overlay for every aspect ratio ----------
-# Stretches the UI's fixed 1280x720 rectangles (screens, backgrounds, blur, key guide); identical on 16:9. The runtime lays the result over the RomFS.
+# Stretches the UI's fixed 1280x720 rectangles (screens, backgrounds, blur, key guide); identical on 16:9. The runtime lays the result over the RomFS
+# (romfs-patch next to the RomFS folder). The script skips itself when its inputs did not change.
 if [ "$INSTALL_DATA" -ne 0 ]; then
-  PATCH_STAMP="$(shasum -a 256 "$ROOT/scripts/recomp/ui_aspect_patch.py" | cut -c1-16) $(shasum -a 256 "$ROOT/work/exefs/main" | cut -c1-16)"
-  if [ -f "$HOME_DIR/romfs-patch.stamp" ] && [ "$(cat "$HOME_DIR/romfs-patch.stamp")" = "$PATCH_STAMP" ] && [ -d "$HOME_DIR/romfs-patch/Data" ] && [ "$FORCE" -eq 0 ]; then
-    log "7/7 UI overlay: up to date, skipped"
-  elif [ "$DRY" -eq 1 ]; then
-    echo "    [dry-run] ui_aspect_patch.py --romfs $ROOT/work/romfs --out $HOME_DIR/romfs-patch"
+  if [ "$DRY" -eq 1 ]; then
+    echo "    [dry-run] ui_aspect_patch.py --if-needed --romfs $ROOT/work/romfs --out $HOME_DIR/romfs-patch"
   else
-    log "7/7 UI overlay: patching the UI bundles for any aspect ratio (a few minutes)"
-    rm -rf "$HOME_DIR/romfs-patch.new"
-    python3 "$ROOT/scripts/recomp/ui_aspect_patch.py" --romfs "$ROOT/work/romfs" --out "$HOME_DIR/romfs-patch.new" > "$WORK/logs/recomp-ui-overlay.log" 2>&1 \
+    log "7/7 UI overlay for any aspect ratio"
+    python3 "$ROOT/scripts/recomp/ui_aspect_patch.py" --if-needed --romfs "$ROOT/work/romfs" --out "$HOME_DIR/romfs-patch" > "$WORK/logs/recomp-ui-overlay.log" 2>&1 \
       || die 4 "UI overlay failed (log: $WORK/logs/recomp-ui-overlay.log)"
-    rm -rf "$HOME_DIR/romfs-patch"
-    mv "$HOME_DIR/romfs-patch.new" "$HOME_DIR/romfs-patch"
-    printf '%s' "$PATCH_STAMP" > "$HOME_DIR/romfs-patch.stamp"
     tail -n 1 "$WORK/logs/recomp-ui-overlay.log" | sed 's/^/    /'
   fi
 fi

@@ -18,3 +18,17 @@
 "NOTIFY_BACKUP" = "Externe Backups bestätigen";
 "NOTIFY_WARNINGS" = "Hinweise zu Saves und Backups";
 "NOTIFY_VERIFICATION" = "Status der vollständigen Datenprüfung";
+"ASPECT_GROUP" = "Bild";
+"ASPECT_FOOTER" = "Seitenverhältnis und Renderauflösung des Spiels. Das Spiel zeichnet nativ in dieser Form, ohne Streckung und ohne abgeschnittene Fläche. „Bildschirmform“ passt genau zu diesem Gerät; „Nativ“ rendert in der Pixelhöhe des Bildschirms (aufwendiger). Wirkt nach einem Neustart der App. Standard: 16:9, 1080p.";
+"ASPECT_TITLE" = "Seitenverhältnis";
+"ASPECT_169" = "16:9 (Original)";
+"ASPECT_AUTO" = "Bildschirmform";
+"ASPECT_43" = "4:3 (iPad, 12,9\")";
+"ASPECT_1610" = "16:10";
+"ASPECT_IPAD11" = "iPad Pro 11\"";
+"ASPECT_219" = "21:9";
+"RENDER_TITLE" = "Renderhöhe";
+"RENDER_720" = "720p";
+"RENDER_1080" = "1080p";
+"RENDER_1440" = "1440p";
+"RENDER_AUTO" = "Nativ (Bildschirmpixel)";

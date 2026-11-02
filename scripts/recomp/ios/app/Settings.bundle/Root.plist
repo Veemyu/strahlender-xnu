@@ -116,6 +116,66 @@
 			<key>Type</key>
 			<string>PSGroupSpecifier</string>
 			<key>Title</key>
+			<string>ASPECT_GROUP</string>
+			<key>FooterText</key>
+			<string>ASPECT_FOOTER</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>ASPECT_TITLE</string>
+			<key>Key</key>
+			<string>bdsp_aspect</string>
+			<key>DefaultValue</key>
+			<string>16:9</string>
+			<key>Titles</key>
+			<array>
+				<string>ASPECT_169</string>
+				<string>ASPECT_AUTO</string>
+				<string>ASPECT_43</string>
+				<string>ASPECT_1610</string>
+				<string>ASPECT_IPAD11</string>
+				<string>ASPECT_219</string>
+			</array>
+			<key>Values</key>
+			<array>
+				<string>16:9</string>
+				<string>auto</string>
+				<string>4:3</string>
+				<string>16:10</string>
+				<string>ipad11</string>
+				<string>21:9</string>
+			</array>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>RENDER_TITLE</string>
+			<key>Key</key>
+			<string>bdsp_render_h</string>
+			<key>DefaultValue</key>
+			<string>1080</string>
+			<key>Titles</key>
+			<array>
+				<string>RENDER_720</string>
+				<string>RENDER_1080</string>
+				<string>RENDER_1440</string>
+				<string>RENDER_AUTO</string>
+			</array>
+			<key>Values</key>
+			<array>
+				<string>720</string>
+				<string>1080</string>
+				<string>1440</string>
+				<string>auto</string>
+			</array>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
 			<string>DEBUG_GROUP</string>
 			<key>FooterText</key>
 			<string>DEBUG_FOOTER</string>

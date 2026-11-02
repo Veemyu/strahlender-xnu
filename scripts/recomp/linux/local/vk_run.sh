@@ -7,6 +7,8 @@
 source "$(dirname "$0")/common.sh"
 [ -x "$W/bdsp_boot_vk" ] || die "$W/bdsp_boot_vk is missing (run scripts/recomp/linux/local/vk_build.sh)."
 [ -d work/romfs ] || die "work/romfs is missing (run the extract stage described in docs/BUILD.md first)."
+# UI overlay for any aspect ratio (work/romfs-patch, found by the runtime next to the RomFS); a failure only leaves gaps around the UI on non-16:9 shapes
+python3 scripts/recomp/ui_aspect_patch.py --if-needed --romfs work/romfs --out work/romfs-patch > "${W:-work}/ui-overlay.log" 2>&1 || echo "# UI overlay not generated (see ${W:-work}/ui-overlay.log)"
 export BDSP_IMG=${BDSP_IMG:-$W/img_gfx}
 ARGS=()
 for a in "$@"; do

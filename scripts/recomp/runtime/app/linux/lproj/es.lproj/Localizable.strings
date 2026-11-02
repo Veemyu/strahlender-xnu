@@ -31,3 +31,13 @@
 "Controller mode could not be changed. The previous mode was restored when possible; keyboard input remains available." = "No se pudo cambiar el modo. Se restauró el anterior cuando fue posible; el teclado sigue disponible.";
 "Controller settings could not be saved. The previous mode has been restored." = "No se pudo guardar la configuración. Se ha restaurado el modo anterior.";
 "Controller settings could not be saved and the previous mode could not be restored. Keyboard input remains available." = "No se pudo guardar ni restaurar el modo anterior. El teclado sigue disponible.";
+"Aspect Ratio" = "Relación de aspecto";
+"Render Resolution" = "Resolución de renderizado";
+"16:9 (Original)" = "16:9 (original)";
+"Window Shape" = "Forma de la ventana";
+"MacBook Pro Display" = "Pantalla del MacBook Pro";
+"Native (window pixels)" = "Nativa (píxeles de la ventana)";
+"Display" = "Pantalla";
+"The setting could not be saved." = "No se pudo guardar el ajuste.";
+"An environment variable overrides this setting for this launch." = "Una variable de entorno anula este ajuste en este inicio.";
+"The new size applies after a restart. Unsaved progress is lost." = "El nuevo tamaño se aplica tras reiniciar. Se pierde el progreso sin guardar.";

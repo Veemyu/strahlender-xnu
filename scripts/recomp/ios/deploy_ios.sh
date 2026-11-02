@@ -56,6 +56,24 @@ romfs_ensure() {
     echo "RomFS is missing or outdated on the iPad."
     romfs_copy
   fi
+  overlay_ensure
+}
+
+# UI overlay for any aspect ratio (scripts/recomp/ui_aspect_patch.py): generated from work/romfs, copied next to the RomFS as
+# Documents/GameData/romfs-patch, where the runtime finds it. Only copied when the stamp on the iPad differs.
+overlay_ensure() {
+  python3 scripts/recomp/ui_aspect_patch.py --if-needed --romfs work/romfs --out work/romfs-patch > work/ios/ui-overlay.log 2>&1 \
+    || { tail -n 5 work/ios/ui-overlay.log >&2; echo "UI overlay could not be generated" >&2; return 0; }
+  rm -f work/ios/romfs-patch.device.stamp
+  xcrun devicectl device copy from --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+    --source Documents/GameData/romfs-patch/.stamp --destination work/ios/romfs-patch.device.stamp > /dev/null 2>&1 || true
+  if [[ -f work/ios/romfs-patch.device.stamp ]] && cmp -s work/ios/romfs-patch.device.stamp work/romfs-patch/.stamp; then
+    echo "UI overlay on the iPad is up to date."
+  else
+    echo "Copying the UI overlay to Documents/GameData/romfs-patch ..."
+    xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+      --source work/romfs-patch --destination Documents/GameData/romfs-patch --remove-existing-content true 2>&1 | tail -n 3
+  fi
 }
 
 device() {
@@ -139,6 +157,7 @@ EOF
   data)
     device
     romfs_copy
+    overlay_ensure
     ;;
   save)
     device

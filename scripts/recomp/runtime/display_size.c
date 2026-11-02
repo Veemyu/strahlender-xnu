@@ -4,7 +4,10 @@
 //   BDSP_RENDER=WxH            exact render size (tests)
 //   BDSP_ASPECT=<preset|auto>  16:9 (default), 16:10, 4:3, 21:9, mbp (14"/16" MacBook Pro panel), ipad11 (11" iPad Pro), auto (shape of the window), or a ratio like 1.6
 //   BDSP_RENDER_H=<pixels|auto> height of the render image; auto = native height of the window's drawable (default 1080)
+// A shell without its own settings store (Qt on Linux/Windows) persists the choice in the file named by BDSP_DISPLAY_CONFIG ("aspect=4:3" and
+// "render_height=1080" lines); the environment variables win over the file.
 #include <math.h>
+#include <stdio.h>
 
 #include "bdsp.h"
 
@@ -12,6 +15,49 @@
 
 int __attribute__((weak)) ui_drawable_size(int *w, int *h) { (void)w; (void)h; return 0; }
 void __attribute__((weak)) ui_window_init(void) {}
+
+// Value of a display preference: environment variable, else the line key=value of BDSP_DISPLAY_CONFIG; NULL when unset.
+const char *display_pref_get(const char *key) {
+    static char values[2][64];
+    static const char *const keys[2] = {"aspect", "render_height"}, *const envs[2] = {"BDSP_ASPECT", "BDSP_RENDER_H"};
+    for (int i = 0; i < 2; i++) {
+        if (strcmp(key, keys[i])) continue;
+        const char *e = getenv(envs[i]);
+        if (e && *e) return e;
+        const char *path = getenv("BDSP_DISPLAY_CONFIG");
+        FILE *f = path && *path ? fopen(path, "r") : NULL;
+        if (!f) return NULL;
+        char line[128];
+        size_t n = strlen(key);
+        const char *found = NULL;
+        while (fgets(line, sizeof line, f)) {
+            if (strncmp(line, key, n) || line[n] != '=') continue;
+            line[strcspn(line, "\r\n")] = 0;
+            snprintf(values[i], sizeof values[i], "%s", line + n + 1);
+            found = values[i][0] ? values[i] : NULL;
+        }
+        fclose(f);
+        return found;
+    }
+    return NULL;
+}
+
+// Stores both preferences in BDSP_DISPLAY_CONFIG (an empty value removes the line). Returns false if the file cannot be written.
+bool display_pref_store(const char *aspect, const char *render_height) {
+    const char *path = getenv("BDSP_DISPLAY_CONFIG");
+    if (!path || !*path) return false;
+    char tmp[1200];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return false;
+    if (aspect && *aspect) fprintf(f, "aspect=%s\n", aspect);
+    if (render_height && *render_height) fprintf(f, "render_height=%s\n", render_height);
+    if (fclose(f)) return false;
+#ifdef _WIN32
+    remove(path);
+#endif
+    return rename(tmp, path) == 0;
+}
 
 typedef struct { const char *name; double aspect; } Preset;
 static const Preset presets[] = {{"16:9", 16.0 / 9}, {"16:10", 1.6}, {"4:3", 4.0 / 3}, {"21:9", 3440.0 / 1440}, {"mbp", 3024.0 / 1964}, {"ipad11", 2388.0 / 1668}};   // 12.9" iPad Pro is 4:3; 11" iPad Pro is about 1.43:1
@@ -51,10 +97,13 @@ void display_size_init(void) {
     const char *render = getenv("BDSP_RENDER");
     if (render && sscanf(render, "%dx%d", &w, &h) == 2 && w >= 320 && h >= 240) {
     } else {
-        const char *as = getenv("BDSP_ASPECT"), *hs = getenv("BDSP_RENDER_H");
+        const char *as = display_pref_get("aspect"), *hs = display_pref_get("render_height");
         int dw = 0, dh = 0;
-        if ((as && !strcasecmp(as, "auto")) || (hs && !strcasecmp(hs, "auto"))) ui_window_init();   // main thread: the window decides the size
         bool have_window = ui_drawable_size(&dw, &dh) && dw > 0 && dh > 0;
+        if (!have_window && ((as && !strcasecmp(as, "auto")) || (hs && !strcasecmp(hs, "auto")))) {
+            ui_window_init();   // the window (or the app's layer) decides the size
+            have_window = ui_drawable_size(&dw, &dh) && dw > 0 && dh > 0;
+        }
         double aspect = 16.0 / 9;
         if (as && !strcasecmp(as, "auto")) {
             if (have_window) aspect = (double)dw / dh;
