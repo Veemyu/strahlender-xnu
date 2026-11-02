@@ -163,11 +163,18 @@ def uses_zip64(path):
         return b"PK\x06\x07" in file.read()
 
 
-def sha256_file(path):
+def sha256_file(path, progress=None):
     digest = hashlib.sha256()
+    total = os.path.getsize(path)
+    done = 0
     with open(path, "rb") as file:
         for block in iter(lambda: file.read(CHUNK), b""):
             digest.update(block)
+            done += len(block)
+            if progress and done % (64 * CHUNK) < CHUNK:
+                progress(done, total)
+    if progress:
+        progress(total, total)
     return digest.hexdigest()
 
 
@@ -180,12 +187,20 @@ def check_archive(path, app_name, expected_files):
         raise ValueError("The written IPA does not list the expected files.")
 
 
+def space_message(needed, free):
+    """The refusal for too little space. There is deliberately no automatic switch to an export without game data."""
+    return ("Not enough free space for the IPA with your game data: about %.1f GB are needed in the export folder, %.1f GB are free. "
+            "Nothing was exported. Free at least %.1f GB and run the export again, or export without game data on purpose: "
+            "--ios-export-no-embed on the command line, or \"Export without game data\" in installer 0.1.4 and newer."
+            % (needed / 1e9, free / 1e9, max(0.0, needed - free) / 1e9 + 0.5))
+
+
 def free_bytes_needed(app):
     """Upper bound of the IPA size: the stored size of every file (embedded data compress poorly)."""
     return sum(item[2].st_size for item in _entries(app) if stat.S_ISREG(item[2].st_mode))
 
 
-def publish_ipa(app, destination, bundle_id, progress=None):
+def publish_ipa(app, destination, bundle_id, progress=None, log=None, hash_progress=None):
     """Writes the IPA once into destination and names it after the hash of its bytes.
 
     Returns (path, stats). An existing file of that name is the same content; a different file is never replaced.
@@ -195,12 +210,16 @@ def publish_ipa(app, destination, bundle_id, progress=None):
     needed = free_bytes_needed(app)
     free = shutil.disk_usage(destination).free
     if free < needed + (512 << 20):
-        raise ValueError("Not enough free space for the IPA: about %.1f GB are needed, %.1f GB are free." % (needed / 1e9, free / 1e9))
+        raise ValueError(space_message(needed + (512 << 20), free))
+    say = log or (lambda message: None)
     temporary = destination / (".ipa-" + uuid.uuid4().hex)
     try:
+        say("Writing the IPA: zipping the app and the embedded game data (step 1 of 3).")
         stats = pack_ipa(app, temporary, progress)
+        say("Checking the structure of the written IPA (step 2 of 3).")
         check_archive(temporary, app.name, stats["files"])
-        digest = sha256_file(temporary)
+        say("Hashing the IPA once to name it after its content (step 3 of 3).")
+        digest = sha256_file(temporary, hash_progress)
         final = destination / (bundle_id + "-" + digest[:20] + ".ipa")
         if final.exists():
             if sha256_file(final) != digest:

@@ -197,17 +197,21 @@ class DriverEmbedTests(unittest.TestCase):
             self.assertEqual(environment["BDSP_IOS_EMBED_ROMFS_DIR"], metadata["RomFSDirectory"])
             self.assertTrue(args.ios_install["embed"])
             text = " ".join(event.get("message", "") for event in events)
-            self.assertIn("never share", text)
+            self.assertIn("WITH your game data embedded", text)
+            self.assertIn("minutes", text)
+            self.assertIn("do not share it", text)
             self.assertIn("distributes no game data", text)
             self.assertIn("--ios-export-no-embed", text)
+            self.assertIn("installer 0.1.4", text)
 
     def test_no_embed_keeps_the_library_export_identity_unchanged(self):
         with tempfile.TemporaryDirectory() as directory:
-            args, environment, metadata, _ = self.prepare(Path(directory), ios_delivery="ipa", ios_export_no_embed=True)
+            args, environment, metadata, events = self.prepare(Path(directory), ios_delivery="ipa", ios_export_no_embed=True)
             self.assertNotIn("EmbeddedLibrary", metadata)
             self.assertTrue(metadata["ExternalLibrary"])
             self.assertNotIn("BDSP_IOS_EMBED_ROMFS", environment)
             self.assertFalse(args.ios_install["embed"])
+            self.assertIn("WITHOUT game data", " ".join(e.get("message", "") for e in events))
         with tempfile.TemporaryDirectory() as directory:
             _, _, embedded, _ = self.prepare(Path(directory), ios_delivery="ipa")
         self.assertNotEqual(embedded["DataManifest"], metadata["DataManifest"])
@@ -228,8 +232,41 @@ class DriverEmbedTests(unittest.TestCase):
             args = ios_args(root, ios_delivery="ipa")
             prepared = {"build_dir": root / "work/build", "staged": root / "work/staged", "bundle_id": "dev.test"}
             with patch.object(driver.shutil, "disk_usage", return_value=SimpleNamespace(free=10)), \
-                    self.assertRaisesRegex(ValueError, "ios-export-no-embed"):
+                    patch.object(driver, "_run_command", side_effect=AssertionError("no fallback build")), \
+                    self.assertRaises(ValueError) as caught:
                 run_quiet(driver._prepare_ios, args, prepared, None)
+            message = str(caught.exception)
+            for part in ("GB are needed", "GB are free", "Nothing was exported", "--ios-export-no-embed", "Export without game data"):
+                self.assertIn(part, message)
+            self.assertFalse(getattr(args, "ios_export_no_embed", False))   # never switched on behind the user's back
+            self.assertFalse(hasattr(args, "ios_install"))
+            self.assertFalse((root / "work/build/res/install-data.plist").exists())
+            self.assertFalse((root / "exports").exists())
+
+    def test_too_little_space_while_writing_fails_without_any_ipa_or_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args, environment, metadata, _ = self.prepare(root, ios_delivery="ipa")
+            app = make_app(root / "built", with_data=False, link=False)
+            (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": environment["BDSP_IOS_BUNDLE_ID"]}))
+            (app / "res/install-data.plist").write_bytes(plistlib.dumps(metadata))
+            ipa_pack.embed_data(app, root / "work/romfs", metadata["RomFSDirectory"])
+            with patch.object(ipa_pack.shutil, "disk_usage", return_value=SimpleNamespace(free=1000)), \
+                    patch.object(driver, "_run_command", side_effect=AssertionError("no fallback export")), \
+                    self.assertRaises(ValueError) as caught:
+                run_quiet(driver._export_ios, args, app)
+            for part in ("GB are needed", "GB are free", "Nothing was exported", "--ios-export-no-embed"):
+                self.assertIn(part, str(caught.exception))
+            self.assertEqual([p for p in (root / "exports").iterdir()], [])
+            self.assertTrue(args.ios_install["embed"])
+            self.assertFalse(getattr(args, "ios_export_no_embed", False))
+
+    def test_no_code_path_switches_to_an_export_without_data_on_its_own(self):
+        import re
+        for name in ("driver.py", "ipa_pack.py"):
+            source = (Path(driver.__file__).parent / name).read_text()
+            self.assertIsNone(re.search(r"ios_export_no_embed\s*=[^=]", source), name)
+            self.assertIsNone(re.search(r"setattr\([^)]*ios_export_no_embed", source), name)
 
     def test_embedded_export_writes_one_ipa_with_data_and_no_game_library(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -247,6 +284,11 @@ class DriverEmbedTests(unittest.TestCase):
             self.assertEqual([event["kind"] for event in artifacts], ["ipa"])
             progress = [event for event in events if event["event"] == "progress" and event["id"] == "install"]
             self.assertTrue(progress and progress[-1]["bytes_completed"] == progress[-1]["bytes_total"])
+            text = " ".join(event.get("message", "") for event in events)
+            for phase in ("WITH your game data embedded", "step 1 of 3", "step 2 of 3", "step 3 of 3", "IPA WITH game data written",
+                          str(output), "No Game Library folder is needed"):
+                self.assertIn(phase, text)
+            self.assertLess(text.index("step 1 of 3"), text.index("step 3 of 3"))
             with zipfile.ZipFile(output) as archive:
                 prefix = "Payload/BDSP.app/res/EmbeddedData/" + metadata["RomFSDirectory"]
                 self.assertEqual(archive.read(prefix + "/Data/game.bin"), b"base")
@@ -284,6 +326,9 @@ class DriverEmbedTests(unittest.TestCase):
                 _, events = run_quiet(driver._export_ios, args, app)
             self.assertEqual([c[1] for c in commands[1:]], ["export", "publish-ipa"])
             self.assertEqual({e["kind"] for e in events if e["event"] == "artifact"}, {"game_library", "ipa"})
+            text = " ".join(e.get("message", "") for e in events)
+            self.assertIn("WITHOUT game data", text)
+            self.assertIn("Game Library folder", text)
 
     def test_cli_default_embeds_and_the_switch_turns_it_off(self):
         seen = []

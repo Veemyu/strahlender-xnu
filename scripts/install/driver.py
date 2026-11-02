@@ -29,10 +29,16 @@ else:
 
 PROTOCOL_VERSION = 2
 EMIT_LOCK = threading.Lock()
-IPA_EMBED_NOTICE = ("Export IPA embeds the game data of your own dump in the IPA (about {gb:.1f} GB, ZIP64). Writing it takes several minutes "
-                    "and needs that much free space. Use the IPA only on your own devices and never share it: it contains game data, "
-                    "and this project distributes no game data. Pass --ios-export-no-embed for an IPA without game data "
-                    "and a separate Game Library folder.")
+IPA_EMBED_NOTICE = ("Exporting the IPA WITH your game data embedded (about {gb:.1f} GB, ZIP64; about {minutes} more minutes after the build, "
+                    "2 were measured for 5.3 GB on a fast SSD; it needs that much free space in the export folder). "
+                    "For your own devices only, do not share it: it contains game data from your own dump, and this project distributes no game data. "
+                    "To export without game data, pass --ios-export-no-embed (command line) or use \"Export without game data\" in installer 0.1.4 and newer.")
+IPA_NO_EMBED_NOTICE = ("Exporting the IPA WITHOUT game data, as requested (--ios-export-no-embed). The IPA alone does not run: "
+                       "a Game Library folder with the game files is written next to it, and the app asks for that folder at its first start.")
+
+
+def _embed_minutes(size_bytes):
+    return max(2, -(-int(size_bytes * 8) // 10_000_000_000))
 
 
 def emit(event, **fields):
@@ -705,12 +711,13 @@ def _prepare_ios(args, mod_build, device):
         size = _tree_bytes(romfs) + (_tree_bytes(mod_root) if mod_root else 0)
         free = shutil.disk_usage(_nearest_existing(getattr(args, "ios_export_dir", None) or work)).free
         if free < size + (2 << 30):
-            raise ValueError("The IPA with game data needs about %.1f GB free in the export folder; %.1f GB are free. "
-                             "Free space or use --ios-export-no-embed." % (size / 1e9, free / 1e9))
-        emit("log", level="diagnostic", message=IPA_EMBED_NOTICE.format(gb=size / 1e9))
+            raise ValueError(ipa_pack.space_message(size + (2 << 30), free))
+        emit("log", level="diagnostic", message=IPA_EMBED_NOTICE.format(gb=size / 1e9, minutes=_embed_minutes(size)))
         embed_environment = {"BDSP_IOS_EMBED_ROMFS": "1", "BDSP_IOS_EMBED_ROMFS_DIR": metadata["RomFSDirectory"]}
         if mod_root:
             embed_environment["BDSP_IOS_EMBED_MOD_DIR"] = metadata["ModDirectory"]
+    elif getattr(args, "ios_delivery", "device") == "ipa":
+        emit("log", level="diagnostic", message=IPA_NO_EMBED_NOTICE)
     (resources / "install-data.plist").write_bytes(plistlib.dumps(metadata))
     args.ios_install = {"device": device, "bundle_id": bundle_id, "metadata": metadata, "embed": embed,
                         "romfs": romfs, "mod_root": mod_root, "build_dir": build_dir}
@@ -856,18 +863,27 @@ def _export_ios_embedded(args, artifact, info, destination):
     if not packaged.get("EmbeddedLibrary") or not (data / "Data").is_dir():
         raise ValueError("The built app contains no embedded game data; nothing was exported.")
     last = [0.0]
+    counts = [0, 1]
 
     def report(done, total, files_done, files_total):
+        counts[:] = [files_done, files_total or 1]
         now = time.monotonic()
         if now - last[0] >= 0.5 or done >= total:
             last[0] = now
             emit("progress", id="install", completed=files_done, total=files_total, bytes_completed=done, bytes_total=total)
 
+    def say(message):
+        emit("log", level="diagnostic", message=message)
+
+    def report_hash(done, total):
+        report(done, total, *counts)
+
     started = time.monotonic()
-    emit("log", level="diagnostic", message="Writing the IPA with embedded game data (stored without compression, hashed once).")
-    output, stats = ipa_pack.publish_ipa(app, destination, info["bundle_id"], report)
-    emit("log", level="diagnostic", message="IPA written: %.1f GB in %.0f s (%d files%s). Personal use only: it contains game data from your own dump. "
-         "Do not share it." % (stats["size"] / 1e9, time.monotonic() - started, stats["files"], ", ZIP64" if stats["zip64"] else ""))
+    say(IPA_EMBED_NOTICE.format(gb=ipa_pack.free_bytes_needed(app) / 1e9, minutes=_embed_minutes(ipa_pack.free_bytes_needed(app))))
+    output, stats = ipa_pack.publish_ipa(app, destination, info["bundle_id"], report, say, report_hash)
+    say("IPA WITH game data written: %s (%.1f GB, %.0f s, %d files%s). No Game Library folder is needed or written. "
+        "For your own devices only: it contains game data from your own dump. Do not share it."
+        % (output, stats["size"] / 1e9, time.monotonic() - started, stats["files"], ", ZIP64" if stats["zip64"] else ""))
     emit("artifact", kind="ipa", path=str(output))
     return output
 
@@ -890,6 +906,7 @@ def _export_ios(args, artifact):
     source = info["build_dir"] / "BDSP.ipa"
     if not source.is_file():
         raise ValueError("The IPA package is missing.")
+    emit("log", level="diagnostic", message=IPA_NO_EMBED_NOTICE)
     helper = info["build_dir"] / "ios-data"
     code = _run_command(["/usr/bin/clang", "-O2", "-fobjc-arc", "-Wno-deprecated-declarations",
                          "-DBDSP_DATA_TOOL", "-framework", "Foundation",
@@ -912,6 +929,8 @@ def _export_ios(args, artifact):
         raise ValueError("IPA export failed verification. Previous output was kept.")
     emit("artifact", kind="game_library", path=str(library))
     emit("artifact", kind="ipa", path=str(output))
+    emit("log", level="diagnostic", message="IPA WITHOUT game data written: %s (%.1f GB). The game files are in the Game Library folder %s. "
+         "Keep both together: the app asks for that folder at its first start." % (output, output.stat().st_size / 1e9 if output.exists() else 0, library))
     return output
 
 
