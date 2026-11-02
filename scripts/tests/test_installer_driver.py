@@ -140,7 +140,11 @@ class InstallerDriverTests(unittest.TestCase):
             info = {"romfs": romfs, "mod_root": None, "overlay": overlay, "metadata": {"RomFSDirectory": "GameData/abc123/romfs"}}
             copies = driver._ios_data_copies(info)
             self.assertEqual([destination for _, destination in copies], ["GameData/abc123/romfs", "GameData/abc123/romfs-patch"])
-            del info["overlay"]
+            info["mod_root"], info["mod_overlay"] = romfs, overlay
+            info["metadata"]["ModDirectory"] = "Mods/0123abcd/My Mod"
+            self.assertEqual([destination for _, destination in driver._ios_data_copies(info)],
+                             ["GameData/abc123/romfs", "Mods/0123abcd/My Mod", "GameData/abc123/romfs-patch", "GameData/abc123/romfs-patch-mods/My Mod"])
+            info["mod_root"] = info["mod_overlay"] = info["overlay"] = None
             self.assertEqual(len(driver._ios_data_copies(info)), 1)
 
     def test_a_failing_ui_fix_never_fails_the_build(self):

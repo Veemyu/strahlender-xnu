@@ -179,5 +179,15 @@ if [ "$INSTALL_DATA" -ne 0 ]; then
       && tail -n 1 "$WORK/logs/recomp-ui-overlay.log" | sed 's/^/    /' \
       || echo "    UI overlay not generated (log: $WORK/logs/recomp-ui-overlay.log): the game runs, other aspect ratios leave gaps around the UI"   # a per-game fix, never a reason to fail the build
   fi
+  # A mod overrules the game's overlay for the files it replaces (resources.assets, UI bundles): the same fix from the mod's own files, laid over the mod
+  if [ "$DRY" -eq 0 ] && [ -n "${BDSP_MOD_ROOT:-}" ] && [ -n "${BDSP_MOD_NAME:-}" ]; then
+    MOD_ROMFS=$(find "$BDSP_MOD_ROOT" -maxdepth 1 -iname romfs | head -1)
+    if [ -n "$MOD_ROMFS" ]; then
+      log "7/7 UI overlay for the mod $BDSP_MOD_NAME"
+      python3 "$ROOT/scripts/recomp/ui_aspect_patch.py" --if-needed --romfs "$MOD_ROMFS" --out "$HOME_DIR/romfs-patch-mods/$BDSP_MOD_NAME" > "$WORK/logs/recomp-ui-overlay-mod.log" 2>&1 \
+        && tail -n 1 "$WORK/logs/recomp-ui-overlay-mod.log" | sed 's/^/    /' \
+        || echo "    mod UI overlay not generated (log: $WORK/logs/recomp-ui-overlay-mod.log)"
+    fi
+  fi
 fi
 [ "$DRY" -eq 1 ] || log "done: $OUT ($(du -sh "$OUT" | cut -f1))"

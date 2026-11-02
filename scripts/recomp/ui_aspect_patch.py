@@ -146,17 +146,32 @@ def patch_bundle(UnityPy, source, destination, dry_run, demo=False):
     return len(changed)
 
 
-def input_stamp(romfs):
+def candidate_sources(romfs, only=None):
+    """The files this tool can fix: UI bundles, cutscene overlays and resources.assets. Names match ignoring case (mods come from case-insensitive
+    systems); the returned paths keep the folder's own spelling."""
+    roots = [str(r).lower() + "/" for r in ROOTS]
+    extra = str(EXTRA_FILE).lower()
+    found = []
+    for directory, _, files in os.walk(romfs):
+        for name in sorted(files):
+            path = Path(directory) / name
+            low = path.relative_to(romfs).as_posix().lower()
+            if low == extra and not only:
+                found.append(path)
+            elif "." not in name and any(low.startswith(r) for r in roots) and not (only and name != only):
+                found.append(path)
+    return sorted(found)
+
+
+def input_stamp(romfs, sources):
     digest = hashlib.sha256(Path(__file__).read_bytes())
-    for root in ROOTS:
-        for directory, _, files in sorted(os.walk(romfs / root)):
-            for name in sorted(files):
-                if "." not in name:
-                    digest.update(f"{directory}/{name}:{(Path(directory) / name).stat().st_size}".encode())
-    extra = romfs / EXTRA_FILE
-    if extra.is_file():
-        digest.update(f"{extra.stat().st_size}".encode())
+    for path in sources:
+        digest.update(f"{path.relative_to(romfs).as_posix()}:{path.stat().st_size}".encode())
     return digest.hexdigest()[:32]
+
+
+def is_demo_timeline(relative):
+    return relative.as_posix().lower().startswith(str(DEMO_ROOT / "timeline").lower() + "/")
 
 
 def main():
@@ -168,7 +183,10 @@ def main():
     parser.add_argument("--if-needed", action="store_true")
     args = parser.parse_args()
     romfs, out = Path(args.romfs), Path(args.out)
-    stamp = input_stamp(romfs)
+    # --romfs may be a mod's RomFS: then only the files the mod itself replaces are present, and the overlay holds their fixed versions (the runtime
+    # lays it over the mod, where the game's own overlay would otherwise be overruled by the mod's file)
+    sources = candidate_sources(romfs, args.only)
+    stamp = input_stamp(romfs, sources)
     if args.if_needed and (out / ".stamp").is_file() and (out / ".stamp").read_text() == stamp:
         print("UI overlay is up to date")
         return
@@ -176,16 +194,10 @@ def main():
     if not args.dry_run and (out / ".stamp").is_file():
         shutil.rmtree(out)   # an overlay of this tool from an older version or input: start clean
     total_files = total_changes = 0
-    sources = [romfs / EXTRA_FILE] if (romfs / EXTRA_FILE).is_file() and not args.only else []   # UIManager's own objects (blur background)
-    for root in ROOTS:
-        for directory, _, files in os.walk(romfs / root):
-            for name in sorted(files):
-                if "." not in name and not (args.only and name != args.only):
-                    sources.append(Path(directory) / name)
     for source in sources:
         relative = source.relative_to(romfs)
         try:
-            count = patch_bundle(UnityPy, source, out / relative, args.dry_run, DEMO_ROOT / "timeline" in relative.parents)
+            count = patch_bundle(UnityPy, source, out / relative, args.dry_run, is_demo_timeline(relative))
         except Exception as error:  # a bundle that is not an asset bundle
             print(f"skip {relative}: {error}", file=sys.stderr)
             continue

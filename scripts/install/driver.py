@@ -774,16 +774,22 @@ def _prepare_ios(args, mod_build, device):
             **({"BDSP_MOD_ROOT": str(mod_root), "BDSP_MOD_NAME": args.mod_name} if mod_root else {})}
 
 
-def build_ui_overlay(args):
+def build_ui_overlay(args, mod_root=None, mod_name=None):
     """The widescreen/4:3 UI fix of every package (a per-game fix, not a mod): scripts/recomp/ui_aspect_patch.py turns the user's own RomFS UI bundles
-    into an overlay (work/romfs-patch) that the runtime lays over the game's files. Identical on 16:9. Returns the folder, or None when it could not
-    be generated: the game then runs as before and only leaves gaps around the UI on other aspect ratios."""
+    into an overlay (work/romfs-patch) that the runtime lays over the game's files. Identical on 16:9. With a mod, the fix for the files that mod
+    replaces is made from the mod's own files (work/romfs-patch-mods/<mod name>): the runtime lays it over the mod, which overrules the game's
+    overlay for those files. Returns the folder, or None when it could not be generated: the game then runs as before and only leaves gaps around
+    the UI on other aspect ratios."""
     root, work = Path(args.root), Path(args.work)
-    out = work / "romfs-patch"
+    source, out = work / "romfs", work / "romfs-patch"
+    if mod_root:
+        matches = [path for path in Path(mod_root).iterdir() if path.name.lower() == "romfs" and path.is_dir()]
+        if not matches:
+            return None
+        source, out = matches[0], work / "romfs-patch-mods" / mod_name
     emit("log", level="diagnostic", message="Preparing the UI layout fix for other aspect ratios.")
     try:
-        result = subprocess.run([sys.executable, str(root / "scripts/recomp/ui_aspect_patch.py"), "--if-needed",
-                                 "--romfs", str(work / "romfs"), "--out", str(out)],
+        result = subprocess.run([sys.executable, str(root / "scripts/recomp/ui_aspect_patch.py"), "--if-needed", "--romfs", str(source), "--out", str(out)],
                                 capture_output=True, text=True, check=False, timeout=1800)
     except (OSError, subprocess.SubprocessError) as error:
         emit("log", level="diagnostic", message="UI aspect overlay was not generated: " + _safe_line(str(error), args))
@@ -798,8 +804,11 @@ def _ios_data_copies(info):
     copies = [(info["romfs"], info["metadata"]["RomFSDirectory"])]
     if info["mod_root"]:
         copies.append((info["mod_root"], info["metadata"]["ModDirectory"]))
+    library = Path(info["metadata"]["RomFSDirectory"]).parent
     if info.get("overlay"):   # the runtime finds it as the sibling "romfs-patch" of the RomFS folder
-        copies.append((info["overlay"], (Path(info["metadata"]["RomFSDirectory"]).parent / "romfs-patch").as_posix()))
+        copies.append((info["overlay"], (library / "romfs-patch").as_posix()))
+    if info.get("mod_overlay"):   # ... and the one for the mod's own files as "romfs-patch-mods/<mod folder name>"
+        copies.append((info["mod_overlay"], (library / "romfs-patch-mods" / Path(info["metadata"]["ModDirectory"]).name).as_posix()))
     resolved = []
     for source, destination in copies:
         # CoreDevice treats a directory symlink as a file and fails with EISDIR.
@@ -896,7 +905,7 @@ def _install_ios(args, artifact):
     shutil.rmtree(stage_root, ignore_errors=True)
     try:
         for source, destination, portions in plan:
-            what = "mod files" if destination.startswith("Mods/") else "UI layout fix" if destination.endswith("/romfs-patch") else "game data"
+            what = "mod files" if destination.startswith("Mods/") else "UI layout fix" if "/romfs-patch" in "/" + destination else "game data"
             emit("log", level="diagnostic", message="Copying " + what + " to the device.")
             for number, (rel, kind, names, files, size) in enumerate(portions):
                 local = source / rel
@@ -992,10 +1001,11 @@ def _export_ios(args, artifact):
     code = _run_command([str(helper), "publish-ipa", str(source), str(output)], args, "install", emit_steps=False)
     if code:
         raise ValueError("IPA export failed verification. Previous output was kept.")
-    if info.get("overlay"):   # next to the verified RomFS folder, outside its inventory
-        target = library / Path(info["metadata"]["RomFSDirectory"]).parent / "romfs-patch"
-        shutil.rmtree(target, ignore_errors=True)
-        shutil.copytree(info["overlay"], target)
+    for key, relative in (("overlay", "romfs-patch"), ("mod_overlay", "romfs-patch-mods/" + Path(info["metadata"].get("ModDirectory", "-")).name)):
+        if info.get(key):   # next to the verified RomFS folder, outside its inventory
+            target = library / Path(info["metadata"]["RomFSDirectory"]).parent / relative
+            shutil.rmtree(target, ignore_errors=True)
+            shutil.copytree(info[key], target)
     emit("artifact", kind="game_library", path=str(library))
     emit("artifact", kind="ipa", path=str(output))
     emit("log", level="diagnostic", message="IPA WITHOUT game data written: %s (%.1f GB). The game files are in the Game Library folder %s. "
@@ -1423,8 +1433,11 @@ def build(args):
         return 4
     if code == 0 and args.target in ("ios", "linux"):
         overlay = build_ui_overlay(args)
-        if args.target == "ios" and overlay and getattr(args, "ios_install", None):
+        if args.target == "ios" and getattr(args, "ios_install", None):
             args.ios_install["overlay"] = overlay
+            info = args.ios_install
+            if info["mod_root"]:
+                info["mod_overlay"] = build_ui_overlay(args, info["mod_root"], Path(info["metadata"]["ModDirectory"]).name)
     if code == 0:
         emit("artifact", kind="application", path=str(artifact))
         try:

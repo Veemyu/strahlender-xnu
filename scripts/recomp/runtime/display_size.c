@@ -63,9 +63,9 @@ bool display_pref_store(const char *aspect, const char *render_height) {
 }
 
 // The choices every shell offers (macOS menu, Qt menu); the iPhone/iPad Settings.bundle lists the same values. label is an English key for the shells' translations.
-// 12.9" iPad Pro is 4:3; the 11" iPad Pro is about 1.43:1.
+// 12.9" iPad Pro is 4:3; the 11" iPad Pro is about 1.43:1; 21:9 is exactly 21/9 (a 3440x1440 monitor is 2.39:1: choose "auto" for it).
 static const DisplayChoice aspect_choices[] = {
-    {"16:9", "16:9 (Original)", 16.0 / 9}, {"auto", "Window Shape", 0}, {"16:10", "16:10", 1.6}, {"4:3", "4:3", 4.0 / 3}, {"21:9", "21:9", 3440.0 / 1440},
+    {"16:9", "16:9 (Original)", 16.0 / 9}, {"auto", "Window Shape", 0}, {"16:10", "16:10", 1.6}, {"4:3", "4:3", 4.0 / 3}, {"21:9", "21:9", 21.0 / 9},
     {"mbp", "MacBook Pro Display", 3024.0 / 1964}, {"ipad11", "iPad Pro 11\"", 2388.0 / 1668}};
 static const DisplayChoice height_choices[] = {
     {"720", "720p", 0}, {"1080", "1080p", 0}, {"1440", "1440p", 0}, {"2160", "2160p", 0}, {"auto", "Native (window pixels)", 0}};
