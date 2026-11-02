@@ -39,7 +39,8 @@ Original icons are generated from the user's dump, with English as the default.
 Available language variants are selectable in Settings → Apps → BDSP → App icon.
 All variants now use the user-approved full-bleed Icon Composer design: 1024px,
 100% scale, zero translation, no custom border. iPadOS provides the outer shape
-and glass effects from compiled layered assets. See [icons](recomp-icons.md).
+and glass effects from compiled layered assets (Xcode 26 or newer; with Xcode 16 to 25 each variant is a
+plain icon PNGs listed in Info.plist instead, without glass). See [icons](recomp-icons.md).
 
 Game data gate (2026-11-02): the runtime thread starts only after the RomFS was verified against `res/expected-library.json`
 (`data_manager.m`, `data_library.m`); missing, empty or half copied data produce a dialog (en, de, es, pt, ru) instead of a start, and

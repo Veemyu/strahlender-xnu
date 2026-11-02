@@ -39,7 +39,7 @@ same steps by hand.
 
 | Item | Needed for | Check |
 |---|---|---|
-| Xcode 26 or newer (in `/Applications/Xcode.app`), including Icon Composer, license accepted | macOS and iPadOS builds and native Liquid Glass icon compilation | `xcodebuild -version` |
+| Xcode 16 or newer (in `/Applications/Xcode.app`), license accepted. Xcode 26 or newer builds the Liquid Glass app icon (Icon Composer); Xcode 16 to 25 builds a classic icon without it (`BDSP_LEGACY_ICONS=1` forces that on any Xcode). | macOS and iPadOS builds and app icon compilation | `xcodebuild -version` |
 | Command Line Tools | Compilers, `codesign`, `otool`, `iconutil` | `xcode-select -p` |
 | Python 3.9 or newer | `build_all.sh`, helper scripts | `python3 --version` |
 | Pillow in the selected Python environment | Deterministic original-icon conversion | `python3 -c 'from PIL import Image'` |

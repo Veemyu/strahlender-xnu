@@ -21,7 +21,8 @@ The reproducible path is:
    and write icons.json under work/recomp/icons/source.
 5. Generate full-bleed 1024px artwork and editable Icon Composer documents from
    those validated originals. No staging preview is used as a build input.
-6. Compile native Apple assets/metadata with actool, or generate Linux PNG sizes.
+6. Compile native Apple assets/metadata with actool (Xcode 26 or newer; before that a classic ICNS/AppIcon
+   catalog, see below), or generate Linux PNG sizes.
 7. Include settings, finalize/sign the app, and verify its signature.
 
 An existing main.npdm or explicit --title-id selects the title. On a fresh
@@ -59,9 +60,30 @@ assets. The user provides these files on that machine.
 
 Outputs outside work/ are rejected. Icons and processing scripts participate in
 the Mac packaging fingerprint, independently of guest generation/object markers.
-Pillow and Xcode 26 with Icon Composer/actool are required for Apple builds.
-Missing tools fail rather than installing software automatically. The preflight reports an `actool` older
-than Xcode 26 up front, because it would skip the `.icon` documents without an error.
+Pillow and Xcode (16 or newer) are required for Apple builds; Xcode 26 or newer adds the Liquid Glass icon.
+Missing tools fail rather than installing software automatically. The preflight reads `actool --version`:
+Xcode 26 or newer is plain OK, Xcode before 26 is a note ("classic app icon, no Liquid Glass"), and only an
+unreadable `actool` counts as missing. `compile_icons` still checks that actool wrote `Assets.car` (and the `.icns`
+on macOS), because an `actool` before 26 skips `.icon` documents without an error.
+
+## Classic icon (Xcode before 26)
+
+Icon Composer documents need the actool of Xcode 26. With an older actool, with an unreadable version, or with
+`BDSP_LEGACY_ICONS=1` (forces it on any Xcode, also part of the recomp fingerprint) the builders take a classic path
+and log `Notice: classic app icon without Liquid Glass (...)`. It needs no `.icon` documents and no Icon Composer:
+
+- macOS: `icon_artwork.mac_artwork` renders the usual macOS tile from the same original artwork (transparent 100 px
+  margin at 1024, rounded corners, soft shadow, artwork edge to edge), ten iconset sizes (16 to 512 at 1x and 2x) go
+  through `iconutil --convert icns`. Result: `BDSP.icns`, `AppIcons/<name>.icns`, `CFBundleIconFile` in Info.plist;
+  no `Assets.car`, no `CFBundleIconName`. macOS 26 shows such an icon on its own plate instead of the glass icon.
+  The Dock override for non-default languages (`applicationIconImage`) uses the same per-variant ICNS as before.
+- iPhone/iPad: no actool and no asset catalog. Opaque square PNGs (the system applies the corner mask, no alpha) are
+  written into the app bundle per distinct artwork: `<name>60x60@2x.png` (120), `60x60@3x` (180), `76x76~ipad` (76),
+  `76x76@2x~ipad` (152) and `83.5x83.5@2x~ipad` (167), named like the files actool emits. `CFBundleIcons` and
+  `CFBundleIcons~ipad` get `CFBundlePrimaryIcon.CFBundleIconFiles` and one `CFBundleAlternateIcons` entry per other
+  variant (key = icon name, the value `setAlternateIconName:` takes), so the language selection works as before.
+  Icon files and `Assets.car` of an earlier build in the same bundle are removed first. Unlike actool, this needs no
+  iOS simulator runtime (actool of Xcode 16 stops with "No available simulator runtimes" without one).
 
 Geometry, interpolation, source hashes, and generated document definitions are
 deterministic. Native rendering/compilation is Apple-toolchain-dependent; this

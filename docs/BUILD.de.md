@@ -41,7 +41,7 @@ Abschnitte beschreiben dieselben Schritte von Hand.
 
 | Was | Wofür | Prüfen mit |
 |---|---|---|
-| Xcode 26 oder neuer (in `/Applications/Xcode.app`), einschließlich Icon Composer, Lizenz akzeptiert | macOS-/iPadOS-Bau und native Liquid-Glass-Icons | `xcodebuild -version` |
+| Xcode 16 oder neuer (in `/Applications/Xcode.app`), Lizenz akzeptiert. Xcode 26 oder neuer baut das Liquid-Glass-App-Icon (Icon Composer), Xcode 16 bis 25 ein klassisches Icon ohne Liquid Glass (`BDSP_LEGACY_ICONS=1` erzwingt das mit jedem Xcode). | macOS-/iPadOS-Bau und Kompilieren der App-Icons | `xcodebuild -version` |
 | Command Line Tools | Compiler, `codesign`, `otool`, `iconutil` | `xcode-select -p` |
 | Python 3.9 oder neuer | `build_all.sh`, Hilfsskripte | `python3 --version` |
 | Pillow | Originalicons konvertieren und deterministisch gestalten | `python3 -c 'from PIL import Image'` |
