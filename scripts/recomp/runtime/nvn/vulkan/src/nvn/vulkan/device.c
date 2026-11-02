@@ -602,16 +602,17 @@ static void present_body(NvnTexture *t) {
         extern bool widescreen_allowed(void);
         // render scale + placement in the window: runtime/nvn/output_scale.c (Video tab "Internal resolution");
         // no GPU timer here (-1): dynamic resolution goes by the frame time
+        extern bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th);
+        float wc[4];
+        bool has_wc = nvn_window_crop(wc, t->width, t->height);
         OutScale os;
-        output_scale(dw, dh, widescreen_allowed(), SDL_GetTicksNS() / 1e9, -1, &os);
+        output_scale(dw, dh, present_src_aspect(t->width, t->height, has_wc ? wc : NULL), widescreen_allowed(), SDL_GetTicksNS() / 1e9, -1, &os);
         double sx = os.sx, sy = os.sy, vx = os.vx, vy = os.vy, vw = os.vw, vh = os.vh, shape = os.shape;
         // interiors / dungeons: their 16:9 centre, or the part inside a room wider than one screen
         extern void widescreen_present_crop(uint64_t, double, float *, double *, double *, double *, double *);
         float crop[4];  // uv origin and size
         widescreen_present_crop(total_frames, shape, crop, &vx, &vy, &vw, &vh);
-        extern bool nvn_window_crop(float *uv, uint32_t tw, uint32_t th);
-        float wc[4];
-        if (nvn_window_crop(wc, t->width, t->height)) memcpy(crop, wc, sizeof crop);  // crop region set by the game (nvnWindowSetCrop), as in metal.m present_gpu
+        if (has_wc) memcpy(crop, wc, sizeof crop);  // crop region set by the game (nvnWindowSetCrop), as in metal.m present_gpu
         widescreen_set_factor((float)shape);
         renderer_set_scale((float)sx, (float)sy);
         VkCommandBuffer cb = vk_cmd();

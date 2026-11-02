@@ -1324,7 +1324,8 @@ static bool present_gpu_locked(uint64_t frame, id<MTLTexture> tex, bool has_wc, 
         double gpu_ms = gpu_prev ? (gpu_now - gpu_prev) / 1e6 : -1;
         gpu_prev = gpu_now;
         OutScale os;
-        output_scale(dw, dh, widescreen_allowed(), SDL_GetTicksNS() / 1e9, gpu_ms, &os);
+        double src_aspect = tex ? present_src_aspect((uint32_t)tex.width, (uint32_t)tex.height, has_wc ? wc : NULL) : 16.0 / 9.0;
+        output_scale(dw, dh, src_aspect, widescreen_allowed(), SDL_GetTicksNS() / 1e9, gpu_ms, &os);
         double sx = os.sx, sy = os.sy, vx = os.vx, vy = os.vy, vw = os.vw, vh = os.vh, shape = os.shape;
         bool reshape = shape != 1.0;
         // interiors / dungeons: their 16:9 centre, or the part inside a room wider than one screen

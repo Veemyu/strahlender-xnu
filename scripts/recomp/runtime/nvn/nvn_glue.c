@@ -174,14 +174,15 @@ HLE_FUNC("_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_E
 uint64_t renderer_present_count(void);
 void nvn_report(FILE *f) { fprintf(f, "NVN: %llu frames presented, Metal buffer %llu MiB\n", (unsigned long long)renderer_present_count(), (unsigned long long)(g_nvn_mem_size >> 20)); }
 
-// ---- Output size: the game's 1920x1080 image is fitted, without scaling the rendering
-void output_scale(double dw, double dh, bool reshape_allowed, double now, double gpu_ms, OutScale *o) {
+// ---- Output size: the game's image is fitted into the window at its own aspect ratio (no stretching, no cropping), without scaling the rendering
+void output_scale(double dw, double dh, double src_aspect, bool reshape_allowed, double now, double gpu_ms, OutScale *o) {
     (void)reshape_allowed; (void)now; (void)gpu_ms;
-    double k = dw / 1920.0 < dh / 1080.0 ? dw / 1920.0 : dh / 1080.0;
+    if (!(src_aspect > 0)) src_aspect = 16.0 / 9.0;
     o->sx = o->sy = 1.0;
     o->shape = 1.0;
-    o->vw = 1920.0 * k;
-    o->vh = 1080.0 * k;
+    o->vw = dw;
+    o->vh = dw / src_aspect;
+    if (o->vh > dh) { o->vh = dh; o->vw = dh * src_aspect; }
     o->vx = (dw - o->vw) / 2;
     o->vy = (dh - o->vh) / 2;
 }

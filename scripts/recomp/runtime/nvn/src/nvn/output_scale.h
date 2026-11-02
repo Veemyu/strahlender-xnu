@@ -8,6 +8,14 @@ typedef struct {
     double vx, vy, vw, vh;     // where the image is drawn in the window (pixels)
 } OutScale;
 
-// dw x dh: the window's drawable size in pixels; now: seconds; gpu_ms: GPU time of the last frame (< 0: unknown)
-void output_scale(double dw, double dh, bool reshape_allowed, double now, double gpu_ms, OutScale *o);
+// dw x dh: the window's drawable size in pixels; src_aspect: aspect of the image to show (guest swapchain image, after the game's crop);
+// now: seconds; gpu_ms: GPU time of the last frame (< 0: unknown)
+void output_scale(double dw, double dh, double src_aspect, bool reshape_allowed, double now, double gpu_ms, OutScale *o);
+
+// Aspect of the region of a swapchain image tw x th that is shown; crop = uv origin and size from nvnWindowSetCrop (NULL: whole image).
+static inline double present_src_aspect(uint32_t tw, uint32_t th, const float *crop) {
+    double w = tw, h = th;
+    if (crop) { w *= crop[2]; h *= crop[3]; }
+    return w > 0 && h > 0 ? w / h : 16.0 / 9.0;
+}
 double output_scale_dynamic_factor(void);
