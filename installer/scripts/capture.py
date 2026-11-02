@@ -16,7 +16,7 @@ SCENARIOS = (
     "devices", "devices-many", "devices-empty", "devices-offline", "devices-error",
     "error-prerequisite",
     "setup-dependencies", "update-available", "update-confirmation",
-    "target", "target-ios", "target-mac", "demo-target-ios", "review-ios", "setup-ios", "ipa-exported", "review-ios-mod", "ios-profile",
+    "target", "target-ios", "target-mac", "demo-target-ios", "review-ios", "setup-ios", "ipa-exported", "review-ios-mod", "review-ios-mod-nodata", "ios-profile",
     "keys-empty", "keys-selected", "keys-not-found", "game-empty", "game-selected",
     "firmware-empty", "firmware-selected", "review-firmware", "firmware-import-progress", "firmware-auto", "firmware-not-found",
     "nca", "update-empty", "update-selected", "mods-folder", "mods-folder-ios", "mods-empty",

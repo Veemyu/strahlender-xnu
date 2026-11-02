@@ -1063,6 +1063,8 @@ impl Installer {
             }
             return body.into();
         }
+        let ipa_export = self.target == InstallTarget::Ios
+            && self.ios_delivery == crate::backend::IosDelivery::Ipa;
         let summary = column![
             self.summary(
                 self.language.t(L::Base),
@@ -1101,7 +1103,7 @@ impl Installer {
             },
             self.summary(self.language.t(L::Target), self.target.label().into()),
         ]
-        .spacing(4);
+        .spacing(if ipa_export { 2 } else { 4 });
         let summary = if let Some(path) = &self.firmware {
             summary.push(self.summary(
                 self.language.t(L::Firmware),
@@ -1145,40 +1147,42 @@ impl Installer {
         } else {
             summary
         };
-        let mut body = column![
+        // An IPA export adds the data warning and its switch (and for a mod the profile link) to this page: tighter spacing keeps it in the compact window.
+        let (padding, gap) = if ipa_export { (10, 8) } else { (16, 14) };
+        let heading: Element<'_, Message> = if ipa_export {
+            text(self.language.t(L::ReviewTitle)).size(23).into()
+        } else {
             self.title(
                 self.language.t(L::ReviewTitle),
-                self.language.t(L::ReviewHint)
-            ),
+                self.language.t(L::ReviewHint),
+            )
+        };
+        let mut body = column![
+            heading,
             container(summary)
-                .padding(16)
+                .padding(padding)
                 .width(Fill)
                 .style(move |_| style::surface(c, false)),
         ]
-        .spacing(14);
-        if self.target == InstallTarget::Ios
-            && self.ios_delivery == crate::backend::IosDelivery::Ipa
-        {
+        .spacing(gap);
+        if ipa_export {
+            // No framed box: the review page has to fit the compact window without scrolling.
             body = body.push(
-                container(
-                    column![
-                        text(self.language.t(if self.ios_export_no_embed {
-                            L::ExportWithoutDataHint
-                        } else {
-                            L::IpaReviewWarning
-                        }))
-                        .size(13)
-                        .color(c.muted),
-                        toggler(self.ios_export_no_embed)
-                            .label(self.language.t(L::ExportWithoutData))
-                            .text_size(14)
-                            .on_toggle(Message::ExportWithoutData),
-                    ]
-                    .spacing(8),
-                )
-                .padding(16)
-                .width(Fill)
-                .style(move |_| style::surface(c, false)),
+                column![
+                    text(self.language.t(if self.ios_export_no_embed {
+                        L::ExportWithoutDataHint
+                    } else {
+                        L::IpaReviewWarning
+                    }))
+                    .size(12)
+                    .color(c.muted),
+                    toggler(self.ios_export_no_embed)
+                        .label(self.language.t(L::ExportWithoutData))
+                        .text_size(14)
+                        .on_toggle(Message::ExportWithoutData),
+                ]
+                .spacing(6)
+                .width(Fill),
             );
         }
         if self.target == InstallTarget::Ios
@@ -1601,6 +1605,11 @@ impl Installer {
             } else {
                 counter
             };
+            // The IPA result (text, steps, links) has to fit the compact window under the card: the card is tighter then.
+            let ipa_done = self.backend_status == super::BackendStatus::Passed
+                && self.exported_ipa.is_some()
+                && self.ios_delivery == crate::backend::IosDelivery::Ipa
+                && self.target == InstallTarget::Ios;
             return column![
                 self.title(self.language.t(L::ProgressTitle), self.language.t(detail)),
                 container(
@@ -1645,16 +1654,12 @@ impl Installer {
                         .girth(5)
                         .style(move |_| style::progress(c)),
                     ]
-                    .spacing(16)
+                    .spacing(if ipa_done { 10 } else { 16 })
                 )
-                .padding(16)
+                .padding(if ipa_done { 12 } else { 16 })
                 .width(Fill)
                 .style(move |_| style::surface(c, false)),
-                if self.backend_status == super::BackendStatus::Passed
-                    && self.exported_ipa.is_some()
-                    && self.ios_delivery == crate::backend::IosDelivery::Ipa
-                    && self.target == InstallTarget::Ios
-                {
+                if ipa_done {
                     column![
                         text(self.ipa_result_text()).size(13).color(c.muted),
                         if self.game_library.is_none() && self.ios_export_no_embed {
@@ -1686,7 +1691,7 @@ impl Installer {
                         ]
                         .spacing(12),
                     ]
-                    .spacing(8)
+                    .spacing(4)
                     .into()
                 } else if self.backend_status == super::BackendStatus::Passed
                     && self.installed_app.is_some()

@@ -2502,14 +2502,23 @@ impl Installer {
                 self.mods_folder = mod_support::folder_for(self.host, self.target);
             }
             "mods-empty" => self.page = Page::Mods,
-            "mods-ips-ready" | "mods-ips-ios-ready" | "review-mod" | "review-ios-mod"
+            "mods-ips-ready"
+            | "mods-ips-ios-ready"
+            | "review-mod"
+            | "review-ios-mod"
+            | "review-ios-mod-nodata"
             | "ios-profile" => {
                 if matches!(
                     scenario,
-                    "mods-ips-ios-ready" | "review-ios-mod" | "ios-profile"
+                    "mods-ips-ios-ready"
+                        | "review-ios-mod"
+                        | "review-ios-mod-nodata"
+                        | "ios-profile"
                 ) {
                     self.target = InstallTarget::Ios;
                 }
+                // The longest review page: mod, profile link and the longer text of the switch that is on.
+                self.ios_export_no_embed = scenario == "review-ios-mod-nodata";
                 let root = self
                     .capture
                     .as_ref()
@@ -2521,7 +2530,10 @@ impl Installer {
                 std::fs::write(exefs.join("0123.ips"), b"PATCHEOF")
                     .expect("write screenshot fixture");
                 self.ios_profile_open = scenario == "ios-profile";
-                self.page = if matches!(scenario, "review-mod" | "review-ios-mod" | "ios-profile") {
+                self.page = if matches!(
+                    scenario,
+                    "review-mod" | "review-ios-mod" | "review-ios-mod-nodata" | "ios-profile"
+                ) {
                     Page::Review
                 } else {
                     Page::Mods
@@ -3079,7 +3091,10 @@ mod tests {
                 app.ios_export_no_embed = true;
                 app.exported_ipa_size = None;
                 let without = app.ipa_result_text();
-                assert!(!without.contains("()") && !without.contains("{size}"), "{without}");
+                assert!(
+                    !without.contains("()") && !without.contains("{size}"),
+                    "{without}"
+                );
                 assert!(without.contains("game.ipa"), "{without}");
                 app.exported_ipa_size = Some(229_768_040);
                 assert!(app.ipa_result_text().contains("(230 MB)"));
