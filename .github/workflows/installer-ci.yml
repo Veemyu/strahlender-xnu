@@ -227,7 +227,8 @@ jobs:
           mkdir -p "$BUILD"
           ASSET="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["targets"][sys.argv[2]]["python_asset"])' installer/runtime/manifest.json windows-x86_64)"
           curl -fL --retry 3 "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/${ASSET//+/%2B}" -o "$BUILD/python.tar.gz"
-          python installer/scripts/assemble_runtime.py --target windows-x86_64 --profile shaders --python-archive "$BUILD/python.tar.gz" --fetch-wheels --wheelhouse "$BUILD/wheels" --output "$BUILD/runtime"
+          python installer/scripts/build_source_wheel.py tpk_ar --fetch-source --output "$BUILD/wheels"   # UnityPy's pure-Python dependency exists on PyPI only as source
+          python installer/scripts/assemble_runtime.py --target windows-x86_64 --profile shaders --python-archive "$BUILD/python.tar.gz" --fetch-wheels --wheelhouse "$BUILD/wheels" --source-builds "$BUILD/wheels" --output "$BUILD/runtime"
       - name: Build the installer
         run: cargo +1.88 build --release --locked --bins --manifest-path installer/Cargo.toml
       - name: Fetch the build tools the installer ships (hactool, Vulkan/shaderc, code generator with Unicorn)

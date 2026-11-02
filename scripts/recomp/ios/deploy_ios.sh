@@ -10,7 +10,8 @@
 #          deploy_ios.sh save             put SaveData.bin/Backup.bin/user_id.hex from work/recomp/save into Documents/ (the app imports them)
 #          deploy_ios.sh shots            fetch Documents/Shots to work/visual/ipad-recomp/
 #          deploy_ios.sh files [path]     file list of the container (default Documents)
-# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables)
+# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables),
+#              RT, OBJD, IMGD, DD (build tree: runtime library, guest objects, module images, Xcode derived data; defaults under work/)
 set -euo pipefail
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -19,7 +20,7 @@ cd "$ROOT"
 BUNDLE_ID="${BUNDLE_ID:-dev.local.xnubdsp}"
 DD="$ROOT/work/builds/ios-recomp-derived"
 # Memory model A-low (gen32.sh and build_rt32.sh): the only iPhone/iPad model
-export MODEL=a; RT=work/recomp/ios-rt-a; OBJD=work/recomp/obj4i; IMGD=work/recomp/img4i; DD="$ROOT/work/builds/ios-recomp-derived-a"
+export MODEL=a; RT=${RT:-work/recomp/ios-rt-a}; OBJD=${OBJD:-work/recomp/obj4i}; IMGD=${IMGD:-work/recomp/img4i}; DD="${DD:-$ROOT/work/builds/ios-recomp-derived-a}"   # (RT, OBJD, IMGD, DD: separate build trees side by side)
 RES=work/ios/res
 mkdir -p work/builds work/builds/logs work/visual/ipad-recomp work/ios   # logs of builds and runs: work/builds/logs/
 
