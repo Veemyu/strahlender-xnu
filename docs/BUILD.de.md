@@ -301,6 +301,7 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 | `work/exefs/main fehlt` (Exit 10) | Stufe `extract` zuerst ausführen. |
 | Zu wenig Platz (Exit 8) | Platz freimachen oder mit `--min-free-gb N` die Anforderung senken. Der macOS-Bau braucht mehrere zehn GB. |
 | Übersetzen schlägt fehl (Exit 4), Speicherfehler | `--recomp-jobs 2` verwenden. Log: `work/logs/recomp-compile.log`. |
+| `The base game cannot be unpacked`, `No NCA readable` oder `The game NCA cannot be extracted` (Exit 5 oder 6) | Meldung und Log nennen, was an `prod.keys` nicht stimmt (nur Namen, nie Schlüsselwerte): zum Beispiel braucht das Spiel `master_key_0b`, die Datei endet aber bei `master_key_09`. `prod.keys` mit aktueller Firmware neu von einer Konsole sichern (Lockpick_RCM). Das Log zeigt außerdem die Master-Keys der Datei und die `Error:`-Zeilen von hactool. Heißt es, die Schlüssel seien vollständig, ist die `.xci` oder `.nsp` beschädigt oder unvollständig. |
 | `Kein verbundenes, entsperrtes iPad gefunden.` | iPad verbinden, entsperren und dem Mac vertrauen. Prüfen mit `xcrun devicectl list devices`. |
 | `xcodebuild` bricht ab (Signierung) | Log `work/builds/logs/ios-recomp-xcodebuild.log` lesen. `TEAM_ID` setzen und in Xcode mit deinem Konto signieren. |
 | macOS-App wird beim ersten Start blockiert | Rechtsklick auf die App, dann Öffnen. |

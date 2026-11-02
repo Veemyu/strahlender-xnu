@@ -173,3 +173,44 @@ fn base_game_only_and_failures_report_stable_exit_codes() {
     );
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_failed_unpack_names_the_missing_key_but_never_prints_key_values_or_hactool_warnings() {
+    let dir = scratch("keys");
+    let secret = "34c1a0c48258f8b4fa9e5e6adafc7e4f";
+    let script = format!(
+        "#!/bin/sh\necho '[WARN]: Failed to match key \"x\", (value \"{secret}\")' >&2\necho 'Error: section 0 is corrupted!' >&2\nexit 1\n"
+    );
+    fs::write(dir.join("broken"), script).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(dir.join("broken"), fs::Permissions::from_mode(0o755)).unwrap();
+    let request = Request {
+        hactool: dir.join("broken"),
+        ..request(&dir, false)
+    };
+    fs::write(
+        &request.keys,
+        format!("master_key_00 = {secret}\r\ntitlekek_source = {secret}\r\n"),
+    )
+    .unwrap();
+    let mut log = Vec::new();
+    let failure = extract(&request, &mut |line| log.push(line.to_string())).unwrap_err();
+    assert_eq!(failure.code, 5);
+    assert!(
+        failure
+            .message
+            .contains("hactool exit code 1; Error: section 0 is corrupted!")
+    );
+    assert!(
+        failure.message.contains("header_key is missing"),
+        "{}",
+        failure.message
+    );
+    let everything = format!("{}\n{}", failure.message, log.join("\n"));
+    assert!(!everything.contains(secret) && !everything.contains("WARN"));
+    assert!(
+        log.iter()
+            .any(|l| l.contains("prod.keys: master_key_00 to master_key_00"))
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}

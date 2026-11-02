@@ -14,6 +14,8 @@ pub struct Nca {
     pub content_type: String,
     pub rights_id: Option<String>,
     pub size: u64,
+    /// hactool's "Master Key Revision" (needs master_key_<revision - 1>), when it printed one.
+    pub master_revision: Option<u32>,
 }
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -29,7 +31,7 @@ fn is_hex32(text: &str) -> bool {
 
 /// Reads the `hactool -i` output and keeps only title ID, content type, rights ID and size.
 pub fn parse_nca_info(text: &str, path: &Path) -> Result<Nca, String> {
-    let (mut title, mut kind, mut rights, mut size) = (None, None, None, None);
+    let (mut title, mut kind, mut rights, mut size, mut revision) = (None, None, None, None, None);
     for line in text.lines() {
         let Some((key, value)) = line.split_once(':') else {
             continue;
@@ -46,6 +48,7 @@ pub fn parse_nca_info(text: &str, path: &Path) -> Result<Nca, String> {
             "Content Type" => &mut kind,
             "Rights ID" => &mut rights,
             "Content Size" => &mut size,
+            "Master Key Revision" => &mut revision,
             _ => continue,
         };
         slot.get_or_insert(value.to_string());
@@ -66,6 +69,9 @@ pub fn parse_nca_info(text: &str, path: &Path) -> Result<Nca, String> {
         content_type,
         rights_id: rights,
         size,
+        master_revision: revision.and_then(|r| {
+            u32::from_str_radix(r.split_whitespace().next()?.trim_start_matches("0x"), 16).ok()
+        }),
     })
 }
 
@@ -242,6 +248,7 @@ mod tests {
             content_type: kind.into(),
             rights_id: None,
             size,
+            master_revision: None,
         }
     }
 
@@ -258,6 +265,14 @@ mod tests {
             ("0100000011d90000", "Program", 0x1000)
         );
         assert_eq!(info.rights_id, None);
+        assert_eq!(info.master_revision, None);
+        let text = "Title ID: 0100000011d90000\nContent Type: Program\nMaster Key Revision:                0xC (Unknown)\n";
+        assert_eq!(
+            parse_nca_info(text, Path::new("a.nca"))
+                .unwrap()
+                .master_revision,
+            Some(12)
+        );
         assert!(parse_nca_info("Content Type: Program\n", Path::new("a.nca")).is_err());
     }
 

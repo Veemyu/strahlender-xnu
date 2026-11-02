@@ -1028,6 +1028,17 @@ class InstallerDriverTests(unittest.TestCase):
                             if event["event"] == "progress"]
                 self.assertEqual(progress, [] if expected is None else [{"event": "progress", **expected}], stage)
 
+    def test_the_error_line_of_a_build_script_becomes_the_failure_shown_to_the_user(self):
+        message = "ERROR: The game NCA cannot be extracted (hactool exit code 1). Keys: master_key_0b is missing."
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(root=temporary, work=temporary, target="macos")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                driver._run_command([sys.executable, "-c", "import sys; print(" + repr(message) + ", file=sys.stderr); sys.exit(5)"],
+                                    args, "extract")
+        error = [event for event in map(json.loads, output.getvalue().splitlines()) if event["event"] == "error"][0]
+        self.assertEqual(error["message"], "Build step failed: extract\n" + message)
+
 
 if __name__ == "__main__":
     unittest.main()

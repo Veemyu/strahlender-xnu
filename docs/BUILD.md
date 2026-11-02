@@ -456,6 +456,7 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 | `work/exefs/main missing` (exit 10) | Run stage `extract` first. |
 | Not enough disk space (exit 8) | Free space or deliberately lower the requirement with `--min-free-gb N`. The macOS build needs tens of GB. |
 | Compile fails (exit 4), memory error | Use `--recomp-jobs 2`. Check `work/logs/recomp-compile.log`. |
+| `The base game cannot be unpacked`, `No NCA readable` or `The game NCA cannot be extracted` (exit 5 or 6) | The message and the log name what is wrong with `prod.keys` (names only, never key values): for example the game needs `master_key_0b` but the file stops at `master_key_09`. Dump `prod.keys` again from a console with up-to-date firmware (Lockpick_RCM). The log also shows the master keys of the file and hactool's `Error:` lines. If it says the keys look complete, the `.xci` or `.nsp` is damaged or incomplete. |
 | `No connected, unlocked iPad found.` | Connect the iPad, unlock it, and trust the Mac. Check with `xcrun devicectl list devices`. |
 | Build fails in `xcodebuild` (signing) | Read `work/builds/logs/ios-recomp-xcodebuild.log`. Set `TEAM_ID` and sign in with your account in Xcode. |
 | macOS app blocked on first start | Right-click the app, then Open. |

@@ -1,6 +1,7 @@
 //! Stage "extract": ExeFS, RomFS, version and original icons from the user's own XCI/NSP/NCA files.
 //! hactool does the cryptography; this crate orchestrates it and never relays its output (it can contain keys).
 pub mod icons;
+pub mod keys;
 pub mod manifest;
 pub mod nca;
 pub mod unpack;
@@ -134,6 +135,37 @@ impl Tool {
         })
     }
 
+    fn keys(&self) -> Option<keys::Keys> {
+        fs::read(&self.keys)
+            .ok()
+            .map(|bytes| keys::Keys::parse(&String::from_utf8_lossy(&bytes)))
+    }
+
+    /// Logs what prod.keys contains (names only) and returns a short explanation for a failure message: the first problem
+    /// found, or the note that the keys look complete. `needed` is the master key revision of the game NCA, when known.
+    fn explain(&self, needed: Option<u32>, detail: &str, log: &mut dyn FnMut(&str)) -> String {
+        if !detail.is_empty() {
+            log(&format!("    {detail}"));
+        }
+        let Some(keys) = self.keys() else {
+            return " prod.keys could not be read.".into();
+        };
+        log(&format!("    prod.keys: {}", keys.summary()));
+        let problems = keys.problems(needed);
+        for problem in &problems {
+            log(&format!("    prod.keys: {problem}"));
+        }
+        let keys_note = match problems.first() {
+            Some(first) => format!(" Keys: {first}."),
+            None => " prod.keys has every key this game needs; the game files may be damaged or incomplete.".into(),
+        };
+        if detail.is_empty() {
+            keys_note
+        } else {
+            format!(" ({detail}).{keys_note}")
+        }
+    }
+
     fn command(&self, args: &[OsString]) -> Command {
         let mut command = Command::new(&self.executable);
         command
@@ -145,26 +177,40 @@ impl Tool {
             .env("USERPROFILE", &self.home)
             .env("XDG_CONFIG_HOME", &self.home)
             .current_dir(&self.home)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null());
+            .stdin(Stdio::null());
         command
     }
 
-    /// Runs hactool with all output discarded.
+    /// Runs hactool with its output discarded. The error says how it failed: hactool prints key values in its warnings, so only
+    /// its masked `Error:` lines are kept.
     fn run(&self, args: &[OsString]) -> Result<(), String> {
-        let status = self
+        let output = self
             .command(args)
             .stdout(Stdio::null())
-            .status()
-            .map_err(|e| e.to_string())?;
-        status
-            .success()
-            .then_some(())
-            .ok_or_else(|| "hactool failed".to_string())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| format!("hactool could not be started: {e}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let mut detail = match output.status.code() {
+            Some(code) => format!("hactool exit code {code}"),
+            None => "hactool was stopped by a signal".to_string(),
+        };
+        for line in keys::safe_error_lines(&output.stderr) {
+            detail.push_str("; ");
+            detail.push_str(&line);
+        }
+        Err(detail)
     }
 
     fn capture(&self, args: &[OsString]) -> Option<String> {
-        let output = self.command(args).stdout(Stdio::piped()).output().ok()?;
+        let output = self
+            .command(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
         output
             .status
             .success()
@@ -204,9 +250,12 @@ impl Tool {
             }
         }
         if found.is_empty() {
+            let note = self.explain(None, "", log);
             return fail(
                 6,
-                "No NCA readable: does prod.keys match the firmware/master key revision?",
+                format!(
+                    "No NCA readable: does prod.keys match the firmware/master key revision?{note}"
+                ),
             );
         }
         Ok(found)
@@ -428,6 +477,9 @@ fn run_stage(
     let base_dir = stage.join("nca-base");
     let update_dir = stage.join("nca-update");
     log("1/5 unpack the game containers");
+    if let Some(keys) = tool.keys() {
+        log(&format!("    prod.keys: {}", keys.summary()));
+    }
     let base_dir = if kind == "nca" {
         request.base.clone()
     } else {
@@ -439,17 +491,23 @@ fn run_stage(
         watched(&[&base_dir, &update_dir], input, 0, 250, || {
             tool.unpack(&request.base, &base_dir, kind)
         })
-        .map_err(|_| Failure {
+        .map_err(|detail| Failure {
             code: 5,
-            message: "The base game cannot be unpacked (file damaged or keys missing)".into(),
+            message: format!(
+                "The base game cannot be unpacked (file damaged or keys missing){}",
+                tool.explain(None, &detail, log)
+            ),
         })?;
         base_dir
     };
     if let Some(update) = &request.update {
         tool.unpack(update, &update_dir, "nsp")
-            .map_err(|_| Failure {
+            .map_err(|detail| Failure {
                 code: 5,
-                message: "The update NSP cannot be unpacked".into(),
+                message: format!(
+                    "The update NSP cannot be unpacked{}",
+                    tool.explain(None, &detail, log)
+                ),
             })?;
     }
 
@@ -534,9 +592,16 @@ fn run_stage(
         700,
         || tool.run(&arguments),
     )
-    .map_err(|_| Failure {
+    .map_err(|detail| Failure {
         code: 5,
-        message: "The game NCA cannot be extracted (master key revision in prod.keys?)".into(),
+        message: format!(
+            "The game NCA cannot be extracted (master key revision in prod.keys?){}",
+            tool.explain(
+                base_program.master_revision.max(program.master_revision),
+                &detail,
+                log
+            )
+        ),
     })?;
     if fs::metadata(stage.join("exefs/main")).map_or(0, |m| m.len()) == 0 {
         return fail(9, "exefs/main is missing after the extraction");

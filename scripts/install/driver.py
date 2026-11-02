@@ -201,7 +201,7 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
                     if not live_counter:
                         emit("log", level="diagnostic", message=message)
                     if first_failure is None and re.search(
-                            r"fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:|Directory not empty|Permission denied|No space left on device|Configure (?:a valid|an) Apple signing team|Apple signing preflight failed|No profiles for|No signing certificate|requires a development team", message):
+                            r"^ERROR: |fatal error:|error:|undefined reference|ModuleNotFoundError:|ImportError:|Directory not empty|Permission denied|No space left on device|Configure (?:a valid|an) Apple signing team|Apple signing preflight failed|No profiles for|No signing certificate|requires a development team", message):
                         first_failure = message.strip()
                     if "maximum number of installed apps using a free developer profile" in message:
                         args.command_failure_hint = ("Apple's free signing limit is full on this device. Remove an unused development-signed app "
