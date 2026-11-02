@@ -41,3 +41,4 @@
 "The setting could not be saved." = "No se pudo guardar el ajuste.";
 "An environment variable overrides this setting for this launch." = "Una variable de entorno anula este ajuste en este inicio.";
 "The new size applies after a restart. Unsaved progress is lost." = "El nuevo tamaño se aplica tras reiniciar. Se pierde el progreso sin guardar.";
+"iPad Pro 11\"" = "iPad Pro 11\"";

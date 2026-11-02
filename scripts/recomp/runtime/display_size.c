@@ -10,6 +10,7 @@
 #include <stdio.h>
 
 #include "bdsp.h"
+#include "display_size.h"
 
 #define SLOT_OFFSET 0x2cf6e00u   // builtin_patches.c: SLOT_BASE
 
@@ -59,12 +60,22 @@ bool display_pref_store(const char *aspect, const char *render_height) {
     return rename(tmp, path) == 0;
 }
 
-typedef struct { const char *name; double aspect; } Preset;
-static const Preset presets[] = {{"16:9", 16.0 / 9}, {"16:10", 1.6}, {"4:3", 4.0 / 3}, {"21:9", 3440.0 / 1440}, {"mbp", 3024.0 / 1964}, {"ipad11", 2388.0 / 1668}};   // 12.9" iPad Pro is 4:3; 11" iPad Pro is about 1.43:1
+// The choices every shell offers (macOS menu, Qt menu); the iPhone/iPad Settings.bundle lists the same values. label is an English key for the shells' translations.
+// 12.9" iPad Pro is 4:3; the 11" iPad Pro is about 1.43:1.
+static const DisplayChoice aspect_choices[] = {
+    {"16:9", "16:9 (Original)", 16.0 / 9}, {"auto", "Window Shape", 0}, {"16:10", "16:10", 1.6}, {"4:3", "4:3", 4.0 / 3}, {"21:9", "21:9", 3440.0 / 1440},
+    {"mbp", "MacBook Pro Display", 3024.0 / 1964}, {"ipad11", "iPad Pro 11\"", 2388.0 / 1668}};
+static const DisplayChoice height_choices[] = {
+    {"720", "720p", 0}, {"1080", "1080p", 0}, {"1440", "1440p", 0}, {"2160", "2160p", 0}, {"auto", "Native (window pixels)", 0}};
+const DisplayChoice *display_aspect_choices(int *count) { *count = (int)(sizeof aspect_choices / sizeof aspect_choices[0]); return aspect_choices; }
+const DisplayChoice *display_height_choices(int *count) { *count = (int)(sizeof height_choices / sizeof height_choices[0]); return height_choices; }
+
+static double g_render_aspect;   // aspect of the render size the game was started with (0 before display_size_init)
+double display_aspect(void) { return g_render_aspect > 0 ? g_render_aspect : 16.0 / 9; }
 
 static bool parse_aspect(const char *text, double *out) {
-    for (size_t i = 0; i < sizeof presets / sizeof presets[0]; i++)
-        if (!strcasecmp(text, presets[i].name)) { *out = presets[i].aspect; return true; }
+    for (size_t i = 0; i < sizeof aspect_choices / sizeof aspect_choices[0]; i++)
+        if (aspect_choices[i].aspect > 0 && !strcasecmp(text, aspect_choices[i].value)) { *out = aspect_choices[i].aspect; return true; }
     int a, b;
     if (sscanf(text, "%d:%d", &a, &b) == 2 && a > 0 && b > 0) { *out = (double)a / b; return true; }
     char *end;
@@ -115,13 +126,14 @@ void display_size_init(void) {
         if (hs && !strcasecmp(hs, "auto")) {
             if (have_window) ref = dh;
         } else if (hs && atoi(hs) >= 240) ref = atoi(hs);
-        if (!as && !hs) return;   // stock: slots stay 0
+        if (!as && !hs) { g_render_aspect = 16.0 / 9; return; }   // stock: slots stay 0
         // largest image of this shape inside the drawable when the height follows the window
         h = (int)ref;
         w = (int)lround(h * aspect);
         if (hs && !strcasecmp(hs, "auto") && have_window && w > dw) { w = dw; h = (int)lround(w / aspect); }
         w &= ~1; h &= ~1;
     }
+    g_render_aspect = (double)w / h;
     if (display_size_set(w, h)) LOG("[display] render size %dx%d (aspect %.4f)\n", w, h, (double)w / h);
     else LOG("[display] this module has no size slots; the game keeps its stock resolution\n");
 }

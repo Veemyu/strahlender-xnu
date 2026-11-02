@@ -3,6 +3,7 @@
 // about every 16 ms on the main thread; both are implemented here (the stubs in nvn/nvn_glue.c are weakly bound).
 // Sound: none. Network: none.
 // UI texts: the English text is the key (NSLocalizedString, development language en); German is in lproj/de.lproj.
+#include "../display_size.h"
 #import <AppKit/AppKit.h>
 #import <GameController/GameController.h>
 #include "../pad_gc.h"
@@ -455,20 +456,19 @@ static void install_menu(void) {
     NSMenuItem *aspi = [vm addItemWithTitle:L("Aspect Ratio") action:nil keyEquivalent:@""];
     NSMenu *aspm = [[NSMenu alloc] initWithTitle:L("Aspect Ratio")];
     aspi.submenu = aspm;
-    static NSString *const aspects[][2] = {{@"16:9", @"16:9"}, {@"16:10", @"16:10"}, {@"4:3", @"4:3"}, {@"21:9", @"21:9"}, {@"mbp", @"MacBook Pro Display"}, {@"ipad11", @"iPad Pro 11\""}, {@"auto", @"Window Shape"}};
-    for (int i = 0; i < 7; i++) {
-        NSMenuItem *it = item(aspm, aspects[i][1], @selector(setDisplayPref:), @"", 0, g_target);
+    int nchoices;
+    for (const DisplayChoice *c = display_aspect_choices(&nchoices); c < display_aspect_choices(&nchoices) + nchoices; c++) {
+        NSMenuItem *it = item(aspm, NSLocalizedString([NSString stringWithUTF8String:c->label], nil), @selector(setDisplayPref:), @"", 0, g_target);
         it.tag = 1;
-        it.representedObject = aspects[i][0];
+        it.representedObject = [NSString stringWithUTF8String:c->value];
     }
     NSMenuItem *ri = [vm addItemWithTitle:L("Render Resolution") action:nil keyEquivalent:@""];
     NSMenu *rm = [[NSMenu alloc] initWithTitle:L("Render Resolution")];
     ri.submenu = rm;
-    static NSString *const heights[][2] = {{@"720", @"720p"}, {@"1080", @"1080p"}, {@"1440", @"1440p"}, {@"2160", @"2160p"}, {@"auto", @"Native (window pixels)"}};
-    for (int i = 0; i < 5; i++) {
-        NSMenuItem *it = item(rm, heights[i][1], @selector(setDisplayPref:), @"", 0, g_target);
+    for (const DisplayChoice *c = display_height_choices(&nchoices); c < display_height_choices(&nchoices) + nchoices; c++) {
+        NSMenuItem *it = item(rm, NSLocalizedString([NSString stringWithUTF8String:c->label], nil), @selector(setDisplayPref:), @"", 0, g_target);
         it.tag = 2;
-        it.representedObject = heights[i][0];
+        it.representedObject = [NSString stringWithUTF8String:c->value];
     }
     [vm addItem:[NSMenuItem separatorItem]];
     static const int sizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};

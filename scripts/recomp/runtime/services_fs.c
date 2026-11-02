@@ -263,8 +263,12 @@ static void romfs_build_index(void) {
             size_t n = strlen(parent);
             while (n > 1 && parent[n - 1] == '/') parent[--n] = 0;
             char *slash = strrchr(parent, '/');
+#ifdef _WIN32
+            char *back = strrchr(parent, '\\');
+            if (back && (!slash || back > slash)) slash = back;
+#endif
             if (slash) *slash = 0;
-            snprintf(patch_dir, sizeof patch_dir, "%s/romfs-patch", slash ? parent : ".");
+            snprintf(patch_dir, sizeof patch_dir, "%s/romfs-patch", slash ? parent : ".");   // (Windows accepts the forward slash)
         }
         if (!(env && !strcmp(env, "none")) && access(patch_dir, R_OK) == 0) {
             int patch_total = 0;

@@ -51,6 +51,7 @@
 #include "bdsp_l10n.h"
 
 extern "C" {
+#include "../../display_size.h"
 #include "../../runtime_paths.h"
 #include "../../input.h"
 #include "../../window_title.h"
@@ -59,8 +60,6 @@ void vk_host_set_size(int w, int h);
 void vk_host_surface_ready(unsigned long long surface);
 int vk_host_shutdown(void);
 void bdsp_set_fps(int fps);
-const char *display_pref_get(const char *key);   // display_size.c: environment, else BDSP_DISPLAY_CONFIG
-bool display_pref_store(const char *aspect, const char *render_height);
 extern volatile int g_bdsp_paused;
 extern volatile int g_bdsp_fps;
 void input_handle_event(const void *ev);
@@ -77,10 +76,6 @@ namespace {
 
 const int kSizes[4][2] = {{960, 540}, {1280, 720}, {1920, 1080}, {2560, 1440}};
 const int kFps[3] = {30, 60, 120};
-// Aspect ratio and render height (runtime/display_size.c): value, menu text (also the localization key)
-struct DisplayChoice { const char *value; const char *text; };
-const DisplayChoice kAspects[] = {{"16:9", "16:9 (Original)"}, {"auto", "Window Shape"}, {"16:10", "16:10"}, {"4:3", "4:3"}, {"21:9", "21:9"}, {"mbp", "MacBook Pro Display"}};
-const DisplayChoice kRenderHeights[] = {{"720", "720p"}, {"1080", "1080p"}, {"1440", "1440p"}, {"2160", "2160p"}, {"auto", "Native (window pixels)"}};
 
 void out(const QString &line) {
     std::fputs(line.toUtf8().constData(), stdout);
@@ -276,7 +271,7 @@ private:
     QSet<int> held_;
 };
 
-// Black area below menus: centered, unstretched 16:9 canvas with letterboxing. Dimensions are logical pixels.
+// Black area below menus: centered, unstretched canvas of the game's render aspect (16:9 unless chosen otherwise) with letterboxing. Dimensions are logical pixels.
 class Stage : public QWidget {
 public:
     explicit Stage(QWidget *parent) : QWidget(parent) {
@@ -303,8 +298,9 @@ private:
     void layoutCanvas() {
         if (!canvas) return;
         const int W = width(), H = height();
-        const int w = qMin(W, H * 16 / 9);
-        const int h = w * 9 / 16;
+        const double aspect = display_aspect();
+        const int w = qMin(W, qRound(H * aspect));
+        const int h = qRound(w / aspect);
         canvas->setGeometry((W - w) / 2, (H - h) / 2, w, h);
     }
     QWidget *canvas = nullptr;
@@ -448,18 +444,23 @@ private:
         aspectMenu_ = m->addMenu(tr_("Aspect Ratio"));
         QActionGroup *aspectGroup = new QActionGroup(this);
         aspectGroup->setExclusive(true);
-        for (const DisplayChoice &c : kAspects) {
-            QAction *a = act(aspectMenu_, tr_(c.text), [this, c] { setDisplayPref(true, QString::fromLatin1(c.value)); }, nullptr, true, aspectGroup);
-            a->setData(QString::fromLatin1(c.value));
-            a->setChecked(displayPref(true) == QString::fromLatin1(c.value));
+        int count = 0;
+        const DisplayChoice *aspects = display_aspect_choices(&count);
+        for (int i = 0; i < count; i++) {
+            const QString value = QString::fromUtf8(aspects[i].value);
+            QAction *a = act(aspectMenu_, tr_(aspects[i].label), [this, value] { setDisplayPref(true, value); }, nullptr, true, aspectGroup);
+            a->setData(value);
+            a->setChecked(displayPref(true) == value);
         }
         renderMenu_ = m->addMenu(tr_("Render Resolution"));
         QActionGroup *renderGroup = new QActionGroup(this);
         renderGroup->setExclusive(true);
-        for (const DisplayChoice &c : kRenderHeights) {
-            QAction *a = act(renderMenu_, tr_(c.text), [this, c] { setDisplayPref(false, QString::fromLatin1(c.value)); }, nullptr, true, renderGroup);
-            a->setData(QString::fromLatin1(c.value));
-            a->setChecked(displayPref(false) == QString::fromLatin1(c.value));
+        const DisplayChoice *heights = display_height_choices(&count);
+        for (int i = 0; i < count; i++) {
+            const QString value = QString::fromUtf8(heights[i].value);
+            QAction *a = act(renderMenu_, tr_(heights[i].label), [this, value] { setDisplayPref(false, value); }, nullptr, true, renderGroup);
+            a->setData(value);
+            a->setChecked(displayPref(false) == value);
         }
         m->addSeparator();
         for (int i = 0; i < 4; i++) {
@@ -561,6 +562,7 @@ private:
 
     void setSize(int w, int h) {  // Requested logical canvas size; window adds menus/decorations.
         setFullscreen(false);   // a fixed window size is a window, not full screen
+        h = qRound(w / display_aspect());   // the canvas has the render aspect (16:9 unless chosen otherwise)
         resize(w + width() - stage_->width(), h + height() - stage_->height());
         QTimer::singleShot(300, this, [this] { reportCanvas(); });
     }
