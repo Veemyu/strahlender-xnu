@@ -61,7 +61,19 @@ def copy_notices(source, destination):
                 shutil.copyfile(path, output)
 
 
-def copy_tree(source, destination, progress=None):
+def place(origin, target, link):
+    """One file: a hard link when asked and possible (same volume, no new data to write), otherwise a copy. On Windows every newly written
+    file is scanned once by Defender (about 130 MB/s measured, 1 GB takes 7.6 s on first read); a hard link is not new content."""
+    if link:
+        try:
+            os.link(origin, target)
+            return
+        except OSError:
+            pass   # another volume, a file system without hard links, or a name in use: copy instead
+    shutil.copy2(origin, target)
+
+
+def copy_tree(source, destination, progress=None, link=False):
     source, destination = Path(source), Path(destination)
     reject_link(source)
     if not source.is_dir():
@@ -80,7 +92,7 @@ def copy_tree(source, destination, progress=None):
             origin = Path(parent) / name
             reject_link(origin)
             reject_existing_link(target / name)
-            shutil.copy2(origin, target / name)
+            place(origin, target / name, link)
             if progress:
                 progress()
 

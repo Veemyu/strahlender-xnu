@@ -134,7 +134,7 @@ def install_package(package, destination, emit):
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="windows-install-", dir=destination.parent) as temporary:
         staged = Path(temporary) / "app"
-        build.filesystem.copy_tree(package, staged)
+        build.filesystem.copy_tree(package, staged, link=True)   # the game data is linked, not written again
         publish_package(staged, destination)
     emit("step", id="install", status="complete")
     executable = destination / "BDSP.exe"

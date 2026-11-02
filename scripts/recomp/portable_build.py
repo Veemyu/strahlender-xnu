@@ -685,7 +685,7 @@ def package_game(executable, candidates, target, destination, notices, dynamic=(
                 raise ValueError("Game data conflicts with a packaged file")
             filesystem.reject_link(path)
             if Path(path).is_dir():
-                filesystem.copy_tree(path, output)
+                filesystem.copy_tree(path, output, link=True)   # game data (RomFS, 4.7 GB): link instead of a third copy
             else:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(path, output)

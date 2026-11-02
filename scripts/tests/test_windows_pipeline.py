@@ -66,7 +66,9 @@ class WindowsPipelineTests(unittest.TestCase):
             pipeline.install_package(package, installed.parent, emit)
             self.assertEqual(save.read_bytes(), b"user save")
             (installed.parent / "romfs/data.bin").write_bytes(b"user modified")
-            with self.assertRaises(FileExistsError):
+            # The game data is hard-linked, so the edit is also visible in the package: reinstalling is refused either way, by the check of
+            # the installed folder (FileExistsError) or by the check of the package (ValueError); the user's file stays as it is.
+            with self.assertRaises((FileExistsError, ValueError)):
                 pipeline.install_package(package, installed.parent, emit)
             self.assertEqual((installed.parent / "romfs/data.bin").read_bytes(), b"user modified")
             self.assertEqual(save.read_bytes(), b"user save")

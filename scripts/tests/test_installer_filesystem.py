@@ -11,6 +11,29 @@ from scripts.install.progress import GeneratorProgress
 
 
 class InstallerFilesystemTests(unittest.TestCase):
+    def test_linked_copies_share_the_data_and_fall_back_to_a_copy(self):
+        import os
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            (source / "romfs/sub").mkdir(parents=True)
+            (source / "romfs/sub/data.bin").write_bytes(b"synthetic game data")
+            filesystem.copy_tree(source, root / "plain")
+            filesystem.copy_tree(source, root / "linked", link=True)
+            original = (source / "romfs/sub/data.bin").stat()
+            # a copy is new content (Windows scans it); a link is another name for the same data
+            self.assertNotEqual((root / "plain/romfs/sub/data.bin").stat().st_ino, original.st_ino)
+            self.assertEqual((root / "linked/romfs/sub/data.bin").stat().st_ino, original.st_ino)
+            self.assertEqual((root / "linked/romfs/sub/data.bin").read_bytes(), b"synthetic game data")
+            # no hard links possible (another volume, FAT): the same call copies instead of failing
+            with patch.object(filesystem.os, "link", side_effect=OSError("cross-device link")):
+                filesystem.copy_tree(source, root / "fallback", link=True)
+            self.assertEqual((root / "fallback/romfs/sub/data.bin").read_bytes(), b"synthetic game data")
+            self.assertNotEqual((root / "fallback/romfs/sub/data.bin").stat().st_ino, original.st_ino)
+            # the inventory check treats the linked tree like any other
+            files = {"romfs/sub/data.bin": filesystem.sha256(source / "romfs/sub/data.bin")}
+            filesystem.verify_inventory(root / "linked", files)
+
     def test_copy_and_publish_refuse_nested_trees_without_touching_data(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "source"
