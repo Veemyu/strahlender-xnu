@@ -1023,7 +1023,7 @@ class InstallerDriverTests(unittest.TestCase):
                                     ("compile", None)):
                 output = io.StringIO()
                 with contextlib.redirect_stdout(output):
-                    driver._run_command(["/bin/echo", "\n".join(lines)], args, stage)
+                    driver._run_command([sys.executable, "-c", "print(%r)" % "\n".join(lines)], args, stage)
                 progress = [event for event in map(json.loads, output.getvalue().splitlines())
                             if event["event"] == "progress"]
                 self.assertEqual(progress, [] if expected is None else [{"event": "progress", **expected}], stage)
