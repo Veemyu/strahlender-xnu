@@ -18,16 +18,21 @@ import traceback
 from pathlib import Path
 
 if __package__:
-    from . import ffmpeg_cache, filesystem
+    from . import ffmpeg_cache, filesystem, ipa_pack
     from .progress import GeneratorProgress
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import ffmpeg_cache
     import filesystem
+    import ipa_pack
     from progress import GeneratorProgress
 
 PROTOCOL_VERSION = 2
 EMIT_LOCK = threading.Lock()
+IPA_EMBED_NOTICE = ("Export IPA embeds the game data of your own dump in the IPA (about {gb:.1f} GB, ZIP64). Writing it takes several minutes "
+                    "and needs that much free space. Use the IPA only on your own devices and never share it: it contains game data, "
+                    "and this project distributes no game data. Pass --ios-export-no-embed for an IPA without game data "
+                    "and a separate Game Library folder.")
 
 
 def emit(event, **fields):
@@ -153,7 +158,8 @@ def _run_command(command, args, stage, progress=None, phase_from_line=None, extr
     environment = dict(os.environ)
     for variable in ("BDSP_EXEFS_DIR", "RECOMP_DIR", "BDSP_MOD_NAME", "BDSP_MOD_ROOT",
                      "BDSP_MOD_BUNDLE_ID", "BDSP_MOD_DISPLAY_NAME", "BDSP_ICON_SOURCE",
-                     "BDSP_IOS_BUILD_DIR", "BDSP_IOS_UDID", "BDSP_IOS_BUNDLE_ID", "BDSP_FIRMWARE_SOURCE"):
+                     "BDSP_IOS_BUILD_DIR", "BDSP_IOS_UDID", "BDSP_IOS_BUNDLE_ID", "BDSP_FIRMWARE_SOURCE",
+                     "BDSP_IOS_EMBED_ROMFS", "BDSP_IOS_EMBED_ROMFS_DIR", "BDSP_IOS_EMBED_MOD_DIR"):
         environment.pop(variable, None)
     environment["BDSP_FIRMWARE_SOURCE"] = str(getattr(args, "firmware_root", "") or "")
     environment.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1", **(extra_env or {})})
@@ -624,6 +630,22 @@ def _tree_digest(folder):
     return digest.hexdigest()[:20]
 
 
+def _embed_enabled(args):
+    """Export IPA embeds the game data unless told otherwise; the direct installation never does."""
+    return getattr(args, "ios_delivery", "device") == "ipa" and not getattr(args, "ios_export_no_embed", False)
+
+
+def _tree_bytes(folder):
+    return sum(path.stat().st_size for path in Path(folder).rglob("*") if path.is_file())
+
+
+def _nearest_existing(path):
+    path = Path(path).resolve()
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    return path
+
+
 def _prepare_ios(args, mod_build, device):
     work = Path(args.work)
     input_work = Path(getattr(args, "ios_input_work", work))
@@ -668,16 +690,32 @@ def _prepare_ios(args, mod_build, device):
         metadata.update({"ExternalLibrary": True, "SaveProfile": profile, "SaveStorageVersion": 2})
         if mod_root:
             metadata["ModDirectory"] += "/" + args.mod_name
+        if _embed_enabled(args):
+            # The app reads the data from its own bundle (res/EmbeddedData); saves keep the external-library layout.
+            metadata["EmbeddedLibrary"] = True
     data_identity = hashlib.sha256(json.dumps(metadata, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
     metadata["DataManifest"] = "Manifests/" + data_identity + ".json"
     if not re.fullmatch(r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)+", bundle_id):
         raise ValueError("The Apple bundle identifier is invalid.")
     if mod_build and bundle_id in ("dev.local.xnubdsp", "dev.local.xnubdsp.installer"):
         raise ValueError("A separate code-mod app cannot use the original game's bundle identifier.")
+    embed = bool(metadata.get("EmbeddedLibrary"))
+    embed_environment = {}
+    if embed:
+        size = _tree_bytes(romfs) + (_tree_bytes(mod_root) if mod_root else 0)
+        free = shutil.disk_usage(_nearest_existing(getattr(args, "ios_export_dir", None) or work)).free
+        if free < size + (2 << 30):
+            raise ValueError("The IPA with game data needs about %.1f GB free in the export folder; %.1f GB are free. "
+                             "Free space or use --ios-export-no-embed." % (size / 1e9, free / 1e9))
+        emit("log", level="diagnostic", message=IPA_EMBED_NOTICE.format(gb=size / 1e9))
+        embed_environment = {"BDSP_IOS_EMBED_ROMFS": "1", "BDSP_IOS_EMBED_ROMFS_DIR": metadata["RomFSDirectory"]}
+        if mod_root:
+            embed_environment["BDSP_IOS_EMBED_MOD_DIR"] = metadata["ModDirectory"]
     (resources / "install-data.plist").write_bytes(plistlib.dumps(metadata))
-    args.ios_install = {"device": device, "bundle_id": bundle_id, "metadata": metadata,
+    args.ios_install = {"device": device, "bundle_id": bundle_id, "metadata": metadata, "embed": embed,
                         "romfs": romfs, "mod_root": mod_root, "build_dir": build_dir}
-    return {"BDSP_IOS_BUILD_DIR": str(build_dir), "BDSP_IOS_UDID": device["udid"] if device else "",
+    return {**embed_environment,
+            "BDSP_IOS_BUILD_DIR": str(build_dir), "BDSP_IOS_UDID": device["udid"] if device else "",
             "BDSP_IOS_DELIVERY": getattr(args, "ios_delivery", "device"),
             "BDSP_ROMFS_SOURCE": str(romfs),
             "BDSP_IOS_BUNDLE_ID": bundle_id,
@@ -809,6 +847,31 @@ def _install_ios(args, artifact):
     return Path(artifact)
 
 
+def _export_ios_embedded(args, artifact, info, destination):
+    """Writes the IPA with the game data inside, once; there is no separate Game Library."""
+    app = Path(artifact)
+    metadata = info["metadata"]
+    packaged = plistlib.loads((app / "res/install-data.plist").read_bytes())
+    data = app / ipa_pack.EMBED_DIR / metadata["RomFSDirectory"]
+    if not packaged.get("EmbeddedLibrary") or not (data / "Data").is_dir():
+        raise ValueError("The built app contains no embedded game data; nothing was exported.")
+    last = [0.0]
+
+    def report(done, total, files_done, files_total):
+        now = time.monotonic()
+        if now - last[0] >= 0.5 or done >= total:
+            last[0] = now
+            emit("progress", id="install", completed=files_done, total=files_total, bytes_completed=done, bytes_total=total)
+
+    started = time.monotonic()
+    emit("log", level="diagnostic", message="Writing the IPA with embedded game data (stored without compression, hashed once).")
+    output, stats = ipa_pack.publish_ipa(app, destination, info["bundle_id"], report)
+    emit("log", level="diagnostic", message="IPA written: %.1f GB in %.0f s (%d files%s). Personal use only: it contains game data from your own dump. "
+         "Do not share it." % (stats["size"] / 1e9, time.monotonic() - started, stats["files"], ", ZIP64" if stats["zip64"] else ""))
+    emit("artifact", kind="ipa", path=str(output))
+    return output
+
+
 def _export_ios(args, artifact):
     """Export persistent artifacts; no device discovery, profile or account access."""
     info = args.ios_install
@@ -822,6 +885,8 @@ def _export_ios(args, artifact):
     packaged = plistlib.loads((Path(artifact) / "Info.plist").read_bytes())
     if packaged.get("CFBundleIdentifier") != info["bundle_id"]:
         raise ValueError("IPA identity does not match this build; nothing was exported.")
+    if info.get("embed"):
+        return _export_ios_embedded(args, artifact, info, destination)
     source = info["build_dir"] / "BDSP.ipa"
     if not source.is_file():
         raise ValueError("The IPA package is missing.")
@@ -1280,6 +1345,8 @@ def main(argv=None):
     build_parser.add_argument("--ios-device", help="Connected device identifier, UDID or name")
     build_parser.add_argument("--ios-delivery", choices=("device", "ipa"), default="device")
     build_parser.add_argument("--ios-export-dir", help="Persistent destination for the IPA and shared game library")
+    build_parser.add_argument("--ios-export-no-embed", action="store_true",
+                              help="Export the IPA without game data plus a separate Game Library (default: the IPA embeds the data)")
     build_parser.add_argument("--ios-bundle-id", help="Separate application identifier for device testing")
     build_parser.add_argument("--ios-profile-id", help="Reuse a previous installer IPA's mod save identity")
     build_parser.add_argument("--ios-profile-game", help="Game identity belonging to the reused mod profile")

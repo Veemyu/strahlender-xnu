@@ -91,6 +91,8 @@ case "${1:-}" in
     else
       echo "No recorded shader sources available. New shaders will compile on the device with a visible status."
     fi
+    # An earlier IPA export left its embedded game data in the reused app folder; no other build may carry it.
+    python3 scripts/install/ipa_pack.py clear --app "$R/derived/Build/Products/Release-iphoneos/BDSP.app"
     xcodebuild -project scripts/recomp/ios/app/BDSP.xcodeproj -scheme BDSP -configuration Release \
       -destination "$DESTINATION" -derivedDataPath "$R/derived" \
       "${XCODE_SIGNING[@]}" PRODUCT_BUNDLE_IDENTIFIER="$BDSP_IOS_BUNDLE_ID" \
@@ -101,6 +103,15 @@ case "${1:-}" in
     APP="$R/derived/Build/Products/Release-iphoneos/BDSP.app"
     rm -rf "$APP/res/Firmware"
     [ ! -d "$R/res/Firmware" ] || cp -R "$R/res/Firmware" "$APP/res/Firmware"
+    # Only an IPA export embeds the game data (the installer writes that IPA).
+    EMBED=0
+    if [ "$DELIVERY" = ipa ] && [ "${BDSP_IOS_EMBED_ROMFS:-}" = 1 ]; then
+      EMBED=1
+      EMBED_ARGS=(--app "$APP" --romfs "${BDSP_ROMFS_SOURCE:-work/romfs}" --romfs-dest "${BDSP_IOS_EMBED_ROMFS_DIR:?}")
+      [ -z "${BDSP_MOD_ROOT:-}" ] || EMBED_ARGS+=(--mod "$BDSP_MOD_ROOT" --mod-dest "${BDSP_IOS_EMBED_MOD_DIR:?}")
+      echo "Embedding the game data in the app (read-only; the IPA will contain game data and is for your own use only)."
+      python3 scripts/install/ipa_pack.py embed "${EMBED_ARGS[@]}"
+    fi
     ICONARGS=(ios --source "${BDSP_ICON_SOURCE:-work/recomp/icons/source}" --output "$R/icons" --bundle "$APP")
     [ -z "${BDSP_MOD_ROOT:-}" ] || ICONARGS+=(--mod-root "$BDSP_MOD_ROOT" --mod-name "${BDSP_MOD_NAME:-}")
     python3 scripts/recomp/app/game_icons.py "${ICONARGS[@]}"
@@ -116,13 +127,17 @@ case "${1:-}" in
       /usr/bin/codesign --force --sign - --entitlements scripts/recomp/ios/app/BDSP.entitlements --generate-entitlement-der "$APP"
     fi
     /usr/bin/codesign --verify --deep --strict "$APP"
-    EXPORT=$(mktemp -d "$R/.export.XXXXXX")
-    trap 'rm -rf "$EXPORT"' EXIT
-    mkdir "$EXPORT/Payload"
-    ditto "$APP" "$EXPORT/Payload/BDSP.app"
-    (cd "$EXPORT" && ditto -c -k --keepParent Payload "$R/BDSP.ipa.new")
-    mv "$R/BDSP.ipa.new" "$R/BDSP.ipa"
     echo "Built universal iPhone/iPad app: $APP"
-    echo "IPA: $R/BDSP.ipa" ;;
+    if [ "$EMBED" = 1 ]; then
+      rm -f "$R/BDSP.ipa"   # the installer zips the app with its data (ZIP64) and writes the IPA once
+    else
+      EXPORT=$(mktemp -d "$R/.export.XXXXXX")
+      trap 'rm -rf "$EXPORT"' EXIT
+      mkdir "$EXPORT/Payload"
+      ditto "$APP" "$EXPORT/Payload/BDSP.app"
+      (cd "$EXPORT" && ditto -c -k --keepParent Payload "$R/BDSP.ipa.new")
+      mv "$R/BDSP.ipa.new" "$R/BDSP.ipa"
+      echo "IPA: $R/BDSP.ipa"
+    fi ;;
   *) echo "Usage: installer_build.sh tools|gen|compile|images|runtime|package" >&2; exit 2 ;;
 esac
