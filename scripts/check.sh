@@ -29,6 +29,9 @@ python3 -m unittest scripts.tests.test_installer_release scripts.tests.test_gene
 step "shader translator tests (C and CLI)"
 make -s -C shader_translator test 2>&1 | grep -E "^(OK|FAILED|Ran)" 
 
+step "window title helper test (C)"
+bash scripts/recomp/runtime/test/run_window_title_test.sh
+
 if [ "$(uname)" = Darwin ] && xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
   step "runtime compile check: iPhone/iPad (model A-low, the iPad build)"
   BDSP_SYNTAX_ONLY=1 bash scripts/recomp/ios/build_rt32.sh ios
