@@ -90,12 +90,13 @@ fn main() -> iced::Result {
         eprintln!("{error}. See --help.");
         std::process::exit(2);
     });
+    name_the_process();
     iced::application(
         move || Installer::with_options(options.clone()),
         Installer::update,
         Installer::view,
     )
-    .title("strahlender · Installer")
+    .title("Strahlender Installer")
     .theme(Installer::theme)
     .subscription(Installer::subscription)
     .window(iced::window::Settings {
@@ -124,3 +125,14 @@ fn main() -> iced::Result {
     .default_font(iced::Font::with_name("Fira Sans"))
     .run()
 }
+
+/// The macOS menu bar, the About and Quit items and the Dock tooltip use the process name, which is the executable's
+/// file name (`strahlender-xnu-installer`). It must be set before the window system builds the menu.
+#[cfg(target_os = "macos")]
+fn name_the_process() {
+    use objc2_foundation::{NSProcessInfo, NSString};
+    NSProcessInfo::processInfo().setProcessName(&NSString::from_str("Strahlender Installer"));
+}
+
+#[cfg(not(target_os = "macos"))]
+fn name_the_process() {}

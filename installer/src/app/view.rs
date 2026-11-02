@@ -44,7 +44,7 @@ impl Installer {
     pub fn view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
         let mut header = row![
-            text("strahlender").size(15).color(c.muted),
+            text("Strahlender Installer").size(15).color(c.muted),
             space().width(Fill),
             self.icon_action(
                 if self.appearance == Appearance::Dark {
