@@ -514,14 +514,14 @@ The scripts `build_nvn.sh`, `vulkan/build_vk.sh`, and `ios/build_rt32.sh` source
 
 ### 8.1 System report in the installer log (diagnostics)
 
-Every build starts with a block of `[Diagnostics]` lines in the installer log ("Show details"): operating system and build,
+Every build starts with a block of `[Diagnostics]` lines in the installer log ("Show details"); the first line says that the report stays on the computer and only leaves it if the log is shared. It contains: operating system and build,
 architecture, CPU, RAM, free disk space, the length of the work folder path, locale, whether the installer runs elevated,
 the versions of git, make, the C compiler, cmake, ffmpeg and pkg-config, the GPU with its driver, and per platform:
 
 | Platform | Extra items |
 |---|---|
 | Windows | `LongPathsEnabled`, 8.3 file names, Developer Mode, file system of the work drive, Microsoft Defender status and the number (never the content) of its exclusions, installed antivirus products, Vulkan runtime, VC++ runtime |
-| macOS | model, Rosetta state, Metal support and GPU cores, Xcode and SDK, System Integrity Protection |
+| macOS | model, Rosetta state and whether it is installed, Metal support and GPU cores, Xcode (`xcode-select -p`, `DEVELOPER_DIR`, `xcodebuild -version`), Command Line Tools package, macosx and iphoneos SDK path and version, `actool` and Metal compiler versions, Apple and Homebrew LLVM clang, SDL3 and FFmpeg versions, System Integrity Protection; for an iPhone/iPad build the connected devices (model, iOS version, state; no names or IDs) |
 | Linux | distribution, kernel, display controllers with the kernel driver in use, Vulkan and Mesa version, session type, package manager, SteamOS, Asahi, WSL, Flatpak, AppImage, container |
 
 Run it alone with `python3 scripts/install/diagnostics.py [--work FOLDER]`. Set `BDSP_NO_DIAGNOSTICS=1` to skip it in a build.
