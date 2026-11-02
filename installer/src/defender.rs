@@ -4,23 +4,28 @@
 /// `Some(true)` when Windows Defender's real-time protection is on, `Some(false)` when it is off, `None` when it cannot be read
 /// (another virus scanner, a policy, not Windows).
 pub fn realtime_protection() -> Option<bool> {
-    #[cfg(windows)]
-    {
-        use crate::process::Hidden;
-        let output = std::process::Command::new("powershell")
-            .hidden()
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                "(Get-MpComputerStatus -ErrorAction Stop).RealTimeProtectionEnabled",
-            ])
-            .stdin(std::process::Stdio::null())
-            .output()
-            .ok()?;
-        return parse(&String::from_utf8_lossy(&output.stdout));
-    }
-    #[cfg(not(windows))]
+    status()
+}
+
+#[cfg(windows)]
+fn status() -> Option<bool> {
+    use crate::process::Hidden;
+    let output = std::process::Command::new("powershell")
+        .hidden()
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "(Get-MpComputerStatus -ErrorAction Stop).RealTimeProtectionEnabled",
+        ])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    parse(&String::from_utf8_lossy(&output.stdout))
+}
+
+#[cfg(not(windows))]
+fn status() -> Option<bool> {
     None
 }
 
