@@ -118,5 +118,6 @@ Nso cg_nso(const char *path) {
             n.relocations[index++] = r;
         }
     }
+    cg_builtin_patches(&n);
     return n;
 }

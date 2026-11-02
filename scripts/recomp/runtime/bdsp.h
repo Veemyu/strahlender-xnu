@@ -225,6 +225,8 @@ typedef struct Module {
 } Module;
 extern Module g_modules[4];
 extern int g_nmodules;
+void display_size_init(void);          // display_size.c: writes the render-size slots of the main module
+bool display_size_set(int w, int h);
 void loader_load(const char *imgdir);
 uint64_t loader_find_symbol(const char *name);
 const char *loader_symbol_at(uint64_t addr, uint64_t *offset);  // rough: from the exported symbols

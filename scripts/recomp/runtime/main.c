@@ -420,6 +420,7 @@ int main(int argc, char **argv) {
 
     kernel_init();
     loader_load(img);
+    display_size_init();
     dispatch_init();
     if (getenv("BDSP_WATCH")) {   // debugging: "hexaddress,hexaddress": log calls through the dispatcher with x0..x2 and lr
         char *spec = strdup(getenv("BDSP_WATCH")), *sv = NULL;

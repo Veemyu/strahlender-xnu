@@ -1631,6 +1631,11 @@ void ui_window_init(void) {
 }
 
 SDL_Window *ui_window(void) { return window; }
+int ui_drawable_size(int *w, int *h) {   // pixels of the window's drawable (0: no window yet)
+    if (!window) return 0;
+    SDL_GetWindowSizeInPixels(window, w, h);
+    return 1;
+}
 void *ui_metal_layer(void) { return (__bridge void *)layer; }
 void *ui_metal_device(void) { return (__bridge void *)dev; }
 

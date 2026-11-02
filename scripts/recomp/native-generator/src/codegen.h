@@ -55,6 +55,7 @@ uint64_t cg_u64(const unsigned char *p);
 void cg_put64(unsigned char *p, uint64_t value);
 void cg_range(size_t size, uint64_t offset, uint64_t length, const char *what);
 Nso cg_nso(const char *path);
+void cg_builtin_patches(Nso *n);
 int cg_generate(int argc, char **argv);
 void cg_prune_chunks(const char *directory, const char *module, const Strings *written);
 int cg_image(int argc, char **argv);
