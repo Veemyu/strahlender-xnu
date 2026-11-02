@@ -29,6 +29,8 @@ Das iPhone ist auf einem iPhone 11 Pro Max getestet.
 
 Du brauchst: dein eigenes Exemplar des Spiels (XCI, optional das Update als NSP) und deine `prod.keys`. Apps für iPhone und iPad werden auf einem Mac mit Xcode gebaut und mit deiner eigenen Apple-ID signiert.
 
+Eine exportierte IPA läuft nur zusammen mit ihren Spieldaten: direkt aus dem Installer installieren oder in der App den exportierten Ordner **Game Library** wählen ([Details](installer/docs/ios-delivery.md#an-ipa-alone-does-not-run)).
+
 ## Was dabei ist
 
 - Ein GUI-Installer für macOS, Linux und Windows.

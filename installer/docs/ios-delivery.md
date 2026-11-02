@@ -111,6 +111,48 @@ hosting model rather than a new game package format. See the primary
 [SideStore FAQ](https://docs.sidestore.io/docs/faq) and
 [LiveContainer repository](https://github.com/LiveContainer/LiveContainer).
 
+## An IPA alone does not run
+
+An exported IPA never contains game data. Installed with a sideloading tool
+(SideStore, iloader and similar) and nothing else, the app does not start the
+game: it shows **Choose game library** and explains that the game files are
+missing. Choose the **Game Library** folder that the installer exported next to
+the IPA, or install directly from the installer with a connected device, which
+copies the data itself. The dialogs exist in English, German, Spanish,
+Portuguese and Russian and have a Help button that opens this section.
+
+The runtime starts only after the data were verified against the inventory
+that is part of the app. Before the slow checksum pass, a quick check names the
+problem: folder missing, folder empty, files of length 0, or a number of files
+missing. A folder that is verified once is remembered; an interrupted copy
+(files of length 0) is reported instead of being used. If the data still
+disappear later, the runtime stops with a message in its log
+(`RomFS folder ... holds no files`) instead of starting an empty game.
+
+A crash right at launch without this dialog has another cause (for example a
+signing tool that removed the increased-memory-limit entitlement, or an address
+range the system does not give to the app); the dialog appears only after the
+app has started. For a diagnosis, the crash log (Settings, Privacy and
+Security, Analytics and Improvements, Analytics Data; or Xcode, Devices and
+Simulators, View Device Logs), device model, iOS version, sideloading tool and
+signing type are needed.
+
+### Game data inside the IPA (experimental idea, not implemented)
+
+An opt-in export switch could embed the RomFS of the user's own dump in the
+IPA, so that one file runs without a second step. It is not built, because it
+is not small: the RomFS is about 4.7 GB in 18,000 files, so the IPA would be
+about 5 GB (ZIP64) and the exporter copies and hashes it several times; free
+account signing tools must re-sign every file and may not handle that size; the
+result could not be checked without a device here. If built, the design is:
+default off, a warning that the IPA is huge, only for the owner's own use and
+contains game data that must not be shared; the exporter copies the library
+layout into `res/EmbeddedData` of the app bundle before signing; the app marks
+it with `EmbeddedLibrary` in `res/install-data.plist` and uses the bundle as the
+library (the same inventory check, no folder picker); saves stay in `Documents`;
+a new additive CLI switch, old installers unaffected. The project distributes no
+game data; such an IPA exists only on the owner's machine.
+
 ## Shared data and stable identities
 
 An IPA contains executable code, module images, icons and localizations. It does
