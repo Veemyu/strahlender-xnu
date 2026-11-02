@@ -39,6 +39,10 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["NSD
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# The SHA-256 of the 5 GB game files runs in debug builds too (dev checkout runs): unoptimized it takes minutes.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 strip = "debuginfo"

@@ -16,6 +16,10 @@ serde_json = "1"
 sha2 = "0.10"
 image = { version = "=0.25.9", default-features = false, features = ["jpeg", "png"] }
 
+# The SHA-256 of the 5 GB game files runs in debug builds too (dev checkout runs): unoptimized it takes minutes.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 strip = "debuginfo"
