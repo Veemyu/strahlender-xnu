@@ -41,16 +41,16 @@ class IosCopyPlanTests(unittest.TestCase):
     def test_a_big_folder_is_split_but_a_small_one_stays_whole(self):
         source = self.tree({"Big/x/1.bin": 300, "Big/y/2.bin": 300, "Small/3.bin": 50})
         whole = driver._copy_portions(source, limit=10_000)
-        self.assertEqual([(str(p[0]), p[1]) for p in whole], [(".", "tree")])
+        self.assertEqual([(p[0].as_posix(), p[1]) for p in whole], [(".", "tree")])
         split = driver._copy_portions(source, limit=400)
-        self.assertEqual(sorted(str(p[0]) for p in split), ["Big/x", "Big/y", "Small"])
+        self.assertEqual(sorted(p[0].as_posix() for p in split), ["Big/x", "Big/y", "Small"])
         self.assertTrue(all(kind == "tree" for _, kind, *_ in split))
 
     def test_loose_files_are_staged_as_a_folder_with_hard_links(self):
         source = self.tree({"Big/a.bin": 5, "Big/x/1.bin": 300, "Big/y/2.bin": 300})
         portions = driver._copy_portions(source, limit=400)
         loose = [p for p in portions if p[1] == "loose"]
-        self.assertEqual([(str(p[0]), p[2]) for p in loose], [("Big", ("a.bin",))])
+        self.assertEqual([(p[0].as_posix(), p[2]) for p in loose], [("Big", ("a.bin",))])
         stage = driver._stage_loose_files(source / "Big", ("a.bin",), source.parent / (source.name + "-stage") / "0")
         self.addCleanup(lambda: __import__("shutil").rmtree(stage.parent, ignore_errors=True))
         self.assertEqual([p.name for p in stage.iterdir()], ["a.bin"])
