@@ -10,7 +10,7 @@
 #          deploy_ios.sh save             put SaveData.bin/Backup.bin/user_id.hex from work/recomp/save into Documents/ (the app imports them)
 #          deploy_ios.sh shots            fetch Documents/Shots to work/visual/ipad-recomp/
 #          deploy_ios.sh files [path]     file list of the container (default Documents)
-# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp), RUN_ENV (JSON for --environment-variables),
+# Environment: DEVICE_NAME (part of the device name), BUNDLE_ID (default dev.local.xnubdsp; other ids: launch/files only, no game data is written), RUN_ENV (JSON for --environment-variables),
 #              RT, OBJD, IMGD, DD (build tree: runtime library, guest objects, module images, Xcode derived data; defaults under work/)
 set -euo pipefail
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
@@ -18,11 +18,29 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 [[ -f work/local.env ]] && source work/local.env
 BUNDLE_ID="${BUNDLE_ID:-dev.local.xnubdsp}"
-DD="$ROOT/work/builds/ios-recomp-derived"
 # Memory model A-low (gen32.sh and build_rt32.sh): the only iPhone/iPad model
 export MODEL=a; RT=${RT:-work/recomp/ios-rt-a}; OBJD=${OBJD:-work/recomp/obj4i}; IMGD=${IMGD:-work/recomp/img4i}; DD="${DD:-$ROOT/work/builds/ios-recomp-derived-a}"   # (RT, OBJD, IMGD, DD: separate build trees side by side)
 RES=work/ios/res
 mkdir -p work/builds work/builds/logs work/visual/ipad-recomp work/ios   # logs of builds and runs: work/builds/logs/
+
+# Data safety. CoreDevice treats a symlinked source directory as a file and fails (scripts/install/driver.py: _ios_data_copies), so sources
+# are resolved to their canonical folder first. Copies never use --remove-existing-content: a failed copy must not leave the container emptier
+# than before. Apps with another bundle id than the dev app (the installer's app, mod apps) keep their data in a layout the installer owns
+# (GameData/<digest>/romfs); this script never writes game data into them.
+DEV_BUNDLE_ID=dev.local.xnubdsp
+canonical_dir() {  # canonical_dir <folder> -> prints the resolved folder, fails if it is not a folder with content
+  python3 - "$1" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1]).resolve(strict=True)
+if not p.is_dir() or not any(p.iterdir()):
+    raise SystemExit(f"not a folder with content: {p}")
+print(p)
+PY
+}
+owns_data() {  # true when this script may write game data into the container of $BUNDLE_ID
+  [[ "$BUNDLE_ID" == "$DEV_BUNDLE_ID" ]]
+}
 
 # RomFS manifest (file count and total size of work/romfs). If it is on the iPad, the state is complete.
 romfs_manifest() {
@@ -38,15 +56,18 @@ EOF
 }
 # Copies RomFS completely (replaces the folder so no orphaned files remain) and the manifest.
 romfs_copy() {
-  echo "Copying work/romfs to Documents/GameData/romfs (takes a while) ..."
+  owns_data || { echo "Not copying game data into $BUNDLE_ID: its data belongs to the installer." >&2; return 1; }
+  local source; source="$(canonical_dir work/romfs)" || { echo "work/romfs is missing or empty; nothing was copied." >&2; return 1; }
+  echo "Copying $source to Documents/GameData/romfs (takes a while) ..."
   romfs_manifest
   xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
-    --source work/romfs --destination Documents/GameData/romfs --remove-existing-content true 2>&1 | tail -n 5
+    --source "$source" --destination Documents/GameData/romfs 2>&1 | tail -n 5
   xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
     --source work/ios/romfs.manifest --destination Documents/GameData/romfs.manifest > /dev/null 2>&1
 }
 # Checks the manifest on the iPad and copies RomFS only if it is missing or does not match.
 romfs_ensure() {
+  owns_data || { echo "Game data of $BUNDLE_ID is managed by the installer; not checked or copied."; return 0; }
   romfs_manifest
   rm -f work/ios/romfs.device.manifest
   xcrun devicectl device copy from --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
@@ -63,17 +84,19 @@ romfs_ensure() {
 # UI overlay for any aspect ratio (scripts/recomp/ui_aspect_patch.py): generated from work/romfs, copied next to the RomFS as
 # Documents/GameData/romfs-patch, where the runtime finds it. Only copied when the stamp on the iPad differs.
 overlay_ensure() {
+  owns_data || { echo "UI overlay of $BUNDLE_ID: placed by hand next to its RomFS, not by this script."; return 0; }
   python3 scripts/recomp/ui_aspect_patch.py --if-needed --romfs work/romfs --out work/romfs-patch > work/ios/ui-overlay.log 2>&1 \
     || { tail -n 5 work/ios/ui-overlay.log >&2; echo "UI overlay could not be generated" >&2; return 0; }
+  local source; source="$(canonical_dir work/romfs-patch)" || return 0
   rm -f work/ios/romfs-patch.device.stamp
   xcrun devicectl device copy from --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
     --source Documents/GameData/romfs-patch/.stamp --destination work/ios/romfs-patch.device.stamp > /dev/null 2>&1 || true
-  if [[ -f work/ios/romfs-patch.device.stamp ]] && cmp -s work/ios/romfs-patch.device.stamp work/romfs-patch/.stamp; then
+  if [[ -f work/ios/romfs-patch.device.stamp ]] && cmp -s work/ios/romfs-patch.device.stamp "$source/.stamp"; then
     echo "UI overlay on the iPad is up to date."
   else
     echo "Copying the UI overlay to Documents/GameData/romfs-patch ..."
     xcrun devicectl device copy to --device "$COREID" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
-      --source work/romfs-patch --destination Documents/GameData/romfs-patch --remove-existing-content true 2>&1 | tail -n 3
+      --source "$source" --destination Documents/GameData/romfs-patch 2>&1 | tail -n 3
   fi
 }
 
@@ -96,7 +119,7 @@ EOF
 
 case "${1:-}" in
   build)
-    scripts/recomp/ios/build_rt32.sh ios
+    BDSP_IOS_RT_DIR="$RT" scripts/recomp/ios/build_rt32.sh ios
     rm -f "$RT/libgame.a"
     libtool -static -o "$RT/libgame.a" "$OBJD"/*.o 2> /dev/null
     rm -rf "$RES"; mkdir -p "$RES/img32"
