@@ -54,6 +54,23 @@ def urlopen(request, timeout=60):
         return Response(result.stdout)
 
 
+def _finish(partial, destination, seconds=90, pause=1.0, sleep=time.sleep, clock=time.monotonic):
+    """Moves the finished download into place. Right after a large write Windows (Defender, the indexer) can hold the file for a while
+    and the rename fails with "access denied" (WinError 5); it succeeds a few seconds later. If it stays locked, copying works as the
+    scanner only blocks the rename, and the partial file is removed on a best-effort basis."""
+    deadline = clock() + seconds
+    while True:
+        try:
+            partial.replace(destination)
+            return
+        except OSError:
+            if clock() >= deadline:
+                break
+            sleep(pause)
+    shutil.copyfile(partial, destination)
+    partial.unlink(missing_ok=True)
+
+
 def download_file(url, destination, timeout=600, on_bytes=None, sleep=time.sleep, clock=time.monotonic):
     """Downloads `url` into `destination` (written completely or not at all). on_bytes(received, total) is called about four times a
     second; total is 0 when unknown. Certificate error: one retry with curl, which reports the size on disk instead of a total."""
@@ -88,5 +105,5 @@ def download_file(url, destination, timeout=600, on_bytes=None, sleep=time.sleep
             raise error
         if on_bytes:
             on_bytes(partial.stat().st_size, partial.stat().st_size)
-    partial.replace(destination)
+    _finish(partial, destination, sleep=sleep, clock=clock)
     return destination

@@ -70,6 +70,27 @@ class WebTests(unittest.TestCase):
         self.assertEqual(seen[-1], (2 << 20, 2 << 20))
         self.assertFalse((self.directory / "out/payload.bin.partial").exists())
 
+    def test_a_rename_blocked_by_a_scanner_is_retried_then_falls_back_to_copying(self):
+        partial, destination = self.directory / "a.7z.partial", self.directory / "a.7z"
+        partial.write_bytes(b"data")
+        real, calls = Path.replace, []
+
+        def locked_twice(path, target):
+            calls.append(1)
+            if len(calls) <= 2:
+                raise PermissionError(5, "Access denied")
+            return real(path, target)
+
+        with mock.patch.object(Path, "replace", locked_twice):
+            web._finish(partial, destination, sleep=lambda _s: None)
+        self.assertEqual((len(calls), destination.read_bytes(), partial.exists()), (3, b"data", False))
+
+        partial.write_bytes(b"more")
+        ticks = iter(range(0, 1000, 50))
+        with mock.patch.object(Path, "replace", side_effect=PermissionError(5, "Access denied")):
+            web._finish(partial, destination, sleep=lambda _s: None, clock=lambda: next(ticks))
+        self.assertEqual((destination.read_bytes(), partial.exists()), (b"more", False))
+
     def test_a_certificate_error_downloads_with_curl_and_reports_the_growing_file(self):
         destination = self.directory / "ffmpeg.zip"
         partial = self.directory / "ffmpeg.zip.partial"
