@@ -248,6 +248,10 @@ class RecompStageTests(unittest.TestCase):
     """Stage recomp: order, preflight (space, clone, packages) and input hashes."""
 
     def setUp(self):
+        env = patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("BDSP_LEGACY_ICONS", None)   # a developer's own switch must not change the expectations
         self.tmp = tempfile.TemporaryDirectory()
         t = self.tmp.name
         self.root, self.work, self.tools = (os.path.join(t, n) for n in ("repo", "work", "tools"))
@@ -331,16 +335,47 @@ class RecompStageTests(unittest.TestCase):
         self.assertTrue(all(cmd[0] == sys.executable and cmd[1] == "-I" for cmd, _ in imports))
         self.assertTrue(all(env.get("PYTHONPATH") == os.environ.get("PYTHONPATH") for _, env in imports))
 
-    def test_xcode_before_26_cannot_compile_the_app_icons(self):
-        name = "Xcode 26 or newer (actool for the app icons)"
-        items = self.pf(run=lambda cmd, env=None, timeout=60: fake_run(cmd, actool="16.2"))
-        self.assertEqual(self.missing(items), [name])
-        self.assertEqual(next(i["detail"] for i in items if i["name"] == name), "actool 16.2")
-        self.assertIn("Command Line Tools", "\n".join(bs.install_list(bs.format_preflight(items)[1])))
-        items = self.pf(run=lambda cmd, env=None, timeout=60: fake_run(cmd, actool="27.1"))
-        self.assertEqual(self.missing(items), [])
+    def test_xcode_before_26_is_a_note_not_a_missing_program(self):
+        name = "Xcode (actool for the app icons)"
+        for version in ("15.4", "16.2", "16.4"):
+            items = self.pf(run=lambda cmd, env=None, timeout=60: fake_run(cmd, actool=version))
+            self.assertEqual(self.missing(items), [], version)
+            entry = next(i for i in items if i["name"] == name)
+            self.assertTrue(entry["ok"])
+            self.assertEqual(entry["level"], "note")
+            self.assertEqual(entry["detail"], "Xcode %s: classic app icon (no Liquid Glass); Xcode 26 or newer builds the "
+                                              "Liquid Glass icon" % version)
+            self.assertEqual(set(entry), {"name", "ok", "detail", "hint", "level"})
+            lines, missing, _ = bs.format_preflight(items)
+            self.assertEqual(missing, [])
+            self.assertTrue(any(line.lstrip().startswith("NOTE") and name in line for line in lines))
+        for version in ("26.0", "27.1"):
+            items = self.pf(run=lambda cmd, env=None, timeout=60: fake_run(cmd, actool=version))
+            entry = next(i for i in items if i["name"] == name)
+            self.assertEqual((entry["ok"], entry["detail"], entry["hint"]), (True, "actool " + version, ""))
+            self.assertTrue(any(line.lstrip().startswith("OK") and name in line for line in bs.format_preflight(items)[0]))
+        # an unreadable actool stays missing, with the install hint
         items = self.pf(run=lambda cmd, env=None, timeout=60: (cmd[1:3] != ["actool", "--version"], ""))
         self.assertEqual(self.missing(items), [name])
+        self.assertIn("Command Line Tools", "\n".join(bs.install_list(bs.format_preflight(items)[1])))
+
+    def test_icon_style_follows_the_actool_version_and_the_switch(self):
+        def style(version, env=None, ok=True):
+            return bs.icon_style(lambda cmd: (ok, actool_plist(version)), env=env or {})[0]
+        for version, expected in (("15.4", "classic"), ("16.2", "classic"), ("26", "liquid-glass"), ("26.0", "liquid-glass"),
+                                  ("27.1", "liquid-glass"), ("beta", "classic"), ("", "classic")):
+            self.assertEqual(style(version), expected, version)
+        self.assertEqual(style("27.1", ok=False), "classic")
+        self.assertEqual(bs.icon_style(lambda cmd: (True, actool_plist("27.1")), env={"BDSP_LEGACY_ICONS": "1"}),
+                         ("classic", "BDSP_LEGACY_ICONS=1"))
+        self.assertEqual(style("27.1", {"BDSP_LEGACY_ICONS": "0"}), "liquid-glass")
+        entry = bs.icon_compiler_check(lambda cmd: (True, actool_plist("27.1")), env={"BDSP_LEGACY_ICONS": "1"})
+        self.assertEqual((entry[1], entry[4]), (True, "note"))
+
+    def test_legacy_icons_switch_changes_the_recomp_hash_only_when_set(self):
+        plain, _ = bs.stage_hash("recomp", self.root, self.work, env={})
+        self.assertEqual(plain, bs.stage_hash("recomp", self.root, self.work, env={"BDSP_LEGACY_ICONS": "0"})[0])
+        self.assertNotEqual(plain, bs.stage_hash("recomp", self.root, self.work, env={"BDSP_LEGACY_ICONS": "1"})[0])
 
     def test_actool_version_is_read_from_the_plist_only(self):
         reordered = ('<plist version="1.0"><dict><key>com.apple.actool.version</key><dict><key>bundle-version</key>'
@@ -349,8 +384,8 @@ class RecompStageTests(unittest.TestCase):
         for out in ("", "no plist", "<plist><dict/></plist>", "<plist><dict></plist>"):
             self.assertIsNone(bs.actool_version(lambda cmd: (True, out)))
         self.assertIsNone(bs.actool_version(lambda cmd: (False, actool_plist("27.1"))))
-        self.assertTrue(bs.icon_compiler_check(lambda cmd: (True, actool_plist("26")))[1])
-        self.assertFalse(bs.icon_compiler_check(lambda cmd: (True, actool_plist("beta")))[1])
+        self.assertTrue(bs.icon_compiler_check(lambda cmd: (True, actool_plist("26")), env={})[1])
+        self.assertFalse(bs.icon_compiler_check(lambda cmd: (True, actool_plist("beta")), env={})[1])
 
     def test_ios_target_does_not_check_mac_app_tools(self):
         names = [i["name"] for i in self.pf(which=lambda c: None, target="ios")]

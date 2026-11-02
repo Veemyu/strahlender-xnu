@@ -39,6 +39,7 @@ RECOMP_MIN_FREE_GB = 25   # generator C, objects, binary, app, intermediate copi
 HEAVY_STAGES = {"extract"}
 TARGETS = ("macos", "ios", "all")
 XCODE_ICON_COMPOSER_MAJOR = 26   # first actool that compiles Icon Composer (.icon) documents
+LEGACY_ICONS_ENV = "BDSP_LEGACY_ICONS"   # =1 forces the classic icon (ICNS, AppIcon set) on any Xcode
 
 
 def normalize_stage(name):
@@ -238,6 +239,8 @@ def stage_hash(stage, root, work, target="all", env=None):
             parts["npdm"] = hash_file(os.path.join(work, "exefs", "main.npdm"))
             parts["icons"] = hash_tree_content(env.get("BDSP_ICON_SOURCE", os.path.join(work, "recomp/icons/source")), (".json", ".png"))
             parts["options"] = env.get("XNU_RECOMP_OPTS", "")
+            if env.get(LEGACY_ICONS_ENV) == "1":
+                parts["legacy_icons"] = "1"   # only when set, so existing fingerprints stay valid
     digest = _sha(json.dumps(parts, sort_keys=True).encode())
     return digest, parts
 
@@ -281,14 +284,41 @@ def actool_version(run=_run_ok):
         return None
 
 
-def icon_compiler_check(run=_run_ok):
-    """Entry arguments (name, ok, detail, hint): Icon Composer (.icon) needs actool from Xcode 26, older ones skip it without an error."""
-    version = actool_version(run)
+def _icon_style(version, env):
+    if env.get(LEGACY_ICONS_ENV) == "1":
+        return "classic", LEGACY_ICONS_ENV + "=1"
     major = (version or "").split(".")[0]
-    return ("Xcode 26 or newer (actool for the app icons)", major.isdigit() and int(major) >= XCODE_ICON_COMPOSER_MAJOR,
-            "actool " + version if version else "actool not found or unreadable",
-            "Install Xcode 26 or newer from the App Store, open it once (accept the license) and select it under "
-            "Xcode > Settings > Locations > Command Line Tools")
+    if not major.isdigit():
+        return "classic", "the actool version could not be read"
+    if int(major) < XCODE_ICON_COMPOSER_MAJOR:
+        return "classic", "actool %s predates Icon Composer (Xcode %d)" % (version, XCODE_ICON_COMPOSER_MAJOR)
+    return "liquid-glass", "actool " + version
+
+
+def icon_style(run=_run_ok, env=None):
+    """("liquid-glass", detail) with actool from Xcode 26 on, else ("classic", reason): plain ICNS/AppIcon without Liquid Glass.
+
+    Older actool versions skip Icon Composer documents without an error, so they never get them. An unreadable
+    version also takes the classic path, which every Xcode compiles. BDSP_LEGACY_ICONS=1 forces it."""
+    return _icon_style(actool_version(run), os.environ if env is None else env)
+
+
+def icon_compiler_check(run=_run_ok, env=None):
+    """Entry arguments (name, ok, detail, hint, level). Xcode before 26 is only a note (classic app icon without Liquid
+    Glass); an unreadable actool is missing."""
+    name = "Xcode (actool for the app icons)"
+    version = actool_version(run)
+    if not (version or "").split(".")[0].isdigit():
+        return (name, False, "actool not found or unreadable",
+                "Install Xcode from the App Store, open it once (accept the license) and select it under "
+                "Xcode > Settings > Locations > Command Line Tools", "missing")
+    style, detail = _icon_style(version, os.environ if env is None else env)
+    if style == "liquid-glass":
+        return name, True, detail, "", "missing"
+    if LEGACY_ICONS_ENV in detail:
+        return name, True, "classic app icon (no Liquid Glass), forced by " + detail, "", "note"
+    return (name, True, "Xcode %s: classic app icon (no Liquid Glass); Xcode %d or newer builds the Liquid Glass icon"
+            % (version, XCODE_ICON_COMPOSER_MAJOR), "", "note")
 
 
 def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_GB,
@@ -364,7 +394,8 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
         add("clang (Homebrew LLVM in PATH)", which("clang"), which("clang") or "", "brew install llvm and put /opt/homebrew/opt/llvm/bin before /usr/bin in the PATH")
         ok, _ = run(["/usr/bin/xcrun", "--find", "clang"])
         add("Apple clang (Objective-C, Command Line Tools)", ok, "", "xcode-select --install")
-        add(*icon_compiler_check(run))
+        name, ok, detail, hint, level = icon_compiler_check(run)
+        add(name, ok, detail, hint, level)
         for c, hint in (("pkg-config", "brew install pkg-config"), ("rsync", "rsync is part of macOS"), ("strip", "xcode-select --install"), ("codesign", "xcode-select --install"),
                         ("install_name_tool", "xcode-select --install"), ("otool", "xcode-select --install"),
                         ("iconutil", "xcode-select --install"), ("plutil", "plutil is part of macOS")):
