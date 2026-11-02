@@ -53,6 +53,7 @@
 extern "C" {
 #include "../../runtime_paths.h"
 #include "../../input.h"
+#include "../../window_title.h"
 void vk_host_attach_instance(void *vk_instance);
 void vk_host_set_size(int w, int h);
 void vk_host_surface_ready(unsigned long long surface);
@@ -303,12 +304,19 @@ private:
     QWidget *canvas = nullptr;
 };
 
+// The game's own name in the system language, then BDSP_WINDOW_TAG (runtime/window_title.h)
+static QString gameWindowTitle() {
+    char title[600];
+    bdsp_window_title(title, sizeof title, QCoreApplication::applicationDirPath().toUtf8().constData(), nullptr);
+    return QString::fromUtf8(title);
+}
+
 class Host : public QMainWindow {
 public:
     Host() : tr_(bdsp::Translator(localeName(), lprojDir())) {
         stage_ = new Stage(this);
         setCentralWidget(stage_);
-        setWindowTitle(QStringLiteral("BDSP"));
+        setWindowTitle(gameWindowTitle());
         fps_ = g_fpsNow();
         hudOn_ = qEnvironmentVariable("BDSP_MANGOHUD") == QLatin1String("1");
         buildMenus();

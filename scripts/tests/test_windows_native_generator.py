@@ -211,15 +211,14 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
                     Path(os.environ["BDSP_WINDOWS_VULKAN_ROOT"]) / "include",
                     *(qt / "include" / name for name in ("QtCore", "QtGui", "QtWidgets"))]
         objects = []
-        if lifecycle:
-            for name in ("swkbd_keepalive", "host_shutdown"):
-                obj = self.root / f"qt-{name}.o"
-                result = subprocess.run([
-                    self.compiler, "-std=gnu17", "-O2", "-Wall", "-Wextra", "-Werror", "-I", runtime,
-                    "-c", runtime / f"{name}.c", "-o", obj],
-                    capture_output=True, text=True, timeout=30)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                objects.append(obj)
+        for name in ("window_title", *(("swkbd_keepalive", "host_shutdown") if lifecycle else ())):
+            obj = self.root / f"qt-{name}.o"
+            result = subprocess.run([
+                self.compiler, "-std=gnu17", "-O2", "-Wall", "-Wextra", "-Werror", "-I", runtime,
+                "-c", runtime / f"{name}.c", "-o", obj],
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            objects.append(obj)
         if keyboard:
             c_includes = [sdl / "include", runtime / "nvn/vulkan/src", runtime / "nvn/src",
                           runtime / "nvn/src/nvn", ROOT / "scripts/recomp/rt",

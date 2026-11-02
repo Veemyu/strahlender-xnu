@@ -17,6 +17,7 @@
 #include "plat.h"
 #include "runtime_paths.h"
 #include "host_shutdown.h"
+#include "window_title.h"
 #include "../../ui/menu.h"
 #include "vk.h"
 #include "../output_scale.h"
@@ -796,11 +797,9 @@ void ui_window_init(void) {
                                             getenv("BDSP_HOST_INPUT") || getenv("BDSP_BIND_TEST"));
         if (scripted) SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
     }
-    // BDSP_WINDOW_TAG names the build in the title bar (worktree, agent) so parallel test builds can be told apart
-    char title[160];
-    const char *tag = getenv("BDSP_WINDOW_TAG");
-    if (tag && *tag) snprintf(title, sizeof title, "BDSP Recomp [%.100s]", tag);
-    else snprintf(title, sizeof title, "BDSP Recomp");
+    // the game's own name in the system language (+ BDSP_WINDOW_TAG for parallel test builds), see window_title.h
+    char title[600];
+    bdsp_window_title(title, sizeof title, SDL_GetBasePath(), NULL);
     window = SDL_CreateWindow(title, win_w, win_h, wflags);
     if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
 #ifdef _WIN32
