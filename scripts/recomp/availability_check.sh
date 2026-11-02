@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Availability check: compiles the runtime and the iOS app sources against the installed SDKs with the app's minimum OS
-# (macOS from macos_target.sh, iOS 17) and fails on any call to an API that is newer than that minimum without an @available guard.
+# (macOS and iOS from macos_target.sh) and fails on any call to an API that is newer than that minimum without an @available guard.
 # Syntax only; sources are prepared under work/availability. Own code.
 # Usage: availability_check.sh [mac|ios|all]      Environment: DEVELOPER_DIR selects the Xcode (any SDK at least as new as the target)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 . scripts/recomp/macos_target.sh
-IOS_MIN=17.0
+IOS_MIN=$BDSP_IOS_MIN
 KIND=${1:-all}
 WORK=work/availability
 SRC=scripts/recomp/runtime

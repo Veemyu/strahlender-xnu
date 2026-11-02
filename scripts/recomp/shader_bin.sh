@@ -18,7 +18,7 @@ if ! xcrun -sdk "$SDK" metal --version >/dev/null 2>&1; then
   echo "Metal toolchain missing for $SDK: xcodebuild -downloadComponent MetalToolchain" >&2; exit 3
 fi
 case "$SDK" in
-  iphoneos) AIR_TARGET=air64-apple-ios17.0 ;;
+  iphoneos) AIR_TARGET=air64-apple-ios$BDSP_IOS_MIN ;;
   macosx) AIR_TARGET=air64-apple-macos$BDSP_MACOS_MIN ;;
   *) echo "Unsupported shader SDK: $SDK" >&2; exit 2;;
 esac

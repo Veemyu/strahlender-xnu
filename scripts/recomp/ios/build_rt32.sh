@@ -7,6 +7,7 @@
 # BDSP_SYNTAX_ONLY=1 only checks that every runtime source compiles (scripts/check.sh runs it).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
+. scripts/recomp/macos_target.sh
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 TARGET=${1:-ios}
 [ "$TARGET" = ios ] || { echo "Usage: build_rt32.sh [ios]" >&2; exit 2; }
@@ -28,7 +29,7 @@ fi
 
 RT=${BDSP_IOS_RT_DIR:-work/recomp/ios-rt-a}
 SDKP=$(xcrun --sdk iphoneos --show-sdk-path)
-CCFLAGS=(-target arm64-apple-ios17.0 -isysroot "$SDKP" -DBDSP_IOS); MCC=/usr/bin/clang
+CCFLAGS=(-target arm64-apple-ios$BDSP_IOS_MIN -isysroot "$SDKP" -DBDSP_IOS); MCC=/usr/bin/clang
 NVINC=(-I scripts/recomp/ios/shim -I "$NVN32" -I "$NVN32/nvn" "${BASEINC[@]}")
 FFDIR=$(python3 scripts/install/ffmpeg_cache.py dir)
 FFINC=(); [ ! -d "$FFDIR/include" ] || FFINC=(-I "$FFDIR/include")

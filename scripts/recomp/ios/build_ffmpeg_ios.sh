@@ -8,6 +8,7 @@
 # Usage: build_ffmpeg_ios.sh [--check] [VERSION] [JOBS]     (--check: exit 0 when the libraries are current, builds nothing)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
+. scripts/recomp/macos_target.sh
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 CHECK=0; [ "${1:-}" != --check ] || { CHECK=1; shift; }
 VER=${1:-9.0.2}
@@ -19,7 +20,7 @@ if [ "$VER" != 9.0.2 ] && [ -z "${BDSP_FFMPEG_SHA256:-}" ]; then
   echo "A different FFmpeg version needs an explicit BDSP_FFMPEG_SHA256." >&2; exit 2
 fi
 FFDIR=$(python3 scripts/install/ffmpeg_cache.py dir)
-STAMP=$(python3 scripts/install/ffmpeg_cache.py stamp "$EXPECTED_SHA" "$SDKP" "$(xcrun --sdk iphoneos --show-sdk-version)" "$(/usr/bin/clang --version)" scripts/recomp/ios/build_ffmpeg_ios.sh)
+STAMP=$(python3 scripts/install/ffmpeg_cache.py stamp "$EXPECTED_SHA" "$SDKP" "$(xcrun --sdk iphoneos --show-sdk-version)" "$(/usr/bin/clang --version) ios$BDSP_IOS_MIN" scripts/recomp/ios/build_ffmpeg_ios.sh)
 if python3 scripts/install/ffmpeg_cache.py current "$FFDIR" "$STAMP"; then echo "iPhone/iPad movie libraries are current: $FFDIR"; exit 0; fi
 [ "$CHECK" = 0 ] || exit 1
 JOBS=${2:-$(python3 scripts/recomp/parallel_jobs.py)}
@@ -49,7 +50,7 @@ cd "$W/ffmpeg-$VER"
 if [ -f config.h ]; then make distclean > /dev/null; fi
 echo "FFmpeg step 3/4: configuring"
 ./configure --prefix="$PREFIX" --enable-cross-compile --target-os=darwin --arch=arm64 \
-  --cc="clang -target arm64-apple-ios17.0 -isysroot $SDKP" --as="clang -target arm64-apple-ios17.0 -isysroot $SDKP" \
+  --cc="clang -target arm64-apple-ios$BDSP_IOS_MIN -isysroot $SDKP" --as="clang -target arm64-apple-ios$BDSP_IOS_MIN -isysroot $SDKP" \
   --ar="$(xcrun -f ar)" --ranlib="$(xcrun -f ranlib)" --nm="$(xcrun -f nm)" --strip="$(xcrun -f strip)" \
   --disable-everything --disable-programs --disable-doc --disable-avdevice --disable-swscale --disable-swresample --disable-avfilter \
   --disable-network --disable-iconv --disable-securetransport --disable-videotoolbox --disable-audiotoolbox --disable-autodetect \
