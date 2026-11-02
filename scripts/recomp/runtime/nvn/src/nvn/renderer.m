@@ -605,6 +605,26 @@ static void apply_scissor(void) {
     [enc setScissorRect:(MTLScissorRect){(NSUInteger)x, (NSUInteger)y, (NSUInteger)sw, (NSUInteger)sh}];
 }
 
+// Metal pixel formats a colour attachment cannot have: none, compressed/packed-video (130..249), depth and stencil (250..262)
+static bool mtl_color_renderable(MTLPixelFormat pf) { return pf != MTLPixelFormatInvalid && !(pf >= 130 && pf <= 262); }
+
+// A colour target Metal cannot render to is left out of the pass and its pipelines (logged with what was bound) instead of
+// reaching the pipeline compiler: a depth format in a colour slot aborts in Metal's descriptor validation, a released
+// texture (0x0x0, format 0) crashed the AGX compiler (issue #24).
+static bool color_target_ok(NvnTexture *t, const NvnTextureView *v, bool has_view) {
+    extern uint64_t renderer_present_count(void);
+    uint32_t fmt = has_view && (v->setmask & 4) ? v->format : t->format;
+    bool ok = t->width && fmt && t->target != 10 && !renderer_format_is_depth(fmt) && mtl_color_renderable(renderer_pixel_format(fmt));
+    if (!ok) {
+        static int nlog;
+        if (nlog++ < 20)
+            LOG("[metal] colour target skipped: texture %p id %u '%s' %ux%ux%u target %u fmt %#x (view fmt %#x) frame %llu%s\n", (void *)t,
+                t->debug_id, t->label, t->width, t->height, t->depth, t->target, t->format, has_view && (v->setmask & 4) ? v->format : 0,
+                (unsigned long long)renderer_present_count(), !t->width && !t->format ? " (released texture object?)" : "");
+    }
+    return ok;
+}
+
 // ------------------------------------------------------------------ clears (full-screen triangle)
 static const char *clear_src =
     "#include <metal_stdlib>\nusing namespace metal;\n"
@@ -661,6 +681,7 @@ static void clear(int index, int kind, const void *color, uint32_t mask, bool de
     id<MTLLibrary> lib = clear_lib(index < 0 ? 0 : index);
     pd.vertexFunction = [lib newFunctionWithName:@"vs"];
     static NSString *const fs[] = {@"fs_f", @"fs_i", @"fs_u"};
+    if (kind < 0 || kind > 2) kind = 0;
     pd.fragmentFunction = [lib newFunctionWithName:index >= 0 ? fs[kind] : @"fs_none"];
     attachment_formats(pd);
     for (int i = 0; i < 8; i++) pd.colorAttachments[i].writeMask = MTLColorWriteMaskNone;
@@ -1545,6 +1566,8 @@ static id<MTLTexture> apply_swizzle(id<MTLTexture> tex, NvnTexture *t, const Nvn
     return view;
 }
 
+static uint64_t g_cur_fs_hash;  // fragment shader of the current draw (logs, per-shader tweaks)
+
 // Upload helper: a separate command buffer, committed now so it runs before the current pass.
 static id<MTLTexture> sampled_texture(NvnTexture *t, const NvnTextureView *v, bool has_view, int want_type) {
     // uploads (if the CPU-side contents changed) go into their own command buffer, committed before
@@ -1563,8 +1586,10 @@ static id<MTLTexture> sampled_texture(NvnTexture *t, const NvnTextureView *v, bo
             tex = view_cached(src, 0x6000000000000000ull | 3, ^{ return [src newTextureViewWithPixelFormat:src.pixelFormat textureType:MTLTextureTypeCube levels:NSMakeRange(0, src.mipmapLevelCount) slices:NSMakeRange(0, 6)]; });
         else {
             static int nlog;
-            if (nlog++ < 30) LOG("[tex] type mismatch: want %lu have %lu (%ux%ux%u target %u fmt %#x arr %lu)\n", (unsigned long)want,
-                                 (unsigned long)tex.textureType, t->width, t->height, t->depth, t->target, t->format, (unsigned long)tex.arrayLength);
+            if (nlog++ < 30) LOG("[tex] type mismatch: want %lu have %lu (%ux%ux%u target %u fmt %#x arr %lu) texture %p id %u fs %016llx%s\n",
+                                 (unsigned long)want, (unsigned long)tex.textureType, t->width, t->height, t->depth, t->target, t->format,
+                                 (unsigned long)tex.arrayLength, (void *)t, t->debug_id, (unsigned long long)g_cur_fs_hash,
+                                 !t->width && !t->format ? " (released texture object?)" : "");
             return dummy_texture(want_type);
         }
     }
@@ -1581,7 +1606,6 @@ static int nfeedback;
 // Snapshots stay valid until their texture is written again (a draw writing that attachment, a clear, copy or
 // compute). Soft particles (grass-cut leaves, smoke) sample the depth buffer they're tested against but don't
 // write it, so a burst of them shares one snapshot instead of a pass break + full-screen copy per draw.
-static uint64_t g_cur_fs_hash;
 static const char *snap_why[8];
 static const char *snap_reason = "?";
 static void snapshots_invalidate(NvnTexture *t) {  // NULL = all
@@ -2296,8 +2320,27 @@ static MTLRenderPipelineDescriptor *pd_from_rec(const PipeRec *r, id<MTLFunction
     return pd;
 }
 
+static bool mtl_is_depth_pf(uint32_t pf) {
+    return pf == MTLPixelFormatDepth16Unorm || pf == MTLPixelFormatDepth32Float || pf == MTLPixelFormatDepth32Float_Stencil8;
+}
+static bool mtl_is_stencil_pf(uint32_t pf) { return pf == MTLPixelFormatStencil8 || pf == MTLPixelFormatDepth32Float_Stencil8; }
+
+// Pipeline records Metal would abort on (it validates the descriptor with an assertion, not an error). New records cannot
+// have them (color_target_ok), but a pipelines.bin written by an older build can (issue #24).
+static bool pipe_rec_valid(const PipeRec *r, id<MTLFunction> vs) {
+    bool ok = vs && (!r->depth_fmt || mtl_is_depth_pf(r->depth_fmt)) && (!r->stencil_fmt || mtl_is_stencil_pf(r->stencil_fmt));
+    for (int i = 0; i < r->ncolor && i < 8; i++) ok &= !r->ca[i].present || mtl_color_renderable((MTLPixelFormat)r->ca[i].fmt);
+    if (!ok) {
+        static int n;
+        if (n++ < 10) LOG("[metal] pipeline refused: colour formats %u %u, depth %u, stencil %u\n", r->ca[0].fmt, r->ca[1].fmt,
+                          r->depth_fmt, r->stencil_fmt);
+    }
+    return ok;
+}
+
 static id<MTLRenderPipelineState> build_pipeline(const PipeRec *r, id<MTLFunction> vs, id<MTLFunction> fs) {
     NSError *err = nil;
+    if (!pipe_rec_valid(r, vs)) return nil;
     if (bdsp_shader_compile_status) bdsp_shader_compile_status(1);
     id<MTLRenderPipelineState> p = TIMED_COMPILE([dev newRenderPipelineStateWithDescriptor:pd_from_rec(r, vs, fs) error:&err]);
     if (bdsp_shader_compile_status) bdsp_shader_compile_status(0);
@@ -3338,11 +3381,12 @@ static void exec_list(uint64_t handle, int depth) {
             const struct { uint64_t tex[8]; NvnTextureView views[8]; uint8_t has_view[8]; uint64_t depth;
                            NvnTextureView dview; uint8_t has_dview; } *rt = x;
             memset(&st.rt, 0, sizeof st.rt);
-            st.rt.ncolor = (int)r->x[0];
+            st.rt.ncolor = r->x[0] < 8 ? (int)r->x[0] : 8;
             for (int i = 0; i < st.rt.ncolor; i++) {
                 st.rt.color[i] = (NvnTexture *)(uintptr_t)rt->tex[i];
                 st.rt.cview[i] = rt->views[i];
                 st.rt.has_cview[i] = rt->has_view[i];
+                if (st.rt.color[i] && !color_target_ok(st.rt.color[i], &st.rt.cview[i], st.rt.has_cview[i])) st.rt.color[i] = NULL;
             }
             st.rt.depth = (NvnTexture *)(uintptr_t)rt->depth;
             st.rt.dview = rt->dview;
@@ -3393,7 +3437,7 @@ static void exec_list(uint64_t handle, int depth) {
             // Done as a render-target clear: bind the texture alone, scissor = region, clear(), restore.
             const struct { uint64_t tex; NvnTextureView view; uint8_t has_view; int32_t region[6]; float color[4]; } *ct = x;
             NvnTexture *t = (NvnTexture *)(uintptr_t)ct->tex;
-            if (!t) break;
+            if (!t || !color_target_ok(t, &ct->view, ct->has_view)) break;
             snap_reason = "clear-texture"; snapshots_invalidate(NULL);
             RtState saved = st.rt;
             int32_t sc[4];
