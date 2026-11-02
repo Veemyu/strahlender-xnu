@@ -209,11 +209,13 @@ int maxwell_dbg_reg;
 // The SDK functions GetNpadState(s)/GetNpadStyleSet are replaced by host functions; the hid service stays responsible for connection/activation.
 // Keys: Enter/Space/K = A, Backspace/J = B, X, Y, arrow keys and WASD = D-pad, Q/E = L/R, P = Plus, O = Minus.
 // Test script (--input-script / BDSP_INPUT_SCRIPT): "second:KEY[+KEY]:duration, ..." from the process start, e.g. "30:A:0.3,34:A+DOWN:0.2".
+// A fourth field repeats the step every <n> seconds, a fifth ("title") ends the repetition once the title screen is up (its looping Dialga movie
+// has started): "12:A:0.3:2.5:title" presses A through the intro and stops at the title screen.
 static const char *const pad_names[16] = {"A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS", "MINUS", "LEFT", "UP", "RIGHT", "DOWN"};
 static _Atomic uint64_t key_buttons;   // keys of this file's window handling (Linux/Windows); the Mac and iPad shells report their own keys through input.h
 static int64_t pad_sampling;
 extern uint64_t g_proc_start_ns;
-typedef struct { double at, len; uint32_t mask; } ScriptStep;
+typedef struct { double at, len; uint32_t mask; double every; bool until_title; } ScriptStep;
 #define MAX_SCRIPT 8192
 static ScriptStep script[MAX_SCRIPT];
 static int nscript = -1;
@@ -253,12 +255,22 @@ static void script_load(void) {
         memcpy(names, c1 + 1, nl);
         names[nl] = 0;
         if (!*names) continue;
-        if (c2) len = script_num(c2 + 1);
+        double every = 0;
+        bool until_title = false;
+        if (c2) {
+            len = script_num(c2 + 1);
+            char *c3 = strchr(c2 + 1, ':');
+            if (c3) {
+                every = script_num(c3 + 1);
+                char *c4 = strchr(c3 + 1, ':');
+                until_title = c4 && !strncmp(c4 + 1, "title", 5);
+            }
+        }
         uint32_t m = 0;
         char *save2 = NULL;
         for (char *n = strtok_r(names, "+", &save2); n; n = strtok_r(NULL, "+", &save2))
             for (int i = 0; i < 16; i++) if (!strcmp(n, pad_names[i])) m |= 1u << i;
-        script[nscript++] = (ScriptStep){at, len, m};
+        script[nscript++] = (ScriptStep){at, len, m, every, until_title};
     }
     LOG("[input] test script with %d steps\n", nscript);
 }
@@ -281,8 +293,15 @@ static uint64_t buttons_now(void) {
         if (n > 0) { s[n] = 0; b |= strtoull(s, NULL, 16); }
     }
     double t = (rt_now_ns() - g_proc_start_ns) / 1e9;
-    for (int i = 0; i < nscript; i++)
-        if (t >= script[i].at && t < script[i].at + script[i].len) b |= script[i].mask;
+    static bool title_seen;   // the title screen's looping movie has started (movie_glue.c)
+    extern volatile int g_movie_fill;
+    if (g_movie_fill) title_seen = true;
+    for (int i = 0; i < nscript; i++) {
+        const ScriptStep *st = &script[i];
+        if (st->every > 0) {
+            if (t >= st->at && !(st->until_title && title_seen) && fmod(t - st->at, st->every) < st->len) b |= st->mask;
+        } else if (t >= st->at && t < st->at + st->len) b |= st->mask;
+    }
     return b;
 }
 

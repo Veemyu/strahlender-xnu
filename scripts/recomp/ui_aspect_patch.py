@@ -22,6 +22,10 @@ from pathlib import Path
 UI_ROOT = Path("Data/StreamingAssets/AssetAssistant/UIs")
 DEMO_ROOT = Path("Data/StreamingAssets/AssetAssistant/FureaiHiroba/demo")   # cutscene overlays (fade, blur, shown over the demo render texture)
 ROOTS = (UI_ROOT, DEMO_ROOT)
+# The title screen's canvas (logo, "press A") is the only one that does not scale: CanvasScaler ConstantPixelSize, so at any render height other than
+# 1080 the logo has the wrong size. It becomes ScaleWithScreenSize on the 1920x1080 reference, which is identical at 1080 (scale 1).
+TITLE_SCENE = Path("Data/StreamingAssets/AssetAssistant/Dpr/scenes/title")
+CONSTANT_PIXEL_SIZE, SCALE_WITH_SCREEN_SIZE = 0, 1
 EXTRA_FILE = Path("Data/resources.assets")
 SCREEN = (1280.0, 720.0)
 # Render-texture views keep their proportions: stretching them would distort 3D models.
@@ -146,6 +150,32 @@ def patch_bundle(UnityPy, source, destination, dry_run, demo=False):
     return len(changed)
 
 
+def patch_title_scene(UnityPy, source, destination, dry_run):
+    env = UnityPy.load(str(source))
+    changed = 0
+    for obj in env.objects:
+        if obj.type.name != "MonoBehaviour":
+            continue
+        try:
+            if obj.read().m_Script.read().m_ClassName != "CanvasScaler":
+                continue
+        except Exception:   # a behaviour without a readable script
+            continue
+        tree = obj.read_typetree()
+        if tree.get("m_UiScaleMode") != CONSTANT_PIXEL_SIZE:
+            continue
+        tree["m_UiScaleMode"] = SCALE_WITH_SCREEN_SIZE
+        tree["m_ReferenceResolution"] = {"x": 1920.0, "y": 1080.0}
+        tree["m_ScreenMatchMode"] = 0
+        tree["m_MatchWidthOrHeight"] = 0.5   # a 16:9 screen is on the reference either way; the runtime's canvas match slot decides on other shapes
+        obj.save_typetree(tree)
+        changed += 1
+    if changed and not dry_run:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(env.file.save(packer="original"))
+    return changed
+
+
 def candidate_sources(romfs, only=None):
     """The files this tool can fix: UI bundles, cutscene overlays and resources.assets. Names match ignoring case (mods come from case-insensitive
     systems); the returned paths keep the folder's own spelling."""
@@ -157,6 +187,8 @@ def candidate_sources(romfs, only=None):
             path = Path(directory) / name
             low = path.relative_to(romfs).as_posix().lower()
             if low == extra and not only:
+                found.append(path)
+            elif low == str(TITLE_SCENE).lower() and not only:
                 found.append(path)
             elif "." not in name and any(low.startswith(r) for r in roots) and not (only and name != only):
                 found.append(path)
@@ -197,7 +229,10 @@ def main():
     for source in sources:
         relative = source.relative_to(romfs)
         try:
-            count = patch_bundle(UnityPy, source, out / relative, args.dry_run, is_demo_timeline(relative))
+            if relative.as_posix().lower() == str(TITLE_SCENE).lower():
+                count = patch_title_scene(UnityPy, source, out / relative, args.dry_run)
+            else:
+                count = patch_bundle(UnityPy, source, out / relative, args.dry_run, is_demo_timeline(relative))
         except Exception as error:  # a bundle that is not an asset bundle
             print(f"skip {relative}: {error}", file=sys.stderr)
             continue
