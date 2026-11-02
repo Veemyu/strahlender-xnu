@@ -225,11 +225,13 @@ def extract_game(base, prod_keys, work, hactool, *, update=None, title_keys=None
 
 
 def mod_launch_file(mod, compiled):
-    """mod.txt beside BDSP.exe: the runtime starts this mod by default (win32_entry.c)."""
-    for value in (mod["name"], str(mod["mods_dir"])):
+    """mod.txt beside BDSP.exe: the runtime starts this mod by default (win32_entry.c). The runtime finds a mod by its folder name
+    (mods.c), so that name is the selection key; the display name only goes into the window title and the icons."""
+    key = Path(mod["root"]).name
+    for value in (key, str(mod["mods_dir"])):
         if not value or any(character in value for character in "\r\n\0"):
             raise ValueError("Mod name and folder cannot contain newlines.")
-    return "%s\n%s\n%s\n" % (mod["name"], mod["mods_dir"], "exefs" if compiled else "romfs")
+    return "%s\n%s\n%s\n" % (key, mod["mods_dir"], "exefs" if compiled else "romfs")
 
 
 def _mod_has_code(mod_root):

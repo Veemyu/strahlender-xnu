@@ -329,6 +329,18 @@ class WindowsPipelineTests(unittest.TestCase):
                                 mod=mod, stage_code_mod=stage_code_mod)
         return mod, selected, record
 
+    def test_mod_txt_names_the_mod_folder_whatever_display_name_was_given(self):
+        # mods.c finds a mod by its folder name; the display name only reaches the title and the icons.
+        for display in ("Luminescent Platinum", "Lumi (display name)"):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                mod_root = root / "mods/Luminescent Platinum"
+                (mod_root / "RomFS").mkdir(parents=True)
+                mod, _, record = self.run_mod_build(root, mod_root, artwork_error=ValueError("x"), mod_name=display)
+                self.assertEqual(record["mod.txt"], "Luminescent Platinum\n%s\nromfs\n" % mod_root.parent)
+                self.assertEqual(mod["name"], display)
+                self.assertEqual(record["icons"].call_args.args[3], display)
+
     def test_what_the_icon_code_prints_stays_a_protocol_line_or_becomes_a_log_event(self):
         # The installer rejects every non-JSON stdout line ("Invalid backend protocol event"); game_icons reports with print().
         def icons(*arguments, **options):

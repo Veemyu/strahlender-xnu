@@ -26,7 +26,7 @@ static int set_path(const char *name, const char *parent, const char *child, boo
     return result;
 }
 
-// mod.txt beside BDSP.exe, written by the installer for a mod app: the mod's name, its mods folder and "exefs" when the mod's
+// mod.txt beside BDSP.exe, written by the installer for a mod app: the mod's folder name (mods.c finds mods by it), its mods folder and "exefs" when the mod's
 // code is compiled into this executable ("romfs" otherwise). The environment may still choose another RomFS mod or "none";
 // a compiled code mod always starts its own mod, like the macOS mod app (app_config.c).
 static int apply_mod_launch(const char *package) {

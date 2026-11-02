@@ -47,7 +47,7 @@ corrupt game. The mod folder is separate from `GameData/romfs`, so copying the g
 - **macOS:** the same dialog with a "Don't ask again" box; hold Option at launch to ask again. `--mod <name|none>` or `BDSP_MOD`
   skips the dialog. The window title shows the game name and the active mod ("Pokémon Brilliant Diamond - <mod>").
 - **Windows:** there is no dialog. A mod selected in the installer gets its own app, `%LOCALAPPDATA%\StrahlenderXnu\mod-apps\BDSP-<name>-<id>\BDSP.exe`;
-  its `mod.txt` (mod name, mods folder, `romfs` or `exefs`) makes it start that mod. The game's own app
+  its `mod.txt` (the mod's folder name, mods folder, `romfs` or `exefs`) makes it start that mod. The game's own app
   (`%LOCALAPPDATA%\StrahlenderXnu\app`) stays unchanged. A RomFS mod app also accepts `BDSP_MOD`/`--mod <name|none>`; an app with
   compiled ExeFS always starts its own mod.
 - To switch a mod off, start "Brilliant Diamond", or remove the folder from `Mods`.
