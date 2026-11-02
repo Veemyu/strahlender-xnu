@@ -175,6 +175,8 @@ HLE_FUNC("_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_E
 uint64_t renderer_present_count(void);
 void nvn_report(FILE *f) { fprintf(f, "NVN: %llu frames presented, Metal buffer %llu MiB\n", (unsigned long long)renderer_present_count(), (unsigned long long)(g_nvn_mem_size >> 20)); }
 
+volatile int g_movie_fill;   // the movie on screen is a background that may fill a narrower target (movie_fit.h); set by movie_glue.c
+
 // ---- Output size: the game's image is fitted into the window at its own aspect ratio (no stretching, no cropping), without scaling the rendering
 void output_scale(double dw, double dh, double src_aspect, bool reshape_allowed, double now, double gpu_ms, OutScale *o) {
     (void)reshape_allowed; (void)now; (void)gpu_ms;
