@@ -3,6 +3,7 @@
 // content and size are checked against the directory, as is reading across file boundaries. No game content.
 // Build and run: scripts/recomp/runtime/test/run_romfs_test.sh
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "../services_fs.c"  // static Funktionen (romfs_build_index, romfs_read) direkt nutzen
@@ -161,9 +162,26 @@ static void test_save(void) {
     CHECK(stat("work/recomp/test/save_syn/save_1/dir", &sb) == 0 && S_ISDIR(sb.st_mode));
 }
 
+// A RomFS folder that is missing or holds no files stops the runtime with a message (rt_fatal, exit 3) instead of an empty image.
+static void test_no_game_data(void) {
+    const char *empty = "work/recomp/test/romfs_empty";
+    const char *dirs[] = {empty, "work/recomp/test/romfs_not_there"};
+    char cmd[256];
+    snprintf(cmd, sizeof cmd, "rm -rf %s %s && mkdir -p %s/Data/Sub", dirs[0], dirs[1], dirs[0]);
+    if (system(cmd)) { fails++; return; }
+    for (int i = 0; i < 2; i++) {
+        fflush(NULL);
+        pid_t pid = fork();
+        if (!pid) { g_romfs_dir = dirs[i]; romfs_build_index(); _exit(0); }
+        int status = 0;
+        CHECK(pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 3);
+    }
+}
+
 int main(void) {
     const char *root = "work/recomp/test/romfs_syn";
     char cmd[256];
+    test_no_game_data();
     snprintf(cmd, sizeof cmd, "rm -rf %s && mkdir -p %s/Data/Sub/Deep %s/Data/Other", root, root, root);
     if (system(cmd)) return 2;
     struct { const char *p; size_t sz; uint8_t seed; } files[] = {
@@ -203,6 +221,6 @@ int main(void) {
     CHECK(lookup_file(hdr, "Data/Sub/c.dat", &co, &cs));
     CHECK(!memcmp(all + co, img(co, cs), cs));
     test_save();
-    printf(fails ? "RomFS/save test: %d errors\n" : "RomFS/save test: passed (8 files, hash lookup like in the game, reading across file boundaries, host folder: create, write, read, size, rename, list, delete)\n", fails);
+    printf(fails ? "RomFS/save test: %d errors\n" : "RomFS/save test: passed (missing or empty folder stops the runtime, 8 files, hash lookup like in the game, reading across file boundaries, host folder: create, write, read, size, rename, list, delete)\n", fails);
     return fails != 0;
 }

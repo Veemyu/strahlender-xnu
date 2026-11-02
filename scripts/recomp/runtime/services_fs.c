@@ -251,6 +251,7 @@ static void romfs_build_index(void) {
     int total = 0;
     RDir *root = scan(g_romfs_dir, "", NULL, 0, &total);
     if (!root) rt_fatal("RomFS folder %s not readable (BDSP_ROMFS)\n", g_romfs_dir);
+    if (!total) rt_fatal("RomFS folder %s holds no files: the game data is missing or empty (BDSP_ROMFS)\n", g_romfs_dir);
     const ModInfo *mod = mods_active();
     if (mod && mod->romfs[0]) {
         int mod_total = 0;
@@ -331,7 +332,11 @@ static uint64_t romfs_read(uint8_t *dst, uint64_t size, uint64_t off) {
                 int fd = open(f->path, O_RDONLY);
                 ssize_t r = fd >= 0 ? pread(fd, dst + done, n, (int64_t)in) : -1;
                 if (fd >= 0) close(fd);
-                if (r < 0) r = 0;
+                if (r < 0) {
+                    static int warned;   // the game then reads zeros; name the first file instead of failing somewhere inside the guest
+                    if (!__atomic_exchange_n(&warned, 1, __ATOMIC_RELAXED)) LOG("[fs] cannot read %s (%s): reads return zeros\n", f->path, strerror(errno));
+                    r = 0;
+                }
                 if ((uint64_t)r < n) memset(dst + done + r, 0, n - (uint64_t)r);
             }
         } else if (o >= rom.tables_off && o < rom.tables_off + rom.tables_size) {
