@@ -18,7 +18,7 @@ import traceback
 from pathlib import Path
 
 if __package__:
-    from . import diagnostics, ffmpeg_cache, filesystem, ipa_pack
+    from . import diagnostics, ffmpeg_cache, filesystem, ipa_pack, pathlimits
     from .progress import GeneratorProgress
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -26,6 +26,7 @@ else:
     import ffmpeg_cache
     import filesystem
     import ipa_pack
+    import pathlimits
     from progress import GeneratorProgress
 
 PROTOCOL_VERSION = 2
@@ -383,8 +384,18 @@ def windows_prerequisites(args, *, emit_result=True):
         if not catalog:
             raise ValueError("The Windows components is not installed; download it in the installer first.")
         pipeline = load_windows_pipeline(args.root)
-        pipeline.prerequisites(catalog, "aarch64" if args.target == "windows-arm64" else "x86_64",
-                               args.work, getattr(args, "min_free_gb", 40))
+        selected = pipeline.prerequisites(catalog, "aarch64" if args.target == "windows-arm64" else "x86_64",
+                                          args.work, getattr(args, "min_free_gb", 40))[0]
+        paths = pipeline.path_length(args.work, selected)
+        if paths.risk:
+            emit("log", level="warning", message="MISSING  Path length (%d of %d characters)" % (paths.total, pathlimits.LIMIT))
+            emit("step", id="prerequisites", status="needs attention")
+            emit("error", message=paths.failure(), code=4)
+            emit("result", ok=False, code=4)
+            return 4
+        emit("log", level="ok", message="OK  Path length (%d of %d characters)" % (paths.total, pathlimits.LIMIT))
+        if paths.too_long:
+            emit("log", level="note", message=paths.caution())
         emit("step", id="prerequisites", status="complete")
         if emit_result:
             emit("result", ok=True, code=0)
@@ -1219,13 +1230,25 @@ def _linux_desktop(launcher, app):
             "\nTerminal=false\nCategories=Game;\nStartupWMClass=dev.local.xnubdsp\n")
 
 
+def _longest_generated_path(args):
+    """Length of the longest path the Windows build creates below the work folder, or None elsewhere or if unknown."""
+    if args.target not in ("windows", "windows-arm64"):
+        return None
+    try:
+        selected = load_windows_pipeline(args.root).build.windows.profile(
+            "aarch64" if args.target == "windows-arm64" else "x86_64")
+        return pathlimits.longest_relative(selected["cache_key"], romfs=pathlimits.romfs_relative(args.work))[0]
+    except Exception:
+        return None
+
+
 def log_diagnostics(args):
     """System and hardware report as plain log lines (every installer shows them). It never stops a build;
     BDSP_NO_DIAGNOSTICS=1 skips it."""
     if os.environ.get("BDSP_NO_DIAGNOSTICS"):
         return
     try:
-        for line in diagnostics.collect(work=args.work):
+        for line in diagnostics.collect(work=args.work, longest_generated=_longest_generated_path(args)):
             emit("log", level="diagnostic", message=_safe_line(line, args))
     except Exception as error:
         emit("log", level="diagnostic", message="[Diagnostics] unavailable (" + type(error).__name__ + ")")

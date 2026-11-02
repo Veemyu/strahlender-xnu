@@ -426,6 +426,12 @@ The Windows build does not ask you to prepare compilers or libraries. The instal
   link, package. The game is installed to `%LOCALAPPDATA%\StrahlenderXnu\app`, saves and settings go to `%APPDATA%\StrahlenderXnu`.
 - **Requirements:** Windows 10 22H2 (build 19045) or Windows 11, x86-64, a Vulkan-capable GPU driver, about 40 GB of free space.
   ARM64 is not supported yet.
+- **Path length:** Windows refuses paths of 260 characters or more unless long paths are enabled (and then only for programs that
+  support them; the native generator has no long path manifest). The build creates paths up to about 157 characters below the
+  work folder (`scripts/install/pathlimits.py` plans the worst cases), so the work folder itself may have at most about 100
+  characters. The preflight computes this and stops with "The install folder is too deep for Windows (N of 260 characters)"
+  instead of the generator's "cannot create output file" in the middle of a build; it is checked again after the extraction
+  with the real game folders. The log line is `Path length check: root N chars, longest generated path M chars, ...`.
 - **Tests:** the Windows tests run in CI only (`tests.yml` on every push, the toolchain tests inside `windows-components.yml`).
   They read the unpacked environment through `BDSP_WINDOWS_NATIVE_CC`, `BDSP_WINDOWS_NATIVE_BINARY`, `BDSP_WINDOWS_PRIVATE_CATALOG`
   and `BDSP_WINDOWS_{SDL,VULKAN,FFMPEG,HACTOOL,QT}_ROOT`.

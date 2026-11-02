@@ -13,6 +13,7 @@ import uuid
 
 from scripts.recomp import portable_build as build
 from scripts.recomp.app import game_icons
+from scripts.install import pathlimits
 from scripts.install.progress import GeneratorProgress
 
 
@@ -99,6 +100,11 @@ def prerequisites(catalog, target, work, minimum_free_gb=40):
     if shutil.disk_usage(destination).free < minimum_free_gb * 10**9:
         raise ValueError("Not enough free space for the native Windows build")
     return result
+
+
+def path_length(work, selected, modules=pathlimits.MODULES, romfs=()):
+    """The Windows path length check of a work folder (see pathlimits)."""
+    return pathlimits.check(Path(work).resolve(), selected["cache_key"], modules, romfs, pathlimits.long_paths_enabled())
 
 
 def publish_package(candidate, destination):
@@ -255,6 +261,14 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
             args.base, args.prod_keys, work, bundles["hactool"] / "hactool.exe",
             update=args.update, title_keys=getattr(args, "title_keys", None),
             progress=extract_line, icons=icons))
+        def verify_paths(names):
+            # The game data is known now: stop before hours of compilation if packaging would hit the limit.
+            paths = path_length(work, selected, names, pathlimits.romfs_relative(work))
+            emit("log", level="diagnostic", message="[Diagnostics] " + paths.line())
+            if paths.risk:
+                raise ValueError(paths.failure())
+            if paths.too_long:
+                emit("log", level="note", message=paths.caution())
         def verify_exefs():
             nonlocal exefs, output, app_output
             build.modules(work / "exefs")
@@ -272,6 +286,7 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
             if not (exefs / "main.npdm").is_file():
                 raise ValueError("The staged ExeFS has no main.npdm")
             generator_progress.total = len(names)
+            verify_paths(names)
         stage("exefs", verify_exefs)
         def prepare_icons():
             if not mod:

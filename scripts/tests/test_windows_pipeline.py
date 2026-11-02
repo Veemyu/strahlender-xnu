@@ -213,6 +213,55 @@ class WindowsPipelineTests(unittest.TestCase):
             self.assertIn({"event": "log", "level": "diagnostic", "message": "4/5 extract ExeFS and RomFS"}, events)
             self.assertFalse(any(e.get("message") == "extract progress 420" for e in events))
 
+    def test_too_deep_folder_stops_the_preflight_with_an_actionable_message(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            selected = windows.profile("x86_64")
+            args = SimpleNamespace(root=root, work=root / ("d" * 120) / "work", windows_catalog=root / "catalog",
+                                   target="windows", min_free_gb=1)
+            for enabled, code in ((False, 4), (True, 0)):
+                output = io.StringIO()
+                with patch.object(driver, "load_windows_pipeline", return_value=pipeline), \
+                        patch.object(pipeline, "prerequisites", return_value=(selected, None, None, {})), \
+                        patch.object(pipeline.pathlimits, "long_paths_enabled", return_value=enabled), \
+                        contextlib.redirect_stdout(output):
+                    self.assertEqual(driver.windows_prerequisites(args, emit_result=False), code)
+                events = [json.loads(line) for line in output.getvalue().splitlines()]
+                errors = [event for event in events if event["event"] == "error"]
+                if code:
+                    self.assertEqual(len(errors), 1)
+                    self.assertIn("too deep for Windows", errors[0]["message"])
+                    self.assertIn("of 260 characters", errors[0]["message"])
+                    self.assertEqual(events[-3], {"event": "step", "id": "prerequisites", "status": "needs attention"})
+                else:
+                    self.assertEqual(errors, [])
+                    self.assertTrue(any(e.get("level") == "note" and "long paths are enabled" in e["message"] for e in events))
+                    self.assertEqual(events[-1], {"event": "step", "id": "prerequisites", "status": "complete"})
+
+    def test_a_deep_game_folder_stops_the_build_before_generation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            work = root / ("d" * 40) / "work"
+            (work / "exefs").mkdir(parents=True)
+            for name in ("rtld", "main", "sdk", "subsdk0", "main.npdm"):
+                (work / "exefs" / name).write_bytes(b"synthetic")
+            deep = work / "romfs" / ("e" * 100) / ("f" * 100)
+            deep.mkdir(parents=True)
+            (deep / "data.bin").write_bytes(b"synthetic")
+            selected = windows.profile("x86_64")
+            args = SimpleNamespace(root=root, work=work, windows_catalog=root / "catalog", target="windows",
+                                   base=root / "input", prod_keys=root / "selected.keys", update=None, clean_build=False)
+            bundles = {name: root / name for name in ("sdl", "vulkan", "ffmpeg", "hactool", "qt")}
+            events = []
+            with patch.object(pipeline, "prerequisites", return_value=(selected, root / "cc.exe", root / "gen.exe", bundles)), \
+                    patch.object(pipeline, "extract_game"), \
+                    patch.object(pipeline.pathlimits, "long_paths_enabled", return_value=False), \
+                    patch.object(build, "generate") as generate, self.assertRaisesRegex(ValueError, "too deep"):
+                pipeline.build_game(args, lambda event, **fields: events.append({"event": event, **fields}))
+            generate.assert_not_called()
+            self.assertIn({"event": "step", "id": "exefs", "status": "failed"}, events)
+            self.assertTrue(any("Path length check" in e.get("message", "") and "RISK" in e["message"] for e in events))
+
     def test_failed_extraction_does_not_move_clean_build_outputs_or_selected_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
