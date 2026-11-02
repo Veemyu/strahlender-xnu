@@ -202,7 +202,7 @@ class DriverEmbedTests(unittest.TestCase):
             self.assertIn("do not share it", text)
             self.assertIn("distributes no game data", text)
             self.assertIn("--ios-export-no-embed", text)
-            self.assertIn("installer 0.1.4", text)
+            self.assertIn("\"Export without game data\" in the installer", text)
 
     def test_no_embed_keeps_the_library_export_identity_unchanged(self):
         with tempfile.TemporaryDirectory() as directory:
