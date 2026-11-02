@@ -267,6 +267,18 @@ const char *bdsp_pick_game_name(const bdsp_title_set *set, const char *const *la
 
 int bdsp_system_languages(char languages[][32], int capacity) {
     int count = 0;
+    const char *override = getenv("BDSP_UI_LANGUAGES");   // test switch: "de-DE:en-US" instead of the system's list
+    if (override && *override) {
+        while (*override && count < capacity) {
+            size_t n = strcspn(override, ":,;");
+            if (n && n < 32) {
+                memcpy(languages[count], override, n);
+                languages[count++][n] = 0;
+            }
+            override += n + (override[n] != 0);
+        }
+        return count;
+    }
 #ifdef __APPLE__
     CFArrayRef list = CFLocaleCopyPreferredLanguages();
     if (list) {

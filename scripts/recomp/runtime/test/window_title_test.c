@@ -1,6 +1,7 @@
 // Test of the window title helper (window_title.c): title composition, titles.json parsing, system language to NACP locale matching,
 // fallbacks. Invented names only. Build and run: scripts/recomp/runtime/test/run_window_title_test.sh
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../window_title.h"
@@ -117,6 +118,21 @@ int main(void) {
                                       "{\"titles\": {\"de\": \"\\ud800\"}}", "{\"mod\": \"a\" \"b\": 1}", "{\"titles\": {\"de\": \"a\"},}"};
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
         if (bdsp_title_set_parse(bad[i], strlen(bad[i]), &set)) { printf("ERROR bad json %zu accepted\n", i); fails++; }
+    }
+
+    {   // BDSP_UI_LANGUAGES replaces the system list, in order
+        char languages[16][32];
+#ifdef _WIN32
+        _putenv_s("BDSP_UI_LANGUAGES", "sv-SE:de-DE,en-US");
+#else
+        setenv("BDSP_UI_LANGUAGES", "sv-SE:de-DE,en-US", 1);
+#endif
+        int n = bdsp_system_languages(languages, 16);
+        CHECK(n == 3);
+        CHECK_STR(languages[0], "sv-SE");
+        CHECK_STR(languages[1], "de-DE");
+        CHECK_STR(languages[2], "en-US");
+        CHECK(bdsp_system_languages(languages, 2) == 2);
     }
 
     printf(fails ? "FAILED: %d errors\n" : "OK: window title test\n", fails);

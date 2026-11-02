@@ -48,7 +48,7 @@ The game window shows the game's own name from control.nacp in the system langua
 `icons.json` titles are the mod name). `runtime/window_title.c` reads it and matches the system language list in order
 (de-DE to de, en-GB to en-GB else en-US, es-MX to es-419 else es-ES, pt-BR to pt-BR else pt-PT, fr-CA to fr-CA else fr, zh-TW and
 zh-HK to zh-Hant, zh-CN to zh-Hans, ja, ko, it, nl, ru). Without a name for any system language the title uses en-US, then the
-first name, then "BDSP Recomp". Test: `scripts/recomp/runtime/test/run_window_title_test.sh`. The Linux desktop entry and the
+first name, then "BDSP Recomp". `BDSP_UI_LANGUAGES=de-DE:en-US` replaces the system language list (for tests). Test: `scripts/recomp/runtime/test/run_window_title_test.sh`. The Linux desktop entry and the
 Windows file properties keep the name BDSP.
 
 ## Extraction and automatic builds

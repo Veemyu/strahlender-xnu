@@ -30,6 +30,7 @@ int bdsp_title_candidates(const char *language_tag, char candidates[3][12]);
 const char *bdsp_pick_game_name(const bdsp_title_set *set, const char *const *languages, int count);
 
 // The system's preferred languages in order (CoreFoundation, GetUserPreferredUILanguages, LANGUAGE/LC_ALL/LC_MESSAGES/LANG).
+// BDSP_UI_LANGUAGES="de-DE:en-US" replaces that list (for tests; the game language BDSP_LANG is unrelated).
 int bdsp_system_languages(char languages[][32], int capacity);
 
 // Complete title for the running app: finds titles.json under base_dir (icons/windows, icons/linux, AppIcons, or BDSP_ICON_DIR),
