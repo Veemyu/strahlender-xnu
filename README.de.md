@@ -29,7 +29,7 @@ Das iPhone ist auf einem iPhone 11 Pro Max getestet.
 
 Du brauchst: dein eigenes Exemplar des Spiels (XCI, optional das Update als NSP) und deine `prod.keys`. Apps für iPhone und iPad werden auf einem Mac mit Xcode gebaut und mit deiner eigenen Apple-ID signiert.
 
-**IPA exportieren** bettet die Spieldaten deines eigenen Dumps in die IPA ein (etwa 5 GB), ein Sideload-Werkzeug wie iloader braucht sonst nichts. Diese IPA ist nur für deine eigenen Geräte: nie weitergeben. Eine IPA ohne Spieldaten braucht ihren Ordner **Game Library** ([Details](installer/docs/ios-delivery.md#an-ipa-alone-does-not-run)).
+**IPA exportieren** bettet die Spieldaten deines eigenen Dumps in die IPA ein, ein Sideload-Werkzeug wie iloader braucht sonst nichts. Die IPA ist groß (etwa 5,3 GB, so viel freier Platz wird gebraucht), nur für deine eigenen Geräte gedacht und darf nie weitergegeben werden: sie enthält Spieldaten aus deinem eigenen Dump, und dieses Projekt verteilt keine. Bei zu wenig Platz bricht der Export ab und nennt den Bedarf; er wechselt nie von selbst auf einen Export ohne Spieldaten. Bewusst ohne Spieldaten exportieren: "Ohne Spieldaten exportieren" im Installer (ab 0.1.4) oder `--ios-export-no-embed`; diese IPA braucht ihren Ordner **Game Library** ([Details](installer/docs/ios-delivery.md#an-ipa-alone-does-not-run)).
 
 ## Was dabei ist
 

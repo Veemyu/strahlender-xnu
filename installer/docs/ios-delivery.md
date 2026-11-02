@@ -127,7 +127,26 @@ needs no new argument, so installers that predate the switch export the new way.
 
 Legal note: the project distributes no game data. The embedded data come from
 your own dump and stay on your machine. The IPA is for your own devices only; do
-not share it. The installer says so in its log and in the export options.
+not share it.
+
+Transparency, so nothing happens unannounced:
+
+- Before the build and again when the IPA is written, the log (events `log`,
+  which installer 0.1.3 already shows) says "Exporting the IPA WITH your game data
+  embedded" with the size (about 5.3 GB), the minutes, "for your own devices
+  only, do not share it" and how to export without data. An export without data
+  logs "WITHOUT game data" and that the IPA alone does not run.
+- The write is named in three steps (zip, structure check, hash), with
+  `progress` events (`id=install`, bytes) for the zip and the hash. The result
+  line gives the IPA path, size and "No Game Library folder is needed or written".
+- Installer 0.1.4: the review page, right before the start, shows the warning
+  and the visible switch "Export without game data" with its explanation; the
+  finished page names path and size and says WITH game data, WITHOUT game data
+  (Game Library next to it) or WITHOUT game data and without a Game Library (does
+  not run alone, export again).
+- Too little space stops the export with the needed and the free space and what
+  to do (free space, or export without data on purpose). There is no automatic
+  switch to an export without data anywhere in the code; tests check that.
 
 How it works:
 
