@@ -5,6 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 HERE=scripts/recomp/app
+. scripts/recomp/macos_target.sh
 BIN="" IMG="" NPDM="" OUT="" HARDENED=0 VERSION="0.1" MOD_NAME="" MODS_DIR="" MOD_ROOT="" BUNDLE_ID="" DISPLAY_NAME=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -52,7 +53,7 @@ if [[ -d "$SHADER_CACHE/shaders" ]]; then cp -R "$SHADER_CACHE/shaders" "$NEW/Co
 # precompiled Metal libraries (scripts/recomp/shader_bin.sh macosx)
 if [[ -d "$SHADER_CACHE/shaders-bin-macosx" ]]; then cp -R "$SHADER_CACHE/shaders-bin-macosx" "$NEW/Contents/Resources/shaders-bin"; fi
 if [[ -f "$SHADER_CACHE/pipelines.bin" ]]; then cp "$SHADER_CACHE/pipelines.bin" "$NEW/Contents/Resources/pipelines.bin"; fi
-sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" "$HERE/Info.plist.in" > "$NEW/Contents/Info.plist"
+sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" -e "s/@MACOS_MIN@/$BDSP_MACOS_MIN/" "$HERE/Info.plist.in" > "$NEW/Contents/Info.plist"
 if [ -n "$MOD_NAME" ]; then
   [ -n "$MODS_DIR" ] && [ -n "$MOD_ROOT" ] && [ -n "$BUNDLE_ID" ] && [ -n "$DISPLAY_NAME" ] || { echo "ERROR: mod app metadata is incomplete" >&2; exit 2; }
   case "$MOD_NAME$MODS_DIR$MOD_ROOT" in *$'\n'*|*$'\r'*) echo "ERROR: newline in mod name or path" >&2; exit 2 ;; esac

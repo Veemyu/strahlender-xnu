@@ -115,11 +115,14 @@ during the build (the installer's "Prepare shaders" step, Mac and iPhone/iPad on
    (float attributes and targets, `flip_y` and `depth_minus_one` off, `vs_out_mask` 0) and writes `{v,f}_<fnv64>.metal`. Identical text
    is written once: about 4300 programs give about 2700 files. Programs that access global memory are skipped (their text holds the
    guest-memory window, which only a running game knows) and compile at run time.
-3. `scripts/recomp/shader_bin.sh <macosx|iphoneos>` compiles them to `.metallib` (about 70 s on 8 cores).
+3. `scripts/recomp/shader_bin.sh <macosx|iphoneos>` compiles them to `.metallib` (about 70 s on 8 cores). The AIR target is pinned
+   to the app's minimum (`air64-apple-macos14.0` from `scripts/recomp/macos_target.sh`, `air64-apple-ios17.0`), not to the newest
+   OS of the installed Xcode. All 2739 translated shaders and the Metal sources embedded in the runtime compile for the macOS 14
+   target with Xcode 27.1 and with Xcode 16.4, so nothing in the translator output needs a newer Metal language version.
 
 Measured against a cache recorded during play: 340 of 378 vertex and 842 of 871 fragment shaders are reproduced byte for byte; the
 rest are programs this translator input does not produce (other variants), which compile at run time like before. A stamp (translator
-sources, compile script, the game's shader files, Metal compiler, SDK) skips the work when nothing changed; the installer keeps the cache
+sources, compile script, deployment target, the game's shader files, Metal compiler, SDK) skips the work when nothing changed; the installer keeps the cache
 between builds (`BDSP_SHADER_CACHE_DIR`). The recorded pipeline list `pipelines.bin` cannot be derived from the shaders and stays optional.
 Nothing derived from the game is distributed: it all happens on the user's machine under `work/` and the installer's data folder.
 

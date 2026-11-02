@@ -5,6 +5,7 @@ import tempfile
 import hashlib
 import json
 import plistlib
+import re
 import shutil
 from pathlib import Path
 
@@ -15,6 +16,13 @@ STYLE = "liquid-glass-full-bleed-v1"
 CLASSIC_STYLE = "classic-v1"
 # iconset members of the classic macOS icon: point size, scale
 ICONSET = [(size, scale) for size in (16, 32, 128, 256, 512) for scale in (1, 2)]
+IOS_MIN = "17.0"
+
+
+def macos_min():
+    """The app's minimum macOS from the shared build setting (scripts/recomp/macos_target.sh)."""
+    text = (Path(__file__).resolve().parents[1] / "macos_target.sh").read_text(encoding="utf-8")
+    return re.search(r"^BDSP_MACOS_MIN=(\d+(?:\.\d+)*)\s*$", text, re.MULTILINE).group(1)
 
 
 def write_documents(manifest, images, directory):
@@ -44,7 +52,7 @@ def compile_icons(documents, primary, output, platform):
     output.mkdir(parents=True, exist_ok=True)
     partial = output / "icon-info.plist"
     command = ["xcrun", "actool", "--compile", str(output), "--platform", platform,
-               "--minimum-deployment-target", "17.0" if platform == "iphoneos" else "13.0",
+               "--minimum-deployment-target", IOS_MIN if platform == "iphoneos" else macos_min(),
                "--app-icon", primary, "--output-partial-info-plist", str(partial)]
     if platform == "iphoneos":
         command += ["--target-device", "ipad"]

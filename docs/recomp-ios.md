@@ -12,8 +12,8 @@ upper left. Do not change this start path without agreement.
 Xcode 27.1 (iOS 27.1 SDK) builds the iPad app and the iPhone compile target
 (`TARGETED_DEVICE_FAMILY = "1,2"` for iPhone and iPad, `IPHONEOS_DEPLOYMENT_TARGET = 17.0`). Two findings on 2026-10-22:
 
-- Fixed: shader libraries need `-target air64-apple-ios26.0` (`shader_bin.sh`).
-  Without it Xcode 27 emits AIR v29 for iOS 27.1, which iPadOS 26 does not load,
+- Fixed: shader libraries need an explicit `-target air64-apple-ios...` (`shader_bin.sh`; first `ios26.0`, now the app's
+  minimum `ios17.0`). Without it Xcode 27 emits AIR v29 for iOS 27.1, which iPadOS 26 does not load,
   so every draw was skipped (0 draws). The runtime now logs library load errors.
 - Render-worker race: the asynchronous worker runs concurrently with the guest.
   Without any setting, 4 of 10 starts crashed or stalled. Lockstep

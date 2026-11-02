@@ -50,7 +50,7 @@
 	<key>LSSupportsGameMode</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+	<string>@MACOS_MIN@</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

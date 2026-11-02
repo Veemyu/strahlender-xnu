@@ -15,11 +15,13 @@ The repository contains **no game data**, no keys, no save files and no generate
 
 ## Where it runs
 
-**Supported:** iPad, iPhone (iPhone 11 family and newer, A13 chip with 4 GB RAM or more), Mac (Apple Silicon), Linux x86-64, Windows 10 22H2 and 11 (x86-64).<br>
+**Supported:** iPad, iPhone (iPhone 11 family and newer, A13 chip with 4 GB RAM or more; iOS and iPadOS 17 or newer), Mac (Apple Silicon; macOS 14 Sonoma or newer), Linux x86-64, Windows 10 22H2 and 11 (x86-64).<br>
 **Experimental:** Linux aarch64 (needs Vulkan 1.3). The installer and the build tools work on a real aarch64 machine, a full game build and rendering are not verified yet, testers are welcome (see [docs/BUILD.md](docs/BUILD.md), section 6.5).<br>
 **Planned:** Apple TV.
 
 The iPhone is tested on an iPhone 11 Pro Max.
+
+The minimum systems (macOS 14, iOS and iPadOS 17) are set in the build and were checked only on macOS 26 (Tahoe), built with Xcode 27.1 and with Xcode 16.4. The app was not run on macOS 14 or 15, nor on iOS 17 or 18. Tests on such systems are welcome.
 
 ## Getting started
 

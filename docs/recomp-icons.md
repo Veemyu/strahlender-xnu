@@ -76,6 +76,7 @@ assets. The user provides these files on that machine.
 Outputs outside work/ are rejected. Icons and processing scripts participate in
 the Mac packaging fingerprint, independently of guest generation/object markers.
 Pillow and Xcode (16 or newer) are required for Apple builds; Xcode 26 or newer adds the Liquid Glass icon.
+The compiled icons target macOS 14 (`scripts/recomp/macos_target.sh`) and iOS/iPadOS 17.
 Missing tools fail rather than installing software automatically. The preflight reads `actool --version`:
 Xcode 26 or newer is plain OK, Xcode before 26 is a note ("classic app icon, no Liquid Glass"), and only an
 unreadable `actool` counts as missing. `compile_icons` still checks that actool wrote `Assets.car` (and the `.icns`

@@ -101,6 +101,23 @@ scripts/build_all.sh --only recomp --target macos
 
 Ergebnis: `work/builds/macos-recomp/BDSP.app` (arm64, Metal, ad hoc signiert).
 
+**Mindestsystem.** Die App zielt auf macOS 14 (Sonoma); iPhone und iPad bleiben bei iOS und iPadOS 17. Der macOS-Wert steht an einer
+Stelle, `BDSP_MACOS_MIN` in `scripts/recomp/macos_target.sh`. Er setzt `-mmacosx-version-min` für jedes Objekt und das Linken
+(Gastcode, Runtime, NVN-/Metal-Schicht), das AIR-Ziel der Metal-Bibliotheken (`air64-apple-macos14.0`; die iOS-Bibliotheken nutzen
+`ios17.0`), `LSMinimumSystemVersion` der Info.plist und das Deployment-Ziel des Icon-Compilers. Eine Änderung baut Objekte und
+Shader-Bibliotheken neu. `scripts/recomp/availability_check.sh` (Teil von `scripts/check.sh`) übersetzt die Runtime und die iOS-App
+gegen die installierten SDKs für diese Mindestsysteme und schlägt bei jeder API fehl, die neuer als das Minimum und nicht mit
+`@available` geschützt ist.
+
+Geprüft: Die Runtime enthält keine ungeschützte neuere API (macOS 15/26 oder iOS 18/26) gegen die SDKs von Xcode 27.1 und Xcode 16.4;
+alle 2739 Spiel-Shader und die in die Runtime eingebetteten Metal-Quellen übersetzen mit beiden für das macOS-14-Ziel; mit beiden
+gebaute Apps starten auf macOS 26.6 (Tahoe) mit den macOS-14-Bibliotheken, laden jede vorgebaute Bibliothek und zeigen keine
+Metal-Validierungsmeldung. **Nicht geprüft:** ein Lauf auf macOS 14 oder 15, auf iOS 17 oder 18 und die Metal-Bibliotheken dort.
+Tests auf solchen Systemen sind willkommen.
+Grenzen: Die mitgelieferten Homebrew-Bibliotheken (SDL3, FFmpeg) stammen vom bauenden Mac und tragen dessen Mindestsystem
+(Tahoe-Bottles nennen 26.0); der Linker warnt dort "built for newer version". Eine App ist für den Mac gedacht, der sie gebaut hat,
+oder einen neueren. Die Liquid-Glass-Icons kompiliert `actool` ab Xcode 26; mit Xcode 16 bis 25 bekommen die Apps ein klassisches Icon ohne Liquid Glass.
+
 Am 23.10.2026 benötigten die Stufen `tools,extract,recomp` aus einem frischen GitHub-Clone mit den aktuellen lokalen Quelländerungen **7 Minuten 42 Sekunden** bis zur signierten `BDSP.app`. Gemessen wurde auf einem Apple-Silicon-Mac mit 8 CPU-Threads und 16 GiB RAM, mit einer Basis-XCI ohne Update-NSP und leeren Projekt-Builddaten. Davon entfielen 5 Sekunden auf Hactool, 23 Sekunden auf die Extraktion, 68 Sekunden auf die C-Generierung und etwa 5 Minuten 25 Sekunden auf den C-Compile mit acht Jobs. Danach folgten Modulbilder, Runtime/Metal, Bundle, Signatur und RomFS. Die 361 MiB große arm64-App bestand `codesign --verify --deep --strict`. Der GitHub-Clone dauerte zusätzlich etwa eine Sekunde; Python-Venv und vier Pakete etwa drei Sekunden mit vorhandenem Pip-Downloadcache. Xcode 27.1 und Homebrew-Bibliotheken waren bereits installiert. Historische langsamere Messungen unter Last stehen in `docs/recomp-macapp.md`. Spätere Bauten nutzen die Marker wieder und sind deutlich schneller (Abschnitt 7).
 
 Nützliche Optionen:

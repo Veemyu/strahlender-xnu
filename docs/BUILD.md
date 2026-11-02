@@ -114,6 +114,21 @@ scripts/build_all.sh --only recomp --target macos
 
 Result: `work/builds/macos-recomp/BDSP.app` (arm64, Metal, ad hoc signed).
 
+**Minimum system.** The app targets macOS 14 (Sonoma); iPhone and iPad stay at iOS and iPadOS 17. The macOS value lives in one place,
+`BDSP_MACOS_MIN` in `scripts/recomp/macos_target.sh`. It sets `-mmacosx-version-min` for every object and the link (guest code, runtime,
+NVN/Metal layer), the AIR target of the Metal libraries (`air64-apple-macos14.0`; the iOS libraries use `ios17.0`),
+`LSMinimumSystemVersion` of the Info.plist and the deployment target of the icon compiler. Changing it rebuilds the objects and the
+shader libraries. `scripts/recomp/availability_check.sh` (part of `scripts/check.sh`) compiles the runtime and the iOS app sources against
+the installed SDKs for these minimums and fails on any API newer than the minimum that is not guarded with `@available`.
+
+What was checked: the runtime has no unguarded newer API (macOS 15/26 or iOS 18/26) against the SDKs of Xcode 27.1 and Xcode 16.4;
+all 2739 game shaders and the Metal sources embedded in the runtime compile for the macOS 14 target with both; apps built with
+both start on macOS 26.6 (Tahoe) with the macOS 14 libraries, load every prebuilt library and show no Metal validation message.
+**Not checked:** a run on macOS 14 or 15, on iOS 17 or 18, and the Metal libraries there. Tests on such systems are welcome.
+Limits: the bundled Homebrew libraries (SDL3, FFmpeg) are the ones of the building Mac and carry its minimum system (Tahoe bottles say
+26.0), so the linker prints "built for newer version" warnings there; an app is meant for the Mac that built it or a newer one.
+The Liquid Glass icons are compiled by `actool` of Xcode 26 or newer; with Xcode 16 to 25 the apps get a classic icon without Liquid Glass.
+
 C generation uses the native C17 tool in `scripts/recomp/native-generator/`.
 It chooses a thread count from the host CPU/RAM budget. Modules run sequentially;
 classification, independent large scans and emission use bounded pthread/Win32

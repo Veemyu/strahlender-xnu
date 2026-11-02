@@ -15,11 +15,13 @@ Das Repository enthält **keine Spieldaten**, keine Schlüssel, keine Speicherst
 
 ## Wo es läuft
 
-**Unterstützt:** iPad, iPhone (iPhone-11-Familie und neuer, A13-Chip mit 4 GB RAM oder mehr), Mac (Apple Silicon), Linux x86-64, Windows 10 22H2 und 11 (x86-64).<br>
+**Unterstützt:** iPad, iPhone (iPhone-11-Familie und neuer, A13-Chip mit 4 GB RAM oder mehr; iOS und iPadOS 17 oder neuer), Mac (Apple Silicon; macOS 14 Sonoma oder neuer), Linux x86-64, Windows 10 22H2 und 11 (x86-64).<br>
 **Experimentell:** Linux aarch64 (braucht Vulkan 1.3). Installer und Build-Werkzeuge laufen auf einem echten aarch64-Rechner, ein vollständiger Spiel-Build und die Darstellung sind noch nicht verifiziert, Tester sind willkommen (siehe [docs/BUILD.de.md](docs/BUILD.de.md), Abschnitt 6).<br>
 **Geplant:** Apple TV.
 
 Das iPhone ist auf einem iPhone 11 Pro Max getestet.
+
+Die Mindestsysteme (macOS 14, iOS und iPadOS 17) sind im Build gesetzt und wurden nur auf macOS 26 (Tahoe) geprüft, gebaut mit Xcode 27.1 und mit Xcode 16.4. Auf macOS 14 oder 15 sowie auf iOS 17 oder 18 wurde die App nicht gestartet. Tests auf solchen Systemen sind willkommen.
 
 ## Loslegen
 
