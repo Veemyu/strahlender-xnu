@@ -296,8 +296,8 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
                 game_icons.check_mod_artwork(mod["root"])
             except ValueError:
                 embedded = False
-                emit("log", level="warning", message="The mod's title logo is stored in Unity bundles, and the Windows build runtime "
-                     "has no UnityPy reader; the mod app uses the game icon with a MOD badge.")
+                emit("log", level="warning", message="The mod's title logo is stored in Unity bundles and could not be read by the Windows "
+                     "build runtime; the mod app uses the game icon with a MOD badge.")
             return game_icons.build_windows(icons, app_output / "icons/windows", mod["root"], mod["name"],
                                             embedded_logos=embedded)
         if getattr(args, "clean_build", False) and output.exists():

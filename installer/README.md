@@ -59,7 +59,7 @@ reader; Lumi's actual localized logos are extracted there. Explicit icon files
 take priority. Only mods with no usable artwork get a visible MOD badge on the
 base icon, without host fonts or network assets. The existing shader profile is
 needed for embedded Unity logos and is checked before compiling on Apple hosts; the Windows build runtime
-has no UnityPy, so a Windows mod app with embedded logos gets the MOD badge and the log says so.
+ships UnityPy; where the logos cannot be read, a Windows mod app gets the MOD badge and the log says so.
 All language variants ship.
 
 

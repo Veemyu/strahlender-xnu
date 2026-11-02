@@ -1346,7 +1346,7 @@ def build(args):
         return 3
     if code_mod and args.target == "linux":
         # The shared staging works here too; the Linux install path still has one fixed app, build folder and launcher.
-        emit("error", message="ExeFS mods: the Linux install path has no separate mod app yet (own build folder, launcher and "
+        emit("error", message="ExeFS mods: the Linux install path has no separate mod app (own build folder, launcher and "
                               "desktop entry), so the patched code cannot be installed beside the game. RomFS-only mods work.", code=3)
         return 3
     if code_mod and (not getattr(args, "ips_helper", None) or not Path(args.ips_helper).is_file()):

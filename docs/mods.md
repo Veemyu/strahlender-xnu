@@ -10,7 +10,7 @@ supported, how to install a mod on each platform, and what is not supported yet.
 |---|---|
 | RomFS files (Unity assets, `Data/StreamingAssets/...`, movies) | **Supported.** Files with the same path replace the game's, new files are added. Names match ignoring case. |
 | Separate save | **Supported.** A mod gets `Saves/mods/<name>/` (macOS and Windows: `<save>/mods/<name>/`). The game's save folder is not opened while a mod is active. |
-| ExeFS IPS/IPS32 | **Build-time support on native Mac, Mac → iPhone/iPad and native Windows.** Select the mod in the installer to build a separate compiled app. Dropping ExeFS into an existing app does not apply code patches. Linux: not yet (see Code mods). |
+| ExeFS IPS/IPS32 | **Build-time support on native Mac, Mac → iPhone/iPad and native Windows.** Select the mod in the installer to build a separate compiled app. Dropping ExeFS into an existing app does not apply code patches. Linux: not available (see Code mods). |
 | Additional `subsdk1` | **Apple and Windows build paths connected.** Compiled alongside IPS/IPS32, with cross-module entry points, imports and constructors. Its fixed main-relative layout must fit before the SDK. See device validation below. |
 | Other added NSOs, rtld patches | **Not supported yet.** The installer rejects these code mods. |
 | Several mods at once | No. One mod is active; most big mods replace the same files. |
@@ -104,8 +104,8 @@ The Windows build uses the same staging as the Mac: the installer's `ips_patch.e
 runtime (`BDSP_HAS_SUBSDK1`) build from there into `work/recomp/mods/<key>/<cache key>`. The game's extraction and its compiled
 code stay untouched. A RomFS-only mod needs no new code: its app links the game's objects again with its own icons. Each mod app is
 installed as `%LOCALAPPDATA%\StrahlenderXnu\mod-apps\BDSP-<name>-<id>\` with `mod.txt`; the mod itself stays in the folder chosen
-in the installer and is read from there. The Windows build runtime has no UnityPy, so Lumi's logos (Unity bundles) cannot be
-extracted there yet; the app gets the game icon with a MOD badge and the build log says so.
+in the installer and is read from there. The Windows build runtime ships UnityPy, so Lumi's logos (Unity bundles) are extracted; where they cannot be read, the app
+gets the game icon with a MOD badge and the build log says so.
 
 Measured on Windows 11 (RTX 2080 Ti, 2026-11-02), Luminescent Platinum 2.2F BD, installer driver with the installer's arguments,
 build run without elevation:
