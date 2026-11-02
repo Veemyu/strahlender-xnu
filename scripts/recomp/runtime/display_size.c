@@ -97,8 +97,13 @@ bool display_size_set(int w, int h) {
     uint8_t *slot = G2H8(m->base + SLOT_OFFSET);
     if (memcmp(slot, "BDSPASPC", 8)) return false;
     float match = (double)w / h >= 16.0 / 9 ? 1.0f : 0.0f;   // canvas: wider keeps the height scale, narrower the width scale (UI is never cropped)
-    uint32_t v[4] = {(uint32_t)w, (uint32_t)h, 1, 0};
+    // canvas size in UI units (reference 1280x720): the units the scaler lays out, used for full-screen RawImages
+    double aspect = (double)w / h;
+    float ui_w = aspect >= 16.0 / 9 ? (float)(720 * aspect) : 1280.0f, ui_h = aspect >= 16.0 / 9 ? 720.0f : (float)(1280 / aspect);
+    uint32_t v[6] = {(uint32_t)w, (uint32_t)h, 1, 0, 0, 0};
     memcpy(&v[3], &match, sizeof match);
+    memcpy(&v[4], &ui_w, sizeof ui_w);
+    memcpy(&v[5], &ui_h, sizeof ui_h);
     memcpy(slot + 12, v, sizeof v);
     return true;
 }

@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 
 UI_ROOT = Path("Data/StreamingAssets/AssetAssistant/UIs")
+DEMO_ROOT = Path("Data/StreamingAssets/AssetAssistant/FureaiHiroba/demo")   # cutscene overlays (fade, blur, shown over the demo render texture)
+ROOTS = (UI_ROOT, DEMO_ROOT)
 EXTRA_FILE = Path("Data/resources.assets")
 SCREEN = (1280.0, 720.0)
 # Render-texture views keep their proportions: stretching them would distort 3D models.
@@ -73,7 +75,7 @@ def make_stretch(t):
     t["m_Pivot"] = {"x": 0.5, "y": 0.5}
 
 
-def patch_bundle(UnityPy, source, destination, dry_run):
+def patch_bundle(UnityPy, source, destination, dry_run, demo=False):
     env = UnityPy.load(str(source))
     names, trees, readers = {}, {}, {}
     for obj in env.objects:
@@ -93,7 +95,8 @@ def patch_bundle(UnityPy, source, destination, dry_run):
         t = trees[pid]
         name = names.get(gameobject_of[pid], "")
         keep = any(k in name.lower() for k in KEEP_NAMES)
-        eligible = is_root or name == "Window" or bool(BACKDROP.search(name))
+        # demo timelines fade with a full-size "Image" under their canvas (elsewhere "Image" can be a render-texture view, which must keep its shape)
+        eligible = is_root or name == "Window" or bool(BACKDROP.search(name)) or (demo and name == "Image")
         screen = False
         if parent_is_screen and not keep and eligible and covers_parent(t):
             make_stretch(t)
@@ -145,10 +148,11 @@ def patch_bundle(UnityPy, source, destination, dry_run):
 
 def input_stamp(romfs):
     digest = hashlib.sha256(Path(__file__).read_bytes())
-    for directory, _, files in sorted(os.walk(romfs / UI_ROOT)):
-        for name in sorted(files):
-            if "." not in name:
-                digest.update(f"{directory}/{name}:{(Path(directory) / name).stat().st_size}".encode())
+    for root in ROOTS:
+        for directory, _, files in sorted(os.walk(romfs / root)):
+            for name in sorted(files):
+                if "." not in name:
+                    digest.update(f"{directory}/{name}:{(Path(directory) / name).stat().st_size}".encode())
     extra = romfs / EXTRA_FILE
     if extra.is_file():
         digest.update(f"{extra.stat().st_size}".encode())
@@ -173,14 +177,15 @@ def main():
         shutil.rmtree(out)   # an overlay of this tool from an older version or input: start clean
     total_files = total_changes = 0
     sources = [romfs / EXTRA_FILE] if (romfs / EXTRA_FILE).is_file() and not args.only else []   # UIManager's own objects (blur background)
-    for directory, _, files in os.walk(romfs / UI_ROOT):
-        for name in sorted(files):
-            if "." not in name and not (args.only and name != args.only):
-                sources.append(Path(directory) / name)
+    for root in ROOTS:
+        for directory, _, files in os.walk(romfs / root):
+            for name in sorted(files):
+                if "." not in name and not (args.only and name != args.only):
+                    sources.append(Path(directory) / name)
     for source in sources:
         relative = source.relative_to(romfs)
         try:
-            count = patch_bundle(UnityPy, source, out / relative, args.dry_run)
+            count = patch_bundle(UnityPy, source, out / relative, args.dry_run, DEMO_ROOT / "timeline" in relative.parents)
         except Exception as error:  # a bundle that is not an asset bundle
             print(f"skip {relative}: {error}", file=sys.stderr)
             continue
