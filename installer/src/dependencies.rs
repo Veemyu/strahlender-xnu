@@ -163,7 +163,7 @@ pub(crate) fn windows_plan(architecture: &str, installed: bool) -> Plan {
     if !installed {
         plan.missing.push(Missing {
             id: "windows-components".into(),
-            purpose: "Compiler, SDL, Vulkan, FFmpeg and tools for the game build, downloaded once from this project's GitHub release".into(),
+            purpose: "Compiler, Qt, FFmpeg and SDL3 are downloaded once from their publishers and checked; the build tools are part of this installer".into(),
         });
     }
     if architecture != "x86_64" {

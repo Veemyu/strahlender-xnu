@@ -1164,8 +1164,98 @@ impl Installer {
         body.into()
     }
 
+    /// The Windows components are being prepared: which step, how far, how fast. Shown instead of the requirements list.
+    fn components_view(&self) -> Element<'_, Message> {
+        let c = style::colors(self.appearance);
+        let p = &self.setup_progress;
+        let name = match p.id.as_str() {
+            "qt" => "Qt",
+            "toolchain" => "LLVM-MinGW",
+            "sdl" => "SDL3",
+            "ffmpeg" => "FFmpeg",
+            _ => "",
+        };
+        let step = match (p.id.as_str(), p.phase.as_str()) {
+            ("source", _) => self.language.t(L::StepSource).to_owned(),
+            ("versions", _) => self.language.t(L::StepVersions).to_owned(),
+            ("bundle", _) => self.language.t(L::StepBundle).to_owned(),
+            ("tools", _) => self.language.t(L::StepTools).to_owned(),
+            ("register", _) => self.language.t(L::StepRegister).to_owned(),
+            (_, "download") => self.language.t(L::StepDownload).replace("{}", name),
+            (_, "unpack") => self.language.t(L::StepUnpack).replace("{}", name),
+            _ => self.language.t(L::Running).to_owned(),
+        };
+        let mut detail = String::new();
+        if p.phase == "download" && p.size > 0 {
+            detail = format!(
+                "{} / {}",
+                crate::progress::format_bytes(p.done),
+                crate::progress::format_bytes(p.size)
+            );
+            if p.bytes_per_second > 1.0 {
+                detail.push_str(&format!(
+                    " \u{b7} {}",
+                    crate::progress::format_speed(p.bytes_per_second)
+                ));
+            }
+            if let Some(seconds) = p.seconds_left() {
+                let left =
+                    crate::progress::format_duration(std::time::Duration::from_secs(seconds));
+                detail.push_str(&format!(
+                    " \u{b7} {}",
+                    self.language.t(L::SecondsLeft).replace("{}", &left)
+                ));
+            }
+        }
+        let mut notes = column![].spacing(8);
+        if self.defender == Some(true) && matches!(p.phase.as_str(), "unpack" | "work") {
+            notes = notes.push(
+                text(self.language.t(L::DefenderNote))
+                    .size(12)
+                    .color(c.muted),
+            );
+        }
+        column![
+            self.title(
+                self.language.t(L::PreparingTitle),
+                self.language.t(L::PreparingHint)
+            ),
+            container(
+                column![
+                    column![
+                        text(
+                            self.language
+                                .t(L::StepOf)
+                                .replacen("{}", &p.index.max(1).to_string(), 1)
+                                .replacen("{}", &p.total.max(1).to_string(), 1)
+                        )
+                        .size(12)
+                        .color(c.muted),
+                        text(step).size(16).width(Fill),
+                        text(detail).size(12).color(c.muted).width(Fill),
+                    ]
+                    .spacing(8)
+                    .width(Fill),
+                    progress_bar(0.0..=1.0, p.fraction())
+                        .girth(5)
+                        .style(move |_| style::progress(c)),
+                ]
+                .spacing(16)
+            )
+            .padding(16)
+            .width(Fill)
+            .style(move |_| style::surface(c, false)),
+            notes,
+        ]
+        .spacing(14)
+        .into()
+    }
+
     fn setup_view(&self) -> Element<'_, Message> {
         let c = style::colors(self.appearance);
+        if self.setup_busy {
+            return self.components_view();
+        }
         if self.build_options_open {
             return column![
                 self.title(
@@ -1368,6 +1458,18 @@ impl Installer {
                         super::BackendStatus::Idle => unreachable!(),
                     })
                     .to_owned(),
+            };
+            let counter = if self.defender == Some(true)
+                && self.backend_status == super::BackendStatus::Running
+                && matches!(
+                    stage,
+                    crate::progress::Stage::Extract
+                        | crate::progress::Stage::Package
+                        | crate::progress::Stage::Install
+                ) {
+                format!("{counter}\n{}", self.language.t(L::DefenderNote))
+            } else {
+                counter
             };
             return column![
                 self.title(self.language.t(L::ProgressTitle), self.language.t(detail)),

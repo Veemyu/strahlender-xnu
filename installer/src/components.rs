@@ -174,6 +174,106 @@ fn extract_tool(own: &Path) -> PathBuf {
     }
 }
 
+/// What the Windows setup is doing right now, for the installer window: filled from the setup's JSON lines (`--events`, see
+/// scripts/install/windows_setup.py) while it runs. One setup runs at a time.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SetupProgress {
+    pub running: bool,
+    /// Steps announced by the setup (plus the source download before it) and the number of the current one, 1 based.
+    pub total: u32,
+    pub index: u32,
+    /// "source", "versions", "qt", "toolchain", "sdl", "ffmpeg", "bundle", "tools", "register" and "download", "unpack" or "work".
+    pub id: String,
+    pub phase: String,
+    pub done: u64,
+    pub size: u64,
+    pub bytes_per_second: f64,
+    /// The last lines the setup printed.
+    pub log: Vec<String>,
+    step_started: Option<std::time::Instant>,
+}
+
+impl SetupProgress {
+    /// 0.0 to 1.0 over all steps; a running download moves its step.
+    pub fn fraction(&self) -> f32 {
+        if self.total == 0 {
+            return 0.0;
+        }
+        let step = if self.phase == "download" && self.size > 0 {
+            self.done as f64 / self.size as f64
+        } else {
+            0.0
+        };
+        (((self.index.saturating_sub(1)) as f64 + step) / self.total as f64).min(1.0) as f32
+    }
+
+    pub fn seconds_left(&self) -> Option<u64> {
+        (self.bytes_per_second > 1.0 && self.size > self.done)
+            .then(|| ((self.size - self.done) as f64 / self.bytes_per_second).ceil() as u64)
+    }
+
+    /// One line of the setup: a JSON event or plain text.
+    pub fn apply(&mut self, line: &str, now: std::time::Instant) {
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else {
+            let text = line.trim();
+            if !text.is_empty() {
+                self.log.push(text.to_owned());
+                if self.log.len() > 200 {
+                    self.log.remove(0);
+                }
+            }
+            return;
+        };
+        let number = |key: &str| event[key].as_u64().unwrap_or(0);
+        match event["event"].as_str() {
+            Some("steps") => self.total = number("total") as u32 + 1, // +1: the source download comes first
+            Some("step") => {
+                self.index = number("index") as u32 + 1;
+                self.id = event["id"].as_str().unwrap_or("").to_owned();
+                self.phase = event["phase"].as_str().unwrap_or("").to_owned();
+                (self.done, self.size, self.bytes_per_second) = (0, 0, 0.0);
+                self.step_started = Some(now);
+            }
+            Some("bytes") => {
+                (self.done, self.size) = (number("completed"), number("total"));
+                if let Some(started) = self.step_started {
+                    let seconds = now.saturating_duration_since(started).as_secs_f64();
+                    if seconds >= 1.0 {
+                        self.bytes_per_second = self.done as f64 / seconds;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+static SETUP_PROGRESS: std::sync::Mutex<Option<SetupProgress>> = std::sync::Mutex::new(None);
+
+fn with_progress<T>(change: impl FnOnce(&mut SetupProgress) -> T) -> T {
+    let mut guard = SETUP_PROGRESS.lock().unwrap_or_else(|e| e.into_inner());
+    change(guard.get_or_insert_with(SetupProgress::default))
+}
+
+/// The current state of the setup for the window (a copy).
+pub fn setup_progress() -> SetupProgress {
+    with_progress(|progress| progress.clone())
+}
+
+/// Called when the window starts the setup, so an old state is not shown.
+pub fn reset_setup_progress() {
+    with_progress(|progress| {
+        *progress = SetupProgress {
+            running: true,
+            total: 1,
+            index: 1,
+            id: "source".into(),
+            phase: "download".into(),
+            ..Default::default()
+        }
+    });
+}
+
 /// Runs scripts/install/windows_setup.py in the private Python: Qt, FFmpeg and SDL3 come from their publishers.
 fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let (python, _) =
@@ -182,7 +282,7 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
         let parent = crate::source_download::data_dir()?.join("sources");
         crate::source_download::download_main(&parent, &std::sync::atomic::AtomicBool::new(false))
     })?;
-    let output = std::process::Command::new(python)
+    let mut child = std::process::Command::new(python)
         .hidden()
         .current_dir(&project)
         .env(
@@ -190,16 +290,41 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
             extract_tool(&std::env::current_exe().map_err(|e| e.to_string())?),
         )
         .env("BDSP_EXTRACT_PREFIX", "--cli")
-        .args(["-B", "-m", "scripts.install.windows_setup", "--tools"])
+        .env("PYTHONUNBUFFERED", "1")
+        .args([
+            "-B",
+            "-m",
+            "scripts.install.windows_setup",
+            "--events",
+            "--tools",
+        ])
         .arg(tools)
         .arg("--out")
         .arg(out)
-        .output()
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| e.to_string())?;
-    if output.status.success() {
+    let errors = child.stderr.take().map(|mut stream| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = io::Read::read_to_string(&mut stream, &mut text);
+            text
+        })
+    });
+    if let Some(stdout) = child.stdout.take() {
+        for line in io::BufRead::lines(io::BufReader::new(stdout)).map_while(Result::ok) {
+            with_progress(|progress| progress.apply(&line, std::time::Instant::now()));
+        }
+    }
+    let status = child.wait().map_err(|e| e.to_string())?;
+    let text = errors
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_default();
+    if status.success() {
         return Ok(());
     }
-    let text = String::from_utf8_lossy(&output.stderr);
     Err(text
         .lines()
         .last()
@@ -234,6 +359,63 @@ pub fn install_latest(root: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_events_drive_the_progress_the_window_shows() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        let mut progress = SetupProgress::default();
+        progress.apply(r#"{"event": "steps", "total": 12}"#, start);
+        assert_eq!(progress.total, 13); // plus the source download
+        progress.apply(
+            r#"{"event": "step", "index": 2, "id": "qt", "phase": "download"}"#,
+            start,
+        );
+        assert_eq!(
+            (
+                progress.index,
+                progress.id.as_str(),
+                progress.phase.as_str()
+            ),
+            (3, "qt", "download")
+        );
+        progress.apply(
+            r#"{"event": "bytes", "completed": 50000000, "total": 200000000}"#,
+            start + Duration::from_secs(5),
+        );
+        assert!((progress.bytes_per_second - 10_000_000.0).abs() < 1.0);
+        assert_eq!(progress.seconds_left(), Some(15));
+        // two finished steps and a quarter of the third
+        assert!((progress.fraction() - (2.25 / 13.0) as f32).abs() < 1e-4);
+        // an unpack step has no byte count and a new step starts from nothing
+        progress.apply(
+            r#"{"event": "step", "index": 3, "id": "qt", "phase": "unpack"}"#,
+            start + Duration::from_secs(20),
+        );
+        assert_eq!(
+            (progress.done, progress.size, progress.seconds_left()),
+            (0, 0, None)
+        );
+        assert!((progress.fraction() - (3.0 / 13.0) as f32).abs() < 1e-4);
+    }
+
+    #[test]
+    fn plain_setup_lines_go_to_the_log_which_stays_short() {
+        let mut progress = SetupProgress::default();
+        for number in 0..250 {
+            progress.apply(
+                &format!("Downloading file {number}"),
+                std::time::Instant::now(),
+            );
+        }
+        progress.apply("   ", std::time::Instant::now());
+        assert_eq!(progress.log.len(), 200);
+        assert_eq!(
+            progress.log.last().map(String::as_str),
+            Some("Downloading file 249")
+        );
+        assert_eq!(progress.fraction(), 0.0);
+    }
 
     #[test]
     fn the_helper_points_at_the_installer_for_cli_unpack() {

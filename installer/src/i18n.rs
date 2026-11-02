@@ -28,6 +28,7 @@ impl Language {
 
     pub fn dependency_purpose(self, id: &str) -> Option<&'static str> {
         Some(self.t(match id {
+            "windows-components" => Label::PreparingHint,
             "compiler" | "clang" | "llvm-mingw" => Label::Compile,
             "unicorn-msvc-runtime" => Label::UnicornVcRuntime,
             "git" | "hactool" => Label::ExtractionTools,
@@ -164,6 +165,18 @@ messages! {
     UpdateRestartHint => ["Download the verified update and restart the installer? Your files and settings will be kept.", "Geprüftes Update herunterladen und den Installer neu starten? Deine Dateien und Einstellungen bleiben erhalten.", "¿Descargar la actualización verificada y reiniciar el instalador? Se conservarán tus archivos y ajustes.", "Descarregar a atualização verificada e reiniciar o instalador? Os teus ficheiros e definições serão mantidos.", "Скачать проверенное обновление и перезапустить установщик? Ваши файлы и настройки сохранятся."],
     PrepareShaders => ["Prepare shaders", "Shader vorbereiten", "Preparar shaders", "Preparar shaders", "Подготовка шейдеров"],
     ShadersPrepared => ["shaders prepared", "Shader vorbereitet", "shaders preparados", "shaders preparados", "шейдеров подготовлено"],
+    PreparingTitle => ["Preparing your computer", "Dein Computer wird vorbereitet", "Preparando tu ordenador", "A preparar o teu computador", "Подготовка компьютера"],
+    PreparingHint => ["The compiler, Qt, FFmpeg and SDL3 are downloaded once from their publishers and checked. The build tools are part of this installer.", "Compiler, Qt, FFmpeg und SDL3 werden einmal von ihren Herausgebern geladen und geprüft. Die Build-Werkzeuge sind Teil dieses Installers.", "El compilador, Qt, FFmpeg y SDL3 se descargan una vez de sus editores y se verifican. Las herramientas de compilación vienen con este instalador.", "O compilador, o Qt, o FFmpeg e o SDL3 são descarregados uma vez dos seus editores e verificados. As ferramentas de compilação fazem parte deste instalador.", "Компилятор, Qt, FFmpeg и SDL3 один раз скачиваются у издателей и проверяются. Инструменты сборки входят в этот установщик."],
+    StepOf => ["Step {} of {}", "Schritt {} von {}", "Paso {} de {}", "Passo {} de {}", "Шаг {} из {}"],
+    StepSource => ["Downloading the installer scripts", "Installer-Skripte werden geladen", "Descargando los scripts del instalador", "A descarregar os scripts do instalador", "Загрузка скриптов установщика"],
+    StepVersions => ["Looking up the current versions", "Aktuelle Versionen werden gesucht", "Buscando las versiones actuales", "A procurar as versões atuais", "Поиск актуальных версий"],
+    StepDownload => ["Downloading {}", "{} wird geladen", "Descargando {}", "A descarregar {}", "Загрузка {}"],
+    StepUnpack => ["Unpacking {}", "{} wird entpackt", "Descomprimiendo {}", "A descomprimir {}", "Распаковка {}"],
+    StepBundle => ["Bundling Qt, FFmpeg and SDL3", "Qt, FFmpeg und SDL3 werden gebündelt", "Empaquetando Qt, FFmpeg y SDL3", "A agrupar Qt, FFmpeg e SDL3", "Сборка Qt, FFmpeg и SDL3"],
+    StepTools => ["Adding the build tools", "Build-Werkzeuge werden hinzugefügt", "Añadiendo las herramientas de compilación", "A adicionar as ferramentas de compilação", "Добавление инструментов сборки"],
+    StepRegister => ["Registering the build environment", "Build-Umgebung wird eingetragen", "Registrando el entorno de compilación", "A registar o ambiente de compilação", "Регистрация среды сборки"],
+    SecondsLeft => ["{} left", "noch {}", "quedan {}", "faltam {}", "осталось {}"],
+    DefenderNote => ["Windows Defender is checking the new game files in the background. That is normal and can take a few minutes.", "Windows Defender prüft die neuen Spieldateien im Hintergrund. Das ist normal und kann einige Minuten dauern.", "Windows Defender está comprobando los archivos nuevos del juego en segundo plano. Es normal y puede tardar unos minutos.", "O Windows Defender está a verificar os novos ficheiros do jogo em segundo plano. É normal e pode demorar alguns minutos.", "Защитник Windows проверяет новые файлы игры в фоновом режиме. Это нормально и может занять несколько минут."],
     FilesCopied => ["files copied", "Dateien kopiert", "archivos copiados", "ficheiros copiados", "файлов скопировано"],
     TimeLeft => ["left", "übrig", "restante", "restante", "осталось"],
     UpdateLater => ["Later", "Später", "Más tarde", "Mais tarde", "Позже"],

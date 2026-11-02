@@ -143,6 +143,8 @@ pub enum Message {
     Preview,
     RequirementsChecked(u64, Result<crate::dependencies::Plan, String>),
     InstallRequirements,
+    SetupTick,
+    DefenderChecked(Option<bool>),
     RequirementsOpened(Result<(), String>),
     UpdateChecked(Result<Option<crate::updates::Release>, String>),
     UpdateInstaller,
@@ -259,6 +261,11 @@ pub struct Installer {
     copied_log_line: Option<(usize, Instant)>,
     requirements: Option<crate::dependencies::Plan>,
     requirements_busy: bool,
+    /// The Windows components are being prepared (downloads); the window shows `setup_progress` meanwhile.
+    setup_busy: bool,
+    setup_progress: crate::components::SetupProgress,
+    /// Windows Defender real-time protection (Windows only): the window explains the wait it causes.
+    defender: Option<bool>,
     available_update: Option<crate::updates::Release>,
     updating: bool,
     update_confirmation: bool,
@@ -537,6 +544,9 @@ impl Installer {
             copied_log_line: None,
             requirements: None,
             requirements_busy: false,
+            setup_busy: false,
+            setup_progress: Default::default(),
+            defender: None,
             available_update: None,
             updating: false,
             update_confirmation: false,
@@ -574,6 +584,10 @@ impl Installer {
             Task::batch([
                 task,
                 Task::perform(blocking(crate::updates::check), Message::UpdateChecked),
+                Task::perform(
+                    blocking(|| Ok::<_, String>(crate::defender::realtime_protection())),
+                    |state| Message::DefenderChecked(state.ok().flatten()),
+                ),
             ])
         } else {
             task
@@ -599,6 +613,11 @@ impl Installer {
                     .push(iced::time::every(Duration::from_millis(400)).map(|_| Message::Tick));
             }
             Subscription::batch(subscriptions)
+        } else if self.setup_busy {
+            Subscription::batch([
+                events,
+                iced::time::every(Duration::from_millis(300)).map(|_| Message::SetupTick),
+            ])
         } else if self.drag_active {
             Subscription::batch([
                 events,
@@ -703,25 +722,47 @@ impl Installer {
                     Err(error) => self.notice = Some(error),
                 }
             }
+            Message::SetupTick => {
+                if self.setup_busy {
+                    self.setup_progress = crate::components::setup_progress();
+                }
+            }
+            Message::DefenderChecked(state) => self.defender = state,
             Message::InstallRequirements => {
                 self.setup_log_length = 0;
                 if let Some(plan) = self.requirements.clone() {
+                    if plan.manager == "windows-components" {
+                        crate::components::reset_setup_progress();
+                        self.setup_progress = crate::components::setup_progress();
+                        self.setup_busy = true;
+                    }
                     return Task::perform(
                         blocking(move || crate::dependencies::install(&plan)),
                         Message::RequirementsOpened,
                     );
                 }
             }
-            Message::RequirementsOpened(result) => match result {
-                Ok(()) => {
-                    self.record(
-                        "SETUP",
-                        "Complete the installation in the terminal, then check again here.",
-                    );
-                    self.requirements = None;
+            Message::RequirementsOpened(result) => {
+                let components = self
+                    .requirements
+                    .as_ref()
+                    .is_some_and(|plan| plan.manager == "windows-components");
+                self.setup_busy = false;
+                match result {
+                    Ok(()) if components => {
+                        self.record("SETUP", "The build environment is ready.");
+                        self.requirements = None;
+                    }
+                    Ok(()) => {
+                        self.record(
+                            "SETUP",
+                            "Complete the installation in the terminal, then check again here.",
+                        );
+                        self.requirements = None;
+                    }
+                    Err(error) => self.notice = Some(error),
                 }
-                Err(error) => self.notice = Some(error),
-            },
+            }
             Message::InputsRestored(restored) => {
                 self.firmware = restored.firmware;
                 let keys_restored = restored.keys.is_some();

@@ -5,6 +5,7 @@ mod backend;
 mod bundle;
 mod capture;
 mod components;
+mod defender;
 mod dependencies;
 mod drop_target;
 #[allow(dead_code)]
