@@ -2307,6 +2307,7 @@ impl Installer {
         self.portable_cpu = false;
         self.clean_build = false;
         self.ios_export_no_embed = false;
+        self.settings_open = false;
         self.auto_cleanup = true;
         self.build_options_open = false;
         self.cleanup_busy = false;
