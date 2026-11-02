@@ -16,6 +16,16 @@ static void Put(NSURL *root, NSString *name, NSString *value) {
     assert([NSFileManager.defaultManager createDirectoryAtURL:file.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil]);
     assert([value writeToURL:file atomically:YES encoding:NSUTF8StringEncoding error:nil]);
 }
+static void Protect(NSURL *folder, BOOL writable) {   // like a signed app bundle: nothing in it can be written
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSMutableArray *all = [NSMutableArray arrayWithObject:folder];
+    for (NSURL *url in [fm enumeratorAtURL:folder includingPropertiesForKeys:nil options:0 errorHandler:nil]) [all addObject:url];
+    for (NSURL *url in writable ? all : all.reverseObjectEnumerator) {
+        BOOL directory = NO;
+        [fm fileExistsAtPath:url.path isDirectory:&directory];
+        assert([fm setAttributes:@{NSFilePosixPermissions:@(directory ? (writable ? 0755 : 0555) : (writable ? 0644 : 0444))} ofItemAtPath:url.path error:nil]);
+    }
+}
 int main(void) { @autoreleasepool {
     NSString *guest = @"/private/var/mobile/Containers/Data/Application/host/Documents/Data/Application/guest";
     assert(!BDSPBackupFolderIsIndependent(guest, @"/var/mobile/Containers/Data/Application/host/Documents/Backups"));
@@ -311,6 +321,31 @@ int main(void) { @autoreleasepool {
     assert(BDSPInspectData(device, plain, nil, NULL) == BDSPDataIncomplete);
     Put(device, @"GameData/romfs/Data/real.bin", @"content");
     assert(BDSPInspectData(device, plain, nil, NULL) == BDSPDataOK);
+    // Game data inside the app bundle (EmbeddedLibrary): read-only tree, inventory next to it in res/, receipt elsewhere.
+    NSMutableDictionary *embeddedIdentity = identity.mutableCopy;
+    embeddedIdentity[@"EmbeddedLibrary"] = @YES;
+    NSURL *bundle = At(root, @"Bundle.app");
+    NSURL *embeddedRoot = At(bundle, @"res/EmbeddedData");
+    NSURL *bundleManifest = At(bundle, @"res/expected-library.json");
+    assert([fm createDirectoryAtURL:At(embeddedRoot, @"GameData/version1") withIntermediateDirectories:YES attributes:nil error:nil]);
+    assert([fm copyItemAtURL:probeSource toURL:At(embeddedRoot, @"GameData/version1/romfs") error:nil]);
+    assert([fm createDirectoryAtURL:bundleManifest.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil]);
+    assert(BDSPCreateLibraryManifest(probeSource, nil, embeddedIdentity, bundleManifest, nil));
+    Protect(bundle, NO);
+    NSURL *bundleReceipt = At(root, @"caches/verified-embedded.plist");
+    assert(BDSPInspectData(embeddedRoot, embeddedIdentity, bundleManifest, &affected) == BDSPDataOK && affected == 0);
+    usedReceipt = YES;
+    assert(BDSPCheckInstalledData(embeddedRoot, embeddedIdentity, bundleManifest, bundleReceipt, NO, &usedReceipt, nil, nil));
+    assert(!usedReceipt); // The first launch hashes everything once.
+    assert(BDSPCheckInstalledData(embeddedRoot, embeddedIdentity, bundleManifest, bundleReceipt, NO, &usedReceipt, nil, nil));
+    assert(usedReceipt); // Later launches only compare metadata.
+    assert(BDSPCheckInstalledData(embeddedRoot, embeddedIdentity, bundleManifest, bundleReceipt, YES, &usedReceipt, nil, nil));
+    assert(!usedReceipt); // "Check game files again" hashes again.
+    assert(!BDSPCheckInstalledData(embeddedRoot, identity, bundleManifest, bundleReceipt, NO, NULL, nil, nil)); // A library identity does not match.
+    Protect(bundle, YES);
+    Put(embeddedRoot, @"GameData/version1/romfs/Data/a.bin", @"");
+    assert(BDSPInspectData(embeddedRoot, embeddedIdentity, bundleManifest, &affected) == BDSPDataZeroLength && affected == 1);
+    assert(!BDSPCheckInstalledData(embeddedRoot, embeddedIdentity, bundleManifest, bundleReceipt, NO, NULL, nil, nil));
     assert([fm removeItemAtURL:root error:nil]);
     puts("Native iOS data and save tests passed.");
     return 0;

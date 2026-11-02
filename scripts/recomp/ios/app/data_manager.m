@@ -58,10 +58,16 @@ static NSString *ProfileForMod(NSString *name) {
     return [result substringToIndex:20];
 }
 
+// Exported IPAs carry the RomFS inside the app (res/EmbeddedData, read-only); then the bundle is the game library.
+static BOOL IsEmbedded(NSDictionary *identity) { return [identity[@"EmbeddedLibrary"] boolValue]; }
+static NSURL *EmbeddedRoot(void) { return [NSBundle.mainBundle.resourceURL URLByAppendingPathComponent:@"res/EmbeddedData"]; }
+static NSString *EmbeddedProblemText(void) {
+    return T(@"The game data inside this app are missing, incomplete or damaged. Export the IPA again and install it over this app. Your saves are kept.", @"Die in dieser App enthaltenen Spieldaten fehlen, sind unvollständig oder beschädigt. Exportiere die IPA erneut und installiere sie über diese App. Deine Saves bleiben erhalten.", @"Los datos del juego incluidos en esta app faltan, están incompletos o dañados. Exporta la IPA de nuevo e instálala sobre esta app. Tus partidas se conservan.", @"Os dados do jogo incluídos nesta aplicação estão em falta, incompletos ou danificados. Exporta a IPA novamente e instala-a sobre esta aplicação. O progresso é mantido.", @"Данные игры внутри приложения отсутствуют, неполные или повреждены. Экспортируйте IPA заново и установите её поверх этой версии. Сохранения остаются.");
+}
 static NSString *HelpTitle(void) { return T(@"Help", @"Hilfe", @"Ayuda", @"Ajuda", @"Справка"); }
 static NSURL *HelpURL(void) { return [NSURL URLWithString:@"https://github.com/Veemyu/strahlender-xnu/blob/main/installer/docs/ios-delivery.md#an-ipa-alone-does-not-run"]; }
 static NSString *NoDataLibraryText(void) {
-    return T(@"This app contains no game data. An exported IPA never includes the game files. Install with the installer on your Mac, or choose the Game Library folder that was exported next to the IPA.", @"Diese App enthält keine Spieldaten. Eine exportierte IPA enthält nie die Spieldateien. Installiere mit dem Installer auf dem Mac oder wähle den Ordner Game Library, der neben der IPA exportiert wurde.", @"Esta app no contiene datos del juego. Una IPA exportada nunca incluye los archivos del juego. Instala con el instalador en tu Mac o elige la carpeta Game Library exportada junto a la IPA.", @"Esta aplicação não contém dados do jogo. Uma IPA exportada nunca inclui os ficheiros do jogo. Instala com o instalador no Mac ou escolhe a pasta Game Library exportada junto com a IPA.", @"В этом приложении нет данных игры. Экспортированный IPA никогда не содержит файлы игры. Установите приложение установщиком на Mac или выберите папку Game Library, экспортированную рядом с IPA.");
+    return T(@"This app contains no game data. Choose the Game Library folder that was exported next to the IPA, install with the installer on your Mac, or export the IPA again with the game data included.", @"Diese App enthält keine Spieldaten. Wähle den Ordner Game Library, der neben der IPA exportiert wurde, installiere mit dem Installer auf dem Mac oder exportiere die IPA erneut mit eingebetteten Spieldaten.", @"Esta app no contiene datos del juego. Elige la carpeta Game Library exportada junto a la IPA, instala con el instalador en tu Mac o exporta la IPA de nuevo con los datos incluidos.", @"Esta aplicação não contém dados do jogo. Escolhe a pasta Game Library exportada junto com a IPA, instala com o instalador no Mac ou exporta a IPA novamente com os dados incluídos.", @"В этом приложении нет данных игры. Выберите папку Game Library, экспортированную рядом с IPA, установите приложение установщиком на Mac или экспортируйте IPA заново с включёнными данными.");
 }
 static NSString *NoDataDeviceText(void) {
     return T(@"Game files are missing or incomplete. Finish copying them with the desktop installer, then check again. Your saves are kept.", @"Spieldaten fehlen oder sind unvollständig. Kopiere sie mit dem Desktop-Installer fertig und prüfe erneut. Deine Saves bleiben erhalten.", @"Faltan datos o están incompletos. Termina la copia con el instalador y comprueba de nuevo. Tus partidas se conservan.", @"Os dados estão em falta ou incompletos. Conclui a cópia com o instalador e verifica novamente. O progresso é mantido.", @"Данные отсутствуют или неполные. Завершите копирование установщиком и повторите проверку. Сохранения остаются.");
@@ -80,7 +86,11 @@ static NSString *ProblemText(BDSPDataProblem problem, NSUInteger count, BOOL lib
 }
 
 @implementation BDSPDataManager
-- (BOOL)dataReadyToPlay { return [self.identity[@"ExternalLibrary"] boolValue] ? self.verified : self.deviceDataReady; }
+- (BOOL)dataReadyToPlay { return [self.identity[@"ExternalLibrary"] boolValue] || IsEmbedded(self.identity) ? self.verified : self.deviceDataReady; }
+- (NSString *)noDataText {
+    return IsEmbedded(self.identity) ? EmbeddedProblemText() : [self.identity[@"ExternalLibrary"] boolValue] ? NoDataLibraryText() : NoDataDeviceText();
+}
+- (void)verifyOwnData:(BOOL)forceFull { if (IsEmbedded(self.identity)) [self verifyEmbedded:forceFull]; else [self verifyDeviceData:forceFull]; }
 // Like message: with a Help button that opens the documentation; both lead back to the menu.
 - (void)missingData:(NSString *)text {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Game data & saves", @"Spieldaten & Saves", @"Datos y partidas", @"Dados e progresso", @"Данные и сохранения") message:text preferredStyle:UIAlertControllerStyleAlert];
@@ -139,7 +149,7 @@ static NSString *ProblemText(BDSPDataProblem problem, NSUInteger count, BOOL lib
     if (self.running) return;
     if (![self dataReadyToPlay]) {   // unknown or failed verification never starts the runtime
         fprintf(stderr, "[data] start refused: game data are not verified\n");
-        [self missingData:[self.identity[@"ExternalLibrary"] boolValue] ? NoDataLibraryText() : NoDataDeviceText()];
+        [self missingData:[self noDataText]];
         return;
     }
     if (![self protectBeforeUpdate]) return;
@@ -168,14 +178,14 @@ static NSString *ProblemText(BDSPDataProblem problem, NSUInteger count, BOOL lib
     [self.presenter presentViewController:alert animated:YES completion:nil];
 }
 - (void)gameDataMenu {
-    BOOL needsLibrary = [self.identity[@"ExternalLibrary"] boolValue];
+    BOOL needsLibrary = [self.identity[@"ExternalLibrary"] boolValue] && !IsEmbedded(self.identity);
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:T(@"Game files", @"Spieldaten", @"Datos del juego", @"Dados do jogo", @"Файлы игры") message:nil preferredStyle:UIAlertControllerStyleAlert];
     if (needsLibrary) {
         [alert addAction:[UIAlertAction actionWithTitle:T(@"Choose game library", @"Spieldaten auswählen", @"Elegir biblioteca", @"Escolher biblioteca", @"Выбрать библиотеку") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self pick:1]; }]];
         [self addImportAction:alert];
         if (self.library) [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verify:self.library]; }]];
     } else {
-        [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verifyDeviceData:YES]; }]];
+        [alert addAction:[UIAlertAction actionWithTitle:T(@"Check game files again", @"Spieldaten erneut prüfen", @"Volver a comprobar datos", @"Verificar os dados novamente", @"Проверить данные снова") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { (void)a; [self verifyOwnData:YES]; }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:T(@"Back", @"Zurück", @"Volver", @"Voltar", @"Назад") style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { (void)a; [self menu]; }]];
     [self.presenter presentViewController:alert animated:YES completion:nil];
@@ -278,6 +288,25 @@ static NSString *ProblemText(BDSPDataProblem problem, NSUInteger count, BOOL lib
                     NSString *explained = ProblemText(problem, affected, YES);
                     if (ok && bookmark) { self.initialDataPhase = NO; self.dataReady(); } else if (explained) [self missingData:explained]; else [self message:[NSString stringWithFormat:@"%@\n%@", T(@"The game library is incomplete or does not match this app.", @"Die Spieldaten fehlen oder passen nicht zu dieser App.", @"La biblioteca está incompleta o no corresponde a esta app.", @"A biblioteca está incompleta ou não corresponde à aplicação.", @"Библиотека неполная или не подходит приложению."), error.localizedDescription ?: @""]];
             });
+    });
+}
+// The data inside the app bundle: a full check once (receipt in Caches), then a metadata check; "Check game files again" forces a full one.
+- (void)verifyEmbedded:(BOOL)forceFull {
+    NSURL *root = EmbeddedRoot();
+    NSURL *manifest = [NSBundle.mainBundle.resourceURL URLByAppendingPathComponent:@"res/expected-library.json"];
+    dispatch_async(self.backupQueue, ^{
+        NSError *failure = nil;
+        NSURL *cache = [[NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"verified-embedded-game-data.plist"];
+        BDSPDataProblem problem = BDSPInspectData(root, self.identity, manifest, NULL);
+        BOOL ok = (problem == BDSPDataOK || problem == BDSPDataManifestInvalid) &&
+            BDSPCheckInstalledData(root, self.identity, manifest, cache, forceFull, NULL, ^(NSUInteger completed, NSUInteger total) {
+            [self publishCheck:completed total:total];
+        }, &failure) != nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.verified = ok;
+            if (ok) { self.library = root; self.libraryScoped = NO; self.initialDataPhase = NO; self.dataReady(); }
+            else [self missingData:EmbeddedProblemText()];
+        });
     });
 }
 - (void)verifyDeviceData:(BOOL)forceFull {
@@ -484,8 +513,9 @@ void BDSPPrepareData(UIViewController *presenter, NSDictionary *identity, void (
     NSError *error = nil;
     if (!BDSPConfigureSaveRoot(root, identity, profile, &error)) { [manager message:error.localizedDescription]; return; }
     NSURL *library = Resolve(LibraryKey());
-    manager.initialDataPhase = [identity[@"ExternalLibrary"] boolValue];
-    if (manager.initialDataPhase && library) [manager verify:library forceFull:NO];
+    manager.initialDataPhase = [identity[@"ExternalLibrary"] boolValue] && !IsEmbedded(identity);
+    if (IsEmbedded(identity)) [manager verifyEmbedded:NO];
+    else if (manager.initialDataPhase && library) [manager verify:library forceFull:NO];
     else if (manager.initialDataPhase) [manager menu];
     else [manager verifyDeviceData:NO];
 }
@@ -500,7 +530,7 @@ void BDSPConfirmStart(void (^ready)(void)) {
 void BDSPShowDataError(NSString *detail) { manager.running = NO; [manager message:detail]; }
 void BDSPShowMissingData(void) {
     manager.running = NO;
-    [manager missingData:[manager.identity[@"ExternalLibrary"] boolValue] ? NoDataLibraryText() : NoDataDeviceText()];
+    [manager missingData:[manager noDataText]];
 }
 
 void bdsp_save_committed(const char *root, const char *snapshot, int failure) { @autoreleasepool {
