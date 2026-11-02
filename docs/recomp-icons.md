@@ -36,6 +36,21 @@ Italian, Japanese, Korean, Simplified Chinese, and Traditional Chinese. Every
 original is 256 × 256. Resampling does not invent additional source detail.
 A different dump exposes only variants actually present there.
 
+## Window title
+
+The game window shows the game's own name from control.nacp in the system language, for example "Pokémon Strahlender Diamant"
+(German system) or "Pokémon Brilliant Diamond" (English); Diamond or Pearl follows the dump. A mod build adds " - <mod name>", and
+`BDSP_WINDOW_TAG=<name>` adds " [<name>]" so parallel test builds can be told apart:
+`<game name>[ - <mod name>][ [<tag>]]`.
+
+`game_icons.prepared()` writes `titles.json` next to `icons.json` (`icons/windows`, `icons/linux`, `Resources/AppIcons` on the Mac):
+`{"schema": 1, "titles": {"<NACP locale>": "<name>"}, "mod": "<mod name>"}`. A mod build keeps the game's names there (its
+`icons.json` titles are the mod name). `runtime/window_title.c` reads it and matches the system language list in order
+(de-DE to de, en-GB to en-GB else en-US, es-MX to es-419 else es-ES, pt-BR to pt-BR else pt-PT, fr-CA to fr-CA else fr, zh-TW and
+zh-HK to zh-Hant, zh-CN to zh-Hans, ja, ko, it, nl, ru). Without a name for any system language the title uses en-US, then the
+first name, then "BDSP Recomp". Test: `scripts/recomp/runtime/test/run_window_title_test.sh`. The Linux desktop entry and the
+Windows file properties keep the name BDSP.
+
 ## Extraction and automatic builds
 
 The extraction stage (scripts/build_all.sh and the Windows installer pipeline run the

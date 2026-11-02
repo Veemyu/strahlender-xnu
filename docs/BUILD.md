@@ -344,6 +344,8 @@ the keys below is not verified. Run without it for interactive play.
 Settings for window runs only (they have no effect with `--headless`):
 
 - Start size: `--window 1280x720` or `BDSP_WINDOW=1920x1080` (default 1280×720).
+- Window title: the game's own name in the system language (see `docs/recomp-icons.md`, "Window title");
+  `BDSP_WINDOW_TAG=<name>` appends ` [<name>]` so parallel test builds can be told apart.
 - Frame rate: `BDSP_FPS=30`, `BDSP_FPS=60` or `BDSP_FPS=120`. Pass it after the script name, for example
   `scripts/recomp/linux/local/vk_run.sh BDSP_FPS=60 ...`.
 - MangoHud overlay (fps, frame time, CPU and GPU): `BDSP_MANGOHUD=1`. Needs the `mangohud` package on the
