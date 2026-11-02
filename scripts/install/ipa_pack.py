@@ -14,7 +14,7 @@ import sys
 import time
 import uuid
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 EMBED_DIR = "res/EmbeddedData"
 MOD_FOLDERS = ("romfs", "exefs")
@@ -28,7 +28,7 @@ def clear_embedded(app):
 
 def _checked_relative(value):
     path = Path(value)
-    if not value or path.is_absolute() or ".." in path.parts or "\\" in value:
+    if not value or path.is_absolute() or PurePosixPath(value).is_absolute() or ".." in path.parts or "\\" in value:
         raise ValueError("Invalid embedded data path: " + str(value))
     return path
 
@@ -226,7 +226,7 @@ def publish_ipa(app, destination, bundle_id, progress=None, log=None, hash_progr
                 raise ValueError("An existing IPA differs; it was not overwritten.")
             temporary.unlink()
         else:
-            with open(temporary, "rb") as file:
+            with open(temporary, "r+b") as file:   # Windows only syncs a file that is open for writing
                 os.fsync(file.fileno())
             os.rename(temporary, final)
     except BaseException:

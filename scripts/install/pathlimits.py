@@ -51,7 +51,7 @@ def romfs_relative(work):
     found = []
     for folder, _directories, names in os.walk(top):
         prefix = os.path.relpath(folder, top)
-        found.extend(name if prefix == "." else prefix + "/" + name for name in names)
+        found.extend(name if prefix == "." else prefix.replace(os.sep, "/") + "/" + name for name in names)
     return found
 
 

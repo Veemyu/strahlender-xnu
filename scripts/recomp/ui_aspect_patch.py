@@ -182,8 +182,8 @@ def patch_title_scene(UnityPy, source, destination, dry_run):
 def candidate_sources(romfs, only=None):
     """The files this tool can fix: UI bundles, cutscene overlays and resources.assets. Names match ignoring case (mods come from case-insensitive
     systems); the returned paths keep the folder's own spelling."""
-    roots = [str(r).lower() + "/" for r in ROOTS]
-    extra = str(EXTRA_FILE).lower()
+    roots = [r.as_posix().lower() + "/" for r in ROOTS]
+    extra = EXTRA_FILE.as_posix().lower()
     found = []
     for directory, _, files in os.walk(romfs):
         for name in sorted(files):
@@ -191,7 +191,7 @@ def candidate_sources(romfs, only=None):
             low = path.relative_to(romfs).as_posix().lower()
             if low == extra and not only:
                 found.append(path)
-            elif low == str(TITLE_SCENE).lower() and not only:
+            elif low == TITLE_SCENE.as_posix().lower() and not only:
                 found.append(path)
             elif "." not in name and any(low.startswith(r) for r in roots) and not (only and name != only):
                 found.append(path)
@@ -206,7 +206,7 @@ def input_stamp(romfs, sources):
 
 
 def is_demo_timeline(relative):
-    return relative.as_posix().lower().startswith(str(DEMO_ROOT / "timeline").lower() + "/")
+    return relative.as_posix().lower().startswith((DEMO_ROOT / "timeline").as_posix().lower() + "/")
 
 
 def main():
@@ -232,7 +232,7 @@ def main():
     for source in sources:
         relative = source.relative_to(romfs)
         try:
-            if relative.as_posix().lower() == str(TITLE_SCENE).lower():
+            if relative.as_posix().lower() == TITLE_SCENE.as_posix().lower():
                 count = patch_title_scene(UnityPy, source, out / relative, args.dry_run)
             else:
                 count = patch_bundle(UnityPy, source, out / relative, args.dry_run, is_demo_timeline(relative))

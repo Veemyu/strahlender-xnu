@@ -668,6 +668,7 @@ class CollectTests(unittest.TestCase):
                "BDSP_DEBUG": "true", "PROCESSOR_ARCHITEW6432": "ARM64"}
         with mock.patch.object(diag, "_win_fs_type", return_value="NTFS"), \
                 mock.patch.object(diag, "_win_is_admin", return_value=False), \
+                mock.patch.object(diag, "_win_reg_dword", side_effect=diag._Unavailable("test")), \
                 mock.patch("platform.machine", return_value="AMD64"):
             lines = collect("windows", runner, fs, work="C:\\Users\\someone\\Work\\" + "d" * 80,
                             env=env, longest_generated=200)
