@@ -264,6 +264,53 @@ int main(void) { @autoreleasepool {
     assert(bdsp_save_snapshot(At(saves, @"save_1").fileSystemRepresentation, snapshots.fileSystemRepresentation, snapshotPath, sizeof snapshotPath) != 0);
     assert(snapshotPath[0] == 0);
     for (NSURL *entry in [fm contentsOfDirectoryAtURL:snapshots includingPropertiesForKeys:nil options:0 error:nil]) assert(![entry.lastPathComponent hasPrefix:@".pending-"]);
+    // Unusable game data is diagnosed without hashing: folder missing, empty, empty files, half a library.
+    NSURL *probeSource = At(root, @"probe-source/romfs");
+    Put(probeSource, @"Data/a.bin", @"first file");
+    Put(probeSource, @"Data/b.bin", @"second file");
+    NSURL *probe = At(root, @"probe-library");
+    NSUInteger affected = 99;
+    assert(BDSPInspectLibrary(probe, identity, &affected) == BDSPDataFolderMissing && affected == 0);
+    assert([fm createDirectoryAtURL:At(probe, @"GameData/version1/romfs") withIntermediateDirectories:YES attributes:nil error:nil]);
+    assert(BDSPInspectLibrary(probe, identity, NULL) == BDSPDataFolderEmpty);
+    assert([fm removeItemAtURL:probe error:nil]);
+    assert(BDSPExportLibrary(probeSource, nil, identity, probe, nil));
+    assert(BDSPInspectLibrary(probe, identity, &affected) == BDSPDataOK && affected == 0);
+    Put(probe, @"GameData/version1/romfs/Data/a.bin", @"");
+    assert(BDSPInspectLibrary(probe, identity, &affected) == BDSPDataZeroLength && affected == 1);
+    assert(!BDSPVerifyLibrary(probe, identity, nil)); // The full check agrees.
+    Put(probe, @"GameData/version1/romfs/Data/a.bin", @"first file");
+    assert([fm removeItemAtURL:At(probe, @"GameData/version1/romfs/Data/b.bin") error:nil]);
+    assert(BDSPInspectLibrary(probe, identity, &affected) == BDSPDataIncomplete && affected == 1);
+    assert(!BDSPVerifyLibrary(probe, identity, nil));
+    Put(probe, @"GameData/version1/romfs/Data/b.bin", @"second file");
+    assert(BDSPInspectLibrary(probe, identity, NULL) == BDSPDataOK);
+    assert(BDSPVerifyLibrary(probe, identity, nil));
+    Put(probe, @"Manifests/version1.json", @"{}");
+    assert(BDSPInspectLibrary(probe, identity, NULL) == BDSPDataManifestInvalid);
+    assert([fm removeItemAtURL:At(probe, @"Manifests/version1.json") error:nil]);
+    assert(BDSPInspectLibrary(probe, identity, NULL) == BDSPDataManifestInvalid);
+    // An inventory without files would pass an empty folder, so it is refused when created and when verified.
+    NSURL *emptySource = At(root, @"empty-source/romfs");
+    assert([fm createDirectoryAtURL:emptySource withIntermediateDirectories:YES attributes:nil error:nil]);
+    failure = nil;
+    assert(!BDSPCreateLibraryManifest(emptySource, nil, identity, At(root, @"empty-manifest.json"), &failure) && failure.localizedDescription.length);
+    NSURL *emptyLibrary = At(root, @"empty-library");
+    assert([fm createDirectoryAtURL:At(emptyLibrary, @"GameData/version1/romfs") withIntermediateDirectories:YES attributes:nil error:nil]);
+    NSURL *emptyInventory = At(root, @"empty-inventory.json");
+    assert(BDSPWriteJSON(@{@"schema":@1, @"identity":identity, @"trees":@{@"GameData/version1/romfs":@[]}}, emptyInventory, nil));
+    failure = nil;
+    assert(!BDSPVerifyInstalledData(emptyLibrary, identity, emptyInventory, nil, &failure) && failure.localizedDescription.length);
+    // Development bundles without an inventory: Data/ must hold a file with content.
+    NSURL *device = At(root, @"device-documents");
+    NSDictionary *plain = @{};
+    assert(BDSPInspectData(device, plain, nil, NULL) == BDSPDataFolderMissing);
+    assert([fm createDirectoryAtURL:At(device, @"GameData/romfs/Data") withIntermediateDirectories:YES attributes:nil error:nil]);
+    assert(BDSPInspectData(device, plain, nil, NULL) == BDSPDataFolderEmpty);
+    Put(device, @"GameData/romfs/Data/empty.bin", @"");
+    assert(BDSPInspectData(device, plain, nil, NULL) == BDSPDataIncomplete);
+    Put(device, @"GameData/romfs/Data/real.bin", @"content");
+    assert(BDSPInspectData(device, plain, nil, NULL) == BDSPDataOK);
     assert([fm removeItemAtURL:root error:nil]);
     puts("Native iOS data and save tests passed.");
     return 0;

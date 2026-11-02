@@ -230,6 +230,74 @@ static BOOL VerifyTree(NSURL *folder, NSArray *expected, void (^progress)(void),
     return remaining.count == 0 || Fail(error, @"Game data is incomplete or its checksums do not match.");
 }
 
+// Regular files below fd with their sizes, keyed by relative path; links and special files are left out.
+static void CollectSizes(int fd, NSString *relative, NSMutableDictionary<NSString *, NSNumber *> *sizes, int depth) {
+    DIR *directory = depth < 64 ? fdopendir(fd) : NULL;
+    if (!directory) { close(fd); return; }
+    struct dirent *entry;
+    while ((entry = readdir(directory))) { @autoreleasepool {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") || !strcmp(entry->d_name, ".DS_Store")) continue;
+        struct stat st;
+        if (fstatat(dirfd(directory), entry->d_name, &st, AT_SYMLINK_NOFOLLOW)) continue;
+        NSString *name = [NSFileManager.defaultManager stringWithFileSystemRepresentation:entry->d_name length:strlen(entry->d_name)];
+        if (!name) continue;
+        NSString *path = relative.length ? [relative stringByAppendingFormat:@"/%@", name] : name;
+        if (S_ISREG(st.st_mode)) sizes[path] = @(st.st_size);
+        else if (S_ISDIR(st.st_mode)) {
+            int child = openat(dirfd(directory), entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+            if (child >= 0) CollectSizes(child, path, sizes, depth + 1);
+        }
+    } }
+    closedir(directory);
+}
+
+static NSArray *ManifestTree(NSURL *manifestURL, NSString *relative) {
+    NSNumber *length = nil;
+    [manifestURL getResourceValue:&length forKey:NSURLFileSizeKey error:nil];
+    if (!length || length.unsignedLongLongValue > 32 * 1024 * 1024) return nil;
+    NSData *bytes = [NSData dataWithContentsOfURL:manifestURL];
+    id parsed = bytes ? [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil] : nil;
+    id tree = [parsed isKindOfClass:NSDictionary.class] && [parsed[@"trees"] isKindOfClass:NSDictionary.class] ? parsed[@"trees"][relative] : nil;
+    return [tree isKindOfClass:NSArray.class] && [tree count] ? tree : nil;
+}
+
+BDSPDataProblem BDSPInspectData(NSURL *library, NSDictionary *identity, NSURL *manifestURL, NSUInteger *affected) {
+    if (affected) *affected = 0;
+    NSString *relative = identity[@"RomFSDirectory"] ?: @"GameData/romfs";
+    NSURL *folder = SafeURL(library, relative, nil);
+    struct stat st;
+    if (!folder || lstat(folder.fileSystemRepresentation, &st) || !S_ISDIR(st.st_mode)) return BDSPDataFolderMissing;
+    NSMutableDictionary<NSString *, NSNumber *> *actual = [NSMutableDictionary dictionary];
+    int fd = open(folder.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (fd < 0) return BDSPDataFolderMissing;
+    CollectSizes(fd, @"", actual, 0);
+    if (!actual.count) return BDSPDataFolderEmpty;
+    if (!manifestURL) {
+        BOOL content = NO;
+        for (NSString *path in actual) if ([path hasPrefix:@"Data/"] && actual[path].unsignedLongLongValue) { content = YES; break; }
+        return content ? BDSPDataOK : BDSPDataIncomplete;
+    }
+    NSArray *expected = ManifestTree(manifestURL, relative);
+    if (!expected) return BDSPDataManifestInvalid;
+    NSUInteger zero = 0, missing = 0;
+    for (id item in expected) {
+        NSString *path = [item isKindOfClass:NSDictionary.class] ? item[@"path"] : nil;
+        NSNumber *size = [item isKindOfClass:NSDictionary.class] ? item[@"size"] : nil;
+        if (![path isKindOfClass:NSString.class] || ![size isKindOfClass:NSNumber.class]) return BDSPDataManifestInvalid;
+        NSNumber *have = actual[path];
+        if (!have) missing++;
+        else if (!have.unsignedLongLongValue && size.unsignedLongLongValue) zero++;
+        else if (![have isEqual:size]) missing++;
+    }
+    if (affected) *affected = zero ?: missing;
+    return zero ? BDSPDataZeroLength : missing ? BDSPDataIncomplete : BDSPDataOK;
+}
+
+BDSPDataProblem BDSPInspectLibrary(NSURL *library, NSDictionary *identity, NSUInteger *affected) {
+    NSString *manifest = [identity[@"DataManifest"] isKindOfClass:NSString.class] && Relative(identity[@"DataManifest"]) ? identity[@"DataManifest"] : @"Manifests/missing.json";
+    return BDSPInspectData(library, identity, [library URLByAppendingPathComponent:manifest], affected);
+}
+
 NSDictionary *BDSPVerifyInstalledData(NSURL *library, NSDictionary *identity, NSURL *manifestURL, void (^progress)(NSUInteger, NSUInteger), NSError **error) {
     NSNumber *length = nil;
     [manifestURL getResourceValue:&length forKey:NSURLFileSizeKey error:error];
@@ -250,6 +318,8 @@ NSDictionary *BDSPVerifyInstalledData(NSURL *library, NSDictionary *identity, NS
         if (![manifest[@"trees"][root] isKindOfClass:NSArray.class]) { Fail(error, @"Invalid file inventory."); return nil; }
         total += [manifest[@"trees"][root] count];
     }
+    // An inventory without RomFS files would accept an empty folder as complete game data.
+    if (![manifest[@"trees"][roots[0]] count]) { Fail(error, @"The data inventory lists no game files."); return nil; }
     if (progress) progress(0, total);
     for (NSString *relative in roots) {
         NSURL *folder = SafeURL(library, relative, error);
@@ -414,6 +484,7 @@ static NSArray *ModInventory(NSURL *root, NSError **error) {
 BOOL BDSPCreateLibraryManifest(NSURL *romfs, NSURL *mod, NSDictionary *identity, NSURL *output, NSError **error) {
     NSArray *base = BDSPInventory(romfs, error);
     if (!base) return NO;
+    if (!base.count) return Fail(error, @"The selected game data is empty.");
     NSMutableDictionary *trees = [NSMutableDictionary dictionaryWithObject:base forKey:identity[@"RomFSDirectory"]];
     if (mod) {
         NSArray *overlay = [identity[@"ExternalLibrary"] boolValue] ? ModInventory(mod, error) : BDSPInventory(mod, error);

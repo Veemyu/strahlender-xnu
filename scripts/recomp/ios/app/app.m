@@ -690,8 +690,11 @@ static void StartSelectedRuntime(const ModInfo *mod) {
     bdsp_set_fps(fps ? (int)fps : 60);
     fprintf(stderr, "[ipad] Start: %s, device %s, os_proc_available_memory %zu MiB\n", UIDevice.currentDevice.systemVersion.UTF8String,
             UIDevice.currentDevice.model.UTF8String, os_proc_available_memory() >> 20);
-    if (![fm fileExistsAtPath:romfs])
-        fprintf(stderr, "[ipad] WARNING: Documents/GameData/romfs missing (copy the RomFS via devicectl, docs/recomp-ios.md)\n");
+    if (![fm contentsOfDirectoryAtPath:[romfs stringByAppendingPathComponent:@"Data"] error:nil].count) {
+        fprintf(stderr, "[ipad] Game data missing or empty, runtime not started: %s/Data (docs/recomp-ios.md)\n", romfs.UTF8String);
+        BDSPShowMissingData();
+        return;
+    }
     pthread_t t, st;
     pthread_attr_t at;
     pthread_attr_init(&at);
