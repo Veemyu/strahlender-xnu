@@ -35,6 +35,12 @@ bash scripts/recomp/runtime/test/run_window_title_test.sh
 if [ "$(uname)" = Darwin ] && xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
   step "runtime compile check: iPhone/iPad (model A-low, the iPad build)"
   BDSP_SYNTAX_ONLY=1 bash scripts/recomp/ios/build_rt32.sh ios
+  step "availability check: runtime and iOS app against the minimum macOS 14 / iOS 17"
+  if pkg-config --exists sdl3 libavcodec libavformat libavutil 2>/dev/null; then
+    bash scripts/recomp/availability_check.sh all
+  else
+    bash scripts/recomp/availability_check.sh ios
+  fi
 else
   step "runtime compile check skipped (needs macOS with Xcode and the iPhoneOS SDK)"
 fi
