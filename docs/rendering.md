@@ -72,6 +72,9 @@ Debug tools (`nvn/src/nvn/render_debug.inc`, all off unless the variable is set)
 | `BDSP_SAVE_CS_DIR=<absolute dir>` | Write the translated MSL of every compute program |
 | `BDSP_DEBUG_FRAME=<f>` | Detailed draw log of one frame (also accepted as `BDSP_GEOM_FROM`) |
 | `BDSP_PASS_DIR=<absolute dir>` | With `BDSP_DEBUG_FRAME`: write the colour target of every pass as `pass_NNN.png` (multisample targets are not readable this way) |
+| `BDSP_PASS_STATS=1` | With a debug frame: per pass, NaN, Inf, values above 64 and the largest value of the first colour target (RGBA8, RG11B10F, RGBA16F, RGBA32F), the PNG clamps to 1 |
+| `BDSP_DEBUG_ON_FS=<fs hash>[:<frames>[:<from>]]` | The debug frame comes `frames` (default 60) frames after the first draw with this fragment shader (hash as `BDSP_LOG_FSHASH=1` prints it) at or after frame `from`: load times vary between runs |
+| `BDSP_DEBUG_SPAN=<n>` | The debug frame covers `n` presents (default 1): with slow dumps a game frame may straddle a present |
 
 ## 5. Performance: the render worker, not the GPU, was the limit
 

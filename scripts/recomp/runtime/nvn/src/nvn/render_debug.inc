@@ -14,6 +14,10 @@
 //       Write the translated MSL of every compute program there (<code addr>_cs.metal).
 //   BDSP_PASS_TIMES=1
 //       GPU time per render pass / compute dispatch, grouped by target, with the stats line (see the end of this file).
+//   BDSP_PASS_STATS=1 (with a debug frame)
+//       Per pass NaN, Inf and the largest value of the first colour target (the pass PNGs clamp to 1).
+//   BDSP_DEBUG_ON_FS=<fs hash>[:<frames>[:<from>]], BDSP_DEBUG_SPAN=<n>
+//       Debug frame relative to the first draw of a fragment shader; a debug frame over n presents.
 
 typedef struct { bool on, scan; int64_t frame; } GeomState;
 
@@ -290,4 +294,69 @@ static void pt_report(void) {
     if (!strcmp(getenv("BDSP_PASS_TIMES"), "2")) pt_dump = 7;
     pt_timed_ns = pt_cb_ns = 0;
     pthread_mutex_unlock(&pt_lock);
+}
+
+// BDSP_PASS_STATS=1 (with a debug frame): per render pass, NaN / Inf / largest value of the first colour attachment.
+static float dbg_f11(uint32_t v, int mbits) {  // unsigned 11/10-bit float (5-bit exponent)
+    uint32_t e = (v >> mbits) & 31, m = v & ((1u << mbits) - 1);
+    if (e == 31) return m ? NAN : INFINITY;
+    if (!e) return ldexpf((float)m, -14 - mbits);
+    return ldexpf(1.0f + (float)m / (float)(1u << mbits), (int)e - 15);
+}
+static void debug_pass_stats(id<MTLTexture> t, int no) {
+    static int on = -1;
+    if (on < 0) on = getenv("BDSP_PASS_STATS") != NULL;
+    if (!on || !t || t.sampleCount != 1 || t.textureType != MTLTextureType2D) return;
+    MTLPixelFormat pf = t.pixelFormat;
+    int bpp = pf == MTLPixelFormatRGBA16Float ? 8 : pf == MTLPixelFormatRG11B10Float || pf == MTLPixelFormatRGBA8Unorm || pf == MTLPixelFormatRGBA8Unorm_sRGB || pf == MTLPixelFormatBGRA8Unorm ? 4 : pf == MTLPixelFormatRGBA32Float ? 16 : 0;
+    if (!bpp) { LOG("[pstat] pass %d %lux%lu fmt %lu (not read)\n", no, (unsigned long)t.width, (unsigned long)t.height, (unsigned long)pf); return; }
+    NSUInteger w = t.width, h = t.height;
+    id<MTLBuffer> buf = [dev newBufferWithLength:w * h * bpp options:MTLResourceStorageModeShared];
+    id<MTLCommandBuffer> c = [renderer_queue() commandBuffer];
+    id<MTLBlitCommandEncoder> b = [c blitCommandEncoder];
+    [b copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
+              toBuffer:buf destinationOffset:0 destinationBytesPerRow:w * bpp destinationBytesPerImage:w * h * bpp];
+    [b endEncoding];
+    [c commit];
+    [c waitUntilCompleted];
+    uint64_t nan = 0, inf = 0, big = 0;
+    float mx = 0;
+    int fx = -1, fy = -1;
+    const uint8_t *p = buf.contents;
+    for (NSUInteger y = 0; y < h; y++)
+        for (NSUInteger x = 0; x < w; x++) {
+            float v[4] = {0};
+            const uint8_t *q = p + (y * w + x) * bpp;
+            if (pf == MTLPixelFormatRGBA16Float) for (int i = 0; i < 4; i++) v[i] = (float)((const __fp16 *)q)[i];
+            else if (pf == MTLPixelFormatRGBA32Float) memcpy(v, q, 16);
+            else if (pf == MTLPixelFormatRG11B10Float) { uint32_t u = *(const uint32_t *)q; v[0] = dbg_f11(u & 0x7FF, 6); v[1] = dbg_f11((u >> 11) & 0x7FF, 6); v[2] = dbg_f11(u >> 22, 5); }
+            else for (int i = 0; i < 4; i++) v[i] = q[i] / 255.0f;
+            bool bad = false;
+            for (int i = 0; i < 4; i++) {
+                if (isnan(v[i])) { nan++; bad = true; }
+                else if (isinf(v[i])) { inf++; bad = true; }
+                else { if (v[i] > mx) mx = v[i]; if (v[i] > 64) big++; }
+            }
+            if (bad && fx < 0) { fx = (int)x; fy = (int)y; }
+        }
+    LOG("[pstat] pass %d %lux%lu fmt %lu: nan %llu inf %llu >64 %llu max %g first bad %d,%d\n", no, (unsigned long)w, (unsigned long)h,
+        (unsigned long)pf, nan, inf, big, mx, fx, fy);
+}
+
+// BDSP_DEBUG_ON_FS=<fs hash hex, as BDSP_LOG_FSHASH prints>[:<frames>[:<from>]]: the debug frame (as BDSP_DEBUG_FRAME) comes <frames> (default
+// 60) frames after the first draw with this fragment shader at or after frame <from> (load times vary from run to run).
+static void debug_frame_on_fs(uint64_t fs_hash) {
+    static uint64_t want = 1, at;
+    static long delay = 60, from;
+    if (want == 1) {
+        const char *e = getenv("BDSP_DEBUG_ON_FS");
+        want = e ? strtoull(e, (char **)&e, 16) : 0;
+        if (e && *e == ':') delay = strtol(e + 1, (char **)&e, 10);
+        if (e && *e == ':') from = atol(e + 1);
+    }
+    if (!want) return;
+    extern uint64_t renderer_present_count(void);
+    extern volatile int g_debug_frame_request;
+    if (fs_hash == want && !at && renderer_present_count() >= (uint64_t)from) at = renderer_present_count() + (uint64_t)delay;
+    if (at && at != UINT64_MAX && renderer_present_count() >= at) { g_debug_frame_request = 1; at = UINT64_MAX; }
 }

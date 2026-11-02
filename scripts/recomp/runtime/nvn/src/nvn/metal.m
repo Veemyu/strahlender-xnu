@@ -1541,7 +1541,9 @@ void backend_present(NvnTexture *t) {
     level_change_check();
     extern volatile int g_debug_frame_request;
     if (g_debug_frame_request) { g_debug_frame_request = 0; debug_at = (long)total_frames + 1; }
-    g_debug_frame = debug_at && total_frames == (uint64_t)debug_at;
+    static long debug_span = -1;  // BDSP_DEBUG_SPAN=<n>: the debug frame covers n presents (a game frame may straddle one)
+    if (debug_span < 0) { const char *e = getenv("BDSP_DEBUG_SPAN"); debug_span = e && atol(e) > 0 ? atol(e) : 1; }
+    g_debug_frame = debug_at && total_frames >= (uint64_t)debug_at && total_frames < (uint64_t)(debug_at + debug_span);
     if (g_debug_frame) LOG("===== debug frame %llu =====\n", total_frames);
     static long shot_from = -1;  // BDSP_SCREENSHOT_FROM=<frame>: periodic shots start there (into build/frames/)
     if (shot_from < 0) { const char *e = getenv("BDSP_SCREENSHOT_FROM"); shot_from = e ? atol(e) : 0; }

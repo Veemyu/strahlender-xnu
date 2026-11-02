@@ -207,6 +207,7 @@ static bool draw_item_cursor;           // a fragment texture is the Items page'
 #define RSCALE_BUFFER_INDEX 18
 
 static int debug_pass_no;
+static void debug_pass_stats(id<MTLTexture> t, int no);
 static id<MTLTexture> pass_color0;  // first colour attachment of the open pass (st.rt already names the next pass when end_pass runs)
 static void end_pass(void) {
     if (enc) {
@@ -223,8 +224,9 @@ static void end_pass(void) {
             const char *dir = getenv("BDSP_PASS_DIR") ? getenv("BDSP_PASS_DIR") : "build";  // the app's working directory has no build/
             snprintf(path, sizeof path, "%s/pass_%03d.png", dir, debug_pass_no);
             renderer_save_texture(t, path);
-            snprintf(path, sizeof path, "%s/pass_%03d_a.png", dir, debug_pass_no++);
+            snprintf(path, sizeof path, "%s/pass_%03d_a.png", dir, debug_pass_no);
             renderer_save_texture_alpha(t, path);
+            debug_pass_stats(t, debug_pass_no++);
         }
     }
 }
@@ -2489,6 +2491,7 @@ static void draw(CmdRec *r, bool indexed) {
             if (last_hash == 0xa2177dbb72197bd9ull && pot_level_active()) { stat_skipped++; return; }  // item twinkle
         }
         g_cur_fs_hash = last_hash;
+        debug_frame_on_fs(last_hash);
         extern void widescreen_backdrop_seen(uint64_t hash);
         if (last_hash) widescreen_backdrop_seen(last_hash);
         extern void widescreen_scene_ubo(const float *u, uint64_t size);  // (the camera's view-projection)
