@@ -4,6 +4,17 @@ Chronological, newest entries first. Each item records the date, goal, and files
 
 ## 2026-11-02
 
+- **Starter selection crash (issue #24), runtime:** the loader entered text and rodata of each module with their unrounded ends, so
+  `QueryMemory` showed a free gap between text, rodata and data. The SDK's `nn::ro::detail::GetExceptionInfo` walks that map on every
+  C++ throw and aborted (`svcBreak`) at the gap; choosing the starter throws one (DOTween in `RectTransform.get_anchoredPosition`). The
+  segments now end on page boundaries (`loader.c`, test in `runtime/test/code_mod_test.c`). A `svcBreak` from that path now logs the
+  throwing frame and the module memory map (`kernel.c`). Unmodified game on the Mac, Turtwig chosen with Yes and the first battle
+  played: before, 2 of 2 runs crashed (svcBreak at Yes; once the render worker crash below, before the Yes); after, 8 of 8 clean
+  (2 of them with `MTL_DEBUG_LAYER` and `MTL_SHADER_VALIDATION`, no validation message).
+- **Render worker (Metal):** texture and program release wait for the render worker by default (was iOS only), as its command lists
+  point at those objects; freed textures (`0x0x0`, format 0) reached the pipeline compiler as colour targets (`renderer.m`, `metal.m`,
+  `objects.c`). Colour targets Metal cannot render to are left out with a log line, and pipeline records with such formats are refused
+  instead of aborting in Metal's validation. `BDSP_XW_DRAIN_DESTROY=0` restores the old behaviour.
 - **Linux aarch64 unlocked as experimental (issue 23):** the graphical installer (`backend_supported` in `installer/src/app.rs`, now `platform_backend_supported`) and `install-linux.sh` stopped refusing aarch64 on purpose; both claimed AVX2 was needed, but the build uses `-march=native` or `-mcpu=native` and needs no AVX2. The GUI and the script show an experimental notice (five and four languages). `install-linux.sh` finds the Qt Wayland plugin in any multiarch folder (`/usr/lib/$(uname -m)-linux-gnu/qt6`) and under its Qt 6.8 name `libqwayland.so`; new test hook `BDSP_INSTALL_ARCH`. The Vulkan backend converts BC textures to ASTC 4x4 / R8 / RG8 on GPUs without BC (`bctc.c`, `BDSP_TEST_NO_BC=1`; `textures.c`, `build_vk.sh`, `portable_build.py`). Tests: `scripts/tests/test_linux_install.py`, `app.rs` support matrix. Docs: `BUILD.md` 6.5, `BUILD.de.md`, READMEs.
 
 ## 2026-11-01

@@ -61,6 +61,10 @@ A `SaveData.bin` dropped into `Documents/` on iPhone/iPad is imported at the nex
 - **iPad Pro (M2), same mod:** 3,459 files merged at start, 60.0 fps for the 75 s of the run, footprint 1,725 MiB, no crash. The mod's save
   was created under `Documents/Saves/mods/Luminescent`.
 - Not measured: a full playthrough, mods other than Luminescent Platinum, the iPhone with this mod.
+- Issue #24 (Lumi 2.2F on macOS: abort in `nn::ro::detail::GetExceptionInfo` and a SIGSEGV in the Metal compiler at the starter
+  selection and in the settings menu) reproduced with the unmodified game: both causes were in the runtime (memory map with gaps
+  between module segments, so every C++ throw aborted; textures freed while the render worker still used them). Fixed on
+  2026-11-02 and checked with the unmodified game; with Lumi itself not yet measured.
 
 ## How it works
 
