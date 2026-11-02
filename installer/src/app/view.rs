@@ -1157,6 +1157,31 @@ impl Installer {
         ]
         .spacing(14);
         if self.target == InstallTarget::Ios
+            && self.ios_delivery == crate::backend::IosDelivery::Ipa
+        {
+            body = body.push(
+                container(
+                    column![
+                        text(self.language.t(if self.ios_export_no_embed {
+                            L::ExportWithoutDataHint
+                        } else {
+                            L::IpaReviewWarning
+                        }))
+                        .size(13)
+                        .color(c.muted),
+                        toggler(self.ios_export_no_embed)
+                            .label(self.language.t(L::ExportWithoutData))
+                            .text_size(14)
+                            .on_toggle(Message::ExportWithoutData),
+                    ]
+                    .spacing(8),
+                )
+                .padding(16)
+                .width(Fill)
+                .style(move |_| style::surface(c, false)),
+            );
+        }
+        if self.target == InstallTarget::Ios
             && self.host == Platform::Mac
             && self.ios_delivery == crate::backend::IosDelivery::Ipa
             && self.selected_mod.is_some()
@@ -1304,22 +1329,6 @@ impl Installer {
                         .color(c.muted),
                 ]
                 .spacing(5),
-                if self.target == InstallTarget::Ios
-                    && self.ios_delivery == crate::backend::IosDelivery::Ipa
-                {
-                    column![
-                        toggler(self.ios_export_no_embed)
-                            .label(self.language.t(L::ExportWithoutData))
-                            .text_size(14)
-                            .on_toggle(Message::ExportWithoutData),
-                        text(self.language.t(L::ExportWithoutDataHint))
-                            .size(12)
-                            .color(c.muted),
-                    ]
-                    .spacing(5)
-                } else {
-                    column![]
-                },
                 column![
                     toggler(self.auto_cleanup)
                         .label(self.language.t(L::AutoCleanup))
@@ -1414,6 +1423,30 @@ impl Installer {
         ]
         .spacing(18)
         .into()
+    }
+
+    /// What was exported: where, how large, with or without the game data, and whether a Game Library exists.
+    fn ipa_result_text(&self) -> String {
+        let Some(path) = &self.exported_ipa else {
+            return String::new();
+        };
+        let key = if self.game_library.is_some() {
+            L::IpaResultSeparate
+        } else if self.ios_export_no_embed {
+            L::IpaResultMissingLibrary
+        } else {
+            L::IpaResultEmbedded
+        };
+        self.language
+            .t(key)
+            .replace("{path}", &super::redact_home_path(&path.to_string_lossy()))
+            .replace(
+                "{size}",
+                &self
+                    .exported_ipa_size
+                    .map(super::human_size)
+                    .unwrap_or_default(),
+            )
     }
 
     fn progress_view(&self) -> Element<'_, Message> {
@@ -1583,13 +1616,20 @@ impl Installer {
                     && self.target == InstallTarget::Ios
                 {
                     column![
-                        text(self.language.t(if self.game_library.is_some() {
-                            L::IpaInstallSteps
+                        text(self.ipa_result_text()).size(13).color(c.muted),
+                        if self.game_library.is_none() && self.ios_export_no_embed {
+                            space().height(0).into()
                         } else {
-                            L::IpaInstallStepsEmbedded
-                        }))
-                        .size(12)
-                        .color(c.muted),
+                            Element::from(
+                                text(self.language.t(if self.game_library.is_some() {
+                                    L::IpaInstallSteps
+                                } else {
+                                    L::IpaInstallStepsEmbedded
+                                }))
+                                .size(12)
+                                .color(c.muted),
+                            )
+                        },
                         row![
                             self.text_action(
                                 self.language.t(L::ShowIpa),

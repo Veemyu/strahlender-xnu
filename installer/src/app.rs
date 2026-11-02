@@ -21,6 +21,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+fn human_size(bytes: u64) -> String {
+    if bytes >= 1_000_000_000 {
+        format!("{:.1} GB", bytes as f64 / 1e9)
+    } else {
+        format!("{} MB", bytes.div_ceil(1_000_000))
+    }
+}
+
 fn redact_home_path(message: &str) -> String {
     let Some(home) = directories::UserDirs::new() else {
         return message.to_owned();
@@ -244,6 +252,7 @@ pub struct Installer {
     backend_failure_detail: Option<String>,
     installed_app: Option<PathBuf>,
     exported_ipa: Option<PathBuf>,
+    exported_ipa_size: Option<u64>,
     game_library: Option<PathBuf>,
     ios_delivery: crate::backend::IosDelivery,
     ios_devices: Vec<crate::ios_devices::Device>,
@@ -539,6 +548,7 @@ impl Installer {
             backend_failure_detail: None,
             installed_app: None,
             exported_ipa: None,
+            exported_ipa_size: None,
             game_library: None,
             ios_delivery: crate::backend::IosDelivery::Ipa,
             ios_devices: Vec::new(),
@@ -1085,7 +1095,7 @@ impl Installer {
             Message::CleanBuild(enabled) if self.page == Page::Setup => {
                 self.clean_build = enabled;
             }
-            Message::ExportWithoutData(enabled) if self.page == Page::Setup => {
+            Message::ExportWithoutData(enabled) if self.page == Page::Review => {
                 self.ios_export_no_embed = enabled;
             }
             Message::AutoCleanup(enabled) if self.page == Page::Setup => {
@@ -1759,6 +1769,7 @@ impl Installer {
                     self.build_progress = crate::progress::BuildProgress::default();
                     self.installed_app = None;
                     self.exported_ipa = None;
+                    self.exported_ipa_size = None;
                     self.game_library = None;
                     self.build_options_open = false;
                     self.cleanup_busy = false;
@@ -1897,6 +1908,7 @@ impl Installer {
                     let name = path.file_name().unwrap_or_default().to_string_lossy();
                     self.record("BACKEND", &format!("{kind}: {name}"));
                     if kind == "ipa" {
+                        self.exported_ipa_size = std::fs::metadata(&path).ok().map(|m| m.len());
                         self.exported_ipa = Some(path.clone());
                     }
                     if kind == "game_library" {
@@ -2319,6 +2331,7 @@ impl Installer {
         self.backend_status = BackendStatus::Idle;
         self.installed_app = None;
         self.exported_ipa = None;
+        self.exported_ipa_size = None;
         self.game_library = None;
         self.backend_cancel = None;
         self.requirements = None;
@@ -2969,13 +2982,26 @@ mod tests {
         let _ = app.update(Message::BuildOptions(true));
         let _ = app.update(Message::CleanBuild(true));
         let _ = app.update(Message::ExportWithoutData(true));
+        assert!(!app.ios_export_no_embed);
         let _ = app.update(Message::AutoCleanup(false));
         assert!(app.clean_build);
-        assert!(app.ios_export_no_embed);
         assert!(!app.auto_cleanup);
         let _ = app.update(Message::Back);
         assert_eq!(app.page, Page::Setup);
         assert!(!app.build_options_open);
+    }
+
+    #[test]
+    fn export_without_game_data_is_chosen_on_the_review_page_and_never_set_automatically() {
+        let (mut app, _) = Installer::new();
+        assert!(!app.ios_export_no_embed);
+        app.page = Page::Review;
+        let _ = app.update(Message::ExportWithoutData(true));
+        assert!(app.ios_export_no_embed);
+        let _ = app.update(Message::ExportWithoutData(false));
+        assert!(!app.ios_export_no_embed);
+        assert_eq!(human_size(5_298_146_927), "5.3 GB");
+        assert_eq!(human_size(229_768_040), "230 MB");
     }
 
     #[test]
