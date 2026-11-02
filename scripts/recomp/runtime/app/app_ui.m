@@ -639,6 +639,8 @@ void menu_apply_window_requests(void *window) {
             InstallMacShaderStatus(native.contentView);
             char title[300] = "BDSP";
             if (mods_active()) snprintf(title, sizeof title, "BDSP - %s", mods_active()->name);
+            const char *tag = getenv("BDSP_WINDOW_TAG");  // names the build for parallel test runs
+            if (tag && *tag) { size_t n = strlen(title); snprintf(title + n, sizeof title - n, " [%.100s]", tag); }
             SDL_SetWindowTitle(w, title);
             SDL_SetWindowMinimumSize(w, 640, 360);
             {   // View > Debug > Presentation: the saved choice (the environment variables take precedence)

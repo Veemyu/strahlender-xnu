@@ -796,7 +796,12 @@ void ui_window_init(void) {
                                             getenv("BDSP_HOST_INPUT") || getenv("BDSP_BIND_TEST"));
         if (scripted) SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
     }
-    window = SDL_CreateWindow("BDSP Recomp", win_w, win_h, wflags);
+    // BDSP_WINDOW_TAG names the build in the title bar (worktree, agent) so parallel test builds can be told apart
+    char title[160];
+    const char *tag = getenv("BDSP_WINDOW_TAG");
+    if (tag && *tag) snprintf(title, sizeof title, "BDSP Recomp [%.100s]", tag);
+    else snprintf(title, sizeof title, "BDSP Recomp");
+    window = SDL_CreateWindow(title, win_w, win_h, wflags);
     if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
 #ifdef _WIN32
     pad_sdl_focus_main((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);
