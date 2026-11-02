@@ -280,7 +280,10 @@ pub fn reset_setup_progress() {
 /// Runs scripts/install/windows_setup.py in the private Python: Qt, FFmpeg and SDL3 come from their publishers.
 fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let (python, _) =
-        crate::runtime::backend_python().ok_or("The bundled Python runtime is missing.")?;
+        crate::runtime::backend_python().ok_or_else(|| match crate::bundle::last_error() {
+            Some(why) => format!("The bundled Python runtime is missing. {why}"),
+            None => "The bundled Python runtime is missing.".to_string(),
+        })?;
     let sources = crate::source_download::data_dir().map(|dir| dir.join("sources"));
     if let Ok(parent) = &sources {
         // leftovers of earlier runs; a running setup is younger than two hours

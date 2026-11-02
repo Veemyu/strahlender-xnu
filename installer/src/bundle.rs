@@ -7,11 +7,22 @@ use std::{
     fs,
     io::{Cursor, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
+    sync::Mutex,
+    time::{Duration, Instant},
 };
 
 pub const MAGIC: &[u8; 8] = b"BDSPBNDL";
 const TRAILER: u64 = 8 + 8 + 32;
 const DONE: &str = ".complete";
+/// Windows (Defender, the indexer) can hold freshly unpacked files for a while, so moving the folder into place may fail at first.
+const PLACE_SECONDS: u64 = 60;
+/// The executable whose unpacking failed and why; later lookups do not repeat a failed (and slow) unpacking.
+static FAILURE: Mutex<Option<(PathBuf, String)>> = Mutex::new(None);
+
+/// Why the bundle of this installer could not be unpacked, if it was tried and failed.
+pub fn last_error() -> Option<String> {
+    FAILURE.lock().ok()?.as_ref().map(|(_, why)| why.clone())
+}
 
 /// The folder holding `resources/` and the helper programs of this installer.
 pub fn dir() -> Option<PathBuf> {
@@ -24,10 +35,23 @@ pub fn dir_of(exe: &Path) -> Option<PathBuf> {
     if beside.join("resources").is_dir() {
         return Some(beside.to_path_buf());
     }
-    let data = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")?;
-    unpacked(exe, &data.data_dir().join("bundle"))
+    if FAILURE
+        .lock()
         .ok()
-        .flatten()
+        .is_some_and(|failure| failure.as_ref().is_some_and(|(failed, _)| failed == exe))
+    {
+        return None;
+    }
+    let data = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")?;
+    match unpacked(exe, &data.data_dir().join("bundle")) {
+        Ok(folder) => folder,
+        Err(why) => {
+            if let Ok(mut failure) = FAILURE.lock() {
+                *failure = Some((exe.to_path_buf(), why));
+            }
+            None
+        }
+    }
 }
 
 #[allow(dead_code)] // the installer_setup binary shares this module but starts no helper
@@ -59,19 +83,55 @@ pub fn unpacked(exe: &Path, root: &Path) -> Result<Option<PathBuf>, String> {
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let partial = root.join(format!("{name}.partial-{}", std::process::id()));
     let _ = fs::remove_dir_all(&partial);
+    // A folder without the marker is the rest of an interrupted start.
+    let _ = fs::remove_dir_all(&target);
     zip::ZipArchive::new(Cursor::new(bytes))
         .and_then(|mut archive| archive.extract(&partial))
         .map_err(|e| format!("The installer files could not be unpacked: {e}"))?;
     fs::write(partial.join(DONE), b"").map_err(|e| e.to_string())?;
-    if fs::rename(&partial, &target).is_err() {
-        // Another start was faster; keep its result.
+    let placed = place(
+        &partial,
+        &target,
+        Duration::from_secs(PLACE_SECONDS),
+        &mut |from, to| fs::rename(from, to),
+        &mut std::thread::sleep,
+    );
+    if let Err(error) = placed {
         let _ = fs::remove_dir_all(&partial);
-        if !target.join(DONE).is_file() {
-            return Err("The installer files could not be put in place.".into());
-        }
+        return Err(format!(
+            "The unpacked installer files could not be put in place ({error}). Windows or an antivirus program may still be scanning them; start the installer again."
+        ));
     }
     prune(root, &name);
     Ok(Some(target))
+}
+
+type Rename<'a> = &'a mut dyn FnMut(&Path, &Path) -> std::io::Result<()>;
+
+/// Moves `partial` to `target`, retrying while Windows holds the new files (access denied, in use). Success also when another
+/// start was faster and its folder is complete.
+fn place(
+    partial: &Path,
+    target: &Path,
+    wait: Duration,
+    rename: Rename,
+    sleep: &mut dyn FnMut(Duration),
+) -> Result<(), String> {
+    let deadline = Instant::now() + wait;
+    loop {
+        let error = match rename(partial, target) {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+        if target.join(DONE).is_file() {
+            let _ = fs::remove_dir_all(partial);
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(error.to_string());
+        }
+        sleep(Duration::from_secs(1));
+    }
 }
 
 fn prune(root: &Path, keep: &str) {
@@ -153,6 +213,52 @@ mod tests {
             Some(first.clone())
         );
         assert_eq!(fs::read(first.join("resources/a.txt")).unwrap(), b"kept");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_folder_held_by_windows_is_moved_after_a_few_retries_and_a_permanent_lock_is_reported() {
+        let dir = scratch("place");
+        let (partial, target) = (dir.join("p"), dir.join("t"));
+        fs::create_dir_all(&partial).unwrap();
+        let mut refusals = 2;
+        let mut waits = 0;
+        let result = place(
+            &partial,
+            &target,
+            Duration::from_secs(60),
+            &mut |from, to| {
+                if refusals > 0 {
+                    refusals -= 1;
+                    Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+                } else {
+                    fs::rename(from, to)
+                }
+            },
+            &mut |_| waits += 1,
+        );
+        assert_eq!((result, waits, target.is_dir()), (Ok(()), 2, true));
+
+        fs::create_dir_all(&partial).unwrap();
+        let locked = place(
+            &partial,
+            &dir.join("never"),
+            Duration::ZERO,
+            &mut |_, _| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            &mut |_| {},
+        );
+        assert!(locked.unwrap_err().contains("permission denied"));
+
+        // Another start finished first: its complete folder is kept.
+        fs::write(target.join(DONE), b"").unwrap();
+        let raced = place(
+            &partial,
+            &target,
+            Duration::ZERO,
+            &mut |_, _| Err(std::io::Error::other("exists")),
+            &mut |_| {},
+        );
+        assert_eq!((raced, partial.exists()), (Ok(()), false));
         let _ = fs::remove_dir_all(&dir);
     }
 
