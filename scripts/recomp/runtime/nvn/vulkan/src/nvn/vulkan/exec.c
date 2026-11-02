@@ -2906,9 +2906,11 @@ static void draw_(CmdRec *r, bool indexed) {
     {   // camera-attached effects sized for 16:9 are widened with the view (runtime/hle/widescreen.c)
         extern float widescreen_effect_stretch(uint64_t fs_hash);
         float k = widescreen_effect_stretch(g_cur_fs_hash);
-        float vx = vp[0] * vp_sx + vp_ox, vw = vp[2] * vp_sx;
+        float vpm[4] = {vp[0], vp[1], vp[2], vp[3]};
+        if (pr->fi->ntex == 2) movie_fit_viewport(r->x[2], 2, tex_wh[1][0], tex_wh[1][1], vpm);   // movies keep their aspect ratio (movie_fit.h)
+        float vx = vpm[0] * vp_sx + vp_ox, vw = vpm[2] * vp_sx;
         if (k > 1.0f) { vx -= vw * (k - 1) / 2; vw *= k; }
-        set_viewport(vx, vp[1] * vp_sy + vp_oy, vw, vp[3] * vp_sy, zn, zf);
+        set_viewport(vx, vpm[1] * vp_sy + vp_oy, vw, vpm[3] * vp_sy, zn, zf);
         if (g_debug_frame) {
             VkRect2D sr = scissor_rect();
             LOG("[draw]   vp %.2f %.2f %.2f %.2f (stretch %.3f, fs hash %016llx) scissor %d %d %u %u | guest sc %d %d %d %d | pass %ux%u s %.4f %.4f\n",

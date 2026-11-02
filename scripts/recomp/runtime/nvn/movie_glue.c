@@ -246,6 +246,8 @@ static void ex_open(Extractor *e, const char *path, Cpu *c) {
     char host[1024];
     if (!rel || !fs_resolve_rom_path(rel, host, sizeof host)) snprintf(host, sizeof host, "%s/%s", g_romfs_dir, rel ? rel : "");
     LOG("[movie] open %s -> %s\n", path ? path : "(null)", host);
+    extern volatile int g_movie_fill;
+    g_movie_fill = path && strstr(path, "_op_loop") != NULL;   // the title screen's looping background
     if (avformat_open_input(&e->fmt, host, NULL, NULL) < 0 || avformat_find_stream_info(e->fmt, NULL) < 0) {
         LOG("[movie] file not readable: %s\n", host);
         c->x[0] = 1;

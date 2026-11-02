@@ -21,6 +21,7 @@ extern int maxwell_dbg_reg;
 #define DBG_VS_BUFFER_INDEX 29
 #include "nvn.h"
 #include "renderer.h"
+#include "movie_fit.h"
 #include "bctc.h"
 #include "exec_worker.inc"
 
@@ -2779,9 +2780,11 @@ static void draw(CmdRec *r, bool indexed) {
     {   // camera-attached effects sized for 16:9 are widened with the view (runtime/hle/widescreen.c)
         extern float widescreen_effect_stretch(uint64_t fs_hash);
         float k = widescreen_effect_stretch(g_cur_fs_hash);
-        double vx = vp[0] * vp_sx + vp_ox, vw = vp[2] * vp_sx;
+        float vpm[4] = {vp[0], vp[1], vp[2], vp[3]};
+        if (pr->fi->ntex == 2) movie_fit_viewport(r->x[2], 2, tex_wh[1][0], tex_wh[1][1], vpm);   // movies keep their aspect ratio
+        double vx = vpm[0] * vp_sx + vp_ox, vw = vpm[2] * vp_sx;
         if (k > 1.0f) { vx -= vw * (k - 1) / 2; vw *= k; }
-        [enc setViewport:(MTLViewport){vx, vp[1] * vp_sy + vp_oy, vw, vp[3] * vp_sy, zn, zf}];
+        [enc setViewport:(MTLViewport){vx, vpm[1] * vp_sy + vp_oy, vw, vpm[3] * vp_sy, zn, zf}];
     }
     apply_scissor();
     if (pr->fi->uses_rscale) {  // [0] = render target scale, [1 + i] = scale of texture i
