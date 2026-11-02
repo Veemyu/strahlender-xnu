@@ -226,6 +226,9 @@ def overlay_mod(source, mod_root, destination, mod_name, embedded_logos=True):
         if Path(filename).name != filename:
             raise ValueError("Invalid base icon path")
         shutil.copy2(source / filename, destination / filename)
+    # The window title still names the game itself: the original names and the mod name stay available.
+    manifest["game_titles"] = manifest.get("game_titles") or manifest.get("titles", {})
+    manifest["mod_name"] = mod_name
     # A separate mod app keeps the mod's name in every locale unless its control
     # metadata supplies a translated title for that language.
     manifest["titles"] = {locale: {"name": mod_name, "publisher": ""} for locale in NACP_LANGUAGES}
@@ -358,6 +361,18 @@ def resized(data, size):
         return image.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
 
 
+def write_titles(manifest, output):
+    """titles.json for the window title (runtime/window_title.c): the game's own names per NACP locale, plus the mod name."""
+    original = manifest.get("game_titles") or manifest.get("titles") or {}
+    names = {locale: title["name"] for locale, title in original.items()
+             if locale in NACP_LANGUAGES and isinstance(title, dict) and title.get("name")}
+    data = {"schema": 1, "titles": names}
+    if manifest.get("mod_name"):
+        data["mod"] = manifest["mod_name"]
+    if names or "mod" in data:
+        write_json(Path(output) / "titles.json", data)
+
+
 def prepared(source, output, mod_root=None, mod_name=None, embedded_logos=True):
     output = output_path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -372,6 +387,7 @@ def prepared(source, output, mod_root=None, mod_name=None, embedded_logos=True):
     for entry in manifest["variants"]:
         shutil.copyfile(Path(source) / entry["image"], output / entry["image"])
     write_json(output / "icons.json", manifest)
+    write_titles(manifest, output)
     return manifest
 
 

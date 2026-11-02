@@ -121,6 +121,26 @@ class GameIconTests(unittest.TestCase):
         self.assertEqual(result["titles"]["en-US"]["name"], "Luminescent")
         self.assertTrue((self.root / "mod-icons" / variants["de"]["image"]).is_file())
 
+    def test_window_title_data_names_the_game_and_keeps_the_names_for_a_mod_build(self):
+        self.nacp(self.base, {"en-US": "Pokémon Brilliant Diamond", "de": "Pokémon Strahlender Diamant"})
+        self.picture(self.base, "AmericanEnglish", "red")
+        ingest(self.base, self.update, self.source)
+        plain = self.root / "plain"
+        icons.build_windows(self.source, plain)
+        self.assertEqual(json.loads((plain / "titles.json").read_text(encoding="utf-8")),
+                         {"schema": 1, "titles": {"en-US": "Pokémon Brilliant Diamond", "de": "Pokémon Strahlender Diamant"}})
+        mod = self.root / "mod"
+        mod.mkdir()
+        Image.new("RGB", (256, 256), "gray").save(mod / "icon.png")
+        modded = self.root / "modded"
+        icons.build_windows(self.source, modded, mod, "Luminescent Platinum")
+        data = json.loads((modded / "titles.json").read_text(encoding="utf-8"))
+        self.assertEqual(data["titles"]["de"], "Pokémon Strahlender Diamant")
+        self.assertEqual(data["mod"], "Luminescent Platinum")
+        # the app name of a mod build is still the mod's
+        self.assertEqual(json.loads((modded / "icons.json").read_text(encoding="utf-8"))["titles"]["de"]["name"],
+                         "Luminescent Platinum")
+
     def test_mod_icon_is_used_when_the_dump_has_no_control_icon(self):
         mod = self.root / "mod"
         mod.mkdir()
