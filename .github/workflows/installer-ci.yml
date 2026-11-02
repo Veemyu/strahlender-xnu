@@ -68,6 +68,9 @@ jobs:
     timeout-minutes: 60
     env:
       RUSTUP_TOOLCHAIN: '1.88'
+      # Smaller and faster cached dev builds; release builds are not affected.
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
       BDSP_INSTALLER_UPDATE_PUBLIC_KEY: ${{ vars.INSTALLER_UPDATE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v7
@@ -87,6 +90,19 @@ jobs:
         run: brew install sdl3 pkg-config
       - name: Prepare Rust
         run: rustup toolchain install 1.88 --profile minimal --component rustfmt --component clippy
+      - name: Restore the Rust dependency cache
+        id: rust-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            installer/target
+            installer/extract/target
+          key: rust-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('installer/Cargo.lock', 'installer/extract/Cargo.lock', 'installer/rust-toolchain*') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-
       - name: Validate native code
         run: |
           python3 -m pip install cryptography
@@ -125,6 +141,21 @@ jobs:
           else
             bash installer/scripts/package_linux.sh
           fi
+      - name: Keep only third-party build output
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.rust-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: bash installer/scripts/prune_cargo_cache.sh
+      - name: Save the Rust dependency cache
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.rust-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            installer/target
+            installer/extract/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
       - name: Smoke test outside checkout
         shell: bash
         run: |
@@ -158,6 +189,9 @@ jobs:
     timeout-minutes: 45
     env:
       RUSTUP_TOOLCHAIN: '1.88'
+      # Smaller and faster cached dev builds; release builds are not affected.
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
       BDSP_INSTALLER_UPDATE_PUBLIC_KEY: ${{ vars.INSTALLER_UPDATE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v7
@@ -168,6 +202,19 @@ jobs:
           python-version: '3.13'
       - name: Prepare Rust
         run: rustup toolchain install 1.88 --profile minimal --component rustfmt --component clippy
+      - name: Restore the Rust dependency cache
+        id: rust-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            installer/target
+            installer/extract/target
+          key: rust-${{ runner.os }}-${{ runner.arch }}-windows-${{ hashFiles('installer/Cargo.lock', 'installer/extract/Cargo.lock', 'installer/rust-toolchain*') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ runner.arch }}-windows-
       - name: Validate native code
         run: |
           cargo +1.88 test --locked --manifest-path installer/Cargo.toml
@@ -192,6 +239,21 @@ jobs:
           gh run download $run -R "$env:GITHUB_REPOSITORY" -n windows-components -D work/windows-tools
       - name: Package
         run: python installer/scripts/package_windows.py work/installer-runtime-release/windows-x86_64/runtime work/windows-tools
+      - name: Keep only third-party build output
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.rust-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: bash installer/scripts/prune_cargo_cache.sh
+      - name: Save the Rust dependency cache
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.rust-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            installer/target
+            installer/extract/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
       - name: Smoke test outside the checkout
         shell: bash
         run: |
