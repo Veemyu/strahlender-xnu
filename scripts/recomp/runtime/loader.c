@@ -139,6 +139,14 @@ static void read_image(const char *path, uint64_t addr) {
 #endif
 }
 
+// End of a segment in the memory map: whole 4 KiB pages as on the console, so text, rodata and data are contiguous. The SDK's
+// nn::ro::detail::GetExceptionInfo walks QueryMemory across them on every C++ throw and aborts at a gap; with the unrounded
+// ends (main text 0..2cf6a30, rodata from 2cf7000) every throw ended in svcBreak (issue #24). Packed layouts keep their end.
+static uint64_t segment_end(uint64_t hi, uint64_t next_lo) {
+    uint64_t end = (hi + 0xFFF) & ~0xFFFull;
+    return end <= next_lo ? end : next_lo > hi ? next_lo : hi;
+}
+
 void loader_load(const char *dir) {
     char path[1024];
     snprintf(path, sizeof path, "%s/hle.txt", dir);
@@ -175,8 +183,8 @@ void loader_load(const char *dir) {
             rt_fatal("subsdk1 base does not match the compiled layout\n");
         snprintf(path, sizeof path, "%s/%s.img", dir, order[i]);
         read_image(path, m->base);
-        kernel_region_add(m->base + m->text_lo, m->text_hi - m->text_lo, 3, 5);
-        kernel_region_add(m->base + m->ro_lo, m->ro_hi - m->ro_lo, 3, 1);
+        kernel_region_add(m->base + m->text_lo, segment_end(m->text_hi, m->ro_lo) - m->text_lo, 3, 5);
+        kernel_region_add(m->base + m->ro_lo, segment_end(m->ro_hi, m->data_lo) - m->ro_lo, 3, 1);
         kernel_region_add(m->base + m->data_lo, m->size - m->data_lo, 4, 3);
         snprintf(path, sizeof path, "%s/%s.syms.json", dir, order[i]);
         load_syms(path);

@@ -76,7 +76,8 @@ reentry points:
   contains the target and `_longjmp`s into it (`rt_nle_enter`). About 350 lines of Python and 30 lines of C.
 - Tested with a synthetic guest, a countercheck under Unicorn, throws from real SDK code, and 100 of 100 reachable real
   functions out of 180 selected, with exact landing-pad prediction. Cost: about 45 µs per throw and catch across four frames.
-- Loader duties that follow: `QueryMemory` must report text/rodata/data segments so the SDK can find `eh_frame_hdr`; the FDE
+- Loader duties that follow: `QueryMemory` must report text/rodata/data segments in whole pages without gaps (the SDK's
+  `nn::ro::detail::GetExceptionInfo` walks them and aborts at a gap, issue #24) so the SDK can find `eh_frame_hdr`; the FDE
   cache mutex uses real kernel arbiter SVCs; `ExitThread` with open frames `longjmp`s to the thread entry.
 - *Unverified:* typed catches matched against the real type object, and the 17 real `setjmp` return sites, were not exercised.
 

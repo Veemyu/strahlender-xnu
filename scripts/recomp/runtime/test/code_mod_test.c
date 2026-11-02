@@ -21,10 +21,13 @@ TABLE(subsdk1, SUBSDK1_BASE, modified);
 KThread *kernel_current_thread(void) { return NULL; }
 Cpu *kernel_current_cpu(void) { return NULL; }
 void bdsp_gate_hit(const char *name) { (void)name; }
+uint64_t rt_now_ns(void) { return 0; }
 void bdsp_fatal_report(const char *reason, int code) { (void)reason; exit(code); }
 static int regions;
+static struct { uint64_t addr, size; uint32_t type, perm; } region[64];
 void kernel_region_add(uint64_t addr, uint64_t size, uint32_t type, uint32_t perm) {
-    (void)addr; (void)size; (void)type; (void)perm; regions++;
+    if (regions < 64) { region[regions].addr = addr; region[regions].size = size; region[regions].type = type; region[regions].perm = perm; }
+    regions++;
 }
 
 static void module(const char *directory, const char *name, uint64_t base, int map) {
@@ -36,7 +39,9 @@ static void module(const char *directory, const char *name, uint64_t base, int m
     char path[1200];
     snprintf(path, sizeof path, "%s/%s.mod", directory, name);
     FILE *file = fopen(path, "w"); assert(file);
-    fprintf(file, "%s %llx 0 4 4 8 8 c 1000 0 0 0\n", name, (unsigned long long)base);
+    // main as in the game: segment ends inside a page (text 0..a30, rodata 1000..1de0, data from 2000); the others packed
+    if (!strcmp(name, "main")) fprintf(file, "%s %llx 0 a30 1000 1de0 2000 2420 3000 0 0 0\n", name, (unsigned long long)base);
+    else fprintf(file, "%s %llx 0 4 4 8 8 c 1000 0 0 0\n", name, (unsigned long long)base);
     fclose(file);
     snprintf(path, sizeof path, "%s/%s.img", directory, name);
     file = fopen(path, "wb"); assert(file);
@@ -58,6 +63,11 @@ int main(int argc, char **argv) {
     loader_load(argv[1]);
     assert(g_nmodules == 3 + BDSP_HAS_SUBSDK1);
     assert(regions == 3 * g_nmodules);
+    // QueryMemory must show main's text, rodata and data without gaps (nn::ro::detail::GetExceptionInfo walks them on a throw)
+    assert(region[0].addr == MAIN_BASE && region[0].size == 0x1000 && region[0].type == 3 && region[0].perm == 5);
+    assert(region[1].addr == MAIN_BASE + 0x1000 && region[1].size == 0x1000 && region[1].type == 3 && region[1].perm == 1);
+    assert(region[2].addr == MAIN_BASE + 0x2000 && region[2].size == 0x1000 && region[2].type == 4);
+    assert(region[3].addr == SDK_BASE && region[3].size == 4 && region[4].addr == SDK_BASE + 4 && region[4].size == 4);
     dispatch_init();
     Cpu cpu = {0};
     GuestFn fn = dispatch_lookup(MAIN_BASE + 0x100); assert(fn);
