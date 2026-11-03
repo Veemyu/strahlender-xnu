@@ -31,6 +31,9 @@ OVERLAY_FILE = RUNTIME_DIR + "/nvn-src-vk/nvn/maxwell/translate.c"
 # ui_aspect_patch writes its overlay below romfs-patch with the same relative names, only for these folders of the game data.
 PATCH_ROOTS = ("Data/StreamingAssets/AssetAssistant/UIs", "Data/StreamingAssets/AssetAssistant/FureaiHiroba/demo",
                "Data/StreamingAssets/AssetAssistant/Dpr/scenes/title")
+# Before the first extraction the game data is unknown: plan the deepest RomFS file of the game (108 characters) so the check
+# stops at the start with the same verdict as after the extraction (before: OK at the start, then 270 of 260 at the ExeFS step, #49).
+ASSUMED_ROMFS = ("x" * 108,)
 MOD_CODE_KEY = "x" * 20     # recomp/mods/<20 hex>/ holds the build of a mod with ExeFS code
 
 
@@ -163,6 +166,7 @@ def check(work, cache_key, modules=MODULES, romfs=(), long_paths=None, mod=None,
     """The path check of a work folder; `long_paths` is True, False or None (unknown).
 
     `install` is the folder the app will be installed to (its parent holds the temporary staging folder)."""
+    romfs = romfs or ASSUMED_ROMFS
     length, label = longest_relative(cache_key, modules, romfs, mod, package)
     installed, installed_label = 0, ""
     if install is not None:

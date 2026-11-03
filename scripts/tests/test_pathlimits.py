@@ -30,7 +30,7 @@ def root_of(length):
 
 class PathLimitTests(unittest.TestCase):
     def test_the_limit_counts_the_terminating_character(self):
-        longest = pathlimits.longest_relative(KEY)[0]
+        longest = pathlimits.longest_relative(KEY, romfs=pathlimits.ASSUMED_ROMFS)[0]
         fits = pathlimits.check(root_of(259 - longest), KEY)
         self.assertEqual(fits.total, 259)
         self.assertFalse(fits.too_long)
@@ -91,6 +91,15 @@ class PathLimitTests(unittest.TestCase):
         files = [path.relative_to(tree).as_posix() for tree in (overlay / "src", overlay / "vulkan/src")
                  for path in tree.rglob("*") if path.is_file()] + ["nvn/maxwell/translate.c"]
         self.assertLessEqual(len(max(files, key=len)), len(pathlimits.OVERLAY_FILE.split("/nvn-src-vk/")[1]))
+
+    def test_before_the_extraction_the_check_plans_the_deepest_game_file(self):
+        # #49: a root of 141 passed at the start (249 of 260) and failed at the ExeFS step (270 of 260)
+        root = root_of(141)
+        before = pathlimits.check(root, KEY)
+        after = pathlimits.check(root, KEY, romfs=pathlimits.ASSUMED_ROMFS)
+        self.assertEqual(before.total, after.total)
+        self.assertTrue(before.risk)
+        self.assertIn("packaged game data", before.label)
 
     def test_enabled_long_paths_do_not_help_because_the_generator_is_not_long_path_aware(self):
         default = root_of(200)
