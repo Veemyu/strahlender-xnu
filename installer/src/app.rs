@@ -155,6 +155,8 @@ pub enum Message {
     RequirementsChecked(u64, Result<crate::dependencies::Plan, String>),
     InstallRequirements,
     SetupTick,
+    AutoBuildTick,
+    CancelAutoBuild,
     DefenderChecked(Option<bool>),
     RequirementsOpened(Result<(), String>),
     SystemChecked(Result<Vec<(&'static str, String)>, String>),
@@ -189,6 +191,25 @@ pub enum Message {
     ChooseModFolder,
     ModFolderPicked(Option<PathBuf>),
     SelectMod(Option<String>),
+}
+
+const AUTO_BUILD_DELAY: Duration = Duration::from_secs(5);
+
+fn cancels_auto_build(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::CancelAutoBuild
+            | Message::Back
+            | Message::Preview
+            | Message::Review
+            | Message::BuildOptions(_)
+            | Message::Remove(_)
+            | Message::SelectMod(_)
+            | Message::ChooseModFolder
+            | Message::OpenIosSigning
+            | Message::OpenIosDevices
+            | Message::InstallRequirements
+    )
 }
 
 #[derive(Debug, Clone, Default)]
@@ -279,6 +300,7 @@ pub struct Installer {
     requirements_busy: bool,
     /// The Windows components are being prepared (downloads); the window shows `setup_progress` meanwhile.
     setup_busy: bool,
+    auto_build: Option<Instant>,
     setup_progress: crate::components::SetupProgress,
     /// Windows Defender real-time protection (Windows only): the window explains the wait it causes.
     defender: Option<bool>,
@@ -596,6 +618,7 @@ impl Installer {
             requirements: None,
             requirements_busy: false,
             setup_busy: false,
+            auto_build: None,
             setup_progress: Default::default(),
             defender: None,
             available_update: None,
@@ -673,6 +696,11 @@ impl Installer {
                     .push(iced::time::every(Duration::from_millis(400)).map(|_| Message::Tick));
             }
             Subscription::batch(subscriptions)
+        } else if self.auto_build.is_some() {
+            Subscription::batch([
+                events,
+                iced::time::every(Duration::from_millis(50)).map(|_| Message::AutoBuildTick),
+            ])
         } else if self.setup_busy {
             Subscription::batch([
                 events,
@@ -690,6 +718,9 @@ impl Installer {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let previous = self.preferred_size();
+        if self.auto_build.is_some() && cancels_auto_build(&message) {
+            self.cancel_auto_build("cancelled by the user");
+        }
         let task = self.handle(message);
         if self.capture.is_none() && self.preferred_size() != previous {
             Task::batch([task, self.fit_window()])
@@ -789,6 +820,19 @@ impl Installer {
                     self.stream_setup_progress();
                 }
             }
+            Message::AutoBuildTick => {
+                let Some(started) = self.auto_build else {
+                    return Task::none();
+                };
+                if self.page != Page::Setup || self.requirements.is_some() || self.setup_busy {
+                    self.cancel_auto_build("the setup page changed");
+                } else if started.elapsed() >= AUTO_BUILD_DELAY {
+                    self.auto_build = None;
+                    self.record("AUTO", "Build started automatically after the countdown.");
+                    return self.handle(Message::Preview);
+                }
+            }
+            Message::CancelAutoBuild => {}
             Message::SystemChecked(result) => match result {
                 Ok(lines) => {
                     for (step, line) in lines {
@@ -832,6 +876,7 @@ impl Installer {
                     Ok(()) if components => {
                         self.record("SETUP", "The build environment is ready.");
                         self.requirements = None;
+                        self.start_auto_build();
                     }
                     Ok(()) => {
                         let terminal = self
@@ -847,6 +892,9 @@ impl Installer {
                             },
                         );
                         self.requirements = None;
+                        if !terminal {
+                            self.start_auto_build();
+                        }
                     }
                     Err(error) => self.fail_setup(crate::components::setup_progress(), &error),
                 }
@@ -2386,6 +2434,31 @@ impl Installer {
                 .any(|d| Some(&d.id) == self.ios_device.as_ref() && d.connected)
     }
 
+    fn start_auto_build(&mut self) {
+        let device_delivery = self.target == InstallTarget::Ios
+            && self.ios_delivery == crate::backend::IosDelivery::Device;
+        if self.demo || self.page != Page::Setup || device_delivery || !self.backend_supported() {
+            return;
+        }
+        self.auto_build = Some(Instant::now());
+        self.record(
+            "AUTO",
+            "The build starts in 5 seconds. Press Cancel to stop it.",
+        );
+    }
+
+    fn cancel_auto_build(&mut self, reason: &str) {
+        if self.auto_build.take().is_some() {
+            self.record("AUTO", &format!("Automatic build start stopped: {reason}."));
+        }
+    }
+
+    fn auto_build_progress(&self) -> Option<f32> {
+        self.auto_build.map(|started| {
+            (started.elapsed().as_secs_f32() / AUTO_BUILD_DELAY.as_secs_f32()).min(1.0)
+        })
+    }
+
     fn ready(&self) -> bool {
         if self.ios_signing_open {
             return !self.ios_signing_busy && crate::ios_signing::valid_id(&self.ios_team);
@@ -3131,6 +3204,47 @@ mod tests {
         let _ = app.handle(Message::InstallRequirements);
         assert_eq!(app.setup_log_length, 7);
         assert!(app.setup_busy);
+    }
+
+    fn auto_build_app() -> Installer {
+        let (mut app, _) = Installer::with_options(Options {
+            platform: Some(Platform::Windows),
+            capture: Some(std::env::temp_dir().join("auto-build-capture")),
+            scenes: vec!["setup-dependencies"],
+            ..Options::default()
+        });
+        app.requirements = None;
+        app
+    }
+
+    #[test]
+    fn the_auto_build_countdown_stops_on_cancel_and_on_leaving_the_page() {
+        let mut app = auto_build_app();
+        app.auto_build = Some(Instant::now());
+        let _ = app.update(Message::CancelAutoBuild);
+        assert!(app.auto_build.is_none());
+        assert!(app.log.iter().any(|line| line.contains("stopped")));
+
+        app.auto_build = Some(Instant::now());
+        app.page = Page::Target;
+        let _ = app.handle(Message::AutoBuildTick);
+        assert!(app.auto_build.is_none());
+    }
+
+    #[test]
+    fn the_auto_build_countdown_starts_the_build_only_after_five_seconds() {
+        let mut app = auto_build_app();
+        app.auto_build = Some(Instant::now());
+        let _ = app.handle(Message::AutoBuildTick);
+        assert!(app.auto_build.is_some());
+        app.auto_build = Instant::now().checked_sub(AUTO_BUILD_DELAY);
+        let _ = app.handle(Message::AutoBuildTick);
+        assert!(app.auto_build.is_none());
+        assert!(
+            app.log
+                .iter()
+                .any(|line| line.contains("started automatically"))
+        );
     }
 
     #[test]

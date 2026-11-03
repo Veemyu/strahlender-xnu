@@ -364,6 +364,7 @@ messages! {
     StartBuild => ["Build app", "App bauen", "Crear aplicación", "Criar aplicação", "Создать приложение"],
     LogBuildStart => ["Starting the game build.", "Spiel-Build wird gestartet.", "Iniciando la compilación del juego.", "A iniciar a compilação do jogo.", "Начинается сборка игры."],
     MissingInput => ["Game file or prod.keys is missing.", "Spieldatei oder prod.keys fehlt.", "Falta el archivo del juego o prod.keys.", "Falta o ficheiro do jogo ou prod.keys.", "Отсутствует файл игры или prod.keys."],
+    CancelAutoStart => ["Cancel", "Abbrechen", "Cancelar", "Cancelar", "Отмена"],
     CancelBuild => ["Cancel build", "Build abbrechen", "Cancelar compilación", "Cancelar compilação", "Отменить сборку"],
     InstalledIn => ["Installed in {folder}", "Installiert in {folder}", "Instalado en {folder}", "Instalado em {folder}", "Установлено в {folder}"],
     ShowInFinder => ["Show in Finder", "Im Finder anzeigen", "Mostrar en Finder", "Mostrar no Finder", "Показать в Finder"],

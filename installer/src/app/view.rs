@@ -1935,12 +1935,24 @@ impl Installer {
             actions =
                 actions.push(self.text_action(self.language.t(L::SkipMods), Message::SkipMods));
         }
+        let countdown = self
+            .auto_build_progress()
+            .filter(|_| self.page == Page::Setup && message.is_some());
+        if countdown.is_some() {
+            actions = actions.push(self.text_action(
+                self.language.t(L::CancelAutoStart),
+                Message::CancelAutoBuild,
+            ));
+        }
         actions
             .push(
                 button(text(self.language.t(label)).size(14))
                     .padding([10, 20])
                     .on_press_maybe(message)
-                    .style(move |_, status| style::action(c, primary, status)),
+                    .style(move |_, status| match countdown {
+                        Some(progress) => style::countdown_action(c, progress, status),
+                        None => style::action(c, primary, status),
+                    }),
             )
             .into()
     }

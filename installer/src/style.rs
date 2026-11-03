@@ -108,6 +108,25 @@ pub fn action(c: Colors, primary: bool, status: button::Status) -> button::Style
     }
 }
 
+/// Primary button that fills from a dimmed accent to the full accent while the auto start counts down.
+pub fn countdown_action(c: Colors, progress: f32, status: button::Status) -> button::Style {
+    let mut style = action(c, true, status);
+    let dim = Color {
+        a: 0.35,
+        ..c.accent
+    };
+    let edge = progress.clamp(0.0, 1.0);
+    style.background = Some(Background::Gradient(
+        iced::gradient::Linear::new(iced::Radians(std::f32::consts::FRAC_PI_2))
+            .add_stop(0.0, c.accent)
+            .add_stop(edge, c.accent)
+            .add_stop(edge, dim)
+            .add_stop(1.0, dim)
+            .into(),
+    ));
+    style
+}
+
 pub fn progress(c: Colors) -> progress_bar::Style {
     progress_bar::Style {
         background: Background::Color(c.line),
