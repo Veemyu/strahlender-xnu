@@ -40,7 +40,7 @@ pub fn reveal(path: &Path) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        return Command::new("open")
+        Command::new("open")
             .arg("-R")
             .arg(path)
             .stdin(Stdio::null())
@@ -50,22 +50,22 @@ pub fn reveal(path: &Path) -> Result<(), String> {
             .map_err(|error| error.to_string())?
             .success()
             .then_some(())
-            .ok_or_else(|| "Could not show the installation folder.".into());
+            .ok_or_else(|| "Could not show the installation folder.".into())
     }
     #[cfg(target_os = "linux")]
     {
         let folder = path
             .parent()
             .ok_or("The installation folder is unavailable.")?;
-        return linux_open(folder.as_os_str())
-            .map_err(|error| format!("Could not show the installation folder: {error}"));
+        linux_open(folder.as_os_str())
+            .map_err(|error| format!("Could not show the installation folder: {error}"))
     }
     #[cfg(target_os = "windows")]
     {
         let folder = path
             .parent()
             .ok_or("The installation folder is unavailable.")?;
-        return Command::new("explorer.exe")
+        Command::new("explorer.exe")
             .arg(folder)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -74,7 +74,7 @@ pub fn reveal(path: &Path) -> Result<(), String> {
             .map_err(|error| error.to_string())?
             .success()
             .then_some(())
-            .ok_or_else(|| "Could not show the installation folder.".into());
+            .ok_or_else(|| "Could not show the installation folder.".into())
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
@@ -87,30 +87,29 @@ pub fn reveal(path: &Path) -> Result<(), String> {
 pub fn folder(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return Command::new("open")
+        Command::new("open")
             .arg(path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .map(|_| ())
-            .map_err(|error| format!("Could not open the folder: {error}"));
+            .map_err(|error| format!("Could not open the folder: {error}"))
     }
     #[cfg(target_os = "linux")]
     {
-        return linux_open(path.as_os_str())
-            .map_err(|error| format!("Could not open the folder: {error}"));
+        linux_open(path.as_os_str()).map_err(|error| format!("Could not open the folder: {error}"))
     }
     #[cfg(target_os = "windows")]
     {
-        return Command::new("explorer.exe")
+        Command::new("explorer.exe")
             .arg(path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .map(|_| ())
-            .map_err(|error| format!("Could not open the folder: {error}"));
+            .map_err(|error| format!("Could not open the folder: {error}"))
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
@@ -123,7 +122,7 @@ pub fn folder(path: &Path) -> Result<(), String> {
 pub fn url(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return Command::new("open")
+        Command::new("open")
             .arg(url)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -132,16 +131,16 @@ pub fn url(url: &str) -> Result<(), String> {
             .map_err(|error| error.to_string())?
             .success()
             .then_some(())
-            .ok_or_else(|| "Could not open the link.".into());
+            .ok_or_else(|| "Could not open the link.".into())
     }
     #[cfg(target_os = "linux")]
     {
-        return linux_open(std::ffi::OsStr::new(url))
-            .map_err(|error| format!("Could not open the link: {error}"));
+        linux_open(std::ffi::OsStr::new(url))
+            .map_err(|error| format!("Could not open the link: {error}"))
     }
     #[cfg(target_os = "windows")]
     {
-        return Command::new("rundll32.exe")
+        Command::new("rundll32.exe")
             .arg("url.dll,FileProtocolHandler")
             .arg(url)
             .stdin(Stdio::null())
@@ -151,7 +150,7 @@ pub fn url(url: &str) -> Result<(), String> {
             .map_err(|error| error.to_string())?
             .success()
             .then_some(())
-            .ok_or_else(|| "Could not open the link.".into());
+            .ok_or_else(|| "Could not open the link.".into())
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
