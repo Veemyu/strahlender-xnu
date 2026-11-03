@@ -4,8 +4,24 @@ import unittest
 from pathlib import Path
 
 from scripts.install import pathlimits
+from scripts.recomp import windows_support as windows
 
-KEY = "windows-x86_64-to-x86_64-llvm-mingw-ucrt-simd-c"
+KEY = windows.profile("x86_64", "x86_64")["cache_key"]
+
+
+GAME = ["Data/StreamingAssets/AssetAssistant/Effects/effect/prefab/field/" + "e" * 44,
+        "Data/StreamingAssets/AssetAssistant/UIs/textures/halloffame/langdatas/" + "f" * 20]
+NOTICES = ["notices/qt/licenses/LICENSE.GPL3-EXCEPT.txt"]
+MOD = {"identity": "a" * 10, "slug": "s" * 32}
+
+
+def default_root(user, source="a" * 12 + "-" + "1" * 13):
+    return ("C:\\Users\\" + user + "\\AppData\\Roaming\\Veemyu\\strahlender-xnu-installer\\data\\sources\\" + source + "\\work")
+
+
+def default_install(user, mod):
+    return "C:\\Users\\" + user + "\\AppData\\Local\\StrahlenderXnu\\" + (
+        "mod-apps\\" + pathlimits.installed_folder(mod) if mod else "app")
 
 
 def root_of(length):
@@ -24,14 +40,57 @@ class PathLimitTests(unittest.TestCase):
         self.assertTrue(full.risk)
         self.assertIn("result RISK", full.line())
 
-    def test_the_default_installer_folder_is_too_deep_and_a_short_folder_is_not(self):
-        default = "C:\\Users\\someone\\AppData\\Roaming\\Veemyu\\strahlender-xnu-installer\\data\\sources\\" + "a" * 60 + "\\work"
-        deep = pathlimits.check(default, KEY, long_paths=False)
+    def test_the_default_installer_folder_fits_for_every_user_name_and_a_deep_one_does_not(self):
+        for user, margin in (("abcde", 20), ("u" * 20, 0)):
+            root = default_root(user)
+            for label, mod in (("vanilla", None), ("mod", MOD)):
+                check = pathlimits.check(root, KEY, romfs=GAME, long_paths=False, mod=mod, package=NOTICES,
+                                         install=default_install(user, mod))
+                self.assertFalse(check.risk, (user, label, check.line()))
+                self.assertLessEqual(check.total, pathlimits.LIMIT - 1 - margin, (user, label, check.line()))
+                self.assertLessEqual(check.installed, pathlimits.LIMIT - 1 - margin, (user, label, check.line()))
+        # An installer 0.1.4 still creates the 60 character source folder: it stops at the preflight with the clear message.
+        old = default_root("abcde", "a" * 40 + "-" + "1" * 19)
+        deep = pathlimits.check(old, KEY, romfs=GAME, long_paths=False)
         self.assertTrue(deep.risk)
         self.assertIn("LongPathsEnabled=no", deep.line())
         self.assertIn("(%d of 260 characters)" % deep.total, deep.failure())
         self.assertIn("C:\\bdsp", deep.failure())
-        self.assertFalse(pathlimits.check("C:\\bdsp\\work", KEY, long_paths=False).risk)
+        self.assertFalse(pathlimits.check("C:\\bdsp\\work", KEY, romfs=GAME, long_paths=False).risk)
+
+    def test_a_deep_install_folder_is_reported_as_such(self):
+        check = pathlimits.check(default_root("abcde"), KEY, romfs=GAME, install="C:\\" + "d" * 150 + "\\app")
+        self.assertTrue(check.risk and not check.too_long)
+        self.assertIn("installed app", check.line())
+        self.assertIn("installed app is too deep".replace("installed app", "folder for the installed app"), check.failure())
+
+    def test_a_code_mod_and_the_package_are_planned(self):
+        plain = dict(pathlimits.planned_paths(KEY))
+        self.assertGreater(len(max(pathlimits.planned_paths(KEY, mod=MOD), key=lambda item: len(item[1]))[1]),
+                           len(max(pathlimits.planned_paths(KEY), key=lambda item: len(item[1]))[1]))
+        paths = [path for _label, path in pathlimits.planned_paths(KEY, romfs=GAME, mod=MOD, package=NOTICES)]
+        self.assertIn("pkg/m-" + MOD["identity"][:8] + "/romfs/" + GAME[0], paths)
+        self.assertIn("pkg/.xxxxxxxx/romfs-patch/" + GAME[1], paths)
+        self.assertIn("recomp/mods/" + "x" * 20 + "/" + KEY + "/objects/c-xxxxxxxx/subsdk0_subsdk0_00000_0000.o", paths)
+        self.assertTrue(plain)
+
+    def test_the_planned_names_match_what_the_build_creates(self):
+        root = Path(__file__).resolve().parents[2]
+        build = (root / "scripts/recomp/portable_build.py").read_text(encoding="utf-8")
+        self.assertIn('prefix="%s"' % pathlimits.GENERATE_PREFIX, build)
+        self.assertIn('prefix="%s"' % pathlimits.COMPILE_PREFIX, build)
+        self.assertIn('work / "%s"' % pathlimits.RUNTIME_DIR, build)
+        self.assertIn('prefix=".", dir=destination.parent', build)
+        patch = (root / "scripts/recomp/ui_aspect_patch.py").read_text(encoding="utf-8")
+        for folder in pathlimits.PATCH_ROOTS:
+            self.assertIn('Path("%s")' % folder, patch)
+        runtime = root / "scripts/recomp/runtime"
+        names = [path.parent.name + "_" + path.stem + ".o" for path in runtime.glob("*.c")]
+        self.assertEqual(max(names, key=len), pathlimits.RUNTIME_OBJECT)
+        overlay = root / "scripts/recomp/runtime/nvn"
+        files = [path.relative_to(tree).as_posix() for tree in (overlay / "src", overlay / "vulkan/src")
+                 for path in tree.rglob("*") if path.is_file()] + ["nvn/maxwell/translate.c"]
+        self.assertLessEqual(len(max(files, key=len)), len(pathlimits.OVERLAY_FILE.split("/nvn-src-vk/")[1]))
 
     def test_enabled_long_paths_do_not_help_because_the_generator_is_not_long_path_aware(self):
         default = root_of(200)

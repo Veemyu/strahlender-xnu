@@ -16,32 +16,91 @@ LIMIT = 260
 MODULES = ("rtld", "main", "sdk", "subsdk0", "subsdk1")
 RANDOM = "x" * 8
 PID = "123456"
+# Fixed folder names shared by the pipeline and the planner. The package folder sits directly below work, the game data
+# is by far the deepest content (107 characters relative to romfs in the retail game) and every level above it counts.
+PACKAGES = "pkg"
+STAGE_PREFIX = "."          # package_game builds below pkg/.<8 random>/ and renames it
+HOLDER_PREFIX = "t-"        # small helper files (qt.conf, mod.txt) live in pkg/t-<8 random>/
+INSTALL_PREFIX = "i-"       # install_package stages below <install parent>/i-<8 random>/app
+GENERATE_PREFIX = "g-"
+COMPILE_PREFIX = "c-"
+# Longest object name of the runtime sources (checked against the repository by the tests) and of the Vulkan overlay.
+RUNTIME_OBJECT = "runtime_services_applet.o"
+RUNTIME_DIR = "rt"
+OVERLAY_FILE = RUNTIME_DIR + "/nvn-src-vk/nvn/maxwell/translate.c"
+# ui_aspect_patch writes its overlay below romfs-patch with the same relative names, only for these folders of the game data.
+PATCH_ROOTS = ("Data/StreamingAssets/AssetAssistant/UIs", "Data/StreamingAssets/AssetAssistant/FureaiHiroba/demo",
+               "Data/StreamingAssets/AssetAssistant/Dpr/scenes/title")
+MOD_CODE_KEY = "x" * 20     # recomp/mods/<20 hex>/ holds the build of a mod with ExeFS code
 
 
-def planned_paths(cache_key, modules=MODULES, romfs=()):
+def package_folder(mod=None):
+    """Folder of the finished package below work/pkg: short, because the game data below it is deep."""
+    return "m-" + mod["identity"][:8] if mod else "BDSP"
+
+
+def installed_folder(mod=None):
+    """Folder name of the installed app (a mod app keeps its readable name; it lives outside the work folder)."""
+    return "BDSP-" + mod["slug"] + "-" + mod["identity"] if mod else "BDSP"
+
+
+def _patched(relative):
+    return relative.startswith(PATCH_ROOTS)
+
+
+def _game_data(prefix, romfs, label):
+    found = []
+    for relative in romfs:
+        found.append((label, prefix + "romfs/" + relative))
+        if _patched(relative):
+            found.append((label + " (UI overlay)", prefix + "romfs-patch/" + relative))
+    return found
+
+
+def _clean(romfs):
+    return [relative.replace("\\", "/").strip("/") for relative in romfs]
+
+
+def planned_paths(cache_key, modules=MODULES, romfs=(), mod=None, package=()):
     """(label, path) pairs of the longest paths below the work folder, with / as separator and no leading separator.
 
-    `romfs` are paths below work/romfs (the game's data, only known after the extraction)."""
+    `romfs` are paths below work/romfs (the game's data, only known after the extraction), `package` other paths
+    below the package root (notices of the bundles). `mod` is the selected mod (a code mod builds in a deeper folder)."""
     module = max(modules, key=len)
     chunk = module + "_00000_0000"
-    build = "recomp/" + cache_key
-    paths = [
-        ("generated source", build + "/generate-" + RANDOM + "/" + module + "/" + chunk + ".c." + PID + ".tmp"),
-        ("object file", build + "/objects/" + cache_key + "/compile-" + RANDOM + "/" + module + "_" + chunk + ".o"),
-        ("object receipt", build + "/objects/" + cache_key + "/" + module + "_" + chunk + ".o.json" + RANDOM + ".tmp"),
-    ]
-    for relative in romfs:
-        relative = relative.replace("\\", "/").strip("/")
+    romfs = _clean(romfs)
+    builds = ["recomp/" + cache_key]
+    if mod:
+        builds += ["recomp/mods/" + MOD_CODE_KEY + "/" + cache_key, "recomp/mod-apps/" + mod["identity"] + "/" + cache_key]
+    paths = []
+    for build in builds:
         paths += [
-            ("extracted game data", ".stage/romfs/" + relative),
-            ("packaged game data", "builds/windows-amd64/windows-package-" + RANDOM + "/BDSP/romfs/" + relative),
+            ("generated source", build + "/" + GENERATE_PREFIX + RANDOM + "/" + module + "/" + chunk + ".c." + PID + ".tmp"),
+            ("object file", build + "/objects/" + COMPILE_PREFIX + RANDOM + "/" + module + "_" + chunk + ".o"),
+            ("object receipt", build + "/objects/" + module + "_" + chunk + ".o.json" + RANDOM + ".tmp"),
+            ("runtime object", build + "/" + RUNTIME_DIR + "/" + COMPILE_PREFIX + RANDOM + "/" + RUNTIME_OBJECT + ".json" + RANDOM + ".tmp"),
+            ("Vulkan sources", build + "/" + OVERLAY_FILE),
+            ("application icons", build + "/icons/windows/" + "x" * 24),
         ]
+    stage = PACKAGES + "/" + STAGE_PREFIX + RANDOM + "/"
+    final = PACKAGES + "/" + package_folder(mod) + "/"
+    paths += [("extracted game data", ".stage/romfs/" + relative) for relative in romfs]
+    paths += _game_data("", romfs, "game data")
+    for prefix in (stage, final):
+        paths += _game_data(prefix, romfs, "packaged game data")
+        paths += [("packaged file", prefix + relative.replace("\\", "/").strip("/")) for relative in package]
     return paths
 
 
-def longest_relative(cache_key, modules=MODULES, romfs=()):
+def installed_paths(romfs=(), package=()):
+    """Paths below the install folder of the app (the finished app runs from there), with / and no leading separator."""
+    romfs = _clean(romfs)
+    return _game_data("", romfs, "installed game data") + [("installed file", relative) for relative in package]
+
+
+def longest_relative(cache_key, modules=MODULES, romfs=(), mod=None, package=()):
     """(length, label) of the longest planned path below the work folder, counting the separator in front of it."""
-    label, path = max(planned_paths(cache_key, modules, romfs), key=lambda item: len(item[1]))
+    label, path = max(planned_paths(cache_key, modules, romfs, mod, package), key=lambda item: len(item[1]))
     return len(path) + 1, label
 
 
@@ -68,30 +127,50 @@ def long_paths_enabled():
 
 
 class PathCheck(object):
-    def __init__(self, root, longest, label, long_paths):
+    def __init__(self, root, longest, label, long_paths, installed=0, installed_label=""):
         self.root, self.longest, self.label, self.long_paths = root, longest, label, long_paths
         self.total = root + longest
+        self.installed, self.installed_label = installed, installed_label
 
     @property
     def too_long(self):
         return self.total >= LIMIT
 
     @property
+    def installed_too_long(self):
+        return self.installed >= LIMIT
+
+    @property
     def risk(self):
         """Too long: the generator would stop in the middle, whatever the Windows long path setting says."""
-        return self.too_long
+        return self.too_long or self.installed_too_long
 
     def line(self):
         state = {True: "yes", False: "no"}.get(self.long_paths, "unknown")
-        return ("Path length check: root %d chars, longest generated path %d chars, limit %d, LongPathsEnabled=%s, "
-                "result %s" % (self.root, self.longest, LIMIT, state, "RISK" if self.risk else "OK"))
+        installed = ", installed app %d chars" % self.installed if self.installed else ""
+        return ("Path length check: root %d chars, longest generated path %d chars (%s), limit %d%s, LongPathsEnabled=%s, "
+                "result %s" % (self.root, self.longest, self.label, LIMIT, installed, state, "RISK" if self.risk else "OK"))
 
     def failure(self):
+        if self.installed_too_long and not self.too_long:
+            return ("The folder for the installed app is too deep for Windows (%d of %d characters, %s). Windows programs that "
+                    "are not long path aware could not open it." % (self.installed, LIMIT, self.installed_label))
         return ("The install folder is too deep for Windows (%d of %d characters). The build tools cannot create paths this long, "
                 "even when Windows long paths are enabled. Choose a shorter folder, for example C:\\bdsp." % (self.total, LIMIT))
 
 
-def check(work, cache_key, modules=MODULES, romfs=(), long_paths=None):
-    """The path check of a work folder; `long_paths` is True, False or None (unknown)."""
-    length, label = longest_relative(cache_key, modules, romfs)
-    return PathCheck(len(str(work)), length, label, long_paths)
+def check(work, cache_key, modules=MODULES, romfs=(), long_paths=None, mod=None, package=(), install=None):
+    """The path check of a work folder; `long_paths` is True, False or None (unknown).
+
+    `install` is the folder the app will be installed to (its parent holds the temporary staging folder)."""
+    length, label = longest_relative(cache_key, modules, romfs, mod, package)
+    installed, installed_label = 0, ""
+    if install is not None:
+        install = str(install).rstrip("\\/")
+        parent = len(install.replace("\\", "/").rsplit("/", 1)[0])
+        staged = parent + 1 + len(INSTALL_PREFIX) + len(RANDOM) + len("/app")
+        for found_label, path in installed_paths(romfs, package):
+            for base in (len(install), staged):
+                if base + 1 + len(path) > installed:
+                    installed, installed_label = base + 1 + len(path), found_label
+    return PathCheck(len(str(work)), length, label, long_paths, installed, installed_label)

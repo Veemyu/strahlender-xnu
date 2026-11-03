@@ -380,7 +380,7 @@ class WindowsPipelineTests(unittest.TestCase):
             self.assertTrue(any(e["event"] == "log" and "MOD badge" in e["message"] for e in record["events"]))
             self.assertEqual(record["mod.txt"], "Luminescent Platinum\n%s\nromfs\n" % mod_root.parent)
             self.assertEqual(record["data"]["exefs/main.npdm"], work / "exefs/main.npdm")
-            self.assertEqual(record["installed"][0][0], work / "builds/windows-amd64" / folder)
+            self.assertEqual(record["installed"][0][0], work / "pkg" / ("m-" + mod["identity"][:8]))
             self.assertEqual(record["installed"][0][1], root / "install" / folder)
 
     def test_code_mod_builds_the_staged_modules_and_subsdk1_in_its_own_folder(self):

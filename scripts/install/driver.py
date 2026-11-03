@@ -384,9 +384,11 @@ def windows_prerequisites(args, *, emit_result=True):
         if not catalog:
             raise ValueError("The Windows components is not installed; download it in the installer first.")
         pipeline = load_windows_pipeline(args.root)
-        selected = pipeline.prerequisites(catalog, "aarch64" if args.target == "windows-arm64" else "x86_64",
-                                          args.work, getattr(args, "min_free_gb", 40))[0]
-        paths = pipeline.path_length(args.work, selected)
+        selected, _compiler, _generator, bundles = pipeline.prerequisites(
+            catalog, "aarch64" if args.target == "windows-arm64" else "x86_64", args.work, getattr(args, "min_free_gb", 40))
+        mod = _selected_mod(args)
+        paths = pipeline.path_length(args.work, selected, romfs=pathlimits.romfs_relative(args.work), mod=mod,
+                                     package=pipeline.package_contents(bundles, args.root), install=pipeline.install_location(args, mod))
         if paths.risk:
             emit("log", level="warning", message="MISSING  Path length (%d of %d characters)" % (paths.total, pathlimits.LIMIT))
             emit("step", id="prerequisites", status="needs attention")
