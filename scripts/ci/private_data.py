@@ -3,7 +3,7 @@
 
 The inputs are served as five encrypted blobs (see the private data repository's docs). Secrets arrive only through the
 environment: CI_DATA_URL, CI_DATA_EDGE_KEY, CI_DATA_BEARER, CI_DATA_KEY, CI_DATA_MANIFEST. Nothing here prints a URL, a blob
-name, a hash, a header or any decrypted byte; the only output is the role of a blob and pass or fail.
+name, a hash, a header or any decrypted byte; the only output is the role of a blob, pass or fail and the rounded download speed (never a size or duration).
 
   mask           print ::add-mask:: commands for every secret and every part of it (run first, in the same step env)
   fetch DIR [--with-mod]  download, verify, decrypt into DIR (game.xci, update.nsp, firmware.zip, prod.keys; mod.zip only with --with-mod)
@@ -145,7 +145,9 @@ def fetch(directory, environ=os.environ, run=subprocess.run, with_mod=False):
         blob = directory / (role + ".bin")
         plain = directory / role
         try:
+            started = time.monotonic()
             download(base + "/" + name, headers, blob, run)
+            speed = blob.stat().st_size / 2**20 / max(time.monotonic() - started, 0.001) if blob.exists() else 0
             if sha256_file(blob) != digest:
                 raise DataError("Hash mismatch for " + role + "; nothing was decrypted.")
             decrypt(blob, plain, environ["CI_DATA_KEY"])
@@ -155,7 +157,7 @@ def fetch(directory, environ=os.environ, run=subprocess.run, with_mod=False):
         if not check_magic(role, plain):
             plain.unlink(missing_ok=True)
             raise DataError("Sanity check failed for " + role + " (wrong key or wrong blob).")
-        print("ok " + role, flush=True)
+        print("ok %s (download %.0f MiB/s)" % (role, speed), flush=True)
 
 
 def prepare_mod(directory, mods):
