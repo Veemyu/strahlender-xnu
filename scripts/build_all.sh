@@ -64,8 +64,34 @@ hactool_runs() {
   case "$out" in *Usage*) return 0 ;; *) return 1 ;; esac
 }
 
+# A hactool on PATH (distribution package, /usr/bin) is used instead of cloning and building one: it must print its usage
+# and know every option the extract tool passes. tools/hactool/hactool becomes a link to it, so every stage and the
+# installer find it at the same place.
+system_hactool() {
+  local found out option
+  found="$(command -v hactool 2>/dev/null)" || return 1
+  [ -x "$found" ] && [ "$found" != "$HACTOOL" ] || return 1
+  out="$("$found" --help 2>&1 || true)"
+  case "$out" in *Usage*) ;; *) return 1 ;; esac
+  for option in --securedir --pfs0dir --section0dir --romfsdir --exefsdir --basenca --disablekeywarns --suppresskeys; do
+    case "$out" in *"$option"*) ;; *) return 1 ;; esac
+  done
+  echo "$found"
+}
+
+link_system_hactool() {
+  local found
+  found="$(system_hactool)" || return 1
+  if [ -e "$HACTOOL_DIR" ] && [ -n "$(ls -A "$HACTOOL_DIR")" ]; then return 1; fi
+  mkdir -p "$HACTOOL_DIR" && ln -s "$found" "$HACTOOL" && hactool_runs || return 1
+  ok "hactool found on PATH ($found), nothing to download or build"
+}
+
 check_hactool() {
   if hactool_runs; then ok "hactool ($HACTOOL)"; return 0; fi
+  # A link to a system hactool that has since disappeared must not block the build below.
+  if [ -L "$HACTOOL" ]; then rm -f "$HACTOOL"; fi
+  if link_system_hactool; then return 0; fi
   local c
   for c in "$GIT_BIN" make cc; do
     command -v "$c" >/dev/null 2>&1 || { miss "hactool: '$c' missing (Xcode Command Line Tools?)"; return 1; }
@@ -128,7 +154,9 @@ check_python() {
 stage_tools() {
   log "Stage tools"
   if [ "$DRY" -eq 1 ]; then
-    if hactool_runs; then ok "hactool present ($HACTOOL)"; else echo "    [dry-run] would clone and build hactool: $HACTOOL_REPO to $HACTOOL_DIR (make, without sudo)"; fi
+    if hactool_runs; then ok "hactool present ($HACTOOL)"
+    elif found="$(system_hactool)"; then ok "hactool found on PATH ($found), would be used without a download"
+    else echo "    [dry-run] would clone and build hactool: $HACTOOL_REPO to $HACTOOL_DIR (make, without sudo)"; fi
     echo "    [dry-run] would build the extract tool (cargo) and check python3, ffmpeg and Xcode (check only)"
     stage_result tools "plan"; return 0
   fi
@@ -203,7 +231,7 @@ stage_extract() {
     fi
     return 0
   fi
-  hactool_runs || die 4 "hactool missing: run 'scripts/build_all.sh tools' first"
+  hactool_runs || link_system_hactool >/dev/null || die 4 "hactool missing: run 'scripts/build_all.sh tools' first"
 
   mkdir -p "$WORK"
   WORK="$(cd "$WORK" && pwd)"

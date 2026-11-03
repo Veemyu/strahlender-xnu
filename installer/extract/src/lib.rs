@@ -282,6 +282,38 @@ impl Tool {
     }
 }
 
+/// A combined XCI holds base and update; the Patch CNMT says which NCAs are the update (see `nca::split_update`).
+fn embedded_update(
+    tool: &Tool,
+    stage: &Path,
+    items: &[Nca],
+    log: &mut dyn FnMut(&str),
+) -> Result<Option<nca::Split>, Failure> {
+    let mut metas = Vec::new();
+    for (index, item) in items
+        .iter()
+        .filter(|n| n.content_type.eq_ignore_ascii_case("Meta"))
+        .enumerate()
+    {
+        let section = stage.join(format!("cnmt-scan-{index}"));
+        let parsed = tool
+            .run(&[option("--section0dir=", &section), item.path.clone().into()])
+            .ok()
+            .and_then(|()| find_first(&section, "cnmt"))
+            .and_then(|file| fs::read(file).ok())
+            .and_then(|data| nca::parse_cnmt(&data).ok());
+        metas.extend(parsed.map(|meta| (item, meta)));
+    }
+    if metas.len() < 2 {
+        return Ok(None);
+    }
+    let split = nca::split_update(items, &metas).map_err(|message| Failure { code: 9, message })?;
+    if split.is_some() {
+        log("    the container holds the base game and its update; using the newest update");
+    }
+    Ok(split)
+}
+
 fn related<'a>(rows: &'a [Nca], kind: &str, title_id: &str) -> Result<Option<&'a Nca>, Failure> {
     nca::pick_related(rows, kind, title_id).map_err(|message| Failure { code: 9, message })
 }
@@ -542,13 +574,23 @@ fn run_stage(
     }
 
     log("2/5 classify NCAs (content type, title ID)");
-    let base_nca = tool.classify(&base_dir, log)?;
+    let mut base_nca = tool.classify(&base_dir, log)?;
+    let mut update_dir = update_dir;
+    let mut embedded = Vec::new();
+    if !update {
+        if let Some((base, newer)) = embedded_update(&tool, stage, &base_nca, log)? {
+            (base_nca, embedded, update_dir) = (base, newer, base_dir.clone());
+        }
+    }
+    let update = update || !embedded.is_empty();
     let Some(base_program) = nca::pick(&base_nca, "Program", None) else {
         return fail(7, "No Program NCA found in the base game");
     };
     let title_id = base_program.title_id.clone();
     log(&format!("    base game: title ID {title_id}"));
-    let update_nca = if update {
+    let update_nca = if !embedded.is_empty() {
+        embedded
+    } else if update {
         tool.classify(&update_dir, log)?
     } else {
         Vec::new()

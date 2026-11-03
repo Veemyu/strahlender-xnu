@@ -47,7 +47,7 @@ Abschnitte beschreiben dieselben Schritte von Hand.
 | Pillow | Originalicons konvertieren und deterministisch gestalten | `python3 -c 'from PIL import Image'` |
 | Homebrew-Pakete `llvm`, `sdl3`, `ffmpeg`, `pkg-config` | macOS-App (Stufe `recomp`) | `pkg-config --exists sdl3 libavcodec libavformat libavutil` |
 | Unicorn-2.1.4-C-Header/Bibliothek in `tools/pydeps` oder `BDSP_UNICORN_ROOT` | Generator (Stufe `recomp`) | `ls tools/pydeps` |
-| `git`, `make`, `cc` | Stufe `tools` (baut `hactool`) | `command -v git make cc` |
+| `git`, `make`, `cc` | Stufe `tools` (baut `hactool`, nur wenn kein brauchbares `hactool` im `PATH` liegt) | `command -v git make cc` |
 
 Homebrew- und Python-Pakete installieren:
 
@@ -289,7 +289,7 @@ Reihenfolge der Stufen: `tools extract recomp`. Mit `--only` oder
 
 | Stufe | Zweck | Für die Apps nötig |
 |---|---|---|
-| `tools` | prüft Werkzeuge, baut `hactool` nach `tools/hactool` | ja (für `extract`) |
+| `tools` | prüft Werkzeuge, verlinkt ein brauchbares `hactool` aus dem `PATH` oder baut eines nach `tools/hactool` | ja (für `extract`) |
 | `extract` | entschlüsselt `.xci`/`.nsp` nach `work/exefs`, `work/romfs`, `work/manifest.json` | ja |
 | `recomp` | macOS-App aus der Rekompilation | nur für die macOS-App |
 

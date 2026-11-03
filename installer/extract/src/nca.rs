@@ -197,6 +197,100 @@ pub fn cnmt_version(data: &[u8]) -> Result<u32, String> {
     Ok(u32::from_le_bytes(bytes.try_into().unwrap()))
 }
 
+/// What a PackagedContentMeta (the CNMT inside a Meta NCA) says about its title.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentMeta {
+    pub title_id: String,
+    pub version: u32,
+    pub kind: u8,
+    /// (content ID as 32 lowercase hex digits, content type); the NCA file name is `<content ID>.nca`.
+    pub contents: Vec<(String, u8)>,
+}
+
+/// (base NCAs, update NCAs)
+pub type Split = (Vec<Nca>, Vec<Nca>);
+
+pub const META_APPLICATION: u8 = 0x80;
+pub const META_PATCH: u8 = 0x81;
+pub const CONTENT_PROGRAM: u8 = 1;
+
+pub fn parse_cnmt(data: &[u8]) -> Result<ContentMeta, String> {
+    let header = data.get(..0x20).ok_or("cnmt too short")?;
+    let title_id = hex(&header[..8].iter().rev().copied().collect::<Vec<_>>());
+    let version = cnmt_version(data)?;
+    let extended = usize::from(u16::from_le_bytes([header[0xE], header[0xF]]));
+    let count = usize::from(u16::from_le_bytes([header[0x10], header[0x11]]));
+    let start = 0x20 + extended;
+    let mut contents = Vec::new();
+    for index in 0..count {
+        let record = data
+            .get(start + index * 0x38..start + (index + 1) * 0x38)
+            .ok_or("cnmt content records truncated")?;
+        contents.push((hex(&record[0x20..0x30]), record[0x36]));
+    }
+    Ok(ContentMeta {
+        title_id,
+        version,
+        kind: header[0xC],
+        contents,
+    })
+}
+
+/// A container holding the base game and its update lists the same title family twice. The Patch CNMT names the update's NCAs
+/// by content ID, so the split is provable: returns the split or None when there is no single Application and
+/// at least one Patch of its family. Anything that cannot be proven is an error, never a guess.
+pub fn split_update(items: &[Nca], metas: &[(&Nca, ContentMeta)]) -> Result<Option<Split>, String> {
+    let mut applications = metas.iter().filter(|(_, m)| m.kind == META_APPLICATION);
+    let (Some((_, application)), None) = (applications.next(), applications.next()) else {
+        return Ok(None);
+    };
+    let wanted = family(&application.title_id);
+    let mut patches: Vec<_> = metas
+        .iter()
+        .filter(|(_, m)| m.kind == META_PATCH && family(&m.title_id) == wanted)
+        .collect();
+    patches.sort_by_key(|(_, m)| m.version);
+    let Some((newest, newest_meta)) = patches.pop() else {
+        return Ok(None);
+    };
+    if patches
+        .last()
+        .is_some_and(|(_, m)| m.version == newest_meta.version)
+    {
+        return Err("Several updates with the same version; title association is ambiguous".into());
+    }
+    let stem = |n: &Nca| {
+        n.path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
+    let owned = |meta: &Nca, content: &ContentMeta| -> Vec<String> {
+        std::iter::once(stem(meta))
+            .chain(content.contents.iter().map(|(id, _)| id.clone()))
+            .collect()
+    };
+    let update_ids = owned(newest, newest_meta);
+    let superseded: Vec<String> = patches.iter().flat_map(|(n, m)| owned(n, m)).collect();
+    let program = newest_meta
+        .contents
+        .iter()
+        .find(|(_, kind)| *kind == CONTENT_PROGRAM)
+        .ok_or("The update lists no Program NCA")?;
+    if !items.iter().any(|n| stem(n) == program.0) {
+        return Err("The update's Program NCA is missing from the container".into());
+    }
+    let (update, rest): (Vec<_>, Vec<_>) = items
+        .iter()
+        .cloned()
+        .partition(|n| update_ids.contains(&stem(n)));
+    let base = rest
+        .into_iter()
+        .filter(|n| !superseded.contains(&stem(n)))
+        .collect();
+    Ok(Some((base, update)))
+}
+
 fn c_string(bytes: &[u8]) -> String {
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     String::from_utf8_lossy(&bytes[..end]).trim().to_string()
@@ -297,6 +391,88 @@ mod tests {
         ];
         assert!(pick_related(&twice, "Control", "0100000011d90000").is_err());
         assert_eq!(related_size(&items, "Meta"), Ok(None));
+    }
+
+    fn meta(kind: u8, title: &str, version: u32, ids: &[(&str, u8)]) -> ContentMeta {
+        ContentMeta {
+            title_id: title.into(),
+            version,
+            kind,
+            contents: ids.iter().map(|(id, t)| (id.repeat(32), *t)).collect(),
+        }
+    }
+
+    fn named(kind: &str, stem: &str) -> Nca {
+        Nca {
+            path: PathBuf::from(format!("{}.nca", stem.repeat(32))),
+            ..nca(kind, "0100000011d90000", 1)
+        }
+    }
+
+    #[test]
+    fn an_update_is_split_off_only_when_its_content_ids_prove_it() {
+        let items = [
+            named("Control", "c"),
+            named("Control", "d"),
+            named("Program", "a"),
+            named("Program", "b"),
+            Nca {
+                path: PathBuf::from(format!("{}.cnmt.nca", "e".repeat(32))),
+                ..nca("Meta", "0100000011d90000", 1)
+            },
+            Nca {
+                path: PathBuf::from(format!("{}.cnmt.nca", "f".repeat(32))),
+                ..nca("Meta", "0100000011d90800", 1)
+            },
+        ];
+        let app = meta(
+            META_APPLICATION,
+            "0100000011d90000",
+            0,
+            &[("a", 1), ("c", 3)],
+        );
+        let patch = meta(
+            META_PATCH,
+            "0100000011d90800",
+            0x30000,
+            &[("b", 1), ("d", 3)],
+        );
+        let metas = [(&items[4], app.clone()), (&items[5], patch.clone())];
+        let (base, update) = split_update(&items, &metas).unwrap().unwrap();
+        let stems = |list: &[Nca]| -> Vec<String> {
+            list.iter()
+                .map(|n| n.path.file_name().unwrap().to_string_lossy()[..1].to_string())
+                .collect()
+        };
+        assert_eq!(stems(&base), ["c", "a", "e"]);
+        assert_eq!(stems(&update), ["d", "b", "f"]);
+        assert!(split_update(&items, &metas[..1]).unwrap().is_none());
+        let same = [
+            metas[0].clone(),
+            metas[1].clone(),
+            (&items[4], patch.clone()),
+        ];
+        assert!(split_update(&items, &same).is_err());
+        let missing = meta(META_PATCH, "0100000011d90800", 0x30000, &[("9", 1)]);
+        assert!(split_update(&items, &[(&items[4], app), (&items[5], missing)]).is_err());
+    }
+
+    #[test]
+    fn cnmt_records_give_title_version_kind_and_content_ids() {
+        let mut data = vec![0u8; 0x20 + 0x38];
+        data[..8].copy_from_slice(&0x0100000011d90800u64.to_le_bytes());
+        data[8..12].copy_from_slice(&0x30000u32.to_le_bytes());
+        data[0xC] = META_PATCH;
+        data[0x10] = 1;
+        data[0x40..0x50].fill(0xab);
+        data[0x56] = CONTENT_PROGRAM;
+        let parsed = parse_cnmt(&data).unwrap();
+        assert_eq!(
+            (parsed.title_id.as_str(), parsed.version, parsed.kind),
+            ("0100000011d90800", 0x30000, META_PATCH)
+        );
+        assert_eq!(parsed.contents, [("ab".repeat(16), CONTENT_PROGRAM)]);
+        assert!(parse_cnmt(&data[..0x30]).is_err());
     }
 
     fn related_size(items: &[Nca], kind: &str) -> Result<Option<u64>, String> {

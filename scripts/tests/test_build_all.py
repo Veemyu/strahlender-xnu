@@ -117,5 +117,77 @@ class DryRunTests(unittest.TestCase):
 
 
 
+HACTOOL_HELP = "Usage: hactool [options...] <file>\n" + "\n".join(
+    "  %s=dir" % option for option in bs.HACTOOL_OPTIONS)
+
+
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
+class SystemHactoolTests(unittest.TestCase):
+    """A hactool already on PATH is used instead of being cloned and built (issue 39); synthetic scripts only."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = self.tmp.name
+        self.work, self.tools = os.path.join(t, "work"), os.path.join(t, "tools")
+        self.bin = os.path.join(t, "bin")
+        write(os.path.join(t, "game.xci"), "synthetic")
+        write(os.path.join(t, "keys", "prod.keys"), "synthetic")
+        self.extract = os.path.join(self.bin, "fake-extract")
+        write(self.extract, "#!/bin/sh\n[ \"$1\" = check ] && exit 1\nexit 0\n")
+        os.chmod(self.extract, 0o755)
+        self.env = {"PATH": self.bin + os.pathsep + os.environ["PATH"], "TOOLS_DIR": self.tools,
+                    "BDSP_EXTRACT": self.extract, "MIN_FREE_GB": "0"}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def install(self, help_text):
+        path = os.path.join(self.bin, "hactool")
+        write(path, "#!/bin/sh\ncat <<'EOF'\n%sEOF\n" % help_text)
+        os.chmod(path, 0o755)
+        return path
+
+    def extract_stage(self):
+        return run(["--only", "extract", "--no-preflight", "--work", self.work, "--xci",
+                    os.path.join(self.tmp.name, "game.xci"), "--prod-keys",
+                    os.path.join(self.tmp.name, "keys", "prod.keys")], self.env)
+
+    def test_usable_hactool_on_path_is_linked_and_not_downloaded(self):
+        system = self.install(HACTOOL_HELP)
+        rc, out, err = self.extract_stage()
+        self.assertEqual(rc, 0, err)
+        link = os.path.join(self.tools, "hactool", "hactool")
+        self.assertEqual(os.path.realpath(link), os.path.realpath(system))
+        self.assertFalse(os.path.exists(os.path.join(self.tools, "hactool-clone.log")))
+        rc, out, _ = run(["--dry-run", "--no-preflight", "--only", "tools", "--work", self.work], self.env)
+        self.assertIn("hactool present", out)
+
+    def test_dry_run_reports_the_hactool_on_path(self):
+        self.install(HACTOOL_HELP)
+        rc, out, err = run(["--dry-run", "--no-preflight", "--only", "tools", "--work", self.work], self.env)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("hactool found on PATH", out)
+        self.assertNotIn("would clone", out)
+
+    def test_hactool_on_path_without_the_needed_options_is_not_used(self):
+        self.install("Usage: hactool [options...] <file>\n")
+        rc, out, err = self.extract_stage()
+        self.assertEqual(rc, 4)
+        self.assertIn("hactool missing", err)
+        self.assertFalse(os.path.lexists(os.path.join(self.tools, "hactool", "hactool")))
+        rc, out, _ = run(["--dry-run", "--no-preflight", "--only", "tools", "--work", self.work], self.env)
+        self.assertIn("would clone and build hactool", out)
+
+    def test_preflight_accepts_a_usable_hactool_on_path(self):
+        with tempfile.TemporaryDirectory() as tools:
+            def run_help(cmd, env=None, timeout=60):
+                return True, HACTOOL_HELP
+            items = bs.preflight(["tools", "extract"], "linux", ROOT, self.work, tools, 0,
+                                 which=lambda c: "/usr/bin/" + c if c == "hactool" else None, run=run_help,
+                                 free=lambda p: 200.0)
+            self.assertEqual([i["name"] for i in items if not i["ok"]], [])
+            self.assertTrue(any(i["name"] == "hactool on PATH" for i in items))
+
+
 if __name__ == "__main__":
     unittest.main()

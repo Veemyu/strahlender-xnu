@@ -272,6 +272,20 @@ def _run_ok(cmd, env=None, timeout=60):
         return False, ""
 
 
+HACTOOL_OPTIONS = ("--securedir", "--pfs0dir", "--section0dir", "--romfsdir", "--exefsdir", "--basenca",
+                   "--disablekeywarns", "--suppresskeys")
+
+
+def usable_hactool(which=shutil.which, run=_run_ok):
+    """Path of a hactool on PATH that prints its usage and knows every option the extract tool passes (mirrors
+    system_hactool in build_all.sh), else None."""
+    found = which("hactool")
+    if not found:
+        return None
+    ok, out = run([found, "--help"])
+    return found if "Usage" in out and all(option in out for option in HACTOOL_OPTIONS) else None
+
+
 def actool_version(run=_run_ok):
     """Short version of the selected actool (for example "27.1"), or None."""
     ok, out = run(["/usr/bin/xcrun", "actool", "--version"])
@@ -360,15 +374,19 @@ def preflight(stages, target, root, work, tools_dir=None, min_free_gb=MIN_FREE_G
             % min_free_gb)
 
     hactool = os.path.join(tools_dir, "hactool", "hactool")
+    system = None if os.access(hactool, os.X_OK) else usable_hactool(which, run)
     if "tools" in s:
-        for c in ("git", "make", "cc"):
-            executable = os.environ.get("BDSP_GIT", "git") if c == "git" else c
-            add(c + " (for hactool)", which(executable), executable if c == "git" else "",
-                "xcode-select --install (Command Line Tools)")
+        if system:
+            add("hactool on PATH", True, system, level="note")
+        else:
+            for c in ("git", "make", "cc"):
+                executable = os.environ.get("BDSP_GIT", "git") if c == "git" else c
+                add(c + " (for hactool)", which(executable), executable if c == "git" else "",
+                    "xcode-select --install (Command Line Tools)")
     elif "extract" in s:
-        add("hactool", os.access(hactool, os.X_OK), hactool,
+        add("hactool", os.access(hactool, os.X_OK) or system, hactool,
             "scripts/build_all.sh tools (clones and builds hactool locally, without sudo)")
-    if "extract" in s and "tools" in s and not os.access(hactool, os.X_OK):
+    if "extract" in s and "tools" in s and not os.access(hactool, os.X_OK) and not system:
         add("hactool", True, "built by stage tools", level="note")
 
     if "recomp" in s and want_mac:

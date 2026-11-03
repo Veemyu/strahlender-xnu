@@ -45,7 +45,7 @@ same steps by hand.
 | Pillow in the selected Python environment | Deterministic original-icon conversion | `python3 -c 'from PIL import Image'` |
 | Homebrew packages `llvm`, `sdl3`, `ffmpeg`, `pkg-config` | macOS app (`recomp` stage) | `pkg-config --exists sdl3 libavcodec libavformat libavutil` |
 | Unicorn 2.1.4 C headers/library in `tools/pydeps` or `BDSP_UNICORN_ROOT` | Code generator (`recomp` stage) | `ls tools/pydeps` |
-| `git`, `make`, `cc` | Stage `tools` (builds `hactool`) | `command -v git make cc` |
+| `git`, `make`, `cc` | Stage `tools` (builds `hactool`, only when no usable `hactool` is on `PATH`) | `command -v git make cc` |
 
 Install the Homebrew packages and the Python packages:
 
@@ -461,7 +461,7 @@ If the hash matches, the stage is skipped (`--force` rebuilds it).
 
 | Stage | Purpose | Needed for the apps |
 |---|---|---|
-| `tools` | checks tools, builds `hactool` into `tools/hactool` | yes (for `extract`) |
+| `tools` | checks tools, links a usable `hactool` from `PATH` or builds one into `tools/hactool` | yes (for `extract`) |
 | `extract` | decrypts the `.xci`/`.nsp` into `work/exefs`, `work/romfs`, `work/manifest.json` | yes |
 | `recomp` | macOS app from the recompilation | macOS app only |
 
