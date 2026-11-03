@@ -210,7 +210,7 @@ class BuildReportTests(unittest.TestCase):
 
 class SmokeTests(unittest.TestCase):
     def test_launch_commands(self):
-        self.assertEqual(smoke.launch_command("macos", "/i/BDSP.app"), ["/i/BDSP.app/Contents/MacOS/BDSP"])
+        self.assertEqual(smoke.launch_command("macos", "/i/BDSP.app"), [str(Path("/i/BDSP.app/Contents/MacOS/BDSP"))])
         self.assertEqual(smoke.launch_command("windows", "C:/i/BDSP.exe"), ["C:/i/BDSP.exe"])
         self.assertEqual(smoke.launch_command("linux", "/r/share/strahlender-xnu/app")[-1], str(Path("/r/bin/strahlender-xnu")))
 

@@ -81,6 +81,8 @@ def download(url, headers, target, run=subprocess.run):
     command = ["curl", "--fail", "--silent", "--show-error", "--retry", "3", "--retry-delay", "5",
                "--connect-timeout", "30", "--max-time", "5400", "-C", "-", "--config", "-"]
     result = run(command, input=curl_config(url, headers, target), text=True, capture_output=True, check=False)
+    if result.returncode == 3:
+        raise DataError("Download failed (curl exit 3): the URL built from CI_DATA_URL and the manifest name is malformed (stray space or quote in the secret?).")
     if result.returncode:
         raise DataError("Download failed (curl exit %d)." % result.returncode)
 
@@ -128,14 +130,14 @@ def fetch(directory, environ=os.environ, run=subprocess.run):
     missing = [name for name in SECRETS if not environ.get(name)]
     if missing:
         raise DataError("Missing secrets: " + ", ".join(missing))
-    base = environ["CI_DATA_URL"].rstrip("/")
+    base = environ["CI_DATA_URL"].strip().rstrip("/")
     if not base.startswith("https://"):
         raise DataError("CI_DATA_URL must start with https://")
     entries = parse_manifest(environ["CI_DATA_MANIFEST"])
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     restrict(directory)
-    headers = [("X-CI-Edge", environ["CI_DATA_EDGE_KEY"]), ("Authorization", "Bearer " + environ["CI_DATA_BEARER"])]
+    headers = [("X-CI-Edge", environ["CI_DATA_EDGE_KEY"].strip()), ("Authorization", "Bearer " + environ["CI_DATA_BEARER"].strip())]
     for role, (digest, name) in zip(ROLES, entries):
         blob = directory / (role + ".bin")
         plain = directory / role
