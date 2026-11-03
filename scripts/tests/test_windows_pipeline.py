@@ -84,6 +84,19 @@ class WindowsPipelineTests(unittest.TestCase):
                 pipeline.install_package(package, root / "other", emit)
             self.assertFalse((root / "other").exists())
 
+    def test_an_installed_package_with_the_old_long_cache_key_is_still_replaced(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            package = self.package(root / "package")
+            emit = lambda event, **fields: None
+            installed = pipeline.install_package(package, root / "user/app", emit)
+            receipt = installed.parent / "package.json"
+            record = json.loads(receipt.read_text(encoding="utf-8"))
+            record["target"]["cache_key"] = "windows-x86_64-to-x86_64-llvm-mingw-ucrt-simd-c"
+            receipt.write_text(json.dumps(record), encoding="utf-8")
+            pipeline.install_package(package, installed.parent, emit)
+            self.assertEqual(installed.read_bytes(), b"synthetic binary")
+
     @unittest.skipUnless(os.name == "nt", "Mocks sys.platform and needs executable-file semantics of Windows; runs on Windows only")
     def test_catalog_tracks_generator_closure_and_entire_toolchain(self):
         with tempfile.TemporaryDirectory() as temporary:

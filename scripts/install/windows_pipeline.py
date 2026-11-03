@@ -192,7 +192,7 @@ def package_record(package):
     build.filesystem.reject_link(package / "package.json")
     record = json.loads((package / "package.json").read_text(encoding="utf-8"))
     if (not isinstance(record, dict) or record.get("schema") != 1 or
-            record.get("target") != build.windows.profile("x86_64") or
+            not build.windows.same_profile(record.get("target"), build.windows.profile("x86_64")) or
             not isinstance(record.get("files"), dict) or "BDSP.exe" not in record["files"]):
         raise ValueError("The Windows package receipt is incomplete or has the wrong target")
     build.filesystem.verify_inventory(package, record["files"], ignored=("package.json",))
