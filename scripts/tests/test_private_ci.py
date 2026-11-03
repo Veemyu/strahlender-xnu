@@ -221,6 +221,14 @@ class BuildReportTests(unittest.TestCase):
         self.assertNotIn("--mod-root", plain)
         self.assertEqual(full_build.build_environment(self.args("linux"), {})["BDSP_MOD"], "none")
 
+    def test_no_firmware_leaves_out_the_firmware_option_only(self):
+        arguments = self.args("linux")
+        self.assertIn("--firmware", full_build.build_command(arguments, "py"))
+        arguments.no_firmware = True
+        command = full_build.build_command(arguments, "py")
+        self.assertNotIn("--firmware", command)
+        self.assertIn("--firmware-helper", command)
+        self.assertIn("--update", command)
     @unittest.skipIf(os.name == "nt", "symlinks need extra rights on Windows and the link is not used there")
     def test_checkout_work_folder_points_to_the_big_disk(self):
         with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as base:
