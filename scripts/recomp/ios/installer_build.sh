@@ -134,8 +134,10 @@ case "${1:-}" in
       EXPORT=$(mktemp -d "$R/.export.XXXXXX")
       trap 'rm -rf "$EXPORT"' EXIT
       mkdir "$EXPORT/Payload"
-      ditto "$APP" "$EXPORT/Payload/BDSP.app"
-      (cd "$EXPORT" && ditto -c -k --keepParent Payload "$R/BDSP.ipa.new")
+      ditto --norsrc --noextattr --noacl "$APP" "$EXPORT/Payload/BDSP.app"
+      # Without these flags ditto writes every extended attribute as a ._ AppleDouble file into the ZIP, which SideStore rejects.
+      (cd "$EXPORT" && ditto -c -k --norsrc --noextattr --noacl --keepParent Payload "$R/BDSP.ipa.new")
+      python3 scripts/install/ipa_pack.py check --ipa "$R/BDSP.ipa.new" --app-name BDSP.app
       mv "$R/BDSP.ipa.new" "$R/BDSP.ipa"
       echo "IPA: $R/BDSP.ipa"
     fi ;;

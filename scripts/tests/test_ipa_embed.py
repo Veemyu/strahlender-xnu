@@ -129,6 +129,22 @@ class PackTests(unittest.TestCase):
             self.assertEqual(seen[-1][0], seen[-1][1])
             self.assertEqual(seen[-1][2], seen[-1][3])
 
+    def test_archive_check_rejects_macos_metadata_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            good = Path(directory) / "good.ipa"
+            ipa_pack.pack_ipa(make_app(directory), good)
+            ipa_pack.check_archive(good, "BDSP.app")
+            for junk in ("Payload/BDSP.app/._Info.plist", "Payload/._BDSP.app", "__MACOSX/Payload/x", "Payload/BDSP.app/res/.DS_Store"):
+                bad = Path(directory) / "bad.ipa"
+                with zipfile.ZipFile(good) as source, zipfile.ZipFile(bad, "w") as target:
+                    for item in source.infolist():
+                        target.writestr(item, source.read(item))
+                    target.writestr(junk, b"x")
+                with self.assertRaises(ValueError, msg=junk):
+                    ipa_pack.check_archive(bad, "BDSP.app")
+                self.assertEqual(ipa_pack.main(["check", "--ipa", str(bad)]), 1)
+            self.assertEqual(ipa_pack.main(["check", "--ipa", str(good)]), 0)
+
     def test_large_archives_use_zip64(self):
         with tempfile.TemporaryDirectory() as directory:
             app = make_app(directory, link=False)

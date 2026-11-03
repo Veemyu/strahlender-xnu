@@ -178,13 +178,24 @@ def sha256_file(path, progress=None):
     return digest.hexdigest()
 
 
-def check_archive(path, app_name, expected_files):
+def junk_entries(names):
+    """Archive names that macOS tools add and that break sideloading: AppleDouble files (._x), __MACOSX and .DS_Store."""
+    return sorted(
+        name for name in names
+        if any(part.startswith("._") or part in ("__MACOSX", ".DS_Store") for part in name.split("/"))
+    )
+
+
+def check_archive(path, app_name, expected_files=None):
     """Cheap structure check (central directory only; the contents were just written from checked files)."""
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         regular = [item for item in archive.infolist() if not item.is_dir()]
-    if "Payload/" + app_name + "/Info.plist" not in names or len(regular) != expected_files:
+    if "Payload/" + app_name + "/Info.plist" not in names or (expected_files is not None and len(regular) != expected_files):
         raise ValueError("The written IPA does not list the expected files.")
+    junk = junk_entries(names)
+    if junk:
+        raise ValueError("The IPA contains %d macOS metadata files (for example %s); SideStore and similar tools cannot read it." % (len(junk), junk[0]))
 
 
 def space_message(needed, free):
@@ -246,10 +257,16 @@ def main(argv=None):
     embed.add_argument("--mod-dest")
     clear = sub.add_parser("clear", help="remove embedded data of an earlier build")
     clear.add_argument("--app", required=True)
+    check = sub.add_parser("check", help="verify the structure of a written IPA (Payload layout, no macOS metadata files)")
+    check.add_argument("--ipa", required=True)
+    check.add_argument("--app-name", default="BDSP.app")
     args = parser.parse_args(argv)
     try:
         if args.command == "clear":
             clear_embedded(args.app)
+        elif args.command == "check":
+            check_archive(args.ipa, args.app_name)
+            print("IPA structure ok.")
         else:
             modes = embed_data(args.app, args.romfs, args.romfs_dest, args.mod, args.mod_dest)
             print("Embedded game data (%s)." % ", ".join(modes))
