@@ -292,6 +292,10 @@ fn print(event: &Event) {
 }
 
 pub fn run(args: &[String]) -> i32 {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("{USAGE}");
+        return 0;
+    }
     let config = match parse(args) {
         Ok(config) => config,
         Err(error) => {
@@ -330,4 +334,88 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     run_build(plan, &runtime, emit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn exit_codes_pass_only_for_a_finished_ok_build() {
+        assert_eq!(exit_code(Some(&Event::Finished { ok: true, code: 0 })), 0);
+        assert_eq!(exit_code(Some(&Event::Finished { ok: false, code: 7 })), 7);
+        assert_eq!(
+            exit_code(Some(&Event::Finished {
+                ok: false,
+                code: -3
+            })),
+            1
+        );
+        assert_eq!(exit_code(Some(&Event::Finished { ok: false, code: 0 })), 1);
+        assert_eq!(exit_code(Some(&Event::Stopped)), 130);
+        assert_eq!(exit_code(Some(&Event::PythonMissing)), 1);
+        assert_eq!(exit_code(None), 1);
+    }
+
+    #[test]
+    fn every_event_prints_as_one_json_object_with_its_name() {
+        let events = [
+            Event::Log {
+                level: "info".into(),
+                message: "line\nbreak".into(),
+            },
+            Event::Step {
+                id: "source".into(),
+                status: "started".into(),
+            },
+            Event::Finished { ok: true, code: 0 },
+            Event::RuntimeMissing,
+            Event::Stopped,
+        ];
+        for event in events {
+            let line = event_json(&event).to_string();
+            assert!(!line.contains('\n'), "{line}");
+            let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+            assert!(value["event"].is_string());
+        }
+    }
+
+    #[test]
+    fn arguments_are_validated_before_anything_runs() {
+        assert!(parse(&args(&["--target"])).is_err());
+        assert!(parse(&args(&["--bogus"])).is_err());
+        assert!(parse(&args(&["--option", "novalue"])).is_err());
+        let config = parse(&args(&[
+            "--target",
+            "linux",
+            "--option",
+            "clean_build=true",
+        ]))
+        .unwrap();
+        assert_eq!(config.options, [("clean_build".into(), "true".into())]);
+        assert!(plan(&Config::default(), Platform::Linux, "x86_64").is_err());
+        let unknown = Config {
+            target: Some("linux".into()),
+            options: vec![("nope".into(), "1".into())],
+            ..Config::default()
+        };
+        assert!(plan(&unknown, Platform::Linux, "x86_64").is_err());
+        let mac_only = Config {
+            target: Some("macos".into()),
+            keys: Some("prod.keys".into()),
+            base: Some(std::env::temp_dir()),
+            ..Config::default()
+        };
+        assert!(plan(&mac_only, Platform::Linux, "x86_64").is_err());
+    }
+
+    #[test]
+    fn help_prints_the_usage_and_succeeds() {
+        assert_eq!(run(&args(&["--help"])), 0);
+        assert_eq!(run(&args(&["--bogus"])), 2);
+    }
 }
