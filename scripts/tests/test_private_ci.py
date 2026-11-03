@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -220,6 +221,12 @@ class BuildReportTests(unittest.TestCase):
         self.assertEqual(plain[plain.index("--work") + 1], str(Path("/src/work")))
         self.assertNotIn("--mod-root", plain)
         self.assertEqual(full_build.build_environment(self.args("linux"), {})["BDSP_MOD"], "none")
+
+    def test_every_option_the_workflow_passes_is_accepted(self):
+        result = subprocess.run([sys.executable, str(Path(full_build.__file__)), "--help"], capture_output=True, text=True)
+        for option in ("--target", "--root", "--base", "--python", "--mod", "--windows-catalog", "--ips-helper",
+                       "--firmware-helper", "--no-firmware", "--extract", "--extract-prefix", "--summary", "--installed-out"):
+            self.assertIn(option, result.stdout)
 
     def test_no_firmware_leaves_out_the_firmware_option_only(self):
         arguments = self.args("linux")

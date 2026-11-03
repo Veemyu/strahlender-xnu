@@ -122,6 +122,7 @@ def main(argv=None):
     parser.add_argument("--firmware-helper")
     parser.add_argument("--no-firmware", action="store_true",
                         help="build without the firmware step (for a data set whose firmware needs newer prod.keys)")
+    parser.add_argument("--extract")
     parser.add_argument("--extract-prefix")
     parser.add_argument("--summary")
     parser.add_argument("--installed-out")
