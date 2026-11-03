@@ -13,6 +13,14 @@ void vk_host_surface_ready(unsigned long long) {}
 int vk_host_shutdown(void) { return 1; }
 #endif
 void bdsp_set_fps(int value) { g_bdsp_fps = value; }
+// display_size.c needs the loaded game modules, so the View menu's display choices are stubbed here
+static const DisplayChoice test_aspects[] = {{"16:9", "16:9", 16.0 / 9}, {"4:3", "4:3", 4.0 / 3}};
+static const DisplayChoice test_heights[] = {{"1080", "1080p", 0}};
+const DisplayChoice *display_aspect_choices(int *count) { *count = 2; return test_aspects; }
+const DisplayChoice *display_height_choices(int *count) { *count = 1; return test_heights; }
+const char *display_pref_or_default(const char *key) { return key[0] == 'a' ? "16:9" : "1080"; }
+bool display_pref_store(const char *, const char *) { return true; }
+double display_aspect(void) { return 16.0 / 9; }
 #ifndef QT_INPUT_PROBE
 void input_handle_event(const void *) {}
 int swkbd_ui_active(void) { return 0; }
