@@ -1,9 +1,12 @@
-"""install-linux.sh architecture check: x86-64 and aarch64 pass (aarch64 with an experimental notice), others stop."""
+"""install-linux.sh architecture check (x86-64 and aarch64 pass, others stop) and the installed runtime layout."""
 from pathlib import Path
 import os
+import re
 import subprocess
 import sys
 import unittest
+
+from scripts.install import driver
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "install-linux.sh"
@@ -43,3 +46,20 @@ class LinuxInstallArchitectureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LinuxRuntimeLayoutTests(unittest.TestCase):
+    """The installed layout and the runtime's defaults for a start without the launcher (issue 26) name the same entries."""
+
+    def test_runtime_defaults_match_the_launcher_and_the_installed_layout(self):
+        launcher = driver._linux_launcher(Path("/data"), Path("/data/mods"), "")
+        exported = dict(re.findall(r"export (BDSP_\w+)='([^']*)'", launcher))
+        source = (ROOT / "scripts/recomp/runtime/exe_paths.c").read_text(encoding="utf-8")
+        defaults = re.findall(r'default_path\("(BDSP_\w+)", dir, "([^"]+)"', source)
+        self.assertEqual({name for name, _ in defaults}, {"BDSP_IMG", "BDSP_ROMFS", "BDSP_NPDM"})
+        for name, entry in defaults:
+            self.assertEqual(exported[name], "/data/app/" + entry, name)
+
+    def test_the_runtime_applies_the_defaults_before_it_reads_the_paths(self):
+        source = (ROOT / "scripts/recomp/runtime/main.c").read_text(encoding="utf-8")
+        self.assertLess(source.index("bdsp_exe_defaults();"), source.index('getenv("BDSP_IMG")'))
