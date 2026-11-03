@@ -94,6 +94,22 @@ impl InstallTarget {
     }
 }
 
+/// The two Windows folders the user can move: where the build runs and where the finished app is installed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderSetting {
+    Work,
+    Install,
+}
+
+impl FolderSetting {
+    fn file(self) -> &'static str {
+        match self {
+            Self::Work => crate::appdir::WORK_FOLDER,
+            Self::Install => crate::appdir::INSTALL_FOLDER,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     ShowInstalledApp,
@@ -128,6 +144,9 @@ pub enum Message {
     SelectTarget(InstallTarget),
     OptimizeCpu(bool),
     BuildOptions(bool),
+    ChooseFolder(FolderSetting),
+    FolderPicked(FolderSetting, Option<PathBuf>),
+    ResetFolder(FolderSetting),
     CleanBuild(bool),
     ExportWithoutData(bool),
     AutoCleanup(bool),
@@ -262,6 +281,8 @@ pub struct Installer {
     ios_export_no_embed: bool,
     auto_cleanup: bool,
     build_options_open: bool,
+    work_folder: Option<PathBuf>,
+    install_folder: Option<PathBuf>,
     settings_open: bool,
     cleanup_busy: bool,
     host: Platform,
@@ -581,6 +602,8 @@ impl Installer {
             ios_export_no_embed: false,
             auto_cleanup: true,
             build_options_open: false,
+            work_folder: stored_folder(host, FolderSetting::Work),
+            install_folder: stored_folder(host, FolderSetting::Install),
             settings_open: false,
             cleanup_busy: false,
             host,
@@ -1196,6 +1219,38 @@ impl Installer {
                         )
                     }
                 }
+            }
+            Message::ChooseFolder(setting)
+                if self.host == Platform::Windows
+                    && self.page == Page::Setup
+                    && self.build_options_open =>
+            {
+                let current = match setting {
+                    FolderSetting::Work => self.work_folder.clone(),
+                    FolderSetting::Install => self.install_folder.clone(),
+                };
+                return Task::perform(
+                    async move {
+                        let picker = rfd::AsyncFileDialog::new();
+                        let picker =
+                            current.map_or(picker.clone(), |path| picker.set_directory(path));
+                        picker
+                            .pick_folder()
+                            .await
+                            .map(|folder| folder.path().to_path_buf())
+                    },
+                    move |folder| Message::FolderPicked(setting, folder),
+                );
+            }
+            Message::FolderPicked(setting, Some(path))
+                if self.host == Platform::Windows && self.page == Page::Setup =>
+            {
+                self.set_folder(setting, Some(path));
+            }
+            Message::ResetFolder(setting)
+                if self.host == Platform::Windows && self.page == Page::Setup =>
+            {
+                self.set_folder(setting, None);
             }
             Message::CleanBuild(enabled) if self.page == Page::Setup => {
                 self.clean_build = enabled;
@@ -2300,6 +2355,20 @@ impl Installer {
         self.capture.is_none() && !self.demo && !cfg!(test)
     }
 
+    /// Remembers a chosen build or install folder; `None` returns to the default.
+    fn set_folder(&mut self, setting: FolderSetting, folder: Option<PathBuf>) {
+        if self.persist_preferences()
+            && crate::appdir::choose_folder(setting.file(), folder.as_deref()).is_err()
+        {
+            self.notice = Some(self.language.t(L::PreferenceError).into());
+            return;
+        }
+        match setting {
+            FolderSetting::Work => self.work_folder = folder,
+            FolderSetting::Install => self.install_folder = folder,
+        }
+    }
+
     fn save_source_preference(&mut self, slot: Slot, source: Option<&Source>) {
         if self.persist_preferences()
             && preferences::save_source_path(slot, source.map(|source| source.path.as_path()))
@@ -3104,6 +3173,15 @@ impl Installer {
     }
 }
 
+/// The folder chosen earlier in the build options; only Windows has the choice, and tests never read the real settings.
+fn stored_folder(host: Platform, setting: FolderSetting) -> Option<PathBuf> {
+    if host == Platform::Windows && !cfg!(test) {
+        crate::appdir::chosen_folder(setting.file())
+    } else {
+        None
+    }
+}
+
 /// Which host, target and CPU architecture have a real build path. Linux aarch64 is allowed but experimental
 /// (`experimental_target`).
 fn platform_backend_supported(host: Platform, target: InstallTarget, arch: &str) -> bool {
@@ -3369,6 +3447,41 @@ mod tests {
         let _ = app.update(Message::Back);
         assert_eq!(app.page, Page::Setup);
         assert!(!app.build_options_open);
+    }
+
+    #[test]
+    fn windows_folders_are_chosen_in_the_build_options_and_can_be_reset() {
+        let (mut app, _) = Installer::new();
+        app.host = Platform::Windows;
+        app.page = Page::Setup;
+        let work = PathBuf::from("C:\\bdsp");
+        let _ = app.update(Message::FolderPicked(
+            FolderSetting::Work,
+            Some(work.clone()),
+        ));
+        let _ = app.update(Message::FolderPicked(
+            FolderSetting::Install,
+            Some(PathBuf::from("D:\\games")),
+        ));
+        assert_eq!(app.work_folder, Some(work));
+        assert_eq!(app.install_folder, Some(PathBuf::from("D:\\games")));
+        let _ = app.update(Message::ResetFolder(FolderSetting::Work));
+        assert_eq!(app.work_folder, None);
+        assert!(app.install_folder.is_some());
+        let _ = app.update(Message::FolderPicked(FolderSetting::Work, None));
+        assert_eq!(app.work_folder, None);
+    }
+
+    #[test]
+    fn other_systems_ignore_the_windows_folder_messages() {
+        let (mut app, _) = Installer::new();
+        app.host = Platform::Mac;
+        app.page = Page::Setup;
+        let _ = app.update(Message::FolderPicked(
+            FolderSetting::Work,
+            Some(PathBuf::from("/data")),
+        ));
+        assert_eq!(app.work_folder, None);
     }
 
     #[test]

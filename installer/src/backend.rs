@@ -389,6 +389,12 @@ fn run_driver(
                 {
                     command.arg("--windows-catalog").arg(catalog);
                 }
+                if target.starts_with("windows")
+                    && let Some(folder) =
+                        crate::appdir::chosen_folder(crate::appdir::INSTALL_FOLDER)
+                {
+                    command.arg("--install-root").arg(folder);
+                }
                 if target == "ios" {
                     command.arg("--ios-delivery").arg(ios_delivery.as_str());
                     if ios_delivery == IosDelivery::Device

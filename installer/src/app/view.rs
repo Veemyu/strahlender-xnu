@@ -1,4 +1,4 @@
-use super::{InstallTarget, Installer, Message, Page, compact_name, index};
+use super::{FolderSetting, InstallTarget, Installer, Message, Page, compact_name, index};
 use crate::{
     drop_target,
     i18n::{Label as L, Language},
@@ -13,6 +13,7 @@ use iced::widget::{
     text, text_input, toggler, tooltip,
 };
 use iced::{Center, Element, Fill, Size, Task, window};
+use std::path::PathBuf;
 
 // Shared width accommodates the longest German/English picker label plus padding.
 const FILE_ACTION_WIDTH: f32 = 112.0;
@@ -1353,11 +1354,32 @@ impl Installer {
             .into();
         }
         if self.build_options_open {
+            let folders: Element<'_, Message> = if self.host == Platform::Windows {
+                column![
+                    self.folder_setting(
+                        self.language.t(L::BuildFolder),
+                        self.language.t(L::BuildFolderHint),
+                        &self.work_folder,
+                        FolderSetting::Work
+                    ),
+                    self.folder_setting(
+                        self.language.t(L::InstallFolder),
+                        self.language.t(L::InstallFolderHint),
+                        &self.install_folder,
+                        FolderSetting::Install
+                    ),
+                ]
+                .spacing(16)
+                .into()
+            } else {
+                space().height(0).into()
+            };
             return column![
                 self.title(
                     self.language.t(L::BuildOptions),
                     self.language.t(L::BuildOptionsHint)
                 ),
+                folders,
                 column![
                     toggler(self.clean_build)
                         .label(self.language.t(L::CleanBuild))
@@ -2116,6 +2138,41 @@ impl Installer {
             .on_press_maybe(message)
             .style(move |_, status| style::action(c, primary, status))
             .into()
+    }
+
+    /// A Windows folder setting: its name, the current folder (or the default) and the choose and reset actions.
+    fn folder_setting<'a>(
+        &'a self,
+        label: &'a str,
+        hint: &'a str,
+        folder: &'a Option<PathBuf>,
+        setting: FolderSetting,
+    ) -> Element<'a, Message> {
+        let c = style::colors(self.appearance);
+        let shown = folder.as_ref().map_or_else(
+            || self.language.t(L::FolderDefault).to_string(),
+            |path| path.display().to_string(),
+        );
+        let reset = if folder.is_some() {
+            self.text_action(
+                self.language.t(L::FolderReset),
+                Message::ResetFolder(setting),
+            )
+        } else {
+            space().height(0).into()
+        };
+        column![
+            text(label).size(14),
+            text(shown).size(12),
+            row![
+                self.text_action(self.language.t(L::Folder), Message::ChooseFolder(setting)),
+                reset
+            ]
+            .spacing(14),
+            text(hint).size(12).color(c.muted),
+        ]
+        .spacing(5)
+        .into()
     }
 
     fn text_action<'a>(&self, label: &'a str, message: Message) -> Element<'a, Message> {

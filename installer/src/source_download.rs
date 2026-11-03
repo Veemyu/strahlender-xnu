@@ -11,19 +11,27 @@ pub fn data_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "Your application data folder could not be located.".into())
 }
 
-/// Folder of the downloaded sources. On Windows the build below it must stay shallow, so `BDSP_INSTALLER_DATA_DIR`
-/// (for example C:\bdsp) replaces the default below the user profile.
+/// Folder of the downloaded sources. On Windows the build below it must stay shallow, so a folder chosen in the build
+/// options, or `BDSP_INSTALLER_DATA_DIR` (which wins), for example C:\bdsp, replaces the default below the user profile.
 pub fn sources_dir() -> Result<PathBuf, String> {
-    sources_dir_in(std::env::var_os("BDSP_INSTALLER_DATA_DIR"), data_dir)
+    sources_dir_in(
+        std::env::var_os("BDSP_INSTALLER_DATA_DIR"),
+        crate::appdir::chosen_folder(crate::appdir::WORK_FOLDER),
+        data_dir,
+    )
 }
 
 fn sources_dir_in(
     override_dir: Option<std::ffi::OsString>,
+    chosen: Option<PathBuf>,
     default: impl FnOnce() -> Result<PathBuf, String>,
 ) -> Result<PathBuf, String> {
     match override_dir.filter(|value| !value.is_empty()) {
         Some(folder) => Ok(PathBuf::from(folder).join("sources")),
-        None => default().map(|dir| dir.join("sources")),
+        None => match chosen {
+            Some(folder) => Ok(folder.join("sources")),
+            None => default().map(|dir| dir.join("sources")),
+        },
     }
 }
 
@@ -177,15 +185,29 @@ mod tests {
     fn the_data_folder_variable_replaces_the_default_sources_folder() {
         let default = || Ok(PathBuf::from("profile").join("data"));
         assert_eq!(
-            super::sources_dir_in(Some("short".into()), default).unwrap(),
+            super::sources_dir_in(Some("short".into()), None, default).unwrap(),
             PathBuf::from("short").join("sources")
         );
         for unset in [None, Some("".into())] {
             assert_eq!(
-                super::sources_dir_in(unset, default).unwrap(),
+                super::sources_dir_in(unset, None, default).unwrap(),
                 PathBuf::from("profile").join("data").join("sources")
             );
         }
+    }
+
+    #[test]
+    fn a_chosen_folder_beats_the_default_and_the_variable_beats_it() {
+        let default = || Ok(PathBuf::from("profile").join("data"));
+        let chosen = Some(PathBuf::from("chosen"));
+        assert_eq!(
+            super::sources_dir_in(None, chosen.clone(), default).unwrap(),
+            PathBuf::from("chosen").join("sources")
+        );
+        assert_eq!(
+            super::sources_dir_in(Some("short".into()), chosen, default).unwrap(),
+            PathBuf::from("short").join("sources")
+        );
     }
 
     #[test]

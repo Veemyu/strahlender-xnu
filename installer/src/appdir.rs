@@ -39,6 +39,44 @@ pub fn logs_dir() -> Option<PathBuf> {
     data_dir().map(|root| root.join("logs"))
 }
 
+/// Settings file (in the config folder) with the folder the user chose for the build ...
+pub const WORK_FOLDER: &str = "work-folder.txt";
+/// ... and for the installed app. A missing file means the default.
+pub const INSTALL_FOLDER: &str = "install-folder.txt";
+
+/// The folder the user chose in the build options, or `None` for the default.
+pub fn chosen_folder(setting: &str) -> Option<PathBuf> {
+    chosen_folder_in(&config_dir()?, setting)
+}
+
+/// Remembers the chosen folder; `None` goes back to the default. The folder itself is never created or deleted here.
+pub fn choose_folder(setting: &str, folder: Option<&Path>) -> io::Result<()> {
+    let config = config_dir().ok_or_else(|| io::Error::other("no configuration folder"))?;
+    choose_folder_in(&config, setting, folder)
+}
+
+fn chosen_folder_in(config: &Path, setting: &str) -> Option<PathBuf> {
+    let text = fs::read_to_string(config.join(setting)).ok()?;
+    let folder = PathBuf::from(text.trim());
+    folder.is_absolute().then_some(folder)
+}
+
+fn choose_folder_in(config: &Path, setting: &str, folder: Option<&Path>) -> io::Result<()> {
+    let file = config.join(setting);
+    let Some(folder) = folder else {
+        return match fs::remove_file(&file) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+            _ => Ok(()),
+        };
+    };
+    let text = folder
+        .to_str()
+        .filter(|_| folder.is_absolute())
+        .ok_or_else(|| io::Error::other("the folder must be a complete path"))?;
+    fs::create_dir_all(config)?;
+    fs::write(file, text)
+}
+
 fn project() -> Option<directories::ProjectDirs> {
     directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
 }
@@ -132,6 +170,24 @@ mod tests {
         assert!(!copy_config_once(&old, &new).unwrap());
         assert!(fs::read_dir(&new).unwrap().next().is_none());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_chosen_folder_is_remembered_and_can_be_reset() {
+        let config = scratch("chosen").join("config");
+        assert_eq!(chosen_folder_in(&config, WORK_FOLDER), None);
+        let folder = scratch("chosen-target");
+        choose_folder_in(&config, WORK_FOLDER, Some(&folder)).unwrap();
+        assert_eq!(chosen_folder_in(&config, WORK_FOLDER), Some(folder.clone()));
+        assert_eq!(chosen_folder_in(&config, INSTALL_FOLDER), None);
+        choose_folder_in(&config, WORK_FOLDER, None).unwrap();
+        choose_folder_in(&config, WORK_FOLDER, None).unwrap();
+        assert_eq!(chosen_folder_in(&config, WORK_FOLDER), None);
+        assert!(folder.is_dir());
+        assert!(choose_folder_in(&config, WORK_FOLDER, Some(Path::new("short"))).is_err());
+        fs::write(config.join(WORK_FOLDER), "relative\\folder\n").unwrap();
+        assert_eq!(chosen_folder_in(&config, WORK_FOLDER), None);
+        let _ = fs::remove_dir_all(folder);
     }
 
     #[cfg(windows)]
