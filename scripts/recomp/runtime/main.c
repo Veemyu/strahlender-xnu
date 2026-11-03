@@ -58,7 +58,13 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
     vm_address_t a = GUEST_LO;
     kern_return_t kr = vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED);
     if (kr == KERN_SUCCESS && a == GUEST_LO) return;
-    fprintf(stderr, "FATAL: guest window %llx-%llx is not free (kr %d, got %llx)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI, kr, (unsigned long long)a);
+    // iPadOS 27 refuses the fixed vm_allocate (KERN_NO_SPACE) where a fixed anonymous mmap succeeds.
+    void *ma = mmap((void *)(uintptr_t)GUEST_LO, GUEST_HI - GUEST_LO, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0);
+    if (ma == (void *)(uintptr_t)GUEST_LO) {
+        fprintf(stderr, "[guestmem] guest window %llx-%llx reserved with mmap (vm_allocate kr %d)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI, kr);
+        return;
+    }
+    fprintf(stderr, "FATAL: guest window %llx-%llx is not free (kr %d, mmap %p errno %d)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI, kr, ma, errno);
     _exit(1);
 }
 #else
