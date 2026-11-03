@@ -26,6 +26,7 @@ mod process;
 mod progress;
 mod project_link;
 mod runtime;
+mod session_log;
 mod source_download;
 mod sources;
 mod style;

@@ -2088,8 +2088,11 @@ impl Installer {
 
     // Diagnostic messages intentionally exclude file paths and key contents.
     fn record(&mut self, step: &str, message: &str) {
-        self.log
-            .push(format!("{:03} [{step}] {message}", self.log.len() + 1));
+        let line = format!("{:03} [{step}] {message}", self.log.len() + 1);
+        if self.persist_preferences() {
+            crate::session_log::append(&line);
+        }
+        self.log.push(line);
     }
 
     fn persist_preferences(&self) -> bool {
