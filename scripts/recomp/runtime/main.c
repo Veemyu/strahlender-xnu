@@ -19,9 +19,6 @@
 
 #include "bdsp.h"
 #include "mods.h"
-#ifdef __linux__
-#include "exe_paths.h"
-#endif
 #include "audio_output.h"
 #ifdef _WIN32
 #include "win32_files.h"
@@ -57,8 +54,17 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
     vm_address_t a = GUEST_LO;
     kern_return_t kr = vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED);
-    if (kr == KERN_SUCCESS && a == GUEST_LO) return;
-    fprintf(stderr, "FATAL: guest window %llx-%llx is not free (kr %d, got %llx)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI, kr, (unsigned long long)a);
+    if (kr == KERN_SUCCESS && a == GUEST_LO) {
+        fprintf(stderr, "[guestmem] Reserved guest window %llx-%llx (vm_allocate OK)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI);
+        return;
+    }
+    void *ma = mmap((void *)(uintptr_t)GUEST_LO, GUEST_HI - GUEST_LO, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0);
+    if (ma == (void *)(uintptr_t)GUEST_LO) {
+        fprintf(stderr, "[guestmem] Reserved guest window %llx-%llx (mmap OK)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI);
+        return;
+    }
+    fprintf(stderr, "FATAL: guest window %llx-%llx is not free (kr %d, mmap %p errno %d)\n",
+            (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI, kr, ma, errno);
     _exit(1);
 }
 #else
@@ -352,9 +358,6 @@ int main(int argc, char **argv) {
 #ifdef BDSP_APP
     bdsp_app_init(argc, argv);   // macOS app: paths/configuration, environment of the runtime, save backup (runtime/app)
 #endif
-#ifdef __linux__
-    bdsp_exe_defaults();   // started without the launcher script: use img/, romfs/ and main.npdm next to the executable
-#endif
     signal(SIGINT, on_sigint);
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
@@ -381,15 +384,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--no-window")) no_window = 1;   // no graphics (gate 1 measurement only): NVN functions stay unused
         else if (!strcmp(argv[i], "--input-script") && i + 1 < argc) runtime_setenv("BDSP_INPUT_SCRIPT", argv[++i]);   // "second:KEY[+KEY]:duration,..." (nvn_glue.c)
         else if (!strcmp(argv[i], "--save") && i + 1 < argc) runtime_setenv("BDSP_SAVE", argv[++i]);   // save folder (default work/recomp/save, see install_save.sh)
-        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) {   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
-            if (getenv("BDSP_COMPILED_EXEFS")) { fprintf(stderr, "[mods] --mod ignored: this app has %s compiled in\n", getenv("BDSP_COMPILED_EXEFS")); i++; }
-            else runtime_setenv("BDSP_MOD", argv[++i]);
-        }
+        else if (!strcmp(argv[i], "--mod") && i + 1 < argc) runtime_setenv("BDSP_MOD", argv[++i]);   // mod folder name below BDSP_MODS_DIR, "none" = the game (mods.h)
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) runtime_setenv("BDSP_TIMEOUT", argv[++i]);
-#ifdef __APPLE__
-        // standard Cocoa pairs (-AppleLanguages "(de)", -NSDocumentRevisionsDebugMode YES ...) are read by NSUserDefaults itself
-        else if ((!strncmp(argv[i], "-Apple", 6) || !strncmp(argv[i], "-NS", 3)) && i + 1 < argc) i++;
-#endif
         else { fprintf(stderr, "unbekannte Option %s\n", argv[i]); return 2; }
     }
     g_timeout = getenv("BDSP_TIMEOUT") ? atoi(getenv("BDSP_TIMEOUT")) : 120;
@@ -426,7 +422,6 @@ int main(int argc, char **argv) {
 
     kernel_init();
     loader_load(img);
-    display_size_init();
     dispatch_init();
     if (getenv("BDSP_WATCH")) {   // debugging: "hexaddress,hexaddress": log calls through the dispatcher with x0..x2 and lr
         char *spec = strdup(getenv("BDSP_WATCH")), *sv = NULL;
