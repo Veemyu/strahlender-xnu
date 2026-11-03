@@ -109,42 +109,7 @@ enum ProtocolEvent {
 }
 
 pub fn reveal_installed_application(path: PathBuf) -> Result<(), String> {
-    if !path.exists() {
-        return Err("The installed app is no longer available.".into());
-    }
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = std::process::Command::new("open");
-        command.arg("-R").arg(&path);
-        command
-    };
-    #[cfg(target_os = "linux")]
-    let mut command = {
-        let mut command = std::process::Command::new("xdg-open");
-        command.arg(
-            path.parent()
-                .ok_or("The installation folder is unavailable.")?,
-        );
-        command
-    };
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = std::process::Command::new("explorer.exe");
-        command.arg(
-            path.parent()
-                .ok_or("The installation folder is unavailable.")?,
-        );
-        command
-    };
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|error| error.to_string())?
-        .success()
-        .then_some(())
-        .ok_or("Could not show the installation folder.".into())
+    crate::open::reveal(&path)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

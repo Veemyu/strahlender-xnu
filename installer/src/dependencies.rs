@@ -694,6 +694,24 @@ mod tests {
         assert!(probes.iter().any(|p| p == "pkg-config --exists sdl3"));
     }
     #[test]
+    fn linux_catalog_installs_xdg_utils_for_folder_actions() {
+        let catalog: super::Catalog =
+            serde_json::from_str(include_str!("../assets/dependencies.json")).unwrap();
+        let component = catalog
+            .components
+            .iter()
+            .find(|component| component.id == "xdg-utils")
+            .expect("xdg-utils is a Linux requirement");
+        assert!(component.linux);
+        assert_eq!(
+            component.probe,
+            vec!["xdg-open".to_string(), "--version".to_string()]
+        );
+        assert_eq!(component.apt, vec!["xdg-utils".to_string()]);
+        assert_eq!(component.dnf, vec!["xdg-utils".to_string()]);
+        assert_eq!(component.pacman, vec!["xdg-utils".to_string()]);
+    }
+    #[test]
     fn detects_distribution_families() {
         assert_eq!(
             super::detect_manager("ID=nobara\nID_LIKE=\"fedora\""),

@@ -3,7 +3,6 @@ use crate::{app::InstallTarget, platform::Platform};
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
 };
 
 pub const MAX_MODS: usize = 32;
@@ -75,23 +74,7 @@ pub fn folder_for(host: Platform, target: InstallTarget) -> Option<PathBuf> {
 
 pub fn open_folder(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|error| format!("Could not create mods folder: {error}"))?;
-    #[cfg(target_os = "macos")]
-    let program = "open";
-    #[cfg(target_os = "linux")]
-    let program = "xdg-open";
-    #[cfg(target_os = "windows")]
-    let program = "explorer.exe";
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    return Err("Opening folders is not supported on this host.".into());
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
-    Command::new(program)
-        .arg(path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("Could not open mods folder: {error}"))
+    crate::open::folder(path)
 }
 
 pub fn scan(path: &Path) -> Result<Vec<ModEntry>, String> {

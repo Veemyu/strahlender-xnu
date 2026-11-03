@@ -47,6 +47,7 @@ impl Language {
             "vma" => Label::GpuMemory,
             "time" => Label::BuildTimings,
             "wayland" => Label::WaylandWindow,
+            "xdg-utils" => Label::OpenFolders,
             _ => return None,
         }))
     }
@@ -442,6 +443,7 @@ messages! {
     GpuMemory => ["Manage GPU memory", "Grafikspeicher verwalten", "Gestionar la memoria de la GPU", "Gerir a memória da GPU", "Управлять памятью видеокарты"],
     BuildTimings => ["Report build timings", "Build-Zeiten erfassen", "Medir tiempos de compilación", "Medir tempos de compilação", "Измерять время сборки"],
     WaylandWindow => ["Open the game in a Wayland desktop session", "Das Spiel unter Wayland öffnen", "Abrir el juego en una sesión Wayland", "Abrir o jogo numa sessão Wayland", "Открывать игру в сеансе Wayland"],
+    OpenFolders => ["Open installation and mod folders from the installer", "Installations- und Mod-Ordner aus dem Installer öffnen", "Abrir las carpetas de instalación y mods desde el instalador", "Abrir as pastas de instalação e mods a partir do instalador", "Открывать папки установки и модов из установщика"],
     InstallCltNote => ["Install Apple's Command Line Tools in the system dialog, then retry.", "Installiere Apples Command Line Tools im Systemdialog und versuche es erneut.", "Instala las Command Line Tools de Apple en el diálogo del sistema y vuelve a intentarlo.", "Instala as Command Line Tools da Apple no diálogo do sistema e tenta novamente.", "Установите Command Line Tools от Apple в системном окне и повторите попытку."],
     InstallXcodeNote => ["Install and open Xcode, accept its license, and install the iOS platform. An Apple signing team is needed only for direct device installation.", "Installiere und öffne Xcode, akzeptiere die Lizenz und installiere die iOS-Plattform. Ein Apple-Signierungsteam ist nur zur direkten Geräteinstallation nötig.", "Instala y abre Xcode, acepta su licencia e instala la plataforma iOS. Solo necesitas un equipo de firma de Apple para instalar directamente en el dispositivo.", "Instala e abre o Xcode, aceita a licença e instala a plataforma iOS. Só precisas de uma equipa de assinatura Apple para instalar diretamente no dispositivo.", "Установите и откройте Xcode, примите лицензию и установите платформу iOS. Команда подписи Apple нужна только для прямой установки на устройство."],
     FinishXcodeNote => ["Open Xcode to finish its first-launch setup and license acceptance, then check again.", "Öffne Xcode, schließe die Ersteinrichtung samt Lizenzannahme ab und prüfe erneut.", "Abre Xcode, completa la configuración inicial y acepta la licencia. Después, vuelve a comprobar.", "Abre o Xcode, conclui a configuração inicial e aceita a licença. Depois, verifica novamente.", "Откройте Xcode, завершите начальную настройку и примите лицензию, затем проверьте снова."],
