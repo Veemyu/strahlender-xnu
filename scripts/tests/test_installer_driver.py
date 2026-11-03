@@ -495,6 +495,35 @@ class InstallerDriverTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "original game's bundle identifier"), contextlib.redirect_stdout(io.StringIO()):
                 driver._prepare_ios(args, prepared, device)
 
+    def test_ios_loose_portions_of_every_copy_use_their_own_stage_folder(self):
+        # Issue 38: the mod's first loose portion hit the folder left by the game data ("File exists: copy-stage/0").
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build_dir, artifact = root / "build", root / "build/BDSP.app"
+            (artifact / "res").mkdir(parents=True)
+            metadata = {"RomFSDirectory": "GameData/abc/romfs", "ModDirectory": "Mods/def/Example", "CompiledExeFS": False}
+            (artifact / "Info.plist").write_bytes(driver.plistlib.dumps({"CFBundleIdentifier": "dev.test.game"}))
+            (artifact / "res/install-data.plist").write_bytes(driver.plistlib.dumps(metadata))
+            for name in ("game", "mod"):
+                (root / name).mkdir()
+                (root / name / "a.bin").write_bytes(b"x")
+            args = SimpleNamespace(root=root, work=root / "work", ios_install={
+                "device": {"id": "d", "udid": "u", "name": "Test"}, "bundle_id": "dev.test.game", "build_dir": build_dir,
+                "metadata": metadata, "romfs": root / "game", "mod_root": root / "mod", "overlay": None, "mod_overlay": None})
+            staged = []
+
+            def run(command, *_args, **_options):
+                if "copy" in command:
+                    staged.append(Path(command[command.index("--source") + 1]))
+                return 0
+
+            loose = [(Path("."), "loose", ("a.bin",), 1, 1)]
+            with patch.object(driver, "_copy_portions", return_value=loose), patch.object(driver, "_run_command", side_effect=run), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                driver._install_ios(args, artifact)
+            self.assertEqual(len(staged), 2)
+            self.assertEqual(len(set(staged)), 2)
+
     def test_ios_device_selection_requires_explicit_choice_with_multiple_connected_devices(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = SimpleNamespace(work=temporary, ios_device=None)

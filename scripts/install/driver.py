@@ -904,13 +904,13 @@ def _install_ios(args, artifact):
     stage_root = info["build_dir"] / "copy-stage"
     shutil.rmtree(stage_root, ignore_errors=True)
     try:
-        for source, destination, portions in plan:
+        for entry, (source, destination, portions) in enumerate(plan):
             what = "mod files" if destination.startswith("Mods/") else "UI layout fix" if "/romfs-patch" in "/" + destination else "game data"
             emit("log", level="diagnostic", message="Copying " + what + " to the device.")
             for number, (rel, kind, names, files, size) in enumerate(portions):
                 local = source / rel
                 if kind == "loose":
-                    local = _stage_loose_files(local, names, stage_root / str(number))
+                    local = _stage_loose_files(local, names, stage_root / f"{entry}-{number}")
                 remote = "Documents/" + destination + ("/" + rel.as_posix() if rel.parts else "")
                 code = _run_command(["xcrun", "devicectl", "device", "copy", "to", "--device", device,
                                      "--domain-type", "appDataContainer", "--domain-identifier", bundle,
