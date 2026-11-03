@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -180,6 +181,23 @@ class PrivateDataTests(unittest.TestCase):
         os.chmod(folder, 0o500)
         private_data.wipe([str(self.temp / "w"), str(self.temp / "missing")])
         self.assertFalse((self.temp / "w").exists())
+
+    def test_wipe_retries_while_a_cancelled_build_still_writes(self):
+        folder = self.temp / "w"
+        folder.mkdir()
+        real = shutil.rmtree
+        calls = []
+
+        def flaky(path, **kwargs):
+            calls.append(path)
+            if len(calls) < 3:
+                raise OSError(39, "Directory not empty")
+            return real(path, **kwargs)
+
+        with mock.patch.object(shutil, "rmtree", flaky), mock.patch.object(private_data.time, "sleep"):
+            private_data.wipe([str(folder)])
+        self.assertEqual(len(calls), 3)
+        self.assertFalse(folder.exists())
 
 
 class BuildReportTests(unittest.TestCase):

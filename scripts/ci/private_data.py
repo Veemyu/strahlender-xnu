@@ -16,6 +16,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -185,11 +186,19 @@ def _writable(function, path, _error):
     function(path)
 
 
-def _remove_tree(path):
-    if sys.version_info >= (3, 12):
-        shutil.rmtree(path, onexc=_writable)
-    else:
-        shutil.rmtree(path, onerror=_writable)
+def _remove_tree(path, attempts=6, pause=3):
+    # A cancelled build can still have child processes writing into the tree for a moment ("Directory not empty").
+    for attempt in range(attempts):
+        try:
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(path, onexc=_writable)
+            else:
+                shutil.rmtree(path, onerror=_writable)
+            return
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(pause)
 
 
 def wipe(paths):
