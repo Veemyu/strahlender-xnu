@@ -6,7 +6,7 @@ environment: CI_DATA_URL, CI_DATA_EDGE_KEY, CI_DATA_BEARER, CI_DATA_KEY, CI_DATA
 name, a hash, a header or any decrypted byte; the only output is the role of a blob and pass or fail.
 
   mask           print ::add-mask:: commands for every secret and every part of it (run first, in the same step env)
-  fetch DIR      download, verify, decrypt into DIR (game.xci, update.nsp, firmware.zip, mod.zip, prod.keys)
+  fetch DIR [--with-mod]  download, verify, decrypt into DIR (game.xci, update.nsp, firmware.zip, prod.keys; mod.zip only with --with-mod)
   mod DIR MODS   unpack DIR/mod.zip into MODS/ci-mod (a single top folder is flattened) and delete the zip
   wipe PATH...   remove folders (always safe to repeat)
 """
@@ -78,7 +78,7 @@ def curl_config(url, headers, output):
 
 def download(url, headers, target, run=subprocess.run):
     # No redirect following: a redirect must never carry the credentials to another host. No -v, so no headers are printed.
-    command = ["curl", "--fail", "--silent", "--show-error", "--retry", "3", "--retry-delay", "5",
+    command = ["curl", "--fail", "--silent", "--show-error", "--retry", "10", "--retry-all-errors", "--retry-delay", "5",
                "--connect-timeout", "30", "--max-time", "5400", "-C", "-", "--config", "-"]
     result = run(command, input=curl_config(url, headers, target), text=True, capture_output=True, check=False)
     if result.returncode == 3:
@@ -126,7 +126,7 @@ def restrict(path):
         os.chmod(path, stat.S_IRWXU if Path(path).is_dir() else stat.S_IRUSR | stat.S_IWUSR)
 
 
-def fetch(directory, environ=os.environ, run=subprocess.run):
+def fetch(directory, environ=os.environ, run=subprocess.run, with_mod=False):
     missing = [name for name in SECRETS if not environ.get(name)]
     if missing:
         raise DataError("Missing secrets: " + ", ".join(missing))
@@ -139,6 +139,8 @@ def fetch(directory, environ=os.environ, run=subprocess.run):
     restrict(directory)
     headers = [("X-CI-Edge", environ["CI_DATA_EDGE_KEY"].strip()), ("Authorization", "Bearer " + environ["CI_DATA_BEARER"].strip())]
     for role, (digest, name) in zip(ROLES, entries):
+        if role == "mod.zip" and not with_mod:
+            continue
         blob = directory / (role + ".bin")
         plain = directory / role
         try:
@@ -201,8 +203,8 @@ def wipe(paths):
 
 def main(argv):
     try:
-        if len(argv) == 3 and argv[1] == "fetch":
-            fetch(argv[2])
+        if len(argv) in (3, 4) and argv[1] == "fetch" and argv[3:] in ([], ["--with-mod"]):
+            fetch(argv[2], with_mod=argv[3:] == ["--with-mod"])
         elif len(argv) == 4 and argv[1] == "mod":
             prepare_mod(argv[2], argv[3])
         elif len(argv) >= 3 and argv[1] == "wipe":

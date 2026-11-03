@@ -91,7 +91,7 @@ class PrivateDataTests(unittest.TestCase):
             blobs[name] = blob
         return blobs, "\n".join(lines)
 
-    def run_fetch(self, blobs, manifest, key=KEY):
+    def run_fetch(self, blobs, manifest, key=KEY, with_mod=True):
         calls = []
 
         def fake_run(command, input, **_kwargs):
@@ -102,7 +102,7 @@ class PrivateDataTests(unittest.TestCase):
 
         environ = {"CI_DATA_URL": "https://example.invalid", "CI_DATA_EDGE_KEY": "edge", "CI_DATA_BEARER": "b" * 64,
                    "CI_DATA_KEY": key, "CI_DATA_MANIFEST": manifest}
-        private_data.fetch(self.temp / "data", environ, fake_run)
+        private_data.fetch(self.temp / "data", environ, fake_run, with_mod=with_mod)
         return calls
 
     def test_fetch_decrypts_all_roles_and_leaves_no_blob(self):
@@ -116,6 +116,13 @@ class PrivateDataTests(unittest.TestCase):
             self.assertNotIn("b" * 64, " ".join(command))
             self.assertIn("X-CI-Edge: edge", config)
         self.assertNotIn("--location", " ".join(calls[0][0]))
+
+    def test_fetch_skips_the_mod_archive_unless_asked(self):
+        blobs, manifest = self.serve()
+        calls = self.run_fetch(blobs, manifest, with_mod=False)
+        names = sorted(path.name for path in (self.temp / "data").iterdir())
+        self.assertEqual(names, sorted(set(private_data.ROLES) - {"mod.zip"}))
+        self.assertEqual(len(calls), len(private_data.ROLES) - 1)
 
     def test_wrong_key_and_damaged_download_are_refused(self):
         blobs, manifest = self.serve(key="z" * 48)
