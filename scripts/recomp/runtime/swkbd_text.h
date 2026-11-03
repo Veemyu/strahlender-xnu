@@ -11,7 +11,7 @@
 // gradient (0 top colour .. 1 bottom colour) its top and bottom edge lie.
 typedef struct { float x0, y0, x1, y1, u0, v0, u1, v1, g0, g1; } SwkbdGlyph;
 
-// 1 when the text font is in <root>/fonts (nothing is read yet).
+// 1 when a text font can be drawn: the firmware's in <root>/fonts, else (Windows, Linux) a system TrueType font (BDSP_SWKBD_FONT overrides).
 int swkbd_text_available(const char *root);
 // Validate both the firmware text font and button-glyph font.
 int swkbd_text_firmware_ready(const char *root);

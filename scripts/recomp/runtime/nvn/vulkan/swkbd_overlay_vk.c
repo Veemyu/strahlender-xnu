@@ -342,10 +342,10 @@ static void preview_check(void) {
 
 void menu_render(void *cmd, uint32_t w, uint32_t h) {
     static int once;
-    if (!once) {   // first frame: the keyboard can be drawn when the firmware's text font is there
+    if (!once) {   // first frame: the keyboard can be drawn when a text font is there (the firmware's, else a system font for the simple keyboard)
         once = 1;
         const char *root = getenv("BDSP_FIRMWARE_DATA");
-        if (root && *root && swkbd_text_available(root)) { swkbd_ui_set_display(1); swkbd_ui_set_wake(keepalive_wake); }
+        if (swkbd_text_available(root)) { swkbd_ui_set_display(1); swkbd_ui_set_wake(keepalive_wake); }
     }
     preview_check();
     int active = swkbd_ui_visible();

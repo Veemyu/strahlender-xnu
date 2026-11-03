@@ -36,6 +36,60 @@ static struct {
     unsigned version;
 } T = {.lock = PTHREAD_MUTEX_INITIALIZER};
 
+// Without the firmware's text font the keyboard of our own (swkbd_ui.c, simple layout) draws its text with a font the system already has.
+// macOS and iOS draw it through CoreText instead (nvn/swkbd_overlay.m), so only Windows and Linux look here. BDSP_SWKBD_FONT=<file.ttf> overrides.
+static const char *const k_system_fonts[] = {
+#if defined(_WIN32)
+    "%WINDIR%/Fonts/segoeui.ttf", "%WINDIR%/Fonts/arial.ttf", "%WINDIR%/Fonts/tahoma.ttf",
+#elif !defined(__APPLE__)
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf", "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", "/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf",
+#endif
+    NULL,
+};
+
+// The file fontconfig picks for "sans" (Linux only; empty when fc-match is missing).
+static const char *fontconfig_sans(char *out, size_t size) {
+    out[0] = 0;
+#if defined(__linux__)
+    FILE *pipe = popen("fc-match -f '%{file}' sans 2>/dev/null", "r");
+    if (pipe) { size_t n = fread(out, 1, size - 1, pipe); out[n] = 0; pclose(pipe); }
+#else
+    (void)size;
+#endif
+    return out;
+}
+
+// The first readable TrueType file of the override, fontconfig and the system list, as the standard font. 1 when it loaded.
+static int system_font_load(Font *f) {
+    const char *own = getenv("BDSP_SWKBD_FONT");
+    char picked[1024];
+    for (int k = -2; k < (int)(sizeof k_system_fonts / sizeof *k_system_fonts) - 1; k++) {
+        char path[1200];
+        const char *name = k == -2 ? own : k == -1 ? fontconfig_sans(picked, sizeof picked) : k_system_fonts[k];
+        if (!name || !*name) continue;
+        const char *token = strstr(name, "%WINDIR%");
+        if (token) {
+            const char *windir = getenv("WINDIR");
+            snprintf(path, sizeof path, "%s%s", windir && *windir ? windir : "C:/Windows", token + 8);
+        } else snprintf(path, sizeof path, "%s", name);
+        FILE *fp = fopen(path, "rb");
+        if (!fp) continue;
+        fseek(fp, 0, SEEK_END);
+        long n = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (n > 16 && n < (64 << 20) && (f->data = malloc((size_t)n))) {
+            if (fread(f->data, 1, (size_t)n, fp) == (size_t)n && stbtt_InitFont(&f->info, f->data, 0)) { fclose(fp); return f->ok = 1; }
+            free(f->data); f->data = NULL;
+        }
+        fclose(fp);
+    }
+    return 0;
+}
+
 // ---- fonts. The .bfttf files are TrueType with every 32-bit word XORed with a key taken from the first word (first word ^ 0x18029A7F), after an 8 byte header.
 static void font_load(int i) {
     Font *f = &T.font[i];
@@ -44,7 +98,7 @@ static void font_load(int i) {
     char path[1200];
     snprintf(path, sizeof path, "%s/fonts/%s", T.root, k_fonts[i]);
     FILE *fp = fopen(path, "rb");
-    if (!fp) return;
+    if (!fp) { if (i == F_STD) system_font_load(f); return; }
     fseek(fp, 0, SEEK_END);
     long n = ftell(fp);
     fseek(fp, 0, SEEK_SET);
@@ -107,7 +161,11 @@ int swkbd_text_available(const char *root) {
     snprintf(path, sizeof path, "%s/fonts/%s", root ? root : "", k_fonts[F_STD]);
     FILE *fp = fopen(path, "rb");
     if (fp) fclose(fp);
-    return fp != NULL;
+    if (fp) return 1;
+    Font probe = {0};
+    if (!system_font_load(&probe)) return 0;
+    free(probe.data);
+    return 1;
 }
 
 int swkbd_text_firmware_ready(const char *root) {

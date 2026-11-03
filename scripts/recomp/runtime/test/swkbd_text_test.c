@@ -46,6 +46,14 @@ int main(int argc, char **argv) {
     swkbd_text_close();
     assert(!unlink(text) && !unlink(glyph) && !rmdir(fonts) && !rmdir(temporary));
     puts("Font readiness: missing and corrupt resources rejected.");
+    if (getenv("BDSP_SWKBD_FONT")) {   // no firmware folder: the keyboard of our own draws with this font and never counts as the firmware's
+        CHECK(swkbd_text_available("/nonexistent"));
+        CHECK(swkbd_text_open("/nonexistent"));
+        CHECK(!swkbd_text_firmware_ready("/nonexistent"));
+        CHECK(swkbd_text_measure("Hello", 30, 0) > 40);
+        swkbd_text_close();
+        puts("System font: simple keyboard text works without firmware.");
+    }
     const char *root = getenv("BDSP_FIRMWARE_DATA");
     if (!root || !swkbd_text_open(root)) { printf("swkbd_text_test: no firmware fonts, skipped\n"); return 0; }
     float w1 = swkbd_text_measure("Hello", 30, 0), w2 = swkbd_text_measure("Hello", 30, 2);
