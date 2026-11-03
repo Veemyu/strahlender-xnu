@@ -1322,6 +1322,36 @@ impl Installer {
         if self.setup_busy {
             return self.components_view();
         }
+        if let Some(failure) = &self.setup_failure {
+            return column![
+                column![
+                    text(self.language.t(L::SetupFailed).replace("{}", &failure.step)).size(20),
+                    text(self.language.t(L::SetupFailedHint))
+                        .size(13)
+                        .color(c.muted),
+                ]
+                .spacing(8),
+                container(
+                    scrollable(text(failure.error.as_str()).size(12).color(c.error)).height(110)
+                )
+                .padding(12)
+                .width(Fill)
+                .style(move |_| style::surface(c, false)),
+                row![
+                    button(text(self.language.t(L::Retry)).size(12))
+                        .padding([8, 12])
+                        .on_press(Message::InstallRequirements)
+                        .style(move |_, status| style::action(c, true, status)),
+                    button(text(self.language.t(L::CopyLog)).size(12))
+                        .padding([8, 12])
+                        .on_press(Message::CopyLog)
+                        .style(move |_, status| style::action(c, false, status)),
+                ]
+                .spacing(10),
+            ]
+            .spacing(12)
+            .into();
+        }
         if self.build_options_open {
             return column![
                 self.title(
@@ -1982,6 +2012,7 @@ impl Installer {
                 }),
             );
         }
+        // The three actions wrap to a second line when a translation is too long for the window width.
         let mut controls = row![self.text_action(
             self.language.t(if self.details {
                 L::HideDetails
@@ -1990,13 +2021,13 @@ impl Installer {
             }),
             Message::ToggleDetails
         )]
-        .align_y(Center);
+        .spacing(18);
         if self.details {
             controls = controls
-                .push(space().width(Fill))
                 .push(self.text_action(self.language.t(L::OpenLogFolder), Message::OpenLogFolder))
                 .push(self.text_action(self.language.t(L::CopyLog), Message::CopyLog));
         }
+        let controls = controls.wrap().vertical_spacing(2);
         let mut footer = column![].spacing(10);
         if self.page != Page::Finished {
             footer = footer.push(self.navigation());

@@ -31,6 +31,7 @@ mod session_log;
 mod source_download;
 mod sources;
 mod style;
+mod sysinfo;
 mod updates;
 mod vma;
 mod window_layout;

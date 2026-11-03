@@ -157,6 +157,7 @@ pub enum Message {
     SetupTick,
     DefenderChecked(Option<bool>),
     RequirementsOpened(Result<(), String>),
+    SystemChecked(Result<Vec<(&'static str, String)>, String>),
     UpdateChecked(Result<Option<crate::updates::Release>, String>),
     UpdateInstaller,
     ShowUpdateDetails,
@@ -286,6 +287,28 @@ pub struct Installer {
     update_confirmation: bool,
     setup_log_length: usize,
     requirements_run_id: u64,
+    /// The last Install tools failure, shown as a card until the next attempt or check.
+    setup_failure: Option<SetupFailure>,
+    /// The setup output already copied into the session log, and the step that was last announced there.
+    setup_streamed: Vec<String>,
+    setup_step_logged: (u32, String, String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct SetupFailure {
+    step: String,
+    error: String,
+}
+
+/// The lines of `current` that `previous` does not contain: the output is a window of the last lines, so the tail of
+/// `previous` can have scrolled out and the longest overlap with the start of `current` is the part seen before.
+fn unseen_lines<'a>(previous: &[String], current: &'a [String]) -> &'a [String] {
+    let most = previous.len().min(current.len());
+    let overlap = (0..=most)
+        .rev()
+        .find(|&n| previous[previous.len() - n..] == current[..n])
+        .unwrap_or(0);
+    &current[overlap..]
 }
 
 impl Page {
@@ -580,7 +603,11 @@ impl Installer {
             update_confirmation: false,
             setup_log_length: 0,
             requirements_run_id: 0,
+            setup_failure: None,
+            setup_streamed: Vec::new(),
+            setup_step_logged: Default::default(),
         };
+        app.record_system_header();
         if demo {
             app.keys = Some(Source::fixture("prod.keys", app.language.t(L::DemoData)));
             app.base = Some(Source::fixture(
@@ -609,8 +636,13 @@ impl Installer {
             Task::none()
         };
         let task = if !app.demo && app.capture.is_none() {
+            let data = crate::appdir::data_dir();
             Task::batch([
                 task,
+                Task::perform(
+                    blocking(move || Ok(crate::sysinfo::probe("native", data))),
+                    Message::SystemChecked,
+                ),
                 Task::perform(blocking(crate::updates::check), Message::UpdateChecked),
                 Task::perform(
                     blocking(|| Ok::<_, String>(crate::defender::realtime_protection())),
@@ -735,14 +767,8 @@ impl Installer {
                 if run_id == self.requirements_run_id && self.page == Page::Setup =>
             {
                 self.requirements_busy = false;
-                let log = crate::dependencies::read_setup_log();
-                if log.len() != self.setup_log_length {
-                    let new = log.get(self.setup_log_length..).unwrap_or(&log);
-                    for line in new.lines() {
-                        self.record("SETUP", &redact_home_path(line));
-                    }
-                    self.setup_log_length = log.len();
-                }
+                self.stream_terminal_log();
+                self.setup_failure = None;
                 match result {
                     Ok(plan) if plan.ready() => {
                         self.requirements = Some(plan);
@@ -760,16 +786,32 @@ impl Installer {
             Message::SetupTick => {
                 if self.setup_busy {
                     self.setup_progress = crate::components::setup_progress();
+                    self.stream_setup_progress();
                 }
             }
+            Message::SystemChecked(result) => match result {
+                Ok(lines) => {
+                    for (step, line) in lines {
+                        self.record(step, &redact_home_path(&line));
+                    }
+                }
+                Err(error) => self.record("SYSTEM", &format!("Probe failed: {error}")),
+            },
             Message::DefenderChecked(state) => self.defender = state,
             Message::InstallRequirements => {
                 if self.setup_busy {
                     return Task::none();
                 }
                 self.setup_log_length = 0;
+                self.setup_failure = None;
                 if let Some(plan) = self.requirements.clone() {
+                    self.record(
+                        "SETUP",
+                        &format!("Install tools started ({}).", plan.manager),
+                    );
                     if plan.manager == "windows-components" {
+                        self.setup_streamed.clear();
+                        self.setup_step_logged = Default::default();
                         crate::components::reset_setup_progress();
                         self.setup_progress = crate::components::setup_progress();
                         self.setup_busy = true;
@@ -806,7 +848,7 @@ impl Installer {
                         );
                         self.requirements = None;
                     }
-                    Err(error) => self.notice = Some(error),
+                    Err(error) => self.fail_setup(crate::components::setup_progress(), &error),
                 }
             }
             Message::InputsRestored(restored) => {
@@ -901,6 +943,8 @@ impl Installer {
                     && target != InstallTarget::Android =>
             {
                 self.target = target;
+                self.setup_failure = None;
+                self.record("SYSTEM", &format!("Selected target: {}", target.label()));
                 self.mods_skipped = false;
                 self.mods_folder = mod_support::folder_for(self.host, target);
                 self.chosen_mod_folder = None;
@@ -2096,6 +2140,99 @@ impl Installer {
             _ => {}
         }
         Task::none()
+    }
+
+    /// The facts that need no probe, before any step. The slow ones follow with `Message::SystemChecked`.
+    fn record_system_header(&mut self) {
+        if self.capture.is_some() || self.demo {
+            return;
+        }
+        let log_file = self
+            .persist_preferences()
+            .then(crate::session_log::file_name)
+            .flatten();
+        let data = crate::appdir::data_dir();
+        let host = if self.simulated_platform {
+            format!("{} (simulated)", self.host.label())
+        } else {
+            self.host.label().to_owned()
+        };
+        let lines = crate::sysinfo::header(
+            &host,
+            self.target.label(),
+            self.language.code(),
+            data.as_deref(),
+            log_file.as_deref(),
+        );
+        for line in lines {
+            self.record("SYSTEM", &redact_home_path(&line));
+        }
+    }
+
+    /// Copies what the terminal install wrote since the last look into the session log.
+    fn stream_terminal_log(&mut self) {
+        let log = crate::dependencies::read_setup_log();
+        if log.len() != self.setup_log_length {
+            let new = log.get(self.setup_log_length..).unwrap_or(&log);
+            for line in new.lines() {
+                self.record("SETUP", &redact_home_path(line));
+            }
+            self.setup_log_length = log.len();
+        }
+    }
+
+    /// Step changes and new output lines of the running Windows setup go into the session log as they happen.
+    fn stream_setup_progress(&mut self) {
+        let progress = self.setup_progress.clone();
+        let step = (progress.index, progress.id.clone(), progress.phase.clone());
+        if progress.index > 0 && step != self.setup_step_logged {
+            self.record(
+                "SETUP",
+                &format!(
+                    "Step {} of {}: {} ({})",
+                    progress.index, progress.total, progress.id, progress.phase
+                ),
+            );
+            self.setup_step_logged = step;
+        }
+        for line in unseen_lines(&self.setup_streamed, &progress.log) {
+            self.record("SETUP", &redact_home_path(line));
+        }
+        self.setup_streamed = progress.log;
+    }
+
+    /// An install of the requirements failed: the log gets the exact error with the step and the last output, and a card
+    /// stays on screen (the error is not only a dialog that disappears).
+    fn fail_setup(&mut self, progress: crate::components::SetupProgress, error: &str) {
+        let error = redact_home_path(error);
+        let manager = self.requirements.as_ref().map(|plan| plan.manager.clone());
+        let step = if manager.as_deref() == Some("windows-components") {
+            self.setup_progress = progress;
+            self.stream_setup_progress();
+            let p = &self.setup_progress;
+            let step = format!(
+                "step {} of {}, {} ({})",
+                p.index.max(1),
+                p.total.max(1),
+                if p.id.is_empty() { "unknown" } else { &p.id },
+                if p.phase.is_empty() {
+                    "unknown"
+                } else {
+                    &p.phase
+                }
+            );
+            self.record("SETUP", &format!("Install tools failed in {step}: {error}"));
+            step
+        } else {
+            self.stream_terminal_log();
+            let manager = manager.unwrap_or_else(|| "unknown".into());
+            self.record(
+                "SETUP",
+                &format!("Install tools failed ({manager}): {error}"),
+            );
+            manager
+        };
+        self.setup_failure = Some(SetupFailure { step, error });
     }
 
     // Diagnostic messages intentionally exclude file paths and key contents.
@@ -3969,5 +4106,93 @@ mod tests {
             !app.build_stages()
                 .contains(&crate::progress::Stage::Signing)
         );
+    }
+    fn lines(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn setup_output_is_streamed_without_repeating_lines() {
+        let seen = lines(&["a", "b", "c"]);
+        assert_eq!(unseen_lines(&[], &seen), &seen[..]);
+        assert_eq!(unseen_lines(&seen, &lines(&["a", "b", "c", "d"])), ["d"]);
+        // the window of last lines scrolled: the first line fell out
+        assert_eq!(unseen_lines(&seen, &lines(&["b", "c", "d"])), ["d"]);
+        assert!(unseen_lines(&seen, &seen).is_empty());
+    }
+
+    #[test]
+    fn a_failed_components_install_is_in_the_log_with_step_and_error_and_stays_visible() {
+        let (mut app, _) = Installer::with_options(Options {
+            platform: Some(Platform::Windows),
+            capture: Some(std::env::temp_dir().join("setup-failure-capture")),
+            scenes: vec!["setup-dependencies"],
+            ..Options::default()
+        });
+        assert_eq!(
+            app.requirements.as_ref().map(|p| p.manager.as_str()),
+            Some("windows-components")
+        );
+        let mut progress = crate::components::SetupProgress::default();
+        let now = std::time::Instant::now();
+        progress.apply(r#"{"event": "steps", "total": 12}"#, now);
+        progress.apply(
+            r#"{"event": "step", "index": 2, "id": "qt", "phase": "unpack"}"#,
+            now,
+        );
+        progress.apply("Unpacking qtbase", now);
+        progress.apply("Cannot create output file", now);
+        app.fail_setup(progress.clone(), "Qt archive is corrupt");
+        // the same output arriving again (a late tick) adds nothing
+        app.fail_setup(progress, "Qt archive is corrupt");
+        let text = app.log.join("\n");
+        assert!(text.contains("[SETUP] Step 3 of 13: qt (unpack)"), "{text}");
+        assert!(
+            text.contains(
+                "Install tools failed in step 3 of 13, qt (unpack): Qt archive is corrupt"
+            )
+        );
+        assert_eq!(text.matches("Cannot create output file").count(), 1);
+        assert_eq!(text.matches("Unpacking qtbase").count(), 1);
+        let failure = app.setup_failure.clone().expect("a card stays on screen");
+        assert!(failure.step.contains("qt") && failure.error == "Qt archive is corrupt");
+        assert!(app.requirements.is_some(), "Retry needs the plan");
+        let _ = app.handle(Message::InstallRequirements);
+        assert!(app.setup_failure.is_none() && app.setup_busy);
+        assert!(app.log.last().unwrap().contains("Install tools started"));
+    }
+
+    #[test]
+    fn the_system_block_is_written_once_at_start_without_the_home_directory() {
+        let (app, _) = Installer::with_options(Options::default());
+        let system: Vec<&String> = app.log.iter().filter(|l| l.contains("[SYSTEM]")).collect();
+        assert_eq!(
+            system
+                .iter()
+                .filter(|l| l.contains(concat!("Installer ", env!("CARGO_PKG_VERSION"))))
+                .count(),
+            1
+        );
+        let text = system
+            .iter()
+            .map(|l| l.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains(std::env::consts::ARCH));
+        assert!(text.contains("selected target:") && text.contains("language:"));
+        assert!(text.contains("log file:") && text.contains("Data folder:"));
+        assert!(app.log[0].starts_with("001 [SYSTEM]"));
+        if let Some(home) = directories::UserDirs::new() {
+            let home = home.home_dir().to_string_lossy().into_owned();
+            assert!(!text.contains(&home), "{text}");
+            let line =
+                crate::sysinfo::header("Windows", "Windows", "en", Some(&home_child(&home)), None)
+                    .join("\n");
+            assert!(!redact_home_path(&line).contains(&home));
+        }
+    }
+
+    fn home_child(home: &str) -> PathBuf {
+        PathBuf::from(home).join("AppData").join("strahlender")
     }
 }

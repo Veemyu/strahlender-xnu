@@ -41,6 +41,14 @@ fn prune(dir: &Path, keep: usize) {
     }
 }
 
+/// Name of the file this session writes to (created on first use).
+pub fn file_name() -> Option<String> {
+    let path = FILE
+        .get_or_init(|| dir().and_then(|d| start(&d)))
+        .as_ref()?;
+    Some(path.file_name()?.to_string_lossy().into_owned())
+}
+
 pub fn append(line: &str) {
     let Some(path) = FILE.get_or_init(|| dir().and_then(|d| start(&d))) else {
         return;
