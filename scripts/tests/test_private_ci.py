@@ -196,6 +196,15 @@ class BuildReportTests(unittest.TestCase):
         self.assertNotIn("--mod-root", plain)
         self.assertEqual(full_build.build_environment(self.args("linux"), {})["BDSP_MOD"], "none")
 
+    @unittest.skipIf(os.name == "nt", "symlinks need extra rights on Windows and the link is not used there")
+    def test_checkout_work_folder_points_to_the_big_disk(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as base:
+            args = self.args("linux")
+            args.root, args.base = root, base
+            full_build.link_work(args)
+            self.assertEqual((Path(root) / "work").resolve(), (Path(base) / "work").resolve())
+            full_build.link_work(args)
+
     def test_summary_redacts_paths_and_hex(self):
         lines = [json.dumps({"event": "step", "id": "extract", "status": "complete"}),
                  "not json",

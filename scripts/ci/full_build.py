@@ -53,6 +53,18 @@ def build_command(args, python=None):
     return command
 
 
+def link_work(args):
+    """The checkout's work/ points at the big disk (BASE), so the disk space check and the build use BASE."""
+    if args.target == "windows":
+        return
+    link = Path(args.root) / "work"
+    if link.exists() or link.is_symlink():
+        return
+    target = Path(args.base) / "work"
+    target.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(target, target_is_directory=True)
+
+
 def build_environment(args, environ=os.environ):
     base = Path(args.base)
     env = dict(environ)
@@ -109,6 +121,7 @@ def main(argv=None):
     logs = base / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
+    link_work(args)
     with open(logs / "driver-events.jsonl", "w", encoding="utf-8") as events, \
             open(logs / "driver-stderr.log", "w", encoding="utf-8") as stderr:
         code = subprocess.run(build_command(args), cwd=args.root, env=build_environment(args), stdout=events,
