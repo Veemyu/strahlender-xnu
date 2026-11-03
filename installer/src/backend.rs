@@ -1,11 +1,9 @@
-use crate::process::Hidden;
-use crate::runtime::{backend_python, project_root};
+use crate::runtime::backend_python;
 use serde::Deserialize;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::{
     path::PathBuf,
-    process::Stdio,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -14,7 +12,6 @@ use std::{
 };
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
-    process::Command,
     sync::mpsc::Sender,
 };
 
@@ -146,53 +143,6 @@ pub struct BuildRequest {
     pub mod_name: Option<String>,
 }
 
-#[cfg(debug_assertions)]
-fn set_development_install_root(
-    command: &mut Command,
-    local_checkout: bool,
-    destination: Option<std::ffi::OsString>,
-) {
-    if local_checkout && let Some(destination) = destination {
-        command.arg("--install-root").arg(destination);
-    }
-}
-
-fn set_cpu_target(command: &mut Command, target: &str, portable: bool) {
-    // Inherited shell state must not override the UI, including Apple cross targets.
-    if target == "linux" {
-        command.env(
-            "BDSP_CPU_TARGET",
-            if portable { "portable" } else { "native" },
-        );
-    } else {
-        command.env_remove("BDSP_CPU_TARGET");
-    }
-}
-
-fn ips_helper() -> Option<PathBuf> {
-    let sibling = if cfg!(windows) {
-        crate::bundle::helper("ips_patch")
-    } else {
-        let executable = std::env::current_exe().ok()?;
-        Some(executable.with_file_name("ips_patch")).filter(|path| path.is_file())
-    };
-    if sibling.is_some() {
-        return sibling;
-    }
-    if cfg!(debug_assertions) {
-        let root = project_root()?;
-        let debug = root.join("installer/target/debug/ips_patch");
-        if debug.is_file() {
-            return Some(debug);
-        }
-    }
-    None
-}
-
-enum Action {
-    Build(BuildRequest),
-}
-
 /// Runs one build and reports every event on `output`; the receiver side decides how to show them (window or JSON lines).
 pub async fn build(
     run_id: u64,
@@ -207,7 +157,7 @@ pub async fn build(
         cancelled,
         mods_folder,
         selected_mod,
-        Action::Build(request),
+        request,
         output,
     )
     .await
@@ -218,7 +168,7 @@ async fn run_driver(
     cancelled: Arc<AtomicBool>,
     mods_folder: Option<PathBuf>,
     selected_mod: Option<String>,
-    action: Action,
+    request: BuildRequest,
     output: Sender<(u64, Event)>,
 ) {
     {
@@ -231,15 +181,10 @@ async fn run_driver(
                 },
             ))
             .await;
-        let cleanup_requested = match &action {
-            Action::Build(request) => request.auto_cleanup,
-        };
-        let device_target = match &action {
-            Action::Build(request) => request.target == "ios",
-        };
-        let ipa_export = matches!(&action, Action::Build(request) if request.target == "ios" && request.ios_delivery == IosDelivery::Ipa);
-        let remember_profile =
-            matches!(&action, Action::Build(request) if ipa_export && request.mod_root.is_some());
+        let cleanup_requested = request.auto_cleanup;
+        let device_target = request.target == "ios";
+        let ipa_export = device_target && request.ios_delivery == IosDelivery::Ipa;
+        let remember_profile = ipa_export && request.mod_root.is_some();
         let workspace = match crate::workspace::prepare(run_id, &output, cancelled.clone()).await {
             Ok(root) => root,
             Err(_) if cancelled.load(Ordering::Acquire) => {
@@ -281,7 +226,6 @@ async fn run_driver(
                 },
             ))
             .await;
-        let driver = root.join("scripts/install/driver.py");
         let _ = output
             .send((
                 run_id,
@@ -304,217 +248,42 @@ async fn run_driver(
                 .await;
             return;
         };
-        let mut command = Command::new(&python);
-        command.hidden();
-        // The scripts run the extract step through this very executable (`--cli extract`), so no Rust toolchain is needed.
-        if let Ok(own) = std::env::current_exe() {
-            command
-                .env("BDSP_EXTRACT", own)
-                .env("BDSP_EXTRACT_PREFIX", "--cli");
-        }
-        // The shader libraries prepared from the game's own shaders stay between builds (a later build or a game update reuses them).
-        if std::env::var_os("BDSP_SHADER_CACHE_DIR").is_none()
-            && let Ok(data) = crate::workspace::data_dir()
-        {
-            command.env("BDSP_SHADER_CACHE_DIR", data.join("shader-cache"));
-        }
-        // The iPhone/iPad FFmpeg libraries stay between builds too (rebuilt only when the SDK, compiler or script changes).
-        if std::env::var_os("BDSP_IOS_FFMPEG_DIR").is_none()
-            && let Ok(data) = crate::workspace::data_dir()
-        {
-            command.env("BDSP_IOS_FFMPEG_DIR", data.join("ios-ffmpeg"));
-        }
-        // A verified copy of the pinned Vulkan Memory Allocator header (Linux systems without a package for it).
-        if let Some(folder) = crate::vma::cached() {
-            command.env("BDSP_VMA_DIR", folder);
-        }
-        // LLVM still leads PATH; select Git separately so Brew cannot shadow Apple Git.
-        if !cfg!(target_os = "windows") {
-            command.env("BDSP_GIT", crate::dependencies::git());
-        }
-        let inherited = std::env::var_os("PATH").unwrap_or_default();
-        let mut search_paths: Vec<PathBuf> = if cfg!(target_os = "macos") {
-            crate::dependencies::mac_tool_paths()
-        } else {
-            Vec::new()
+        let python = crate::driver_plan::Python {
+            program: python,
+            private,
         };
-        if private && let Some(directory) = python.parent() {
-            search_paths.insert(0, directory.to_path_buf());
-        }
-        search_paths.extend(std::env::split_paths(&inherited));
-        if let Ok(path) = std::env::join_paths(search_paths) {
-            command.env("PATH", path);
-        }
-        command.env("BDSP_MOD", selected_mod.unwrap_or_else(|| "none".into()));
-        if let Some(folder) = &mods_folder {
-            command.env("BDSP_MODS_DIR", folder);
-        }
-        if private {
-            command.arg("-I").env("BDSP_INSTALLER_PRIVATE_RUNTIME", "1");
-        } else {
-            command.env_remove("BDSP_INSTALLER_PRIVATE_RUNTIME");
-        }
-        command.arg("-B").arg(&driver);
-        match action {
-            Action::Build(BuildRequest {
-                target,
-                ios_delivery,
-                ios_device,
-                ios_team,
-                ios_profile,
-                ios_new_profile,
-                portable_cpu,
-                clean_build,
-                ios_export_no_embed,
-                auto_cleanup: _,
-                base,
-                prod_keys,
-                firmware,
-                update,
-                mod_root,
-                mod_name,
-            }) => {
-                set_cpu_target(&mut command, target, portable_cpu);
-                command
-                    .arg("build")
-                    .arg("--root")
-                    .arg(&root)
-                    .arg("--work")
-                    .arg(root.join("work"))
-                    .arg("--target")
-                    .arg(target)
-                    .arg("--base")
-                    .arg(base)
-                    .arg("--prod-keys")
-                    .arg(prod_keys);
-                if target.starts_with("windows")
-                    && let Some(catalog) = crate::components::root()
-                        .ok()
-                        .and_then(|root| crate::components::catalog(&root))
-                {
-                    command.arg("--windows-catalog").arg(catalog);
-                }
-                if target.starts_with("windows")
-                    && let Some(folder) =
-                        crate::appdir::chosen_folder(crate::appdir::INSTALL_FOLDER)
-                {
-                    command.arg("--install-root").arg(folder);
-                }
-                if target == "ios" {
-                    command.arg("--ios-delivery").arg(ios_delivery.as_str());
-                    if ios_delivery == IosDelivery::Device
-                        && let Some(device) = ios_device
-                    {
-                        command.arg("--ios-device").arg(device);
-                    }
-                    if ios_delivery == IosDelivery::Device
-                        && let Some(team) = ios_team
-                    {
-                        command.arg("--ios-team").arg(team);
-                    }
-                    if ios_delivery == IosDelivery::Ipa {
-                        match crate::workspace::data_dir() {
-                            Ok(data) => {
-                                command
-                                    .arg("--ios-export-dir")
-                                    .arg(data.join("exports/ios"));
-                            }
-                            Err(message) => {
-                                let _ = output
-                                    .send((
-                                        run_id,
-                                        Event::Log {
-                                            level: "error".into(),
-                                            message,
-                                        },
-                                    ))
-                                    .await;
-                                let _ = output
-                                    .send((
-                                        run_id,
-                                        Event::Finished {
-                                            ok: false,
-                                            code: -1,
-                                        },
-                                    ))
-                                    .await;
-                                return;
-                            }
-                        }
-                    }
-                }
-                if clean_build {
-                    command.arg("--clean-build");
-                }
-                if target == "ios" && ios_delivery == IosDelivery::Ipa && ios_export_no_embed {
-                    command.arg("--ios-export-no-embed");
-                }
-                if target == "ios"
-                    && ios_delivery == IosDelivery::Ipa
-                    && let Some(profile) = ios_profile
-                {
-                    command
-                        .arg("--ios-profile-id")
-                        .arg(profile.id)
-                        .arg("--ios-profile-game")
-                        .arg(profile.game)
-                        .arg("--ios-bundle-id")
-                        .arg(profile.bundle);
-                } else if target == "ios"
-                    && ios_delivery == IosDelivery::Ipa
-                    && let Some(id) = ios_new_profile
-                {
-                    command.arg("--ios-profile-id").arg(id);
-                }
-                #[cfg(debug_assertions)]
-                set_development_install_root(
-                    &mut command,
-                    std::env::var_os("BDSP_INSTALLER_DEV_CHECKOUT").as_deref()
-                        == Some(std::ffi::OsStr::new("1")),
-                    std::env::var_os("BDSP_INSTALLER_DEV_INSTALL_ROOT"),
-                );
-                if let Some(source) = firmware {
-                    let helper = crate::bundle::helper("firmware_import").unwrap_or_else(|| {
-                        std::env::current_exe()
-                            .unwrap_or_default()
-                            .with_file_name("firmware_import")
-                    });
-                    command
-                        .arg("--firmware")
-                        .arg(source)
-                        .arg("--firmware-helper")
-                        .arg(helper);
-                    if let Some(data) = crate::appdir::data_local_dir() {
-                        command.arg("--firmware-cache").arg(data.join("firmware"));
-                    }
-                }
-                if let Some(update) = update {
-                    command.arg("--update").arg(update);
-                }
-                if let Some(mod_root) = mod_root {
-                    command.arg("--mod-root").arg(mod_root);
-                }
-                if let Some(mod_name) = mod_name {
-                    command.arg("--mod-name").arg(mod_name);
-                }
-                if let Some(mods_dir) = mods_folder.as_ref() {
-                    command.arg("--mods-dir").arg(mods_dir);
-                }
-                if let Some(helper) = ips_helper() {
-                    command.arg("--ips-helper").arg(helper);
-                }
+        let plan = match crate::driver_plan::DriverPlan::new(
+            &crate::driver_plan::HostFacts::detect(),
+            &python,
+            &root,
+            &request,
+            mods_folder.as_deref(),
+            selected_mod.as_deref(),
+        ) {
+            Ok(plan) => plan,
+            Err(message) => {
+                let _ = output
+                    .send((
+                        run_id,
+                        Event::Log {
+                            level: "error".into(),
+                            message,
+                        },
+                    ))
+                    .await;
+                let _ = output
+                    .send((
+                        run_id,
+                        Event::Finished {
+                            ok: false,
+                            code: -1,
+                        },
+                    ))
+                    .await;
+                return;
             }
-        }
-        command
-            .env("PYTHONDONTWRITEBYTECODE", "1")
-            .env("PYTHONUNBUFFERED", "1")
-            .env_remove("PYTHONPATH")
-            .env_remove("PYTHONHOME")
-            .current_dir(&root)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+        };
+        let mut command = plan.command();
         #[cfg(unix)]
         command.as_std_mut().process_group(0);
         let mut child = match command.spawn() {
@@ -790,8 +559,7 @@ async fn run_driver(
 
 #[cfg(test)]
 mod tests {
-    use super::{ProtocolEvent, set_cpu_target};
-    use tokio::process::Command;
+    use super::ProtocolEvent;
 
     fn runtime_marker(runtime: &std::path::Path, executable: &std::path::Path, host: &str) {
         use sha2::{Digest, Sha256};
@@ -821,22 +589,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(debug_assertions)]
-    fn development_install_destination_requires_an_explicit_local_checkout() {
-        let mut command = tokio::process::Command::new("python3");
-        super::set_development_install_root(&mut command, false, Some("isolated apps".into()));
-        assert_eq!(command.as_std().get_args().count(), 0);
-        super::set_development_install_root(&mut command, true, Some("isolated apps".into()));
-        assert_eq!(
-            command.as_std().get_args().collect::<Vec<_>>(),
-            vec![
-                std::ffi::OsStr::new("--install-root"),
-                std::ffi::OsStr::new("isolated apps")
-            ]
-        );
-    }
-
-    #[test]
     fn progress_protocol_accepts_old_counts_and_native_details() {
         let old: super::ProtocolEvent =
             serde_json::from_str(r#"{"event":"progress","id":"clang","completed":2,"total":3}"#)
@@ -855,28 +607,6 @@ mod tests {
                 ..
             }
         ));
-    }
-
-    #[test]
-    fn cpu_choice_reaches_linux_and_does_not_leak_to_apple_builds() {
-        for (target, portable, expected) in [
-            ("linux", false, Some("native")),
-            ("linux", true, Some("portable")),
-            ("macos", true, None),
-            ("ios", false, None),
-        ] {
-            let mut command = Command::new("unused");
-            command.env("BDSP_CPU_TARGET", "inherited");
-            set_cpu_target(&mut command, target, portable);
-            let actual = command
-                .as_std()
-                .get_envs()
-                .find(|(key, _)| *key == "BDSP_CPU_TARGET")
-                .unwrap()
-                .1
-                .and_then(|value| value.to_str());
-            assert_eq!(actual, expected);
-        }
     }
 
     #[test]

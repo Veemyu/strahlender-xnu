@@ -4432,6 +4432,8 @@ mod tests {
         PathBuf::from(home).join("AppData").join("strahlender")
     }
 
+    static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     const STUB_DRIVER: &str = r#"import json, sys
 def emit(**event):
     print(json.dumps(event), flush=True)
@@ -4447,7 +4449,6 @@ emit(event="result", ok=True, code=0)
     #[cfg(debug_assertions)]
     fn window_and_cli_build_the_same_request_and_event_stream() {
         use iced::futures::StreamExt;
-        static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = ENV.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = std::env::temp_dir().join(format!("headless-parity-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -4546,6 +4547,199 @@ emit(event="result", ok=True, code=0)
             cli_events
                 .iter()
                 .any(|event| matches!(event, crate::backend::Event::Artifact { kind, .. } if kind == "installed_application"))
+        );
+    }
+
+    #[test]
+    fn window_and_cli_start_the_driver_with_the_same_arguments_and_environment() {
+        use crate::driver_plan::{DriverPlan, Python, tests::facts};
+        let _guard = ENV.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("driver-parity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let base = dir.join("base");
+        std::fs::create_dir_all(&base).unwrap();
+        let keys = dir.join("prod.keys");
+        std::fs::write(&keys, b"").unwrap();
+        let mod_folder = dir.join("library/alpha");
+        std::fs::create_dir_all(mod_folder.join("romfs")).unwrap();
+        std::fs::write(mod_folder.join("romfs/file.bin"), b"x").unwrap();
+        let library = dir.join("library");
+        unsafe { std::env::set_var("BDSP_MODS_DIR", dir.join("default-mods")) };
+
+        let arch = std::env::consts::ARCH;
+        let ipa = [("ios_delivery", "ipa")];
+        let ipa_new_profile = [
+            ("ios_delivery", "ipa"),
+            ("ios_profile_id", "PROFILE1"),
+            ("ios_export_no_embed", "true"),
+            ("clean_build", "true"),
+        ];
+        let device = [
+            ("ios_delivery", "device"),
+            ("ios_device", "UDID-1"),
+            ("ios_team", "ABCDE12345"),
+        ];
+        type Case<'a> = (Platform, InstallTarget, &'a [(&'a str, &'a str)], bool);
+        let cases: [Case; 13] = [
+            (Platform::Mac, InstallTarget::Mac, &[], false),
+            (Platform::Mac, InstallTarget::Mac, &[], true),
+            (Platform::Mac, InstallTarget::Ios, &device, false),
+            (Platform::Mac, InstallTarget::Ios, &device, true),
+            (Platform::Mac, InstallTarget::Ios, &ipa, false),
+            (Platform::Mac, InstallTarget::Ios, &ipa, true),
+            (Platform::Mac, InstallTarget::Ios, &ipa_new_profile, true),
+            (Platform::Linux, InstallTarget::Linux, &[], false),
+            (
+                Platform::Linux,
+                InstallTarget::Linux,
+                &[("portable_cpu", "true")],
+                true,
+            ),
+            (Platform::Windows, InstallTarget::Windows, &[], false),
+            (Platform::Windows, InstallTarget::Windows, &[], true),
+            (
+                Platform::Windows,
+                InstallTarget::Windows,
+                &[("clean_build", "true"), ("auto_cleanup", "true")],
+                false,
+            ),
+            (
+                Platform::Linux,
+                InstallTarget::Linux,
+                &[("auto_cleanup", "yes")],
+                false,
+            ),
+        ];
+        let mut compared = 0;
+        for (host, target, options, with_mod) in cases {
+            if !crate::flow::platform_backend_supported(host, target, arch) {
+                continue;
+            }
+            let flag = crate::flow::target_name(target, arch).unwrap();
+            let (mut app, _) = Installer::with_options(crate::platform::Options {
+                platform: Some(host),
+                ..Default::default()
+            });
+            app.target = target;
+            app.base = Some(sources::Source {
+                path: base.clone(),
+                description: String::new(),
+            });
+            app.keys = Some(sources::Source {
+                path: keys.clone(),
+                description: String::new(),
+            });
+            app.mods_folder = mod_support::folder_for(host, target);
+            // Saved preferences of the machine running the test must not leak in.
+            app.ios_delivery = crate::backend::IosDelivery::Device;
+            app.ios_team = String::new();
+            app.ios_device = None;
+            app.ios_profile = None;
+            app.ios_new_profile = None;
+            app.auto_cleanup = false;
+            app.portable_cpu = false;
+            app.clean_build = false;
+            app.ios_export_no_embed = false;
+            app.firmware = None;
+            app.update = None;
+            app.selected_mod = None;
+            app.mods.clear();
+            if with_mod {
+                app.mods = mod_support::scan_selected(&mod_folder).unwrap();
+                app.mods_folder = Some(mod_support::library_for_selection(&mod_folder).unwrap());
+                app.selected_mod = app.mods.first().map(|entry| entry.name.clone());
+            }
+            for (key, value) in options {
+                match *key {
+                    "ios_delivery" => {
+                        app.ios_delivery = if *value == "ipa" {
+                            crate::backend::IosDelivery::Ipa
+                        } else {
+                            crate::backend::IosDelivery::Device
+                        }
+                    }
+                    "ios_device" => app.ios_device = Some((*value).into()),
+                    "ios_team" => app.ios_team = (*value).into(),
+                    "ios_profile_id" => app.ios_new_profile = Some((*value).into()),
+                    "portable_cpu" => app.portable_cpu = *value == "true",
+                    "clean_build" => app.clean_build = *value == "true",
+                    "ios_export_no_embed" => app.ios_export_no_embed = *value == "true",
+                    "auto_cleanup" => app.auto_cleanup = matches!(*value, "true" | "yes"),
+                    other => panic!("{other}"),
+                }
+            }
+            let gui_request = crate::flow::build_request(app.request_inputs()).unwrap();
+
+            let mut args: Vec<String> = [
+                "--target",
+                flag,
+                "--keys",
+                keys.to_str().unwrap(),
+                "--base",
+                base.to_str().unwrap(),
+            ]
+            .map(String::from)
+            .to_vec();
+            if with_mod {
+                args.extend(["--mod".into(), mod_folder.to_str().unwrap().into()]);
+            }
+            for (key, value) in options {
+                args.extend(["--option".into(), format!("{key}={value}")]);
+            }
+            let config = crate::headless::parse(&args).unwrap();
+            let cli = crate::headless::plan(&config, host, arch).unwrap();
+            assert_eq!(cli.request, gui_request, "{host:?} {flag} {options:?}");
+            assert_eq!(cli.mods_folder, app.mods_folder);
+            assert_eq!(cli.selected_mod, app.selected_mod);
+            if with_mod {
+                assert_eq!(
+                    app.mods_folder.as_deref(),
+                    library.canonicalize().ok().as_deref()
+                );
+            }
+
+            let host_facts = facts(host);
+            let python = Python {
+                program: "python".into(),
+                private: true,
+            };
+            let root = std::path::Path::new("root");
+            let gui_plan = DriverPlan::new(
+                &host_facts,
+                &python,
+                root,
+                &gui_request,
+                app.mods_folder.as_deref(),
+                app.selected_mod.as_deref(),
+            )
+            .unwrap();
+            let cli_plan = DriverPlan::new(
+                &host_facts,
+                &python,
+                root,
+                &cli.request,
+                cli.mods_folder.as_deref(),
+                cli.selected_mod.as_deref(),
+            )
+            .unwrap();
+            assert_eq!(gui_plan, cli_plan, "{host:?} {flag} {options:?}");
+
+            let args: Vec<_> = gui_plan.args.iter().map(|a| a.to_string_lossy()).collect();
+            let has = |flag: &str| args.iter().any(|arg| arg == flag);
+            assert!(has(flag));
+            assert_eq!(has("--mod-name"), with_mod);
+            assert_eq!(
+                has("--ios-export-dir"),
+                options.contains(&("ios_delivery", "ipa"))
+            );
+            assert_eq!(has("--windows-catalog"), flag.starts_with("windows"));
+            compared += 1;
+        }
+        unsafe { std::env::remove_var("BDSP_MODS_DIR") };
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            compared >= 4,
+            "only {compared} combinations were supported here"
         );
     }
 }

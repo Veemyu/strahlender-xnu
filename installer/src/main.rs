@@ -10,6 +10,7 @@ mod clip_fraction;
 mod components;
 mod defender;
 mod dependencies;
+mod driver_plan;
 mod drop_target;
 #[allow(dead_code)]
 mod firmware;

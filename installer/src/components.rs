@@ -270,6 +270,14 @@ fn setup_source(
     }
 }
 
+/// The environment the scripts need to run `--cli extract` through the installer executable; every Python step sets it.
+pub fn extract_env(tool: &Path) -> [(&'static str, std::ffi::OsString); 2] {
+    [
+        ("BDSP_EXTRACT", tool.as_os_str().to_os_string()),
+        ("BDSP_EXTRACT_PREFIX", "--cli".into()),
+    ]
+}
+
 /// The executable that answers `--cli unpack`: the installer itself. The helper `installer_setup` does not know `--cli`,
 /// so it points at the installer: `BDSP_INSTALLER_EXE`, else the sibling.
 fn extract_tool(own: &Path) -> PathBuf {
@@ -415,11 +423,9 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     let mut child = std::process::Command::new(python)
         .hidden()
         .current_dir(&project)
-        .env(
-            "BDSP_EXTRACT",
-            extract_tool(&std::env::current_exe().map_err(|e| e.to_string())?),
-        )
-        .env("BDSP_EXTRACT_PREFIX", "--cli")
+        .envs(extract_env(&extract_tool(
+            &std::env::current_exe().map_err(|e| e.to_string())?,
+        )))
         .env("PYTHONUNBUFFERED", "1")
         .args([
             "-B",
