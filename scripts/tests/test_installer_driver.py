@@ -58,6 +58,32 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertEqual(stages, ["firmware", "firmware"])
             self.assertEqual(source.read_bytes(), b"synthetic")
 
+    def test_linux_firmware_bootstrap_uses_a_target_the_tools_stage_accepts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, helper, keys = root / "firmware.zip", root / "importer", root / "prod.keys"
+            for file in (source, helper, keys):
+                file.write_bytes(b"synthetic")
+            cache = root / "cache"
+            extracted = cache / "version"
+            extracted.mkdir(parents=True)
+            (extracted / "firmware-manifest.json").write_text("{}")
+            args = SimpleNamespace(root=root, work=root / "work", target="linux", firmware=source,
+                                   firmware_helper=helper, firmware_cache=cache, prod_keys=keys,
+                                   base=source, update=None)
+            commands = []
+            def run(command, _args, stage, **_options):
+                commands.append(command)
+                if command[0] == str(helper):
+                    Path(command[-1]).write_text(json.dumps({"firmware": str(extracted)}))
+                return 0
+            with patch.object(driver, "_run_command", side_effect=run):
+                self.assertEqual(driver._prepare_firmware(args), 0)
+            tools = commands[0]
+            self.assertEqual(tools[1:3], ["--only", "tools"])
+            self.assertEqual(tools[tools.index("--target") + 1], "all")
+            self.assertEqual(args.firmware_root, extracted.resolve())
+
     def test_failed_firmware_import_never_sets_a_payload(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
