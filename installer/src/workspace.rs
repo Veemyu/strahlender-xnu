@@ -18,7 +18,11 @@ pub struct Prepared {
 }
 
 pub fn source_smoke() -> Result<PathBuf, String> {
-    fetch(&data_dir()?.join("sources"), &AtomicBool::new(false)).map(|workspace| workspace.root)
+    fetch(
+        &crate::source_download::sources_dir()?,
+        &AtomicBool::new(false),
+    )
+    .map(|workspace| workspace.root)
 }
 
 pub async fn prepare(
@@ -36,8 +40,9 @@ pub async fn prepare(
     }
     let _ = output.send((run, Event::Log { level: "info".into(), message: "Downloading the current main source. Your build keeps this revision until completion.".into() })).await;
     let worker_cancelled = cancelled.clone();
-    let mut task =
-        tokio::task::spawn_blocking(move || fetch(&data_dir()?.join("sources"), &worker_cancelled));
+    let mut task = tokio::task::spawn_blocking(move || {
+        fetch(&crate::source_download::sources_dir()?, &worker_cancelled)
+    });
     loop {
         tokio::select! {
             result = &mut task => return result.map_err(|error| error.to_string())?,

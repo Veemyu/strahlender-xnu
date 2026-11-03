@@ -12,6 +12,22 @@ pub fn data_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "Your application data folder could not be located.".into())
 }
 
+/// Folder of the downloaded sources. On Windows the build below it must stay shallow, so `BDSP_INSTALLER_DATA_DIR`
+/// (for example C:\bdsp) replaces the default below the user profile.
+pub fn sources_dir() -> Result<PathBuf, String> {
+    sources_dir_in(std::env::var_os("BDSP_INSTALLER_DATA_DIR"), data_dir)
+}
+
+fn sources_dir_in(
+    override_dir: Option<std::ffi::OsString>,
+    default: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    match override_dir.filter(|value| !value.is_empty()) {
+        Some(folder) => Ok(PathBuf::from(folder).join("sources")),
+        None => default().map(|dir| dir.join("sources")),
+    }
+}
+
 pub fn client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .user_agent(concat!("Strahlender-Installer/", env!("CARGO_PKG_VERSION")))
@@ -156,6 +172,23 @@ fn valid_revision(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    #[test]
+    fn the_data_folder_variable_replaces_the_default_sources_folder() {
+        let default = || Ok(PathBuf::from("profile").join("data"));
+        assert_eq!(
+            super::sources_dir_in(Some("short".into()), default).unwrap(),
+            PathBuf::from("short").join("sources")
+        );
+        for unset in [None, Some("".into())] {
+            assert_eq!(
+                super::sources_dir_in(unset, default).unwrap(),
+                PathBuf::from("profile").join("data").join("sources")
+            );
+        }
+    }
+
     #[test]
     fn main_is_read_from_the_git_advertisement() {
         let sha = "fd7146c4fab98b479e37262efd17fe7284d31dad";

@@ -284,7 +284,7 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
             Some(why) => format!("The bundled Python runtime is missing. {why}"),
             None => "The bundled Python runtime is missing.".to_string(),
         })?;
-    let sources = crate::source_download::data_dir().map(|dir| dir.join("sources"));
+    let sources = crate::source_download::sources_dir();
     if let Ok(parent) = &sources {
         // leftovers of earlier runs; a running setup is younger than two hours
         crate::source_download::prune_unused(
