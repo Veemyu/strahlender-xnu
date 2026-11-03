@@ -108,23 +108,47 @@ pub fn action(c: Colors, primary: bool, status: button::Status) -> button::Style
     }
 }
 
-/// Primary button that fills from a dimmed accent to the full accent while the auto start counts down.
-pub fn countdown_action(c: Colors, progress: f32, status: button::Status) -> button::Style {
-    let mut style = action(c, true, status);
-    let dim = Color {
-        a: 0.35,
-        ..c.accent
+pub fn ease(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Resting layer of the auto start button: empty track, light label, glow right before the start.
+pub fn countdown_track(c: Colors, eased: f32) -> button::Style {
+    let mut style = action(c, false, button::Status::Active);
+    style.background = Some(Background::Color(c.background));
+    style.text_color = c.text;
+    style.border = Border {
+        color: c.accent,
+        width: 1.0,
+        radius: 10.0.into(),
     };
-    let edge = progress.clamp(0.0, 1.0);
-    style.background = Some(Background::Gradient(
-        iced::gradient::Linear::new(iced::Radians(std::f32::consts::FRAC_PI_2))
-            .add_stop(0.0, c.accent)
-            .add_stop(edge, c.accent)
-            .add_stop(edge, dim)
-            .add_stop(1.0, dim)
-            .into(),
-    ));
+    let glow = ease((eased - 0.9) / 0.1);
+    if glow > 0.0 {
+        style.shadow = iced::Shadow {
+            color: Color {
+                a: 0.1 * glow,
+                ..c.accent
+            },
+            offset: iced::Vector::new(0.0, 3.0),
+            blur_radius: 18.0 * glow,
+        };
+    }
     style
+}
+
+/// Filled layer, revealed from the left; it carries the inverted label.
+pub fn countdown_fill(c: Colors) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(c.accent)),
+        text_color: Some(c.accent_text),
+        border: Border {
+            color: c.accent,
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        ..Default::default()
+    }
 }
 
 pub fn progress(c: Colors) -> progress_bar::Style {

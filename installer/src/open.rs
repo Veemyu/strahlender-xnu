@@ -50,7 +50,7 @@ pub fn reveal(path: &Path) -> Result<(), String> {
             .map_err(|error| error.to_string())?
             .success()
             .then_some(())
-            .ok_or_else(|| "Could not show the installation folder.".into())
+            .ok_or_else(|| format!("Could not show {} in Finder.", path.display()))
     }
     #[cfg(target_os = "linux")]
     {
@@ -65,16 +65,20 @@ pub fn reveal(path: &Path) -> Result<(), String> {
         let folder = path
             .parent()
             .ok_or("The installation folder is unavailable.")?;
+        // explorer.exe reports exit code 1 even when it opened the folder, so only a failed start is an error.
         Command::new("explorer.exe")
             .arg(folder)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status()
-            .map_err(|error| error.to_string())?
-            .success()
-            .then_some(())
-            .ok_or_else(|| "Could not show the installation folder.".into())
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| {
+                format!(
+                    "Could not start explorer.exe for {}: {error}",
+                    folder.display()
+                )
+            })
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {

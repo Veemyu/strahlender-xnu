@@ -193,7 +193,7 @@ pub enum Message {
     SelectMod(Option<String>),
 }
 
-const AUTO_BUILD_DELAY: Duration = Duration::from_secs(5);
+const AUTO_BUILD_DELAY: Duration = Duration::from_secs(7);
 
 fn cancels_auto_build(message: &Message) -> bool {
     matches!(
@@ -656,6 +656,13 @@ impl Installer {
                 Message::InputsRestored,
             )
         } else {
+            if let Some(mode) = std::env::var_os("BDSP_DEMO_AUTO_START") {
+                if mode == "light" {
+                    app.appearance = Appearance::Light;
+                }
+                app.page = Page::Setup;
+                app.auto_build = Some(Instant::now());
+            }
             Task::none()
         };
         let task = if !app.demo && app.capture.is_none() {
@@ -697,10 +704,7 @@ impl Installer {
             }
             Subscription::batch(subscriptions)
         } else if self.auto_build.is_some() {
-            Subscription::batch([
-                events,
-                iced::time::every(Duration::from_millis(50)).map(|_| Message::AutoBuildTick),
-            ])
+            Subscription::batch([events, window::frames().map(|_| Message::AutoBuildTick)])
         } else if self.setup_busy {
             Subscription::batch([
                 events,
@@ -2443,7 +2447,10 @@ impl Installer {
         self.auto_build = Some(Instant::now());
         self.record(
             "AUTO",
-            "The build starts in 5 seconds. Press Cancel to stop it.",
+            &format!(
+                "The build starts in {} seconds. Press Cancel to stop it.",
+                AUTO_BUILD_DELAY.as_secs()
+            ),
         );
     }
 
@@ -2839,6 +2846,16 @@ impl Installer {
                 self.mods_skipped = true;
             }
             "setup" => self.page = Page::Setup,
+            "setup-auto-start" | "setup-auto-start-late" => {
+                self.page = Page::Setup;
+                let percent = if scenario == "setup-auto-start" {
+                    33
+                } else {
+                    80
+                };
+                let elapsed = AUTO_BUILD_DELAY * percent.min(100) / 100;
+                self.auto_build = Instant::now().checked_sub(elapsed);
+            }
             "build-options" => {
                 self.page = Page::Setup;
                 self.build_options_open = true;
@@ -2959,6 +2976,15 @@ impl Installer {
                 if self.details {
                     self.copied_log_line = Some((1, Instant::now()));
                 }
+            }
+            "progress-security-note" => {
+                self.page = Page::Progress;
+                self.backend_status = BackendStatus::Running;
+                self.defender = Some(true);
+                self.build_progress = crate::progress::BuildProgress::default();
+                self.build_progress.step("package", "started");
+                let stage = crate::progress::Stage::Package;
+                self.motion.snap(stage.index() as f32 + 0.5);
             }
             "device-copy" => {
                 self.page = Page::Progress;
@@ -3232,7 +3258,7 @@ mod tests {
     }
 
     #[test]
-    fn the_auto_build_countdown_starts_the_build_only_after_five_seconds() {
+    fn the_auto_build_countdown_starts_the_build_only_after_the_delay() {
         let mut app = auto_build_app();
         app.auto_build = Some(Instant::now());
         let _ = app.handle(Message::AutoBuildTick);

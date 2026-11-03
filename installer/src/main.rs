@@ -6,6 +6,7 @@ mod appdir;
 mod backend;
 mod bundle;
 mod capture;
+mod clip_fraction;
 mod components;
 mod defender;
 mod dependencies;

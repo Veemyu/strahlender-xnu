@@ -1628,14 +1628,15 @@ impl Installer {
                     })
                     .to_owned(),
             };
-            let counter = if self.defender == Some(true)
+            let note_shown = self.defender == Some(true)
                 && self.backend_status == super::BackendStatus::Running
                 && matches!(
                     stage,
                     crate::progress::Stage::Extract
                         | crate::progress::Stage::Package
                         | crate::progress::Stage::Install
-                ) {
+                );
+            let counter = if note_shown {
                 format!("{counter}\n{}", self.language.t(L::DefenderNote))
             } else {
                 counter
@@ -1645,6 +1646,8 @@ impl Installer {
                 && self.exported_ipa.is_some()
                 && self.ios_delivery == crate::backend::IosDelivery::Ipa
                 && self.target == InstallTarget::Ios;
+            // The security note adds two lines to the card, so the card is tighter then too.
+            let tight = ipa_done || note_shown;
             return column![
                 self.title(self.language.t(L::ProgressTitle), self.language.t(detail)),
                 container(
@@ -1680,7 +1683,7 @@ impl Installer {
                                 lines =
                                     lines.push(text(counter).size(12).color(c.muted).width(Fill));
                             }
-                            lines.spacing(8).width(Fill)
+                            lines.spacing(if note_shown { 6 } else { 8 }).width(Fill)
                         },
                         progress_bar(
                             0.0..=1.0,
@@ -1689,9 +1692,9 @@ impl Installer {
                         .girth(5)
                         .style(move |_| style::progress(c)),
                     ]
-                    .spacing(if ipa_done { 10 } else { 16 })
+                    .spacing(if tight { 10 } else { 16 })
                 )
-                .padding(if ipa_done { 12 } else { 16 })
+                .padding(if tight { 12 } else { 16 })
                 .width(Fill)
                 .style(move |_| style::surface(c, false)),
                 if ipa_done {
@@ -1938,21 +1941,33 @@ impl Installer {
         let countdown = self
             .auto_build_progress()
             .filter(|_| self.page == Page::Setup && message.is_some());
-        if countdown.is_some() {
+        let label = self.language.t(label);
+        if let Some(progress) = countdown {
+            let eased = style::ease(progress);
             actions = actions.push(self.text_action(
                 self.language.t(L::CancelAutoStart),
                 Message::CancelAutoBuild,
             ));
+            let track = button(text(label).size(14))
+                .padding([10, 20])
+                .on_press_maybe(message)
+                .style(move |_, _| style::countdown_track(c, eased));
+            let fill = container(text(label).size(14))
+                .padding([10, 20])
+                .style(move |_| style::countdown_fill(c));
+            return actions
+                .push(stack![
+                    track,
+                    crate::clip_fraction::ClipFraction::new(fill, eased)
+                ])
+                .into();
         }
         actions
             .push(
-                button(text(self.language.t(label)).size(14))
+                button(text(label).size(14))
                     .padding([10, 20])
                     .on_press_maybe(message)
-                    .style(move |_, status| match countdown {
-                        Some(progress) => style::countdown_action(c, progress, status),
-                        None => style::action(c, primary, status),
-                    }),
+                    .style(move |_, status| style::action(c, primary, status)),
             )
             .into()
     }
