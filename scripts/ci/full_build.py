@@ -84,7 +84,7 @@ def build_environment(args, environ=os.environ):
 
 
 def summarize(lines, known):
-    steps, errors, result, installed = {}, [], None, None
+    steps, errors, missing, result, installed = {}, [], [], None, None
     for line in lines:
         try:
             event = json.loads(line)
@@ -95,11 +95,16 @@ def summarize(lines, known):
             steps[str(event["id"])] = str(event.get("status", ""))
         elif kind == "error":
             errors.append({"code": event.get("code"), "message": redact(str(event.get("message", "")), known)})
+        elif kind == "log" and str(event.get("message", "")).startswith("MISSING"):
+            missing.append(redact(str(event["message"]), known))
         elif kind == "result":
             result = {"ok": bool(event.get("ok")), "code": event.get("code")}
         elif kind == "artifact" and event.get("kind") == "installed_application":
             installed = event.get("path")
-    return {"steps": steps, "errors": errors[-5:], "result": result}, installed
+    summary = {"steps": steps, "errors": errors[-5:], "result": result}
+    if missing:
+        summary["missing"] = missing[:20]
+    return summary, installed
 
 
 def main(argv=None):

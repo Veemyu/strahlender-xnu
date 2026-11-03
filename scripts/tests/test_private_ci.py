@@ -235,8 +235,11 @@ class BuildReportTests(unittest.TestCase):
                  "not json",
                  json.dumps({"event": "error", "code": 4, "message": "cannot open /b/data/game.xci " + "a" * 40}),
                  json.dumps({"event": "artifact", "kind": "installed_application", "path": "/b/install/BDSP.app"}),
+                 json.dumps({"event": "log", "message": "MISSING  Disk space >= 40 GB free (8.0 GB free under /b/work)"}),
+                 json.dumps({"event": "log", "message": "OK  clang"}),
                  json.dumps({"event": "result", "ok": False, "code": 4})]
         summary, installed = full_build.summarize(lines, ["/b"])
+        self.assertEqual(summary["missing"], ["MISSING  Disk space >= 40 GB free (8.0 GB free under <path>/work)"])
         self.assertEqual(summary["steps"], {"extract": "complete"})
         self.assertEqual(summary["errors"][0]["message"], "cannot open <path>/data/game.xci <hex>")
         self.assertEqual(summary["result"], {"ok": False, "code": 4})
