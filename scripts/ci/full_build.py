@@ -141,6 +141,10 @@ def main(argv=None):
     ok = code == 0 and bool(summary["result"] and summary["result"]["ok"])
     print(json.dumps(summary, indent=2))
     if not ok:
+        tail = [redact(line, known) for line in lines if '"event": "log"' in line][-15:]
+        stderr_tail = [redact(line, known) for line in (logs / "driver-stderr.log").read_text(
+            encoding="utf-8", errors="replace").splitlines()[-25:]]
+        print("driver log tail:\n" + "\n".join(tail) + "\ndriver stderr tail:\n" + "\n".join(stderr_tail), flush=True)
         reasons = {8: "not enough disk space", 4: "a tool or component is missing"}
         print("FAILED: exit %s (%s). Missing items: %s. Last error: %s" % (
             code, reasons.get(code, "see the steps above"), "; ".join(summary.get("missing", [])) or "none reported",
