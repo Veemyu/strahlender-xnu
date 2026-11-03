@@ -347,6 +347,13 @@ class WindowsBuildTests(unittest.TestCase):
                 changed[name] = "aarch64"
             self.assertNotEqual(windows.cache_key(changed), base["cache_key"], name)
 
+    def test_records_with_the_old_cache_key_still_match_but_other_changes_do_not(self):
+        base = windows.profile("x86_64", "x86_64")
+        old = {**base, "cache_key": "windows-x86_64-to-x86_64-llvm-mingw-ucrt-simd-c"}
+        self.assertTrue(windows.same_profile(old, base))
+        self.assertFalse(windows.same_profile({**old, "simd": "other"}, base))
+        self.assertFalse(windows.same_profile(None, base))
+
     def test_contract_has_recipes_but_no_pinned_versions_or_downloads(self):
         data = windows.contract()
         self.assertEqual(data["minimum_windows_build"], 19045)

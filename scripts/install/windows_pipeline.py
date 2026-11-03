@@ -98,7 +98,7 @@ def read_catalog(path, target):
     selected = build.windows.profile(target)
     if (record.get("schema") != 1 or record.get("private_only") is not True or
             record.get("release_qualified") is not False or
-            record.get("profile") != selected or not record.get("files")):
+            not build.windows.same_profile(record.get("profile"), selected) or not record.get("files")):
         raise ValueError("The private Windows catalog does not match the host/target profile")
     if target != "x86_64" or selected["host"] != "x86_64":
         raise ValueError("The full native pipeline currently has only amd64 development dependencies")

@@ -455,7 +455,7 @@ def verified_bundle(path, selected):
     filesystem.reject_link(path)
     path = path.resolve()
     record = json.loads((path / "build.json").read_text(encoding="utf-8"))
-    if record.get("schema") != 1 or record.get("profile") != selected or not record.get("files"):
+    if record.get("schema") != 1 or not windows.same_profile(record.get("profile"), selected) or not record.get("files"):
         raise ValueError("Development bundle profile/inventory mismatch: " + str(path))
     filesystem.verify_inventory(path, record["files"], ignored=("build.json",))
     return path
@@ -593,7 +593,7 @@ def import_sdl(devel, destination, selected):
 def compiled_inventory(compile_marker, selected):
     marker = Path(compile_marker)
     record = json.loads(marker.read_text(encoding="utf-8"))
-    if record.get("schema") != 1 or record.get("profile") != selected or not record.get("objects"):
+    if record.get("schema") != 1 or not windows.same_profile(record.get("profile"), selected) or not record.get("objects"):
         raise ValueError("Compile inventory does not match the Windows target")
     objects = []
     for name, digest in sorted(record["objects"].items()):

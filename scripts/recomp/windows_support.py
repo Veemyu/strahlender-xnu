@@ -46,6 +46,14 @@ def cache_key(selected):
     return "%s-%s" % (short[fields["target"]], digest[:5])
 
 
+def same_profile(recorded, selected):
+    """Stored records written before the short cache key carry the old folder name; every other field must still match."""
+    if not isinstance(recorded, dict):
+        return False
+    return ({k: v for k, v in recorded.items() if k != "cache_key"} ==
+            {k: v for k, v in selected.items() if k != "cache_key"})
+
+
 def sha256(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
