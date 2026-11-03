@@ -198,6 +198,74 @@ fn unpack(source: &Path, dest: &Path) -> Result<()> {
 fn hash_file(path: &Path) -> Result<String> {
     bdsp_extract::manifest::file_sha256(path).map_err(err)
 }
+const GENERIC_DECRYPT: &str =
+    "Firmware could not be decrypted. Check that prod.keys matches your firmware dump.";
+/// Reads only the number of hactool's "Master Key Revision" line (hex, like the extract tool does).
+fn master_revision(info: &str) -> Option<u32> {
+    info.lines().find_map(|line| {
+        let value = line
+            .strip_prefix("Master Key Revision")?
+            .trim_start()
+            .strip_prefix(':')?;
+        let digits = value.split_whitespace().next()?;
+        let digits = digits
+            .strip_prefix("0x")
+            .or_else(|| digits.strip_prefix("0X"))
+            .unwrap_or(digits);
+        u32::from_str_radix(digits, 16).ok()
+    })
+}
+/// Collects the generations of the `master_key_XX` names in a keys file. Values are never stored.
+fn master_generations(keys: &str) -> Vec<u32> {
+    let mut found: Vec<u32> = keys
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .filter_map(|line| {
+            let (name, _) = line.split_once('=')?;
+            let digits = name.trim().to_ascii_lowercase();
+            let digits = digits.strip_prefix("master_key_")?;
+            if digits.len() < 2 || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return None;
+            }
+            u32::from_str_radix(digits, 16).ok()
+        })
+        .collect();
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+/// A revision R needs master_key_(R - 1); revisions 0 and 1 both use master_key_00.
+fn failure_message(generic: String, revision: Option<u32>, present: &[u32]) -> String {
+    let (Some(revision), Some(&highest)) = (revision, present.iter().max()) else {
+        return generic;
+    };
+    let needed = revision.saturating_sub(1);
+    if needed <= highest {
+        return generic;
+    }
+    format!(
+        "Your prod.keys are too old for this firmware: the firmware needs master key {needed:02x}, your file has up to {highest:02x}. Dump prod.keys again from a Switch that runs this firmware, or use an older firmware dump."
+    )
+}
+/// Narrows a failure down to a prod.keys that is older than the NCA. Only one integer of the tool's
+/// stdout and only key names of the keys file are used; tool output and key values are never relayed.
+fn explain(tool: &Path, keys: &Path, nca: &Path, generic: String) -> String {
+    let revision = Command::new(tool)
+        .hidden()
+        .arg("-k")
+        .arg(keys)
+        .arg("-i")
+        .arg(nca)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .and_then(|out| master_revision(&String::from_utf8_lossy(&out.stdout)));
+    let present = fs::read(keys)
+        .map(|bytes| master_generations(&String::from_utf8_lossy(&bytes)))
+        .unwrap_or_default();
+    failure_message(generic, revision, &present)
+}
 fn tool(tool: &Path, keys: &Path, args: &[String]) -> Result<String> {
     let out = Command::new(tool)
         .hidden()
@@ -210,10 +278,10 @@ fn tool(tool: &Path, keys: &Path, args: &[String]) -> Result<String> {
         .map_err(|_| "The firmware extraction tool could not start.")?;
     // Never relay tool diagnostics: hactool can print key material.
     if !out.status.success() {
-        return Err(
-            "Firmware could not be decrypted. Check that prod.keys matches your firmware dump."
-                .into(),
-        );
+        return Err(match args.last() {
+            Some(nca) => explain(tool, keys, Path::new(nca), GENERIC_DECRYPT.into()),
+            None => GENERIC_DECRYPT.into(),
+        });
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -557,8 +625,13 @@ pub fn import(source: &Path, keys: &Path, tool_path: &Path, cache: &Path) -> Res
             ],
         )?;
         if !extracted.is_dir() {
-            return Err(format!(
-                "The extraction tool wrote no resources for firmware title {id}. Check that prod.keys matches your firmware dump."
+            return Err(explain(
+                tool_path,
+                keys,
+                &nca,
+                format!(
+                    "The extraction tool wrote no resources for firmware title {id}. Check that prod.keys matches your firmware dump."
+                ),
             ));
         }
         if hash_file(&nca)? != expected_hash {
@@ -610,6 +683,62 @@ mod tests {
         fs::write(&p, [0u8; 64]).unwrap();
         assert!(validate_font(&p).is_err());
         assert!(validate_layout(&p).is_err());
+    }
+    #[test]
+    fn master_key_names_are_read_without_values() {
+        let text = "\u{feff}# comment\nheader_key = 00\nmaster_key_00 = dummy-a\r\nMASTER_KEY_0b=dummy-b\nmaster_key_10 = dummy-c\nmaster_key_source = dummy-d\nmaster_key_1 = dummy-e\nmaster_key_0z = x\nmaster_key_0b = dup\nno equals sign master_key_ff\n";
+        assert_eq!(master_generations(text), vec![0, 0x0b, 0x10]);
+        assert!(master_generations("titlekek_00 = a\n").is_empty());
+    }
+    #[test]
+    fn master_revision_is_the_only_value_taken_from_the_info_text() {
+        let info = "Title ID: 0100000000000810\nSecret Line: fake-dummy-value\nMaster Key Revision:                0xC (Unknown)\n";
+        assert_eq!(master_revision(info), Some(12));
+        assert_eq!(master_revision("Master Key Revision: 5 (x)\n"), Some(5));
+        assert_eq!(master_revision("Master Key Revision: (none)\n"), None);
+        assert_eq!(master_revision("Title ID: 1\n"), None);
+    }
+    #[test]
+    fn old_keys_get_the_precise_message_and_everything_else_the_generic_one() {
+        let generic = || "generic".to_string();
+        assert_eq!(
+            failure_message(generic(), Some(0x16), &[0, 1, 0x14]),
+            "Your prod.keys are too old for this firmware: the firmware needs master key 15, your file has up to 14. Dump prod.keys again from a Switch that runs this firmware, or use an older firmware dump."
+        );
+        assert_eq!(
+            failure_message(generic(), Some(0x15), &[0, 0x14]),
+            "generic"
+        );
+        assert_eq!(failure_message(generic(), Some(1), &[0]), "generic");
+        assert_eq!(failure_message(generic(), None, &[0, 1]), "generic");
+        assert_eq!(failure_message(generic(), Some(9), &[]), "generic");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn explain_uses_the_revision_and_names_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = Scratch::new(&std::env::temp_dir()).unwrap();
+        let tool_path = tmp.0.join("fake-hactool");
+        fs::write(
+            &tool_path,
+            "#!/bin/sh\nprintf 'Master Key Revision: 0xC (Unknown)\\nfake-secret-output\\n'\nprintf 'fake-secret-error\\n' >&2\n",
+        )
+        .unwrap();
+        fs::set_permissions(&tool_path, fs::Permissions::from_mode(0o700)).unwrap();
+        let keys = tmp.0.join("prod.keys");
+        fs::write(
+            &keys,
+            "master_key_00 = fake-dummy\nmaster_key_09 = fake-dummy\n",
+        )
+        .unwrap();
+        let message = explain(&tool_path, &keys, &tmp.0.join("a.nca"), "generic".into());
+        assert!(message.contains("needs master key 0b, your file has up to 09"));
+        assert!(!message.contains("fake"));
+        fs::write(&keys, "master_key_0b = fake-dummy\n").unwrap();
+        assert_eq!(
+            explain(&tool_path, &keys, &tmp.0.join("a.nca"), "generic".into()),
+            "generic"
+        );
     }
     #[test]
     fn archive_rejection() {
