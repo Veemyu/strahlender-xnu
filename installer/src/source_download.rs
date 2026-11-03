@@ -34,7 +34,7 @@ pub fn download_main(parent: &Path, cancelled: &AtomicBool) -> Result<PathBuf, S
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
-        .as_nanos();
+        .as_millis();
     let staging = parent.join(format!(".download-{}-{unique}", std::process::id()));
     std::fs::create_dir(&staging).map_err(|e| e.to_string())?;
     let result = (|| {
@@ -60,12 +60,24 @@ pub fn download_main(parent: &Path, cancelled: &AtomicBool) -> Result<PathBuf, S
         if !root.join("scripts/install/driver.py").is_file() {
             return Err("Downloaded source is missing its build driver.".into());
         }
-        let destination = parent.join(format!("{sha}-{unique}"));
+        // 12 hex digits and milliseconds: 26 characters instead of 60, because Windows paths below this folder are
+        // limited to 260 characters. Old downloads (40 hex digits, nanoseconds) are still recognized by prune_unused.
+        let mut destination = parent.join(folder_name(sha, unique));
+        let mut attempt = 0u32;
+        while destination.exists() {
+            attempt += 1;
+            destination = parent.join(folder_name(sha, unique + u128::from(attempt)));
+        }
         std::fs::rename(&root, &destination).map_err(|e| e.to_string())?;
         Ok(destination)
     })();
     let _ = std::fs::remove_dir_all(&staging);
     result
+}
+
+/// "<12 hex digits of the revision>-<milliseconds>".
+fn folder_name(sha: &str, unique: u128) -> String {
+    format!("{}-{unique}", &sha[..12])
 }
 
 /// The commit `main` points at. The GitHub API answers first; its anonymous rate limit is shared by everyone behind
@@ -110,7 +122,7 @@ fn revision_from_refs(text: &str) -> Option<String> {
 
 /// Deletes source downloads under `parent` that nothing uses any more: older than `older_than`, without a `work` folder (a build that
 /// is still running or kept its work has one) and not `keep`. Every setup and every build downloads its own copy of `main`; a failed
-/// or interrupted run leaves it behind. Never fails, never touches anything that is not a plain folder of the form <revision>-<number>.
+/// or interrupted run leaves it behind. Never fails, never touches anything that is not a plain folder of the form <revision>-<number> (revision: 12 or 40 hex digits).
 pub fn prune_unused(parent: &Path, keep: Option<&Path>, older_than: Duration) {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return;
@@ -121,7 +133,10 @@ pub fn prune_unused(parent: &Path, keep: Option<&Path>, older_than: Duration) {
         let plain = path.is_dir()
             && !entry.file_type().is_ok_and(|t| t.is_symlink())
             && name.split_once('-').is_some_and(|(revision, number)| {
-                valid_revision(revision) && number.bytes().all(|b| b.is_ascii_digit())
+                (valid_revision(revision)
+                    || (revision.len() == 12 && revision.bytes().all(|b| b.is_ascii_hexdigit())))
+                    && !number.is_empty()
+                    && number.bytes().all(|b| b.is_ascii_digit())
             });
         let old = entry
             .metadata()
@@ -169,6 +184,8 @@ mod tests {
         let old = mk(&format!("{revision}-111"), false);
         let with_work = mk(&format!("{revision}-222"), true);
         let current = mk(&format!("{revision}-333"), false);
+        let short_old = mk("aaaaaaaaaaaa-1762170000000", false);
+        let short_work = mk("aaaaaaaaaaaa-1762170000001", true);
         let foreign = mk("notes", false);
         // nothing is old enough yet
         super::prune_unused(
@@ -176,12 +193,25 @@ mod tests {
             Some(&current),
             std::time::Duration::from_secs(3600),
         );
-        assert!(old.exists() && with_work.exists() && current.exists() && foreign.exists());
+        assert!(
+            old.exists()
+                && short_old.exists()
+                && with_work.exists()
+                && current.exists()
+                && foreign.exists()
+        );
         // with a zero age everything unused goes, except the work folder, the current one and folders that are not ours
         super::prune_unused(&parent, Some(&current), std::time::Duration::ZERO);
-        assert!(!old.exists());
-        assert!(with_work.exists() && current.exists() && foreign.exists());
+        assert!(!old.exists() && !short_old.exists());
+        assert!(short_work.exists() && with_work.exists() && current.exists() && foreign.exists());
         let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn source_folder_names_are_short() {
+        let name = super::folder_name(&"a".repeat(40), 1_762_170_000_000);
+        assert_eq!(name, "aaaaaaaaaaaa-1762170000000");
+        assert_eq!(name.len(), 26);
     }
 
     #[test]
