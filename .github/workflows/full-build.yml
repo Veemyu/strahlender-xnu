@@ -1,0 +1,284 @@
+name: Full build (private data)
+run-name: Full build · ${{ inputs.source_ref }}${{ inputs.with_mod && ' · mod' || '' }}
+# Real builds of the installer pipeline on the owner's game data, for Linux, macOS and Windows. Manual only.
+#
+# The data is served privately as five encrypted blobs (secrets CI_DATA_URL, CI_DATA_EDGE_KEY, CI_DATA_BEARER, CI_DATA_KEY,
+# CI_DATA_MANIFEST; format in the private data repository's docs/ci-data-hosting.md). This workflow refuses to run unless the
+# repository that runs it is private: the logs of a public repository are public. It is meant to live in the private repository,
+# which checks out the public sources at source_ref. No caches, no game-derived artifacts: the only upload is a small JSON
+# summary (step names, status, redacted errors). The data folder is wiped in an always() step.
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Branch, tag or SHA of the sources to build'
+        required: true
+        default: main
+        type: string
+      with_mod:
+        description: 'Build with the mod archive of the data set instead of the plain game'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: full-build-${{ inputs.source_ref }}
+  cancel-in-progress: false
+env:
+  SOURCE_REPO: Veemyu/strahlender-xnu
+  RUSTUP_TOOLCHAIN: '1.88'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  PIP_NO_CACHE_DIR: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+jobs:
+  linux:
+    if: ${{ github.event.repository.private == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    container:
+      image: fedora:43
+      # The hosted runner's second disk (about 60 GB free); the system disk is too small for a build.
+      volumes:
+        - /mnt:/mnt
+    env:
+      BASE: /mnt/b
+      CARGO_TARGET_DIR: /mnt/b/target
+      WITH_MOD: ${{ inputs.with_mod && '1' || '' }}
+    steps:
+      - name: System packages (Fedora names from scripts/recomp/runtime/app/linux/deps.txt)
+        run: |
+          dnf install -y --setopt=install_weak_deps=False git tar gzip which clang gcc-c++ make cmake pkgconf-pkg-config \
+            qt6-qtbase-devel vulkan-headers vulkan-loader-devel SDL3-devel libshaderc-devel VulkanMemoryAllocator-devel \
+            libavcodec-free-devel libavformat-free-devel libavutil-free-devel python3 python3-pip python3-devel \
+            libxkbcommon-devel wayland-devel libX11-devel libXcursor-devel libXi-devel libXrandr-devel \
+            xorg-x11-server-Xvfb mesa-vulkan-drivers mesa-dri-drivers
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ inputs.source_ref }}
+          path: src
+          persist-credentials: false
+      - name: Tools (Rust, Python packages)
+        working-directory: src
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.88
+          python3 -m venv /mnt/venv
+          /mnt/venv/bin/python -m pip install cryptography Pillow lz4 unicorn==2.1.4 UnityPy
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/mnt/venv/bin" >> "$GITHUB_PATH"
+      - name: Fetch and decrypt the data
+        working-directory: src
+        env:
+          CI_DATA_URL: ${{ secrets.CI_DATA_URL }}
+          CI_DATA_EDGE_KEY: ${{ secrets.CI_DATA_EDGE_KEY }}
+          CI_DATA_BEARER: ${{ secrets.CI_DATA_BEARER }}
+          CI_DATA_KEY: ${{ secrets.CI_DATA_KEY }}
+          CI_DATA_MANIFEST: ${{ secrets.CI_DATA_MANIFEST }}
+        run: |
+          python scripts/ci/private_data.py mask
+          python scripts/ci/private_data.py fetch "$BASE/data"
+          if [ -n "$WITH_MOD" ]; then python scripts/ci/private_data.py mod "$BASE/data" "$BASE/mods"; fi
+          echo "free GB: $(df -BG --output=avail /mnt | tail -1 | tr -dc 0-9)"
+      - name: Build the installer helpers (extract tool, IPS patcher, firmware importer)
+        working-directory: src
+        run: |
+          cargo build --release --locked --manifest-path installer/extract/Cargo.toml
+          cargo build --release --locked --manifest-path installer/Cargo.toml --bin ips_patch --bin firmware_import
+      - name: Full build
+        working-directory: src
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-summary"
+          python scripts/ci/full_build.py --target linux --root "$PWD" --base "$BASE" ${WITH_MOD:+--mod} \
+            --extract "$CARGO_TARGET_DIR/release/bdsp-extract" \
+            --ips-helper "$CARGO_TARGET_DIR/release/ips_patch" --firmware-helper "$CARGO_TARGET_DIR/release/firmware_import" \
+            --summary "$RUNNER_TEMP/ci-summary/linux.json" --installed-out "$BASE/installed.txt"
+      - name: Smoke start (virtual display, software Vulkan; the game output is discarded)
+        continue-on-error: true
+        working-directory: src
+        run: python scripts/ci/smoke.py --target linux --installed "$(cat "$BASE/installed.txt")" --seconds 20
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: full-build-summary-linux
+          path: ${{ runner.temp }}/ci-summary/linux.json
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Wipe the data
+        if: ${{ always() }}
+        run: |
+          python3 src/scripts/ci/private_data.py wipe "$BASE" "$RUNNER_TEMP/ci-summary" /mnt/venv
+          test ! -e "$BASE" && echo wiped
+  macos:
+    if: ${{ github.event.repository.private == true }}
+    runs-on: macos-15
+    timeout-minutes: 300
+    env:
+      WITH_MOD: ${{ inputs.with_mod && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ inputs.source_ref }}
+          path: src
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Work folder
+        run: echo "BASE=$RUNNER_TEMP/b" >> "$GITHUB_ENV"
+      - name: Tools (Homebrew packages from docs/BUILD.md, Rust, Python packages)
+        working-directory: src
+        run: |
+          brew install llvm sdl3 ffmpeg pkg-config
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          rustup toolchain install 1.88 --profile minimal
+          python -m pip install cryptography Pillow lz4 unicorn==2.1.4 UnityPy
+      - name: Fetch and decrypt the data
+        working-directory: src
+        env:
+          CI_DATA_URL: ${{ secrets.CI_DATA_URL }}
+          CI_DATA_EDGE_KEY: ${{ secrets.CI_DATA_EDGE_KEY }}
+          CI_DATA_BEARER: ${{ secrets.CI_DATA_BEARER }}
+          CI_DATA_KEY: ${{ secrets.CI_DATA_KEY }}
+          CI_DATA_MANIFEST: ${{ secrets.CI_DATA_MANIFEST }}
+        run: |
+          python scripts/ci/private_data.py mask
+          python scripts/ci/private_data.py fetch "$BASE/data"
+          if [ -n "$WITH_MOD" ]; then python scripts/ci/private_data.py mod "$BASE/data" "$BASE/mods"; fi
+          echo "free GB: $(df -g "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+      - name: Build the installer helpers (extract tool, IPS patcher, firmware importer)
+        working-directory: src
+        run: |
+          cargo build --release --locked --manifest-path installer/extract/Cargo.toml
+          cargo build --release --locked --manifest-path installer/Cargo.toml --bin ips_patch --bin firmware_import
+      - name: Full build
+        working-directory: src
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-summary"
+          python scripts/ci/full_build.py --target macos --root "$PWD" --base "$BASE" ${WITH_MOD:+--mod} \
+            --extract "$PWD/installer/extract/target/release/bdsp-extract" \
+            --ips-helper "$PWD/installer/target/release/ips_patch" --firmware-helper "$PWD/installer/target/release/firmware_import" \
+            --summary "$RUNNER_TEMP/ci-summary/macos.json" --installed-out "$BASE/installed.txt"
+      - name: Smoke start (no GPU on the runner; the game output is discarded)
+        continue-on-error: true
+        working-directory: src
+        run: python scripts/ci/smoke.py --target macos --installed "$(cat "$BASE/installed.txt")" --seconds 20
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: full-build-summary-macos
+          path: ${{ runner.temp }}/ci-summary/macos.json
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Wipe the data
+        if: ${{ always() }}
+        run: |
+          python src/scripts/ci/private_data.py wipe "$BASE" "$RUNNER_TEMP/ci-summary"
+          test ! -e "$BASE" && echo wiped
+  windows:
+    if: ${{ github.event.repository.private == true }}
+    runs-on: windows-2022
+    timeout-minutes: 300
+    permissions:
+      contents: read
+      actions: read  # downloads the artifact of the windows-components workflow
+    env:
+      # Short roots: the native generator is not long path aware (scripts/install/pathlimits.py).
+      BASE: C:\b
+      BDSP_INSTALLER_DATA_DIR: C:\b\d
+      WITH_MOD: ${{ inputs.with_mod && '1' || '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ inputs.source_ref }}
+          path: src
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Shallow source checkout
+        run: |
+          mkdir -p /c/b
+          git -C src worktree add --detach 'C:\b\s' HEAD
+          python -m pip install cryptography
+          rustup toolchain install 1.88 --profile minimal
+      - name: Fetch and decrypt the data
+        working-directory: C:\b\s
+        env:
+          CI_DATA_URL: ${{ secrets.CI_DATA_URL }}
+          CI_DATA_EDGE_KEY: ${{ secrets.CI_DATA_EDGE_KEY }}
+          CI_DATA_BEARER: ${{ secrets.CI_DATA_BEARER }}
+          CI_DATA_KEY: ${{ secrets.CI_DATA_KEY }}
+          CI_DATA_MANIFEST: ${{ secrets.CI_DATA_MANIFEST }}
+        run: |
+          python scripts/ci/private_data.py mask
+          python scripts/ci/private_data.py fetch 'C:\b\data'
+          if [ -n "$WITH_MOD" ]; then python scripts/ci/private_data.py mod 'C:\b\data' 'C:\b\mods'; fi
+          python -c "import shutil; print('free GB:', shutil.disk_usage('C:/').free // 2**30)"
+      - name: Private Python runtime (CPython and the locked wheels, verified by SHA-256)
+        working-directory: C:\b\s
+        run: |
+          RUNTIME="C:/b/runtime"
+          mkdir -p "$RUNTIME"
+          ASSET="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["targets"][sys.argv[2]]["python_asset"])' installer/runtime/manifest.json windows-x86_64)"
+          curl -fL --retry 3 "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/${ASSET//+/%2B}" -o "$RUNTIME/python.tar.gz"
+          python installer/scripts/build_source_wheel.py tpk_ar --fetch-source --output "$RUNTIME/wheels"
+          python installer/scripts/assemble_runtime.py --target windows-x86_64 --profile shaders --python-archive "$RUNTIME/python.tar.gz" --fetch-wheels --wheelhouse "$RUNTIME/wheels" --source-builds "$RUNTIME/wheels" --output "$RUNTIME/runtime"
+      - name: Build the installer
+        working-directory: C:\b\s
+        env:
+          BDSP_INSTALLER_UPDATE_PUBLIC_KEY: ${{ vars.INSTALLER_UPDATE_PUBLIC_KEY }}
+        run: cargo +1.88 build --release --locked --bins --manifest-path installer/Cargo.toml
+      - name: Fetch the Windows components of the sources and package the installer
+        working-directory: C:\b\s
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN="$(gh run list -R "$SOURCE_REPO" --workflow windows-components.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')"
+          test -n "$RUN" || { echo "No successful windows-components run in $SOURCE_REPO"; exit 1; }
+          gh run download "$RUN" -R "$SOURCE_REPO" -n windows-components -D 'C:\b\tools'
+          python installer/scripts/package_windows.py 'C:\b\runtime\runtime' 'C:\b\tools'
+          cp work/installer-packages/windows-x86_64/Strahlender-Installer-x86_64.exe /c/b/installer.exe
+      - name: Unpack the installer bundle and set the Windows environment up
+        shell: pwsh
+        run: |
+          & C:\b\installer.exe --check-runtime
+          $bundle = (Get-ChildItem "$env:APPDATA\Veemyu\strahlender-xnu-installer\data\bundle" -Directory | Select-Object -First 1).FullName
+          $env:BDSP_INSTALLER_EXE = "C:\b\installer.exe"
+          & "$bundle\installer_setup.exe" --install
+          if ($LASTEXITCODE) { throw "installer_setup failed" }
+          $components = "$env:APPDATA\Veemyu\strahlender-xnu-installer\data\windows-components"
+          $catalog = "$components\" + (Get-Content "$components\current" -Raw).Trim() + "\catalog.json"
+          if (-not (Test-Path $catalog)) { throw "no catalog" }
+          "BUNDLE=$bundle" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "CATALOG=$catalog" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Full build
+        working-directory: C:\b\s
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-summary"
+          python scripts/ci/full_build.py --target windows --root 'C:\b\s' --base 'C:\b' ${WITH_MOD:+--mod} \
+            --python "$BUNDLE/resources/runtime/python/python.exe" --windows-catalog "$CATALOG" \
+            --extract 'C:\b\installer.exe' --extract-prefix=--cli \
+            --ips-helper "$BUNDLE/ips_patch.exe" --firmware-helper "$BUNDLE/firmware_import.exe" \
+            --summary "$RUNNER_TEMP/ci-summary/windows.json" --installed-out 'C:\b\installed.txt'
+      - name: Smoke start (no GPU on the runner; the game output is discarded)
+        continue-on-error: true
+        working-directory: C:\b\s
+        run: python scripts/ci/smoke.py --target windows --installed "$(cat /c/b/installed.txt)" --seconds 20
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: full-build-summary-windows
+          path: ${{ runner.temp }}/ci-summary/windows.json
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Wipe the data
+        if: ${{ always() }}
+        run: |
+          python src/scripts/ci/private_data.py wipe 'C:\b' "$RUNNER_TEMP/ci-summary"
+          test ! -e /c/b && echo wiped
