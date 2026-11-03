@@ -19,6 +19,9 @@
 
 #include "bdsp.h"
 #include "mods.h"
+#ifdef __linux__
+#include "exe_paths.h"
+#endif
 #include "audio_output.h"
 #ifdef _WIN32
 #include "win32_files.h"
@@ -348,6 +351,9 @@ int main(int argc, char **argv) {
 #endif
 #ifdef BDSP_APP
     bdsp_app_init(argc, argv);   // macOS app: paths/configuration, environment of the runtime, save backup (runtime/app)
+#endif
+#ifdef __linux__
+    bdsp_exe_defaults();   // started without the launcher script: use img/, romfs/ and main.npdm next to the executable
 #endif
     signal(SIGINT, on_sigint);
 #ifndef _WIN32

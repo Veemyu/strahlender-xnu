@@ -4,6 +4,7 @@ Chronological, newest entries first. Each item records the date, goal, and files
 
 ## 2026-11-03
 
+- **Linux runtime started without the launcher script (issue #26):** running `bdsp_boot_vk_qt` directly from the installed `app/` folder looked for `work/recomp/img/main.mod` and `work/romfs` relative to the working directory and stopped with FATAL. `bdsp_exe_defaults()` (`runtime/exe_paths.c`, called first thing in `main`) now points `BDSP_IMG`, `BDSP_ROMFS` and `BDSP_NPDM` at `img/`, `romfs/` and `main.npdm` next to the executable when they exist and the variables are unset; the launcher script and explicit settings still win, and the development layout under `work/` is unchanged. Test: `runtime/test/run_exe_paths_test.sh`.
 - **iPhone/iPad install with a mod (issue #38, reported by tarikbc):** the copy to the device staged loose files below `copy-stage/<number>`, and the number restarted at 0 for every copy, so the mod's first loose portion failed with `[Errno 17] File exists: .../copy-stage/0` after the game data had been copied. The staging folders are named `<copy>-<portion>` now (`driver.py`); test `test_ios_loose_portions_of_every_copy_use_their_own_stage_folder` fails with the old names.
 
 ## 2026-11-02
