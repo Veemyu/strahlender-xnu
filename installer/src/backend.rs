@@ -1,6 +1,5 @@
 use crate::process::Hidden;
 use crate::runtime::{backend_python, project_root};
-use iced::futures::SinkExt;
 use serde::Deserialize;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -16,6 +15,7 @@ use std::{
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
+    sync::mpsc::Sender,
 };
 
 const PROTOCOL_VERSION: u32 = 2;
@@ -126,6 +126,7 @@ impl IosDelivery {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildRequest {
     pub target: &'static str,
     pub ios_delivery: IosDelivery,
@@ -192,30 +193,35 @@ enum Action {
     Build(BuildRequest),
 }
 
-pub fn build(
+/// Runs one build and reports every event on `output`; the receiver side decides how to show them (window or JSON lines).
+pub async fn build(
     run_id: u64,
     cancelled: Arc<AtomicBool>,
     mods_folder: Option<PathBuf>,
     selected_mod: Option<String>,
     request: BuildRequest,
-) -> impl iced::futures::Stream<Item = (u64, Event)> + 'static {
+    output: Sender<(u64, Event)>,
+) {
     run_driver(
         run_id,
         cancelled,
         mods_folder,
         selected_mod,
         Action::Build(request),
+        output,
     )
+    .await
 }
 
-fn run_driver(
+async fn run_driver(
     run_id: u64,
     cancelled: Arc<AtomicBool>,
     mods_folder: Option<PathBuf>,
     selected_mod: Option<String>,
     action: Action,
-) -> impl iced::futures::Stream<Item = (u64, Event)> + 'static {
-    iced::stream::channel(32, async move |mut output| {
+    output: Sender<(u64, Event)>,
+) {
+    {
         let _ = output
             .send((
                 run_id,
@@ -234,35 +240,34 @@ fn run_driver(
         let ipa_export = matches!(&action, Action::Build(request) if request.target == "ios" && request.ios_delivery == IosDelivery::Ipa);
         let remember_profile =
             matches!(&action, Action::Build(request) if ipa_export && request.mod_root.is_some());
-        let workspace =
-            match crate::workspace::prepare(run_id, &mut output, cancelled.clone()).await {
-                Ok(root) => root,
-                Err(_) if cancelled.load(Ordering::Acquire) => {
-                    let _ = output.send((run_id, Event::Stopped)).await;
-                    return;
-                }
-                Err(message) => {
-                    let _ = output
-                        .send((
-                            run_id,
-                            Event::Log {
-                                level: "error".into(),
-                                message,
-                            },
-                        ))
-                        .await;
-                    let _ = output
-                        .send((
-                            run_id,
-                            Event::Finished {
-                                ok: false,
-                                code: -3,
-                            },
-                        ))
-                        .await;
-                    return;
-                }
-            };
+        let workspace = match crate::workspace::prepare(run_id, &output, cancelled.clone()).await {
+            Ok(root) => root,
+            Err(_) if cancelled.load(Ordering::Acquire) => {
+                let _ = output.send((run_id, Event::Stopped)).await;
+                return;
+            }
+            Err(message) => {
+                let _ = output
+                    .send((
+                        run_id,
+                        Event::Log {
+                            level: "error".into(),
+                            message,
+                        },
+                    ))
+                    .await;
+                let _ = output
+                    .send((
+                        run_id,
+                        Event::Finished {
+                            ok: false,
+                            code: -3,
+                        },
+                    ))
+                    .await;
+                return;
+            }
+        };
         let root = workspace.root.clone();
         let _ = output
             .send((
@@ -780,7 +785,7 @@ fn run_driver(
                 ))
                 .await;
         }
-    })
+    }
 }
 
 #[cfg(test)]

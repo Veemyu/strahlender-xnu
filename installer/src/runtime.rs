@@ -3,6 +3,11 @@ use crate::process::Hidden;
 use std::path::{Path, PathBuf};
 
 pub fn project_root() -> Option<PathBuf> {
+    // Tests point the development checkout at a stub tree.
+    #[cfg(debug_assertions)]
+    if let Some(root) = std::env::var_os("BDSP_INSTALLER_DEV_ROOT") {
+        return Some(PathBuf::from(root));
+    }
     let starts = vec![std::env::current_dir().ok()?, std::env::current_exe().ok()?];
     #[cfg(debug_assertions)]
     let mut starts = starts;

@@ -1,6 +1,5 @@
 //! Release builds fetch main once per run; a build never changes revision halfway through.
 use crate::backend::Event;
-use iced::futures::{SinkExt, channel::mpsc::Sender};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -9,6 +8,7 @@ use std::{
     },
     time::Duration,
 };
+use tokio::sync::mpsc::Sender;
 
 pub use crate::source_download::{client, data_dir};
 
@@ -27,7 +27,7 @@ pub fn source_smoke() -> Result<PathBuf, String> {
 
 pub async fn prepare(
     run: u64,
-    output: &mut Sender<(u64, Event)>,
+    output: &Sender<(u64, Event)>,
     cancelled: Arc<AtomicBool>,
 ) -> Result<Prepared, String> {
     if cfg!(debug_assertions)

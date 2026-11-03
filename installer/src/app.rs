@@ -1940,56 +1940,22 @@ impl Installer {
                     let cancelled = Arc::new(AtomicBool::new(false));
                     self.backend_cancel = Some(cancelled.clone());
                     self.record("BACKEND", self.language.t(L::LogBuildStart));
-                    let (Some(base), Some(keys)) = (&self.base, &self.keys) else {
-                        self.backend_status = BackendStatus::Failed;
-                        self.record("BACKEND", self.language.t(L::MissingInput));
-                        self.notice = Some(self.language.t(L::MissingInput).into());
-                        return Task::none();
-                    };
-                    let target = match self.target {
-                        InstallTarget::Mac => "macos",
-                        InstallTarget::Linux => "linux",
-                        InstallTarget::Windows => {
-                            if std::env::consts::ARCH == "aarch64" {
-                                "windows-arm64"
-                            } else {
-                                "windows"
-                            }
+                    let request = match crate::flow::build_request(self.request_inputs()) {
+                        Ok(request) => request,
+                        Err(_) => {
+                            self.backend_status = BackendStatus::Failed;
+                            self.record("BACKEND", self.language.t(L::MissingInput));
+                            self.notice = Some(self.language.t(L::MissingInput).into());
+                            return Task::none();
                         }
-                        InstallTarget::Ios => "ios",
-                        _ => unreachable!("unsupported target was checked above"),
                     };
                     return Task::run(
-                        crate::backend::build(
+                        backend_stream(
                             run_id,
                             cancelled,
                             self.mods_folder.clone(),
                             self.selected_mod.clone(),
-                            crate::backend::BuildRequest {
-                                target,
-                                ios_delivery: self.ios_delivery,
-                                ios_device: self.ios_device.clone(),
-                                ios_team: crate::ios_signing::valid_id(&self.ios_team)
-                                    .then(|| self.ios_team.clone()),
-                                ios_profile: self.ios_profile.clone(),
-                                ios_new_profile: self.ios_new_profile.clone(),
-                                portable_cpu: self.portable_cpu,
-                                clean_build: self.clean_build,
-                                ios_export_no_embed: self.ios_export_no_embed,
-                                auto_cleanup: self.auto_cleanup,
-                                base: base.path.clone(),
-                                prod_keys: keys.path.clone(),
-                                firmware: self.firmware.clone(),
-                                update: self.update.as_ref().map(|source| source.path.clone()),
-                                mod_root: self
-                                    .selected_mod
-                                    .as_ref()
-                                    .and_then(|name| {
-                                        self.mods.iter().find(|item| &item.name == name)
-                                    })
-                                    .map(|item| item.root.clone()),
-                                mod_name: self.selected_mod.clone(),
-                            },
+                            request,
                         ),
                         |(id, event)| Message::BackendEvent(id, event),
                     );
@@ -2410,25 +2376,16 @@ impl Installer {
     }
 
     fn build_stages(&self) -> Vec<crate::progress::Stage> {
-        let code_mod = !self.mods_skipped
-            && self.mods.iter().any(|entry| {
-                self.selected_mod.as_deref() == Some(entry.name.as_str()) && entry.has_exefs
-            });
-        crate::progress::Stage::ALL
-            .into_iter()
-            .filter(|stage| *stage != crate::progress::Stage::Firmware || self.firmware.is_some())
-            .filter(|stage| *stage != crate::progress::Stage::Exefs || code_mod)
-            .filter(|stage| {
-                // prebuilt Metal libraries: only the Apple targets (Mac and iPhone/iPad)
-                *stage != crate::progress::Stage::Shaders
-                    || matches!(self.target, InstallTarget::Mac | InstallTarget::Ios)
-            })
-            .filter(|stage| {
-                *stage != crate::progress::Stage::Signing
-                    || (self.target == InstallTarget::Ios
-                        && self.ios_delivery == crate::backend::IosDelivery::Device)
-            })
-            .collect()
+        crate::flow::build_stages(
+            self.target,
+            self.ios_delivery,
+            self.firmware.is_some(),
+            crate::flow::code_mod_selected(
+                self.mods_skipped,
+                self.selected_mod.as_deref(),
+                &self.mods,
+            ),
+        )
     }
 
     fn build_labels(&self) -> [L; 13] {
@@ -2573,20 +2530,37 @@ impl Installer {
         }
     }
 
+    fn request_inputs(&self) -> crate::flow::RequestInputs<'_> {
+        crate::flow::RequestInputs {
+            target: self.target,
+            arch: std::env::consts::ARCH,
+            ios_delivery: self.ios_delivery,
+            ios_device: self.ios_device.clone(),
+            ios_team: &self.ios_team,
+            ios_profile: self.ios_profile.clone(),
+            ios_new_profile: self.ios_new_profile.clone(),
+            portable_cpu: self.portable_cpu,
+            clean_build: self.clean_build,
+            ios_export_no_embed: self.ios_export_no_embed,
+            auto_cleanup: self.auto_cleanup,
+            base: self.base.as_ref().map(|source| source.path.clone()),
+            keys: self.keys.as_ref().map(|source| source.path.clone()),
+            firmware: self.firmware.clone(),
+            update: self.update.as_ref().map(|source| source.path.clone()),
+            selected_mod: self.selected_mod.clone(),
+            mods: &self.mods,
+        }
+    }
+
     fn backend_supported(&self) -> bool {
-        platform_backend_supported(self.host, self.target, std::env::consts::ARCH)
-            && self.base.as_ref().is_some_and(|source| {
-                source.path.is_dir()
-                    || source.path.extension().is_some_and(|ext| {
-                        ext.eq_ignore_ascii_case("xci") || ext.eq_ignore_ascii_case("nsp")
-                    })
-            })
-            && self.selected_mod.as_ref().is_none_or(|name| {
-                self.mods.iter().any(|item| {
-                    &item.name == name
-                        && (!item.has_exefs || (self.ips_target() && item.ips_buildable()))
-                })
-            })
+        crate::flow::backend_supported(
+            self.host,
+            self.target,
+            std::env::consts::ARCH,
+            self.base.as_ref().map(|source| source.path.as_path()),
+            self.selected_mod.as_deref(),
+            &self.mods,
+        )
     }
 
     fn experimental_target(&self) -> bool {
@@ -2595,12 +2569,7 @@ impl Installer {
 
     /// Targets whose build stages IPS/IPS32 and subsdk1 into a separate mod app.
     fn ips_target(&self) -> bool {
-        matches!(
-            (self.host, self.target),
-            (Platform::Mac, InstallTarget::Mac | InstallTarget::Ios)
-                | (Platform::Windows, InstallTarget::Windows)
-                | (Platform::Linux, InstallTarget::Linux)
-        )
+        crate::flow::ips_target(self.host, self.target)
     }
 
     fn capture_scenario(&mut self) -> Task<Message> {
@@ -3183,22 +3152,34 @@ fn stored_folder(host: Platform, setting: FolderSetting) -> Option<PathBuf> {
     }
 }
 
-/// Which host, target and CPU architecture have a real build path. Linux aarch64 is allowed but experimental
-/// (`experimental_target`).
-fn platform_backend_supported(host: Platform, target: InstallTarget, arch: &str) -> bool {
-    matches!(
-        (host, target, arch),
-        (
-            Platform::Mac,
-            InstallTarget::Mac | InstallTarget::Ios,
-            "aarch64"
-        ) | (Platform::Linux, InstallTarget::Linux, "x86_64" | "aarch64")
-            | (
-                Platform::Windows,
-                InstallTarget::Windows,
-                "x86_64" | "aarch64"
-            )
-    )
+/// The window side of a run: the backend writes into a plain channel, this forwards it into the iced stream.
+fn backend_stream(
+    run_id: u64,
+    cancelled: Arc<AtomicBool>,
+    mods_folder: Option<std::path::PathBuf>,
+    selected_mod: Option<String>,
+    request: crate::backend::BuildRequest,
+) -> impl iced::futures::Stream<Item = (u64, crate::backend::Event)> + 'static {
+    iced::stream::channel(32, async move |mut output| {
+        use iced::futures::SinkExt;
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
+        let run = crate::backend::build(
+            run_id,
+            cancelled,
+            mods_folder,
+            selected_mod,
+            request,
+            sender,
+        );
+        let forward = async {
+            while let Some(item) = receiver.recv().await {
+                if output.send(item).await.is_err() {
+                    break;
+                }
+            }
+        };
+        tokio::join!(run, forward);
+    })
 }
 
 fn experimental_target(host: Platform, target: InstallTarget, arch: &str) -> bool {
@@ -3232,7 +3213,8 @@ mod tests {
     #[test]
     fn backend_support_matrix_unlocks_linux_aarch64_and_keeps_the_rest() {
         use InstallTarget::{Ios, Linux, Mac, Windows};
-        let supported = |host, target, arch| platform_backend_supported(host, target, arch);
+        let supported =
+            |host, target, arch| crate::flow::platform_backend_supported(host, target, arch);
         assert!(supported(Platform::Linux, Linux, "x86_64"));
         assert!(supported(Platform::Linux, Linux, "aarch64"));
         assert!(!supported(Platform::Linux, Linux, "riscv64"));
@@ -4448,5 +4430,122 @@ mod tests {
 
     fn home_child(home: &str) -> PathBuf {
         PathBuf::from(home).join("AppData").join("strahlender")
+    }
+
+    const STUB_DRIVER: &str = r#"import json, sys
+def emit(**event):
+    print(json.dumps(event), flush=True)
+emit(event="hello", protocol=2)
+emit(event="step", id="prepare", status="started")
+emit(event="progress", id="prepare", completed=1, total=2)
+emit(event="log", level="info", message=" ".join(sys.argv[1:]))
+emit(event="artifact", kind="installed_application", path="stub-app")
+emit(event="result", ok=True, code=0)
+"#;
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn window_and_cli_build_the_same_request_and_event_stream() {
+        use iced::futures::StreamExt;
+        static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("headless-parity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let driver = dir.join("root/scripts/install");
+        std::fs::create_dir_all(&driver).unwrap();
+        std::fs::write(driver.join("driver.py"), STUB_DRIVER).unwrap();
+        let base = dir.join("base");
+        std::fs::create_dir_all(&base).unwrap();
+        let keys = dir.join("prod.keys");
+        std::fs::write(&keys, b"").unwrap();
+        unsafe {
+            std::env::set_var("BDSP_INSTALLER_DEV_CHECKOUT", "1");
+            std::env::set_var("BDSP_INSTALLER_DEV_ROOT", dir.join("root"));
+            std::env::set_var("BDSP_MODS_DIR", dir.join("mods"));
+            std::env::remove_var("BDSP_INSTALLER_RUNTIME");
+        }
+        let host = Platform::native();
+        let arch = std::env::consts::ARCH;
+        let target = InstallTarget::native(host);
+        let flag = crate::flow::target_name(target, arch).unwrap();
+
+        let (mut app, _) = Installer::new();
+        app.target = target;
+        app.base = Some(sources::Source {
+            path: base.clone(),
+            description: String::new(),
+        });
+        app.keys = Some(sources::Source {
+            path: keys.clone(),
+            description: String::new(),
+        });
+        app.ios_delivery = crate::backend::IosDelivery::Device;
+        app.ios_team = String::new();
+        app.ios_device = None;
+        app.ios_profile = None;
+        app.ios_new_profile = None;
+        app.auto_cleanup = false;
+        app.portable_cpu = false;
+        app.clean_build = false;
+        app.ios_export_no_embed = false;
+        app.selected_mod = None;
+        app.firmware = None;
+        app.update = None;
+        let gui_request = crate::flow::build_request(app.request_inputs()).unwrap();
+
+        let args: Vec<String> = [
+            "--target",
+            flag,
+            "--keys",
+            keys.to_str().unwrap(),
+            "--base",
+            base.to_str().unwrap(),
+            "--no-updates",
+        ]
+        .map(String::from)
+        .to_vec();
+        let config = crate::headless::parse(&args).unwrap();
+        let cli_plan = crate::headless::plan(&config, host, arch).unwrap();
+        assert_eq!(cli_plan.request, gui_request);
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let gui_events: Vec<_> = runtime
+            .block_on(
+                backend_stream(
+                    1,
+                    Arc::new(AtomicBool::new(false)),
+                    app.mods_folder.clone(),
+                    None,
+                    gui_request,
+                )
+                .collect::<Vec<_>>(),
+            )
+            .into_iter()
+            .map(|(_, event)| event)
+            .collect();
+        let mut cli_events = Vec::new();
+        let code =
+            crate::headless::run_build(cli_plan, &runtime, |event| cli_events.push(event.clone()));
+        unsafe {
+            std::env::remove_var("BDSP_INSTALLER_DEV_CHECKOUT");
+            std::env::remove_var("BDSP_INSTALLER_DEV_ROOT");
+            std::env::remove_var("BDSP_MODS_DIR");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(code, 0, "{cli_events:?}");
+        assert_eq!(gui_events, cli_events);
+        assert!(matches!(
+            cli_events.last(),
+            Some(crate::backend::Event::Finished { ok: true, .. })
+        ));
+        assert!(
+            cli_events
+                .iter()
+                .any(|event| matches!(event, crate::backend::Event::Artifact { kind, .. } if kind == "installed_application"))
+        );
     }
 }
