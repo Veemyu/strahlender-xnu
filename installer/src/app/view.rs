@@ -1872,6 +1872,7 @@ impl Installer {
                 Page::Setup if self.demo => (L::StartPreview, Some(Message::Preview), true),
                 Page::Setup if self.updating => (L::UpdateDownloading, None, false),
                 Page::Setup if self.requirements_busy => (L::CheckingRequirements, None, false),
+                Page::Setup if self.setup_busy => (L::StepTools, None, false),
                 Page::Setup if self.requirements.is_some() => (
                     L::InstallDependencies,
                     Some(Message::InstallRequirements),

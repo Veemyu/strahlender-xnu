@@ -764,6 +764,9 @@ impl Installer {
             }
             Message::DefenderChecked(state) => self.defender = state,
             Message::InstallRequirements => {
+                if self.setup_busy {
+                    return Task::none();
+                }
                 self.setup_log_length = 0;
                 if let Some(plan) = self.requirements.clone() {
                     if plan.manager == "windows-components" {
@@ -2976,6 +2979,21 @@ mod tests {
         assert_eq!(app.page, Page::Firmware);
         app.demo = false;
         assert!(!app.ready()); // Without a selection, use the explicit Skip action.
+    }
+
+    #[test]
+    fn a_second_install_tools_press_is_ignored_while_the_tools_are_downloading() {
+        let (mut app, _) = Installer::with_options(Options {
+            platform: Some(Platform::Windows),
+            capture: Some(std::env::temp_dir().join("windows-double-install-capture")),
+            scenes: vec!["setup-dependencies"],
+            ..Options::default()
+        });
+        app.setup_busy = true;
+        app.setup_log_length = 7;
+        let _ = app.handle(Message::InstallRequirements);
+        assert_eq!(app.setup_log_length, 7);
+        assert!(app.setup_busy);
     }
 
     #[test]
