@@ -1,4 +1,3 @@
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{
     fs, io,
@@ -106,8 +105,9 @@ fn path() -> Option<PathBuf> {
     if let Some(dir) = TEST_DIR.with(|cell| cell.borrow().clone()) {
         return Some(dir.join("preferences.json"));
     }
-    ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
-        .map(|dirs| dirs.config_dir().join("preferences.json"))
+    static MIGRATE: std::sync::Once = std::sync::Once::new();
+    MIGRATE.call_once(crate::appdir::migrate_legacy_config);
+    crate::appdir::config_dir().map(|dir| dir.join("preferences.json"))
 }
 
 pub fn load() -> Appearance {

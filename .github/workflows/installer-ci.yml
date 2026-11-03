@@ -267,12 +267,12 @@ jobs:
           ls -l unpacked
           "unpacked/Strahlender-Installer-x86_64.exe" --check-runtime
           "unpacked/Strahlender-Installer-x86_64.exe" --check-runtime
-          test "$(ls "$APPDATA/Veemyu/strahlender-xnu-installer/data/bundle" | wc -l)" = 1
+          test "$(ls "$APPDATA/str-xnu/bundle" | wc -l)" = 1
           # What a user's first start does: the installer sets the Windows environment up from its own tools
           # (Qt, FFmpeg and SDL3 come from their publishers). It carries no scripts, so it fetches the current main source.
-          helper="$(ls -d "$APPDATA"/Veemyu/strahlender-xnu-installer/data/bundle/*/)installer_setup.exe"
+          helper="$(ls -d "$APPDATA"/str-xnu/bundle/*/)installer_setup.exe"
           BDSP_INSTALLER_EXE="$PWD/unpacked/Strahlender-Installer-x86_64.exe" "$helper" --install
-          find "$APPDATA/Veemyu/strahlender-xnu-installer/data/windows-components" -maxdepth 2 -name catalog.json | grep .
+          find "$APPDATA/str-xnu/windows-components" -maxdepth 2 -name catalog.json | grep .
       - uses: actions/upload-artifact@v7
         with:
           name: installer-windows-x86_64

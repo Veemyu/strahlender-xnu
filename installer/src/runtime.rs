@@ -135,10 +135,9 @@ pub fn backend_python() -> Option<(PathBuf, bool)> {
     if let Some(python) = bundled_runtime() {
         return Some((python, true));
     }
-    if let Some(dirs) = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
+    if let Some(data) = crate::appdir::data_dir()
         && let Some(target) = host_target()
-        && let Some(python) =
-            verified_runtime_python(&dirs.data_dir().join("runtimes/3.13.15").join(target))
+        && let Some(python) = verified_runtime_python(&data.join("runtimes/3.13.15").join(target))
     {
         return Some((python, true));
     }

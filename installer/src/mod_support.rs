@@ -68,8 +68,7 @@ pub fn folder_for(host: Platform, target: InstallTarget) -> Option<PathBuf> {
                 .join("Library/Application Support/dev.local.xnubdsp/mods")
         });
     }
-    directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
-        .map(|dirs| dirs.data_dir().join("mods"))
+    crate::appdir::data_dir().map(|dir| dir.join("mods"))
 }
 
 pub fn open_folder(path: &Path) -> Result<(), String> {

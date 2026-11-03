@@ -11,9 +11,7 @@ const KEEP: usize = 10;
 static FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 pub fn dir() -> Option<PathBuf> {
-    crate::source_download::data_dir()
-        .ok()
-        .map(|d| d.join("logs"))
+    crate::appdir::logs_dir()
 }
 
 fn start(dir: &Path) -> Option<PathBuf> {

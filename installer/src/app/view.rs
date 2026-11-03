@@ -1993,6 +1993,7 @@ impl Installer {
         if self.details {
             controls = controls
                 .push(space().width(Fill))
+                .push(self.text_action(self.language.t(L::OpenLogFolder), Message::OpenLogFolder))
                 .push(self.text_action(self.language.t(L::CopyLog), Message::CopyLog));
         }
         let mut footer = column![].spacing(10);

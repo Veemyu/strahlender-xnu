@@ -42,8 +42,8 @@ pub fn dir_of(exe: &Path) -> Option<PathBuf> {
     {
         return None;
     }
-    let data = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")?;
-    match unpacked(exe, &data.data_dir().join("bundle")) {
+    let data = crate::appdir::data_dir()?;
+    match unpacked(exe, &data.join("bundle")) {
         Ok(folder) => folder,
         Err(why) => {
             if let Ok(mut failure) = FAILURE.lock() {

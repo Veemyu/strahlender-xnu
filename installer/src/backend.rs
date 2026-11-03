@@ -473,12 +473,8 @@ fn run_driver(
                         .arg(source)
                         .arg("--firmware-helper")
                         .arg(helper);
-                    if let Some(data) =
-                        directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
-                    {
-                        command
-                            .arg("--firmware-cache")
-                            .arg(data.data_local_dir().join("firmware"));
+                    if let Some(data) = crate::appdir::data_local_dir() {
+                        command.arg("--firmware-cache").arg(data.join("firmware"));
                     }
                 }
                 if let Some(update) = update {

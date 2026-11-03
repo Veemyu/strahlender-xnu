@@ -1,3 +1,5 @@
+#[path = "../appdir.rs"]
+mod appdir;
 #[path = "../bundle.rs"]
 mod bundle;
 #[path = "../components.rs"]

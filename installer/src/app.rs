@@ -168,6 +168,7 @@ pub enum Message {
     DismissNotice,
     ShowNoticeDetails,
     CopyLog,
+    OpenLogFolder,
     CopyLogLine(usize),
     ClearCopiedLogLine(usize, Instant),
     DemoInput,
@@ -2016,6 +2017,14 @@ impl Installer {
             Message::ClearCopiedLogLine(index, copied_at) => {
                 if self.copied_log_line == Some((index, copied_at)) {
                     self.copied_log_line = None;
+                }
+            }
+            Message::OpenLogFolder => {
+                if let Some(folder) = crate::session_log::dir() {
+                    let _ = std::fs::create_dir_all(&folder);
+                    if let Err(error) = crate::open::folder(&folder) {
+                        self.notice = Some(error);
+                    }
                 }
             }
             Message::CopyLog => return iced::clipboard::write(self.log.join("\n")),

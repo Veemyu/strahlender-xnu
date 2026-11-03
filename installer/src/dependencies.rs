@@ -488,9 +488,8 @@ pub fn install(plan: &Plan) -> Result<(), String> {
             Err("Nothing can be installed automatically. Follow the manual steps in the list, then check again.".into())
         };
     }
-    let directory = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
+    let directory = crate::appdir::data_dir()
         .ok_or("Application data unavailable.")?
-        .data_dir()
         .join("setup");
     std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let log = directory.join(format!("install-{}.log", std::process::id()));
@@ -539,12 +538,10 @@ pub fn install(plan: &Plan) -> Result<(), String> {
 
 pub fn read_setup_log() -> String {
     use std::io::Read;
-    let Some(dirs) = directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
-    else {
+    let Some(data) = crate::appdir::data_dir() else {
         return String::new();
     };
-    let path = dirs
-        .data_dir()
+    let path = data
         .join("setup")
         .join(format!("install-{}.log", std::process::id()));
     let Ok(file) = std::fs::File::open(path) else {

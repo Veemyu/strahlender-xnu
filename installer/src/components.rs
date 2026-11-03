@@ -40,12 +40,9 @@ impl Meta {
 }
 
 pub fn root() -> Result<PathBuf, String> {
-    Ok(
-        directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
-            .ok_or("Application data unavailable.")?
-            .data_dir()
-            .join("windows-components"),
-    )
+    Ok(crate::appdir::data_dir()
+        .ok_or("Application data unavailable.")?
+        .join("windows-components"))
 }
 
 /// The catalog of the installed environment, if one is installed and complete.

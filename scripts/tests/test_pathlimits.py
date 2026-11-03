@@ -16,7 +16,7 @@ MOD = {"identity": "a" * 10, "slug": "s" * 32}
 
 
 def default_root(user, source="a" * 12 + "-" + "1" * 13):
-    return ("C:\\Users\\" + user + "\\AppData\\Roaming\\Veemyu\\strahlender-xnu-installer\\data\\sources\\" + source + "\\work")
+    return ("C:\\Users\\" + user + "\\AppData\\Roaming\\" + pathlimits.INSTALLER_FOLDER + "\\sources\\" + source + "\\work")
 
 
 def default_install(user, mod):
@@ -40,6 +40,15 @@ class PathLimitTests(unittest.TestCase):
         self.assertTrue(full.risk)
         self.assertIn("result RISK", full.line())
 
+    def test_the_installer_folder_name_is_the_same_in_python_and_rust(self):
+        source = (Path(__file__).resolve().parents[2] / "installer/src/appdir.rs").read_text(encoding="utf-8")
+        self.assertIn('WINDOWS_FOLDER: &str = "%s";' % pathlimits.INSTALLER_FOLDER, source)
+
+    def test_the_default_build_root_is_short(self):
+        # 0.1.4 used ...\\Roaming\\Veemyu\\strahlender-xnu-installer\\data (108 and 123 characters for these user names).
+        self.assertEqual(len(default_root("abcde")), 78)
+        self.assertEqual(len(default_root("u" * 20)), 93)
+
     def test_the_default_installer_folder_fits_for_every_user_name_and_a_deep_one_does_not(self):
         for user, margin in (("abcde", 20), ("u" * 20, 0)):
             root = default_root(user)
@@ -50,7 +59,7 @@ class PathLimitTests(unittest.TestCase):
                 self.assertLessEqual(check.total, pathlimits.LIMIT - 1 - margin, (user, label, check.line()))
                 self.assertLessEqual(check.installed, pathlimits.LIMIT - 1 - margin, (user, label, check.line()))
         # An installer 0.1.4 still creates the 60 character source folder: it stops at the preflight with the clear message.
-        old = default_root("abcde", "a" * 40 + "-" + "1" * 19)
+        old = ("C:\\Users\\abcde\\AppData\\Roaming\\Veemyu\\strahlender-xnu-installer\\data\\sources\\" + "a" * 40 + "-" + "1" * 19 + "\\work")
         deep = pathlimits.check(old, KEY, romfs=GAME, long_paths=False)
         self.assertTrue(deep.risk)
         self.assertIn("LongPathsEnabled=no", deep.line())

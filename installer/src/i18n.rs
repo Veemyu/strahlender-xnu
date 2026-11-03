@@ -402,6 +402,7 @@ messages! {
     Running => ["Running", "Läuft", "En curso", "Em curso", "Выполняется"],
     Details => ["Show details", "Details anzeigen", "Ver detalles", "Mostrar detalhes", "Показать подробности"],
     HideDetails => ["Hide details", "Details schließen", "Ocultar detalles", "Ocultar detalhes", "Скрыть подробности"],
+    OpenLogFolder => ["Open log folder", "Protokollordner öffnen", "Abrir carpeta de registros", "Abrir pasta de registos", "Открыть папку журналов"],
     CopyLog => ["Copy log", "Protokoll kopieren", "Copiar registro", "Copiar registo", "Скопировать журнал"],
     LogEmpty => ["No activity yet.", "Noch keine Aktivität.", "Aún no hay actividad.", "Ainda não há atividade.", "Действий пока нет."],
     LogSearch => ["Searching standard emulator folders for prod.keys.", "Übliche Emulator-Ordner nach prod.keys durchsuchen.", "Buscando prod.keys en las carpetas habituales de emuladores.", "A procurar prod.keys nas pastas habituais dos emuladores.", "Поиск prod.keys в стандартных папках эмуляторов."],

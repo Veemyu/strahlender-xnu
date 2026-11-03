@@ -13,6 +13,8 @@ import os
 import sys
 
 LIMIT = 260
+# The installer keeps its Windows data in %APPDATA%\<this folder> (installer/src/appdir.rs holds the same name).
+INSTALLER_FOLDER = "str-xnu"
 MODULES = ("rtld", "main", "sdk", "subsdk0", "subsdk1")
 RANDOM = "x" * 8
 PID = "123456"

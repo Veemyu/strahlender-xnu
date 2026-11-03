@@ -7,8 +7,7 @@ use std::{
 };
 
 pub fn data_dir() -> Result<PathBuf, String> {
-    directories::ProjectDirs::from("dev", "Veemyu", "strahlender-xnu-installer")
-        .map(|dirs| dirs.data_dir().to_path_buf())
+    crate::appdir::data_dir()
         .ok_or_else(|| "Your application data folder could not be located.".into())
 }
 

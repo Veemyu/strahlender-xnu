@@ -2,6 +2,7 @@
 
 mod activity;
 mod app;
+mod appdir;
 mod backend;
 mod bundle;
 mod capture;
