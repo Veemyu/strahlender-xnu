@@ -745,20 +745,27 @@ void backend_init(void) {
     // Wrap the guest heap: memory pools live there, and GPU addresses are guest addresses.
     extern void nvn_glue_mem_range(void);
     nvn_glue_mem_range();
-#ifdef BDSP_COMPACT_BASE
-    if (HEAP_MAX > dev.maxBufferLength) {
+    uint64_t buffer_limit = dev.maxBufferLength;
+    if (getenv("BDSP_METAL_MAX_BUFFER_MB")) buffer_limit = (uint64_t)atol(getenv("BDSP_METAL_MAX_BUFFER_MB")) << 20;  // test: pretend a smaller device
+    if (HEAP_MAX > buffer_limit) {
         // A single Metal buffer must cover the guest memory, but the envelope of all mappings (a few small blocks sit far below the
-        // main one) exceeds maxBufferLength on the iPhone (2 GiB). The SDK's application chunk starts at the next 2 GiB boundary of
-        // the window and holds all memory pools (checked on the A13): wrap only that part.
+        // main one) exceeds maxBufferLength on the iPhone (2 GiB) and on Macs with 8 GB of memory (4 GiB, issue #48: the envelope is
+        // 5069 MiB). The SDK's application chunk starts at the next 2 GiB boundary of the window and holds all memory pools (checked
+        // on the A13): wrap only that part.
         extern uint64_t g_nvn_mem_base, g_nvn_mem_size;
-        uint64_t lo = BDSP_COMPACT_BASE + 0x80000000ull, room = dev.maxBufferLength & ~0x3FFFull;
+#ifdef BDSP_COMPACT_BASE
+        uint64_t lo = BDSP_COMPACT_BASE + 0x80000000ull;
+#else
+        uint64_t lo = (g_nvn_mem_base + 0x7FFFFFFFull) & ~0x7FFFFFFFull;
+#endif
+        uint64_t room = buffer_limit & ~0x3FFFull;
         uint64_t hi = g_nvn_mem_base + g_nvn_mem_size;
+        if (lo >= hi) FATAL("the guest memory (%llu MiB) does not fit in a Metal buffer (max %llu MiB)\n", (unsigned long long)(HEAP_MAX >> 20), (unsigned long long)(buffer_limit >> 20));
         g_nvn_mem_base = lo;
         g_nvn_mem_size = hi - lo < room ? hi - lo : room;
         LOG("[nvn] Metal buffer clipped to the application chunk: 0x%llx + %llu MiB (limit %llu MiB)\n", (unsigned long long)lo,
-            (unsigned long long)(g_nvn_mem_size >> 20), (unsigned long long)(dev.maxBufferLength >> 20));
+            (unsigned long long)(g_nvn_mem_size >> 20), (unsigned long long)(buffer_limit >> 20));
     }
-#endif
     g_guest_buffer_base = HEAP_BASE;
     g_guest_buffer = [dev newBufferWithBytesNoCopy:(void *)HEAP_BASE length:HEAP_MAX
                                            options:MTLResourceStorageModeShared deallocator:nil];
