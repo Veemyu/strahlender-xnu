@@ -39,6 +39,17 @@ ASSUMED_ROMFS = ("x" * 108,)
 MOD_CODE_KEY = "x" * 20     # recomp/mods/<20 hex>/ holds the build of a mod with ExeFS code
 
 
+def plain_path(path):
+    """A Windows path without the extended prefix: Path.resolve() returns \\\\?\\C:\\... when a folder is redirected (for example
+    Documents under OneDrive), but the runtime compares folder names as plain text and never matches the prefixed form (#51)."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + text[8:]
+    if text.startswith("\\\\?\\") and text[5:6] == ":":
+        return text[4:]
+    return text
+
+
 def package_folder(mod=None):
     """Folder of the finished package below work/pkg: short, because the game data below it is deep."""
     return "m-" + mod["identity"][:8] if mod else "BDSP"
@@ -182,4 +193,4 @@ def check(work, cache_key, modules=MODULES, romfs=(), long_paths=None, mod=None,
             for base in (len(install), staged):
                 if base + 1 + len(path) > installed:
                     installed, installed_label = base + 1 + len(path), found_label
-    return PathCheck(len(str(work)), length, label, long_paths, installed, installed_label)
+    return PathCheck(len(plain_path(work)), length, label, long_paths, installed, installed_label)

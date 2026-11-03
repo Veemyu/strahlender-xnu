@@ -68,6 +68,15 @@ class PathLimitTests(unittest.TestCase):
         self.assertIn("Build options", deep.failure())
         self.assertFalse(pathlimits.check("C:\\bdsp\\work", KEY, romfs=GAME, long_paths=False).risk)
 
+    def test_the_extended_path_prefix_is_not_counted_or_written(self):
+        self.assertEqual(pathlimits.plain_path("\\\\?\\C:\\Users\\a\\Documents"), "C:\\Users\\a\\Documents")
+        self.assertEqual(pathlimits.plain_path("\\\\?\\UNC\\host\\share\\mods"), "\\\\host\\share\\mods")
+        self.assertEqual(pathlimits.plain_path("C:\\bdsp"), "C:\\bdsp")
+        self.assertEqual(pathlimits.plain_path("\\\\?\\Volume{1}\\x"), "\\\\?\\Volume{1}\\x")
+        plain = pathlimits.check("C:\\bdsp\\work", KEY, romfs=GAME, long_paths=False)
+        prefixed = pathlimits.check("\\\\?\\C:\\bdsp\\work", KEY, romfs=GAME, long_paths=False)
+        self.assertEqual(plain.total, prefixed.total)
+
     def test_a_deep_install_folder_is_reported_as_such(self):
         check = pathlimits.check(default_root("abcde"), KEY, romfs=GAME, install="C:\\" + "d" * 150 + "\\app")
         self.assertTrue(check.risk and not check.too_long)

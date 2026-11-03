@@ -58,6 +58,11 @@ class WindowsPipelineTests(unittest.TestCase):
         build.atomic_json(root / "package.json", record)
         return root
 
+    def test_the_mod_launch_file_names_the_library_without_the_extended_path_prefix(self):
+        mod = {"root": Path("Lumi 2.2"), "mods_dir": "\\\\?\\C:\\Users\\a\\Documents"}
+        self.assertEqual(pipeline.mod_launch_file(mod, True), "Lumi 2.2\nC:\\Users\\a\\Documents\nexefs\n")
+        self.assertEqual(pipeline.mod_launch_file(mod, False).splitlines()[2], "romfs")
+
     def test_installed_package_preserves_external_saves_and_refuses_modified_data(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
