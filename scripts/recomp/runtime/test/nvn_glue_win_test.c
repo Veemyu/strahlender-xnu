@@ -137,6 +137,26 @@ int main(void) {
     nvn_glue_init();
     assert(bound >= 3);
 
+    // maxBufferLength clamp: 0x7190000000 + 5069 MiB is clipped to the application chunk at 0x7200000000.
+    extern uint64_t g_nvn_mem_base, g_nvn_mem_size;
+    extern void nvn_glue_clip_to_max_buffer(uint64_t max_buffer_length);
+    g_nvn_mem_base = 0x7190000000ull;
+    g_nvn_mem_size = 5069ull << 20;
+    nvn_glue_clip_to_max_buffer(4096ull << 20);
+    assert(g_nvn_mem_base == 0x7200000000ull);
+    assert(g_nvn_mem_size == 3277ull << 20);
+    // A limit that covers the envelope leaves it alone.
+    g_nvn_mem_base = 0x7190000000ull;
+    g_nvn_mem_size = 1024ull << 20;
+    nvn_glue_clip_to_max_buffer(4096ull << 20);
+    assert(g_nvn_mem_base == 0x7190000000ull && g_nvn_mem_size == 1024ull << 20);
+    // The limit is rounded down to a 16 KiB page and caps the clipped size.
+    g_nvn_mem_base = 0x7190000000ull;
+    g_nvn_mem_size = 5069ull << 20;
+    nvn_glue_clip_to_max_buffer((3000ull << 20) + 0x1234);
+    assert(g_nvn_mem_base == 0x7200000000ull);
+    assert(g_nvn_mem_size == 3000ull << 20);
+
     SDL_Event event = {0};
     event.type = SDL_EVENT_KEY_DOWN; event.key.scancode = SDL_SCANCODE_K;
     input_handle_event(&event);

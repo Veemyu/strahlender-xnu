@@ -4,6 +4,7 @@ Chronological, newest entries first. Each item records the date, goal, and files
 
 ## 2026-11-03
 
+- **macOS 8 GB Apple Silicon: the Metal buffer over guest memory is clipped to the application chunk (issue #46, reported by antonioag95):** the clamp in `metal.m` that handles a guest envelope larger than `maxBufferLength` was guarded by `#ifdef BDSP_COMPACT_BASE`, so only iPhone/iPad used it. On an 8 GB M1 `maxBufferLength` is 4 GiB while the envelope is 5069 MiB, so `backend_init` aborted with "cannot wrap guest heap in a Metal buffer" after 0.4 s. The clamp is now `nvn_glue_clip_to_max_buffer()` in `nvn_glue.c`, called on every platform: it starts at the next 2 GiB boundary of `ALIAS_BASE` (Mac variant A: `0x7200000000`, compact: `BDSP_COMPACT_BASE + 0x80000000`) and keeps at most `maxBufferLength` rounded down to 16 KiB; all NVN memory pools live in that chunk (`bdsp.h`). The documented `BDSP_NVN_MEM_BASE`/`BDSP_NVN_MEM_MB` override is still honoured, and with it the reporter played for 30 minutes on the 8 GB M1 without issues. Test in `nvn_glue_win_test.c`.
 - **iPhone/iPad install with a mod (issue #38, reported by tarikbc):** the copy to the device staged loose files below `copy-stage/<number>`, and the number restarted at 0 for every copy, so the mod's first loose portion failed with `[Errno 17] File exists: .../copy-stage/0` after the game data had been copied. The staging folders are named `<copy>-<portion>` now (`driver.py`); test `test_ios_loose_portions_of_every_copy_use_their_own_stage_folder` fails with the old names.
 
 ## 2026-11-02

@@ -104,6 +104,22 @@ void nvn_glue_mem_range(void) {
     LOG("[nvn] Metal buffer over 0x%llx + %llu MiB\n", (unsigned long long)lo, (unsigned long long)(g_nvn_mem_size >> 20));
 }
 
+// A single Metal buffer must cover the guest memory, but the envelope of all mappings can exceed maxBufferLength (4 GiB on an 8 GB
+// M1, 2 GiB on an iPhone). The SDK places its application chunk on the next 2 GiB boundary of the alias region (bdsp.h) and all NVN
+// memory pools live there, so wrap only that part. Called from backend_init after nvn_glue_mem_range().
+void nvn_glue_clip_to_max_buffer(uint64_t max_buffer_length) {
+    if (!max_buffer_length || g_nvn_mem_size <= max_buffer_length) return;
+    if (getenv("BDSP_NVN_MEM_BASE") || getenv("BDSP_NVN_MEM_MB")) return;   // manual override, see docs/development.md
+    uint64_t lo = (ALIAS_BASE + 0x7FFFFFFFull) & ~0x7FFFFFFFull;
+    uint64_t room = max_buffer_length & ~0x3FFFull;
+    uint64_t hi = g_nvn_mem_base + g_nvn_mem_size;
+    if (hi <= lo) return;
+    g_nvn_mem_base = lo;
+    g_nvn_mem_size = hi - lo < room ? hi - lo : room;
+    LOG("[nvn] Metal buffer clipped to the application chunk: 0x%llx + %llu MiB (limit %llu MiB)\n", (unsigned long long)lo,
+        (unsigned long long)(g_nvn_mem_size >> 20), (unsigned long long)(max_buffer_length >> 20));
+}
+
 // ---- NVN function table: every name is bound to the host implementation; missing names are counted (hle_unimpl_report)
 static uint64_t nvn_proc(const char *name) {
     if (!name || !*name) return 0;

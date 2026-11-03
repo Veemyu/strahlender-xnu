@@ -744,21 +744,11 @@ void backend_init(void) {
     present_sampler = [dev newSamplerStateWithDescriptor:sd];
     // Wrap the guest heap: memory pools live there, and GPU addresses are guest addresses.
     extern void nvn_glue_mem_range(void);
+    extern void nvn_glue_clip_to_max_buffer(uint64_t max_buffer_length);
     nvn_glue_mem_range();
-#ifdef BDSP_COMPACT_BASE
-    if (HEAP_MAX > dev.maxBufferLength) {
-        // A single Metal buffer must cover the guest memory, but the envelope of all mappings (a few small blocks sit far below the
-        // main one) exceeds maxBufferLength on the iPhone (2 GiB). The SDK's application chunk starts at the next 2 GiB boundary of
-        // the window and holds all memory pools (checked on the A13): wrap only that part.
-        extern uint64_t g_nvn_mem_base, g_nvn_mem_size;
-        uint64_t lo = BDSP_COMPACT_BASE + 0x80000000ull, room = dev.maxBufferLength & ~0x3FFFull;
-        uint64_t hi = g_nvn_mem_base + g_nvn_mem_size;
-        g_nvn_mem_base = lo;
-        g_nvn_mem_size = hi - lo < room ? hi - lo : room;
-        LOG("[nvn] Metal buffer clipped to the application chunk: 0x%llx + %llu MiB (limit %llu MiB)\n", (unsigned long long)lo,
-            (unsigned long long)(g_nvn_mem_size >> 20), (unsigned long long)(dev.maxBufferLength >> 20));
-    }
-#endif
+    // A single Metal buffer must cover the guest memory. When the mapping envelope exceeds maxBufferLength (4 GiB on an 8 GB M1,
+    // 2 GiB on an iPhone), clip it to the SDK's application chunk, where all NVN memory pools live (nvn_glue.c).
+    nvn_glue_clip_to_max_buffer((uint64_t)dev.maxBufferLength);
     g_guest_buffer_base = HEAP_BASE;
     g_guest_buffer = [dev newBufferWithBytesNoCopy:(void *)HEAP_BASE length:HEAP_MAX
                                            options:MTLResourceStorageModeShared deallocator:nil];
