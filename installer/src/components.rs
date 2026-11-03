@@ -65,6 +65,114 @@ fn hash_file(path: &Path) -> Result<(String, u64), String> {
     Ok((hash, fs::metadata(path).map_err(|e| e.to_string())?.len()))
 }
 
+const LOCK: &str = "install.lock";
+const LOCK_MAX_AGE_SECONDS: u64 = 4 * 3600;
+pub const BUSY: &str = "The tools are already being installed by another running installer window. Close the other window or wait until it finishes, then try again.";
+
+/// Only one installer process may prepare the tools at a time: they share the folder. The file holds the pid and start time
+/// of its owner and is removed on drop; a file of a dead process or an old one is taken over.
+#[derive(Debug)]
+pub struct InstallLock(PathBuf);
+
+impl InstallLock {
+    pub fn acquire(root: &Path) -> Result<Self, String> {
+        Self::acquire_with(root, std::process::id(), unix_now(), process_alive)
+    }
+
+    fn acquire_with(
+        root: &Path,
+        pid: u32,
+        now: u64,
+        alive: impl Fn(u32) -> bool,
+    ) -> Result<Self, String> {
+        let path = root.join(LOCK);
+        for _ in 0..3 {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut file) => {
+                    io::Write::write_all(&mut file, format!("{pid}\n{now}\n").as_bytes())
+                        .map_err(|e| e.to_string())?;
+                    return Ok(Self(path));
+                }
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    let text = fs::read_to_string(&path).unwrap_or_default();
+                    let mut fields = text.lines().map(|v| v.trim().parse::<u64>().ok());
+                    let owner = fields.next().flatten();
+                    let started = fields.next().flatten();
+                    let stale = match (owner, started) {
+                        (Some(owner), Some(started)) => {
+                            now.saturating_sub(started) > LOCK_MAX_AGE_SECONDS
+                                || (owner != u64::from(pid) && !alive(owner as u32))
+                        }
+                        _ => true,
+                    };
+                    if !stale {
+                        return Err(BUSY.into());
+                    }
+                    let _ = fs::remove_file(&path);
+                }
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        Err(BUSY.into())
+    }
+}
+
+impl Drop for InstallLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+#[cfg(unix)]
+fn process_alive(pid: u32) -> bool {
+    // SAFETY: signal 0 only checks that the process exists.
+    let found = unsafe { libc::kill(pid as libc::pid_t, 0) } == 0;
+    found || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(windows)]
+fn process_alive(pid: u32) -> bool {
+    unsafe extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut core::ffi::c_void;
+        fn GetExitCodeProcess(process: *mut core::ffi::c_void, code: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut core::ffi::c_void) -> i32;
+    }
+    // SAFETY: the handle is checked and closed; the exit code is a plain output.
+    unsafe {
+        let handle = OpenProcess(0x1000, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(handle, &mut code);
+        CloseHandle(handle);
+        ok != 0 && code == 259
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn process_alive(_: u32) -> bool {
+    true
+}
+
+/// The work folders of one unpack: unique per process, so a second installer can never delete them.
+fn work_folders(root: &Path, name: &str, pid: u32) -> (PathBuf, PathBuf) {
+    (
+        root.join(format!("{name}.{pid}.partial")),
+        root.join(format!("{name}.{pid}.tools.partial")),
+    )
+}
+
 /// Verifies the downloaded tools archive against the metadata, unpacks it, lets `assemble(tools, out)` build the full
 /// environment next to the others; `current` switches last.
 pub fn unpack(
@@ -79,8 +187,16 @@ pub fn unpack(
         return Err("The Windows components download is damaged. Retry.".into());
     }
     let name = &meta.sha256[..16];
-    let (partial, target) = (root.join(format!("{name}.partial")), root.join(name));
-    let tools = root.join(format!("{name}.tools.partial"));
+    let _lock = InstallLock::acquire(root)?;
+    let target = root.join(name);
+    let (partial, tools) = work_folders(root, name, std::process::id());
+    // Under the lock, leftovers of earlier runs (also of crashed processes) belong to nobody.
+    for entry in fs::read_dir(root).map_err(|e| e.to_string())?.flatten() {
+        let old = entry.file_name().to_string_lossy().into_owned();
+        if old.ends_with(".partial") && entry.path().is_dir() {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
     let _ = fs::remove_dir_all(&partial);
     let _ = fs::remove_dir_all(&tools);
     fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
@@ -342,11 +458,21 @@ fn run_setup(tools: &Path, out: &Path) -> Result<(), String> {
     if status.success() {
         return Ok(());
     }
-    Err(text
+    Err(setup_error(&text))
+}
+
+/// The error of a failed setup: the end of what its Python printed to stderr, so the cause and the lines before it reach the
+/// card and the log, not only the last line.
+fn setup_error(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr
         .lines()
-        .last()
-        .unwrap_or("The Windows setup failed.")
-        .to_string())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return "The Windows setup failed without any error output.".into();
+    }
+    lines[lines.len().saturating_sub(6)..].join(" | ")
 }
 
 /// The tools archive shipped inside the installer (resources/ of the unpacked bundle), with its metadata.
@@ -499,6 +625,67 @@ mod tests {
         )
         .map_err(|e| e.to_string())?;
         fs::write(out.join("catalog.json"), b"{}").map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn a_lock_held_by_a_live_process_refuses_and_deletes_nothing() {
+        let dir = scratch("lock-live");
+        let root = dir.join("root");
+        fs::create_dir_all(root.join("abc.7.tools.partial")).unwrap();
+        fs::write(root.join("abc.7.tools.partial/file"), b"x").unwrap();
+        let first = InstallLock::acquire_with(&root, 100, 1000, |_| true).unwrap();
+        let busy = InstallLock::acquire_with(&root, 200, 1500, |pid| pid == 100).unwrap_err();
+        assert_eq!(busy, BUSY);
+        assert!(root.join("abc.7.tools.partial/file").is_file());
+        drop(first);
+        assert!(!root.join(LOCK).exists());
+        // the real unpack refuses the same way while another process holds the lock
+        let (zip, meta) = archive(&dir, &[("hactool/hactool.exe", b"x")]);
+        let held = format!("{}\n{}\n", std::process::id(), unix_now());
+        fs::write(root.join(LOCK), &held).unwrap();
+        assert_eq!(unpack(&zip, &meta, &root, assemble).unwrap_err(), BUSY);
+        assert!(root.join("abc.7.tools.partial/file").is_file());
+        assert_eq!(fs::read_to_string(root.join(LOCK)).unwrap(), held);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_stale_lock_is_taken_over() {
+        let dir = scratch("lock-stale");
+        fs::write(dir.join(LOCK), "300\n1000\n").unwrap();
+        let dead = InstallLock::acquire_with(&dir, 400, 1100, |_| false).unwrap();
+        assert!(
+            fs::read_to_string(dir.join(LOCK))
+                .unwrap()
+                .starts_with("400\n")
+        );
+        drop(dead);
+        fs::write(dir.join(LOCK), "300\n1000\n").unwrap();
+        let old = InstallLock::acquire_with(&dir, 400, 1000 + LOCK_MAX_AGE_SECONDS + 1, |_| true);
+        assert!(old.is_ok());
+        drop(old);
+        fs::write(dir.join(LOCK), "garbage").unwrap();
+        assert!(InstallLock::acquire_with(&dir, 400, 1100, |_| true).is_ok());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn work_folders_are_unique_per_process_and_only_ours_are_removed() {
+        let root = Path::new("root");
+        assert_ne!(work_folders(root, "abc", 1), work_folders(root, "abc", 2));
+        let (partial, tools) = work_folders(root, "abc", 5);
+        assert!(partial.ends_with("abc.5.partial") && tools.ends_with("abc.5.tools.partial"));
+    }
+
+    #[test]
+    fn the_setup_error_keeps_the_end_of_the_python_output() {
+        let text = "Traceback\n  File x\n\nWinError 3 path\n";
+        assert_eq!(setup_error(text), "Traceback | File x | WinError 3 path");
+        assert!(setup_error("").contains("without any error output"));
+        let many: String = (1..=20).map(|n| format!("line {n}\n")).collect();
+        assert!(
+            setup_error(&many).starts_with("line 15") && setup_error(&many).ends_with("line 20")
+        );
     }
 
     #[test]
