@@ -19,6 +19,28 @@ successful normal-path incremental run reused generation, compiled objects,
 runtime and installed data. From extraction start to package completion it took
 about 37 s; packaging alone took 26.69 s. This is not a fresh-input benchmark.
 
+## Command line build (`--cli build`)
+
+The window and `--cli build` run the same Rust code: `flow.rs` builds the request,
+`driver_plan.rs` turns it into the driver program, arguments and environment, and
+`backend::build` starts it and reads the JSON events. The window shows the events;
+the command line prints each as one JSON line on stdout.
+
+```
+strahlender-xnu-installer --cli build --target macos|linux|windows|ios \
+  --keys prod.keys --base GAME [--update PATH] [--firmware PATH] [--mod NAME_OR_FOLDER] \
+  [--option key=value]... [--data-dir DIR]
+```
+
+Options: `portable_cpu`, `clean_build`, `auto_cleanup`, `ios_export_no_embed` (true or
+false), `ios_delivery` (device or ipa), `ios_device`, `ios_team`, `ios_profile_id`.
+The exit code is 0 only for a passed build (2 bad arguments, 3 missing build
+requirements, 130 stopped). On Windows the installer has no console of its own: it
+attaches to the parent console, but cmd and PowerShell do not wait for it, so use
+`start /wait "" installer.exe --cli build ...` or
+`Start-Process -Wait -PassThru -NoNewWindow` to see the exit code. Stdout redirected
+to a file or pipe is kept as is.
+
 ## What still uses Python
 
 The expensive instruction analysis, disassembly/emission and module-image
