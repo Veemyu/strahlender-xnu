@@ -205,6 +205,15 @@ fn write(preferences: Preferences) -> io::Result<()> {
     fs::rename(temporary, path)
 }
 
+pub fn save_firmware(path: Option<&Path>) -> io::Result<()> {
+    let mut preferences = load_preferences();
+    preferences.firmware_path = path.map(Path::to_path_buf);
+    if let Some(path) = path {
+        preferences.last_directory = path.parent().map(Path::to_path_buf);
+    }
+    write(preferences)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,13 +253,4 @@ mod tests {
         assert_eq!(load_language(), None);
         let _ = fs::remove_dir_all(dir);
     }
-}
-
-pub fn save_firmware(path: Option<&Path>) -> io::Result<()> {
-    let mut preferences = load_preferences();
-    preferences.firmware_path = path.map(Path::to_path_buf);
-    if let Some(path) = path {
-        preferences.last_directory = path.parent().map(Path::to_path_buf);
-    }
-    write(preferences)
 }
