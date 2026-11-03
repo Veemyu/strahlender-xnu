@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -127,6 +128,8 @@ def main(argv=None):
     logs.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     link_work(args)
+    print("free GB before the build: %d under the base folder, %d under the checkout work folder" % (
+        shutil.disk_usage(base).free // 2**30, shutil.disk_usage(Path(args.root) if os.name == "nt" else Path(args.root) / "work").free // 2**30), flush=True)
     with open(logs / "driver-events.jsonl", "w", encoding="utf-8") as events, \
             open(logs / "driver-stderr.log", "w", encoding="utf-8") as stderr:
         code = subprocess.run(build_command(args), cwd=args.root, env=build_environment(args), stdout=events,
@@ -137,6 +140,11 @@ def main(argv=None):
     summary.update({"target": args.target, "mod": args.mod, "exit": code, "seconds": int(time.monotonic() - started)})
     ok = code == 0 and bool(summary["result"] and summary["result"]["ok"])
     print(json.dumps(summary, indent=2))
+    if not ok:
+        reasons = {8: "not enough disk space", 4: "a tool or component is missing"}
+        print("FAILED: exit %s (%s). Missing items: %s. Last error: %s" % (
+            code, reasons.get(code, "see the steps above"), "; ".join(summary.get("missing", [])) or "none reported",
+            summary["errors"][-1]["message"].splitlines()[0] if summary["errors"] else "none"), flush=True)
     if args.summary:
         Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     if args.installed_out and installed and ok:
