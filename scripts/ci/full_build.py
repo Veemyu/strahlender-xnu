@@ -35,10 +35,12 @@ def redact(text, known, limit=300):
 def build_command(args, python=None):
     base = Path(args.base)
     data = base / "data"
+    # The mac and linux pipeline refuses any work folder except the checkout's work/ (driver.py); Windows uses its own.
+    work = base / "work" if args.target == "windows" else Path(args.root) / "work"
     command = [python or args.python or sys.executable]
     command += ["-I", "-B"] if args.target == "windows" else ["-B"]
     command += [str(Path(args.root) / "scripts/install/driver.py"), "build", "--root", str(args.root),
-                "--work", str(base / "work"), "--target", args.target,
+                "--work", str(work), "--target", args.target,
                 "--base", str(data / "game.xci"), "--prod-keys", str(data / "prod.keys"),
                 "--update", str(data / "update.nsp"), "--firmware", str(data / "firmware.zip"),
                 "--install-root", str(base / "install")]

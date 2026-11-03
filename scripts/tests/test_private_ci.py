@@ -192,6 +192,7 @@ class BuildReportTests(unittest.TestCase):
         self.assertEqual(environment["BDSP_EXTRACT_PREFIX"], "--cli")
         plain = full_build.build_command(self.args("linux"), "py")
         self.assertNotIn("-I", plain)
+        self.assertEqual(plain[plain.index("--work") + 1], str(Path("/src/work")))
         self.assertNotIn("--mod-root", plain)
         self.assertEqual(full_build.build_environment(self.args("linux"), {})["BDSP_MOD"], "none")
 
