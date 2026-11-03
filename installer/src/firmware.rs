@@ -556,6 +556,11 @@ pub fn import(source: &Path, keys: &Path, tool_path: &Path, cache: &Path) -> Res
                 nca.to_string_lossy().into_owned(),
             ],
         )?;
+        if !extracted.is_dir() {
+            return Err(format!(
+                "The extraction tool wrote no resources for firmware title {id}. Check that prod.keys matches your firmware dump."
+            ));
+        }
         if hash_file(&nca)? != expected_hash {
             return Err("Firmware changed during extraction. Retry the import.".into());
         }
