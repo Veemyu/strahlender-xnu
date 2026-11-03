@@ -323,6 +323,11 @@ class WindowsBuildTests(unittest.TestCase):
         cross = windows.profile("aarch64", "x86_64")
         arm_host = windows.profile("aarch64", "aarch64")
         self.assertEqual(len({item["cache_key"] for item in (native, cross, arm_host)}), 3)
+        self.assertRegex(native["cache_key"], r"^x64-[0-9a-f]{5}$")
+        self.assertRegex(cross["cache_key"], r"^a64-[0-9a-f]{5}$")
+        self.assertRegex(arm_host["cache_key"], r"^a64-[0-9a-f]{5}$")
+        self.assertNotEqual(cross["cache_key"], arm_host["cache_key"])
+
         self.assertEqual(cross["host"], "x86_64")
         self.assertEqual(cross["target"], "aarch64")
         self.assertEqual(cross["simd"], "c")
@@ -330,6 +335,17 @@ class WindowsBuildTests(unittest.TestCase):
         self.assertEqual(windows.architecture("AMD64"), "x86_64")
         with self.assertRaises(ValueError):
             windows.architecture("i686")
+
+    def test_every_profile_field_changes_the_cache_key(self):
+        base = windows.profile("x86_64", "x86_64")
+        for name, value in base.items():
+            if name == "cache_key":
+                continue
+            changed = {**base, name: [*value, "-x"] if isinstance(value, list) else
+                       (not value if isinstance(value, bool) else value + 1 if isinstance(value, int) else value + "-x")}
+            if name == "target":
+                changed[name] = "aarch64"
+            self.assertNotEqual(windows.cache_key(changed), base["cache_key"], name)
 
     def test_contract_has_recipes_but_no_pinned_versions_or_downloads(self):
         data = windows.contract()
@@ -563,7 +579,7 @@ class WindowsBuildTests(unittest.TestCase):
                 self.assertEqual(len(calls), 10)
                 compile(target=windows.profile("aarch64", "x86_64"))
                 self.assertEqual(len(calls), 13)
-                marker = root / "obj" / selected["cache_key"] / "compile.json"
+                marker = root / "obj" / "compile.json"
                 def fail(command):
                     raise subprocess.CalledProcessError(2, command)
                 commands.run = fail

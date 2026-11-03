@@ -32,10 +32,18 @@ def contract(path=CONTRACT):
 def profile(target=None, host=None):
     data = contract()
     host, target = architecture(host), architecture(target)
-    selected = data["profiles"][target]
-    return {**selected, "host": host, "target": target, "abi": data["abi"],
-            "simd": data["simd"],
-            "cache_key": f"windows-{host}-to-{target}-{data['abi']}-simd-c"}
+    selected = {**data["profiles"][target], "host": host, "target": target, "abi": data["abi"], "simd": data["simd"]}
+    return {**selected, "cache_key": cache_key(selected)}
+
+
+def cache_key(selected):
+    """Folder name of one build flavour: the target architecture and five hex digits of a hash over every other profile field
+    (host, target, toolchain, simd, C mode, triple, machine, cpu flags). The native generator is limited to 260 characters, so
+    the key is short (9 characters); any change of the profile still gets a new folder."""
+    short = {"x86_64": "x64", "aarch64": "a64"}
+    fields = {name: value for name, value in selected.items() if name != "cache_key"}
+    digest = hashlib.sha256(json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return "%s-%s" % (short[fields["target"]], digest[:5])
 
 
 def sha256(path):

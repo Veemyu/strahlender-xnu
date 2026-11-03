@@ -202,7 +202,7 @@ def generate(generator, exefs, output, commands):
     output = Path(output)
     verify_build_output(output, ".generation.json")
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="generate-", dir=output.parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix="g-", dir=output.parent) as temporary:
         stage = Path(temporary)
         inventory = {}
         for name in names:
@@ -328,7 +328,7 @@ def compile_sources(generated, objects, compiler, selected, commands, jobs=None,
                     dependency_headers=(), source_flags=None):
     identity = compiler_identity(compiler, selected)
     root, generated = Path(root).resolve(), Path(generated).resolve()
-    objects = Path(objects) / selected["cache_key"]
+    objects = Path(objects)
     objects.mkdir(parents=True, exist_ok=True)
     marker = objects / "compile.json"
     marker.unlink(missing_ok=True)
@@ -380,7 +380,7 @@ def compile_sources(generated, objects, compiler, selected, commands, jobs=None,
                 cached = None
             if cached == {**wanted, "object": windows.sha256(output)}:
                 return output
-        with tempfile.TemporaryDirectory(prefix="compile-", dir=objects) as temporary:
+        with tempfile.TemporaryDirectory(prefix="c-", dir=objects) as temporary:
             candidate = Path(temporary) / name
             response = Path(temporary) / "compile.rsp"
             language = "-std=c++17" if source.suffix == ".cpp" else "-std=gnu17"
@@ -661,9 +661,9 @@ def package_game(executable, candidates, target, destination, notices, dynamic=(
     if destination.exists():
         raise ValueError("Refusing to replace an existing game package")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="game-package-", dir=destination.parent) as temporary:
-        stage = Path(temporary) / "package"
-        stage.mkdir()
+    # The package is built directly in a short sibling folder: the game data below it is deep and every level counts.
+    stage = Path(tempfile.mkdtemp(prefix=".", dir=destination.parent))
+    try:
         for path in closure:
             shutil.copyfile(path, stage / path.name)
         notice_dir = stage / "notices"
@@ -693,6 +693,9 @@ def package_game(executable, candidates, target, destination, notices, dynamic=(
                     "files": {path.relative_to(stage).as_posix(): windows.sha256(path)
                               for path in sorted(stage.rglob("*")) if path.is_file()}})
         stage.rename(destination)
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
     return destination
 
 
@@ -745,14 +748,14 @@ def main(argv=None):
             compile_sources(work / "gen", work / "objects", args.cc or "", selected, commands, args.jobs,
                             source_paths=generated_inventory(work / "gen"))
         elif args.stage == "runtime":
-            compile_runtime(work / "runtime-vulkan", args.cc or "", selected, commands,
+            compile_runtime(work / "rt", args.cc or "", selected, commands,
                             has_subsdk1=args.with_subsdk1, jobs=args.jobs,
                             sdl=args.sdl_prefix, vulkan=args.vulkan_prefix, ffmpeg=args.ffmpeg_prefix, qt=args.qt_prefix)
         elif args.stage == "link":
-            host = compiled_inventory(work / "runtime-vulkan" / selected["cache_key"] / "compile.json", selected)
+            host = compiled_inventory(work / "rt" / "compile.json", selected)
             libraries = graphical_libraries(args.cc or "", selected, args.sdl_prefix, args.vulkan_prefix,
                                             args.ffmpeg_prefix, qt=args.qt_prefix)
-            link_executable(work / "objects" / selected["cache_key"] / "compile.json", host,
+            link_executable(work / "objects" / "compile.json", host,
                             libraries, work / "BDSP.exe", args.cc or "", selected, commands)
         return 0
     except KeyboardInterrupt:

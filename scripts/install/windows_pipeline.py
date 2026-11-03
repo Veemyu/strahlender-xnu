@@ -139,9 +139,36 @@ def prerequisites(catalog, target, work, minimum_free_gb=40):
     return result
 
 
-def path_length(work, selected, modules=pathlimits.MODULES, romfs=()):
+def install_location(args, mod=None):
+    """Where the finished app is installed, or None when the per-user application data folder is unknown."""
+    override = getattr(args, "install_root", None)
+    if override:
+        return Path(override) / pathlimits.installed_folder(mod)
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        return None
+    # A mod app is installed beside the game; the game's app stays unchanged.
+    return Path(local) / ("StrahlenderXnu/mod-apps/" + pathlimits.installed_folder(mod) if mod else "StrahlenderXnu/app")
+
+
+def package_contents(bundles, root):
+    """Paths below the package root of the files that are copied from the bundles and the source tree (the notices and the
+    language folder); the game data is planned separately."""
+    found = []
+    trees = {"notices/" + name: Path(path) / "notices" for name, path in bundles.items() if name in ("sdl", "vulkan", "ffmpeg", "qt")}
+    trees["lproj"] = Path(root) / "scripts/recomp/runtime/app/linux/lproj"
+    for prefix, tree in trees.items():
+        for folder, _directories, names in os.walk(tree):
+            relative = os.path.relpath(folder, tree)
+            base = prefix if relative == "." else prefix + "/" + relative.replace(os.sep, "/")
+            found.extend(base + "/" + name for name in names)
+    return found
+
+
+def path_length(work, selected, modules=pathlimits.MODULES, romfs=(), mod=None, package=(), install=None):
     """The Windows path length check of a work folder (see pathlimits)."""
-    return pathlimits.check(Path(work).resolve(), selected["cache_key"], modules, romfs, pathlimits.long_paths_enabled())
+    return pathlimits.check(Path(work).resolve(), selected["cache_key"], modules, romfs, pathlimits.long_paths_enabled(),
+                            mod, package, install)
 
 
 def publish_package(candidate, destination):
@@ -177,7 +204,7 @@ def install_package(package, destination, emit):
     package_record(package)
     emit("step", id="install", status="started")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="windows-install-", dir=destination.parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix=pathlimits.INSTALL_PREFIX, dir=destination.parent) as temporary:
         staged = Path(temporary) / "app"
         build.filesystem.copy_tree(package, staged, link=True)   # the game data is linked, not written again
         publish_package(staged, destination)
@@ -302,7 +329,8 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
             progress=extract_line, icons=icons))
         def verify_paths(names):
             # The game data is known now: stop before hours of compilation if packaging would hit the limit.
-            paths = path_length(work, selected, names, pathlimits.romfs_relative(work))
+            paths = path_length(work, selected, names, pathlimits.romfs_relative(work), mod,
+                                package_contents(bundles, root), install_location(args, mod))
             emit("log", level="diagnostic", message="[Diagnostics] " + paths.line())
             if paths.risk:
                 raise ValueError(paths.failure())
@@ -364,18 +392,18 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
                 emit("log", level="diagnostic", message="UI aspect overlay was not generated: " + result.stderr.strip()[-400:])
         stage("ui_overlay", prepare_overlay)
         runtime = stage("runtime", lambda: build.compile_runtime(
-            output / "runtime-vulkan", compiler, selected, commands,
+            output / pathlimits.RUNTIME_DIR, compiler, selected, commands,
             has_subsdk1=(exefs / "subsdk1").is_file(), root=root, qt=bundles["qt"],
             **{name: bundles[name] for name in ("sdl", "vulkan", "ffmpeg")}))
         executable = stage("link", lambda: build.link_executable(
-            output / "objects" / selected["cache_key"] / "compile.json", runtime,
+            output / "objects" / "compile.json", runtime,
             build.graphical_libraries(compiler, selected, *(bundles[name] for name in ("sdl", "vulkan", "ffmpeg")),
                                       qt=bundles["qt"]),
             app_output / "BDSP.exe", compiler, selected, commands, icon=app_output / "icons/windows"))
-        app_folder = "BDSP-" + mod["slug"] + "-" + mod["identity"] if mod else "BDSP"
-        destination = work / "builds/windows-amd64" / app_folder
+        app_folder = pathlimits.installed_folder(mod)
+        destination = work / pathlimits.PACKAGES / pathlimits.package_folder(mod)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="windows-package-", dir=destination.parent) as temporary:
+        with tempfile.TemporaryDirectory(prefix=pathlimits.HOLDER_PREFIX, dir=destination.parent) as temporary:
             def package():
                 dependencies = [bundles[name] for name in ("sdl", "vulkan", "ffmpeg", "qt")]
                 toolchain = Path(compiler).parent.parent
@@ -400,22 +428,16 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
                 dynamic = [path.name for path in build.windows.dll_closure(plugin, providers, selected["target"]) if path != plugin]
                 packaged = build.package_game(
                     executable, build.runtime_dll_candidates(compiler, selected, dependencies),
-                    selected["target"], Path(temporary) / "BDSP",
+                    selected["target"], destination.parent / (pathlimits.STAGE_PREFIX + uuid.uuid4().hex[:8]),
                     {"runtime.md": root / "scripts/recomp/runtime/NOTICE.md",
                      "vulkan.md": root / "scripts/recomp/runtime/nvn/vulkan/NOTICE.md",
                      "toolchain.txt": toolchain_license},
                     dynamic=dynamic, notice_trees=notices, data=data)
                 return publish_package(packaged, destination)
             stage("package", package)
-        override = getattr(args, "install_root", None)
-        if override:
-            install = Path(override) / app_folder
-        else:
-            local = os.environ.get("LOCALAPPDATA")
-            if not local:
-                raise ValueError("The Windows per-user application data directory is unavailable")
-            # A mod app is installed beside the game; the game's app stays unchanged.
-            install = Path(local) / ("StrahlenderXnu/mod-apps/" + app_folder if mod else "StrahlenderXnu/app")
+        install = install_location(args, mod)
+        if not install:
+            raise ValueError("The Windows per-user application data directory is unavailable")
         return install_package(destination, install, emit)
     except BaseException:
         commands.cancel()
