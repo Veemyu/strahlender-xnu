@@ -1,0 +1,21 @@
+name: Private full test
+run-name: Private full test · ${{ github.ref_name }}
+# Starts the private full build for this commit and reports nothing back here: it never waits for the run, never prints the
+# response and never links it. The private runner posts only a pass or fail commit status named full-build. Does nothing
+# unless the secret PRIVATE_CI_TOKEN exists.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trigger:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch the private build for this commit
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_CI_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || exit 0
+          gh api -X POST repos/Veemyu/str-xnu-tests/actions/workflows/full-build.yml/dispatches -f ref=main -f "inputs[sha]=$GITHUB_SHA" > /dev/null 2>&1 || { echo "The private build was not started."; exit 1; }

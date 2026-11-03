@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from scripts.ci import full_build, private_data, smoke
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = (ROOT / ".github/workflows/full-build.yml").read_text(encoding="utf-8")
+TRIGGER = (ROOT / ".github/workflows/private-full-test.yml").read_text(encoding="utf-8")
 KEY = "k" * 48
 try:
     import cryptography  # noqa: F401
@@ -45,56 +45,34 @@ def plain_for(role):
 
 
 class WorkflowShapeTests(unittest.TestCase):
-    def jobs(self):
-        body = WORKFLOW.split("\njobs:\n", 1)[1]
-        parts = re.split(r"\n  (\w+):\n", "\n" + body)
-        return dict(zip(parts[1::2], parts[2::2]))
+    """The public side only dispatches the private runner; the runner itself never lives in this repository."""
 
-    def test_manual_only_and_private_only(self):
-        triggers = WORKFLOW.split("\npermissions:", 1)[0]
-        self.assertIn("workflow_dispatch:", triggers)
-        for forbidden in ("push:", "pull_request", "schedule:", "workflow_run", "repository_dispatch"):
-            self.assertNotIn(forbidden, triggers)
-        self.assertEqual(set(self.jobs()), {"linux", "macos", "windows"})
-        for name, job in self.jobs().items():
-            self.assertIn("if: ${{ github.event.repository.private == true }}", job, name)
+    def test_the_full_build_workflow_is_not_public(self):
+        self.assertFalse((ROOT / ".github/workflows/full-build.yml").exists())
 
-    def test_every_job_wipes_always_and_uploads_only_the_summary(self):
-        for name, job in self.jobs().items():
-            self.assertRegex(job, r"if: \$\{\{ always\(\) \}\}\n\s+run: \|\n\s+python3? src/scripts/ci/private_data\.py wipe", name)
-            self.assertEqual(len(re.findall(r"actions/upload-artifact@", job)), 1, name)
-            self.assertIn("path: ${{ runner.temp }}/ci-summary/" + name + ".json", job)
+    def test_trigger_secret_and_permissions(self):
+        self.assertIn("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n", TRIGGER)
+        for forbidden in ("pull_request", "schedule:", "workflow_run", "repository_dispatch"):
+            self.assertNotIn(forbidden, TRIGGER)
+        self.assertEqual(set(re.findall(r"secrets\.(\w+)", TRIGGER)), {"PRIVATE_CI_TOKEN"})
+        self.assertIn("permissions:\n  contents: read\n", TRIGGER)
+        self.assertEqual(len(re.findall(r"\n  \w[\w-]*:\n    runs-on:", TRIGGER)), 1)
+        self.assertNotRegex(TRIGGER, r"\n\s+permissions:")
 
-    def test_no_cache_no_trace_secrets_only_in_fetch_step(self):
-        self.assertNotIn("actions/cache", WORKFLOW)
-        self.assertNotIn("set -x", WORKFLOW)
-        self.assertNotIn("curl -v", WORKFLOW)
-        for name, job in self.jobs().items():
-            steps = re.split(r"\n      - ", job)
-            holders = [step for step in steps if "secrets.CI_DATA" in step]
-            self.assertEqual(len(holders), 1, name)
-            self.assertIn("private_data.py mask", holders[0])
-            self.assertEqual(len(re.findall(r"secrets\.CI_DATA_\w+", holders[0])), 5, name)
-        self.assertNotRegex(WORKFLOW, r"echo[^\n]*(CI_DATA|secrets\.)")
+    def test_dispatch_is_quiet_and_sends_only_the_sha(self):
+        self.assertIn('[ -n "$GH_TOKEN" ] || exit 0', TRIGGER)
+        self.assertIn("repos/Veemyu/str-xnu-tests/actions/workflows/full-build.yml/dispatches", TRIGGER)
+        self.assertIn("inputs[sha]=$GITHUB_SHA", TRIGGER)
+        self.assertEqual(len(re.findall(r"inputs\[", TRIGGER)), 1)
+        self.assertIn("> /dev/null 2>&1", TRIGGER)
+        for forbidden in ("gh run", "watch", "--jq", "set -x", "echo \"$", "actions/checkout", "upload-artifact", "https://", "http://"):
+            self.assertNotIn(forbidden, TRIGGER)
 
-    def test_actions_are_pinned_like_the_other_workflows(self):
-        used = set(re.findall(r"uses: (actions/[\w-]+@v\d+)", WORKFLOW))
-        known = set()
-        for other in (ROOT / ".github/workflows").glob("*.yml"):
-            if other.name != "full-build.yml":
-                known |= set(re.findall(r"uses: (actions/[\w-]+@v\d+)", other.read_text(encoding="utf-8")))
-        self.assertTrue(used and used <= known, used - known)
-
-    def test_windows_uses_short_roots(self):
-        windows = self.jobs()["windows"]
-        self.assertIn("BASE: C:\\b\n", windows)
-        self.assertIn("BDSP_INSTALLER_DATA_DIR: C:\\b\\d", windows)
-        self.assertNotIn("RUNNER_TEMP/b", windows)
-
-    def test_no_forbidden_characters(self):
+    def test_no_forbidden_characters_or_data_source_names(self):
         for path in (ROOT / "scripts/ci").glob("*.py"):
             self.assertFalse({"\u2013", "\u2014"} & set(path.read_text(encoding="utf-8")), path.name)
-        self.assertFalse({"\u2013", "\u2014"} & set(WORKFLOW))
+        self.assertFalse({"\u2013", "\u2014"} & set(TRIGGER))
+        self.assertNotIn("CI_DATA", TRIGGER)
 
 
 @unittest.skipUnless(HAVE_CRYPTO, "cryptography is not installed")
