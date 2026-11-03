@@ -24,8 +24,10 @@ const TITLES: [&str; 7] = [
 ];
 const MAX_BYTES: u64 = 4 << 30;
 const MAX_FILES: usize = 8192;
-fn err(_: impl std::fmt::Display) -> String {
-    "Firmware files could not be read or written. Check folder access and free disk space.".into()
+fn err(cause: impl std::fmt::Display) -> String {
+    format!(
+        "Firmware files could not be read or written ({cause}). Check folder access and free disk space."
+    )
 }
 
 pub fn inspect_source(path: &Path) -> Result<()> {
