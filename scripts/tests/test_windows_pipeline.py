@@ -217,7 +217,7 @@ class WindowsPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             selected = windows.profile("x86_64")
-            args = SimpleNamespace(root=root, work=root / ("d" * 120) / "work", windows_catalog=root / "catalog",
+            args = SimpleNamespace(root=root, work=root / ("d" * 200) / "work", windows_catalog=root / "catalog",
                                    target="windows", min_free_gb=1)
             for enabled, code in ((False, 4), (True, 4)):
                 output = io.StringIO()

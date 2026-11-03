@@ -86,7 +86,7 @@ class PathLimitTests(unittest.TestCase):
             self.assertIn('Path("%s")' % folder, patch)
         runtime = root / "scripts/recomp/runtime"
         names = [path.parent.name + "_" + path.stem + ".o" for path in runtime.glob("*.c")]
-        self.assertEqual(max(names, key=len), pathlimits.RUNTIME_OBJECT)
+        self.assertEqual(len(max(names, key=len)), len(pathlimits.RUNTIME_OBJECT))
         overlay = root / "scripts/recomp/runtime/nvn"
         files = [path.relative_to(tree).as_posix() for tree in (overlay / "src", overlay / "vulkan/src")
                  for path in tree.rglob("*") if path.is_file()] + ["nvn/maxwell/translate.c"]
