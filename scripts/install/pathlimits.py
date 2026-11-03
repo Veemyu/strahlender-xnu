@@ -159,9 +159,12 @@ class PathCheck(object):
     def failure(self):
         if self.installed_too_long and not self.too_long:
             return ("The folder for the installed app is too deep for Windows (%d of %d characters, %s). Windows programs that "
-                    "are not long path aware could not open it." % (self.installed, LIMIT, self.installed_label))
+                    "are not long path aware could not open it. Choose a shorter install folder in the installer under Build "
+                    "options, for example C:\\bdsp-app." % (self.installed, LIMIT, self.installed_label))
         return ("The install folder is too deep for Windows (%d of %d characters). The build tools cannot create paths this long, "
-                "even when Windows long paths are enabled. Set the environment variable BDSP_INSTALLER_DATA_DIR to a short folder such as C:\\bdsp and start the installer again." % (self.total, LIMIT))
+                "even when Windows long paths are enabled. Choose a shorter build folder in the installer under Build options, "
+                "for example C:\\bdsp, and build again (or set the environment variable BDSP_INSTALLER_DATA_DIR to such a folder)."
+                % (self.total, LIMIT))
 
 
 def check(work, cache_key, modules=MODULES, romfs=(), long_paths=None, mod=None, package=(), install=None):

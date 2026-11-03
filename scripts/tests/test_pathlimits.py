@@ -65,6 +65,7 @@ class PathLimitTests(unittest.TestCase):
         self.assertIn("LongPathsEnabled=no", deep.line())
         self.assertIn("(%d of 260 characters)" % deep.total, deep.failure())
         self.assertIn("C:\\bdsp", deep.failure())
+        self.assertIn("Build options", deep.failure())
         self.assertFalse(pathlimits.check("C:\\bdsp\\work", KEY, romfs=GAME, long_paths=False).risk)
 
     def test_a_deep_install_folder_is_reported_as_such(self):
@@ -72,6 +73,7 @@ class PathLimitTests(unittest.TestCase):
         self.assertTrue(check.risk and not check.too_long)
         self.assertIn("installed app", check.line())
         self.assertIn("installed app is too deep".replace("installed app", "folder for the installed app"), check.failure())
+        self.assertIn("install folder in the installer", check.failure())
 
     def test_a_code_mod_and_the_package_are_planned(self):
         plain = dict(pathlimits.planned_paths(KEY))

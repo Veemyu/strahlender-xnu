@@ -447,6 +447,10 @@ The Windows build does not ask you to prepare compilers or libraries. The instal
   characters. The preflight computes this and stops with "The install folder is too deep for Windows (N of 260 characters)"
   instead of the generator's "cannot create output file" in the middle of a build; it is checked again after the extraction
   with the real game folders. The log line is `Path length check: root N chars, longest generated path M chars, ...`.
+  On Windows the installer's Build options page chooses the build folder (default `%APPDATA%\str-xnu`, the sources and the build
+  live in its `sources` folder) and the install folder (default `%LOCALAPPDATA%\StrahlenderXnu`); both are stored as one-line files
+  `work-folder.txt` and `install-folder.txt` in the installer's `config` folder. `BDSP_INSTALLER_DATA_DIR` still wins for the build
+  folder. The install folder becomes the driver's `--install-root`.
 - **Tests:** the Windows tests run in CI only (`tests.yml` on every push, the toolchain tests inside `windows-components.yml`).
   They read the unpacked environment through `BDSP_WINDOWS_NATIVE_CC`, `BDSP_WINDOWS_NATIVE_BINARY`, `BDSP_WINDOWS_PRIVATE_CATALOG`
   and `BDSP_WINDOWS_{SDL,VULKAN,FFMPEG,HACTOOL,QT}_ROOT`.
