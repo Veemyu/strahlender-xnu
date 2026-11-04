@@ -4450,6 +4450,14 @@ emit(event="result", ok=True, code=0)
     fn window_and_cli_build_the_same_request_and_event_stream() {
         use iced::futures::StreamExt;
         let _guard = ENV.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let native = Platform::native();
+        if !crate::flow::platform_backend_supported(
+            native,
+            InstallTarget::native(native),
+            std::env::consts::ARCH,
+        ) {
+            return; // this host has no build path (for example an Intel Mac), so there is nothing to run
+        }
         let dir = std::env::temp_dir().join(format!("headless-parity-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let driver = dir.join("root/scripts/install");

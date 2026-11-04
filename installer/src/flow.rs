@@ -24,7 +24,7 @@ pub fn platform_backend_supported(host: Platform, target: InstallTarget, arch: &
     )
 }
 
-/// Targets whose build stages IPS/IPS32 and subsdk1 into a separate mod app. Linux still installs one fixed app.
+/// Targets whose build stages IPS/IPS32 and subsdk1 into a separate mod app.
 pub fn ips_target(host: Platform, target: InstallTarget) -> bool {
     matches!(
         (host, target),
