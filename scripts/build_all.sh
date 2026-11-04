@@ -87,8 +87,27 @@ link_system_hactool() {
   ok "hactool found on PATH ($found), nothing to download or build"
 }
 
+# Upstream hactool copies overlapping buffers with memcpy while it prepares the update (BKTR) tables. glibc on aarch64 breaks that
+# (extraction stops with "Failed to read from Base NCA RomFS"), macOS and x86 glibc happen to work. The patch is two memmove calls.
+apply_hactool_patch() {
+  local patch="$ROOT/scripts/hactool-bktr-memmove.patch"
+  [ -f "$patch" ] && [ -e "$HACTOOL_DIR/.git" ] || return 0
+  if "$GIT_BIN" -C "$HACTOOL_DIR" apply --reverse --check "$patch" >/dev/null 2>&1; then return 0; fi
+  if "$GIT_BIN" -C "$HACTOOL_DIR" apply --check "$patch" >/dev/null 2>&1; then
+    "$GIT_BIN" -C "$HACTOOL_DIR" apply "$patch" && log "hactool: applied scripts/hactool-bktr-memmove.patch (memmove for overlapping BKTR tables)"
+  else
+    log "hactool: the memmove patch does not apply to this hactool source; building it unchanged"
+  fi
+}
+
+# An hactool built earlier from the unpatched source is rebuilt once on Linux aarch64, where it fails on every update NCA.
+hactool_needs_patch() {
+  [ "$(uname -s)-$(uname -m)" = "Linux-aarch64" ] && [ -f "$ROOT/scripts/hactool-bktr-memmove.patch" ] && [ -e "$HACTOOL_DIR/.git" ] &&
+    "$GIT_BIN" -C "$HACTOOL_DIR" apply --check "$ROOT/scripts/hactool-bktr-memmove.patch" >/dev/null 2>&1
+}
+
 check_hactool() {
-  if hactool_runs; then ok "hactool ($HACTOOL)"; return 0; fi
+  if hactool_runs && ! hactool_needs_patch; then ok "hactool ($HACTOOL)"; return 0; fi
   # A link to a system hactool that has since disappeared must not block the build below.
   if [ -L "$HACTOOL" ]; then rm -f "$HACTOOL"; fi
   if link_system_hactool; then return 0; fi
@@ -107,6 +126,7 @@ check_hactool() {
     GIT_TERMINAL_PROMPT=0 "$GIT_BIN" -c credential.helper= -C "$HACTOOL_DIR" submodule update --init --recursive >/dev/null 2>&1 || { miss "hactool: submodule mbedtls missing"; return 1; }
   fi
   [ -f "$HACTOOL_DIR/config.mk" ] || cp "$HACTOOL_DIR/config.mk.template" "$HACTOOL_DIR/config.mk"
+  apply_hactool_patch
   log "hactool: building (make, log: $HACTOOL_DIR/build.log)"
   if ! make -C "$HACTOOL_DIR" -j "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)" >"$HACTOOL_DIR/build.log" 2>&1; then
     tail -n 15 "$HACTOOL_DIR/build.log" >&2

@@ -3,6 +3,7 @@
 Neither Unity nor Xcode nor hactool is started; the preflight is switched off (--no-preflight).
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -187,6 +188,39 @@ class SystemHactoolTests(unittest.TestCase):
                                  free=lambda p: 200.0)
             self.assertEqual([i["name"] for i in items if not i["ok"]], [])
             self.assertTrue(any(i["name"] == "hactool on PATH" for i in items))
+
+
+class HactoolPatchTests(unittest.TestCase):
+    """scripts/hactool-bktr-memmove.patch: two memmove calls for overlapping BKTR tables (memcpy breaks on glibc aarch64)."""
+
+    PATCH = os.path.join(ROOT, "scripts", "hactool-bktr-memmove.patch")
+
+    def source_before(self):
+        lines, text = [], open(self.PATCH, encoding="utf-8").read().splitlines()
+        start = next(int(line.split()[1].split(",")[0][1:]) for line in text if line.startswith("@@"))
+        body = [line for line in text if line[:1] in (" ", "-") and not line.startswith("---")]
+        lines = ["/* filler */"] * (start - 1) + [line[1:] for line in body]
+        return "\n".join(lines) + "\n"
+
+    @unittest.skipUnless(shutil.which("git"), "git is needed")
+    def test_patch_applies_once_and_only_swaps_the_two_calls(self):
+        with tempfile.TemporaryDirectory() as folder:
+            def git(*arguments, check=True):
+                return subprocess.run(["git", "-C", folder, *arguments], capture_output=True, text=True, check=check)
+            git("init", "-q")
+            write(os.path.join(folder, "nca.c"), self.source_before())
+            self.assertEqual(git("apply", "--check", self.PATCH, check=False).returncode, 0)
+            git("apply", self.PATCH)
+            patched = open(os.path.join(folder, "nca.c"), encoding="utf-8").read()
+            self.assertEqual(patched.count("memmove("), 2)
+            self.assertNotIn("memcpy(bktr_get_", patched)
+            self.assertEqual(git("apply", "--reverse", "--check", self.PATCH, check=False).returncode, 0)
+            self.assertNotEqual(git("apply", "--check", self.PATCH, check=False).returncode, 0)
+
+    def test_build_script_applies_it_before_make_and_rebuilds_old_aarch64_copies(self):
+        text = open(SCRIPT, encoding="utf-8").read()
+        self.assertLess(text.index("\n  apply_hactool_patch\n"), text.index("hactool: building (make"))
+        self.assertIn('"Linux-aarch64"', text)
 
 
 if __name__ == "__main__":
