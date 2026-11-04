@@ -271,7 +271,7 @@ def images(generator, exefs, output, hle_list, commands):
 
 
 def optimization(source, threshold, hot):
-    forced = os.environ.get("BDSP_COMPILE_OPT", "")   # CI timing runs only: every chunk at this level
+    forced = os.environ.get("BDSP_COMPILE_OPT", "")   # optional: every chunk at this level; unset keeps the normal mix
     if forced in ("-O0", "-O1", "-O2"):
         return forced
     text = Path(source).read_text(encoding="utf-8")

@@ -75,3 +75,20 @@ class MissingGnuTimeTests(unittest.TestCase):
             result = subprocess.run(["/bin/bash", "-c", script, "x", str(Path(folder) / "t")], cwd=ROOT,
                                     capture_output=True, text=True, timeout=60)
         self.assertEqual(result.stdout.split(), ["ran", "rc=0", "0", "0", "0", "0"], result.stderr)
+
+
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
+class CompileStampTests(unittest.TestCase):
+    def test_the_compile_stamp_input_is_unchanged_without_the_level_switch(self):
+        source = (ROOT / "scripts/recomp/linux/local/compile.sh").read_text(encoding="utf-8")
+        line = next(item for item in source.splitlines() if item.startswith("STAMP=") and "echo" in item)
+        expression = re.search(r'echo (".*?")', line).group(1)
+
+        def stamp_input(**environment):
+            result = subprocess.run(["/bin/bash", "-c", "FLAGS='-x -y'; THRESH_O0=300000; echo " + expression],
+                                    capture_output=True, text=True, timeout=30,
+                                    env={"PATH": os.environ.get("PATH", ""), **environment})
+            return result.stdout.rstrip("\n")
+
+        self.assertEqual(stamp_input(), "-x -y 300000")
+        self.assertEqual(stamp_input(BDSP_COMPILE_OPT="-O0"), "-x -y 300000 -O0")
