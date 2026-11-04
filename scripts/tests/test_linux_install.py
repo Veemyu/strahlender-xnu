@@ -63,3 +63,15 @@ class LinuxRuntimeLayoutTests(unittest.TestCase):
     def test_the_runtime_applies_the_defaults_before_it_reads_the_paths(self):
         source = (ROOT / "scripts/recomp/runtime/main.c").read_text(encoding="utf-8")
         self.assertLess(source.index("bdsp_exe_defaults();"), source.index('getenv("BDSP_IMG")'))
+
+
+@unittest.skipIf(sys.platform == "win32", "Runs bash scripts / POSIX tools; covered on Linux and macOS")
+class MissingGnuTimeTests(unittest.TestCase):
+    def test_commands_run_untimed_when_gnu_time_is_missing(self):
+        script = ('source scripts/recomp/linux/local/common.sh; GNU_TIME=""; '
+                  'gtime -f "%e" -o "$1" sh -c "echo ran"; echo "rc=$?"; cat "$1"')
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            result = subprocess.run(["/bin/bash", "-c", script, "x", str(Path(folder) / "t")], cwd=ROOT,
+                                    capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.stdout.split(), ["ran", "rc=0", "0", "0", "0", "0"], result.stderr)

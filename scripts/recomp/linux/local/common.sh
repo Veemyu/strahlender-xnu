@@ -5,7 +5,17 @@ export PATH="$HOME/.local/bin:$PATH"
 LAS=scripts/recomp/upstream
 W=${RECOMP_DIR:-work/recomp}
 JOBS=${JOBS:-$(python3 scripts/recomp/parallel_jobs.py)}  # override with JOBS=n
-TIMEV=(/usr/bin/time -f "%e s wall  %U s user  %S s sys  %M KB maxrss")
+# GNU time (/usr/bin/time) is not installed everywhere (minimal Fedora, Ubuntu): without it the commands run untimed.
+GNU_TIME=""; [ -x /usr/bin/time ] && GNU_TIME=/usr/bin/time
+gtime() {  # same -f FORMAT and -o FILE options as GNU time
+  if [ -n "$GNU_TIME" ]; then "$GNU_TIME" "$@"; return; fi
+  local out=""
+  while [ $# -gt 0 ]; do case "$1" in -f) shift 2 ;; -o) out=$2; shift 2 ;; *) break ;; esac; done
+  [ -z "$out" ] || echo "0 0 0 0" > "$out"
+  "$@"
+}
+export GNU_TIME; export -f gtime
+TIMEV=(gtime -f "%e s wall  %U s user  %S s sys  %M KB maxrss")
 
 # Module bases: one definition for the Mac and Linux scripts
 source scripts/recomp/module_bases.sh

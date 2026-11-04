@@ -42,7 +42,7 @@ one() {   # <opt> <size> <source>
   local opt=$1 size=$2 src=$3
   local o="$OBJ/$(basename "$(dirname "$src")")_$(basename "$src" .c).o"
   [ "$o" -nt "$src" ] && exit 0
-  /usr/bin/time -f "%e %U %S %M" -o "$o.t" clang $opt $FLAGS -c "$src" -o "$o" 2> "$o.err" || { echo "ERROR $src"; head -20 "$o.err"; exit 1; }
+  gtime -f "%e %U %S %M" -o "$o.t" clang $opt $FLAGS -c "$src" -o "$o" 2> "$o.err" || { echo "ERROR $src"; head -20 "$o.err"; exit 1; }
   echo "$(basename "$o") $(cat "$o.t") $size $opt" >> "$TIMES"
   rm -f "$o.t" "$o.err"
 }

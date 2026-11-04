@@ -23,7 +23,7 @@ for m in "${mods[@]}"; do
   glog=logs/gen-$MODE-$m.log
   extra=()
   [ ! -f "$EXEFS_DIR/$m.entries" ] || extra+=(--entry-offsets "$EXEFS_DIR/$m.entries")
-  /usr/bin/time -f "TIME %e %U %S %M" "$CODEGEN" gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$OUT/$m" --simd "$MODE" ${extra[@]+"${extra[@]}"} 2>&1 | tee "$glog" \
+  gtime -f "TIME %e %U %S %M" "$CODEGEN" gen "$m" "$EXEFS_DIR/$m" "$(base_of "$m")" "$OUT/$m" --simd "$MODE" ${extra[@]+"${extra[@]}"} 2>&1 | tee "$glog" \
     || { tail -20 "$glog"; die "Generator for $m failed (log: $glog)."; }
   tm=$(grep '^TIME' "$glog" | tail -1)
   fn=$(sed -n 's/^eh_gen: functions=\([0-9]*\).*/\1/p' "$glog" | tail -1)
