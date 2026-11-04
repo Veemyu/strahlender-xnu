@@ -21,6 +21,27 @@ MOD_FOLDERS = ("romfs", "exefs")
 CHUNK = 1 << 20
 
 
+def is_junk_name(name):
+    """Names macOS tools add (AppleDouble ._x, Finder .DS_Store, __MACOSX) that sideloading tools refuse inside an IPA."""
+    return name in (".DS_Store", "__MACOSX") or name.startswith("._")
+
+
+def strip_junk(folder):
+    """Removes macOS metadata files and folders below folder (never the folder itself, never through links). Returns the count."""
+    removed = 0
+    for parent, directories, files in os.walk(folder):
+        for name in [n for n in directories + files if is_junk_name(n)]:
+            path = Path(parent) / name
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+            removed += 1
+            if name in directories:
+                directories.remove(name)
+    return removed
+
+
 def clear_embedded(app):
     """Removes data of an earlier export; an app folder is reused between builds."""
     shutil.rmtree(Path(app) / EMBED_DIR, ignore_errors=True)
@@ -70,6 +91,7 @@ def embed_data(app, romfs, romfs_destination, mod=None, mod_destination=None):
     clear_embedded(app)
     base = app / EMBED_DIR
     modes = [_link_tree(romfs, base / _checked_relative(romfs_destination))]
+    skipped = strip_junk(base / _checked_relative(romfs_destination))
     if mod:
         mod = Path(mod).resolve(strict=True)
         target = base / _checked_relative(mod_destination)
@@ -77,9 +99,12 @@ def embed_data(app, romfs, romfs_destination, mod=None, mod_destination=None):
         for child in sorted(mod.iterdir()):
             if child.name.lower() in MOD_FOLDERS and child.is_dir() and not child.is_symlink():
                 modes.append(_link_tree(child, target / child.name))
+                skipped += strip_junk(target / child.name)
                 found = True
         if not found:
             raise ValueError("The mod has no romfs or exefs folder; nothing was embedded.")
+    if skipped:
+        modes.append("left out %d macOS metadata files" % skipped)
     return modes
 
 
@@ -89,8 +114,8 @@ def _entries(app):
     root = "Payload/" + app.name
     items = [(app, root, os.lstat(app))]
     for parent, directories, files in os.walk(app):
-        directories.sort()
-        for name in directories + sorted(files):
+        directories[:] = sorted(name for name in directories if not is_junk_name(name))
+        for name in directories + sorted(name for name in files if not is_junk_name(name)):
             path = Path(parent) / name
             items.append((path, root + "/" + path.relative_to(app).as_posix(), os.lstat(path)))
     return items
@@ -182,7 +207,7 @@ def junk_entries(names):
     """Archive names that macOS tools add and that break sideloading: AppleDouble files (._x), __MACOSX and .DS_Store."""
     return sorted(
         name for name in names
-        if any(part.startswith("._") or part in ("__MACOSX", ".DS_Store") for part in name.split("/"))
+        if any(is_junk_name(part) for part in name.split("/"))
     )
 
 
@@ -257,6 +282,8 @@ def main(argv=None):
     embed.add_argument("--mod-dest")
     clear = sub.add_parser("clear", help="remove embedded data of an earlier build")
     clear.add_argument("--app", required=True)
+    strip = sub.add_parser("strip", help="remove macOS metadata files (._*, .DS_Store, __MACOSX) below a folder")
+    strip.add_argument("--dir", required=True)
     check = sub.add_parser("check", help="verify the structure of a written IPA (Payload layout, no macOS metadata files)")
     check.add_argument("--ipa", required=True)
     check.add_argument("--app-name", default="BDSP.app")
@@ -264,6 +291,8 @@ def main(argv=None):
     try:
         if args.command == "clear":
             clear_embedded(args.app)
+        elif args.command == "strip":
+            print("Removed %d macOS metadata files." % strip_junk(args.dir))
         elif args.command == "check":
             check_archive(args.ipa, args.app_name)
             print("IPA structure ok.")

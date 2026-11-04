@@ -67,6 +67,30 @@ class EmbedTreeTests(unittest.TestCase):
             ipa_pack.clear_embedded(app)
             self.assertFalse(base.exists())
 
+    def test_macos_metadata_files_are_left_out_of_the_embedded_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            romfs = root / "romfs"
+            (romfs / "Data/sub").mkdir(parents=True)
+            (romfs / "Data/sub/a.bin").write_bytes(b"game")
+            for junk in (".DS_Store", "._.DS_Store", "Data/._a.bin", "Data/sub/.DS_Store"):
+                (romfs / junk).write_bytes(b"x")
+            (romfs / "__MACOSX").mkdir()
+            (romfs / "__MACOSX/x").write_bytes(b"x")
+            mod = root / "mod"
+            (mod / "exefs").mkdir(parents=True)
+            (mod / "exefs/main.ips").write_bytes(b"ips")
+            (mod / "exefs/._main.ips").write_bytes(b"x")
+            app = root / "BDSP.app"
+            app.mkdir()
+            ipa_pack.embed_data(app, romfs, "GameData/abc/romfs", mod, "Mods/def/Example")
+            names = sorted(p.relative_to(app).as_posix() for p in (app / ipa_pack.EMBED_DIR).rglob("*") if p.is_file())
+            self.assertEqual(names, [
+                "res/EmbeddedData/GameData/abc/romfs/Data/sub/a.bin",
+                "res/EmbeddedData/Mods/def/Example/exefs/main.ips",
+            ])
+            self.assertTrue((romfs / ".DS_Store").exists(), "the source folder must stay untouched")
+
     def test_invalid_input_embeds_nothing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -144,6 +168,18 @@ class PackTests(unittest.TestCase):
                     ipa_pack.check_archive(bad, "BDSP.app")
                 self.assertEqual(ipa_pack.main(["check", "--ipa", str(bad)]), 1)
             self.assertEqual(ipa_pack.main(["check", "--ipa", str(good)]), 0)
+
+    def test_packing_skips_metadata_files_and_strip_removes_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = make_app(directory, link=False)
+            for junk in (".DS_Store", "._Info.plist", "res/.DS_Store", "res/._.DS_Store"):
+                (app / junk).write_bytes(b"x")
+            ipa = Path(directory) / "out.ipa"
+            ipa_pack.pack_ipa(app, ipa)
+            ipa_pack.check_archive(ipa, "BDSP.app")
+            self.assertEqual(ipa_pack.main(["strip", "--dir", str(app)]), 0)
+            self.assertEqual([p for p in app.rglob("*") if ipa_pack.is_junk_name(p.name)], [])
+            self.assertTrue((app / "Info.plist").exists())
 
     def test_large_archives_use_zip64(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -363,6 +399,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn('ipa_pack.py clear --app "$R/derived/Build/Products/Release-iphoneos/BDSP.app"', script)
         self.assertIn('[ "$DELIVERY" = ipa ] && [ "${BDSP_IOS_EMBED_ROMFS:-}" = 1 ]', script)
         self.assertLess(script.index("ipa_pack.py clear"), script.index("xcodebuild -project"))
+        self.assertLess(script.index("ipa_pack.py strip"), script.index("ipa_pack.py check"))
         self.assertLess(script.index("ipa_pack.py embed"), script.index("/usr/bin/codesign --verify"))
 
 
