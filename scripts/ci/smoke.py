@@ -40,7 +40,10 @@ def stop(process):
             process.kill()
     else:
         process.kill()
-    process.wait()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass   # a game stuck in the kernel (no GPU on a runner) must not hold the step
 
 
 def run(command, seconds, popen=subprocess.Popen, sleep=time.sleep):

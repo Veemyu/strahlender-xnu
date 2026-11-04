@@ -276,7 +276,7 @@ class SmokeTests(unittest.TestCase):
             def kill(self):
                 pass
 
-            def wait(self):
+            def wait(self, timeout=None):
                 pass
 
         class Dead(Alive):
