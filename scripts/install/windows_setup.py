@@ -196,7 +196,7 @@ def setup(tools, out, target=None, progress=print, get=fetch, unpacker=unpack, e
         shutil.copytree(tools / name, out / name)
     for part in (downloads, raw):   # the setup is done: a folder Windows still holds is only a leftover
         if not remove_tree(part):
-            progress("Could not remove %s yet; it is cleaned up with the next build." % part.name)
+            progress("Could not remove %s now; it is cleaned up with the next build." % part.name)
     if events:
         events.step("register", "work")
     progress("Registering the build environment")

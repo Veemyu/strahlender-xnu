@@ -2,7 +2,7 @@
 
 The app can start the game with a mod from the Ryujinx/yuzu mod layout (`<mod>/romfs`, `<mod>/exefs`). The mod's RomFS files are laid
 over the game's, a mod runs with a **save folder of its own**, and without a mod the game starts unchanged. This page records what is
-supported, how to install a mod on each platform, and what is not supported yet.
+supported, how to install a mod on each platform, and what is not supported.
 
 ## What works, what does not
 
@@ -12,7 +12,7 @@ supported, how to install a mod on each platform, and what is not supported yet.
 | Separate save | **Supported.** A mod gets `Saves/mods/<name>/` (macOS and Windows: `<save>/mods/<name>/`). The game's save folder is not opened while a mod is active. |
 | ExeFS IPS/IPS32 | **Build-time support on native Mac, Mac → iPhone/iPad, native Windows and Linux (x86_64 and aarch64).** Select the mod in the installer to build a separate compiled app. Dropping ExeFS into an existing app does not apply code patches. Linux: see the Linux section below; a real Linux code-mod run is not verified. |
 | Additional `subsdk1` | **Apple and Windows build paths connected.** Compiled alongside IPS/IPS32, with cross-module entry points, imports and constructors. Its fixed main-relative layout must fit before the SDK. See device validation below. |
-| Other added NSOs, rtld patches | **Not supported yet.** The installer rejects these code mods. |
+| Other added NSOs, rtld patches | **Not supported.** The installer rejects these code mods. |
 | Several mods at once | No. One mod is active; most big mods replace the same files. |
 
 A mod that changes only data (text, models, textures, movies, master data) can work with its RomFS alone. A mod that also patches the code
