@@ -54,7 +54,16 @@ int main(void) {
     while ((entry = readdir(dir)))
         if (!strcmp(entry->d_name, directory)) { assert(entry->d_type == DT_DIR); found = true; }
     assert(found && closedir(dir) == 0);
-    assert(unlink(target) == 0 && rmdir(directory) == 0);
-    puts("UTF-8 files, binary I/O, 64-bit offsets and atomic replacement passed");
+    const char *moved = "files-\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\\moved.bin";
+    int held = open(target, O_RDWR);
+    assert(held >= 0);
+    assert(rename(target, moved) == 0);   // the save code renames a file the game's earlier descriptor still holds
+    assert(pread(held, buffer, sizeof buffer, 0) == sizeof buffer);
+    assert(close(held) == 0);
+    held = open(moved, O_RDONLY);
+    assert(held >= 0 && unlink(moved) == 0 && close(held) == 0);
+    assert(stat(moved, &info) == -1 && errno == ENOENT);
+    assert(rmdir(directory) == 0);
+    puts("UTF-8 files, binary I/O, 64-bit offsets, atomic replacement and renaming open files passed");
     return 0;
 }

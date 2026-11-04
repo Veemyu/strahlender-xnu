@@ -100,3 +100,10 @@ next "Continue" (`scripts/ios_push_save.sh`). A test save should always be a cop
 **Sharing a save in a bug report:** the installer's "Export save for bug report" (and `--cli export-save`) zips the `save_<n>` folders into
 `bdsp-save-<date>.zip` without keys, game files or absolute paths; the user attaches it. Per-platform folders and the privacy note are in
 [BUILD.md](BUILD.md) section 8.2.
+
+**Windows:** the app keeps its save in `%APPDATA%\StrahlenderXnu\save\save_1` (the folder `BDSP_SAVE` overrides, default `<BDSP_DATA_DIR>\save` when only that
+variable is set). There is no import window or `--import-save` on Windows; a Switch or Ryujinx save is imported by hand. Close the game, then copy
+`SaveData.bin` and `Backup.bin` (the files of the save folder, see the Ryujinx layout above) into `%APPDATA%\StrahlenderXnu\save\save_1\`. The
+folder must be exactly `save\save_1` and the file names are case-exact. `SaveData.bin` has to be a plain 979,108 byte file (version 0x34) or one of
+the older sizes in `scripts/bdsp_save.py`; a save in another folder, a zip or a renamed file is not seen and the game starts at the language
+selection. The first in-game save replaces the previous `SaveData.bin` and keeps the old one below `save\_safety`.

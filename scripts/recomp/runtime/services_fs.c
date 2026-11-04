@@ -587,6 +587,18 @@ static void host_file(Service *s, IpcReq *req, IpcResp *resp) {
     pthread_mutex_unlock(&save_io_lock);
 }
 
+// The guest closing its IFile releases the host descriptor. A leaked descriptor keeps the file open for the rest of the run, which
+// blocks the later delete or rename of a save file on Windows.
+static void host_file_close(Service *s) {
+    HostFile *f = s->state;
+    if (!f) return;
+    pthread_mutex_lock(&save_io_lock);
+    close(f->fd);
+    pthread_mutex_unlock(&save_io_lock);
+    free(f);
+    s->state = NULL;
+}
+
 static void host_directory(Service *s, IpcReq *req, IpcResp *resp) {
     HostDir *d = s->state;
     switch (req->cmd) {
@@ -636,6 +648,14 @@ static void host_directory(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
+static void host_directory_close(Service *s) {
+    HostDir *d = s->state;
+    if (!d) return;
+    closedir(d->d);
+    free(d);
+    s->state = NULL;
+}
+
 static int rm_rf(const char *p, bool keep_root) {
     DIR *d = opendir(p);
     if (!d) return unlink(p);
@@ -671,7 +691,10 @@ static void host_filesystem_impl(Service *s, IpcReq *req, IpcResp *resp) {
         if (is_save_root(fs) && !stat(p, &sb) && S_ISREG(sb.st_mode)) {
             char pv[2200];
             safety_path(fs, p, ".prev", pv, sizeof pv);
-            if (rename(p, pv)) resp->result = errno_result();
+            if (rename(p, pv)) {
+                LOG("[fs-save] DeleteFile %s: moving to %s failed (errno %d, %s)\n", p, pv, errno, strerror(errno));
+                resp->result = errno_result();
+            }
             break;
         }
         if (unlink(p)) resp->result = errno_result();
@@ -698,7 +721,9 @@ static void host_filesystem_impl(Service *s, IpcReq *req, IpcResp *resp) {
         HostFile *f = calloc(1, sizeof *f);
         f->fd = fd;
         snprintf(f->path, sizeof f->path, "%s", p);
-        ipc_return_object(resp, service_new("IFile", host_file, f));
+        Service *file = service_new("IFile", host_file, f);
+        file->on_close = host_file_close;
+        ipc_return_object(resp, file);
         break;
     }
     case 9: {
@@ -708,7 +733,9 @@ static void host_filesystem_impl(Service *s, IpcReq *req, IpcResp *resp) {
         hd->d = d;
         hd->mode = (int)IN(uint32_t, 0);
         snprintf(hd->path, sizeof hd->path, "%s", p);
-        ipc_return_object(resp, service_new("IDirectory", host_directory, hd));
+        Service *directory = service_new("IDirectory", host_directory, hd);
+        directory->on_close = host_directory_close;
+        ipc_return_object(resp, directory);
         break;
     }
     case 10: {  // Commit: host writes and snapshot capture share the same lock.

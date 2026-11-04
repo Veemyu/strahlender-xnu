@@ -224,6 +224,23 @@ static void eh_abort_report(const uint64_t *x) {
     kernel_log_memory_map(MAIN_BASE, SUBSDK0_BASE + 0x1000000ull);
 }
 
+// An unhandled nn::Result aborts through svcBreak(0, &result, 4). Names the code and the guest call chain.
+static void break_report(const uint64_t *x) {
+    if (x[2] == 4 && x[1] >= STACK_BASE && x[1] + 4 <= STACK_BASE + STACK_SIZE) {
+        uint32_t v = *(const uint32_t *)G2H(x[1]);
+        LOG("[kernel] svcBreak carries nn::Result 0x%x (module %u, description %u)\n", v, v & 0x1ff, v >> 9);
+    }
+    uint64_t fp = x[29], off = 0;
+    for (int n = 0; n < 8 && fp >= STACK_BASE && fp + 16 <= STACK_BASE + STACK_SIZE; n++) {
+        uint64_t lr = *G2H64(fp + 8);
+        const char *s = loader_symbol_at(lr, &off);
+        LOG("[kernel] svcBreak frame %d: %llx %s+%llx\n", n, (unsigned long long)lr, s ? s : "?", (unsigned long long)off);
+        uint64_t next = *G2H64(fp);
+        if (next <= fp) break;
+        fp = next;
+    }
+}
+
 // ------------------------------------------------------------------ Threads
 static uint64_t next_thread_id = 0x50;
 static uint64_t tls_next = TLS_BASE;
@@ -827,6 +844,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x26:  // Break(reason, info, size)
         if (x[0] & 0x80000000u) { LOG("[kernel] Break (Benachrichtigung) %llx\n", (unsigned long long)x[0]); x[0] = R_OK; break; }
         eh_abort_report(x);
+        break_report(x);
         rt_fatal("svcBreak(reason=%llx, info=%llx, size=%llx) bei %llx, lr=%llx\n", (unsigned long long)x[0], (unsigned long long)x[1],
                  (unsigned long long)x[2], (unsigned long long)pc, (unsigned long long)x[30]);
     case 0x27: {

@@ -72,20 +72,28 @@ int bdsp_win32_closedir(BdspDirectory *directory) {
     return 0;
 }
 
+// Opened with FILE_SHARE_DELETE, like a POSIX descriptor: the game renames and deletes save files that another descriptor of this
+// process still has open, which the CRT's _wopen forbids (sharing violation).
 int bdsp_win32_open(const char *path, int flags, ...) {
     wchar_t *wide = bdsp_win32_widen(path);
     if (!wide) return -1;
-    int mode = 0;
+    DWORD access = (flags & O_WRONLY) ? GENERIC_WRITE : (flags & O_RDWR) ? (GENERIC_READ | GENERIC_WRITE) : GENERIC_READ;
+    DWORD disposition = OPEN_EXISTING;
     if (flags & O_CREAT) {
-        va_list arguments;
-        va_start(arguments, flags);
-        mode = va_arg(arguments, int);
-        va_end(arguments);
+        if (flags & O_EXCL) disposition = CREATE_NEW;
+        else disposition = (flags & O_TRUNC) ? CREATE_ALWAYS : OPEN_ALWAYS;
+    } else if (flags & O_TRUNC) {
+        disposition = TRUNCATE_EXISTING;
     }
-    int result = _wopen(wide, flags | O_BINARY, mode), error = errno;
+    HANDLE handle = CreateFileW(wide, access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, disposition,
+                                FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD error = GetLastError();
     free(wide);
-    errno = error;
-    return result;
+    if (handle == INVALID_HANDLE_VALUE) { file_error(error); return -1; }
+    int descriptor = _open_osfhandle((intptr_t)handle, (flags & O_APPEND) | O_BINARY);
+    if (descriptor < 0) { CloseHandle(handle); errno = EMFILE; return -1; }
+    if (flags & O_APPEND) _lseeki64(descriptor, 0, SEEK_END);
+    return descriptor;
 }
 
 int bdsp_win32_stat(const char *path, BdspFileInfo *info) {
