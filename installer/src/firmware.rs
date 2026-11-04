@@ -234,12 +234,12 @@ fn master_generations(keys: &str) -> Vec<u32> {
     found.dedup();
     found
 }
-/// A revision R needs master_key_(R - 1); revisions 0 and 1 both use master_key_00.
+/// hactool prints the revision after its own decrement, so a revision R needs master_key_R.
 fn failure_message(generic: String, revision: Option<u32>, present: &[u32]) -> String {
     let (Some(revision), Some(&highest)) = (revision, present.iter().max()) else {
         return generic;
     };
-    let needed = revision.saturating_sub(1);
+    let needed = revision;
     if needed <= highest {
         return generic;
     }
@@ -702,14 +702,14 @@ mod tests {
     fn old_keys_get_the_precise_message_and_everything_else_the_generic_one() {
         let generic = || "generic".to_string();
         assert_eq!(
-            failure_message(generic(), Some(0x16), &[0, 1, 0x14]),
-            "Your prod.keys are too old for this firmware: the firmware needs master key 15, your file has up to 14. Dump prod.keys again from a Switch that runs this firmware, or use an older firmware dump."
+            failure_message(generic(), Some(0x16), &[0, 1, 0x15]),
+            "Your prod.keys are too old for this firmware: the firmware needs master key 16, your file has up to 15. Dump prod.keys again from a Switch that runs this firmware, or use an older firmware dump."
         );
         assert_eq!(
-            failure_message(generic(), Some(0x15), &[0, 0x14]),
+            failure_message(generic(), Some(0x15), &[0, 0x15]),
             "generic"
         );
-        assert_eq!(failure_message(generic(), Some(1), &[0]), "generic");
+        assert_eq!(failure_message(generic(), Some(0), &[0]), "generic");
         assert_eq!(failure_message(generic(), None, &[0, 1]), "generic");
         assert_eq!(failure_message(generic(), Some(9), &[]), "generic");
     }
@@ -732,9 +732,9 @@ mod tests {
         )
         .unwrap();
         let message = explain(&tool_path, &keys, &tmp.0.join("a.nca"), "generic".into());
-        assert!(message.contains("needs master key 0b, your file has up to 09"));
+        assert!(message.contains("needs master key 0c, your file has up to 09"));
         assert!(!message.contains("fake"));
-        fs::write(&keys, "master_key_0b = fake-dummy\n").unwrap();
+        fs::write(&keys, "master_key_0c = fake-dummy\n").unwrap();
         assert_eq!(
             explain(&tool_path, &keys, &tmp.0.join("a.nca"), "generic".into()),
             "generic"

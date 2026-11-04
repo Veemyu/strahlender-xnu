@@ -94,8 +94,8 @@ impl Keys {
                 Some(_) => {}
             }
         }
-        // hactool counts revisions 0 and 1 both as master_key_00 and then one lower than its number.
-        let index = needed.map(|n| n.saturating_sub(1));
+        // hactool prints the revision after its own decrement (raw 0 and 1 both become 0): revision R needs master_key_R.
+        let index = needed;
         if let (Some(index), Some(&highest)) = (index, masters.iter().max()) {
             if !masters.contains(&index) {
                 found.insert(
@@ -220,7 +220,7 @@ mod tests {
     fn a_file_older_than_the_game_says_which_master_key_is_missing() {
         let problems = Keys::parse(&keys(10)).problems(Some(0xC));
         assert!(
-            problems[0].contains("master_key_0b (revision 0xC)"),
+            problems[0].contains("master_key_0c (revision 0xC)"),
             "{problems:?}"
         );
         assert!(problems[0].contains("up to master_key_09"));

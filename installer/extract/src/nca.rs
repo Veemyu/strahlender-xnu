@@ -14,7 +14,7 @@ pub struct Nca {
     pub content_type: String,
     pub rights_id: Option<String>,
     pub size: u64,
-    /// hactool's "Master Key Revision" (needs master_key_<revision - 1>), when it printed one.
+    /// hactool's "Master Key Revision" (already decremented by hactool: needs master_key_<revision>), when it printed one.
     pub master_revision: Option<u32>,
 }
 
