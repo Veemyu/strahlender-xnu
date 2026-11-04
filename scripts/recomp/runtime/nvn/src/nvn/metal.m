@@ -49,6 +49,7 @@ static MtlFormat mtl_format(uint32_t f) {
         case BCTC_R8S: return (MtlFormat){MTLPixelFormatR8Snorm};
         case BCTC_RG8: return (MtlFormat){MTLPixelFormatRG8Unorm};
         case BCTC_RG8S: return (MtlFormat){MTLPixelFormatRG8Snorm};
+        case BCTC_RGBA16F: return (MtlFormat){MTLPixelFormatRGBA16Float};
         default: break;
         }
     switch (f) {

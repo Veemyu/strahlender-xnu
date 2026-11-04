@@ -2,6 +2,7 @@
 //  1. bctc's BC decoders against Metal's BC decoding (random blocks, every BC format the game uses)
 //  2. the ASTC blocks bctc writes against Metal's ASTC decoding of them: must equal bctc's own reading (bit layout)
 //  3. the error of the conversion against the original BC texels (PSNR, maximum)
+//  4. BC6H (no ASTC form: RGBA16Float texels) against Metal's BC6H decoding, every mode, signed and unsigned
 // Synthetic data only (no game files). Usage: run_bctc_test.sh
 #import <Metal/Metal.h>
 #include <stdio.h>
@@ -126,6 +127,43 @@ static int test_bc45(const char *name, uint32_t fmt, MTLPixelFormat bc_pf, MTLPi
     return ok;
 }
 
+// BC6H: random blocks with the mode field cycling through all 32 values (14 modes, 4 reserved codes, partitions and indices random)
+static int test_bc6h(const char *name, uint32_t fmt, MTLPixelFormat bc_pf) {
+    const uint32_t W = 256, H = 256, BW = W / 4, BH = H / 4, NB = BW * BH;
+    uint8_t *blk = malloc((size_t)NB * 16);
+    fill(blk, NB, 16, fmt, 0);
+    for (uint32_t i = 0; i < NB; i++) blk[i * 16] = (uint8_t)((blk[i * 16] & 0xE0) | (i % 32));
+    float *ref = read_back(make(bc_pf, W, H, blk, BW * 16));
+    uint32_t row, rows;
+    uint8_t *texels = bctc_convert(fmt, blk, BW, BH, 1, &row, &rows);
+    float *got = read_back(make(MTLPixelFormatRGBA16Float, W, H, texels, row));
+    int blocks_ok = 0, blocks_bad = 0, shape_ok = row == W * 8 && rows == H;
+    double worst = 0;
+    for (uint32_t i = 0; i < NB; i++) {
+        uint16_t px[16][4];
+        bctc_decode_bc6h(blk + (size_t)i * 16, fmt == 0x4F, px);
+        int bad = 0;
+        for (int t = 0; t < 16; t++) {
+            uint32_t x = (i % BW) * 4 + t % 4, y = (i / BW) * 4 + t / 4;
+            for (int c = 0; c < 4; c++) {
+                _Float16 h;
+                memcpy(&h, &px[t][c], 2);
+                float mine = (float)h, g = got[((size_t)y * W + x) * 4 + c], r = ref[((size_t)y * W + x) * 4 + c];
+                double tol = 1e-3 * fmax(fabs(mine), fabs(r)) + 1e-6, d = fabs(mine - r);
+                if (fabs(g - mine) > 0) bad = 1;   // the converted texels must be this decoder's output exactly
+                if (!(d <= tol)) bad = 1;
+                if (d > worst) worst = d;
+            }
+        }
+        if (bad) blocks_bad++; else blocks_ok++;
+    }
+    int ok = blocks_bad == 0 && shape_ok;
+    printf("%-14s %d of %u random blocks match Metal's BC6H decoding within half-float tolerance (max abs diff %g)  %s\n", name, blocks_ok, NB,
+           worst, ok ? "ok" : "FAILED");
+    free(blk); free(ref); free(got); free(texels);
+    return ok;
+}
+
 int main(void) {
     @autoreleasepool {
         dev = MTLCreateSystemDefaultDevice();
@@ -148,6 +186,8 @@ int main(void) {
         ok &= test_bc45("BC4 snorm", 0x4A, MTLPixelFormatBC4_RSnorm, MTLPixelFormatR8Snorm, 1, 1);
         ok &= test_bc45("BC5 unorm", 0x4B, MTLPixelFormatBC5_RGUnorm, MTLPixelFormatRG8Unorm, 2, 0);
         ok &= test_bc45("BC5 snorm", 0x4C, MTLPixelFormatBC5_RGSnorm, MTLPixelFormatRG8Snorm, 2, 1);
+        ok &= test_bc6h("BC6H unsigned", 0x50, MTLPixelFormatBC6H_RGBUfloat);
+        ok &= test_bc6h("BC6H signed", 0x4F, MTLPixelFormatBC6H_RGBFloat);
         printf("%s\n", ok ? "ALL OK" : "FAILURES");
         return ok ? 0 : 1;
     }

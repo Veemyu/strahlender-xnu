@@ -15,6 +15,7 @@ int bctc_kind(uint32_t f) {
     case 0x49: return BCTC_R8;
     case 0x4A: return BCTC_R8S;
     case 0x4B: return BCTC_RG8;
+    case 0x4F: case 0x50: return BCTC_RGBA16F;
     case 0x4C: return getenv("BDSP_BC5_UNORM") ? BCTC_RG8 : BCTC_RG8S;   // as the BC path in metal.m
     default: return BCTC_NONE;
     }
@@ -354,6 +355,159 @@ int bctc_astc_decode(const uint8_t b[16], uint8_t px[16][4]) {
     return 1;
 }
 
+// ------------------------------------------------------------------ BC6H
+// Per mode: the bit fields after the mode bits in stream order. {reg, shift, bits, reversed}: reg = channel * 4 + endpoint
+// (0 = w, 1 = x, 2 = y, 3 = z, the names of the format specification), the bits go to value << shift; "reversed" fields
+// store their bits from the highest down. Modes 1-10 have two regions (a 5-bit partition follows the fields), 11-14 one.
+typedef struct { uint8_t reg, shift, bits, rev; } Bc6Field;
+static const Bc6Field bc6_fields[14][24] = {
+    {  // mode 1
+        {6,4,1,0}, {10,4,1,0}, {11,4,1,0}, {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,5,0}, {7,4,1,0}, {6,0,4,0},
+        {5,0,5,0}, {11,0,1,0}, {7,0,4,0}, {9,0,5,0}, {11,1,1,0}, {10,0,4,0}, {2,0,5,0}, {11,2,1,0}, {3,0,5,0},
+        {11,3,1,0}
+    },
+    {  // mode 2
+        {6,5,1,0}, {7,4,1,0}, {7,5,1,0}, {0,0,7,0}, {11,0,1,0}, {11,1,1,0}, {10,4,1,0}, {4,0,7,0}, {10,5,1,0},
+        {11,2,1,0}, {6,4,1,0}, {8,0,7,0}, {11,3,1,0}, {11,5,1,0}, {11,4,1,0}, {1,0,6,0}, {6,0,4,0}, {5,0,6,0},
+        {7,0,4,0}, {9,0,6,0}, {10,0,4,0}, {2,0,6,0}, {3,0,6,0}
+    },
+    {  // mode 3
+        {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,5,0}, {0,10,1,0}, {6,0,4,0}, {5,0,4,0}, {4,10,1,0}, {11,0,1,0},
+        {7,0,4,0}, {9,0,4,0}, {8,10,1,0}, {11,1,1,0}, {10,0,4,0}, {2,0,5,0}, {11,2,1,0}, {3,0,5,0}, {11,3,1,0}
+    },
+    {  // mode 4
+        {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,4,0}, {0,10,1,0}, {7,4,1,0}, {6,0,4,0}, {5,0,5,0}, {4,10,1,0},
+        {7,0,4,0}, {9,0,4,0}, {8,10,1,0}, {11,1,1,0}, {10,0,4,0}, {2,0,4,0}, {11,0,1,0}, {11,2,1,0}, {3,0,4,0},
+        {6,4,1,0}, {11,3,1,0}
+    },
+    {  // mode 5
+        {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,4,0}, {0,10,1,0}, {10,4,1,0}, {6,0,4,0}, {5,0,4,0}, {4,10,1,0},
+        {11,0,1,0}, {7,0,4,0}, {9,0,5,0}, {8,10,1,0}, {10,0,4,0}, {2,0,4,0}, {11,1,1,0}, {11,2,1,0}, {3,0,4,0},
+        {11,4,1,0}, {11,3,1,0}
+    },
+    {  // mode 6
+        {0,0,9,0}, {10,4,1,0}, {4,0,9,0}, {6,4,1,0}, {8,0,9,0}, {11,4,1,0}, {1,0,5,0}, {7,4,1,0}, {6,0,4,0}, {5,0,5,0},
+        {11,0,1,0}, {7,0,4,0}, {9,0,5,0}, {11,1,1,0}, {10,0,4,0}, {2,0,5,0}, {11,2,1,0}, {3,0,5,0}, {11,3,1,0}
+    },
+    {  // mode 7
+        {0,0,8,0}, {7,4,1,0}, {10,4,1,0}, {4,0,8,0}, {11,2,1,0}, {6,4,1,0}, {8,0,8,0}, {11,3,1,0}, {11,4,1,0},
+        {1,0,6,0}, {6,0,4,0}, {5,0,5,0}, {11,0,1,0}, {7,0,4,0}, {9,0,5,0}, {11,1,1,0}, {10,0,4,0}, {2,0,6,0}, {3,0,6,0}
+    },
+    {  // mode 8
+        {0,0,8,0}, {11,0,1,0}, {10,4,1,0}, {4,0,8,0}, {6,5,1,0}, {6,4,1,0}, {8,0,8,0}, {7,5,1,0}, {11,4,1,0}, {1,0,5,0},
+        {7,4,1,0}, {6,0,4,0}, {5,0,6,0}, {7,0,4,0}, {9,0,5,0}, {11,1,1,0}, {10,0,4,0}, {2,0,5,0}, {11,2,1,0}, {3,0,5,0},
+        {11,3,1,0}
+    },
+    {  // mode 9
+        {0,0,8,0}, {11,1,1,0}, {10,4,1,0}, {4,0,8,0}, {10,5,1,0}, {6,4,1,0}, {8,0,8,0}, {11,5,1,0}, {11,4,1,0},
+        {1,0,5,0}, {7,4,1,0}, {6,0,4,0}, {5,0,5,0}, {11,0,1,0}, {7,0,4,0}, {9,0,6,0}, {10,0,4,0}, {2,0,5,0}, {11,2,1,0},
+        {3,0,5,0}, {11,3,1,0}
+    },
+    {  // mode 10
+        {0,0,6,0}, {7,4,1,0}, {11,0,1,0}, {11,1,1,0}, {10,4,1,0}, {4,0,6,0}, {6,5,1,0}, {10,5,1,0}, {11,2,1,0},
+        {6,4,1,0}, {8,0,6,0}, {7,5,1,0}, {11,3,1,0}, {11,5,1,0}, {11,4,1,0}, {1,0,6,0}, {6,0,4,0}, {5,0,6,0}, {7,0,4,0},
+        {9,0,6,0}, {10,0,4,0}, {2,0,6,0}, {3,0,6,0}
+    },
+    {  // mode 11
+        {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,10,0}, {5,0,10,0}, {9,0,10,0}
+    },
+    {  // mode 12
+        {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,9,0}, {0,10,1,0}, {5,0,9,0}, {4,10,1,0}, {9,0,9,0}, {8,10,1,0}
+    },
+    {  // mode 13
+        {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,8,0}, {0,10,2,1}, {5,0,8,0}, {4,10,2,1}, {9,0,8,0}, {8,10,2,1}
+    },
+    {  // mode 14
+        {0,0,10,0}, {4,0,10,0}, {8,0,10,0}, {1,0,4,0}, {0,10,6,1}, {5,0,4,0}, {4,10,6,1}, {9,0,4,0}, {8,10,6,1}
+    },
+};
+
+static const uint8_t bc6_wbits[14] = {10, 7, 11, 11, 11, 9, 8, 8, 8, 6, 10, 11, 12, 16};
+static const uint8_t bc6_dbits[3][14] = {   // delta bits of r, g, b (transformed modes)
+    {5, 6, 5, 4, 4, 5, 6, 5, 5, 6, 10, 9, 8, 4},
+    {5, 6, 4, 5, 4, 5, 5, 6, 5, 6, 10, 9, 8, 4},
+    {5, 6, 4, 4, 5, 5, 5, 5, 6, 6, 10, 9, 8, 4},
+};
+
+static int sign_extend(int v, int bits) {
+    int m = 1 << (bits - 1);
+    v &= (1 << bits) - 1;
+    return (v ^ m) - m;
+}
+
+static int bc6_unquantize(int c, int bits, int sgn) {
+    if (!sgn) {
+        if (bits >= 15) return c;
+        if (c == 0) return 0;
+        if (c == (1 << bits) - 1) return 0xFFFF;
+        return ((c << 16) + 0x8000) >> bits;
+    }
+    if (bits >= 16) return c;
+    int neg = c < 0, u;
+    if (neg) c = -c;
+    if (c == 0) u = 0;
+    else if (c >= (1 << (bits - 1)) - 1) u = 0x7FFF;
+    else u = ((c << 15) + 0x4000) >> (bits - 1);
+    return neg ? -u : u;
+}
+
+// The interpolated value to the half-float bit pattern (the scaling the unquantize step postponed)
+static uint16_t bc6_finish(int c, int sgn) {
+    if (!sgn) return (uint16_t)((c * 31) >> 6);
+    int s = 0;
+    if (c < 0) { s = 0x8000; c = -c; }
+    return (uint16_t)(s | ((c * 31) >> 5));
+}
+
+void bctc_decode_bc6h(const uint8_t b[16], int sgn, uint16_t px[16][4]) {
+    static const int w3[8] = {0, 9, 18, 27, 37, 46, 55, 64}, w4[16] = {0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64};
+    Bits s = {b, 0};
+    int v = (int)rd(&s, 2), mode;
+    if (v < 2) mode = v;
+    else {
+        v |= (int)rd(&s, 3) << 2;
+        mode = (v & 3) == 2 ? 2 + (v >> 2) : (v >> 2) < 4 ? 10 + (v >> 2) : -1;
+    }
+    if (mode < 0) {   // reserved modes decode to zero (alpha stays 1.0)
+        for (int i = 0; i < 16; i++) { px[i][0] = px[i][1] = px[i][2] = 0; px[i][3] = 0x3C00; }
+        return;
+    }
+    int e[12] = {0};
+    for (const Bc6Field *f = bc6_fields[mode]; f->bits; f++) {
+        uint32_t x = rd(&s, f->bits);
+        if (f->rev) {
+            uint32_t r = 0;
+            for (int i = 0; i < f->bits; i++) r |= ((x >> i) & 1) << (f->bits - 1 - i);
+            x = r;
+        }
+        e[f->reg] |= (int)(x << f->shift);
+    }
+    int two = mode < 10, part = two ? (int)rd(&s, 5) : 0, nep = two ? 4 : 2, wb = bc6_wbits[mode];
+    int plain = mode == 9 || mode == 10;   // endpoints stored whole, not as deltas of the first one
+    for (int c = 0; c < 3; c++) {
+        int *ep = e + c * 4;
+        if (sgn) ep[0] = sign_extend(ep[0], wb);
+        for (int i = 1; i < nep; i++) {
+            if (!plain || sgn) ep[i] = sign_extend(ep[i], bc6_dbits[c][mode]);
+            if (!plain) {
+                ep[i] = (ep[i] + ep[0]) & ((1 << wb) - 1);
+                if (sgn) ep[i] = sign_extend(ep[i], wb);
+            }
+        }
+        for (int i = 0; i < nep; i++) ep[i] = bc6_unquantize(ep[i], wb, sgn);
+    }
+    int ib = two ? 3 : 4;
+    for (int i = 0; i < 16; i++) {
+        int anchor = i == 0 || (two && i == bc7_a2[part]);
+        int idx = (int)rd(&s, ib - anchor), r = two ? (bc7_p2[part] >> i) & 1 : 0, w = two ? w3[idx] : w4[idx];
+        for (int c = 0; c < 3; c++) {
+            const int *ep = e + c * 4 + r * 2;
+            px[i][c] = bc6_finish((ep[0] * (64 - w) + ep[1] * w + 32) >> 6, sgn);
+        }
+        px[i][3] = 0x3C00;
+    }
+}
+
 // ------------------------------------------------------------------ whole levels
 uint8_t *bctc_convert(uint32_t f, const uint8_t *src, uint32_t wb, uint32_t hb, uint32_t d, uint32_t *row, uint32_t *rows) {
     int kind = bctc_kind(f);
@@ -371,6 +525,23 @@ uint8_t *bctc_convert(uint32_t f, const uint8_t *src, uint32_t wb, uint32_t hb, 
         }
         *row = wb * 16;
         *rows = hb;
+        return out;
+    }
+    if (kind == BCTC_RGBA16F) {   // BC6H: texels, 4 half floats each (alpha 1.0)
+        uint32_t w = wb * 4, h = hb * 4;
+        uint8_t *out = malloc((uint64_t)w * h * d * 8);
+        for (uint32_t z = 0; z < d; z++)
+            for (uint32_t by = 0; by < hb; by++)
+                for (uint32_t bx = 0; bx < wb; bx++) {
+                    uint16_t px[16][4];
+                    bctc_decode_bc6h(src + (((uint64_t)z * hb + by) * wb + bx) * 16, f == 0x4F, px);
+                    for (int i = 0; i < 16; i++) {
+                        uint8_t *o = out + (((uint64_t)z * h + by * 4 + i / 4) * w + bx * 4 + i % 4) * 8;
+                        for (int c = 0; c < 4; c++) { o[c * 2] = (uint8_t)px[i][c]; o[c * 2 + 1] = (uint8_t)(px[i][c] >> 8); }
+                    }
+                }
+        *row = w * 8;
+        *rows = h;
         return out;
     }
     // BC4/BC5: texels, 1 or 2 bytes each

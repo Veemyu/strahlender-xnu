@@ -173,6 +173,7 @@ static VkFormat bc_substitute(int kind) {
     case BCTC_R8S: return VK_FORMAT_R8_SNORM;
     case BCTC_RG8: return VK_FORMAT_R8G8_UNORM;
     case BCTC_RG8S: return VK_FORMAT_R8G8_SNORM;
+    case BCTC_RGBA16F: return VK_FORMAT_R16G16B16A16_SFLOAT;
     default: return VK_FORMAT_UNDEFINED;
     }
 }
