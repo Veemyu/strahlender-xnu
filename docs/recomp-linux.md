@@ -2,7 +2,7 @@
 
 The same recompilation also builds for Linux x86-64 with a Vulkan renderer and a Qt 6 frontend, and Windows is supported (see [BUILD.md](BUILD.md)).
 Linux x86-64 is supported. Linux ARM64 (aarch64) is experimental: the installer paths accept it and the tools run on a real aarch64 machine,
-but a full game build and rendering are not verified yet (BUILD.md, section 6.5); testers are welcome.
+the runtime (C sources, Vulkan layer, Qt frontend) compiles and links on aarch64, but a full game start and rendering are not verified (BUILD.md, section 6.5); testers are welcome.
 The user workflow (packages, commands, session variables) is in [BUILD.md](BUILD.md), section 6, and the guided installer
 `./install-linux.sh`. This page records how the Linux path is put together and what was measured. The figures come from an earlier
 workflow with a dedicated remote Linux machine (x86-64, 6 cores / 12 threads, 30 GB RAM, RTX 2080 Ti, Fedora 44) that no longer

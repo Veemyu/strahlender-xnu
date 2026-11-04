@@ -226,7 +226,7 @@ repository to set the team.
 
 ## 6. Linux with Vulkan
 
-Linux x86-64 is supported. Linux aarch64 is experimental (section 6.5): installer, build tools and generator work on a real aarch64 machine, but a full game build and rendering are not verified yet; testers are welcome. See section 6.4 for the known limits.
+Linux x86-64 is supported. Linux aarch64 is experimental (section 6.5): installer, build tools and generator work on a real aarch64 machine, but the runtime compiles and links on aarch64, but a full game start and rendering are not verified; testers are welcome. See section 6.4 for the known limits.
 
 ### 6.1 Requirements
 
@@ -417,8 +417,12 @@ Details: `docs/recomp-linux.md`.
 - **Verified on Fedora Asahi Remix aarch64 (16 KiB pages):** the installer's private Python runtime (`--check-runtime`), the native
   C generator on synthetic inputs, `install-linux.sh --dry-run` (system step, package and tool checks, notice in four languages),
   the dependency and CPU flag scripts (`-mcpu=native`, `-march=armv8-a` for portable), and CI tests on a 4 KiB page ARM64 runner.
-- **Not verified yet:** a full game build, building the Vulkan/Qt runtime on aarch64 (the Asahi test machine had no Vulkan,
-  SDL3, shaderc or Qt development packages), and rendering. Please report results on GitHub issue 23.
+- **Runtime build (compile and link check on Fedora 43 aarch64, clang, Qt 6, 16 KiB pages):** every runtime C file, the Vulkan NVN layer and
+  the Qt frontend compile, and the runtime links with the Qt frontend once the generated guest objects are present (checked with
+  empty stand-ins for the generated function tables; the binary starts and stops at the missing module images). The stage had stopped at
+  `compat/mach/mach.h` with `unrecognized instruction mnemonic` because the spin wait used the x86 `pause` instruction.
+- **Not verified:** a full game build with the generated objects linked in, the install step after the runtime stage, and rendering.
+  Please report results on GitHub issue 23.
 - Generated code is compiled with `-O1` like on x86-64; the exact-float tests (`docs/recomp-diff.md`, 6.1) found 0 mismatches
   on arm64 at `-O1`. Do not raise the optimization level without re-running them.
 
