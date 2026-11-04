@@ -10,7 +10,7 @@ supported, how to install a mod on each platform, and what is not supported yet.
 |---|---|
 | RomFS files (Unity assets, `Data/StreamingAssets/...`, movies) | **Supported.** Files with the same path replace the game's, new files are added. Names match ignoring case. |
 | Separate save | **Supported.** A mod gets `Saves/mods/<name>/` (macOS and Windows: `<save>/mods/<name>/`). The game's save folder is not opened while a mod is active. |
-| ExeFS IPS/IPS32 | **Build-time support on native Mac, Mac → iPhone/iPad and native Windows.** Select the mod in the installer to build a separate compiled app. Dropping ExeFS into an existing app does not apply code patches. Linux: not available (see Code mods). |
+| ExeFS IPS/IPS32 | **Build-time support on native Mac, Mac → iPhone/iPad, native Windows and Linux (x86_64 and aarch64).** Select the mod in the installer to build a separate compiled app. Dropping ExeFS into an existing app does not apply code patches. Linux: see the Linux section below; a real Linux code-mod run is not verified. |
 | Additional `subsdk1` | **Apple and Windows build paths connected.** Compiled alongside IPS/IPS32, with cross-module entry points, imports and constructors. Its fixed main-relative layout must fit before the SDK. See device validation below. |
 | Other added NSOs, rtld patches | **Not supported yet.** The installer rejects these code mods. |
 | Several mods at once | No. One mod is active; most big mods replace the same files. |
@@ -93,7 +93,7 @@ Choose the whole downloaded mod folder in the GUI. It finds `romfs/` and `exefs/
 
 Lumi 2.2F supplies its artwork inside those RomFS bundles, rather than as `icon.png`. The shared pipeline now extracts twelve locale variants and builds all sixteen icon selections from that actual Lumi artwork; it does **not** use the original Diamond icon with a MOD badge. This works before Apple icon compilation and final signing. The existing UnityPy shader profile is required for embedded-logo extraction, and the installer checks that reader before compiling. Standalone icons do not need UnityPy.
 
-A no-op IPS against the local `main` has passed generator/image, compiler, runtime-link and signed-app checks on Mac and iPadOS. This verifies the build plumbing, not the behavior of a real code mod. Rtld patches, additional modules beyond `subsdk1`, arbitrary ExeFS files, Linux code-mod builds and switching code variants inside one app remain unsupported. Linux is not a platform limit: the staging and generator scripts accept a staged ExeFS (`BDSP_EXEFS_DIR`), but the Linux install path still installs one fixed app (one build folder, launcher and desktop entry), so the installer refuses ExeFS mods there with that reason. The GUI blocks unsupported ExeFS file types; patch applicability and module layout are checked during staging, before generation or compilation.
+A no-op IPS against the local `main` has passed generator/image, compiler, runtime-link and signed-app checks on Mac and iPadOS. This verifies the build plumbing, not the behavior of a real code mod. Rtld patches, additional modules beyond `subsdk1`, arbitrary ExeFS files and switching code variants inside one app remain unsupported. The GUI blocks unsupported ExeFS file types; patch applicability and module layout are checked during staging, before generation or compilation.
 
 Pure RomFS mods still need no rebuild: copy them into the app's mods folder with a file manager. The GUI can also select a downloaded mod folder directly. An in-app choice between multiple compiled ExeFS variants remains a later step; the present IPS path builds a separate app.
 
@@ -106,6 +106,16 @@ code stay untouched. A RomFS-only mod needs no new code: its app links the game'
 installed as `%LOCALAPPDATA%\StrahlenderXnu\mod-apps\BDSP-<name>-<id>\` with `mod.txt`; the mod itself stays in the folder chosen
 in the installer and is read from there. The Windows build runtime ships UnityPy, so Lumi's logos (Unity bundles) are extracted; where they cannot be read, the app
 gets the game icon with a MOD badge and the build log says so.
+
+### Linux (x86_64 and aarch64)
+
+Same staging again (`ips_patch stage` into `work/recomp/mods/<key>/exefs`). The Linux scripts build from there with `RECOMP_DIR=work/recomp/mods/<key>` and
+`BDSP_EXEFS_DIR`: `gen.sh` adds `subsdk1` and its `.entries`, `compile.sh` compiles it with the other modules, `mkimages.sh` writes its image and
+`vk_build.sh` builds the runtime (`BDSP_HAS_SUBSDK1`), the mod's icons and `bdsp_boot_vk_qt` inside that folder, so the game's own build stays untouched.
+The app is installed beside the game as `~/.local/share/strahlender-xnu/app-<name>-<id>/` with its own launcher
+`~/.local/bin/strahlender-xnu-<name>-<id>` and desktop entry `dev.local.xnubdsp.mod.<id>.desktop`. The launcher fixes `BDSP_MOD` and sets
+`BDSP_COMPILED_EXEFS`, so the runtime knows the code is compiled in. The mod stays in its mods folder and is read from there; the UI overlay for the files the mod
+replaces (`romfs-patch-mods/<name>`) is installed with the app. A RomFS-only mod still uses the one game app and the launcher's `BDSP_MOD` default.
 
 Measured on Windows 11 (RTX 2080 Ti, 2026-11-02), Luminescent Platinum 2.2F BD, installer driver with the installer's arguments,
 build run without elevation:

@@ -2593,12 +2593,13 @@ impl Installer {
         experimental_target(self.host, self.target, std::env::consts::ARCH)
     }
 
-    /// Targets whose build stages IPS/IPS32 and subsdk1 into a separate mod app. Linux still installs one fixed app.
+    /// Targets whose build stages IPS/IPS32 and subsdk1 into a separate mod app.
     fn ips_target(&self) -> bool {
         matches!(
             (self.host, self.target),
             (Platform::Mac, InstallTarget::Mac | InstallTarget::Ios)
                 | (Platform::Windows, InstallTarget::Windows)
+                | (Platform::Linux, InstallTarget::Linux)
         )
     }
 
@@ -4119,7 +4120,7 @@ mod tests {
     }
 
     #[test]
-    fn code_mod_can_advance_to_a_separate_build_on_mac_ios_and_windows() {
+    fn code_mod_can_advance_to_a_separate_build_on_mac_ios_windows_and_linux() {
         let root = std::env::temp_dir().join(format!("installer-ips-ready-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("Code/ExeFS")).unwrap();
@@ -4130,7 +4131,7 @@ mod tests {
             (Platform::Mac, InstallTarget::Mac, true),
             (Platform::Mac, InstallTarget::Ios, true),
             (Platform::Windows, InstallTarget::Windows, true),
-            (Platform::Linux, InstallTarget::Linux, false),
+            (Platform::Linux, InstallTarget::Linux, true),
         ] {
             let (mut app, _) = Installer::new();
             app.host = host;

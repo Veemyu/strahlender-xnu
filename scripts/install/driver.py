@@ -613,7 +613,7 @@ def _prepare_code_mod(args, work, build_cache=None, emit_steps=True):
     app_name = "BDSP-" + selected["slug"] + "-" + selected["identity"] + ".app"
     return {"staged": staged, "build_dir": build_dir / "ios" if args.target == "ios" else build_dir, "app_name": app_name,
             "bundle_id": "dev.local.xnubdsp.mod." + selected["identity"],
-            "name": selected["name"], "mods_dir": selected["mods_dir"], "root": selected["root"]}
+            "slug": selected["slug"], "identity": selected["identity"], "name": selected["name"], "mods_dir": selected["mods_dir"], "root": selected["root"]}
 
 
 def _ios_device(args):
@@ -1109,8 +1109,9 @@ def _build_ios(args, common):
     return code, build_dir / "derived/Build/Products/Release-iphoneos/BDSP.app"
 
 
-def install_artifact(args, artifact):
-    """Install only after a successful build; never replace an unowned application."""
+def install_artifact(args, artifact, mod_build=None):
+    """Install only after a successful build; never replace an unowned application. On Linux a code mod (mod_build from
+    _prepare_code_mod) is installed as an app of its own beside the game, with its own launcher and desktop entry."""
     emit("step", id="install", status="started")
     root = Path(args.root)
     work = Path(args.work)
@@ -1180,34 +1181,39 @@ def install_artifact(args, artifact):
             data_home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
             bin_home = Path.home() / ".local/bin"
         data = data_home / "strahlender-xnu"
-        destination = data / "app"
+        key = mod_build["slug"] + "-" + mod_build["identity"] if mod_build else None
+        destination = data / ("app-" + key if key else "app")
         if destination.exists() and not (destination / ".installer-owned").is_file():
             raise FileExistsError("An existing application at " + str(destination) + " is not owned by this installer.")
         data.mkdir(parents=True, exist_ok=True)
         staging = data / (".app-staging-" + str(os.getpid()))
         if staging.exists():
             raise FileExistsError("An installation staging folder already exists: " + str(staging))
+        build_dir = Path(mod_build["build_dir"]) if mod_build else work / "recomp"
         source_trees = ((work / "romfs", staging / "romfs"),
-                        (work / "recomp/img_gfx", staging / "img"),
-                        (work / "recomp/icons/linux", staging / "icons/linux"),
+                        (build_dir / "img_gfx", staging / "img"),
+                        (build_dir / "icons/linux", staging / "icons/linux"),
                         (root / "scripts/recomp/runtime/app/linux/lproj", staging / "lproj"))
         if getattr(args, "firmware_root", None):
             source_trees += ((Path(args.firmware_root), staging / "Firmware"),)
         if (work / "romfs-patch/.stamp").is_file():   # UI fix for other aspect ratios (build_ui_overlay), found next to romfs
             source_trees += ((work / "romfs-patch", staging / "romfs-patch"),)
+        mod_name = getattr(args, "mod_name", None)
+        if getattr(args, "mod_root", None) and mod_name and (work / "romfs-patch-mods" / mod_name / ".stamp").is_file():
+            source_trees += ((work / "romfs-patch-mods" / mod_name, staging / "romfs-patch-mods" / mod_name),)
         total = sum(_file_count(source) for source, _ in source_trees) + 2
         state = [0, total]
-        mods_dir = Path(os.environ.get("BDSP_MODS_DIR") or data / "mods")
-        selected_mod = os.environ.get("BDSP_MOD") or "none"
-        launcher = bin_home / "strahlender-xnu"
-        desktop_file = data_home / "applications/dev.local.xnubdsp.desktop"
+        mods_dir = Path(mod_build["mods_dir"] if mod_build else os.environ.get("BDSP_MODS_DIR") or data / "mods")
+        selected_mod = mod_build["name"] if mod_build else os.environ.get("BDSP_MOD") or "none"
+        launcher = bin_home / ("strahlender-xnu-" + key if key else "strahlender-xnu")
+        desktop_file = data_home / "applications" / ("dev.local.xnubdsp.mod." + mod_build["identity"] + ".desktop" if key else "dev.local.xnubdsp.desktop")
         if not destination.exists() and (launcher.exists() or desktop_file.exists()):
             raise FileExistsError("A launcher or desktop entry already exists; it needs manual review before installation.")
         try:
             staging.mkdir()
             shutil.copy2(artifact, staging / "bdsp_boot_vk_qt")
             state[0] += 1
-            npdm = work / "exefs/main.npdm"
+            npdm = (Path(mod_build["staged"]) if mod_build else work / "exefs") / "main.npdm"
             shutil.copy2(npdm, staging / "main.npdm")
             state[0] += 1
             emit("progress", id="install", completed=state[0], total=total)
@@ -1220,11 +1226,11 @@ def install_artifact(args, artifact):
             (data / "saves").mkdir(exist_ok=True)
             mods_dir.mkdir(parents=True, exist_ok=True)
             bin_home.mkdir(parents=True, exist_ok=True)
-            launcher.write_text(_linux_launcher(data, mods_dir, selected_mod), encoding="utf-8")
+            launcher.write_text(_linux_launcher(data, mods_dir, selected_mod, destination, bool(mod_build)), encoding="utf-8")
             launcher.chmod(0o755)
             applications = data_home / "applications"
             applications.mkdir(parents=True, exist_ok=True)
-            desktop_file.write_text(_linux_desktop(launcher, destination), encoding="utf-8")
+            desktop_file.write_text(_linux_desktop(launcher, destination, ("BDSP: " + mod_build["name"]) if mod_build else "BDSP"), encoding="utf-8")
         finally:
             if staging.exists():
                 shutil.rmtree(staging)
@@ -1238,8 +1244,10 @@ def _sh_quote(value):
     return "'" + str(value).replace("'", "'\\''") + "'"
 
 
-def _linux_launcher(data, mods_dir, selected_mod):
-    app = data / "app"
+def _linux_launcher(data, mods_dir, selected_mod, app=None, compiled=False):
+    """With compiled=True the mod's code is part of this app: the mod is fixed, BDSP_COMPILED_EXEFS tells the runtime so
+    (no 'ExeFS not applied' warning, --mod is ignored), and the environment cannot pick another mod."""
+    app = app or data / "app"
     lines = ["#!/bin/sh", "set -eu"]
     for name, path in (("BDSP_IMG", app / "img"), ("BDSP_NPDM", app / "main.npdm"),
                        ("BDSP_FIRMWARE_DATA", app / "Firmware"),
@@ -1247,13 +1255,16 @@ def _linux_launcher(data, mods_dir, selected_mod):
                        ("BDSP_MODS_DIR", mods_dir), ("BDSP_ICON_DIR", app / "icons/linux"),
                        ("BDSP_LPROJ", app / "lproj")):
         lines.append("export " + name + "=" + _sh_quote(path))
-    lines.append("export BDSP_MOD=${BDSP_MOD:-" + _sh_quote(selected_mod) + "}")
+    if compiled:
+        lines.extend(["export BDSP_MOD=" + _sh_quote(selected_mod), "export BDSP_COMPILED_EXEFS=" + _sh_quote(selected_mod)])
+    else:
+        lines.append("export BDSP_MOD=${BDSP_MOD:-" + _sh_quote(selected_mod) + "}")
     lines.extend(["export SDL_AUDIODRIVER=dummy",
                   "exec " + _sh_quote(app / "bdsp_boot_vk_qt") + ' "$@"'])
     return "\n".join(lines) + "\n"
 
 
-def _linux_desktop(launcher, app):
+def _linux_desktop(launcher, app, name="BDSP"):
     metadata = json.loads((app / "icons/linux/icons.json").read_text(encoding="utf-8"))
     default = metadata.get("default")
     variant = next((item for item in metadata.get("variants", []) if item.get("id") == default), None)
@@ -1265,7 +1276,8 @@ def _linux_desktop(launcher, app):
         raise FileNotFoundError("The generated default game icon is missing.")
     # Desktop Entry quoting uses double quotes, with backslash escapes.
     executable = str(launcher).replace("\\", "\\\\").replace('"', '\\"')
-    return ("[Desktop Entry]\nType=Application\nName=BDSP\nExec=\"" + executable +
+    title = "".join(character for character in name if character >= " ").replace("\\", "\\\\")
+    return ("[Desktop Entry]\nType=Application\nName=" + title + "\nExec=\"" + executable +
             "\"\nIcon=" + str(icon) +
             "\nTerminal=false\nCategories=Game;\nStartupWMClass=dev.local.xnubdsp\n")
 
@@ -1347,11 +1359,6 @@ def build(args):
     except (OSError, ValueError) as error:
         emit("error", message="Mod folder: " + _safe_line(str(error), args), code=3)
         return 3
-    if code_mod and args.target == "linux":
-        # The shared staging works here too; the Linux install path still has one fixed app, build folder and launcher.
-        emit("error", message="ExeFS mods: the Linux install path has no separate mod app (own build folder, launcher and "
-                              "desktop entry), so the patched code cannot be installed beside the game. RomFS-only mods work.", code=3)
-        return 3
     if code_mod and (not getattr(args, "ips_helper", None) or not Path(args.ips_helper).is_file()):
         emit("error", message="ExeFS mods need the installer's ips_patch helper, which was not found. Reinstall the installer.", code=3)
         return 3
@@ -1368,6 +1375,7 @@ def build(args):
     common = [base_option, args.base, "--prod-keys", args.prod_keys]
     if args.update:
         common += ["--nsp", args.update]
+    mod_build = None
     code = check_build_dependencies(args)
     if code:
         emit("result", ok=False, code=code)
@@ -1411,31 +1419,43 @@ def build(args):
     else:
         extract = [str(root / "scripts/build_all.sh"), "--only", "tools,extract",
                    "--min-free-gb", str(required_free_gb(args)), *common]
+        code = _run_command(extract, args, "extract")
+        if code == 0:
+            try:
+                mod_build = _prepare_code_mod(args, work)
+            except (OSError, ValueError) as error:
+                emit("error", message="ExeFS preparation failed: " + _safe_line(str(error), args), code=4)
+                code = 4
+        # A code mod builds in its own folder from the staged ExeFS; the unmodified game's build stays untouched.
+        build_dir = Path(mod_build["build_dir"]) if mod_build else work / "recomp"
+        environment = ({"BDSP_EXEFS_DIR": str(mod_build["staged"]), "RECOMP_DIR": str(build_dir),
+                        "BDSP_MOD_NAME": mod_build["name"], "BDSP_MOD_ROOT": str(mod_build["root"])} if mod_build else {})
         stages = [
-            ("extract", extract, None),
             ("eh_gen", ["bash", "scripts/recomp/linux/local/gen.sh", "c"], None),
             ("clang", ["bash", "scripts/recomp/linux/local/compile.sh", "c"],
-             lambda _phase: _compile_count(work, "linux", not_before_ns=getattr(args, "compile_epoch_ns", None))),
+             lambda _phase: _compile_count(work, "linux", mod_build["build_dir"] if mod_build else None,
+                                           not_before_ns=getattr(args, "compile_epoch_ns", None))),
             ("images", ["bash", "scripts/recomp/runtime/mkimages.sh"], None),
             ("runtime", ["bash", "scripts/recomp/linux/local/vk_build.sh", "--qt"], None),
         ]
-        code = 0
         for stage, command, progress in stages:
-            if stage == "eh_gen" and code == 0:
-                if getattr(args, "clean_build", False):
-                    _clean_game_build(args, work / "recomp")
-                emit("step", id="exefs", status="skipped")
-            image_env = {"IMG": "work/recomp/img_gfx",
-                         "HLE_LIST": "scripts/recomp/runtime/hle_nvn.txt"} if stage == "images" else None
-            code = _run_command(command, args, stage, progress, extra_env=image_env)
             if code:
                 break
-        artifact = work / "recomp/bdsp_boot_vk_qt"
+            if stage == "eh_gen" and getattr(args, "clean_build", False):
+                _clean_game_build(args, build_dir)
+            stage_env = dict(environment)
+            if stage == "images":
+                stage_env.update({"IMG": str(build_dir / "img_gfx") if mod_build else "work/recomp/img_gfx",
+                                  "HLE_LIST": "scripts/recomp/runtime/hle_nvn.txt"})
+            code = _run_command(command, args, stage, progress, extra_env=stage_env)
+        artifact = build_dir / "bdsp_boot_vk_qt"
     if code == 0 and not artifact.exists():
         emit("error", message="Build reported success but the application was not produced.", code=4)
         return 4
     if code == 0 and args.target in ("ios", "linux"):
         overlay = build_ui_overlay(args)
+        if args.target == "linux" and getattr(args, "mod_root", None) and getattr(args, "mod_name", None):
+            build_ui_overlay(args, args.mod_root, args.mod_name)
         if args.target == "ios" and getattr(args, "ios_install", None):
             args.ios_install["overlay"] = overlay
             info = args.ios_install
@@ -1444,7 +1464,10 @@ def build(args):
     if code == 0:
         emit("artifact", kind="application", path=str(artifact))
         try:
-            install_artifact(args, artifact)
+            if args.target == "linux" and mod_build:
+                install_artifact(args, artifact, mod_build=mod_build)
+            else:
+                install_artifact(args, artifact)
         except (OSError, ValueError, subprocess.CalledProcessError) as error:
             emit("step", id="install", status="failed")
             action = "Export" if args.target == "ios" and getattr(args, "ios_delivery", "device") == "ipa" else "Installation"

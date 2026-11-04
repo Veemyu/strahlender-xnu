@@ -697,6 +697,127 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertEqual(env["BDSP_ICON_SOURCE"], str(work / "recomp/icons/source"))
             install.assert_called_once_with(args, artifact)
 
+    def test_linux_code_mod_builds_in_its_own_folder_from_the_staged_exefs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            work = root / "work"
+            mod = root / "mods/Example"
+            (mod / "exefs").mkdir(parents=True)
+            (mod / "exefs/0123.ips").write_bytes(b"PATCHEOF")
+            for name in ("base.xci", "prod.keys", "ips_patch"):
+                (root / name).write_bytes(b"fixture")
+            build_dir = work / "recomp/mods/key"
+            prepared = {"staged": build_dir / "exefs", "build_dir": build_dir, "slug": "example", "identity": "0123456789",
+                        "name": "Example", "mods_dir": mod.parent, "root": mod}
+            build_dir.mkdir(parents=True)
+            (build_dir / "bdsp_boot_vk_qt").write_bytes(b"fixture")
+            args = SimpleNamespace(root=root, work=work, target="linux", base=root / "base.xci",
+                                   prod_keys=root / "prod.keys", update=None, mod_root=mod,
+                                   mod_name="Example", mods_dir=mod.parent, ips_helper=root / "ips_patch")
+            with patch.object(driver.sys, "platform", "linux"), \
+                 patch.object(driver, "check_build_dependencies", return_value=0), \
+                 patch.object(driver, "_prepare_firmware", return_value=0), \
+                 patch.object(driver, "_prepare_code_mod", return_value=prepared), \
+                 patch.object(driver, "_run_command", return_value=0) as run, \
+                 patch.object(driver, "build_ui_overlay") as overlay, \
+                 patch.object(driver, "install_artifact") as install, \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(driver.build(args), 0)
+            self.assertNotIn("ExeFS mods:", output.getvalue())
+            stages = {call.args[2]: call.kwargs["extra_env"] for call in run.call_args_list[1:]}
+            self.assertEqual(list(stages), ["eh_gen", "clang", "images", "runtime"])
+            for env in stages.values():
+                self.assertEqual(env["BDSP_EXEFS_DIR"], str(prepared["staged"]))
+                self.assertEqual(env["RECOMP_DIR"], str(build_dir))
+                self.assertEqual(env["BDSP_MOD_ROOT"], str(mod))
+                self.assertEqual(env["BDSP_MOD_NAME"], "Example")
+            self.assertEqual(stages["images"]["IMG"], str(build_dir / "img_gfx"))
+            overlay.assert_any_call(args, mod, "Example")
+            install.assert_called_once_with(args, build_dir / "bdsp_boot_vk_qt", mod_build=prepared)
+
+    def test_linux_without_a_code_mod_keeps_the_game_build_folder(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            work = root / "work"
+            (work / "recomp").mkdir(parents=True)
+            (work / "recomp/bdsp_boot_vk_qt").write_bytes(b"fixture")
+            for name in ("base.xci", "prod.keys"):
+                (root / name).write_bytes(b"fixture")
+            args = SimpleNamespace(root=root, work=work, target="linux", base=root / "base.xci",
+                                   prod_keys=root / "prod.keys", update=None, mod_root=None)
+            with patch.object(driver.sys, "platform", "linux"), \
+                 patch.object(driver, "check_build_dependencies", return_value=0), \
+                 patch.object(driver, "_prepare_firmware", return_value=0), \
+                 patch.object(driver, "_run_command", return_value=0) as run, \
+                 patch.object(driver, "build_ui_overlay"), \
+                 patch.object(driver, "install_artifact") as install, \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(driver.build(args), 0)
+            self.assertIn('"id": "exefs", "status": "skipped"', output.getvalue())
+            self.assertEqual(run.call_args_list[3].kwargs["extra_env"],
+                             {"IMG": "work/recomp/img_gfx", "HLE_LIST": "scripts/recomp/runtime/hle_nvn.txt"})
+            self.assertEqual(run.call_args_list[1].kwargs["extra_env"], {})
+            install.assert_called_once_with(args, work / "recomp/bdsp_boot_vk_qt")
+
+    def test_linux_code_mod_installs_as_an_app_of_its_own_beside_the_game(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "repo"
+            work = root / "work"
+            build_dir = work / "recomp/mods/key"
+            for directory in ("romfs/Data", "recomp/img_gfx", "recomp/icons/linux", "exefs", "romfs-patch-mods/Example",
+                              "recomp/mods/key/img_gfx", "recomp/mods/key/icons/linux", "recomp/mods/key/exefs"):
+                (work / directory).mkdir(parents=True, exist_ok=True)
+            lproj = root / "scripts/recomp/runtime/app/linux/lproj/en.lproj"
+            lproj.mkdir(parents=True)
+            (lproj / "Localizable.strings").write_text("fixture")
+            (work / "romfs/Data/game.bin").write_bytes(b"fixture")
+            (work / "romfs-patch-mods/Example/.stamp").write_text("1")
+            (work / "exefs/main.npdm").write_bytes(b"vanilla npdm")
+            (build_dir / "exefs/main.npdm").write_bytes(b"staged npdm")
+            (build_dir / "img_gfx/main.img").write_bytes(b"mod image")
+            (work / "recomp/img_gfx/main.img").write_bytes(b"game image")
+            for folder in (work / "recomp/icons/linux", build_dir / "icons/linux"):
+                (folder / "icon.png").write_bytes(b"icon")
+                (folder / "icons.json").write_text(json.dumps({"default": "en-US", "variants": [{"id": "en-US", "image": "icon.png"}]}))
+            artifact = build_dir / "bdsp_boot_vk_qt"
+            artifact.write_bytes(b'#!/bin/sh\nprintf "%s|%s|%s\\n" "$BDSP_MOD" "$BDSP_COMPILED_EXEFS" "$BDSP_NPDM"\n')
+            artifact.chmod(0o755)
+            game_artifact = work / "recomp/bdsp_boot_vk_qt"
+            game_artifact.write_bytes(artifact.read_bytes())
+            game_artifact.chmod(0o755)
+            library = Path(temporary) / "mods"
+            prepared = {"staged": build_dir / "exefs", "build_dir": build_dir, "slug": "example", "identity": "0123456789",
+                        "name": "Example", "mods_dir": library, "root": library / "Example"}
+            install_root = Path(temporary) / "install"
+            args = SimpleNamespace(root=root, work=work, target="linux", install_root=install_root,
+                                   mod_root=library / "Example", mod_name="Example")
+            vanilla = SimpleNamespace(root=root, work=work, target="linux", install_root=install_root)
+            with patch.dict(os.environ, {"BDSP_MODS_DIR": str(library), "BDSP_MOD": "none"}), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                game = driver.install_artifact(vanilla, game_artifact)
+                installed = driver.install_artifact(args, artifact, mod_build=prepared)
+            data = install_root / "share/strahlender-xnu"
+            self.assertEqual(game, data / "app")
+            self.assertEqual(installed, data / "app-example-0123456789")
+            self.assertEqual((installed / "main.npdm").read_bytes(), b"staged npdm")
+            self.assertEqual((installed / "img/main.img").read_bytes(), b"mod image")
+            self.assertEqual((game / "img/main.img").read_bytes(), b"game image")
+            self.assertTrue((installed / "romfs-patch-mods/Example/.stamp").is_file())
+            self.assertTrue((installed / "romfs/Data/game.bin").is_file())
+            launcher = install_root / "bin/strahlender-xnu-example-0123456789"
+            text = launcher.read_text()
+            self.assertIn("export BDSP_COMPILED_EXEFS='Example'", text)
+            self.assertIn("export BDSP_MOD='Example'", text)
+            self.assertIn("'" + str(installed / "main.npdm") + "'", text)
+            self.assertIn("'" + str(library) + "'", text)
+            self.assertIn("Name=BDSP: Example", (install_root / "share/applications/dev.local.xnubdsp.mod.0123456789.desktop").read_text())
+            self.assertIn("none", (install_root / "bin/strahlender-xnu").read_text())
+            self.assertTrue((install_root / "share/applications/dev.local.xnubdsp.desktop").is_file())
+            if os.name != "nt":
+                with patch.dict(os.environ, {"BDSP_MOD": "other", "BDSP_COMPILED_EXEFS": ""}):
+                    launched = subprocess.run([str(launcher)], capture_output=True, text=True, check=True)
+                self.assertEqual(launched.stdout.strip(), "Example|Example|" + str(installed / "main.npdm"))
+
     @unittest.skipUnless(sys.platform == "darwin", "macOS app bundle smoke test")
     def test_build_protocol_runs_stubbed_steps_and_installs_to_test_root(self):
         with tempfile.TemporaryDirectory() as temporary:
