@@ -878,7 +878,9 @@ static void LogUncaughtException(NSException *exception) {
     if (logFile >= 0) fsync(logFile);
 }
 
-__attribute__((constructor(100))) static void StartLogFile(void) {   // before the guest window reservation (constructor 101) can report anything
+// Mach-O does not order constructors across object files by priority: the guest window reservation may run before this
+// one, so its failure is repeated below once the log exists.
+__attribute__((constructor(100))) static void StartLogFile(void) {
     NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
     if (!docs) return;
     NSString *path = [docs stringByAppendingPathComponent:@"BDSP-log.txt"];
@@ -910,6 +912,7 @@ __attribute__((constructor(100))) static void StartLogFile(void) {   // before t
     fprintf(stderr, "[log] %s, iOS %s, %.1f GiB RAM, %zu MiB available to this app\n",
             NSBundle.mainBundle.bundleIdentifier.UTF8String, UIDevice.currentDevice.systemVersion.UTF8String,
             NSProcessInfo.processInfo.physicalMemory / 1073741824.0, os_proc_available_memory() >> 20);
+    if (bdsp_guest_window_error) fprintf(stderr, "FATAL: the guest window 0x800000000-0x900000000 could not be reserved (error %d)\n", bdsp_guest_window_error);
 }
 
 int main(int argc, char *argv[]) {
