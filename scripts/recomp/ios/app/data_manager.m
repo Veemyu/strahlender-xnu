@@ -262,7 +262,10 @@ static NSString *ProblemText(BDSPDataProblem problem, NSUInteger count, BOOL lib
 - (void)verify:(NSURL *)url { [self verify:url forceFull:YES]; }
 - (void)verify:(NSURL *)url forceFull:(BOOL)forceFull {
     BOOL scoped = [url startAccessingSecurityScopedResource];
-    if (!scoped) { [self message:T(@"Folder access failed. Choose the game library again.", @"Ordnerzugriff fehlgeschlagen. Spieldaten erneut auswählen.", @"No se puede acceder. Elige de nuevo la biblioteca.", @"O acesso falhou. Escolhe novamente a biblioteca.", @"Нет доступа. Выберите библиотеку заново.")]; return; }
+    // A folder inside this app's own container (copied in with Files or iTunes file sharing) is not security scoped.
+    NSString *home = NSHomeDirectory().stringByResolvingSymlinksInPath;
+    BOOL own = [url.path.stringByResolvingSymlinksInPath hasPrefix:[home stringByAppendingString:@"/"]];
+    if (!scoped && !own) { [self message:T(@"Folder access failed. Choose the game library again.", @"Ordnerzugriff fehlgeschlagen. Spieldaten erneut auswählen.", @"No se puede acceder. Elige de nuevo la biblioteca.", @"O acesso falhou. Escolhe novamente a biblioteca.", @"Нет доступа. Выберите библиотеку заново.")]; return; }
     NSData *bookmark = [url bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
     self.pendingLibraryBookmark = bookmark;
     dispatch_async(self.backupQueue, ^{
@@ -502,6 +505,12 @@ NSString *BDSPSharedDataPath(NSString *relative) {
     NSString *path = [[base stringByAppendingPathComponent:relative] stringByStandardizingPath];
     return [path hasPrefix:[base stringByAppendingString:@"/"]] ? path : nil;
 }
+// A "Game Library" folder placed in the app's Documents (Files app, iTunes/Finder file sharing) is used without the folder picker.
+static NSURL *LibraryInDocuments(void) {
+    NSString *path = [DocumentsPath() stringByAppendingPathComponent:@"Game Library"];
+    BOOL directory = NO;
+    return [NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&directory] && directory ? [NSURL fileURLWithPath:path isDirectory:YES] : nil;
+}
 void BDSPPrepareData(UIViewController *presenter, NSDictionary *identity, void (^ready)(void)) {
     manager = [BDSPDataManager new]; manager.presenter = presenter; manager.identity = identity; manager.ready = ready; manager.dataReady = ready;
     manager.backupQueue = dispatch_queue_create("dev.xnubdsp.save-backup", DISPATCH_QUEUE_SERIAL);
@@ -516,6 +525,7 @@ void BDSPPrepareData(UIViewController *presenter, NSDictionary *identity, void (
     manager.initialDataPhase = [identity[@"ExternalLibrary"] boolValue] && !IsEmbedded(identity);
     if (IsEmbedded(identity)) [manager verifyEmbedded:NO];
     else if (manager.initialDataPhase && library) [manager verify:library forceFull:NO];
+    else if (manager.initialDataPhase && LibraryInDocuments()) [manager verify:LibraryInDocuments() forceFull:NO];
     else if (manager.initialDataPhase) [manager menu];
     else [manager verifyDeviceData:NO];
 }

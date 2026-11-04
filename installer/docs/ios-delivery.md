@@ -194,6 +194,22 @@ the IPA, install directly from the installer with a connected device, or export
 the IPA again with the data included. The dialogs exist in English, German,
 Spanish, Portuguese and Russian and have a Help button that opens this section.
 
+A **Game Library** folder that is already inside the app (copied into the app's
+Documents with the Files app or Finder/iTunes file sharing, named exactly
+`Game Library`) is found and verified at the next start without the folder
+picker. Finder metadata (`.DS_Store`, `._*` files and a `__MACOSX` folder) in the
+library or in the data that is embedded into an IPA is ignored, and the IPA
+packer drops it, so neither breaks the packaging or the verification.
+
+**Log file.** The app writes everything it prints to `Documents/BDSP-log.txt`
+(the previous run stays in `BDSP-log-previous.txt`). File sharing is on, so it
+is visible in the Files app under the app's name and in Finder/iTunes. Its first
+line names the bundle id, the iOS version, the RAM and the memory this app may
+use (about 5 GiB when a signer removed the Increased Memory Limit entitlement,
+far more with it). The game needs that entitlement; if the signer removed it and
+the fixed 4 GiB address range cannot be reserved, the app shows a message
+instead of closing silently.
+
 The runtime starts only after the data were verified against the inventory that
 is part of the app. Before the slow checksum pass, a quick check names the
 problem: folder missing, folder empty, files of length 0, or a number of files

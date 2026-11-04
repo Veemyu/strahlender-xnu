@@ -843,8 +843,8 @@ static void StartRuntime(void) {
 - (void)startRuntime {
     if (bdsp_guest_window_error) {
         NSString *detail = [NSString stringWithFormat:@"The game needs a fixed 4 GiB address range that this app could not reserve (error %d). "
-            "The app was started by something that already uses this range, or the system refused it. "
-            "Start the app directly (not inside another app) and send BDSP-log.txt from this app's Documents folder (Files app) with your report.", bdsp_guest_window_error];
+            "The usual cause is that the app was signed without the Increased Memory Limit entitlement (some sideloading tools remove it) or that it runs inside another app. "
+            "Install it again with an entitlement-preserving signer, or send BDSP-log.txt from this app's Documents folder (Files app) with your report.", bdsp_guest_window_error];
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"The game cannot start on this setup" message:detail preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
         [gView.window.rootViewController presentViewController:alert animated:YES completion:nil];
