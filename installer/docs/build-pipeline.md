@@ -32,6 +32,10 @@ strahlender-xnu-installer --cli build --target macos|linux|windows|ios \
   [--option key=value]... [--data-dir DIR]
 ```
 
+`--data-dir DIR` (or `BDSP_INSTALLER_DATA_DIR`) moves everything the installer keeps between builds:
+the downloaded sources, the shader and FFmpeg caches and the iOS IPA export (`DIR/exports/ios`).
+Without it these live below the user profile.
+
 Options: `portable_cpu`, `clean_build`, `auto_cleanup`, `ios_export_no_embed` (true or
 false), `ios_delivery` (device or ipa), `ios_device`, `ios_team`, `ios_profile_id`.
 The exit code is 0 only for a passed build (2 bad arguments, 3 missing build

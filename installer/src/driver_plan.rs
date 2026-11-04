@@ -31,13 +31,28 @@ pub struct HostFacts {
     pub chosen_install_folder: Option<PathBuf>,
 }
 
+/// Folder for what builds keep (IPA exports, shader and FFmpeg caches): `--data-dir` / `BDSP_INSTALLER_DATA_DIR` when
+/// given, so a build that was pointed at another disk writes nothing below the user profile.
+fn data_dir_with(
+    override_dir: Option<std::ffi::OsString>,
+    default: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    match override_dir.filter(|value| !value.is_empty()) {
+        Some(folder) => Ok(PathBuf::from(folder)),
+        None => default(),
+    }
+}
+
 impl HostFacts {
     pub fn detect() -> Self {
         let host = Platform::native();
         Self {
             host,
             own_exe: std::env::current_exe().ok(),
-            data_dir: crate::workspace::data_dir(),
+            data_dir: data_dir_with(
+                std::env::var_os("BDSP_INSTALLER_DATA_DIR"),
+                crate::workspace::data_dir,
+            ),
             shader_cache_inherited: std::env::var_os("BDSP_SHADER_CACHE_DIR").is_some(),
             ffmpeg_inherited: std::env::var_os("BDSP_IOS_FFMPEG_DIR").is_some(),
             vma_dir: crate::vma::cached(),
@@ -688,6 +703,31 @@ pub mod tests {
         assert_eq!(
             pair(&args, "--install-root").as_deref(),
             Some("isolated apps")
+        );
+    }
+    #[test]
+    fn the_data_dir_override_moves_the_export_and_cache_folder() {
+        let default = || Ok(PathBuf::from("profile-data"));
+        assert_eq!(
+            data_dir_with(None, default),
+            Ok(PathBuf::from("profile-data"))
+        );
+        assert_eq!(
+            data_dir_with(Some("".into()), default),
+            Ok(PathBuf::from("profile-data"))
+        );
+        assert_eq!(
+            data_dir_with(Some("/Volumes/disk/data".into()), default),
+            Ok(PathBuf::from("/Volumes/disk/data"))
+        );
+        let mut moved = facts(Platform::Mac);
+        moved.data_dir = data_dir_with(Some("/Volumes/disk/data".into()), default);
+        let mut request = request("ios");
+        request.ios_delivery = IosDelivery::Ipa;
+        let args = text(&plan(&moved, true, &request));
+        assert_eq!(
+            pair(&args, "--ios-export-dir"),
+            Some(joined("/Volumes/disk/data", "exports/ios"))
         );
     }
 }
