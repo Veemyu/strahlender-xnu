@@ -579,7 +579,7 @@ mod tests {
         assert!(super::windows_plan("x86_64", true).ready());
         assert!(
             !super::windows_plan("aarch64", true).ready(),
-            "ARM64 is not supported yet"
+            "ARM64 is not supported"
         );
     }
     #[test]
