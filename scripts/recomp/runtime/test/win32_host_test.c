@@ -27,6 +27,16 @@ uint64_t hle_register(const char *name, HostFn function) {
     return HLE_BASE + 16 * slots++;
 }
 
+static DWORD WINAPI sleep_worker(void *unused) {
+    (void)unused;
+    for (int i = 0; i < 8; i++) {
+        uint64_t deadline = plat_now_ns() + 200000;
+        plat_sleep_until_ns(deadline);
+        if (plat_now_ns() < deadline) return 1;
+    }
+    return 0;
+}
+
 static void test_memory(const wchar_t *mode) {
     void *allocation = NULL;
     const size_t size = 8u << 20;
@@ -67,6 +77,23 @@ static void test_memory(const wchar_t *mode) {
     uint64_t start = plat_now_ns();
     Sleep(5);
     CHECK(plat_now_ns() > start);
+    uint64_t deadline = plat_now_ns() + 500000;
+    plat_sleep_until_ns(deadline);
+    CHECK(plat_now_ns() >= deadline);
+    plat_sleep_until_ns(0);
+    DWORD before, after;
+    CHECK(GetProcessHandleCount(GetCurrentProcess(), &before));
+    for (int i = 0; i < 8; i++) {
+        HANDLE thread = CreateThread(NULL, 0, sleep_worker, NULL, 0, NULL);
+        CHECK(thread != NULL);
+        if (!thread) break;
+        CHECK(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0);
+        DWORD status = 1;
+        CHECK(GetExitCodeThread(thread, &status) && status == 0);
+        CloseHandle(thread);
+    }
+    CHECK(GetProcessHandleCount(GetCurrentProcess(), &after));
+    CHECK(after == before);  // each thread's timer is closed on thread exit
     uint64_t current, peak;
     CHECK(bdsp_win32_memory_usage(&current, &peak));
     CHECK(current > 0 && peak >= current);
