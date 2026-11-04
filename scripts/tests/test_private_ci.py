@@ -224,6 +224,62 @@ class BuildReportTests(unittest.TestCase):
         self.assertNotIn("--mod-root", plain)
         self.assertEqual(full_build.build_environment(self.args("linux"), {})["BDSP_MOD"], "none")
 
+    def test_ios_exports_an_unsigned_ipa_without_game_data(self):
+        arguments = self.args("ios")
+        command = full_build.build_command(arguments, "py")
+        self.assertEqual(command[1], "-B")
+        self.assertEqual(command[command.index("--target") + 1], "ios")
+        self.assertEqual(command[command.index("--ios-delivery") + 1], "ipa")
+        self.assertIn("--ios-export-no-embed", command)
+        self.assertEqual(Path(command[command.index("--ios-export-dir") + 1]), Path("/b/ios-export"))
+        self.assertEqual(command[command.index("--work") + 1], str(Path("/src/work")))
+        for forbidden in ("--ios-team", "--ios-device", "--install-root"):
+            self.assertNotIn(forbidden, command)
+        self.assertNotIn("--ios-delivery", full_build.build_command(self.args("macos"), "py"))
+        self.assertEqual(Path(full_build.build_environment(arguments, {})["BDSP_IOS_FFMPEG_DIR"]), Path("/b/ffmpeg-ios"))
+        self.assertNotIn("BDSP_IOS_FFMPEG_DIR", full_build.build_environment(self.args("macos"), {}))
+
+    def test_ios_base_inside_the_checkout_is_refused(self):
+        with tempfile.TemporaryDirectory() as root:
+            code = full_build.main(["--target", "ios", "--root", root, "--base", str(Path(root) / "b")])
+            self.assertEqual(code, 2)
+            self.assertFalse((Path(root) / "b").exists())
+
+    def test_the_ipa_artifact_is_the_installed_output_and_is_checked_by_size_and_file_count(self):
+        summary, installed = full_build.summarize([json.dumps({"event": "artifact", "kind": "ipa", "path": "/b/ios-export/x.ipa"})], [])
+        self.assertEqual(installed, "/b/ios-export/x.ipa")
+        with tempfile.TemporaryDirectory() as folder:
+            good, bad = Path(folder) / "good.ipa", Path(folder) / "bad.ipa"
+            with zipfile.ZipFile(good, "w") as archive:
+                archive.writestr("Payload/BDSP.app/Info.plist", "x")
+                archive.writestr("Payload/BDSP.app/BDSP", "y")
+            with zipfile.ZipFile(bad, "w") as archive:
+                archive.writestr("Payload/BDSP.app/Info.plist", "x")
+                archive.writestr("Payload/BDSP.app/._BDSP", "y")
+            arguments = self.args("ios")
+            arguments.root = str(ROOT)
+            ok, details = full_build.ipa_report(arguments, good)
+            self.assertEqual((ok, details["files"], details["check"]), (True, 2, "ok"))
+            self.assertEqual(set(details), {"mib", "files", "check"})
+            self.assertEqual(full_build.ipa_report(arguments, bad)[0], False)
+            self.assertEqual(full_build.ipa_report(arguments, Path(folder) / "none.ipa"), (False, {}))
+
+    def test_ffmpeg_report_gives_size_and_build_seconds_only(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as base:
+            arguments = self.args("ios")
+            arguments.root, arguments.base = root, base
+            self.assertIsNone(full_build.ffmpeg_report(arguments))
+            (Path(base) / "ffmpeg-ios/lib").mkdir(parents=True)
+            (Path(base) / "ffmpeg-ios/lib/libavcodec.a").write_bytes(b"x" * 2**20)
+            self.assertEqual(full_build.ffmpeg_report(arguments), {"libraries": 1, "mib": 1.0})
+            (Path(root) / "work/ios").mkdir(parents=True)
+            source, stamp = Path(root) / "work/ios/ffmpeg-1.tar.xz", Path(base) / "ffmpeg-ios/.bdsp-stamp"
+            source.write_bytes(b"s")
+            stamp.write_text("s", encoding="utf-8")
+            os.utime(source, (1000, 1000))
+            os.utime(stamp, (1090, 1090))
+            self.assertEqual(full_build.ffmpeg_report(arguments)["build_seconds"], 90)
+
     def test_every_option_the_workflow_passes_is_accepted(self):
         result = subprocess.run([sys.executable, str(Path(full_build.__file__)), "--help"], capture_output=True, text=True)
         for option in ("--target", "--root", "--base", "--python", "--mod", "--windows-catalog", "--ips-helper",

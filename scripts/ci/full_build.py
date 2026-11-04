@@ -5,6 +5,9 @@ The driver's JSON event stream goes to a file inside the (wiped) base folder, ne
 written to the summary: step names with their status, the result code, and error messages with every known path and every
 long hex run replaced. Standard library only.
 
+Target ios exports an IPA without game data (ad hoc signed, no device or Apple account) to BASE/ios-export, then checks it with
+ipa_pack.py and prints only its size and file count. The iPhoneOS FFmpeg libraries are kept in BASE/ffmpeg-ios.
+
 Usage: full_build.py --target T --root SRC --base BASE [--python PY] [--mod] [--windows-catalog F] [--ips-helper F]
        [--firmware-helper F] [--extract F --extract-prefix P] [--summary FILE] [--installed-out FILE]
 BASE holds data/ (decrypted inputs from private_data.py), mods/, work/, install/ and logs/.
@@ -19,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-TARGETS = ("macos", "linux", "windows")
+TARGETS = ("macos", "linux", "windows", "ios")
 HEX_RUN = re.compile(r"[0-9a-fA-F]{24,}")
 
 
@@ -44,14 +47,17 @@ def build_command(args, python=None):
     command += [str(Path(args.root) / "scripts/install/driver.py"), "build", "--root", str(args.root),
                 "--work", str(work), "--target", args.target,
                 "--base", str(data / "game.xci"), "--prod-keys", str(data / "prod.keys"),
-                "--update", str(data / "update.nsp"),
-                "--install-root", str(base / "install")]
+                "--update", str(data / "update.nsp")]
+    if args.target != "ios":
+        command += ["--install-root", str(base / "install")]
     if not getattr(args, "no_firmware", False):
         command += ["--firmware", str(data / "firmware.zip")]
     for option, value in (("--windows-catalog", args.windows_catalog), ("--ips-helper", args.ips_helper),
                           ("--firmware-helper", args.firmware_helper)):
         if value:
             command += [option, str(value)]
+    if args.target == "ios":
+        command += ["--ios-delivery", "ipa", "--ios-export-no-embed", "--ios-export-dir", str(base / "ios-export")]
     if args.mod:
         command += ["--mod-root", str(base / "mods/ci-mod"), "--mod-name", "ci-mod", "--mods-dir", str(base / "mods")]
     return command
@@ -80,6 +86,8 @@ def build_environment(args, environ=os.environ):
         env["BDSP_EXTRACT"] = str(args.extract)
         if args.extract_prefix:
             env["BDSP_EXTRACT_PREFIX"] = args.extract_prefix
+    if args.target == "ios":
+        env["BDSP_IOS_FFMPEG_DIR"] = str(base / "ffmpeg-ios")
     if args.target == "windows":
         env["BDSP_INSTALLER_PRIVATE_RUNTIME"] = "1"
         for name in ("PYTHONPATH", "PYTHONHOME", "BDSP_CPU_TARGET"):
@@ -185,6 +193,38 @@ def run_driver(command, args, events, stderr, heartbeat_seconds=300, clock=time.
     return process.wait()
 
 
+def ffmpeg_report(args):
+    """Size and build time of the iPhoneOS FFmpeg libraries, numbers only. The time runs from the finished source download to
+    the stamp that is written last (unpacking, configure, make); it is None when the libraries came from a cache."""
+    folder = Path(args.base) / "ffmpeg-ios"
+    libraries = sorted((folder / "lib").glob("*.a"))
+    if not libraries:
+        return None
+    report = {"libraries": len(libraries), "mib": round(sum(path.stat().st_size for path in libraries) / 2**20, 1)}
+    sources = sorted((Path(args.root) / "work/ios").glob("ffmpeg-*.tar.xz"))
+    stamp = folder / ".bdsp-stamp"
+    if sources and stamp.is_file() and stamp.stat().st_mtime >= sources[0].stat().st_mtime:
+        report["build_seconds"] = round(stamp.stat().st_mtime - sources[0].stat().st_mtime)
+    return report
+
+
+def ipa_report(args, ipa, python=None):
+    """Runs ipa_pack.py check on the exported IPA. Returns (ok, details) with the size and the number of files only."""
+    import zipfile
+    details = {}
+    try:
+        path = Path(ipa)
+        with zipfile.ZipFile(path) as archive:
+            details = {"mib": round(path.stat().st_size / 2**20, 1),
+                       "files": sum(1 for item in archive.infolist() if not item.is_dir())}
+    except (OSError, ValueError, zipfile.BadZipFile):
+        return False, details
+    check = subprocess.run([python or args.python or sys.executable, "-B", str(Path(args.root) / "scripts/install/ipa_pack.py"),
+                            "check", "--ipa", str(ipa)], capture_output=True, text=True, check=False)
+    details["check"] = "ok" if check.returncode == 0 else "failed"
+    return check.returncode == 0, details
+
+
 def summarize(lines, known):
     steps, errors, missing, result, installed, seconds = {}, [], [], None, None, {}
     for line in lines:
@@ -203,7 +243,7 @@ def summarize(lines, known):
             missing.append(redact(str(event["message"]), known))
         elif kind == "result":
             result = {"ok": bool(event.get("ok")), "code": event.get("code")}
-        elif kind == "artifact" and event.get("kind") == "installed_application":
+        elif kind == "artifact" and event.get("kind") in ("installed_application", "ipa"):
             installed = event.get("path")
     summary = {"steps": steps, "errors": errors[-5:], "result": result}
     if seconds:
@@ -234,6 +274,10 @@ def main(argv=None):
     parser.add_argument("--installed-out")
     args = parser.parse_args(argv)
     base = Path(args.base)
+    if args.target == "ios" and (base.resolve() == Path(args.root).resolve() or
+                                 Path(args.root).resolve() in base.resolve().parents):
+        print("FAILED: the base folder (it holds the iOS export) must be outside the checkout.", flush=True)
+        return 2
     logs = base / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -252,13 +296,28 @@ def main(argv=None):
     profile = compile_profile(args.root)
     if profile:
         summary["compile_profile"] = profile
+    if args.target == "ios":
+        ffmpeg = ffmpeg_report(args)
+        if ffmpeg:
+            summary["ffmpeg"] = ffmpeg
+        if ok:
+            ipa_ok, summary["ipa"] = ipa_report(args, installed) if installed else (False, {})
+            ok = ipa_ok
     print(json.dumps(summary, indent=2))
+    if args.target == "ios" and summary.get("ffmpeg"):
+        print("FFmpeg libraries: %(libraries)d files, %(mib)s MiB%(took)s" % {**summary["ffmpeg"], "took": (
+            ", built in %d s" % summary["ffmpeg"]["build_seconds"]) if "build_seconds" in summary["ffmpeg"] else ", reused"}, flush=True)
+    if args.target == "ios" and "ipa" in summary:
+        ipa = summary["ipa"]
+        print("IPA: %s MiB, %s files, ipa_pack check %s" % (ipa.get("mib", "?"), ipa.get("files", "?"), ipa.get("check", "not run")),
+              flush=True)
     if not ok:
         tail = [redact(line, known) for line in lines if '"event": "log"' in line][-15:]
         stderr_tail = [redact(line, known) for line in (logs / "driver-stderr.log").read_text(
             encoding="utf-8", errors="replace").splitlines()[-25:]]
         print("driver log tail:\n" + "\n".join(tail) + "\ndriver stderr tail:\n" + "\n".join(stderr_tail), flush=True)
-        reasons = {8: "not enough disk space", 4: "a tool or component is missing"}
+        reasons = {0: "the build passed but the IPA is missing or failed its check", 8: "not enough disk space",
+                   4: "a tool or component is missing"}
         print("FAILED: exit %s (%s). Missing items: %s. Last error: %s" % (
             code, reasons.get(code, "see the steps above"), "; ".join(summary.get("missing", [])) or "none reported",
             summary["errors"][-1]["message"].splitlines()[0] if summary["errors"] else "none"), flush=True)
