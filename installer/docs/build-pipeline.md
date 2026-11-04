@@ -38,8 +38,11 @@ The exit code is 0 only for a passed build (2 bad arguments, 3 missing build
 requirements, 130 stopped). On Windows the installer has no console of its own: it
 attaches to the parent console, but cmd and PowerShell do not wait for it, so use
 `start /wait "" installer.exe --cli build ...` or
-`Start-Process -Wait -PassThru -NoNewWindow` to see the exit code. Stdout redirected
-to a file or pipe is kept as is.
+`Start-Process -Wait -PassThru -NoNewWindow` to see the exit code. To capture the output
+use `Start-Process -RedirectStandardOutput out.txt -RedirectStandardError err.txt`
+(or `& installer.exe ... | Out-String`). Shell redirection such as `> out.txt` writes an
+empty file on Windows, because a window program does not receive the handles of the
+shell. On macOS and Linux redirection works as usual.
 
 ## What still uses Python
 
