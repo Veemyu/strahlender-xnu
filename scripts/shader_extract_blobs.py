@@ -169,11 +169,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default="work/shaders/blobs", help="Zielordner (unter work/)")
     ap.add_argument("--extra", action="store_true", help="also read resources.assets and tmpshader")
+    ap.add_argument("--romfs", help="the extracted RomFS (default work/romfs of the current folder)")
     args = ap.parse_args()
     out = Path(args.out)
     if "work" not in out.parts:
         sys.exit("Abort: the blobs are game data and may only be placed under work/.")
     paths = BUNDLES + (EXTRA if args.extra else [])
+    if args.romfs:
+        paths = [str(Path(args.romfs) / Path(path).relative_to("work/romfs")) for path in paths]
     summary = collect(iter_bundle_programs(paths), out)
     print(json.dumps(summary, indent=1))
 

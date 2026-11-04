@@ -30,9 +30,9 @@ static void usage(FILE *f) {
         "  --survey              coverage mode: do not stop at the first unsupported instruction, print every\n"
         "                        unknown opcode / unsupported form of the shader as JSON (no MSL)\n"
         "  --batch <list>        (with --survey) list file with one '<vs|fs|cs> <path>' per line, JSON lines out\n"
-        "  --emit-cache <dir>    (with --batch, no --survey) translate every listed shader in this one process and write the MSL as\n"
-        "                        <dir>/v_<fnv64>.metal or f_<fnv64>.metal, named like the runtime's shader cache (the FNV-1a 64 hash of\n"
-        "                        the MSL text); identical MSL is written once. JSON line per shader out: file, stage, fnv, new\n"
+        "  --emit-cache <dir>    (with --batch, no --survey) translate every listed shader in this one process and write the MSL (the GLSL with\n"
+        "                        --glsl) as <dir>/v_<fnv64>.metal or f_<fnv64>.metal (.glsl), named like the runtime's shader cache (the\n"
+        "                        FNV-1a 64 hash of the text); identical text is written once. JSON line per shader out: file, stage, fnv, new\n"
         "  --attr-kind N=f|i|u   vertex attribute N is float / signed int / unsigned int (default float)\n"
         "  --rt-kind N=f|i|u     render target N type (default float)\n"
         "  --vs-out-mask <hex>   fragment: varyings the vertex shader writes (0 = unknown, all inputs kept)\n"
@@ -302,7 +302,7 @@ static int emit_one(FILE *out, const char *dir, const char *path, const uint8_t 
     }
     unsigned long long h = fnv64_text(info->msl);
     char name[4200], tmp[4300];
-    snprintf(name, sizeof name, "%s/%c_%016llx.metal", dir, stage == STAGE_VERTEX ? 'v' : stage == STAGE_FRAGMENT ? 'f' : 'c', h);
+    snprintf(name, sizeof name, "%s/%c_%016llx.%s", dir, stage == STAGE_VERTEX ? 'v' : stage == STAGE_FRAGMENT ? 'f' : 'c', h, key->glsl ? "glsl" : "metal");
     int created = 0, bad = 0;
     FILE *exists = fopen(name, "rb");
     if (exists) fclose(exists);

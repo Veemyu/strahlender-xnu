@@ -77,6 +77,7 @@ static int prepare_paths(void) {
     int result = set_path("BDSP_IMG", package, "img", false) ||
                  set_path("BDSP_ROMFS", package, "romfs", false) ||
                  set_path("BDSP_NPDM", package, "exefs\\main.npdm", false) ||
+                 set_path("BDSP_PACKAGED_CACHE_DIR", package, "prebuilt", false) ||   // SPIR-V the installer built (vulkan/shaders.c)
                  apply_mod_launch(package);
     free(package);
     if (result) return -1;

@@ -8,6 +8,8 @@ typedef struct { uint32_t set, binding; VkDescriptorType type; } VkBindingInfo;
 
 void vk_shaders_init(void);
 uint32_t *vk_glsl_to_spirv(const char *src, int stage, const char *name, size_t *nwords);  // malloc'd, NULL on error
+// Where the SPIR-V of this run came from: user cache hits, packaged (installer) hits, shaderc compiles.
+void vk_spirv_cache_stats(unsigned *user, unsigned *packaged, unsigned *compiled);
 VkShaderModule vk_module(const uint32_t *spv, size_t nwords);
 // Descriptor bindings declared by a SPIR-V module.
 int vk_reflect(const uint32_t *spv, size_t nwords, VkBindingInfo *out, int max);
