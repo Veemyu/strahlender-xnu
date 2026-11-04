@@ -118,6 +118,12 @@ int main(void) { @autoreleasepool {
     assert([fm removeItemAtURL:verifyLink error:nil]);
     Put(library, @"GameData/version1/romfs/.DS_Store", @"ignored Finder metadata");
     assert(BDSPVerifyInstalledData(library, identity, expected, nil, nil));
+    // AppleDouble files and a __MACOSX folder from a Finder copy or unzip are ignored the same way.
+    Put(library, @"GameData/version1/romfs/._.DS_Store", @"ignored AppleDouble metadata");
+    Put(library, @"GameData/version1/romfs/Data/._game.bin", @"ignored AppleDouble metadata");
+    Put(library, @"GameData/version1/romfs/__MACOSX/Data/._game.bin", @"ignored archive metadata");
+    assert(BDSPVerifyInstalledData(library, identity, expected, nil, nil));
+    assert([fm removeItemAtURL:At(library, @"GameData/version1/romfs/__MACOSX") error:nil]);
     NSDictionary *validManifest = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:expected] options:0 error:nil];
     NSArray *validEntries = validManifest[@"trees"][identity[@"RomFSDirectory"]];
     NSMutableDictionary *invalidManifest = validManifest.mutableCopy;

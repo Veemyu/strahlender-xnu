@@ -106,6 +106,12 @@ static BOOL MakeParents(NSURL *root, NSString *relative, NSError **error) {
     close(fd); return YES;
 }
 
+// Names Finder and archive tools add (.DS_Store, AppleDouble ._x, __MACOSX). They are never game
+// data: exports, inventories, verification and change detection all ignore them the same way.
+static BOOL IsMetadataName(const char *name) {
+    return !strcmp(name, ".DS_Store") || !strcmp(name, "__MACOSX") || !strncmp(name, "._", 2);
+}
+
 // One bounded autorelease pool per file, including Foundation traversal/path temporaries.
 // Export builds an inventory; verification consumes entries directly instead of building
 // and sorting a second full inventory of hashes and dictionaries.
@@ -128,12 +134,16 @@ static BOOL WalkFiles(NSURL *folder, BOOL (^visit)(NSURL *, NSString *, off_t, N
     for (;;) { @autoreleasepool {
         NSURL *file = [walk nextObject];
         if (!file) break;
+        if (IsMetadataName(file.lastPathComponent.fileSystemRepresentation)) {
+            struct stat skipped;
+            if (!lstat(file.fileSystemRepresentation, &skipped) && S_ISDIR(skipped.st_mode)) [walk skipDescendants];
+            continue;
+        }
         struct stat st;
         if (lstat(file.fileSystemRepresentation, &st) || (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))) {
             Fail(&failure, @"Game data may contain only files and directories."); break;
         }
         if (S_ISDIR(st.st_mode)) continue;
-        if ([file.lastPathComponent isEqual:@".DS_Store"]) continue;
         char *resolvedFile = realpath(file.fileSystemRepresentation, NULL);
         NSString *actualPath = resolvedFile ? [NSString stringWithUTF8String:resolvedFile] : nil;
         free(resolvedFile);
@@ -236,7 +246,7 @@ static void CollectSizes(int fd, NSString *relative, NSMutableDictionary<NSStrin
     if (!directory) { close(fd); return; }
     struct dirent *entry;
     while ((entry = readdir(directory))) { @autoreleasepool {
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") || !strcmp(entry->d_name, ".DS_Store")) continue;
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") || IsMetadataName(entry->d_name)) continue;
         struct stat st;
         if (fstatat(dirfd(directory), entry->d_name, &st, AT_SYMLINK_NOFOLLOW)) continue;
         NSString *name = [NSFileManager.defaultManager stringWithFileSystemRepresentation:entry->d_name length:strlen(entry->d_name)];
@@ -350,7 +360,7 @@ static BOOL SnapshotDirectory(int fd, NSString *relative, NSMutableDictionary *f
             if (errno) ok = Fail(&failure, @"The data folder could not be read completely.");
             break;
         }
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") || IsMetadataName(entry->d_name)) continue;
         struct stat st;
         if (fstatat(dirfd(directory), entry->d_name, &st, AT_SYMLINK_NOFOLLOW) ||
             (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))) {
@@ -364,7 +374,7 @@ static BOOL SnapshotDirectory(int fd, NSString *relative, NSMutableDictionary *f
             if (child < 0) { ok = Fail(&failure, @"A data directory changed or could not be opened."); break; }
             ok = SnapshotDirectory(child, path, files, depth + 1, &failure);
             if (!ok) break;
-        } else if (![name isEqual:@".DS_Store"]) {
+        } else {
             files[path] = @[@(st.st_dev), @(st.st_ino), @(st.st_size),
                 @(st.st_mtimespec.tv_sec), @(st.st_mtimespec.tv_nsec),
                 @(st.st_ctimespec.tv_sec), @(st.st_ctimespec.tv_nsec)];
