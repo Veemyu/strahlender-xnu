@@ -170,6 +170,7 @@ class WindowsPipelineTests(unittest.TestCase):
                                  "graphical_libraries", "runtime_dll_candidates"):
                         stack.enter_context(patch.object(build, name, return_value=[]))
                     stack.enter_context(patch.object(pipeline, "extract_game"))
+                    stack.enter_context(patch.object(pipeline.vk_shaders, "prepare", return_value=("complete", "0")))
                     stack.enter_context(patch.object(pipeline.game_icons, "main", return_value=0))
                     stack.enter_context(patch.object(pipeline.game_icons, "build_windows"))
                     stack.enter_context(patch.object(build, "compile_sources",
@@ -187,7 +188,7 @@ class WindowsPipelineTests(unittest.TestCase):
                         self.assertEqual(build.link_executable.call_args.kwargs["icon"],
                                          root / "work/recomp" / selected["cache_key"] / "icons/windows")
                 steps = [e["id"] for e in events if e["event"] == "step" and e["status"] == "started"]
-                self.assertEqual(steps, ["extract", "exefs", "eh_gen", "clang"] +
+                self.assertEqual(steps, ["extract", "exefs", "shaders", "eh_gen", "clang"] +
                                  ([] if fail else ["images", "ui_overlay", "runtime", "link", "package"]))
                 self.assertEqual(bool(installed), not fail)
                 self.assertFalse(any(e["event"] == "result" for e in events))

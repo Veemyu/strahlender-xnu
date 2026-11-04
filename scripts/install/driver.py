@@ -18,7 +18,7 @@ import traceback
 from pathlib import Path
 
 if __package__:
-    from . import diagnostics, ffmpeg_cache, filesystem, ipa_pack, pathlimits
+    from . import diagnostics, ffmpeg_cache, filesystem, ipa_pack, pathlimits, vk_shaders
     from .progress import GeneratorProgress
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -27,6 +27,7 @@ else:
     import filesystem
     import ipa_pack
     import pathlimits
+    import vk_shaders
     from progress import GeneratorProgress
 
 PROTOCOL_VERSION = 2
@@ -313,6 +314,21 @@ def _prepare_shaders(args, sdk):
     if code:
         emit("log", level="warning", message="Shader libraries were not prepared; the game compiles its shaders while it runs.")
     emit("step", id="shaders", status="complete" if code == 0 else "skipped")
+
+
+def _prepare_vulkan_shaders(args):
+    """SPIR-V for every shader of the game (scripts/install/vk_shaders.py), so the first start does not compile them while the game
+    runs. Never fails the build: without them the game compiles its shaders at run time, as before."""
+    if os.environ.get("BDSP_NO_SHADER_BOOTSTRAP") or not vk_shaders.applies(args.target):
+        return
+    emit("step", id="shaders", status="started")
+    status, _detail = vk_shaders.prepare(
+        Path(args.root), Path(args.work), vk_shaders.linux_tools,
+        lambda message: emit("log", level="diagnostic", message=_safe_line(message, args)),
+        lambda completed, total: emit("progress", id="shaders", completed=completed, total=total))
+    if status == "skipped":
+        emit("log", level="warning", message="Shaders were not prepared; the game compiles its shaders while it runs.")
+    emit("step", id="shaders", status="skipped" if status == "skipped" else "complete")
 
 
 def _mac_phase(line):
@@ -1220,6 +1236,9 @@ def install_artifact(args, artifact, mod_build=None):
                         (root / "scripts/recomp/runtime/app/linux/lproj", staging / "lproj"))
         if getattr(args, "firmware_root", None):
             source_trees += ((Path(args.firmware_root), staging / "Firmware"),)
+        prebuilt = vk_shaders.folders(work)["prebuilt"]
+        if vk_shaders.prebuilt_count(prebuilt):   # SPIR-V of every game shader, read beside the user's cache (BDSP_PACKAGED_CACHE_DIR)
+            source_trees += ((prebuilt, staging / "prebuilt"),)
         if (work / "romfs-patch/.stamp").is_file():   # UI fix for other aspect ratios (build_ui_overlay), found next to romfs
             source_trees += ((work / "romfs-patch", staging / "romfs-patch"),)
         mod_name = getattr(args, "mod_name", None)
@@ -1282,7 +1301,7 @@ def _linux_launcher(data, mods_dir, selected_mod, app=None, compiled=False):
                        ("BDSP_FIRMWARE_DATA", app / "Firmware"),
                        ("BDSP_ROMFS", app / "romfs"), ("BDSP_SAVE", data / "saves"),
                        ("BDSP_MODS_DIR", mods_dir), ("BDSP_ICON_DIR", app / "icons/linux"),
-                       ("BDSP_LPROJ", app / "lproj")):
+                       ("BDSP_LPROJ", app / "lproj"), ("BDSP_PACKAGED_CACHE_DIR", app / "prebuilt")):
         lines.append("export " + name + "=" + _sh_quote(path))
     if compiled:
         lines.extend(["export BDSP_MOD=" + _sh_quote(selected_mod), "export BDSP_COMPILED_EXEFS=" + _sh_quote(selected_mod)])
@@ -1465,6 +1484,8 @@ def build(args):
         build_dir = Path(mod_build["build_dir"]) if mod_build else work / "recomp"
         environment = ({"BDSP_EXEFS_DIR": str(mod_build["staged"]), "RECOMP_DIR": str(build_dir),
                         "BDSP_MOD_NAME": mod_build["name"], "BDSP_MOD_ROOT": str(mod_build["root"])} if mod_build else {})
+        if code == 0:
+            _prepare_vulkan_shaders(args)
         stages = [
             ("eh_gen", ["bash", "scripts/recomp/linux/local/gen.sh", "c"], None),
             ("clang", ["bash", "scripts/recomp/linux/local/compile.sh", "c"],

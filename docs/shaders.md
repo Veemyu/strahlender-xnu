@@ -126,6 +126,28 @@ sources, compile script, deployment target, the game's shader files, Metal compi
 between builds (`BDSP_SHADER_CACHE_DIR`). The recorded pipeline list `pipelines.bin` cannot be derived from the shaders and stays optional.
 Nothing derived from the game is distributed: it all happens on the user's machine under `work/` and the installer's data folder.
 
+## 6b. Prebuilt SPIR-V shaders (Windows and Linux)
+
+The Vulkan renderer compiles the translator's GLSL with shaderc and keeps the result under `<cache>/spirv/<key>.spv`; the key is the
+FNV-1a 64 hash of the stage and the GLSL text (`spv_cache.h`, shared by the renderer and the install-time tool). The "Prepare shaders" step
+(`scripts/install/vk_shaders.py`, run by `windows_pipeline.py` and `driver.py`, so by the window and `--cli build` alike) fills that
+cache before the first start, from the user's own RomFS:
+
+1. `shader_extract_blobs.py --romfs work/romfs --extra` cuts the Maxwell programs out of the game's Unity bundles (`work/shaders/blobs`).
+2. `maxwell2msl --batch <list> --emit-cache <dir> --glsl --vs-out-mask 0xffffffff` writes `{v,f}_<fnv64>.glsl`. A fragment shader is
+   requested with the varyings its vertex shader writes, which a list of single programs does not know; "all provided" gives the text of
+   nearly every real pair (826 of 852 fragment and 321 of 358 vertex shaders of a 3 minute run, 94.7 % together). The rest, the programs
+   that use global memory and the compute shaders compile at run time as before.
+3. `spirv_warm --glsl <dir> --out <dir> --jobs N` compiles them with the renderer's own compile step (about 5 s on 8 cores for 2739
+   files, 160 MB) into `work/shaders/vulkan/prebuilt/spirv`, which the package carries as `<app>/prebuilt/spirv`.
+4. The application reads it through `BDSP_PACKAGED_CACHE_DIR` (set by `win32_entry.c` and the Linux launcher, read-only, looked up after
+   the user's cache). The user's cache stays for the shaders it adds.
+
+A stamp (translator and tool sources, scripts, bundle sizes, compiler, shaderc) skips the work when nothing changed and rebuilds when the
+translator changes. A problem in any phase skips the step; the game then compiles at run time. `BDSP_NO_SHADER_BOOTSTRAP=1` skips it.
+With `BDSP_VK_PROF=1` the statistics line ends with `spirv total: N from cache, N packaged, N compiled by shaderc; translate N ms`.
+The `compile N` counter of that line counts program builds (reflection, module, pipeline), not shaderc runs.
+
 ## 7. The offscreen harness (`scripts/shader_harness/`)
 
 A Swift command-line program that translates a vertex/fragment pair (from the Ryujinx cache or MSL), compiles it with Metal and

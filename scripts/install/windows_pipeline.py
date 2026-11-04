@@ -15,7 +15,7 @@ import uuid
 
 from scripts.recomp import portable_build as build
 from scripts.recomp.app import game_icons
-from scripts.install import pathlimits
+from scripts.install import pathlimits, vk_shaders
 from scripts.install.progress import GeneratorProgress
 
 
@@ -354,6 +354,30 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
             generator_progress.total = len(names)
             verify_paths(names)
         stage("exefs", verify_exefs)
+        def prepare_shaders():
+            # SPIR-V for every shader of the game, so the first start does not compile them while the game runs. A skipped stage only
+            # means the game compiles at run time, as before; BDSP_NO_SHADER_BOOTSTRAP skips it like on the other targets.
+            if os.environ.get("BDSP_NO_SHADER_BOOTSTRAP"):
+                return
+            emit("step", id="shaders", status="started")
+            try:
+                vulkan = Path(bundles["vulkan"])
+                target_bin = Path(compiler).parent.parent / (selected["target"] + "-w64-mingw32") / "bin"
+                tools = {"cc": [str(compiler)], "suffix": ".exe", "cflags": ["-I", str(vulkan / "include")],
+                         "libs": ["-L", str(vulkan / "lib"), "-lshaderc_shared"],
+                         "env": {"PATH": os.pathsep.join([str(vulkan / "bin"), str(target_bin), os.environ.get("PATH", "")])},
+                         "toolchain": build.compiler_identity(compiler, selected)["sha256"],
+                         "shaderc": build.windows.sha256(vulkan / "build.json")}
+                status, _detail = vk_shaders.prepare(
+                    root, work, tools, lambda message: emit("log", level="diagnostic", message=message),
+                    lambda completed, total: emit("progress", id="shaders", completed=completed, total=total))
+            except (OSError, ValueError, KeyError) as error:
+                emit("log", level="diagnostic", message="shaders: skipped: %s" % error)
+                status = "skipped"
+            if status == "skipped":
+                emit("log", level="warning", message="Shaders were not prepared; the game compiles its shaders while it runs.")
+            emit("step", id="shaders", status="skipped" if status == "skipped" else "complete")
+        prepare_shaders()
         def prepare_icons():
             if not mod:
                 with printed_as_log(emit):
@@ -425,6 +449,8 @@ def build_game(args, emit, mod=None, stage_code_mod=None):
                     data["mod.txt"] = launch
                 if (work / "romfs-patch/.stamp").is_file():
                     data["romfs-patch"] = work / "romfs-patch"
+                if vk_shaders.prebuilt_count(vk_shaders.folders(work)["prebuilt"]):
+                    data["prebuilt"] = vk_shaders.folders(work)["prebuilt"]
                 providers = build.runtime_dll_candidates(compiler, selected, dependencies)
                 dynamic = [path.name for path in build.windows.dll_closure(plugin, providers, selected["target"]) if path != plugin]
                 packaged = build.package_game(

@@ -66,7 +66,8 @@ the LAS Vulkan code (`device.c`, `exec.c`, `shaders.c`, `textures.c`, VMA) plus 
   (images to `BDSP_SHOT_DIR` or `work/recomp/shots`);
 - the SPIR-V cache under `work/recomp/cache/spirv`: the translator's GLSL is compiled with shaderc at run time. Two runs with an
   empty cache produce the same 1,206 SPIR-V modules (key = FNV-1a over stage and GLSL); the Ryujinx cache is not used. All 4,276
-  unique game programs translate and compile with `glslc --target-env=vulkan1.3`;
+  unique game programs translate and compile with `glslc --target-env=vulkan1.3`. The installer fills a read-only copy
+  (`<app>/prebuilt/spirv`, `BDSP_PACKAGED_CACHE_DIR`) before the first start, see [shaders.md](shaders.md) section 6b;
 - `vk_glue.c` supplies the platform hooks (`plat_written_pages` always "unknown", so the vertex cache is off and textures are
   re-checked by hash).
 
