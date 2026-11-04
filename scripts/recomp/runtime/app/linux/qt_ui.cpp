@@ -5,6 +5,9 @@
 // through a weak symbol linked only in Qt builds (runtime/build.sh, BDSP_QT=1).
 // Environment: BDSP_LANG, BDSP_LPROJ, BDSP_MANGOHUD=1 (initial overlay), BDSP_FPS, BDSP_SAVE, BDSP_QT_SCRIPT.
 // Script actions: fps30 fps60 fps120 aspect=<preset> renderh=<pixels|auto> size1920x1080 win1000x900 pause fullscreen hud grab spectacle dumpmenus quit.
+#if defined(__aarch64__) && __has_include(<arm_acle.h>)
+#include <arm_acle.h>   // QtCore's qyieldcpu.h calls __yield() on AArch64 without declaring it
+#endif
 #include <SDL3/SDL.h>
 
 #include <QAction>

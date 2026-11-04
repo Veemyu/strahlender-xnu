@@ -24,6 +24,13 @@ typedef int *thread_state_t;
 #define KERN_SUCCESS 0
 #define KERN_FAILURE 5
 
+// Host page size: 4 KiB on x86-64, 16 KiB or 64 KiB on some AArch64 kernels (Asahi), so never a constant.
+static inline uint64_t compat_page_size(void) {
+    static uint64_t size;
+    if (!size) { long v = sysconf(_SC_PAGESIZE); size = v > 0 ? (uint64_t)v : 4096; }
+    return size;
+}
+
 // ---- Time (mach_time.h)
 typedef struct { uint32_t numer, denom; } mach_timebase_info_data_t;
 static inline kern_return_t mach_timebase_info(mach_timebase_info_data_t *i) { i->numer = i->denom = 1; return KERN_SUCCESS; }
@@ -39,6 +46,17 @@ static volatile int compat_stopped[COMPAT_MAX_THREADS], compat_go[COMPAT_MAX_THR
 static int compat_nthreads;
 static pthread_mutex_t compat_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// Spin-wait hint of the host CPU (x86 pause, AArch64 yield); other architectures only get the compiler barrier.
+static inline void compat_cpu_relax(void) {
+#if defined(__x86_64__) || defined(__i386__)
+    __asm__ volatile("pause" ::: "memory");
+#elif defined(__aarch64__)
+    __asm__ volatile("yield" ::: "memory");
+#else
+    __asm__ volatile("" ::: "memory");
+#endif
+}
+
 static inline void compat_on_stop(int sig) {
     (void)sig;
     pthread_t me = pthread_self();
@@ -46,7 +64,7 @@ static inline void compat_on_stop(int sig) {
     for (int i = 0; i < compat_nthreads; i++) if (pthread_equal(compat_threads[i], me)) { s = i; break; }
     if (s < 0) return;
     compat_stopped[s] = 1;
-    while (!compat_go[s]) __asm__ volatile("pause" ::: "memory");
+    while (!compat_go[s]) compat_cpu_relax();
     compat_go[s] = 0;
     compat_stopped[s] = 0;
 }
@@ -105,6 +123,6 @@ static inline kern_return_t task_info(mach_port_t t, int flavor, task_info_t out
     unsigned long vm = 0, rss = 0;
     if (fscanf(f, "%lu %lu", &vm, &rss) != 2) { fclose(f); return KERN_FAILURE; }
     fclose(f);
-    i->virtual_size = vm * 4096ul; i->resident_size = rss * 4096ul; i->resident_size_max = i->resident_size;
+    i->virtual_size = vm * compat_page_size(); i->resident_size = rss * compat_page_size(); i->resident_size_max = i->resident_size;
     return KERN_SUCCESS;
 }
