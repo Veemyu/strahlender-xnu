@@ -729,6 +729,22 @@ class InstallerDriverTests(unittest.TestCase):
                 self.assertNotIn(name, env)
             install.assert_called_once_with(args, artifact)
 
+    def test_mac_mod_marker_has_four_lines_and_rejects_bad_input(self):
+        script = Path(driver.__file__).resolve().parents[1] / "recomp/app/mod_marker.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "mod-build.txt"
+
+            def write(*values):
+                return subprocess.run(["bash", "-c", '. "$1"; shift; write_mod_marker "$@"', "bash", str(script), str(marker), *values],
+                                      capture_output=True, text=True)
+            for kind in ("romfs", "exefs"):
+                self.assertEqual(write("Example", "/mods", "/mods/Example", kind).returncode, 0)
+                self.assertEqual(marker.read_text(), "Example\n/mods\n/mods/Example\n" + kind + "\n")
+            marker.unlink()
+            self.assertNotEqual(write("Example", "/mods", "/mods/Example", "code").returncode, 0)
+            self.assertNotEqual(write("Exa\nmple", "/mods", "/mods/Example", "romfs").returncode, 0)
+            self.assertFalse(marker.exists())
+
     def test_macos_build_without_a_mod_keeps_the_plain_app(self):
         self.assertEqual(driver._macos_mod_environment(None, None, Path("work")), {})
         self.assertIsNone(driver._romfs_mod_app(SimpleNamespace(mod_root=None)))

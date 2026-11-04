@@ -6,6 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 HERE=scripts/recomp/app
 . scripts/recomp/macos_target.sh
+. "$HERE/mod_marker.sh"
 BIN="" IMG="" NPDM="" OUT="" HARDENED=0 VERSION="0.1" MOD_NAME="" MODS_DIR="" MOD_ROOT="" BUNDLE_ID="" DISPLAY_NAME="" MOD_KIND="exefs"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -57,9 +58,7 @@ if [[ -f "$SHADER_CACHE/pipelines.bin" ]]; then cp "$SHADER_CACHE/pipelines.bin"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" -e "s/@MACOS_MIN@/$BDSP_MACOS_MIN/" "$HERE/Info.plist.in" > "$NEW/Contents/Info.plist"
 if [ -n "$MOD_NAME" ]; then
   [ -n "$MODS_DIR" ] && [ -n "$MOD_ROOT" ] && [ -n "$BUNDLE_ID" ] && [ -n "$DISPLAY_NAME" ] || { echo "ERROR: mod app metadata is incomplete" >&2; exit 2; }
-  case "$MOD_NAME$MODS_DIR$MOD_ROOT" in *$'\n'*|*$'\r'*) echo "ERROR: newline in mod name or path" >&2; exit 2 ;; esac
-  case "$MOD_KIND" in exefs|romfs) ;; *) echo "ERROR: --mod-kind must be exefs or romfs" >&2; exit 2 ;; esac
-  printf '%s\n%s\n%s\n%s\n' "$MOD_NAME" "$MODS_DIR" "$MOD_ROOT" "$MOD_KIND" > "$NEW/Contents/Resources/mod-build.txt"
+  write_mod_marker "$NEW/Contents/Resources/mod-build.txt" "$MOD_NAME" "$MODS_DIR" "$MOD_ROOT" "$MOD_KIND" || exit 2
   plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$NEW/Contents/Info.plist"
   plutil -replace CFBundleName -string "$DISPLAY_NAME" "$NEW/Contents/Info.plist"
   plutil -replace CFBundleDisplayName -string "$DISPLAY_NAME" "$NEW/Contents/Info.plist"
