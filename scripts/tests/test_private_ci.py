@@ -54,7 +54,8 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertFalse((ROOT / ".github/workflows/full-build.yml").exists())
 
     def test_trigger_secret_and_permissions(self):
-        self.assertIn("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n", TRIGGER)
+        self.assertIn("on:\n  workflow_dispatch:\npermissions:", TRIGGER)
+        self.assertNotIn("push:", TRIGGER)
         for forbidden in ("pull_request", "schedule:", "workflow_run", "repository_dispatch"):
             self.assertNotIn(forbidden, TRIGGER)
         self.assertEqual(set(re.findall(r"secrets\.(\w+)", TRIGGER)), {"PRIVATE_CI_TOKEN"})

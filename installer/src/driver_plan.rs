@@ -421,13 +421,13 @@ pub mod tests {
         let private = text(&plan(&facts(Platform::Linux), true, &request("linux")));
         assert_eq!(
             private[..3],
-            ["-I", "-B", &*path("root/scripts/install/driver.py")]
+            ["-I", "-B", &*joined("root", "scripts/install/driver.py")]
         );
         assert_eq!(private[3], "build");
         let system = text(&plan(&facts(Platform::Linux), false, &request("linux")));
         assert_eq!(
             system[..2],
-            ["-B", &*path("root/scripts/install/driver.py")]
+            ["-B", &*joined("root", "scripts/install/driver.py")]
         );
     }
 
@@ -435,6 +435,14 @@ pub mod tests {
         value
             .split('/')
             .collect::<PathBuf>()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// The text of `base.join(rest)`, built the way the plan builds its paths (a joined `rest` keeps its `/`, also on Windows).
+    fn joined(base: &str, rest: &str) -> String {
+        PathBuf::from(base)
+            .join(rest)
             .to_string_lossy()
             .into_owned()
     }
@@ -503,7 +511,7 @@ pub mod tests {
         assert_eq!(pair(&args, "--ios-delivery").as_deref(), Some("ipa"));
         assert_eq!(
             pair(&args, "--ios-export-dir"),
-            Some(path("data/exports/ios"))
+            Some(joined("data", "exports/ios"))
         );
         assert_eq!(pair(&args, "--ios-profile-id").as_deref(), Some("new"));
         assert!(args.iter().any(|arg| arg == "--ios-export-no-embed"));
