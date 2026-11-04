@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tempfile
 import unittest
 import zipfile
@@ -211,7 +212,7 @@ class BuildReportTests(unittest.TestCase):
         self.assertEqual(command[:4], ["py", "-I", "-B", str(Path("/src/scripts/install/driver.py"))])
         for option in ("--windows-catalog", "--ips-helper", "--firmware-helper", "--mod-root", "--update", "--firmware"):
             self.assertIn(option, command)
-        self.assertEqual(command[command.index("--work") + 1], str(Path("/b/work")))
+        self.assertEqual(command[command.index("--work") + 1], str(Path("/src/work")))
         environment = full_build.build_environment(self.args("windows", True), {"PYTHONHOME": "x"})
         self.assertEqual(environment["BDSP_INSTALLER_PRIVATE_RUNTIME"], "1")
         self.assertNotIn("PYTHONHOME", environment)
@@ -284,6 +285,20 @@ class SmokeTests(unittest.TestCase):
 
         self.assertEqual(smoke.run(["x"], 0, lambda *a, **k: Alive(), lambda _s: None)[1], True)
         self.assertEqual(smoke.run(["x"], 5, lambda *a, **k: Dead(), lambda _s: None), ("exited early with code 3", False))
+
+    @unittest.skipIf(os.name == "nt", "process groups are a POSIX feature")
+    def test_the_whole_process_group_is_ended(self):
+        script = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); time.sleep(60)"
+        started = []
+
+        def popen(command, **options):
+            process = subprocess.Popen(command, **options)
+            started.append(process)
+            return process
+
+        message, ok = smoke.run([sys.executable, "-c", script], 1, popen, lambda _s: time.sleep(0.2))
+        self.assertTrue(ok, message)
+        self.assertIsNotNone(started[0].poll())
 
 
 if __name__ == "__main__":

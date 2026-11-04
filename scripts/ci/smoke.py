@@ -9,6 +9,7 @@ Usage: smoke.py --target macos|linux|windows --installed PATH [--seconds N]
 import argparse
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -29,16 +30,29 @@ def launch_command(target, installed):
     return command
 
 
+def stop(process):
+    """Ends the process and everything it started (xvfb-run, the launcher script and the game are separate processes)."""
+    pid = getattr(process, "pid", None)
+    if os.name != "nt" and pid:
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except OSError:
+            process.kill()
+    else:
+        process.kill()
+    process.wait()
+
+
 def run(command, seconds, popen=subprocess.Popen, sleep=time.sleep):
-    process = popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    process = popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    start_new_session=os.name != "nt")
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         code = process.poll()
         if code is not None:
             return "exited early with code %d" % code, False
         sleep(0.5)
-    process.kill()
-    process.wait()
+    stop(process)
     return "alive after %d seconds" % seconds, True
 
 

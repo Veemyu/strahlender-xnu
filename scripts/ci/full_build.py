@@ -36,8 +36,9 @@ def redact(text, known, limit=300):
 def build_command(args, python=None):
     base = Path(args.base)
     data = base / "data"
-    # The mac and linux pipeline refuses any work folder except the checkout's work/ (driver.py); Windows uses its own.
-    work = base / "work" if args.target == "windows" else Path(args.root) / "work"
+    # Every pipeline wants its work folder inside the checkout: Mac and Linux refuse any other (driver.py), and the Windows
+    # icon step stops with "Icon output must remain under work/" when work is a sibling of the checkout.
+    work = Path(args.root) / "work"
     command = [python or args.python or sys.executable]
     command += ["-I", "-B"] if args.target == "windows" else ["-B"]
     command += [str(Path(args.root) / "scripts/install/driver.py"), "build", "--root", str(args.root),
