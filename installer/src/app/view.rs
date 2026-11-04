@@ -226,18 +226,22 @@ impl Installer {
             let mut dialog = column![
                 text(self.language.t(if self.update_confirmation {
                     L::UpdateAvailable
+                } else if self.info_notice {
+                    L::SaveExportedTitle
                 } else {
                     L::ErrorTitle
                 }))
                 .size(18),
-                text(notice).size(13).color(if self.update_confirmation {
-                    c.text
-                } else {
-                    c.error
-                }),
+                text(notice)
+                    .size(13)
+                    .color(if self.update_confirmation || self.info_notice {
+                        c.text
+                    } else {
+                        c.error
+                    }),
             ]
             .spacing(12);
-            if self.page == super::Page::Progress {
+            if self.page == super::Page::Progress && !self.info_notice {
                 dialog = dialog.push(
                     text(self.language.t(L::ErrorDetailsHint))
                         .size(12)
@@ -253,7 +257,7 @@ impl Installer {
                         .style(move |_, status| style::action(c, true, status)),
                 );
             }
-            if self.page == super::Page::Progress {
+            if self.page == super::Page::Progress && !self.info_notice {
                 actions = actions.push(
                     button(text(self.language.t(L::ShowErrorDetails)).size(12))
                         .padding([8, 12])
@@ -2074,7 +2078,8 @@ impl Installer {
         if self.details {
             controls = controls
                 .push(self.text_action(self.language.t(L::OpenLogFolder), Message::OpenLogFolder))
-                .push(self.text_action(self.language.t(L::CopyLog), Message::CopyLog));
+                .push(self.text_action(self.language.t(L::CopyLog), Message::CopyLog))
+                .push(self.text_action(self.language.t(L::ExportSave), Message::ExportSave));
         }
         let controls = controls.wrap().vertical_spacing(2);
         let mut footer = column![].spacing(10);

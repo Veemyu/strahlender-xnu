@@ -191,6 +191,8 @@ pub enum Message {
     ShowNoticeDetails,
     CopyLog,
     OpenLogFolder,
+    ExportSave,
+    SaveExported(Result<crate::save_export::Export, String>),
     CopyLogLine(usize),
     ClearCopiedLogLine(usize, Instant),
     DemoInput,
@@ -328,6 +330,7 @@ pub struct Installer {
     available_update: Option<crate::updates::Release>,
     updating: bool,
     update_confirmation: bool,
+    info_notice: bool,
     setup_log_length: usize,
     requirements_run_id: u64,
     /// The last Install tools failure, shown as a card until the next attempt or check.
@@ -647,6 +650,7 @@ impl Installer {
             available_update: None,
             updating: false,
             update_confirmation: false,
+            info_notice: false,
             setup_log_length: 0,
             requirements_run_id: 0,
             setup_failure: None,
@@ -971,6 +975,7 @@ impl Installer {
             Message::DismissNotice => {
                 self.notice = None;
                 self.update_confirmation = false;
+                self.info_notice = false;
             }
             Message::ShowNoticeDetails => {
                 self.notice = None;
@@ -2146,6 +2151,42 @@ impl Installer {
                         self.notice = Some(error);
                     }
                 }
+            }
+            Message::ExportSave => {
+                return Task::perform(
+                    blocking(|| crate::save_export::export(None, None)),
+                    Message::SaveExported,
+                );
+            }
+            Message::SaveExported(Ok(done)) => {
+                let file = done
+                    .path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.record(
+                    "SAVE",
+                    &format!(
+                        "Exported {} files ({} bytes) as {file}.",
+                        done.files, done.bytes
+                    ),
+                );
+                let folder = done.path.parent().unwrap_or(&done.path);
+                self.info_notice = false;
+                if let Err(error) = crate::open::folder(folder) {
+                    self.notice = Some(error);
+                } else {
+                    self.notice = Some(
+                        self.language
+                            .t(L::SaveExportedHint)
+                            .replace("{file}", &file),
+                    );
+                    self.info_notice = true;
+                }
+            }
+            Message::SaveExported(Err(error)) => {
+                self.info_notice = false;
+                self.notice = Some(error);
             }
             Message::CopyLog => return iced::clipboard::write(self.log.join("\n")),
             Message::CaptureTick => {

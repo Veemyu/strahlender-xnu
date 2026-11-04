@@ -540,6 +540,29 @@ line leaves the machine only if you copy the log. The user name, the home folder
 and IP addresses, hardware UUIDs and any long hex string are replaced by `<user>`, `<home>`, `<host>` and similar before a
 line is written. Environment variables appear by name only (`BDSP_*`), never by value, except plain 0/1/true/false switches.
 
+### 8.2 Attaching your save to a bug report
+
+A save often makes a crash or a stuck game much easier to reproduce, so the bug report form has an optional "Save file" field next to the log.
+It is opt in and nothing is uploaded: you attach the file yourself. **Privacy:** a save holds your trainer name and play data. The export
+holds only the `save_<n>` folders (`SaveData.bin`, `Backup.bin`) and, for a mod app, `mods/<name>/save_<n>`: no keys, firmware or game files, no
+absolute paths. GitHub accepts `.zip` but not `.bin`, so the file is a zip. The issue is public: skip it if you do not want the name public.
+
+- **Installer (all desktop systems):** "Show details", then "Export save for bug report". It writes `bdsp-save-<date>.zip` to the Downloads folder
+  (Desktop, then the home folder, if there is none) and opens that folder. From a terminal:
+  `strahlender-xnu-installer --cli export-save [--out FOLDER] [--save FOLDER]` (same code). It refuses a folder over 64 MiB and says plainly when
+  there is no save.
+- **Where the save is** (the game's File or Game menu has "Open Save Folder"; `BDSP_SAVE` or `--save` moves it):
+
+| Platform | Save folder | Zip it by hand |
+|---|---|---|
+| macOS | `~/Library/Application Support/dev.local.xnubdsp/save/save_1` | Finder: right-click, Compress |
+| Windows | `%APPDATA%\StrahlenderXnu\save\save_1` | Explorer: right-click, Send to, Compressed (zipped) folder |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/strahlender-xnu/saves/save_1` | file manager, or `zip -r save.zip save_1` |
+| iPhone / iPad | Files app, On My iPhone (or iPad), BDSP, `Saves/save_1` | long press the folder, Compress |
+
+The iPhone and iPad app lists its Documents folder in Files because its `Info.plist` sets `UIFileSharingEnabled` and
+`LSSupportsOpeningDocumentsInPlace`. An app that uses an external game library keeps the save in `Profiles/<game>/<profile>/Saves/save_1` instead.
+
 ## 9. More documentation
 
 - `docs/architecture.md`: how the recompilation works.

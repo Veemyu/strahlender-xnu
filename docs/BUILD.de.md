@@ -341,6 +341,18 @@ Plattformspezifische Defines stehen weiterhin im jeweiligen Skript.
 | `xcodebuild` bricht ab (Signierung) | Log `work/builds/logs/ios-recomp-xcodebuild.log` lesen. `TEAM_ID` setzen und in Xcode mit deinem Konto signieren. |
 | macOS-App wird beim ersten Start blockiert | Rechtsklick auf die App, dann Öffnen. |
 
+### 8.1 Save für einen Fehlerbericht anhängen
+
+Das Formular für Fehlerberichte hat neben dem Log ein optionales Feld "Save file". Es ist freiwillig, nichts wird hochgeladen: du hängst die Datei selbst an.
+**Datenschutz:** Ein Save enthält deinen Trainernamen und Spieldaten. Der Export enthält nur die Ordner `save_<n>` (`SaveData.bin`, `Backup.bin`), keine Schlüssel,
+keine Firmware, keine Spieldateien und keine absoluten Pfade. GitHub nimmt `.zip`, aber kein `.bin`. Das Issue ist öffentlich.
+
+- **Installer:** "Details anzeigen", dann "Save für Fehlerbericht exportieren". Das schreibt `bdsp-save-<Datum>.zip` in den Downloads-Ordner und öffnet ihn.
+  Im Terminal: `strahlender-xnu-installer --cli export-save [--out ORDNER] [--save ORDNER]`.
+- **Ablageort:** macOS `~/Library/Application Support/dev.local.xnubdsp/save/save_1`, Windows `%APPDATA%\StrahlenderXnu\save\save_1`,
+  Linux `${XDG_DATA_HOME:-~/.local/share}/strahlender-xnu/saves/save_1`, iPhone und iPad: Dateien-App, Auf meinem iPhone (iPad), BDSP, `Saves/save_1`
+  (lange drücken, Komprimieren). Das Spiel öffnet den Ordner über "Spielstand-Ordner öffnen" im Menü Spiel (macOS) bzw. Datei.
+
 ## 9. Weitere Dokumentation
 
 - `docs/architecture.md`: wie die Rekompilation arbeitet.

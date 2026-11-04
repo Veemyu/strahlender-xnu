@@ -96,3 +96,7 @@ Shining Pearl (`010018E011D92000`) was not examined.
 `scripts/recomp/runtime/install_save.sh` copies a Ryujinx save into the development folder (previous version kept in a
 `backup-<time>` folder; it logs sizes and hashes only). On the iPad a `SaveData.bin` dropped into `Documents/` is imported on the
 next "Continue" (`scripts/ios_push_save.sh`). A test save should always be a copy (`BDSP_SAVE=<dir>`).
+
+**Sharing a save in a bug report:** the installer's "Export save for bug report" (and `--cli export-save`) zips the `save_<n>` folders into
+`bdsp-save-<date>.zip` without keys, game files or absolute paths; the user attaches it. Per-platform folders and the privacy note are in
+[BUILD.md](BUILD.md) section 8.2.

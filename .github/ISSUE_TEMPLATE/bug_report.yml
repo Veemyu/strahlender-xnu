@@ -1,0 +1,48 @@
+name: Bug report
+description: Something does not work in the installer, the build or the game
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw instead. If the game crashed or got stuck, say where (scene, menu, action).
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - iPhone / iPad
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Installer or release version
+      description: For example 0.1.6. It is shown in the installer.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Drag the log file into this box, or paste the relevant part.
+        Game log: in the game open Help > Open Log Folder and take `bdsp.log` (macOS: `~/Library/Logs/dev.local.xnubdsp/bdsp.log`; Windows: `%LOCALAPPDATA%\StrahlenderXnu\logs`).
+        Installer or build problem: in the installer press "Show details", then "Copy log" and paste it here.
+  - type: textarea
+    id: save
+    attributes:
+      label: Save file (optional)
+      description: |
+        A save often makes a crash or a stuck game much easier to reproduce. It is optional, and you attach it yourself: nothing is uploaded for you.
+        Privacy: the save contains your trainer name and your play data. It has no keys and no game files, and the zip only holds the save folder. The issue is public, so skip this field if you do not want that, and offer the file later instead.
+        GitHub accepts .zip, so attach a zip, not the raw .bin files.
+        Easiest on a computer: in the installer press "Show details", then "Export save for bug report". It writes `bdsp-save-<date>.zip` to your Downloads folder and opens it. The same from a terminal: `strahlender-xnu-installer --cli export-save`.
+        By hand: open the save folder from the game (macOS: Game > Open Save Folder, Windows and Linux: File > Open Save Folder) and zip the `save_1` folder with `SaveData.bin` and `Backup.bin` (macOS: right-click > Compress; Windows: right-click > Send to > Compressed (zipped) folder; Linux: your file manager or `zip -r save.zip save_1`).
+        Default folders: macOS `~/Library/Application Support/dev.local.xnubdsp/save`, Windows `%APPDATA%\StrahlenderXnu\save`, Linux `~/.local/share/strahlender-xnu/saves`.
+        iPhone / iPad: open the Files app > On My iPhone (or iPad) > BDSP > Saves, long press the `save_1` folder and choose Compress, then attach the zip.
+        Drag the zip into this box.
