@@ -54,6 +54,9 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
 }
 #elif defined(BDSP_COMPACT_BASE)
 // Variant A-low (iOS): the compact layout at a fixed address (guest address == host address). mach_vm_allocate does not exist on iOS.
+// Nonzero when the fixed window could not be claimed (errno of the mmap fallback). The iPadOS shell then shows a message and
+// never starts the runtime; ending the process here would look like a crash at launch.
+int bdsp_guest_window_error;
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
     vm_address_t a = GUEST_LO;
     kern_return_t kr = vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED);
@@ -65,7 +68,7 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
         return;
     }
     fprintf(stderr, "FATAL: guest window %llx-%llx is not free (kr %d, mmap %p errno %d)\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI, kr, ma, errno);
-    _exit(1);
+    bdsp_guest_window_error = errno ? errno : -1;
 }
 #else
 __attribute__((constructor(101))) static void reserve_guest_space(void) {

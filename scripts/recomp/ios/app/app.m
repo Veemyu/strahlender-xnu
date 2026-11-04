@@ -11,6 +11,9 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <signal.h>
+#include <execinfo.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #import <Metal/Metal.h>
@@ -41,9 +44,11 @@ static void ApplyAppIcon(void) {
 
 extern int bdsp_runtime_main(int argc, char **argv);
 #ifndef BDSP_STUB
+extern int bdsp_guest_window_error;
 extern void audio_output_set_active(int active);
 #else
 static void audio_output_set_active(int active) { (void)active; }
+static int bdsp_guest_window_error;
 #endif
 extern void bdsp_set_fps(int fps);   // services_gfx.c: 30, 60 or 120
 extern CAMetalLayer *g_ios_layer;
@@ -829,9 +834,76 @@ static void StartRuntime(void) {
     ApplyAppIcon();
 }
 - (void)startRuntime {
+    if (bdsp_guest_window_error) {
+        NSString *detail = [NSString stringWithFormat:@"The game needs a fixed 4 GiB address range that this app could not reserve (error %d). "
+            "The app was started by something that already uses this range, or the system refused it. "
+            "Start the app directly (not inside another app) and send BDSP-log.txt from this app's Documents folder (Files app) with your report.", bdsp_guest_window_error];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"The game cannot start on this setup" message:detail preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [gView.window.rootViewController presentViewController:alert animated:YES completion:nil];
+        return;
+    }
     BDSPPrepareData(gView.window.rootViewController, InstallerData(), ^{ StartRuntime(); });
 }
 @end
+
+// Everything the app prints to stdout/stderr is also written to Documents/BDSP-log.txt (the previous run stays in
+// BDSP-log-previous.txt), so a user can read or send it from the Files app (file sharing is on in Info.plist) even
+// when no Xcode console is attached, e.g. after a sideloaded install. The log stops growing at 32 MiB.
+static int logFile = -1;
+
+static void LogCrashSignal(int sig) {
+    char line[96];
+    int n = snprintf(line, sizeof line, "\n[crash] signal %d on the %s thread\n", sig, pthread_main_np() ? "main" : "a worker");
+    if (logFile >= 0 && n > 0) {
+        write(logFile, line, (size_t)n);
+        void *frames[48];
+        backtrace_symbols_fd(frames, backtrace(frames, 48), logFile);
+        fsync(logFile);
+    }
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+static void LogUncaughtException(NSException *exception) {
+    fprintf(stderr, "[crash] uncaught exception %s: %s\n%s\n", exception.name.UTF8String, exception.reason.UTF8String,
+            exception.callStackSymbols.description.UTF8String);
+    if (logFile >= 0) fsync(logFile);
+}
+
+__attribute__((constructor(100))) static void StartLogFile(void) {   // before the guest window reservation (constructor 101) can report anything
+    NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    if (!docs) return;
+    NSString *path = [docs stringByAppendingPathComponent:@"BDSP-log.txt"];
+    NSString *previous = [docs stringByAppendingPathComponent:@"BDSP-log-previous.txt"];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    [fm removeItemAtPath:previous error:nil];
+    [fm moveItemAtPath:path toPath:previous error:nil];
+    logFile = open(path.fileSystemRepresentation, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int pipes[2];
+    if (logFile < 0 || pipe(pipes)) return;
+    int console = dup(STDERR_FILENO);
+    dup2(pipes[1], STDERR_FILENO);
+    dup2(pipes[1], STDOUT_FILENO);
+    close(pipes[1]);
+    int source = pipes[0], file = logFile;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        char buffer[4096];
+        long written = 0;
+        ssize_t n;
+        while ((n = read(source, buffer, sizeof buffer)) > 0) {
+            if (console >= 0) write(console, buffer, (size_t)n);
+            if (written < (32L << 20)) { write(file, buffer, (size_t)n); written += n; }
+        }
+    });
+    NSSetUncaughtExceptionHandler(LogUncaughtException);
+    const int fatal[] = {SIGSEGV, SIGBUS, SIGILL, SIGABRT, SIGTRAP};
+    for (size_t i = 0; i < sizeof fatal / sizeof *fatal; i++) signal(fatal[i], LogCrashSignal);
+    // os_proc_available_memory shows whether the increased memory limit entitlement survived signing (about 5 GiB without it).
+    fprintf(stderr, "[log] %s, iOS %s, %.1f GiB RAM, %zu MiB available to this app\n",
+            NSBundle.mainBundle.bundleIdentifier.UTF8String, UIDevice.currentDevice.systemVersion.UTF8String,
+            NSProcessInfo.processInfo.physicalMemory / 1073741824.0, os_proc_available_memory() >> 20);
+}
 
 int main(int argc, char *argv[]) {
     if (getenv("BDSP_HANG_DUMP")) {   // stall diagnosis: the harness ends hanging runs with SIGTERM, then the thread report appears
