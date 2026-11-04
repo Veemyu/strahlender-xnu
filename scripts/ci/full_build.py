@@ -109,6 +109,82 @@ def compile_profile(root):
             "slowest": [{"seconds": round(r[0], 1), "mib_rss": round(r[2] / 1024), "opt": r[3]} for r in rows[:5]]}
 
 
+class StageProgress:
+    """Turns the driver's events into short live lines for the job log: step names, percentages and seconds only
+    (never a path, a message or any data), so a running build is visible and nothing from the game can leak."""
+
+    def __init__(self, started=0.0):
+        self.started = started
+        self.current = None
+        self.next_mark = {}
+
+    def stamp(self, now):
+        seconds = int(now - self.started)
+        return "[%02d:%02d]" % (seconds // 60, seconds % 60)
+
+    def feed(self, line, now):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            return []
+        if not isinstance(event, dict):
+            return []
+        kind, name = event.get("event"), str(event.get("id", ""))
+        if kind == "step" and name and re.fullmatch(r"[a-z0-9_]{1,24}", name):
+            status = str(event.get("status", ""))
+            if status == "started":
+                self.current = name
+                return ["%s %s started" % (self.stamp(now), name)]
+            tail = " (%d s)" % round(event["elapsed_seconds"]) if isinstance(event.get("elapsed_seconds"), (int, float)) else ""
+            return ["%s %s %s%s" % (self.stamp(now), name, re.sub(r"[^a-z ]", "", status)[:20], tail)]
+        if kind == "progress" and name and re.fullmatch(r"[a-z0-9_]{1,24}", name):
+            done, total = event.get("completed"), event.get("total")
+            if isinstance(done, int) and isinstance(total, int) and total > 0:
+                percent = done * 100 // total
+                if percent >= self.next_mark.get(name, 10) and percent < 100:
+                    self.next_mark[name] = percent // 10 * 10 + 10
+                    return ["%s %s %d%% (%d of %d)" % (self.stamp(now), name, percent, done, total)]
+        return []
+
+    def heartbeat(self, now):
+        return "%s still running%s" % (self.stamp(now), (": " + self.current) if self.current else "")
+
+
+def run_driver(command, args, events, stderr, heartbeat_seconds=300, clock=time.monotonic):
+    """Runs the driver, copies its events to the file and prints the live progress. Returns the exit code."""
+    import queue
+    import threading
+    process = subprocess.Popen(command, cwd=args.root, env=build_environment(args), stdout=subprocess.PIPE,
+                               stderr=stderr, stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace")
+    lines = queue.Queue()
+
+    def read():
+        for line in process.stdout:
+            lines.put(line)
+        lines.put(None)
+
+    threading.Thread(target=read, daemon=True).start()
+    progress = StageProgress(clock())
+    last_print = clock()
+    while True:
+        try:
+            line = lines.get(timeout=heartbeat_seconds)
+        except queue.Empty:
+            print(progress.heartbeat(clock()), flush=True)
+            continue
+        if line is None:
+            break
+        events.write(line)
+        events.flush()
+        for text in progress.feed(line, clock()):
+            print(text, flush=True)
+            last_print = clock()
+        if clock() - last_print > heartbeat_seconds:
+            print(progress.heartbeat(clock()), flush=True)
+            last_print = clock()
+    return process.wait()
+
+
 def summarize(lines, known):
     steps, errors, missing, result, installed, seconds = {}, [], [], None, None, {}
     for line in lines:
@@ -167,8 +243,7 @@ def main(argv=None):
         shutil.disk_usage(base).free // 2**30, shutil.disk_usage(Path(args.root)).free // 2**30), flush=True)
     with open(logs / "driver-events.jsonl", "w", encoding="utf-8") as events, \
             open(logs / "driver-stderr.log", "w", encoding="utf-8") as stderr:
-        code = subprocess.run(build_command(args), cwd=args.root, env=build_environment(args), stdout=events,
-                              stderr=stderr, stdin=subprocess.DEVNULL, check=False).returncode
+        code = run_driver(build_command(args), args, events, stderr)
     known = [args.base, args.root, os.environ.get("RUNNER_TEMP"), str(Path.home())]
     lines = (logs / "driver-events.jsonl").read_text(encoding="utf-8", errors="replace").splitlines()
     summary, installed = summarize(lines, known)

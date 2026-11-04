@@ -263,6 +263,39 @@ class BuildReportTests(unittest.TestCase):
         self.assertNotIn("main_", json.dumps(profile))
         self.assertIsNone(full_build.compile_profile(tempfile.gettempdir() + "/none-here"))
 
+    def test_live_progress_prints_only_step_names_percentages_and_seconds(self):
+        progress = full_build.StageProgress(100.0)
+        feed = lambda event, now: progress.feed(json.dumps(event), now)
+        self.assertEqual(feed({"event": "step", "id": "clang", "status": "started"}, 105.0), ["[00:05] clang started"])
+        self.assertEqual(feed({"event": "progress", "id": "clang", "completed": 5, "total": 100}, 106.0), [])
+        self.assertEqual(feed({"event": "progress", "id": "clang", "completed": 12, "total": 100}, 160.0),
+                         ["[01:00] clang 12% (12 of 100)"])
+        self.assertEqual(feed({"event": "progress", "id": "clang", "completed": 15, "total": 100}, 161.0), [])
+        self.assertEqual(feed({"event": "progress", "id": "clang", "completed": 31, "total": 100}, 200.0),
+                         ["[01:40] clang 31% (31 of 100)"])
+        self.assertEqual(feed({"event": "step", "id": "clang", "status": "complete", "elapsed_seconds": 95.4}, 210.0),
+                         ["[01:50] clang complete (95 s)"])
+        self.assertEqual(feed({"event": "log", "message": "cannot open /b/data/game.xci"}, 211.0), [])
+        self.assertEqual(feed({"event": "step", "id": "bad id /b/data", "status": "started"}, 212.0), [])
+        self.assertEqual(progress.feed("not json", 213.0), [])
+        self.assertIn("still running: clang", progress.heartbeat(400.0))
+
+    def test_driver_events_are_copied_to_the_file_while_progress_is_printed(self):
+        script = ("import json,sys\n"
+                  "print(json.dumps({'event':'step','id':'extract','status':'started'}), flush=True)\n"
+                  "print(json.dumps({'event':'result','ok':True,'code':0}), flush=True)\n")
+        args = SimpleNamespace(target="linux", root=".", base="/b", mod=False, extract=None, extract_prefix=None)
+        with tempfile.TemporaryDirectory() as folder, io.StringIO() as captured:
+            with open(Path(folder) / "events", "w", encoding="utf-8") as events, \
+                    open(Path(folder) / "err", "w", encoding="utf-8") as stderr, \
+                    mock.patch("sys.stdout", captured):
+                code = full_build.run_driver([sys.executable, "-c", script], args, events, stderr)
+            text = (Path(folder) / "events").read_text(encoding="utf-8")
+            printed = captured.getvalue()
+        self.assertEqual(code, 0)
+        self.assertEqual(len(text.splitlines()), 2)
+        self.assertIn("extract started", printed)
+
     def test_summary_redacts_paths_and_hex(self):
         lines = [json.dumps({"event": "step", "id": "extract", "status": "complete"}),
                  "not json",
