@@ -225,7 +225,7 @@ class BuildReportTests(unittest.TestCase):
     def test_every_option_the_workflow_passes_is_accepted(self):
         result = subprocess.run([sys.executable, str(Path(full_build.__file__)), "--help"], capture_output=True, text=True)
         for option in ("--target", "--root", "--base", "--python", "--mod", "--windows-catalog", "--ips-helper",
-                       "--firmware-helper", "--no-firmware", "--extract", "--extract-prefix", "--summary", "--installed-out"):
+                       "--firmware-helper", "--no-firmware", "--link-work", "--extract", "--extract-prefix", "--summary", "--installed-out"):
             self.assertIn(option, result.stdout)
 
     def test_no_firmware_leaves_out_the_firmware_option_only(self):

@@ -122,6 +122,9 @@ def main(argv=None):
     parser.add_argument("--firmware-helper")
     parser.add_argument("--no-firmware", action="store_true",
                         help="build without the firmware step (for a data set whose firmware needs newer prod.keys)")
+    parser.add_argument("--link-work", action="store_true",
+                        help="point the checkout's work/ at BASE/work (only when BASE is on a bigger disk; a symlinked work/ "
+                             "makes the packaging step refuse the app as not ignored by git)")
     parser.add_argument("--extract")
     parser.add_argument("--extract-prefix")
     parser.add_argument("--summary")
@@ -131,9 +134,10 @@ def main(argv=None):
     logs = base / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    link_work(args)
-    print("free GB before the build: %d under the base folder, %d under the checkout work folder" % (
-        shutil.disk_usage(base).free // 2**30, shutil.disk_usage(Path(args.root) if os.name == "nt" else Path(args.root) / "work").free // 2**30), flush=True)
+    if getattr(args, "link_work", False):
+        link_work(args)
+    print("free GB before the build: %d under the base folder, %d under the checkout" % (
+        shutil.disk_usage(base).free // 2**30, shutil.disk_usage(Path(args.root)).free // 2**30), flush=True)
     with open(logs / "driver-events.jsonl", "w", encoding="utf-8") as events, \
             open(logs / "driver-stderr.log", "w", encoding="utf-8") as stderr:
         code = subprocess.run(build_command(args), cwd=args.root, env=build_environment(args), stdout=events,
