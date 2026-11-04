@@ -4,6 +4,7 @@
 # builds the module images (relocations to the new bases) to work/recomp/img4i and compiles everything for iPhoneOS arm64 to
 # work/recomp/obj4i (the runtime is built with -DBDSP_COMPACT_BASE=ORG, build_rt32.sh).
 # Everything under work/ (gitignored). The bases must match the compact layout in scripts/recomp/runtime/bdsp.h.
+# BDSP_COMPILE_OPT=-O0 compiles every chunk at that level (faster compile, slower code; no -O2 hot pass); unset keeps the normal mix.
 # Usage: gen32.sh gen | img | build [JOBS] | hot | all [JOBS]   (hot: only the -O2 files of scripts/recomp/hot_o2.txt)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
@@ -22,7 +23,7 @@ HLE_BASE=$(printf '0x%x' $(( ORG + 0x0A000000 )))
 # Toolchain stamp of the guest objects: SDKs, compiler, compile script and headers of the runtime. If one of them changes, everything is recompiled.
 obj_stamp() {
   . scripts/recomp/runtime/nvn/hash.inc.sh
-  { echo "model $MODEL $ORG"; xcrun --sdk iphoneos --show-sdk-version; xcrun --sdk iphoneos --show-sdk-path; xcode-select -p; clang --version; sha256 scripts/recomp/ios/compile_chunk_ios.sh
+  { echo "model $MODEL $ORG"; [ -z "${BDSP_COMPILE_OPT:-}" ] || echo "opt $BDSP_COMPILE_OPT"; xcrun --sdk iphoneos --show-sdk-version; xcrun --sdk iphoneos --show-sdk-path; xcode-select -p; clang --version; sha256 scripts/recomp/ios/compile_chunk_ios.sh
     find scripts/recomp/rt scripts/recomp/upstream/runtime -name '*.h' | LC_ALL=C sort | while IFS= read -r h; do sha256 "$h"; done; } | sha256 | cut -d' ' -f1
 }
 
@@ -64,6 +65,7 @@ do_build() {
   local jobs=${1:-$(python3 scripts/recomp/parallel_jobs.py)}
   case "$jobs" in ''|*[!0-9]*) echo "JOBS must be a positive integer" >&2; return 2;; esac
   [ "$jobs" -ge 1 ] || { echo "JOBS must be at least 1" >&2; return 2; }
+  case "${BDSP_COMPILE_OPT:-}" in ""|-O0|-O1|-O2) ;; *) echo "BDSP_COMPILE_OPT must be -O0, -O1 or -O2" >&2; return 2;; esac
   local sdk; sdk=$(xcrun --sdk iphoneos --show-sdk-path)
   mkdir -p "$OBJ"
   local stamp; stamp=$(obj_stamp)
@@ -86,10 +88,10 @@ do_build() {
   echo "O1: $(wc -l < "$OBJ/list_O1.txt"), O0: $(wc -l < "$OBJ/list_O0.txt"), Jobs $jobs"
   export OBJ sdk
   local start; start=$(date +%s)
-  tr '\n' '\000' < "$OBJ/list_O0.txt" | OPT=-O0 xargs -0 -P "$jobs" -I{} scripts/recomp/ios/compile_chunk_ios.sh {}
-  tr '\n' '\000' < "$OBJ/list_O1.txt" | OPT=-O1 xargs -0 -P "$jobs" -I{} scripts/recomp/ios/compile_chunk_ios.sh {}
+  tr '\n' '\000' < "$OBJ/list_O0.txt" | OPT=${BDSP_COMPILE_OPT:--O0} xargs -0 -P "$jobs" -I{} scripts/recomp/ios/compile_chunk_ios.sh {}
+  tr '\n' '\000' < "$OBJ/list_O1.txt" | OPT=${BDSP_COMPILE_OPT:--O1} xargs -0 -P "$jobs" -I{} scripts/recomp/ios/compile_chunk_ios.sh {}
   echo "Total compile time: $(( $(date +%s) - start )) s"
-  do_hot
+  [ -n "${BDSP_COMPILE_OPT:-}" ] || do_hot
 }
 
 # Hot functions (scripts/recomp/hot_o2.txt, Mac names of module main, base 0x7000000000) with -O2, like scripts/recomp/build_all.sh.
