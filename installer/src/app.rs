@@ -3861,12 +3861,8 @@ mod tests {
         app.build_progress.step("eh_gen", "started");
         let active = app.active_step();
         assert!(matches!(app.step_labels()[active], L::Generate));
-        // 7 pages and the build steps of the host's default target; only the Apple targets have the shader step
-        let shaders = usize::from(matches!(
-            app.target,
-            InstallTarget::Mac | InstallTarget::Ios
-        ));
-        assert_eq!(app.step_labels().len(), 7 + 9 + shaders);
+        // 7 pages and the build steps of the host's default target, with the shader step
+        assert_eq!(app.step_labels().len(), 7 + 9 + 1);
         app.page = Page::Finished;
         assert_eq!(app.active_step(), app.step_labels().len() - 1);
     }

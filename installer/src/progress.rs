@@ -368,6 +368,7 @@ impl BuildProgress {
         let mut headline = match activity {
             Activity::Compile if state.total > 0 => counted(Label::ActCompileCount),
             Activity::ShadersCompile if state.total > 0 => counted(Label::ActShadersCompileCount),
+            Activity::ShadersSpirv if state.total > 0 => counted(Label::ActShadersSpirvCount),
             _ => language.t(activity.label()).to_owned(),
         };
         let silent = self

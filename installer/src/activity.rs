@@ -21,6 +21,7 @@ pub enum Activity {
     ShadersBuild,
     ShadersTranslate,
     ShadersCompile,
+    ShadersSpirv,
     Generate,
     Compile,
     Images,
@@ -50,6 +51,7 @@ impl Activity {
             Self::ShadersBuild => Label::ActShadersBuild,
             Self::ShadersTranslate => Label::ActShadersTranslate,
             Self::ShadersCompile => Label::ActShadersCompile,
+            Self::ShadersSpirv => Label::ActShadersSpirv,
             Self::Generate => Label::ActGenerate,
             Self::Compile => Label::ActCompile,
             Self::Images => Label::ActImages,
@@ -190,6 +192,7 @@ pub fn observe(stage: Stage, message: &str) -> Observation {
                     ("building the translator", Activity::ShadersBuild),
                     ("translating", Activity::ShadersTranslate),
                     ("compiling the Metal libraries", Activity::ShadersCompile),
+                    ("compiling the SPIR-V shaders", Activity::ShadersSpirv),
                 ]
                 .into_iter()
                 .find(|(prefix, _)| rest.starts_with(prefix))
@@ -257,6 +260,10 @@ mod tests {
             (
                 "shaders: reading the shader programs of the game",
                 Activity::ShadersRead,
+            ),
+            (
+                "shaders: compiling the SPIR-V shaders",
+                Activity::ShadersSpirv,
             ),
             ("shaders: building the translator", Activity::ShadersBuild),
             ("shaders: translating", Activity::ShadersTranslate),

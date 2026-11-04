@@ -48,6 +48,15 @@ use `Start-Process -RedirectStandardOutput out.txt -RedirectStandardError err.tx
 empty file on Windows, because a window program does not receive the handles of the
 shell. On macOS and Linux redirection works as usual.
 
+### Building from a local checkout (`BDSP_SOURCE_DIR`)
+
+A build normally downloads the newest `main`. For development, `BDSP_SOURCE_DIR` names a source
+checkout (a folder that contains `scripts/install/driver.py`); `source_download` then copies it below
+the sources folder instead of downloading, without its `.git` and `work` folders, and the build
+runs from that copy, so the checkout itself stays untouched. Nothing else reads the variable. The
+copy is named like a download (`dec0de000000-<milliseconds>`), so the usual pruning of unused
+sources applies.
+
 ## What still uses Python
 
 The expensive instruction analysis, disassembly/emission and module-image

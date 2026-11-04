@@ -86,10 +86,6 @@ pub fn build_stages(
         .filter(|stage| *stage != Stage::Firmware || has_firmware)
         .filter(|stage| *stage != Stage::Exefs || code_mod)
         .filter(|stage| {
-            // prebuilt Metal libraries: only the Apple targets (Mac and iPhone/iPad)
-            *stage != Stage::Shaders || matches!(target, InstallTarget::Mac | InstallTarget::Ios)
-        })
-        .filter(|stage| {
             *stage != Stage::Signing
                 || (target == InstallTarget::Ios && ios_delivery == IosDelivery::Device)
         })
@@ -279,8 +275,10 @@ mod tests {
         let linux = build_stages(InstallTarget::Linux, IosDelivery::Device, false, false);
         assert!(!linux.contains(&Stage::Firmware));
         assert!(!linux.contains(&Stage::Exefs));
-        assert!(!linux.contains(&Stage::Shaders));
+        assert!(linux.contains(&Stage::Shaders));
         assert!(!linux.contains(&Stage::Signing));
+        let windows = build_stages(InstallTarget::Windows, IosDelivery::Device, false, false);
+        assert!(windows.contains(&Stage::Shaders));
         let ios = build_stages(InstallTarget::Ios, IosDelivery::Device, true, true);
         assert!(ios.contains(&Stage::Firmware));
         assert!(ios.contains(&Stage::Exefs));

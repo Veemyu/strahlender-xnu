@@ -44,8 +44,18 @@ pub fn client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Downloads `main` into a fresh folder below `parent` and returns it.
+/// Development override: `BDSP_SOURCE_DIR` names a source checkout that is copied below `parent` instead of downloading `main`,
+/// so a build can test scripts that are not on `main` yet. Only this function reads it.
+const SOURCE_DIR_VARIABLE: &str = "BDSP_SOURCE_DIR";
+
+/// Placeholder revision of a copied checkout; the folder name keeps the shape the pruning expects.
+const LOCAL_REVISION: &str = "dec0de000000";
+
+/// Downloads `main` into a fresh folder below `parent` and returns it (or copies the `BDSP_SOURCE_DIR` checkout).
 pub fn download_main(parent: &Path, cancelled: &AtomicBool) -> Result<PathBuf, String> {
+    if let Some(source) = std::env::var_os(SOURCE_DIR_VARIABLE).filter(|value| !value.is_empty()) {
+        return copy_local_source(Path::new(&source), parent, cancelled);
+    }
     let client = client()?;
     let sha = main_revision(&client)?;
     let sha = sha.as_str();
@@ -96,6 +106,61 @@ pub fn download_main(parent: &Path, cancelled: &AtomicBool) -> Result<PathBuf, S
     })();
     let _ = std::fs::remove_dir_all(&staging);
     result
+}
+
+fn copy_local_source(
+    source: &Path,
+    parent: &Path,
+    cancelled: &AtomicBool,
+) -> Result<PathBuf, String> {
+    if !source.join("scripts/install/driver.py").is_file() {
+        return Err(format!(
+            "{SOURCE_DIR_VARIABLE} does not name a source checkout (scripts/install/driver.py is missing)."
+        ));
+    }
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let staging = parent.join(format!(".download-{}-{unique}", std::process::id()));
+    let result = copy_tree(source, &staging, true, cancelled).and_then(|()| {
+        let mut destination = parent.join(folder_name(LOCAL_REVISION, unique));
+        let mut attempt = 0u32;
+        while destination.exists() {
+            attempt += 1;
+            destination = parent.join(folder_name(LOCAL_REVISION, unique + u128::from(attempt)));
+        }
+        std::fs::rename(&staging, &destination).map_err(|e| e.to_string())?;
+        Ok(destination)
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result
+}
+
+/// Copies a checkout without its history, build outputs and earlier work (`.git`, `work`, and cargo's `target` below `installer`).
+fn copy_tree(from: &Path, to: &Path, top: bool, cancelled: &AtomicBool) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
+        if cancelled.load(Ordering::Acquire) {
+            return Err("Source copy cancelled.".into());
+        }
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        let kind = entry.file_type().map_err(|e| e.to_string())?;
+        if kind.is_symlink() || (top && (name == ".git" || name == "work")) {
+            continue;
+        }
+        let target = to.join(&name);
+        if kind.is_dir() {
+            copy_tree(&entry.path(), &target, false, cancelled)?;
+        } else {
+            std::fs::copy(entry.path(), &target).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 /// "<12 hex digits of the revision>-<milliseconds>".
@@ -180,6 +245,38 @@ fn valid_revision(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::atomic::AtomicBool;
+
+    #[test]
+    fn a_local_checkout_is_copied_without_history_and_work_and_must_be_a_checkout() {
+        let base = std::env::temp_dir().join(format!("bdsp-source-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let source = base.join("checkout");
+        for (path, text) in [
+            ("scripts/install/driver.py", "driver"),
+            ("installer/src/main.rs", "main"),
+            (".git/config", "history"),
+            ("work/romfs/file", "game data"),
+        ] {
+            let file = source.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, text).unwrap();
+        }
+        let parent = base.join("sources");
+        let never = AtomicBool::new(false);
+        let copy = super::copy_local_source(&source, &parent, &never).unwrap();
+        assert!(copy.join("scripts/install/driver.py").is_file());
+        assert!(copy.join("installer/src/main.rs").is_file());
+        assert!(!copy.join(".git").exists());
+        assert!(!copy.join("work").exists());
+        let name = copy.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with(super::LOCAL_REVISION));
+        assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 1);
+        let empty = base.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(super::copy_local_source(&empty, &parent, &never).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn the_data_folder_variable_replaces_the_default_sources_folder() {

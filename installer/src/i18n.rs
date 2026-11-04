@@ -480,6 +480,8 @@ messages! {
     ActShadersTranslate => ["Translating shaders", "Shader werden übersetzt", "Traduciendo shaders", "A traduzir shaders", "Трансляция шейдеров"],
     ActShadersCompile => ["Compiling Metal libraries", "Metal-Bibliotheken werden kompiliert", "Compilando bibliotecas Metal", "A compilar bibliotecas Metal", "Компиляция библиотек Metal"],
     ActShadersCompileCount => ["Compiling Metal libraries: {} of {}", "Metal-Bibliotheken werden kompiliert: {} von {}", "Compilando bibliotecas Metal: {} de {}", "A compilar bibliotecas Metal: {} de {}", "Компиляция библиотек Metal: {} из {}"],
+    ActShadersSpirv => ["Compiling Vulkan shaders", "Vulkan-Shader werden kompiliert", "Compilando shaders de Vulkan", "A compilar shaders Vulkan", "Компиляция шейдеров Vulkan"],
+    ActShadersSpirvCount => ["Compiling Vulkan shaders: {} of {}", "Vulkan-Shader werden kompiliert: {} von {}", "Compilando shaders de Vulkan: {} de {}", "A compilar shaders Vulkan: {} de {}", "Компиляция шейдеров Vulkan: {} из {}"],
     ActGenerate => ["Generating the game code", "Spielcode wird erzeugt", "Generando el código del juego", "A gerar o código do jogo", "Генерация кода игры"],
     ActCompile => ["Compiling objects", "Objekte werden kompiliert", "Compilando objetos", "A compilar objetos", "Компиляция объектов"],
     ActCompileCount => ["Compiling objects: {} of {}", "Objekte werden kompiliert: {} von {}", "Compilando objetos: {} de {}", "A compilar objetos: {} de {}", "Компиляция объектов: {} из {}"],
