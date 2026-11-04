@@ -697,6 +697,42 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertEqual(env["BDSP_ICON_SOURCE"], str(work / "recomp/icons/source"))
             install.assert_called_once_with(args, artifact)
 
+    @unittest.skipUnless(sys.platform == "darwin", "native Mac mod build")
+    def test_romfs_only_mod_becomes_its_own_mac_app_without_a_code_build(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            work = root / "work"
+            mod = root / "mods/Example"
+            (mod / "romfs").mkdir(parents=True)
+            for name in ("base.xci", "prod.keys"):
+                (root / name).write_bytes(b"fixture")
+            args = SimpleNamespace(root=root, work=work, target="macos", base=root / "base.xci",
+                                   prod_keys=root / "prod.keys", update=None, mod_root=mod,
+                                   mod_name="Example", mods_dir=mod.parent, ips_helper=None)
+            app_name = driver._romfs_mod_app(args)["app_name"]
+            self.assertRegex(app_name, r"^BDSP-example-[0-9a-f]{10}\.app$")
+            artifact = work / "builds/macos-recomp" / app_name
+            artifact.mkdir(parents=True)
+            with patch.object(driver, "check_build_dependencies", return_value=0), \
+                 patch.object(driver, "_run_command", return_value=0) as run, \
+                 patch.object(driver, "install_artifact") as install, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(driver.build(args), 0)
+            command = run.call_args_list[-1]
+            self.assertEqual(command.args[0][-2:], ["--out", str(artifact)])
+            env = command.kwargs["extra_env"]
+            self.assertEqual(env["BDSP_MOD_NAME"], "Example")
+            self.assertEqual(env["BDSP_MOD_ROOT"], str(mod.resolve()))
+            self.assertEqual(env["BDSP_MODS_DIR"], str(mod.parent.resolve()))
+            self.assertEqual(env["BDSP_MOD_BUNDLE_ID"], driver._romfs_mod_app(args)["bundle_id"])
+            for name in ("BDSP_EXEFS_DIR", "RECOMP_DIR", "BDSP_ICON_SOURCE"):
+                self.assertNotIn(name, env)
+            install.assert_called_once_with(args, artifact)
+
+    def test_macos_build_without_a_mod_keeps_the_plain_app(self):
+        self.assertEqual(driver._macos_mod_environment(None, None, Path("work")), {})
+        self.assertIsNone(driver._romfs_mod_app(SimpleNamespace(mod_root=None)))
+
     def test_linux_code_mod_builds_in_its_own_folder_from_the_staged_exefs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

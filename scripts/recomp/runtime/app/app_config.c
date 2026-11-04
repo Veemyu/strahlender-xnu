@@ -109,12 +109,15 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
     char def[1200], dir[1100];
     snprintf(def, sizeof def, "%s/mods", g_app.home);
     pick_path(dir, sizeof dir, "BDSP_MODS_DIR", mods_cfg, def);
-    char bundled_name[256] = "", bundled_dir[1100] = "", bundled_root[1100] = "", bundle_meta[1400];
+    char bundled_name[256] = "", bundled_dir[1100] = "", bundled_root[1100] = "", bundled_kind[16] = "exefs", bundle_meta[1400];
     if (g_app.resources[0] && snprintf(bundle_meta, sizeof bundle_meta, "%s/mod-build.txt", g_app.resources) < (int)sizeof bundle_meta) {
         FILE *meta = fopen(bundle_meta, "r");
         if (meta) {
             int valid = fgets(bundled_name, sizeof bundled_name, meta) && fgets(bundled_dir, sizeof bundled_dir, meta) && fgets(bundled_root, sizeof bundled_root, meta);
             valid = valid && strchr(bundled_name, '\n') && strchr(bundled_dir, '\n') && strchr(bundled_root, '\n');
+            // Optional fourth line: "exefs" (code compiled into this app, also the older files without it) or "romfs" (files only)
+            if (valid && fgets(bundled_kind, sizeof bundled_kind, meta)) bundled_kind[strcspn(bundled_kind, "\r\n")] = 0;
+            valid = valid && (!strcmp(bundled_kind, "exefs") || !strcmp(bundled_kind, "romfs"));
             fclose(meta);
             if (!valid) {
                 bdsp_app_alert("BDSP: mod build", "This app has invalid mod metadata. Rebuild it with the installer.");
@@ -175,7 +178,7 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
     if (pick >= 0) {
         if (bundled_name[0]) {
             snprintf(list[pick].name, sizeof list[pick].name, "%s", bundled_name);
-            setenv("BDSP_COMPILED_EXEFS", bundled_name, 1);
+            if (!strcmp(bundled_kind, "exefs")) setenv("BDSP_COMPILED_EXEFS", bundled_name, 1);
         }
         if (mods_activate(&list[pick], g_app.save) != 0) {
             bdsp_app_alert("BDSP: mod", "The save folder of the mod could not be created.");

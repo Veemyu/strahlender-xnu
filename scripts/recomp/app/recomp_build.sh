@@ -133,7 +133,8 @@ log "5/6 assembling and signing BDSP.app (ad hoc$([ "$HARDENED" -eq 1 ] && echo 
 APPARGS=(--bin "$BIN" --img "$IMG" --npdm "$ROOT/work/exefs/main.npdm" --out "$OUT")
 if [ -n "${BDSP_MOD_NAME:-}" ]; then
   [ -n "${BDSP_MODS_DIR:-}" ] && [ -n "${BDSP_MOD_ROOT:-}" ] && [ -n "${BDSP_MOD_BUNDLE_ID:-}" ] || die 2 "mod app metadata is incomplete"
-  APPARGS+=(--mod-name "$BDSP_MOD_NAME" --mods-dir "$BDSP_MODS_DIR" --mod-root "$BDSP_MOD_ROOT" --bundle-id "$BDSP_MOD_BUNDLE_ID" --display-name "${BDSP_MOD_DISPLAY_NAME:-$BDSP_MOD_NAME}")
+  APPARGS+=(--mod-name "$BDSP_MOD_NAME" --mods-dir "$BDSP_MODS_DIR" --mod-root "$BDSP_MOD_ROOT" --bundle-id "$BDSP_MOD_BUNDLE_ID" --display-name "${BDSP_MOD_DISPLAY_NAME:-$BDSP_MOD_NAME}"
+    --mod-kind "$([ -n "${BDSP_EXEFS_DIR:-}" ] && echo exefs || echo romfs)")
 fi
 if [ -n "${BDSP_EXEFS_DIR:-}" ]; then
   export BDSP_ICON_SOURCE="${BDSP_ICON_SOURCE:-$WORK/recomp/icons/source}"

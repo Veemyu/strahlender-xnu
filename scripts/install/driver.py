@@ -578,6 +578,31 @@ def _selected_mod(args):
     return {"name": name, "mods_dir": library, "root": root, "identity": identity, "slug": slug}
 
 
+def _mod_app_names(selected):
+    return {"app_name": "BDSP-" + selected["slug"] + "-" + selected["identity"] + ".app",
+            "bundle_id": "dev.local.xnubdsp.mod." + selected["identity"]}
+
+
+def _romfs_mod_app(args):
+    """The macOS app of a RomFS-only mod: the game's own build, packaged as an app of its own that starts the mod."""
+    selected = _selected_mod(args)
+    return {**selected, **_mod_app_names(selected)} if selected else None
+
+
+def _macos_mod_environment(mod_app, mod_build, work):
+    """Environment for recomp_build.sh. Any selected mod becomes an app of its own (mod-build.txt); only a code mod also
+    needs its own staged ExeFS and build folder. A RomFS-only mod reuses the game's build and only changes the packaging."""
+    if not mod_app:
+        return {}
+    environment = {"BDSP_MOD_NAME": mod_app["name"], "BDSP_MOD_ROOT": str(mod_app["root"]),
+                   "BDSP_MODS_DIR": str(mod_app["mods_dir"]), "BDSP_MOD_BUNDLE_ID": mod_app["bundle_id"],
+                   "BDSP_MOD_DISPLAY_NAME": mod_app["name"]}
+    if mod_build:
+        environment.update({"BDSP_EXEFS_DIR": str(mod_build["staged"]), "RECOMP_DIR": str(mod_build["build_dir"]),
+                            "BDSP_ICON_SOURCE": str(work / "recomp/icons/source")})
+    return environment
+
+
 def _prepare_code_mod(args, work, build_cache=None, emit_steps=True):
     exefs = _mod_exefs(getattr(args, "mod_root", None))
     if not exefs:
@@ -610,9 +635,7 @@ def _prepare_code_mod(args, work, build_cache=None, emit_steps=True):
         if code:
             raise ValueError("IPS staging failed. See the ExeFS details above.")
         (staged / ".source-sha256").write_text(key, encoding="ascii")
-    app_name = "BDSP-" + selected["slug"] + "-" + selected["identity"] + ".app"
-    return {"staged": staged, "build_dir": build_dir / "ios" if args.target == "ios" else build_dir, "app_name": app_name,
-            "bundle_id": "dev.local.xnubdsp.mod." + selected["identity"],
+    return {"staged": staged, "build_dir": build_dir / "ios" if args.target == "ios" else build_dir, **_mod_app_names(selected),
             "slug": selected["slug"], "identity": selected["identity"], "name": selected["name"], "mods_dir": selected["mods_dir"], "root": selected["root"]}
 
 
@@ -1405,27 +1428,22 @@ def build(args):
         extract = [str(root / "scripts/build_all.sh"), "--only", "tools,extract",
                    "--target", "macos", "--min-free-gb", str(required_free_gb(args)), *common]
         code = _run_command(extract, args, "extract")
+        mod_app = None
         if code == 0:
             try:
                 mod_build = _prepare_code_mod(args, work)
+                mod_app = mod_build or _romfs_mod_app(args)
             except (OSError, ValueError) as error:
-                emit("error", message="ExeFS preparation failed: " + _safe_line(str(error), args), code=4)
+                emit("error", message="Mod preparation failed: " + _safe_line(str(error), args), code=4)
                 code = 4
-        artifact = work / "builds/macos-recomp" / (mod_build["app_name"] if code == 0 and mod_build else "BDSP.app")
+        artifact = work / "builds/macos-recomp" / (mod_app["app_name"] if code == 0 and mod_app else "BDSP.app")
         if code == 0:
             if getattr(args, "clean_build", False):
                 _clean_game_build(args, mod_build["build_dir"] if mod_build else work / "recomp")
-            environment = ({"BDSP_EXEFS_DIR": str(mod_build["staged"]),
-                            "RECOMP_DIR": str(mod_build["build_dir"]),
-                            "BDSP_MOD_NAME": mod_build["name"],
-                            "BDSP_MOD_ROOT": str(mod_build["root"]),
-                            "BDSP_MODS_DIR": str(mod_build["mods_dir"]),
-                            "BDSP_MOD_BUNDLE_ID": mod_build["bundle_id"],
-                            "BDSP_MOD_DISPLAY_NAME": mod_build["name"],
-                            "BDSP_ICON_SOURCE": str(work / "recomp/icons/source")} if mod_build else {})
+            environment = _macos_mod_environment(mod_app, mod_build, work)
             _prepare_shaders(args, "macosx")
             command = [str(root / "scripts/recomp/app/recomp_build.sh")]
-            if mod_build:
+            if mod_app:
                 command += ["--out", str(artifact)]
             code = _run_command(command, args, "eh_gen",
                                 lambda phase: _compile_count(work, "macos", mod_build["build_dir"] if mod_build else None,

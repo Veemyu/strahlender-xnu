@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 HERE=scripts/recomp/app
 . scripts/recomp/macos_target.sh
-BIN="" IMG="" NPDM="" OUT="" HARDENED=0 VERSION="0.1" MOD_NAME="" MODS_DIR="" MOD_ROOT="" BUNDLE_ID="" DISPLAY_NAME=""
+BIN="" IMG="" NPDM="" OUT="" HARDENED=0 VERSION="0.1" MOD_NAME="" MODS_DIR="" MOD_ROOT="" BUNDLE_ID="" DISPLAY_NAME="" MOD_KIND="exefs"
 while [ $# -gt 0 ]; do
   case "$1" in
     --bin) BIN="$2"; shift 2 ;;
@@ -20,6 +20,7 @@ while [ $# -gt 0 ]; do
     --mod-root) MOD_ROOT="$2"; shift 2 ;;
     --bundle-id) BUNDLE_ID="$2"; shift 2 ;;
     --display-name) DISPLAY_NAME="$2"; shift 2 ;;
+    --mod-kind) MOD_KIND="$2"; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -57,7 +58,8 @@ sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$(date +%Y%m%d%H%M)/" -e "s/@MACOS_
 if [ -n "$MOD_NAME" ]; then
   [ -n "$MODS_DIR" ] && [ -n "$MOD_ROOT" ] && [ -n "$BUNDLE_ID" ] && [ -n "$DISPLAY_NAME" ] || { echo "ERROR: mod app metadata is incomplete" >&2; exit 2; }
   case "$MOD_NAME$MODS_DIR$MOD_ROOT" in *$'\n'*|*$'\r'*) echo "ERROR: newline in mod name or path" >&2; exit 2 ;; esac
-  printf '%s\n%s\n%s\n' "$MOD_NAME" "$MODS_DIR" "$MOD_ROOT" > "$NEW/Contents/Resources/mod-build.txt"
+  case "$MOD_KIND" in exefs|romfs) ;; *) echo "ERROR: --mod-kind must be exefs or romfs" >&2; exit 2 ;; esac
+  printf '%s\n%s\n%s\n%s\n' "$MOD_NAME" "$MODS_DIR" "$MOD_ROOT" "$MOD_KIND" > "$NEW/Contents/Resources/mod-build.txt"
   plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$NEW/Contents/Info.plist"
   plutil -replace CFBundleName -string "$DISPLAY_NAME" "$NEW/Contents/Info.plist"
   plutil -replace CFBundleDisplayName -string "$DISPLAY_NAME" "$NEW/Contents/Info.plist"
