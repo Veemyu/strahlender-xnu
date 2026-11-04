@@ -10,6 +10,7 @@
 "DEBUG_METAL_HUD" = "Metal-HUD anzeigen";
 "DATA_GROUP" = "Spieldaten & Saves";
 "DATA_NEXT_LAUNCH" = "Werkzeuge beim nächsten Start";
+"ASK_GAME" = "Beim Start nach dem Spiel fragen";
 "DATA_FOOTER" = "Schließe das Spiel zuerst. Beim nächsten Start kannst du Backups, Wiederherstellung oder Spieldaten auswählen. Der Schalter wird danach automatisch ausgeschaltet.";
 "NOTIFICATIONS_GROUP" = "Einblendungen";
 "NOTIFICATIONS_FOOTER" = "Statusmeldungen im Spiel. Jede Kategorie lässt sich einzeln ausschalten.";

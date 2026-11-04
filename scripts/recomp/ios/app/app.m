@@ -786,6 +786,13 @@ static void StartRuntime(void) {
     }
     if (n == 0) { LaunchRuntime(NULL); return; }
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    // A mod installed together with this app (data-only mod) is the game the user built it for: start it without the dialog.
+    // Settings > Ask which game to start brings the dialog back for switching to Brilliant Diamond or another mod.
+    if (installedIndex >= 0 && ![ud boolForKey:@"bdsp_ask_game"]) {
+        fprintf(stderr, "[mods] starting the installed mod \"%s\" (Settings > Ask which game to start shows the choice)\n", gMods[installedIndex].name);
+        LaunchRuntime(&gMods[installedIndex]);
+        return;
+    }
     NSString *last = [ud stringForKey:@"bdsp_mod"] ?: (installedIndex >= 0 ? installedName : @"");
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Choose a game"
         message:@"A mod runs with a save of its own. The save of Brilliant Diamond is not touched while a mod is active."

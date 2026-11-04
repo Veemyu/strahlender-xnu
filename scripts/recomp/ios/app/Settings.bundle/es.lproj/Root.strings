@@ -10,6 +10,7 @@
 "DEBUG_METAL_HUD" = "Mostrar HUD de Metal";
 "DATA_GROUP" = "Datos y partidas";
 "DATA_NEXT_LAUNCH" = "Herramientas al próximo inicio";
+"ASK_GAME" = "Preguntar qué juego iniciar";
 "DATA_FOOTER" = "Cierra el juego primero. Al iniciar de nuevo, podrás gestionar copias, restauraciones y datos antes de jugar. El interruptor se desactiva automáticamente.";
 "NOTIFICATIONS_GROUP" = "Notificaciones";
 "NOTIFICATIONS_FOOTER" = "Avisos de estado dentro del juego. Puedes desactivar cada categoría por separado.";
