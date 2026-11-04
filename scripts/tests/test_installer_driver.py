@@ -729,6 +729,7 @@ class InstallerDriverTests(unittest.TestCase):
                 self.assertNotIn(name, env)
             install.assert_called_once_with(args, artifact)
 
+    @unittest.skipIf(sys.platform == "win32", "the app packaging shell helper only runs where the macOS build runs")
     def test_mac_mod_marker_has_four_lines_and_rejects_bad_input(self):
         script = Path(driver.__file__).resolve().parents[1] / "recomp/app/mod_marker.sh"
         with tempfile.TemporaryDirectory() as temporary:
