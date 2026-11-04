@@ -58,7 +58,7 @@ class LinuxRuntimeLayoutTests(unittest.TestCase):
         defaults = re.findall(r'default_path\("(BDSP_\w+)", dir, "([^"]+)"', source)
         self.assertEqual({name for name, _ in defaults}, {"BDSP_IMG", "BDSP_ROMFS", "BDSP_NPDM"})
         for name, entry in defaults:
-            self.assertEqual(exported[name], "/data/app/" + entry, name)
+            self.assertEqual(Path(exported[name]), Path("/data/app") / entry, name)
 
     def test_the_runtime_applies_the_defaults_before_it_reads_the_paths(self):
         source = (ROOT / "scripts/recomp/runtime/main.c").read_text(encoding="utf-8")
