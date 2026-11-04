@@ -4,8 +4,6 @@ run-name: Private full test · ${{ github.ref_name }}
 # response and never links it. The private runner posts only a pass or fail commit status named full-build. Does nothing
 # unless the secret PRIVATE_CI_TOKEN exists.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
