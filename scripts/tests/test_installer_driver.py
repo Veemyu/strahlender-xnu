@@ -804,6 +804,9 @@ class InstallerDriverTests(unittest.TestCase):
             self.assertEqual((game / "img/main.img").read_bytes(), b"game image")
             self.assertTrue((installed / "romfs-patch-mods/Example/.stamp").is_file())
             self.assertTrue((installed / "romfs/Data/game.bin").is_file())
+            # the executable alone (no launcher) reads this and starts the mod with its code already compiled in
+            self.assertEqual((installed / "mod.txt").read_text(encoding="utf-8"), "Example\n%s\nexefs\n" % library)
+            self.assertFalse((game / "mod.txt").exists())
             launcher = install_root / "bin/strahlender-xnu-example-0123456789"
             text = launcher.read_text()
             self.assertIn("export BDSP_COMPILED_EXEFS='Example'", text)

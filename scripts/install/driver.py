@@ -1221,6 +1221,9 @@ def install_artifact(args, artifact, mod_build=None):
                 emit("log", level="diagnostic", message="Copying " + target.name + ".")
                 _copy_tree(source, target, "install", state)
             _linux_desktop(launcher, staging)
+            launch = _linux_mod_launch(mods_dir, selected_mod, bool(mod_build))
+            if launch:   # a start of the executable without the launcher still applies the mod (exe_paths.c)
+                (staging / "mod.txt").write_text(launch, encoding="utf-8")
             (staging / ".installer-owned").write_text("strahlender-xnu-installer v1\n", encoding="utf-8")
             filesystem.publish_tree(staging, destination)
             (data / "saves").mkdir(exist_ok=True)
@@ -1262,6 +1265,17 @@ def _linux_launcher(data, mods_dir, selected_mod, app=None, compiled=False):
     lines.extend(["export SDL_AUDIODRIVER=dummy",
                   "exec " + _sh_quote(app / "bdsp_boot_vk_qt") + ' "$@"'])
     return "\n".join(lines) + "\n"
+
+
+def _linux_mod_launch(mods_dir, selected_mod, compiled):
+    """mod.txt beside the executable, same format as on Windows: mod name, mods folder, "exefs" (code compiled in) or "romfs".
+    None for the unmodified game."""
+    if not selected_mod or selected_mod.lower() in ("none", "diamond"):
+        return None
+    for value in (selected_mod, str(mods_dir)):
+        if not value or any(character in value for character in "\r\n\0"):
+            raise ValueError("Mod name and folder cannot contain newlines.")
+    return "%s\n%s\n%s\n" % (selected_mod, mods_dir, "exefs" if compiled else "romfs")
 
 
 def _linux_desktop(launcher, app, name="BDSP"):

@@ -15,7 +15,9 @@ static void touch(const char *path) {
 }
 
 int main(void) {
-    char dir[] = "/tmp/bdsp_exe_paths_XXXXXX";
+    const char *base = getenv("TMPDIR") && *getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp";
+    char dir[400];
+    snprintf(dir, sizeof dir, "%s/bdsp_exe_paths_XXXXXX", base);
     assert(mkdtemp(dir));
     char path[512];
     snprintf(path, sizeof path, "%s/img", dir);
@@ -41,6 +43,27 @@ int main(void) {
     unsetenv("BDSP_NPDM");
     bdsp_exe_dir_defaults("/tmp/bdsp_exe_paths_missing_folder");   // development layouts keep the work/ defaults
     assert(!getenv("BDSP_IMG") && !getenv("BDSP_ROMFS") && !getenv("BDSP_NPDM"));
+
+    // mod.txt of a mod app: a compiled code mod overrides the environment, a RomFS mod does not
+    unsetenv("BDSP_MOD");
+    unsetenv("BDSP_MODS_DIR");
+    unsetenv("BDSP_COMPILED_EXEFS");
+    snprintf(path, sizeof path, "%s/mod.txt", dir);
+    FILE *launch = fopen(path, "wb");
+    assert(launch);
+    fputs("Example Mod\n/mods/dir\nromfs\n", launch);
+    fclose(launch);
+    setenv("BDSP_MOD", "other", 1);
+    bdsp_exe_dir_defaults(dir);
+    assert(!strcmp(getenv("BDSP_MOD"), "other") && !strcmp(getenv("BDSP_MODS_DIR"), "/mods/dir") && !getenv("BDSP_COMPILED_EXEFS"));
+    unsetenv("BDSP_MODS_DIR");
+    launch = fopen(path, "wb");
+    assert(launch);
+    fputs("Example Mod\n/mods/dir\nexefs\n", launch);
+    fclose(launch);
+    bdsp_exe_dir_defaults(dir);
+    assert(!strcmp(getenv("BDSP_MOD"), "Example Mod") && !strcmp(getenv("BDSP_MODS_DIR"), "/mods/dir"));
+    assert(getenv("BDSP_COMPILED_EXEFS") && !strcmp(getenv("BDSP_COMPILED_EXEFS"), "Example Mod"));
 
     printf("exe_paths_test OK\n");
     return 0;

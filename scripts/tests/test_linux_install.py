@@ -60,6 +60,15 @@ class LinuxRuntimeLayoutTests(unittest.TestCase):
         for name, entry in defaults:
             self.assertEqual(Path(exported[name]), Path("/data/app") / entry, name)
 
+    def test_mod_launch_file_matches_what_the_runtime_parses(self):
+        self.assertIsNone(driver._linux_mod_launch(Path("/data/mods"), "none", False))
+        self.assertEqual(driver._linux_mod_launch(Path("/data/mods"), "Example", True), "Example\n%s\nexefs\n" % Path("/data/mods"))
+        self.assertEqual(driver._linux_mod_launch(Path("/data/mods"), "Example", False), "Example\n%s\nromfs\n" % Path("/data/mods"))
+        with self.assertRaises(ValueError):
+            driver._linux_mod_launch(Path("/data/mods"), "bad\nname", True)
+        source = (ROOT / "scripts/recomp/runtime/exe_paths.c").read_text(encoding="utf-8")
+        self.assertIn('"%s/mod.txt"', source)
+
     def test_the_runtime_applies_the_defaults_before_it_reads_the_paths(self):
         source = (ROOT / "scripts/recomp/runtime/main.c").read_text(encoding="utf-8")
         self.assertLess(source.index("bdsp_exe_defaults();"), source.index('getenv("BDSP_IMG")'))
