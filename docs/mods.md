@@ -114,7 +114,7 @@ Same staging again (`ips_patch stage` into `work/recomp/mods/<key>/exefs`). The 
 `vk_build.sh` builds the runtime (`BDSP_HAS_SUBSDK1`), the mod's icons and `bdsp_boot_vk_qt` inside that folder, so the game's own build stays untouched.
 The app is installed beside the game as `~/.local/share/strahlender-xnu/app-<name>-<id>/` with its own launcher
 `~/.local/bin/strahlender-xnu-<name>-<id>` and desktop entry `dev.local.xnubdsp.mod.<id>.desktop`. The launcher fixes `BDSP_MOD` and sets
-`BDSP_COMPILED_EXEFS`, so the runtime knows the code is compiled in. The mod stays in its mods folder and is read from there; the UI overlay for the files the mod
+`BDSP_COMPILED_EXEFS`, so the runtime knows the code is compiled in. The app folder also holds a `mod.txt` (the same three lines as on Windows) that the runtime reads when the executable is started without the launcher, so the mod's RomFS and ExeFS apply either way. When the build is done, the installer offers "Launch game" and "Show installation folder". The mod stays in its mods folder and is read from there; the UI overlay for the files the mod
 replaces (`romfs-patch-mods/<name>`) is installed with the app. A RomFS-only mod still uses the one game app and the launcher's `BDSP_MOD` default.
 
 Measured on Windows 11 (RTX 2080 Ti, 2026-11-02), Luminescent Platinum 2.2F BD, installer driver with the installer's arguments,

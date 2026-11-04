@@ -87,6 +87,55 @@ pub fn reveal(path: &Path) -> Result<(), String> {
     }
 }
 
+/// Start an installed game: the app bundle on macOS, the launcher script on Linux, `BDSP.exe` on Windows. The game keeps running when the
+/// installer closes. Variables the installer's own AppImage sets for its bundled libraries are not handed on.
+pub fn launch(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err("The installed app is no longer available.".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|error| error.to_string())?
+            .success()
+            .then_some(())
+            .ok_or_else(|| format!("Could not start {}.", path.display()))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut command = Command::new(path);
+        if let Some(folder) = path.parent() {
+            command.current_dir(folder);
+        }
+        if std::env::var_os("APPIMAGE").is_some() {
+            for name in [
+                "APPIMAGE",
+                "APPDIR",
+                "ARGV0",
+                "OWD",
+                "LD_LIBRARY_PATH",
+                "QT_PLUGIN_PATH",
+                "QT_QPA_PLATFORM_PLUGIN_PATH",
+            ] {
+                command.env_remove(name);
+            }
+        }
+        crate::process::Hidden::hidden(&mut command);
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Could not start {}: {error}", path.display()))
+    }
+}
+
 /// Open a folder in the host file manager.
 pub fn folder(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]

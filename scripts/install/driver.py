@@ -1116,6 +1116,7 @@ def install_artifact(args, artifact, mod_build=None):
     root = Path(args.root)
     work = Path(args.work)
     override = getattr(args, "install_root", None)
+    launcher = None
     if args.target == "ios":
         if getattr(args, "ios_delivery", "device") == "ipa":
             destination = _export_ios(args, artifact)
@@ -1240,6 +1241,8 @@ def install_artifact(args, artifact, mod_build=None):
     emit("step", id="install", status="complete")
     if args.target != "ios" or getattr(args, "ios_delivery", "device") != "ipa":
         emit("artifact", kind="installed_application", path=str(destination))
+    if launcher:
+        emit("artifact", kind="launcher", path=str(launcher))   # Linux: the script that sets the paths and the mod
     return destination
 
 

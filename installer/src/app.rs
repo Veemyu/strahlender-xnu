@@ -113,6 +113,8 @@ impl FolderSetting {
 #[derive(Debug, Clone)]
 pub enum Message {
     ShowInstalledApp,
+    LaunchInstalledApp,
+    InstalledAppLaunched(Result<(), String>),
     ShowGameLibrary,
     IosDelivery(crate::backend::IosDelivery),
     OpenIosDevices,
@@ -297,6 +299,7 @@ pub struct Installer {
     backend_run_id: u64,
     backend_failure_detail: Option<String>,
     installed_app: Option<PathBuf>,
+    launcher: Option<PathBuf>,
     exported_ipa: Option<PathBuf>,
     exported_ipa_size: Option<u64>,
     game_library: Option<PathBuf>,
@@ -619,6 +622,7 @@ impl Installer {
             backend_run_id: 0,
             backend_failure_detail: None,
             installed_app: None,
+            launcher: None,
             exported_ipa: None,
             exported_ipa_size: None,
             game_library: None,
@@ -998,6 +1002,19 @@ impl Installer {
                     );
                 }
             }
+            Message::LaunchInstalledApp if self.backend_status == BackendStatus::Passed => {
+                if let Some(path) = self.launcher.clone().or_else(|| self.installed_app.clone()) {
+                    return Task::perform(
+                        blocking(move || crate::open::launch(&path)),
+                        Message::InstalledAppLaunched,
+                    );
+                }
+            }
+            Message::InstalledAppLaunched(Err(error)) => {
+                self.record("ERROR", &error);
+                self.notice = Some(self.language.t(L::LaunchFailed).into());
+            }
+            Message::InstalledAppLaunched(Ok(())) => {}
             Message::InstallationRevealed(Err(error)) => {
                 self.record("ERROR", &error);
                 self.notice = Some(self.language.t(L::ShowInstallationFailed).into());
@@ -1933,6 +1950,7 @@ impl Installer {
                     self.notice = None;
                     self.build_progress = crate::progress::BuildProgress::default();
                     self.installed_app = None;
+                    self.launcher = None;
                     self.exported_ipa = None;
                     self.exported_ipa_size = None;
                     self.game_library = None;
@@ -2045,6 +2063,9 @@ impl Installer {
                     }
                     if kind == "game_library" {
                         self.game_library = Some(path.clone());
+                    }
+                    if kind == "launcher" && self.target != InstallTarget::Ios {
+                        self.launcher = Some(path.clone());
                     }
                     if kind == "installed_application" && self.target != InstallTarget::Ios {
                         let folder = path
@@ -2654,6 +2675,7 @@ impl Installer {
         self.copied_log_line = None;
         self.backend_status = BackendStatus::Idle;
         self.installed_app = None;
+        self.launcher = None;
         self.exported_ipa = None;
         self.exported_ipa_size = None;
         self.game_library = None;
@@ -3678,6 +3700,15 @@ mod tests {
         ));
         assert_eq!(app.installed_app, Some(destination));
         assert!(app.log.last().unwrap().contains("gui-installed-apps"));
+        let launcher = PathBuf::from("isolated/bin/strahlender-xnu-example-0123456789");
+        let _ = app.update(Message::BackendEvent(
+            app.backend_run_id,
+            crate::backend::Event::Artifact {
+                kind: "launcher".into(),
+                path: launcher.clone(),
+            },
+        ));
+        assert_eq!(app.launcher, Some(launcher));
     }
 
     #[test]

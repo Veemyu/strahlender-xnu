@@ -792,10 +792,14 @@ class InstallerDriverTests(unittest.TestCase):
             args = SimpleNamespace(root=root, work=work, target="linux", install_root=install_root,
                                    mod_root=library / "Example", mod_name="Example")
             vanilla = SimpleNamespace(root=root, work=work, target="linux", install_root=install_root)
+            events = io.StringIO()
             with patch.dict(os.environ, {"BDSP_MODS_DIR": str(library), "BDSP_MOD": "none"}), \
-                 contextlib.redirect_stdout(io.StringIO()):
+                 contextlib.redirect_stdout(events):
                 game = driver.install_artifact(vanilla, game_artifact)
                 installed = driver.install_artifact(args, artifact, mod_build=prepared)
+            launchers = [json.loads(line)["path"] for line in events.getvalue().splitlines() if '"launcher"' in line]
+            self.assertEqual(launchers, [str(install_root / "bin/strahlender-xnu"),
+                                         str(install_root / "bin/strahlender-xnu-example-0123456789")])
             data = install_root / "share/strahlender-xnu"
             self.assertEqual(game, data / "app")
             self.assertEqual(installed, data / "app-example-0123456789")

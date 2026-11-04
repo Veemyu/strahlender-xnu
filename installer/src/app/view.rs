@@ -1777,15 +1777,22 @@ impl Installer {
                                 .into_owned()
                         )
                         .size(15),
-                        self.text_action(
-                            self.language
-                                .t(if self.host == crate::platform::Platform::Mac {
-                                    L::ShowInFinder
-                                } else {
-                                    L::ShowInFolder
-                                }),
-                            Message::ShowInstalledApp
-                        ),
+                        row![
+                            self.text_action(
+                                self.language.t(L::LaunchApp),
+                                Message::LaunchInstalledApp
+                            ),
+                            self.text_action(
+                                self.language
+                                    .t(if self.host == crate::platform::Platform::Mac {
+                                        L::ShowInFinder
+                                    } else {
+                                        L::ShowInFolder
+                                    }),
+                                Message::ShowInstalledApp
+                            ),
+                        ]
+                        .spacing(16),
                     ]
                     .spacing(8)
                     .into()
