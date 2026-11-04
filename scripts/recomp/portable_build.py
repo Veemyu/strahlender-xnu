@@ -271,6 +271,9 @@ def images(generator, exefs, output, hle_list, commands):
 
 
 def optimization(source, threshold, hot):
+    forced = os.environ.get("BDSP_COMPILE_OPT", "")   # CI timing runs only: every chunk at this level
+    if forced in ("-O0", "-O1", "-O2"):
+        return forced
     text = Path(source).read_text(encoding="utf-8")
     functions = re.findall(r"^void (f_[A-Za-z0-9_]+)\([^;\n]*\) \{$", text, re.M)
     if hot.intersection(functions):

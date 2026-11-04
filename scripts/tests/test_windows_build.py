@@ -64,6 +64,19 @@ def setUpModule():
 
 
 class WindowsBuildTests(unittest.TestCase):
+    def test_compile_level_switch_is_for_timing_runs_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "chunk.c"
+            source.write_text("void f_a(int x) {\n}\nvoid f_b(int x) {\n}\n", encoding="utf-8")
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("BDSP_COMPILE_OPT", None)
+                self.assertEqual(build.optimization(source, 300000, set()), "-O1")
+                self.assertEqual(build.optimization(source, 300000, {"f_a"}), "-O2")
+            with patch.dict(os.environ, {"BDSP_COMPILE_OPT": "-O0"}):
+                self.assertEqual(build.optimization(source, 300000, {"f_a"}), "-O0")
+            with patch.dict(os.environ, {"BDSP_COMPILE_OPT": "-Ofast"}):
+                self.assertEqual(build.optimization(source, 300000, set()), "-O1")
+
     def test_qt_missing_sdk_stops_before_compiler_or_overlay_work(self):
         selected = windows.profile("x86_64", "x86_64")
         with tempfile.TemporaryDirectory() as temporary, \

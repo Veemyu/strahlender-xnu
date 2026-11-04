@@ -246,6 +246,23 @@ class BuildReportTests(unittest.TestCase):
             self.assertEqual((Path(root) / "work").resolve(), (Path(base) / "work").resolve())
             full_build.link_work(args)
 
+    def test_stage_seconds_and_compile_profile_carry_no_names(self):
+        events = [json.dumps({"event": "step", "id": "clang", "status": "complete", "elapsed_seconds": 1234.6}),
+                  json.dumps({"event": "result", "ok": True, "code": 0})]
+        summary, _ = full_build.summarize(events, [])
+        self.assertEqual(summary["stage_seconds"], {"clang": 1235})
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / "logs").mkdir()
+            (Path(root) / "logs/build-c.times").write_text(
+                "main_0001_0.o 10.5 10.0 0.5 2048000 700000 -O1\nmain_0002_0.o 3.0 2.9 0.1 1024000 90000 -O0\n", encoding="utf-8")
+            profile = full_build.compile_profile(root)
+        self.assertEqual(profile["chunks"], 2)
+        self.assertEqual(profile["cpu_wall_seconds"], 14)
+        self.assertEqual(profile["by_opt"], {"-O0": 3, "-O1": 10})
+        self.assertEqual(profile["slowest"][0], {"seconds": 10.5, "mib_rss": 2000, "opt": "-O1"})
+        self.assertNotIn("main_", json.dumps(profile))
+        self.assertIsNone(full_build.compile_profile(tempfile.gettempdir() + "/none-here"))
+
     def test_summary_redacts_paths_and_hex(self):
         lines = [json.dumps({"event": "step", "id": "extract", "status": "complete"}),
                  "not json",

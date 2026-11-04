@@ -87,8 +87,30 @@ def build_environment(args, environ=os.environ):
     return env
 
 
+def compile_profile(root):
+    """Where the Linux compile time went: totals and the slowest chunks, by wall seconds and opt level only (no names)."""
+    times = Path(root) / "logs/build-c.times"
+    if not times.is_file():
+        return None
+    rows = []
+    for line in times.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) >= 7:
+            try:
+                rows.append((float(parts[1]), float(parts[2]), int(parts[4]), parts[-1]))
+            except ValueError:
+                continue
+    if not rows:
+        return None
+    rows.sort(reverse=True)
+    wall = sum(row[0] for row in rows)
+    return {"chunks": len(rows), "cpu_wall_seconds": round(wall), "by_opt": {
+                opt: round(sum(r[0] for r in rows if r[3] == opt)) for opt in sorted({r[3] for r in rows})},
+            "slowest": [{"seconds": round(r[0], 1), "mib_rss": round(r[2] / 1024), "opt": r[3]} for r in rows[:5]]}
+
+
 def summarize(lines, known):
-    steps, errors, missing, result, installed = {}, [], [], None, None
+    steps, errors, missing, result, installed, seconds = {}, [], [], None, None, {}
     for line in lines:
         try:
             event = json.loads(line)
@@ -97,6 +119,8 @@ def summarize(lines, known):
         kind = event.get("event")
         if kind == "step" and "id" in event:
             steps[str(event["id"])] = str(event.get("status", ""))
+            if isinstance(event.get("elapsed_seconds"), (int, float)):
+                seconds[str(event["id"])] = round(event["elapsed_seconds"])
         elif kind == "error":
             errors.append({"code": event.get("code"), "message": redact(str(event.get("message", "")), known)})
         elif kind == "log" and str(event.get("message", "")).startswith("MISSING"):
@@ -106,6 +130,8 @@ def summarize(lines, known):
         elif kind == "artifact" and event.get("kind") == "installed_application":
             installed = event.get("path")
     summary = {"steps": steps, "errors": errors[-5:], "result": result}
+    if seconds:
+        summary["stage_seconds"] = seconds
     if missing:
         summary["missing"] = missing[:20]
     return summary, installed
@@ -148,6 +174,9 @@ def main(argv=None):
     summary, installed = summarize(lines, known)
     summary.update({"target": args.target, "mod": args.mod, "exit": code, "seconds": int(time.monotonic() - started)})
     ok = code == 0 and bool(summary["result"] and summary["result"]["ok"])
+    profile = compile_profile(args.root)
+    if profile:
+        summary["compile_profile"] = profile
     print(json.dumps(summary, indent=2))
     if not ok:
         tail = [redact(line, known) for line in lines if '"event": "log"' in line][-15:]

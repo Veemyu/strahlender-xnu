@@ -2,6 +2,7 @@
 # Runs locally on Linux: compiles the generated C (work/recomp/gen4-<modus>) with JOBS parallel clang calls and measures
 # wall clock/CPU/RAM per chunk, total peak RAM (sampler on /proc/meminfo) and links the target library.
 # As scripts/recomp/build_all.sh on the Mac: -O1; single-function files > 1 MB with -O0.
+# BDSP_COMPILE_OPT=-O0 compiles every chunk at that level (CI timing runs; the default keeps -O1 and the -O0 outliers).
 # Usage: [TAG=name] [THRESH_O0=bytes] compile.sh [c] [--force]   --force: discard objects (full rebuild); otherwise only newer/missing sources
 #   TAG stores objects/numbers in obj4-c-<TAG>/ and build-c-<TAG>.* (comparison runs); THRESH_O0 default 1000000
 # Output: work/recomp/obj4-<modus>/*.o, logs/build-<modus>.times (per chunk: name wall user sys maxrss_KB c_bytes opt), logs/build-<modus>.stats
@@ -20,7 +21,7 @@ mkdir -p "$OBJ" logs
 FLAGS=$(cflags_x86)
 export FLAGS OBJ TIMES
 # Headers and flags are not dependencies of the individual chunks: change → full rebuild
-STAMP=$( (cat scripts/recomp/rt/cpu.h $LAS/runtime/cpu.h $LAS/runtime/simd.h $LAS/runtime/simd_fp.h 2>/dev/null; echo "$FLAGS $THRESH_O0"; bdsp_cpu_signature clang) | sha256sum | cut -c1-16)
+STAMP=$( (cat scripts/recomp/rt/cpu.h $LAS/runtime/cpu.h $LAS/runtime/simd.h $LAS/runtime/simd_fp.h 2>/dev/null; echo "$FLAGS $THRESH_O0 ${BDSP_COMPILE_OPT:-}"; bdsp_cpu_signature clang) | sha256sum | cut -c1-16)
 if [ -f "$OBJ/.stamp" ] && [ "$(cat "$OBJ/.stamp")" != "$STAMP" ]; then echo "Header or flags changed: full rebuild"; rm -f "$OBJ"/*.o "$OBJ"/*.so; fi
 echo "$STAMP" > "$OBJ/.stamp"
 
@@ -58,8 +59,8 @@ t0=$(date +%s.%N)
 rc=0
 # Share the bounded queue across optimization levels; preserve paths as NUL arguments.
 {
-  while read -r size src; do printf '%s\0%s\0%s\0' -O0 "$size" "$src"; done < "$OBJ/list_O0.txt"
-  while read -r size src; do printf '%s\0%s\0%s\0' -O1 "$size" "$src"; done < "$OBJ/list_O1.txt"
+  while read -r size src; do printf '%s\0%s\0%s\0' "${BDSP_COMPILE_OPT:--O0}" "$size" "$src"; done < "$OBJ/list_O0.txt"
+  while read -r size src; do printf '%s\0%s\0%s\0' "${BDSP_COMPILE_OPT:--O1}" "$size" "$src"; done < "$OBJ/list_O1.txt"
 } | xargs -0 -r -P "$JOBS" -n 3 bash -c 'one "$1" "$2" "$3"' _ || rc=1
 t1=$(date +%s.%N)
 [ "$rc" = 0 ] || die "At least one file was not compiled (see above)."
