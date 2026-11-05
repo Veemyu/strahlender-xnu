@@ -235,6 +235,7 @@ void guest_call(Cpu *c, uint64_t addr);
 GuestFn dispatch_lookup(uint64_t addr);
 void rt_fatal(const char *fmt, ...) __attribute__((noreturn, format(printf, 1, 2)));
 void rt_fatal_trace(void);
+#include "exit_report.h"
 void crash_handler_install(void);
 void hle_alloc_reset(void);
 void *hle_alloc(uint64_t size);   // Gastspeicher des Hosts, nie freigegeben; liefert Hostzeiger

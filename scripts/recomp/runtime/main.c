@@ -49,6 +49,7 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
 #endif
     if (!reserved) {
         fprintf(stderr, "FATAL: Windows guest memory reservation failed (%lu).\n", GetLastError());
+        bdsp_exit_report("the guest memory window could not be reserved (close other programs and retry)");
         _exit(1);
     }
 }
@@ -75,6 +76,7 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
     mach_vm_address_t a = GUEST_LO;
     if (mach_vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) == KERN_SUCCESS) return;
     fprintf(stderr, "FATAL: guest window %llx-%llx is not free\n", (unsigned long long)GUEST_LO, (unsigned long long)GUEST_HI);
+    bdsp_exit_report("the guest memory window is not free");
     _exit(1);
 }
 #endif
@@ -265,6 +267,7 @@ static int g_stop_at_gate;
 static const char *volatile g_fatal_why;
 static volatile int g_fatal_code;
 void bdsp_fatal_report(const char *why, int code) {
+    bdsp_exit_report(why);   // no-op when rt_fatal or a crash handler already named the reason
     g_fatal_code = code;
     g_fatal_why = why;
     if (g_main_thread_id && pthread_equal(pthread_self(), g_main_thread_id)) { report(why); _exit(code); }  // before the guest threads start

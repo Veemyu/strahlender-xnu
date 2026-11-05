@@ -1,4 +1,5 @@
 #include "exe_paths.h"
+#include "exit_report.h"
 
 #ifndef _WIN32
 #include <limits.h>
@@ -49,7 +50,10 @@ static int apply_mod_launch(const char *dir) {
 
 void bdsp_exe_dir_defaults(const char *dir) {
     if (!dir || !*dir) return;
-    if (apply_mod_launch(dir)) exit(1);
+    if (apply_mod_launch(dir)) {
+        bdsp_exit_report("the mod launch file is invalid, rebuild this mod app with the installer");
+        exit(1);
+    }
     default_path("BDSP_IMG", dir, "img", 1);
     default_path("BDSP_ROMFS", dir, "romfs", 1);
     default_path("BDSP_NPDM", dir, "main.npdm", 0);
