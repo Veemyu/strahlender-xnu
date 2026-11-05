@@ -35,6 +35,9 @@ bash scripts/recomp/runtime/test/run_window_title_test.sh
 step "executable-folder defaults test (C, issue 26)"
 bash scripts/recomp/runtime/test/run_exe_paths_test.sh
 
+step "nn::Result names test (C, issue 57)"
+bash scripts/recomp/runtime/test/run_result_names_test.sh
+
 if [ "$(uname)" = Darwin ] && xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
   step "runtime compile check: iPhone/iPad (model A-low, the iPad build)"
   BDSP_SYNTAX_ONLY=1 bash scripts/recomp/ios/build_rt32.sh ios

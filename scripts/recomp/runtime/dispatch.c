@@ -424,11 +424,40 @@ void crash_handler_install(void) {
         rt_fatal("Windows crash handler initialization failed (%lu)\n", GetLastError());
 }
 #else
-static void crash_handler(int sig, siginfo_t *si, void *ctx) {
+// Where the faulting host instruction was and which register held the bad base (the guest registers of the report are only the last
+// synchronised copy). A fault below 4 GiB inside the compact layout is checked for a guest pointer whose high word was lost.
+static void crash_fault_report(int sig, siginfo_t *si, void *ctx) {
+    uint64_t addr = (uint64_t)(uintptr_t)si->si_addr;
+    (void)sig;
+#ifdef BDSP_COMPACT_BASE
+    if ((sig == SIGSEGV || sig == SIGBUS) && addr < (1ull << 32)) {
+        uint64_t full = ((uint64_t)BDSP_COMPACT_BASE & ~0xFFFFFFFFull) | addr;
+        if (full >= GUEST_LO && full < GUEST_HI)
+            LOG("[fault] %llx is below 4 GiB; %llx in the guest window would be valid: a 64-bit guest pointer was cut to 32 bits\n",
+                (unsigned long long)addr, (unsigned long long)full);
+    }
+#endif
+#if defined(__APPLE__) && defined(__aarch64__)
+    const ucontext_t *uc = ctx;
+    if (!uc || !uc->uc_mcontext) return;
+    const _STRUCT_ARM_THREAD_STATE64 *ss = &uc->uc_mcontext->__ss;
+    LOG("[fault] host pc %llx lr %llx sp %llx, fault address %llx\n", (unsigned long long)__darwin_arm_thread_state64_get_pc(*ss),
+        (unsigned long long)__darwin_arm_thread_state64_get_lr(*ss), (unsigned long long)__darwin_arm_thread_state64_get_sp(*ss),
+        (unsigned long long)addr);
+    for (int i = 0; i < 29; i++) {
+        uint64_t v = ss->__x[i];
+        LOG("[fault] x%d %016llx%s\n", i, (unsigned long long)v, (v <= addr && addr - v < 0x1000) ? "  <- base of the faulting access" : "");
+    }
+#else
     (void)ctx;
+#endif
+}
+
+static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     static volatile int once;
     if (sig != SIGTRAP && __atomic_exchange_n(&once, 1, __ATOMIC_SEQ_CST)) { for (;;) pause(); }
     LOG("\n*** Signal %d at host address %p\n", sig, si->si_addr);
+    if (sig == SIGSEGV || sig == SIGBUS) crash_fault_report(sig, si, ctx);
     void *bt[48];
     int n = backtrace(bt, 48);
     char **syms = backtrace_symbols(bt, n);

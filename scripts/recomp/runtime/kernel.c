@@ -8,6 +8,9 @@
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
+#include <fcntl.h>
+#include <errno.h>
 #endif
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -18,6 +21,7 @@
 #include <unistd.h>
 
 #include "bdsp.h"
+#include "result_names.h"
 #include "../c_exact/fp_env.h"
 
 #define PSEUDO_THREAD 0xFFFF8000u
@@ -224,11 +228,34 @@ static void eh_abort_report(const uint64_t *x) {
     kernel_log_memory_map(MAIN_BASE, SUBSDK0_BASE + 0x1000000ull);
 }
 
+// What the guest's allocators and the host had at the abort: a failed guest allocation shows as MapPhysicalMemory near the reported
+// application memory, a descriptor leak as an open-file count near the limit.
+static void break_memory_state(void) {
+    LOG("[kernel] memory at the abort: application memory reported %llu MiB, MapPhysicalMemory %llu MiB (peak %llu MiB), SetHeapSize %llu MiB\n",
+        (unsigned long long)(app_memory() >> 20), (unsigned long long)(phys_mapped >> 20), (unsigned long long)(phys_peak >> 20),
+        (unsigned long long)(heap_size >> 20));
+#ifndef _WIN32
+    task_vm_info_data_t vm;
+    mach_msg_type_number_t cnt = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vm, &cnt) == KERN_SUCCESS)
+        LOG("[kernel] host footprint %llu MiB, resident %llu MiB\n", (unsigned long long)(vm.phys_footprint >> 20), (unsigned long long)(vm.internal >> 20));
+    struct rlimit rl = {0, 0};
+    getrlimit(RLIMIT_NOFILE, &rl);
+    int open_fds = 0, scan = rl.rlim_cur > 8192 ? 8192 : (int)rl.rlim_cur;
+    for (int fd = 0; fd < scan; fd++)
+        if (fcntl(fd, F_GETFD) != -1) open_fds++;
+    LOG("[kernel] host descriptors open %d, limit %llu\n", open_fds, (unsigned long long)rl.rlim_cur);
+#endif
+}
+
 // An unhandled nn::Result aborts through svcBreak(0, &result, 4). Names the code and the guest call chain.
 static void break_report(const uint64_t *x) {
     if (x[2] == 4 && x[1] >= STACK_BASE && x[1] + 4 <= STACK_BASE + STACK_SIZE) {
         uint32_t v = *(const uint32_t *)G2H(x[1]);
-        LOG("[kernel] svcBreak carries nn::Result 0x%x (module %u, description %u)\n", v, v & 0x1ff, v >> 9);
+        const char *name = nn_result_name(v), *hint = nn_result_hint(v);
+        LOG("[kernel] svcBreak carries nn::Result 0x%x (module %u, description %u%s%s)\n", v, v & 0x1ff, v >> 9, name ? ", " : "", name ? name : "");
+        if (hint) LOG("[kernel] %s\n", hint);
+        break_memory_state();
     }
     uint64_t fp = x[29], off = 0;
     for (int n = 0; n < 8 && fp >= STACK_BASE && fp + 16 <= STACK_BASE + STACK_SIZE; n++) {
@@ -320,9 +347,25 @@ static void thread_start(KThread *t, uint64_t host_stack) {
     if (rc) rt_fatal("pthread_create: %d (Threads %d)\n", rc, g_thread_count);
 }
 
+// iOS starts an app with 256 descriptors; the RomFS opens one per read and the game, Metal and the movie decoder hold more.
+static void raise_descriptor_limit(void) {
+#ifndef _WIN32
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_NOFILE, &rl) != 0) return;
+    rlim_t want = 4096;
+    if (rl.rlim_max != RLIM_INFINITY && rl.rlim_max < want) want = rl.rlim_max;
+    if (rl.rlim_cur >= want) return;
+    rlim_t before = rl.rlim_cur;
+    rl.rlim_cur = want;
+    if (setrlimit(RLIMIT_NOFILE, &rl) == 0) LOG("[kernel] open-file limit raised from %llu to %llu\n", (unsigned long long)before, (unsigned long long)want);
+    else LOG("[kernel] open-file limit stays at %llu (%s)\n", (unsigned long long)before, strerror(errno));
+#endif
+}
+
 void kernel_init(void) {
     const char *e = getenv("BDSP_HOST_STACK_MB");
     if (e && atoi(e) > 0) g_host_stack = (uint64_t)atoi(e) << 20;
+    raise_descriptor_limit();
 }
 
 KThread *kernel_create_main_thread(uint64_t entry, uint64_t stack_size, int prio, uint64_t host_stack) {
