@@ -15,7 +15,7 @@ bool plat_ensure_directory(const char *path);
 bool plat_write_file_atomic(const char *path, const void *data, size_t size);
 // Monotonic clock in nanoseconds (does not count time spent asleep); the base of rt_now_ns().
 uint64_t plat_now_ns(void);
-// Sleeps until the given plat_now_ns() value.
+// Sleeps until the given plat_now_ns() value, rechecking early or interrupted wakes.
 void plat_sleep_until_ns(uint64_t t);
 
 // Guest memory window. Windows reserves it and commits pages on demand; elsewhere the OS maps pages on first touch,

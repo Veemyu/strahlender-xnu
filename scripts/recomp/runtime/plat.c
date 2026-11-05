@@ -100,6 +100,26 @@ static BOOL CALLBACK clock_init(PINIT_ONCE once, PVOID parameter, PVOID *context
     (void)once; (void)parameter; (void)context;
     return QueryPerformanceFrequency(&frequency) && frequency.QuadPart > 0;
 }
+
+static INIT_ONCE sleep_once = INIT_ONCE_STATIC_INIT;
+static DWORD sleep_slot = FLS_OUT_OF_INDEXES;
+static VOID CALLBACK sleep_timer_close(PVOID timer) { if (timer) CloseHandle(timer); }
+static BOOL CALLBACK sleep_init(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    (void)once; (void)parameter; (void)context;
+    sleep_slot = FlsAlloc(sleep_timer_close);
+    return sleep_slot != FLS_OUT_OF_INDEXES;
+}
+static HANDLE sleep_timer(void) {
+    if (!InitOnceExecuteOnce(&sleep_once, sleep_init, NULL, NULL)) return NULL;
+    HANDLE timer = FlsGetValue(sleep_slot);
+    if (!timer) {
+        timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                                       TIMER_MODIFY_STATE | SYNCHRONIZE);
+        if (!timer) timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_MODIFY_STATE | SYNCHRONIZE);
+        if (timer && !FlsSetValue(sleep_slot, timer)) { CloseHandle(timer); timer = NULL; }
+    }
+    return timer;
+}
 #endif
 
 uint64_t plat_now_ns(void) {
@@ -123,10 +143,24 @@ void plat_sleep_until_ns(uint64_t t) {
     uint64_t now = plat_now_ns();
     if (t <= now) return;
 #ifdef _WIN32
-    Sleep((DWORD)((t - now + 999999) / 1000000));  // 1 ms granularity after timeBeginPeriod(1) in the entry point
+    HANDLE timer = sleep_timer();
+    do {
+        uint64_t left = t - now;
+        LARGE_INTEGER due;
+        due.QuadPart = -(LONGLONG)(left / 100 + (left % 100 != 0));
+        if (!timer || !SetWaitableTimerEx(timer, &due, 0, NULL, NULL, NULL, 0) ||
+            WaitForSingleObject(timer, INFINITE) != WAIT_OBJECT_0) {
+            uint64_t ms = left / 1000000 + (left % 1000000 != 0);
+            Sleep((DWORD)(ms < MAXDWORD ? ms : MAXDWORD - 1));
+        }
+        now = plat_now_ns();  // a timer wake is not proof that the monotonic deadline has arrived
+    } while (now < t);
 #else
-    struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)};
-    nanosleep(&ts, NULL);
+    do {
+        struct timespec ts = {(time_t)((t - now) / 1000000000ull), (long)((t - now) % 1000000000ull)};
+        nanosleep(&ts, NULL);
+        now = plat_now_ns();
+    } while (now < t);
 #endif
 }
 

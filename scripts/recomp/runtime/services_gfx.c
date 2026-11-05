@@ -34,9 +34,7 @@ static void *vsync_thread(void *arg) {
         next += period;
         uint64_t now = plat_now_ns();
         if (next > now) {
-            uint64_t d = next - now;
-            struct timespec ts = {(time_t)(d / 1000000000ull), (long)(d % 1000000000ull)};
-            nanosleep(&ts, NULL);
+            plat_sleep_until_ns(next);
         } else if (now > next + 4 * period) {
             next = now;   // restart after a standstill (e.g. loading), no catching up
         }

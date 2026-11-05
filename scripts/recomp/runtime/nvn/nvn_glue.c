@@ -504,8 +504,7 @@ static void frame_pace(void) {
     if (next_ns == 0 || now > next_ns + 4 * period_ns) next_ns = now;  // restart after a stall (loading)
     next_ns += period_ns;
     if (now < next_ns) {
-        struct timespec ts = {(time_t)((next_ns - now) / 1000000000ull), (long)((next_ns - now) % 1000000000ull)};
-        nanosleep(&ts, NULL);
+        plat_sleep_until_ns(next_ns);
     }
 }
 void input_frame(uint64_t f) { (void)f; frame_pace(); }

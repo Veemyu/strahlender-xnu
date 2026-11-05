@@ -754,6 +754,35 @@ int main(void) { Cpu c = {0}; return test(&c) != 7 || EH_TOP(&c) != 0; }
         result = subprocess.run([str(executable), str(images)], capture_output=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
 
+    @unittest.skipUnless(os.environ.get("BDSP_WINDOWS_SDL_ROOT"), "Explicit verified SDL bundle required")
+    def test_frame_pacing_waits_for_fractional_deadlines(self):
+        runtime = ROOT / "scripts/recomp/runtime"
+        sdl = Path(os.environ["BDSP_WINDOWS_SDL_ROOT"])
+        includes = [runtime, runtime / "nvn/vulkan/src", runtime / "nvn/src", runtime / "nvn/src/nvn",
+                    ROOT / "scripts/recomp/rt", ROOT / "scripts/recomp/upstream/runtime", sdl / "include"]
+        objects = []
+        for index, source in enumerate(("test/frame_pacing_win_test.c", "test/nvn_glue_win_test.c",
+                                        "nvn/nvn_glue.c", "nvn/vulkan/vk_glue.c", "input.c",
+                                        "win32_files.c", "win32_host.c", "plat.c")):
+            obj = self.root / f"pace-{index}.o"
+            overrides = (["-Dplat_now_ns=frame_test_now",
+                          "-Dplat_sleep_until_ns=frame_test_sleep_until"] if source == "nvn/nvn_glue.c" else [])
+            result = subprocess.run([
+                self.compiler, "-std=gnu17", "-O2", "-DQT_INPUT_PROBE", "-D_WIN32_WINNT=0x0A00",
+                "-Dg_debug_frame=bdsp_glue_debug_frame", "-ffunction-sections", "-fdata-sections", *overrides,
+                *(arg for path in includes for arg in ("-I", str(path))),
+                "-c", runtime / source, "-o", obj], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            objects.append(obj)
+        executable = self.root / "frame_pacing.exe"
+        result = subprocess.run([
+            self.compiler, *objects, sdl / "lib/libSDL3.dll.a", "-lpsapi", "-lbcrypt", "-lwinmm",
+            "-Wl,--wrap=nanosleep64,--gc-sections,-Bstatic,-lwinpthread,-Bdynamic", "-o", executable],
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.run_sdl_probe(executable, sdl)
+        self.assertIn("frame pacing deadlines ok", result.stdout)
+
     @unittest.skipUnless(os.environ.get("BDSP_WINDOWS_ARM64_CC"), "Explicit ARM64 cross compiler required")
     def test_arm64_generated_c_compile_is_separate_from_native_execution(self):
         source = synthetic_nso(self.root / "synthetic.nso")
