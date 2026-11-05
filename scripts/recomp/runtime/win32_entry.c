@@ -1,6 +1,5 @@
 #ifdef _WIN32
 #include "plat.h"
-#include "exit_report.h"
 #include "win32_files.h"
 #include <errno.h>
 #include <shlobj.h>
@@ -52,7 +51,7 @@ static int apply_mod_launch(const char *package) {
         valid = name[0] && dir[0] && (!strcmp(kind, "exefs") || !strcmp(kind, "romfs"));
     }
     if (!valid) {
-        bdsp_exit_fatalf("%s is invalid; rebuild this mod app with the installer", path);
+        fprintf(stderr, "FATAL: %s is invalid; rebuild this mod app with the installer.\n", path);
         free(path);
         errno = EINVAL;
         return -1;
@@ -86,7 +85,7 @@ static int prepare_paths(void) {
         PWSTR roaming = NULL;
         HRESULT status = SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_CREATE, NULL, &roaming);
         if (FAILED(status)) {
-            bdsp_exit_fatalf("Windows roaming save folder lookup failed (0x%08lx)", (unsigned long)status);
+            fprintf(stderr, "FATAL: Windows roaming save folder lookup failed (0x%08lx).\n", (unsigned long)status);
             return -1;
         }
         char *base = bdsp_win32_utf8(roaming);
@@ -109,7 +108,7 @@ static int prepare_paths(void) {
         PWSTR local = NULL;
         HRESULT status = SHGetKnownFolderPath(&FOLDERID_LocalAppData, KF_FLAG_CREATE, NULL, &local);
         if (FAILED(status)) {
-            bdsp_exit_fatalf("Windows user data folder lookup failed (0x%08lx)", (unsigned long)status);
+            fprintf(stderr, "FATAL: Windows user data folder lookup failed (0x%08lx).\n", (unsigned long)status);
             return -1;
         }
         char *root = bdsp_win32_utf8(local);
@@ -137,14 +136,14 @@ static int prepare_paths(void) {
 int wmain(int argc, wchar_t **wide_argv) {
     wchar_t *environment = GetEnvironmentStringsW();
     if (!environment) {
-        bdsp_exit_fatalf("Windows environment query failed (%lu)", GetLastError());
+        fprintf(stderr, "FATAL: Windows environment query failed (%lu).\n", GetLastError());
         return 1;
     }
     for (const wchar_t *item = environment; *item; item += wcslen(item) + 1) {
         if (_wcsnicmp(item, L"BDSP_", 5)) continue;
         char *assignment = bdsp_win32_utf8(item);
         if (!assignment) {
-            bdsp_exit_fatalf("Windows UTF-8 environment conversion failed (%d)", errno);
+            fprintf(stderr, "FATAL: Windows UTF-8 environment conversion failed (%d).\n", errno);
             FreeEnvironmentStringsW(environment); return 1;
         }
         char *equal = strchr(assignment, '=');
@@ -153,27 +152,27 @@ int wmain(int argc, wchar_t **wide_argv) {
         bool imported = plat_setenv(assignment, equal + 1, true);
         free(assignment);
         if (!imported) {
-            bdsp_exit_fatalf("Windows UTF-8 environment import failed (%d)", errno);
+            fprintf(stderr, "FATAL: Windows UTF-8 environment import failed (%d).\n", errno);
             FreeEnvironmentStringsW(environment); return 1;
         }
     }
     FreeEnvironmentStringsW(environment);
     char **argv = calloc((size_t)argc + 1, sizeof *argv);
-    if (!argv) { bdsp_exit_fatalf("Windows argument allocation failed"); return 1; }
+    if (!argv) { fprintf(stderr, "FATAL: Windows argument allocation failed.\n"); return 1; }
     int converted = 0, result = 1;
     for (; converted < argc; converted++) {
         argv[converted] = bdsp_win32_utf8(wide_argv[converted]);
         if (!argv[converted]) {
-            bdsp_exit_fatalf("Windows UTF-8 argument conversion failed (%d)", errno);
+            fprintf(stderr, "FATAL: Windows UTF-8 argument conversion failed (%d).\n", errno);
             goto done;
         }
     }
     if (prepare_paths()) {
-        bdsp_exit_fatalf("Windows runtime path preparation failed (%d)", errno);
+        fprintf(stderr, "FATAL: Windows runtime path preparation failed (%d).\n", errno);
         goto done;
     }
     if (!bdsp_win32_crash_open(getenv("BDSP_LOG_DIR"))) {
-        bdsp_exit_fatalf("Windows crash log could not be opened (%lu)", GetLastError());
+        fprintf(stderr, "FATAL: Windows crash log could not be opened (%lu).\n", GetLastError());
         goto done;
     }
     timeBeginPeriod(1);  // 1 ms Sleep/condition-variable timeouts instead of 15.6 ms

@@ -375,7 +375,6 @@ void rt_fatal(const char *fmt, ...) {
     char buf[1024];
     va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
     LOG("FATAL: %s", buf);
-    bdsp_exit_report(buf);
 #ifdef _WIN32
     if (!bdsp_win32_crash_write(buf, (DWORD)strlen(buf)))
         LOG("FATAL: runtime abort could not be recorded in the Windows crash log\n");
@@ -406,9 +405,6 @@ static LONG WINAPI crash_handler(EXCEPTION_POINTERS *exception) {
             static const char failed[] = "FATAL: Windows crash log write failed.\r\n";
             WriteFile(GetStdHandle(STD_ERROR_HANDLE), failed, sizeof failed - 1, &written, NULL);
         }
-        char reason[160];
-        snprintf(reason, sizeof reason, "unhandled Windows exception 0x%08lx at host PC 0x%llx", exception->ExceptionRecord->ExceptionCode, (unsigned long long)pc);
-        bdsp_exit_report(reason);
     }
     // Do not allocate, lock or dereference guest memory on a damaged host stack.
     return EXCEPTION_EXECUTE_HANDLER;
@@ -467,9 +463,6 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     char **syms = backtrace_symbols(bt, n);
     for (int i = 0; i < n; i++) LOG("  %s\n", syms ? syms[i] : "?");
     rt_fatal_trace();
-    char reason[96];
-    snprintf(reason, sizeof reason, "crash in guest code (signal %d at host address %p)", sig, si->si_addr);
-    bdsp_exit_report(reason);
     bdsp_fatal_report("Crash in guest code (signal)", 139);
     for (;;) pause();
 }

@@ -5,7 +5,6 @@
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <unistd.h>
-#include <sys/wait.h>
 
 #include "bdsp.h"
 
@@ -149,39 +148,11 @@ static void guest_test(Cpu *c) {
     test_done = fails ? 2 : 1;
 }
 
-// A forced rt_fatal must end with the one greppable "[exit]" line (exactly once), also when a second fatal follows.
-static void exit_line_test(void) {
-    setenv("BDSP_NO_EXIT_DIALOG", "1", 1);
-    int fd[2];
-    if (pipe(fd)) { printf("pipe failed\n"); fails++; return; }
-    pid_t pid = fork();
-    if (pid == 0) {
-        dup2(fd[1], 2); close(fd[0]); close(fd[1]);
-        if (fork() == 0) rt_fatal("forced test failure (%d)\n", 7);
-        _exit(0);
-    }
-    close(fd[1]);
-    char out[8192];
-    size_t n = 0;
-    ssize_t r;
-    while (n < sizeof out - 1 && (r = read(fd[0], out + n, sizeof out - 1 - n)) > 0) n += (size_t)r;
-    out[n] = 0;
-    close(fd[0]);
-    int st;
-    waitpid(pid, &st, 0);
-    const char *line = strstr(out, "[exit] game stopped at launch: forced test failure (7). Log: ");
-    CHECK(line != NULL);
-    CHECK(line && strstr(line, ". Send this file with your bug report."));
-    CHECK(line && !strstr(line + 1, "[exit] game stopped"));
-}
-
 int main(void) {
     mach_vm_address_t a = GUEST_LO;
     if (mach_vm_allocate(mach_task_self(), &a, GUEST_HI - GUEST_LO, VM_FLAGS_FIXED) != KERN_SUCCESS) { printf("guest window not free\n"); return 2; }
     kernel_init();
     dispatch_init();
-    exit_line_test();
-    if (fails) return 1;
     KThread *t = kernel_create_main_thread(FN_BASE + 64, 0x10000, 44, 0);
     kernel_run_main(t, 0, 0, 0, 0);
     for (int i = 0; i < 3000 && !test_done; i++) usleep(10000);  // at most 30 s

@@ -1,7 +1,6 @@
 // Paths, configuration and start of the app shell (see app.h, docs/recomp-macapp.md). Plain C, no AppKit.
 #include "app.h"
 #include "../mods.h"
-#include "../exit_report.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -81,7 +80,6 @@ static void redirect_log_if_gui(void) {
     rename(path, prev);
     FILE *f = freopen(path, "w", stdout);
     if (!f) return;
-    bdsp_exit_log_path(path);
     dup2(fileno(stdout), 2);
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
@@ -123,7 +121,6 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
             fclose(meta);
             if (!valid) {
                 bdsp_app_alert("BDSP: mod build", "This app has invalid mod metadata. Rebuild it with the installer.");
-                bdsp_exit_report_logged("this app has invalid mod metadata");
                 exit(2);
             }
             bundled_name[strcspn(bundled_name, "\r\n")] = 0;
@@ -131,7 +128,6 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
             bundled_root[strcspn(bundled_root, "\r\n")] = 0;
             if (!bundled_name[0] || bundled_dir[0] != '/' || bundled_root[0] != '/') {
                 bdsp_app_alert("BDSP: mod build", "This app has an invalid mod name or folder.");
-                bdsp_exit_report_logged("this app has an invalid mod name or folder");
                 exit(2);
             }
             snprintf(dir, sizeof dir, "%s", bundled_dir);
@@ -153,7 +149,6 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
                 char msg[2048];
                 snprintf(msg, sizeof msg, "There is no mod \"%s\" in %s (%d found).", want, dir, n);
                 bdsp_app_alert("BDSP: mod not found", msg);
-                bdsp_exit_report_logged("the selected mod was not found");
                 exit(2);
             }
         }
@@ -187,7 +182,6 @@ static void choose_mod(const char *mods_cfg, int argc, char **argv) {
         }
         if (mods_activate(&list[pick], g_app.save) != 0) {
             bdsp_app_alert("BDSP: mod", "The save folder of the mod could not be created.");
-            bdsp_exit_report_logged("the save folder of the mod could not be created");
             exit(2);
         }
         snprintf(g_app.save, sizeof g_app.save, "%s", mods_active_save());
@@ -349,7 +343,6 @@ void bdsp_app_init(int argc, char **argv) {
                  "The RomFS was not found:\n%s\n\nIt is provided from your own dump when building (scripts/build_all.sh --only recomp) "
                  "or set with the entry romfs = <folder> in %s.", g_app.romfs, g_app.config);
         bdsp_app_alert("BDSP: RomFS missing", msg);
-        bdsp_exit_report_logged("the RomFS folder was not found, see the message above");
         exit(2);
     }
     if (g_app.resources[0]) {
@@ -357,7 +350,6 @@ void bdsp_app_init(int argc, char **argv) {
         if (access(tmp, R_OK) != 0) {
             snprintf(msg, sizeof msg, "The module images are missing in the app:\n%s\n\nThe app was built incompletely (scripts/build_all.sh --only recomp --force).", tmp);
             bdsp_app_alert("BDSP: app incomplete", msg);
-            bdsp_exit_report_logged("the module images are missing in the app");
             exit(2);
         }
     }

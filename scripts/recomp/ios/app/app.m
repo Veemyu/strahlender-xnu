@@ -21,12 +21,6 @@
 #import "data_manager.h"
 #include <strings.h>
 #include "../../runtime/mods.h"
-#ifndef BDSP_STUB
-#include "../../runtime/exit_report.h"
-#else
-static void bdsp_exit_log_path(const char *path) { (void)path; }
-static void bdsp_exit_report_logged(const char *why) { (void)why; }
-#endif
 #include "../../runtime/pad_gc.h"
 #include "../../runtime/swkbd_ui.h"
 
@@ -895,7 +889,6 @@ __attribute__((constructor(100))) static void StartLogFile(void) {
     [fm removeItemAtPath:previous error:nil];
     [fm moveItemAtPath:path toPath:previous error:nil];
     logFile = open(path.fileSystemRepresentation, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    bdsp_exit_log_path(path.fileSystemRepresentation);
     int pipes[2];
     if (logFile < 0 || pipe(pipes)) return;
     int console = dup(STDERR_FILENO);
@@ -919,12 +912,7 @@ __attribute__((constructor(100))) static void StartLogFile(void) {
     fprintf(stderr, "[log] %s, iOS %s, %.1f GiB RAM, %zu MiB available to this app\n",
             NSBundle.mainBundle.bundleIdentifier.UTF8String, UIDevice.currentDevice.systemVersion.UTF8String,
             NSProcessInfo.processInfo.physicalMemory / 1073741824.0, os_proc_available_memory() >> 20);
-    if (bdsp_guest_window_error) {
-        fprintf(stderr, "FATAL: the guest window 0x800000000-0x900000000 could not be reserved (error %d)\n", bdsp_guest_window_error);
-        char why[96];   // the alert comes from the app shell (see below), so only the log line is written here
-        snprintf(why, sizeof why, "the guest window could not be reserved (error %d)", bdsp_guest_window_error);
-        bdsp_exit_report_logged(why);
-    }
+    if (bdsp_guest_window_error) fprintf(stderr, "FATAL: the guest window 0x800000000-0x900000000 could not be reserved (error %d)\n", bdsp_guest_window_error);
 }
 
 int main(int argc, char *argv[]) {
