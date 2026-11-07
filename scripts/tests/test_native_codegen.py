@@ -281,6 +281,60 @@ int main(void) {
             executed = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
             self.assertEqual(executed.returncode, 0, executed.stderr)
 
+    @unittest.skipUnless(shutil.which("clang") and platform.machine().lower() in ("arm64", "aarch64"),
+                         "native assembly execution needs Clang on AArch64")
+    def test_assembly_batch_with_flags_keeps_eight_guest_registers(self):
+        # One batch that reads NZCV (FCSEL) and maps eight guest registers: x16 carries the flags in and out of the batch, so the eighth
+        # register must not be given x16 as well. Before, the flags load replaced x8 here and the pre-indexed load read from NZCV + 0x1c
+        # (BDSP battle effects faulting at 0x2000001c with only C set).
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            folder = Path(temporary)
+            source = synthetic_nso(folder / "flags.nso")
+            raw = bytearray(source.read_bytes())
+            words = [0x1e254d09,   # fcsel s9, s8, s5, mi
+                     0x1e270025,   # fmov s5, w1
+                     0x1e270046,   # fmov s6, w2
+                     0x1e270067,   # fmov s7, w3
+                     0x1e270091,   # fmov s17, w4
+                     0xbc6668a4,   # ldr s4, [x5, x6]
+                     0x1e2700f2,   # fmov s18, w7
+                     0xbc41cd10,   # ldr s16, [x8, #0x1c]!
+                     0xd65f03c0]   # ret
+            struct.pack_into(f"<{len(words)}I", raw, 0x120, *words)
+            source.write_bytes(raw)
+            base = 0x801000000
+            native = self.run_native("emit-function", source, "--base", hex(base), "--entry", hex(base + 0x20),
+                                     "--end", hex(base + 0x20 + 4 * len(words)), "--simd", "asm").stdout
+            program = folder / "flags.c"
+            program.write_text('#include "cpu.h"\n#include <stdlib.h>\n' + native + r"""
+volatile int g_fnprof;
+void fnprof_hit(uint64_t a,uint64_t b,uint64_t d){(void)a;(void)b;(void)d;}
+static uint32_t bits(const void *v){uint32_t r;memcpy(&r,v,4);return r;}
+int main(void){
+    Cpu c; memset(&c,0,sizeof c);
+    float table[16]; for(int i=0;i<16;i++) table[i]=(float)i;
+    c.nzcv=0xa0000000ull;   /* N and C: MI holds, and C set like the original fault */
+    float eight=8.0f,five=5.0f; memcpy(&c.v[8],&eight,4); memcpy(&c.v[5],&five,4);
+    c.x[1]=0x11; c.x[2]=0x22; c.x[3]=0x33; c.x[4]=0x44; c.x[7]=0x77;
+    c.x[5]=(uintptr_t)table; c.x[6]=3*sizeof(float); c.x[8]=(uintptr_t)table;
+    f_801000020(&c);
+    if(c.x[8]!=(uintptr_t)table+0x1c) return 1;            /* pre-index writeback on the guest register */
+    float loaded; memcpy(&loaded,&c.v[16],4); if(loaded!=7.0f) return 2;   /* table[7] */
+    float indexed; memcpy(&indexed,&c.v[4],4); if(indexed!=3.0f) return 3;
+    float selected; memcpy(&selected,&c.v[9],4); if(selected!=8.0f) return 4;
+    if(bits(&c.v[5])!=0x11||bits(&c.v[6])!=0x22||bits(&c.v[7])!=0x33||bits(&c.v[17])!=0x44||bits(&c.v[18])!=0x77) return 5;
+    if(c.x[1]!=0x11||c.x[5]!=(uintptr_t)table||c.x[6]!=3*sizeof(float)||c.nzcv!=0xa0000000ull) return 6;
+    return 0;
+}
+""")
+            executable = folder / "flags-probe"
+            built = subprocess.run(["clang", "-std=c17", "-D_DEFAULT_SOURCE", "-O2", "-w", "-I", str(ROOT / "scripts/recomp/rt"),
+                                    "-I", str(ROOT / "scripts/recomp/upstream/runtime"), str(program), "-o", str(executable)],
+                                   text=True, capture_output=True)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            run = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(run.returncode, 0, f"probe exit {run.returncode}\n{native}")
+
     @unittest.skipUnless(shutil.which("clang"), "portable execution probe requires Clang")
     def test_emitted_portable_simd_memory_and_fp_execute(self):
         with tempfile.TemporaryDirectory(dir=self.folder) as temporary:

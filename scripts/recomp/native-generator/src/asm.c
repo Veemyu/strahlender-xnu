@@ -11,25 +11,33 @@ static void asm_line(Buffer *b, bool *first, const char *line) {
 }
 bool cg_emit_asm_batch(const AsmInstruction *batch, size_t count, const char **result) {
     if (!count || count > 24) return false;
-    unsigned scratch[] = {9, 10, 11, 12, 13, 14, 15, 16, 17};
+    /* x16 carries the guest NZCV into and out of the batch (msr/mrs below), so a batch that uses flags must not also map a guest register
+       or constant to x16: the flags load would overwrite it before the batch's instructions run. Before this, the ninth-to-last scratch
+       (x16) went to the eighth operand regardless, and an instruction using it read the packed flags instead (for example
+       ldr s16, [x16, #0x1c]! faulting at 0x2000001c with only C set, BDSP battle effects on iOS, issues #56, #60, #64). */
+    bool flags = false;
+    for (size_t i = 0; i < count; i++) flags |= batch[i].flags;
+    static const unsigned with_x16[] = {9, 10, 11, 12, 13, 14, 15, 16, 17}, without_x16[] = {9, 10, 11, 12, 13, 14, 15, 17};
+    const unsigned *scratch = flags ? without_x16 : with_x16;
+    const size_t capacity = flags ? 8 : 9;
     MappedRegister map[9]; MappedConstant constants[9]; uint32_t words[24], vregs = 0;
-    size_t mapped = 0, const_count = 0; bool flags = false;
+    size_t mapped = 0, const_count = 0;
     for (size_t i = 0; i < count; i++) {
         const AsmInstruction *ins = &batch[i];
         if (ins->gpr_count > 3 || ins->constant_count > 1) cg_fail(4, "invalid assembly metadata");
-        vregs |= ins->vregs; flags |= ins->flags; uint32_t w = ins->word;
+        vregs |= ins->vregs; uint32_t w = ins->word;
         for (size_t j = 0; j < ins->gpr_count; j++) {
             unsigned g = ins->gprs[j].reg, position = ins->gprs[j].position;
             if (g > 31 || position > 27) cg_fail(4, "invalid assembly register metadata");
             size_t at = 0; while (at < mapped && map[at].guest != g) at++;
             if (at == mapped) {
-                if (mapped + const_count >= 9) return false;
+                if (mapped + const_count >= capacity) return false;
                 map[at] = (MappedRegister){g, scratch[mapped + const_count]}; mapped++;
             }
             w = (w & ~(31u << position)) | (map[at].scratch << position);
         }
         for (size_t j = 0; j < ins->constant_count; j++) {
-            if (mapped + const_count >= 9) return false;
+            if (mapped + const_count >= capacity) return false;
             unsigned s = scratch[mapped + const_count], position = ins->constants[j].position;
             if (position > 27) cg_fail(4, "invalid assembly constant metadata");
             constants[const_count++] = (MappedConstant){s, ins->constants[j].value, ins->constants[j].negative};
