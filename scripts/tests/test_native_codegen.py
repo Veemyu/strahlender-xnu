@@ -328,6 +328,29 @@ int main(void){
             run = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
             self.assertEqual(run.returncode, 0, run.stderr)
 
+    def test_assembly_batch_with_flags_keeps_x16_for_nzcv(self):
+        # Issues #56/#60/#64 (Signal 11 at 0x2000001c): a batch with a flag-reading instruction and eight
+        # guest GPRs mapped the eighth GPR to x16, which also carries NZCV in and out of the batch.
+        with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
+            source = synthetic_nso(Path(temporary) / "flags.nso")
+            raw = bytearray(source.read_bytes())
+            words = [0x1E224C20]                                        # fcsel s0, s1, s2, mi (reads NZCV)
+            words += [0x1E270000 | n << 5 | n for n in range(1, 8)]     # fmov sN, wN for w1..w7
+            words += [0xBC41CC00 | 8 << 5 | 16, 0xd65f03c0]             # ldr s16, [x8, #0x1c]!; ret
+            struct.pack_into("<%dI" % len(words), raw, 0x120, *words)
+            source.write_bytes(raw)
+            base = 0x801000000
+            code = self.run_native("emit-function", source, "--base", hex(base), "--entry", hex(base + 0x20),
+                                   "--end", hex(base + 0x20 + 4 * len(words)), "--simd", "asm").stdout
+            batches = [b.split("\"")[0].split("\\n\\t") for b in code.split("__asm__ volatile(\"")[1:]]
+            flagged = [lines for lines in batches if "msr nzcv, x16" in lines]
+            self.assertTrue(flagged, code)
+            for lines in flagged:
+                # The only write of x16 before the instructions is the NZCV load; no guest register or
+                # constant may be mapped to it, and no guest register may be stored back from it.
+                mapped = [l for l in lines if l.startswith(("ldr x16,", "mov x16,", "str x16,"))]
+                self.assertEqual(mapped, ["ldr x16, [%0, #272]", "str x16, [%0, #272]"], lines)
+
     def test_failed_publish_preserves_existing_output_and_removes_owned_temporary(self):
         with tempfile.TemporaryDirectory(dir=self.folder) as temporary:
             folder = Path(temporary)
